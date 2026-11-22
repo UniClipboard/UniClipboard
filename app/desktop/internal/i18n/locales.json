@@ -129,7 +129,7 @@
     "en": "Startup and tray",
     "ja": "起動とトレイ",
     "pt-BR": "Inicialização e bandeja",
-    "ru": "Запуск и значок"
+    "ru": "Запуск и трей"
   },
   "启动与运行模式": {
     "en": "Startup and mode",
@@ -182,31 +182,31 @@
   "登录时启动": {
     "en": "Launch at login",
     "ja": "ログイン時に起動",
-    "pt-BR": "Iniciar ao entrar",
+    "pt-BR": "Iniciar ao iniciar sessão",
     "ru": "Запуск при входе"
   },
   "登录系统后自动启动。": {
     "en": "Launch automatically after login.",
     "ja": "ログイン後に自動起動します。",
-    "pt-BR": "Iniciar automaticamente ao entrar no sistema.",
+    "pt-BR": "Iniciar automaticamente ao iniciar sessão.",
     "ru": "Запускать автоматически после входа."
   },
   "登录系统后自动启动 UniClipboard": {
     "en": "Launch UniClipboard after login",
     "ja": "ログイン後に UniClipboard を起動",
-    "pt-BR": "Iniciar o UniClipboard ao entrar",
+    "pt-BR": "Iniciar o UniClipboard ao iniciar sessão",
     "ru": "Запускать UniClipboard после входа"
   },
   "系统登录启动已关闭": {
     "en": "Login launch is disabled",
     "ja": "ログイン時の起動は無効です",
-    "pt-BR": "Inicialização ao entrar desativada",
+    "pt-BR": "Inicialização ao iniciar sessão desativada",
     "ru": "Запуск при входе отключён"
   },
   "系统登录启动已开启": {
     "en": "Login launch is enabled",
     "ja": "ログイン時の起動は有効です",
-    "pt-BR": "Inicialização ao entrar ativada",
+    "pt-BR": "Inicialização ao iniciar sessão ativada",
     "ru": "Запуск при входе включён"
   },
   "重新应用登录启动设置": {
@@ -529,19 +529,19 @@
   },
   "文件夹": {
     "en": "Folders",
-    "ja": "フォルダ",
+    "ja": "フォルダー",
     "pt-BR": "Pastas",
     "ru": "Папки"
   },
   "源目录引用。主动发送时读取当前目录内容。": {
     "en": "Source folder reference. Sending reads the current folder contents.",
-    "ja": "元フォルダへの参照。送信時に現在のフォルダ内容を読み取ります。",
+    "ja": "元フォルダーへの参照。送信時に現在のフォルダー内容を読み取ります。",
     "pt-BR": "Referência à pasta de origem. O envio lê o conteúdo atual da pasta.",
     "ru": "Ссылка на исходную папку. При отправке читается текущее содержимое папки."
   },
   "目录快照。发送时使用已保存的内容。": {
     "en": "Folder snapshot. Sending uses the saved content.",
-    "ja": "フォルダのスナップショット。送信時は保存済みの内容を使います。",
+    "ja": "フォルダーのスナップショット。送信時は保存済みの内容を使います。",
     "pt-BR": "Instantâneo da pasta. O envio usa o conteúdo salvo.",
     "ru": "Снимок папки. При отправке используется сохранённое содержимое."
   },
@@ -553,7 +553,7 @@
   },
   "个文件夹": {
     "en": "folders",
-    "ja": "フォルダ",
+    "ja": "フォルダー",
     "pt-BR": "pastas",
     "ru": "папок"
   },
@@ -565,7 +565,7 @@
   },
   "无法读取文件夹，可能已移动或删除。": {
     "en": "Cannot read the folder. It may have been moved or deleted.",
-    "ja": "フォルダを読み取れません。移動または削除された可能性があります。",
+    "ja": "フォルダーを読み取れません。移動または削除された可能性があります。",
     "pt-BR": "Não foi possível ler a pasta. Ela pode ter sido movida ou excluída.",
     "ru": "Не удалось прочитать папку. Возможно, она перемещена или удалена."
   },
@@ -621,7 +621,7 @@
     "en": "Each matching rule tags new text. Restart the service to apply changes.",
     "ja": "一致したルールごとに新しいテキストにタグを追加します。変更はサービスの再起動後に適用されます。",
     "pt-BR": "Cada regra correspondente adiciona uma etiqueta ao novo texto. Reinicie o serviço para aplicar as alterações.",
-    "ru": "Каждое совпавшее правило добавляет тег к новому тексту. Перезапустите службу, чтобы применить изменения."
+    "ru": "Каждое совпавшее правило добавляет метку к новому тексту. Перезапустите службу, чтобы применить изменения."
   },
   "编辑规则 %s": {
     "en": "Edit rule for %s",
@@ -651,13 +651,13 @@
     "en": "Tag to apply",
     "ja": "追加するタグ",
     "pt-BR": "Etiqueta a aplicar",
-    "ru": "Добавляемый тег"
+    "ru": "Добавляемая метка"
   },
   "请输入有效的 Go 正则表达式和标签。表达式最多 1024 字节，标签最多 64 字节。": {
     "en": "Enter a valid Go regular expression and tag. Use up to 1024 bytes for the expression and 64 for the tag.",
     "ja": "有効な Go の正規表現とタグを入力してください。正規表現は最大 1024 バイト、タグは最大 64 バイトです。",
     "pt-BR": "Insira uma expressão regular Go válida e uma etiqueta. Use até 1024 bytes para a expressão e 64 para a etiqueta.",
-    "ru": "Введите допустимое регулярное выражение Go и тег. Выражение может занимать до 1024 байт, тег — до 64 байт."
+    "ru": "Введите допустимое регулярное выражение Go и метку. Выражение может занимать до 1024 байт, метка — до 64 байт."
   },
   "保存规则": {
     "en": "Save rule",
@@ -669,7 +669,7 @@
     "en": "Use a local plugin for Lua rules. Call ctx:add_tag in the script to add a tag.",
     "ja": "Lua ルールにはローカルプラグインを使用します。スクリプトで ctx:add_tag を呼び出すとタグが追加されます。",
     "pt-BR": "Use um plugin local para regras Lua. Chame ctx:add_tag no script para adicionar uma etiqueta.",
-    "ru": "Используйте локальный плагин для правил Lua. Вызовите ctx:add_tag в скрипте, чтобы добавить тег."
+    "ru": "Используйте локальный плагин для правил Lua. Вызовите ctx:add_tag в скрипте, чтобы добавить метку."
   },
   "代码": {
     "en": "Code",
@@ -999,13 +999,13 @@
     "en": "%d entries",
     "ja": "%d 件",
     "pt-BR": "%d itens",
-    "ru": "%d записей"
+    "ru": "Записей: %d"
   },
   "还有 %d 条": {
     "en": "%d more entries",
     "ja": "あと %d 件",
     "pt-BR": "Mais %d itens",
-    "ru": "Ещё %d записей"
+    "ru": "Ещё записей: %d"
   },
   "已选择 %d 项": {
     "en": "%d selected",
@@ -1089,7 +1089,7 @@
     "en": "0/%d devices",
     "ja": "0/%d 台",
     "pt-BR": "0/%d dispositivos",
-    "ru": "0/%d устройств"
+    "ru": "Устройств: 0/%d"
   },
   "%.0f × %.0f · PNG · 来自 %s": {
     "en": "%.0f × %.0f · PNG · from %s",
@@ -1107,7 +1107,7 @@
     "en": "Valid for %d seconds. Single use.",
     "ja": "%d 秒間有効です。1回のみ使用できます。",
     "pt-BR": "Válido por %d segundos. Uso único.",
-    "ru": "Действует %d секунд. Одноразовый код."
+    "ru": "Действует %d с. Одноразовый код."
   },
   "22 条历史 · 13.1 MB": {
     "en": "22 entries · 13.1 MB",
@@ -1497,7 +1497,7 @@
     "en": "Save received files to Downloads",
     "ja": "受信したファイルをダウンロードフォルダーに保存",
     "pt-BR": "Salvar arquivos recebidos em Downloads",
-    "ru": "Сохранять полученные файлы в Загрузки"
+    "ru": "Сохранять полученные файлы в папку «Загрузки»"
   },
   "局域网": {
     "en": "Local network",
@@ -2559,7 +2559,7 @@
     "en": "%d items",
     "ja": "%d 項目",
     "pt-BR": "%d itens",
-    "ru": "%d элементов"
+    "ru": "Элементов: %d"
   },
   "原始尺寸": {
     "en": "Actual size",
@@ -2679,7 +2679,7 @@
     "en": "%s requests clipboard sync. Open unic to approve or reject.",
     "ja": "%s がクリップボード同期を要求しています。unic を開いて承認または拒否してください。",
     "pt-BR": "%s solicita sincronização. Abra o unic para aprovar ou rejeitar.",
-    "ru": "%s запрашивает синхронизацию. Откройте unic для одобрения или отказа."
+    "ru": "%s: введён код сопряжения этого устройства. Откройте unic, проверьте отпечатки и одобрите."
   },
   "%s 输入了本机配对码。打开 unic，核对指纹后批准。": {
     "en": "%s entered this device's pairing code. Open unic, verify fingerprints and approve.",
@@ -3036,13 +3036,13 @@
     "ru": "Отменить отправку"
   },
   "正在扫描目录…": {
-    "en": "Scanning directory…",
+    "en": "Scanning folder…",
     "ja": "フォルダーをスキャン中…",
     "pt-BR": "Verificando pasta…",
     "ru": "Сканирование папки…"
   },
   "正在准备目录…": {
-    "en": "Preparing directory…",
+    "en": "Preparing folder…",
     "ja": "フォルダーを準備中…",
     "pt-BR": "Preparando pasta…",
     "ru": "Подготовка папки…"
@@ -3066,13 +3066,13 @@
     "ru": "Подготовка к отправке…"
   },
   "自动同步目录": {
-    "en": "Sync directories automatically",
+    "en": "Sync folders automatically",
     "ja": "フォルダーを自動同期",
     "pt-BR": "Sincronizar pastas automaticamente",
     "ru": "Автоматически синхронизировать папки"
   },
   "默认关闭。开启后，每次复制目录都会扫描并发送。": {
-    "en": "Off by default. When enabled, each directory copy scans and sends its contents.",
+    "en": "Off by default. When on, each folder copy scans and sends its contents.",
     "ja": "初期設定はオフです。有効にすると、フォルダーをコピーするたびに内容をスキャンして送信します。",
     "pt-BR": "Desativado por padrão. Quando ativado, cada cópia de pasta verifica e envia seu conteúdo.",
     "ru": "По умолчанию отключено. При включении каждое копирование папки запускает сканирование и отправку её содержимого."
@@ -3093,7 +3093,7 @@
     "en": "Tag name",
     "ja": "タグ名",
     "pt-BR": "Nome da etiqueta",
-    "ru": "Название тега"
+    "ru": "Имя метки"
   },
   "新建 #%s": {
     "en": "Create #%s",
@@ -3168,7 +3168,7 @@
     "ru": "Найдены данные UniClipboard v1"
   },
   "手动选择目录": {
-    "en": "Choose a directory manually",
+    "en": "Choose a folder manually",
     "ja": "フォルダーを手動で選択",
     "pt-BR": "Escolher pasta manualmente",
     "ru": "Выбрать папку вручную"
@@ -3198,13 +3198,13 @@
     "ru": "Импортированные записи будут доступны в истории."
   },
   "v1 数据目录": {
-    "en": "v1 data directory",
+    "en": "v1 data folder",
     "ja": "v1 データフォルダー",
     "pt-BR": "Pasta de dados da v1",
     "ru": "Папка данных v1"
   },
   "选择其他目录": {
-    "en": "Choose another directory",
+    "en": "Choose another folder",
     "ja": "別のフォルダーを選択",
     "pt-BR": "Escolher outra pasta",
     "ru": "Выбрать другую папку"
@@ -3231,7 +3231,7 @@
     "en": "Tags and their assignments",
     "ja": "タグとその関連付け",
     "pt-BR": "Etiquetas e suas associações",
-    "ru": "Теги и их связи"
+    "ru": "Метки и их назначения"
   },
   "设备身份": {
     "en": "Device identities",
@@ -3267,7 +3267,7 @@
     "en": "Another unic service is using the data directory. Stop it and retry. This app will not stop it automatically.",
     "ja": "別の unic サービスがデータフォルダーを使用中です。そのサービスを停止して再試行してください。自動的には停止しません。",
     "pt-BR": "Outro serviço unic está usando a pasta de dados. Pare-o e tente novamente. O aplicativo não o interromperá automaticamente.",
-    "ru": "Папка данных используется другим сервисом unic. Остановите его и повторите. Приложение не остановит его автоматически."
+    "ru": "Папка данных используется другой службой unic. Остановите её и повторите. Приложение не остановит её автоматически."
   },
   "没有读取凭据，也没有导入任何记录。": {
     "en": "No credentials were read and no records were imported.",
@@ -3540,31 +3540,31 @@
     "ru": "Отсутствующие части — это изображения или вложения файлов. Они учитываются отдельно от записей с ошибкой."
   },
   "选择 v1 数据目录": {
-    "en": "Choose the v1 data directory",
+    "en": "Choose the v1 data folder",
     "ja": "v1 データフォルダーを選択",
     "pt-BR": "Escolher pasta de dados da v1",
     "ru": "Выбрать папку данных v1"
   },
   "无法打开目录选择窗口。请重试。": {
-    "en": "Could not open the directory picker. Please retry.",
+    "en": "Could not open the folder picker. Try again.",
     "ja": "フォルダー選択画面を開けませんでした。再試行してください。",
     "pt-BR": "Não foi possível abrir o seletor de pastas. Tente novamente.",
     "ru": "Не удалось открыть окно выбора папки. Повторите попытку."
   },
   "这个目录不是受支持的 v1 数据目录。请选择其他目录。": {
-    "en": "This is not a supported v1 data directory. Choose another directory.",
+    "en": "This is not a supported v1 data folder. Choose another folder.",
     "ja": "このフォルダーは対応する v1 データフォルダーではありません。別のフォルダーを選択してください。",
     "pt-BR": "Esta não é uma pasta de dados da v1 compatível. Escolha outra pasta.",
     "ru": "Эта папка данных v1 не поддерживается. Выберите другую папку."
   },
   "无法检查 v1 数据。请重试或手动选择目录。": {
-    "en": "Could not check v1 data. Retry or choose a directory manually.",
+    "en": "Could not check v1 data. Retry or choose a folder manually.",
     "ja": "v1 データを確認できませんでした。再試行するか、フォルダーを手動で選択してください。",
     "pt-BR": "Não foi possível verificar os dados da v1. Tente novamente ou escolha uma pasta manualmente.",
     "ru": "Не удалось проверить данные v1. Повторите или выберите папку вручную."
   },
   "未发现 v1 数据。请选择其他目录。": {
-    "en": "No v1 data found. Choose another directory.",
+    "en": "No v1 data found. Choose another folder.",
     "ja": "v1 データが見つかりません。別のフォルダーを選択してください。",
     "pt-BR": "Nenhum dado da v1 encontrado. Escolha outra pasta.",
     "ru": "Данные v1 не найдены. Выберите другую папку."
@@ -3576,13 +3576,13 @@
     "ru": "Не удалось разблокировать старые данные. Проверьте пароль v1 и повторите."
   },
   "迁移未完成。请检查数据目录、可用磁盘空间和访问权限，然后重试。": {
-    "en": "Migration did not complete. Check the data directory, free disk space and access permissions, then retry.",
+    "en": "Migration did not complete. Check the data folder, free disk space and access permissions, then retry.",
     "ja": "移行が完了しませんでした。データフォルダー、空き容量、アクセス権限を確認して再試行してください。",
     "pt-BR": "A migração não foi concluída. Verifique a pasta de dados, o espaço livre e as permissões e tente novamente.",
     "ru": "Перенос не завершён. Проверьте папку данных, свободное место и права доступа, затем повторите."
   },
   "无法保存引导状态。请检查数据目录权限，然后重试。": {
-    "en": "Could not save setup progress. Check data directory permissions and retry.",
+    "en": "Could not save setup progress. Check data folder permissions and retry.",
     "ja": "初期設定の状態を保存できませんでした。データフォルダーの権限を確認して再試行してください。",
     "pt-BR": "Não foi possível salvar o progresso da configuração. Verifique as permissões da pasta e tente novamente.",
     "ru": "Не удалось сохранить состояние настройки. Проверьте права на папку данных и повторите."
@@ -3594,16 +3594,16 @@
     "ru": "Подготовка приложения…"
   },
   "无法启动应用。请检查数据目录和后台服务，然后重试。": {
-    "en": "Could not start the app. Check the data directory and background service, then retry.",
+    "en": "Could not start the app. Check the data folder and background service, then retry.",
     "ja": "アプリを起動できませんでした。データフォルダーとバックグラウンドサービスを確認して再試行してください。",
     "pt-BR": "Não foi possível iniciar o aplicativo. Verifique a pasta de dados e o serviço em segundo plano e tente novamente.",
-    "ru": "Не удалось запустить приложение. Проверьте папку данных и фоновый сервис, затем повторите."
+    "ru": "Не удалось запустить приложение. Проверьте папку данных и фоновую службу, затем повторите."
   },
   "无法停止当前后台服务。请退出应用后重试迁移。": {
     "en": "Could not stop the background service. Quit the app and retry migration.",
     "ja": "バックグラウンドサービスを停止できませんでした。アプリを終了して移行を再試行してください。",
     "pt-BR": "Não foi possível parar o serviço em segundo plano. Feche o aplicativo e tente migrar novamente.",
-    "ru": "Не удалось остановить фоновый сервис. Закройте приложение и повторите перенос."
+    "ru": "Не удалось остановить фоновую службу. Закройте приложение и повторите перенос."
   },
   "没有新的记录需要导入。此前导入的记录仍在历史中。": {
     "en": "There are no new records to import. Previously imported records remain in history.",
@@ -3738,7 +3738,7 @@
     "ru": "Разрешить отправку и получение изображений этим механизмом."
   },
   "文件夹作为完整内容传输。自动同步目录仍由全局同步设置控制。": {
-    "en": "Folders transfer as complete content. Global sync settings control automatic directory sync.",
+    "en": "Folders transfer as complete content. Global sync settings control automatic folder sync.",
     "ja": "フォルダーは全体を転送します。自動同期は全体の同期設定で制御します。",
     "pt-BR": "Pastas são transferidas por inteiro. A sincronização automática depende das configurações globais.",
     "ru": "Папки передаются целиком. Автосинхронизация папок зависит от общих настроек."
@@ -3855,13 +3855,13 @@
     "en": "Sync backend",
     "ja": "同期バックエンド",
     "pt-BR": "Backend de sincronização",
-    "ru": "Бэкенд синхронизации"
+    "ru": "Механизм синхронизации"
   },
   "自动标注": {
     "en": "Auto tagging",
     "ja": "自動タグ付け",
     "pt-BR": "Marcação automática",
-    "ru": "Автоматические теги"
+    "ru": "Автоматические метки"
   },
   "转大写": {
     "en": "Uppercase",
@@ -4038,7 +4038,7 @@
     "ru": "Внешние плагины"
   },
   "退出整个应用": {
-    "en": "Quit application",
+    "en": "Quit",
     "ja": "アプリケーションを終了",
     "pt-BR": "Sair do aplicativo",
     "ru": "Выйти из приложения"
@@ -4064,7 +4064,7 @@
   "仅控制常规模式的登录启动。手动点击应用图标始终打开主窗口。": {
     "en": "Only controls normal-mode login startup. Opening the app icon always shows the main window.",
     "ja": "通常モードのログイン時起動にのみ適用されます。アプリアイコンを開くとメイン画面が表示されます。",
-    "pt-BR": "Controla apenas a inicialização no login no modo normal. Abrir o aplicativo pelo ícone sempre mostra a janela principal.",
+    "pt-BR": "Controla apenas a inicialização ao iniciar sessão no modo normal. Abrir o aplicativo pelo ícone sempre mostra a janela principal.",
     "ru": "Управляет только запуском при входе в обычном режиме. Открытие приложения через значок всегда показывает главное окно."
   },
   "窗口": {
@@ -4098,13 +4098,13 @@
     "ru": "Восстановить"
   },
   "我的标签": {
-    "en": "My Tags",
+    "en": "My tags",
     "ja": "マイタグ",
     "pt-BR": "Minhas etiquetas",
-    "ru": "Мои теги"
+    "ru": "Мои метки"
   },
   "系统类型": {
-    "en": "System Types",
+    "en": "System types",
     "ja": "システムタイプ",
     "pt-BR": "Tipos do sistema",
     "ru": "Системные типы"
@@ -4146,7 +4146,7 @@
     "ru": "Устройства"
   },
   "我的设备": {
-    "en": "My Devices",
+    "en": "My devices",
     "ja": "マイデバイス",
     "pt-BR": "Meus dispositivos",
     "ru": "Мои устройства"
@@ -4212,13 +4212,13 @@
     "ru": "Это устройство · Сквозное шифрование"
   },
   "出示配对码": {
-    "en": "Show Code",
+    "en": "Show code",
     "ja": "コードを表示",
     "pt-BR": "Mostrar código",
     "ru": "Показать код"
   },
   "输入配对码": {
-    "en": "Enter Code",
+    "en": "Enter code",
     "ja": "コードを入力",
     "pt-BR": "Inserir código",
     "ru": "Ввести код"
@@ -4233,7 +4233,7 @@
     "en": "Cross-network or CLI pairing? Use full ticket →",
     "ja": "ネットワーク越え・CLI 接続には完全チケットを使用 →",
     "pt-BR": "Pareamento remoto ou CLI? Usar tíquete completo →",
-    "ru": "Удалённое или CLI-подключение? Полный тикет →"
+    "ru": "Удалённое или CLI-сопряжение? Полный билет →"
   },
   "← 返回 6 位配对码": {
     "en": "← Back to 6-digit code",
@@ -4267,9 +4267,9 @@
   },
   "配对码已复制（演示，未写入剪贴板）": {
     "en": "Code copied (preview, clipboard unchanged)",
-    "ja": "コードをコピーしました（プレビュー、クリップボード未変更）",
+    "ja": "ペアリングコードをコピーしました（デモ、クリップボードは変更しません）",
     "pt-BR": "Código copiado (prévia, área de transferência inalterada)",
-    "ru": "Код скопирован (демо, буфер не изменён)"
+    "ru": "Код скопирован (демонстрация; буфер обмена не изменён)"
   },
   "上一条": {
     "en": "Previous item",
@@ -4395,13 +4395,13 @@
     "en": "%d paths · %d pending",
     "ja": "%d 件のパス · %d 件承認待ち",
     "pt-BR": "%d caminhos · %d pendentes",
-    "ru": "%d путей · %d ожидают"
+    "ru": "Путей: %d · ожидают: %d"
   },
   "%d 条同步路径": {
     "en": "%d sync paths",
     "ja": "%d 件の同期パス",
     "pt-BR": "%d caminhos de sincronização",
-    "ru": "%d путей синхронизации"
+    "ru": "Путей синхронизации: %d"
   },
   "点击右侧添加同步路径": {
     "en": "Add a sync path on the right",
@@ -4491,7 +4491,7 @@
     "en": "Pending requests (%d)",
     "ja": "承認待ちリクエスト (%d)",
     "pt-BR": "Solicitações pendentes (%d)",
-    "ru": "Запросы на подтверждение (%d)"
+    "ru": "Ожидают одобрения (%d)"
   },
   "需核对双端指纹后方生效": {
     "en": "Verify matching fingerprints on both devices",
@@ -4560,7 +4560,7 @@
     "ru": "Нет активных каналов с поддержкой сопряжения"
   },
   "请在「设置 → 插件」中启用 Tailcat 或外部同步渠道并重启后，再添加设备。": {
-    "en": "Enable Tailcat or an external sync channel in Settings > Plugins and restart before adding devices.",
+    "en": "Enable Tailcat or an external sync channel in Settings › Plugins and restart before adding devices.",
     "ja": "「設定 → プラグイン」で Tailcat または外部同期チャネルを有効にし、再起動してからデバイスを追加してください。",
     "pt-BR": "Ative o Tailcat ou um canal externo em Configurações > Plugins e reinicie antes de adicionar dispositivos.",
     "ru": "Включите Tailcat или внешний канал в «Настройки → Плагины» и перезапустите приложение перед добавлением устройств."
@@ -4599,13 +4599,13 @@
     "en": "Suggested devices (%d)",
     "ja": "見つかったデバイス (%d)",
     "pt-BR": "Sugestões (%d)",
-    "ru": "Возможные устройства (%d)"
+    "ru": "Предлагаемые устройства (%d)"
   },
   "由已信任设备介绍 · 仍需双方批准": {
     "en": "Introduced by a trusted device · Both sides must approve",
     "ja": "信頼済みデバイスからの紹介 · 双方向の承認が必要",
     "pt-BR": "Apresentado por um dispositivo confiável · Requer aprovação mútua",
-    "ru": "Представлено доверенным устройством · Требуется обоюдное подтверждение"
+    "ru": "Представлено доверенным устройством · Требуется одобрение обоих устройств"
   },
   "由 %s 介绍": {
     "en": "Introduced by %s",
@@ -4683,7 +4683,7 @@
     "en": "This device is already trusted, but adding a sync path still requires verifying the fingerprint and approving.",
     "ja": "このデバイスは信頼済みですが、同期パスを追加するにはフィンガープリント確認と明示的な承認が必要です。",
     "pt-BR": "Este dispositivo já é confiável, mas adicionar um caminho ainda exige confirmar a impressão digital.",
-    "ru": "Это устройство уже доверенное, но добавление пути требует проверки отпечатка и подтверждения."
+    "ru": "Это устройство уже доверенное, но добавление пути требует проверки отпечатка и одобрения."
   },
   "同步路径 (%d)": {
     "en": "Sync paths (%d)",
@@ -4743,7 +4743,7 @@
     "en": "Removes only the %s sync path for \"%s\". Device trust and other paths remain, and you can pair it again later.",
     "ja": "「%s」の %s 経由の同期パスのみを削除します。デバイスの信頼と他のパスは維持されます。",
     "pt-BR": "Remove apenas o caminho %s de \"%s\". A confiança e outros caminhos permanecem.",
-    "ru": "Удалит только путь %s для «%s». Доверие и остальные пути сохранятся."
+    "ru": "Удалит только путь %s для «%s». Доверие и остальные пути сохранятся; позже можно снова выполнить сопряжение."
   },
   "移除路径": {
     "en": "Remove path",
@@ -4785,7 +4785,7 @@
     "en": "Revokes trust and removes all sync paths for this device. It will need to pair and be approved again. Already synced content cannot be recalled.",
     "ja": "このデバイスの信頼を取り消し、すべての同期パスを削除します。再接続には再ペアリングと承認が必要です。",
     "pt-BR": "Revoga a confiança e remove todos os caminhos deste dispositivo. Será necessário parear novamente.",
-    "ru": "Отзовёт доверие и удалит все пути этого устройства. Потребуется повторное сопряжение."
+    "ru": "Отзовёт доверие и удалит все пути этого устройства. Потребуется повторное сопряжение и одобрение. Уже синхронизированное содержимое отозвать нельзя."
   },
   "所属同步渠道：": {
     "en": "Sync channel: ",
@@ -4850,7 +4850,7 @@
   "将停用并尝试退出远端群组，退出成功后清除本机记录；若退出失败将保留并标示异常。": {
     "en": "Disables the channel and attempts to leave the remote group before clearing the local record. If leaving fails, the channel remains flagged with an error.",
     "ja": "チャネルを無効化してリモートグループから退出を試み、成功後にローカル記録を削除します。失敗した場合はエラー表示のまま残ります。",
-    "pt-BR": "Desativa e tenta sair do grupo remoto antes de apagar o registro local. Em caso de falha, o canal permanece sinalizado.",
+    "pt-BR": "Desativa e tenta sair do grupo remoto antes de excluir o registro local. Em caso de falha, o canal permanece sinalizado.",
     "ru": "Отключит канал и попытается выйти из удалённой группы перед удалением локальной записи. При ошибке канал останется с пометкой."
   },
   "此操作仅从本机移除该外部渠道记录，不影响第三方远端群组状态。": {
@@ -4875,7 +4875,7 @@
     "en": "Allows syncing over this channel immediately after approval",
     "ja": "承認後すぐにこの同期チャネルで送受信できるようになります",
     "pt-BR": "Permite sincronizar por este canal logo após a aprovação",
-    "ru": "Разрешит обмен через этот канал сразу после подтверждения"
+    "ru": "Разрешит обмен через этот канал сразу после одобрения"
   },
   "待批准": {
     "en": "Pending",
@@ -4890,7 +4890,7 @@
     "ru": "Принимайте только при полном совпадении всех 8 групп отпечатка на другом экране."
   },
   "请先在「设置 → 插件」中启用支持设备配对的同步渠道并重启桌面端。": {
-    "en": "Enable a pairable sync channel in Settings > Plugins and restart Desktop first.",
+    "en": "Enable a pairable sync channel in Settings › Plugins and restart Desktop first.",
     "ja": "先に「設定 → プラグイン」でペアリング対応の同期チャネルを有効にして再起動してください。",
     "pt-BR": "Primeiro ative um canal pareável em Configurações > Plugins e reinicie o Desktop.",
     "ru": "Сначала включите канал с поддержкой сопряжения в «Настройки → Плагины» и перезапустите приложение."
@@ -5013,7 +5013,7 @@
     "en": "Local device ID copied (preview, clipboard unchanged)",
     "ja": "ローカルデバイス ID をコピーしました（デモ、クリップボード未変更）",
     "pt-BR": "ID copiado (demonstração, área de transferência inalterada)",
-    "ru": "ID скопирован (демо, буфер обмена не изменён)"
+    "ru": "ID скопирован (демонстрация; буфер обмена не изменён)"
   },
   "已复制设备指纹": {
     "en": "Device fingerprint copied",
@@ -5025,7 +5025,7 @@
     "en": "Device fingerprint copied (preview, clipboard unchanged)",
     "ja": "フィンガープリントをコピーしました（デモ、クリップボード未変更）",
     "pt-BR": "Impressão digital copiada (demonstração, área de transferência inalterada)",
-    "ru": "Отпечаток скопирован (демо, буфер обмена не изменён)"
+    "ru": "Отпечаток скопирован (демонстрация; буфер обмена не изменён)"
   },
   "已复制配对码": {
     "en": "Pairing code copied",
@@ -5037,7 +5037,7 @@
     "en": "Pairing code copied (preview, clipboard unchanged)",
     "ja": "ペアリングコードをコピーしました（デモ、クリップボード未変更）",
     "pt-BR": "Código copiado (demonstração, área de transferência inalterada)",
-    "ru": "Код скопирован (демо, буфер обмена не изменён)"
+    "ru": "Код скопирован (демонстрация; буфер обмена не изменён)"
   },
   "已复制完整票据": {
     "en": "Full ticket copied",
@@ -5049,7 +5049,7 @@
     "en": "Full ticket copied (preview, clipboard unchanged)",
     "ja": "チケットをコピーしました（デモ、クリップボード未変更）",
     "pt-BR": "Bilhete copiado (demonstração, área de transferência inalterada)",
-    "ru": "Билет скопирован (демо, буфер обмена не изменён)"
+    "ru": "Билет скопирован (демонстрация; буфер обмена не изменён)"
   },
   "新增同步实例": {
     "en": "New sync instance",
@@ -5079,7 +5079,7 @@
     "en": "This backend uses external channels. Configure authorization in plugin settings; no device fingerprint or pairing code is required.",
     "ja": "このバックエンドは外部チャネルを使用します。プラグイン設定で認可を構成してください。フィンガープリントやペアリングコードは不要です。",
     "pt-BR": "Este backend usa canais externos. Configure a autorização nas configurações do plugin; não requer impressão digital nem código.",
-    "ru": "Этот бэкенд использует внешние каналы. Настройте авторизацию в параметрах плагина; отпечаток и код сопряжения не требуются."
+    "ru": "Этот механизм использует внешние каналы. Настройте авторизацию в параметрах плагина; отпечаток и код сопряжения не требуются."
   },
   "对象存储设备协议尚未实现。此类型暂不可用。": {
     "en": "The object-store device protocol is not implemented yet. This transport type is unavailable.",
@@ -5160,7 +5160,7 @@
     "ru": "Выполняется «%s»…"
   },
   "已取消「%s」": {
-    "en": "Cancelled “%s”",
+    "en": "Canceled “%s”",
     "ja": "「%s」をキャンセルしました",
     "pt-BR": "“%s” cancelado",
     "ru": "«%s» отменено"
@@ -5187,7 +5187,7 @@
     "en": "%d extensions",
     "ja": "%d 件の拡張機能",
     "pt-BR": "%d extensões",
-    "ru": "%d расширений"
+    "ru": "Расширений: %d"
   },
   "上移": {
     "en": "Move up",
@@ -5269,7 +5269,7 @@
   },
   "卸载失败：": {
     "en": "Uninstall failed: ",
-    "ja": "アンインストールに失敗しました: ",
+    "ja": "アンインストールに失敗しました：",
     "pt-BR": "Falha ao desinstalar: ",
     "ru": "Ошибка удаления: "
   },
@@ -5305,7 +5305,7 @@
   },
   "回滚失败：": {
     "en": "Rollback failed: ",
-    "ja": "ロールバックに失敗しました: ",
+    "ja": "ロールバックに失敗しました：",
     "pt-BR": "Falha ao reverter: ",
     "ru": "Ошибка отката: "
   },
@@ -5335,7 +5335,7 @@
   },
   "子目录（可选）": {
     "en": "Subdirectory (optional)",
-    "ja": "サブディレクトリ（任意）",
+    "ja": "サブフォルダー（任意）",
     "pt-BR": "Subdiretório (opcional)",
     "ru": "Подкаталог (необязательно)"
   },
@@ -5353,7 +5353,7 @@
   },
   "安装失败：": {
     "en": "Installation failed: ",
-    "ja": "インストールに失敗しました: ",
+    "ja": "インストールに失敗しました：",
     "pt-BR": "Falha na instalação: ",
     "ru": "Ошибка установки: "
   },
@@ -5443,7 +5443,7 @@
   },
   "开发者：从链接手动安装": {
     "en": "Developer: install manually from URL",
-    "ja": "開発者向け: URL から手動インストール",
+    "ja": "開発者向け：URL から手動インストール",
     "pt-BR": "Desenvolvedor: instalar manualmente por URL",
     "ru": "Для разработчиков: установить по ссылке"
   },
@@ -5485,7 +5485,7 @@
   },
   "接受：": {
     "en": "Accepts: ",
-    "ja": "対象: ",
+    "ja": "対象：",
     "pt-BR": "Aceita: ",
     "ru": "Принимает: "
   },
@@ -5541,7 +5541,7 @@
     "en": "Build from source if no prebuilt binary exists",
     "ja": "ビルド済みバイナリがない場合はソースからビルド",
     "pt-BR": "Compilar do código-fonte se não houver binário pronto",
-    "ru": "Собрать из исходников, если нет готовой сборки"
+    "ru": "Собрать из исходного кода, если нет готовой сборки"
   },
   "智能整理": {
     "en": "Smart organize",
@@ -5550,7 +5550,7 @@
     "ru": "Умная сортировка"
   },
   "未能加载插件市场目录。": {
-    "en": "Could not load the plugin marketplace catalog.",
+    "en": "Could not load the Plugin Marketplace catalog.",
     "ja": "プラグインマーケットプレイスのカタログを読み込めませんでした。",
     "pt-BR": "Não foi possível carregar o catálogo da loja de plugins.",
     "ru": "Не удалось загрузить каталог плагинов."
@@ -5701,7 +5701,7 @@
   },
   "在已配对设备间点对点同步剪贴板，支持文本、图片、文件与文件夹。": {
     "en": "Peer-to-peer clipboard sync across paired devices for text, images, files and folders.",
-    "ja": "ペアリング済みデバイス間でテキスト・画像・ファイル・フォルダを P2P 同期します。",
+    "ja": "ペアリング済みデバイス間でテキスト・画像・ファイル・フォルダーを P2P 同期します。",
     "pt-BR": "Sincronização ponto a ponto entre dispositivos pareados para texto, imagens, arquivos e pastas.",
     "ru": "Прямая синхронизация текста, изображений, файлов и папок между связанными устройствами."
   },
@@ -5713,9 +5713,9 @@
   },
   "自动为文本、图片、文件、文件夹和链接添加基础类型标签。": {
     "en": "Automatically adds basic content-type tags for text, images, files, folders and links.",
-    "ja": "テキスト・画像・ファイル・フォルダ・リンクに基本タイプタグを自動付与します。",
-    "pt-BR": "Adiciona automaticamente tags básicas para texto, imagens, arquivos, pastas e links.",
-    "ru": "Автоматически добавляет базовые теги для текста, изображений, файлов, папок и ссылок."
+    "ja": "テキスト・画像・ファイル・フォルダー・リンクに基本タイプタグを自動付与します。",
+    "pt-BR": "Adiciona automaticamente etiquetas de tipo básicas para texto, imagens, arquivos, pastas e links.",
+    "ru": "Автоматически добавляет базовые метки типов для текста, изображений, файлов, папок и ссылок."
   },
   "版本 %s": {
     "en": "Version %s",
@@ -5727,7 +5727,7 @@
     "en": "You're already on the latest version.",
     "ja": "すでに最新バージョンです。",
     "pt-BR": "Você já está na versão mais recente.",
-    "ru": "У вас уже установлена последняя версия."
+    "ru": "Установлена последняя версия."
   },
   "当前开发构建未启用应用内更新。": {
     "en": "In-app updates are disabled in this development build.",
@@ -5766,7 +5766,7 @@
     "ru": "Сначала включите «Автоматически проверять обновления»"
   },
   "更新渠道": {
-    "en": "Update Channel",
+    "en": "Update channel",
     "ja": "アップデート チャネル",
     "pt-BR": "Canal de atualização",
     "ru": "Канал обновлений"
@@ -5853,7 +5853,7 @@
     "en": "About & Maintainers",
     "ja": "概要とメンテナー",
     "pt-BR": "Sobre e mantenedores",
-    "ru": "О проекте и мейнтейнерах"
+    "ru": "О проекте и сопровождающих"
   },
   "© 2025 UniClipboard. All rights reserved.": {
     "en": "© 2025 UniClipboard. All rights reserved.",
@@ -5880,7 +5880,7 @@
     "ru": "Переключить"
   },
   "请下载新的便携版": {
-    "en": "Please download the new portable version",
+    "en": "Download the new portable version",
     "ja": "新しいポータブル版をダウンロードしてください",
     "pt-BR": "Baixe a nova versão portátil",
     "ru": "Скачайте новую портативную версию"
@@ -5889,10 +5889,10 @@
     "en": "You're running the portable build. It doesn't update in place — download the new portable archive from the release page and replace the executable (your data folder stays untouched).",
     "ja": "ポータブル版を実行しているため原地更新はできません。リリース ページから新しいポータブル版アーカイブをダウンロードして実行ファイルを置き換えてください（データ フォルダーは保持されます）。",
     "pt-BR": "Você está executando a versão portátil, que não atualiza no local — baixe o novo arquivo portátil na página de lançamentos e substitua o executável (sua pasta de dados permanece intacta).",
-    "ru": "Вы используете портативную сборку, которая не обновляется автоматически — скачайте новый архив со страницы релизов и замените исполняемый файл (папка с данными сохранится)."
+    "ru": "Используется портативная сборка, которая не обновляется автоматически — скачайте новый архив со страницы релизов и замените исполняемый файл (папка с данными сохранится)."
   },
   "请下载新的 AppImage": {
-    "en": "Please download the new AppImage",
+    "en": "Download the new AppImage",
     "ja": "新しい AppImage をダウンロードしてください",
     "pt-BR": "Baixe o novo AppImage",
     "ru": "Скачайте новый AppImage"
@@ -5904,7 +5904,7 @@
     "ru": "Самообновление AppImage не поддерживается в этой версии — скачайте новый файл AppImage со страницы релизов (папка с данными сохранится)."
   },
   "请通过系统包管理器升级": {
-    "en": "Please upgrade via your package manager",
+    "en": "Upgrade with your package manager",
     "ja": "パッケージ マネージャーから更新してください",
     "pt-BR": "Atualize pelo seu gerenciador de pacotes",
     "ru": "Обновите через менеджер пакетов"
@@ -6528,7 +6528,7 @@
     "ru": "отброшено"
   },
   "临时调试": {
-    "en": "Temp debug",
+    "en": "Temporary debug",
     "ja": "一時デバッグ",
     "pt-BR": "Depuração temp.",
     "ru": "Врем. отладка"
@@ -6537,7 +6537,7 @@
     "en": "Debug 15m",
     "ja": "一時デバッグ 15分",
     "pt-BR": "Depurar 15m",
-    "ru": "Отладка 15м"
+    "ru": "Отладка 15 мин"
   },
   "临时调试覆盖仅在服务内存中生效 15 分钟，不改写配置文件，到期后自动恢复已保存等级。": {
     "en": "Temporary debug overrides stay in service memory for 15 minutes without modifying the config file, then revert automatically.",
@@ -6555,23 +6555,23 @@
     "en": "Exports only sanitized local logs and a checksum manifest (.tar.gz). Excludes config, credentials, and clipboard history.",
     "ja": "ローカルに保持されているサニタイズ済みログとチェックサム一覧（.tar.gz）のみを書き出します。設定・認証情報・クリップボード履歴は含まれません。",
     "pt-BR": "Exporta apenas logs locais sanitizados e manifesto de soma de verificação (.tar.gz). Não inclui configurações, credenciais ou histórico.",
-    "ru": "Экспортирует только очищенные локальные журналы и манифест контрольных сумм (.tar.gz) без настроек, учетных данных и истории буфера."
+    "ru": "Экспортирует только очищенные локальные журналы и манифест контрольных сумм (.tar.gz) без настроек, учётных данных и истории буфера обмена."
   },
   "仅控制常规模式的登录启动；手动点击应用图标始终打开主窗口。": {
     "en": "Applies only to login startup in Normal mode. Manually clicking the app icon always opens the main window.",
     "ja": "通常モードのログイン時起動のみを制御します。アプリアイコンを手動でクリックした場合は常にメインウィンドウが開きます。",
-    "pt-BR": "Controla apenas a inicialização no login no modo Normal. Clicar manualmente no ícone sempre abre a janela principal.",
+    "pt-BR": "Controla apenas a inicialização ao iniciar sessão no modo normal. Clicar manualmente no ícone sempre abre a janela principal.",
     "ru": "Управляет только автозапуском в обычном режиме. Ручной запуск по значку всегда открывает главное окно."
   },
   "仅显示当前应用的系统授权状态，读取不会弹出授权框；此状态不代表目标应用一定支持自动粘贴。": {
     "en": "Shows only this app’s OS permission status without prompting. This status does not guarantee automatic paste works in every target app.",
-    "ja": "現在のアプリのOS権限状態のみを表示し、許可ダイアログは出しません。自動ペーストの動作を保証するものではありません。",
+    "ja": "現在のアプリのOS権限状態のみを表示し、許可ダイアログは出しません。自動貼り付けの動作を保証するものではありません。",
     "pt-BR": "Mostra apenas o status de permissão do sistema para este app sem solicitar acesso; isso não garante colagem automática.",
     "ru": "Показывает только статус системного разрешения этого приложения без запроса доступа и не гарантирует работу автовставки."
   },
   "仅统计应用管理的接收文件缓存账本；不包含 SQLite 数据库、日志、自定义接收目录或其他用户文件。": {
     "en": "Counts only the app-managed received file cache ledger. Excludes SQLite databases, logs, custom receive folders, and other user files.",
-    "ja": "アプリ管理の受信ファイルキャッシュ台帳のみを集計します。SQLite データベース、ログ、カスタム受信フォルダ、その他のユーザーファイルは含まれません。",
+    "ja": "アプリ管理の受信ファイルキャッシュ台帳のみを集計します。SQLite データベース、ログ、カスタム受信フォルダー、その他のユーザーファイルは含まれません。",
     "pt-BR": "Contabiliza apenas o cache de arquivos recebidos gerenciado pelo app. Exclui bancos SQLite, logs, pastas personalizadas e outros arquivos do usuário.",
     "ru": "Учитывается только управляемый приложением кэш принятых файлов; базы SQLite, журналы, пользовательские папки и другие файлы не включены."
   },
@@ -6609,7 +6609,7 @@
     "en": "Shown to other paired devices. Press Enter to save.",
     "ja": "他のペアリング済みデバイスに表示されます。Enter で保存します。",
     "pt-BR": "Visível para outros dispositivos pareados. Pressione Enter para salvar.",
-    "ru": "Отображается на других сопряженных устройствах. Нажмите Enter для сохранения."
+    "ru": "Отображается на других сопряжённых устройствах. Нажмите Enter для сохранения."
   },
   "再次应用本机历史条目后发送一次。": {
     "en": "Send once when reusing an item from local history.",
@@ -6644,8 +6644,8 @@
   "命中以下任一标签的历史将不会被自动清理。": {
     "en": "History items matching any selected tag are excluded from automatic cleanup.",
     "ja": "選択したタグのいずれかに一致する履歴は自動クリーンアップから除外されます。",
-    "pt-BR": "Itens do histórico com qualquer tag selecionada não serão limpos automaticamente.",
-    "ru": "Записи с любым из выбранных тегов не удаляются при автоочистке."
+    "pt-BR": "Itens do histórico com qualquer uma destas etiquetas não serão limpos automaticamente.",
+    "ru": "Записи с любой из выбранных меток не удаляются при автоочистке."
   },
   "在常规模式运行时生效。切换后由托盘进程原子替换注册。": {
     "en": "Active in Normal mode. The tray process replaces the global registration atomically.",
@@ -6655,7 +6655,7 @@
   },
   "在系统文件管理器中打开当前配置档案的日志目录。": {
     "en": "Open this profile’s local logs folder in the system file manager.",
-    "ja": "このプロファイルのログフォルダをシステムのファイルマネージャで開きます。",
+    "ja": "このプロファイルのログフォルダーをシステムのファイルマネージャーで開きます。",
     "pt-BR": "Abre a pasta de logs deste perfil no gerenciador de arquivos do sistema.",
     "ru": "Открыть папку журналов текущего профиля в системном файловом менеджере."
   },
@@ -6666,10 +6666,10 @@
     "ru": "Автоматически отправлять скопированное на авторизованные устройства."
   },
   "始终使用低眩光深色": {
-    "en": "Always use low-glare dark",
+    "en": "Always use dark appearance",
     "ja": "常にダーク外観を使用",
     "pt-BR": "Sempre usar tema escuro",
-    "ru": "Всегда использовать темную тему"
+    "ru": "Всегда использовать тёмную тему"
   },
   "始终使用明亮界面": {
     "en": "Always use light appearance",
@@ -6681,7 +6681,7 @@
     "en": "Storage & Backup",
     "ja": "ストレージとバックアップ",
     "pt-BR": "Armazenamento e backup",
-    "ru": "Хранилище и резерв"
+    "ru": "Хранилище и резервные копии"
   },
   "定期清理过期历史记录及应用管理的关联文件。": {
     "en": "Periodically remove expired history and app-managed associated files.",
@@ -6715,7 +6715,7 @@
   },
   "已注册：": {
     "en": "Registered: ",
-    "ja": "登録済み: ",
+    "ja": "登録済み：",
     "pt-BR": "Registrado: ",
     "ru": "Зарегистрировано: "
   },
@@ -6729,7 +6729,7 @@
     "en": "Normal keeps the tray and sync service after closing the window; Lightweight keeps only the background sync service.",
     "ja": "通常モードではメインウィンドウを閉じてもトレイと同期サービスを維持し、軽量モードではバックグラウンド同期サービスのみを維持します。",
     "pt-BR": "O modo Normal mantém a bandeja e a sincronização ao fechar a janela; o modo Leve mantém apenas o serviço de sincronização.",
-    "ru": "В обычном режиме после закрытия окна остаются трей и служба синхронизации; в облегченном — только фоновая служба."
+    "ru": "В обычном режиме после закрытия окна остаются трей и служба синхронизации; в облегчённом — только фоновая служба."
   },
   "应用管理": {
     "en": "App-managed",
@@ -6739,27 +6739,27 @@
   },
   "应用管理的默认缓存目录": {
     "en": "App-managed default cache folder",
-    "ja": "アプリ管理のデフォルトキャッシュフォルダ",
+    "ja": "アプリ管理のデフォルトキャッシュフォルダー",
     "pt-BR": "Pasta de cache padrão gerenciada pelo app",
     "ru": "Папка кэша по умолчанию"
   },
   "当前上传：已启用": {
     "en": "Upload: Active",
-    "ja": "アップロード: 有効",
+    "ja": "アップロード：有効",
     "pt-BR": "Envio: Ativo",
     "ru": "Отправка: включена"
   },
   "当前上传：未启用": {
     "en": "Upload: Off",
-    "ja": "アップロード: 停止中",
+    "ja": "アップロード：停止中",
     "pt-BR": "Envio: Desativado",
     "ru": "Отправка: отключена"
   },
   "当前使用自定义接收目录。该目录由用户管理，不计入上方默认缓存用量。": {
-    "en": "Using a custom receive directory. It is user-managed and excluded from the default cache usage above.",
-    "ja": "カスタム受信ディレクトリを使用中です。ユーザー管理のため上記のデフォルトキャッシュ使用量には含まれません。",
-    "pt-BR": "Usando um diretório de recebimento personalizado. Ele é gerenciado pelo usuário e não entra na contagem acima.",
-    "ru": "Используется пользовательская папка приема. Она не учитывается в статистике кэша выше."
+    "en": "Using a custom receive folder. It is user-managed and excluded from the default cache usage above.",
+    "ja": "カスタム受信フォルダーを使用中です。ユーザー管理のため上記のデフォルトキャッシュ使用量には含まれません。",
+    "pt-BR": "Usando uma pasta de recebimento personalizada. Ela é gerenciada pelo usuário e não entra na contagem acima.",
+    "ru": "Используется пользовательская папка приёма. Она не учитывается в статистике кэша выше."
   },
   "当前平台无需 macOS 辅助功能权限开关。": {
     "en": "This platform does not use the macOS Accessibility permission switch.",
@@ -6771,7 +6771,7 @@
     "en": "Registration status",
     "ja": "現在の登録状態",
     "pt-BR": "Status do registro",
-    "ru": "Статус регистрации"
+    "ru": "Состояние регистрации"
   },
   "总开关关闭后立即停止遥测上传，并保留下方各信号的选择。": {
     "en": "Turning this off stops all telemetry uploads immediately while preserving each signal choice below.",
@@ -6783,7 +6783,7 @@
     "en": "Master switch is off: all 4 signals below are paused, while your individual selections remain preserved.",
     "ja": "メインスイッチがオフのため以下の4項目は送信停止中ですが、個別の選択状態は保持されています。",
     "pt-BR": "Chave principal desativada: os 4 sinais abaixo estão pausados, mas suas preferências foram preservadas.",
-    "ru": "Общий переключатель выключен: отправка всех 4 сигналов приостановлена, но ваши настройки сохранены."
+    "ru": "Общий переключатель выключен: отправка всех 4 сигналов приостановлена, но отдельные настройки сохранены."
   },
   "恢复默认": {
     "en": "Reset",
@@ -6825,7 +6825,7 @@
     "en": "Controls sending and receiving across all sync backends.",
     "ja": "すべての同期バックエンドの送受信を制御します。",
     "pt-BR": "Controla envio e recebimento em todos os backends de sincronização.",
-    "ru": "Управляет отправкой и получением во всех бэкендах синхронизации."
+    "ru": "Управляет отправкой и получением во всех механизмах синхронизации."
   },
   "无法读取服务当前有效日志等级，临时调试操作暂不可用。": {
     "en": "Cannot read effective log levels from the service; temporary debug overrides are unavailable.",
@@ -6837,7 +6837,7 @@
     "en": "Shows the actual OS global shortcut registration state.",
     "ja": "OSへのグローバルショートカット登録結果を表示します。",
     "pt-BR": "Mostra o resultado real do registro de atalho global no sistema.",
-    "ru": "Показывает фактический статус регистрации глобального сочетания клавиш."
+    "ru": "Показывает фактическое состояние регистрации глобального сочетания клавиш."
   },
   "更改后立即生效，无需重启。": {
     "en": "Takes effect immediately without restarting.",
@@ -6847,7 +6847,7 @@
   },
   "有效：": {
     "en": "Effective: ",
-    "ja": "有効: ",
+    "ja": "有効：",
     "pt-BR": "Efetivo: ",
     "ru": "Активно: "
   },
@@ -6855,11 +6855,11 @@
     "en": "Local data & migration",
     "ja": "ローカルデータと移行",
     "pt-BR": "Dados locais e migração",
-    "ru": "Локальные данные и миграция"
+    "ru": "Локальные данные и перенос"
   },
   "本机日志目录": {
     "en": "Local logs folder",
-    "ja": "ローカルログフォルダ",
+    "ja": "ローカルログフォルダー",
     "pt-BR": "Pasta de logs local",
     "ru": "Папка локальных журналов"
   },
@@ -6867,7 +6867,7 @@
     "en": "View included and excluded fields",
     "ja": "バックアップの対象と除外範囲を表示",
     "pt-BR": "Ver escopo incluído e excluído",
-    "ru": "Показать включенные и исключенные параметры"
+    "ru": "Показать включённые и исключённые параметры"
   },
   "注册冲突": {
     "en": "Conflict",
@@ -6884,8 +6884,8 @@
   "清理时保留标签": {
     "en": "Protected tags",
     "ja": "クリーンアップ除外タグ",
-    "pt-BR": "Tags protegidas",
-    "ru": "Защищенные теги"
+    "pt-BR": "Etiquetas protegidas",
+    "ru": "Защищённые метки"
   },
   "状态不可用": {
     "en": "Unavailable",
@@ -6914,7 +6914,7 @@
   "登录操作系统后自动启动 UniClipboard。": {
     "en": "Automatically start UniClipboard when you sign in.",
     "ja": "OSログイン時に UniClipboard を自動起動します。",
-    "pt-BR": "Inicia o UniClipboard automaticamente ao entrar no sistema.",
+    "pt-BR": "Inicia o UniClipboard automaticamente ao iniciar sessão no sistema.",
     "ru": "Автоматически запускать UniClipboard при входе в систему."
   },
   "立即打开快捷面板查看当前外观与键盘交互。": {
@@ -6933,7 +6933,7 @@
     "en": "OS login startup state differs from your saved preference. You can re-apply it.",
     "ja": "OSのログイン起動状態が保存された設定と一致していません。再適用できます。",
     "pt-BR": "O status de inicialização do sistema difere da configuração salva. Você pode reaplicá-lo.",
-    "ru": "Состояние автозапуска в ОС отличается от сохраненной настройки. Его можно применить повторно."
+    "ru": "Состояние автозапуска в ОС отличается от сохранённой настройки. Его можно применить повторно."
   },
   "自动匹配操作系统外观": {
     "en": "Match OS appearance",
@@ -6943,15 +6943,15 @@
   },
   "设备名称与身份密钥、配对凭据、插件配置与私有目录、数据/接收路径、系统登录注册、全局快捷键绑定、更新器独立偏好。": {
     "en": "Device name & identity keys, pairing credentials, plugin configs & private directories, data/inbox paths, OS login registration, global shortcut bindings, and updater preferences.",
-    "ja": "デバイス名・識別鍵、ペアリング資格情報、プラグイン設定と専用ディレクトリ、データ/受信パス、ログイン起動登録、グローバルショートカット、アップデータ設定。",
-    "pt-BR": "Nome e chaves de identidade do dispositivo, credenciais de pareamento, configurações/diretórios de plugins, caminhos locais, registro de login, atalhos globais e preferências do atualizador.",
-    "ru": "Имя и ключи устройства, учетные данные сопряжения, настройки и папки плагинов, локальные пути, регистрация автозапуска, глобальные клавиши и настройки обновлятора."
+    "ja": "デバイス名・識別鍵、ペアリング資格情報、プラグイン設定と専用フォルダー、データ/受信パス、ログイン起動登録、グローバルショートカット、アップデーター設定。",
+    "pt-BR": "Nome e chaves de identidade do dispositivo, credenciais de pareamento, configurações/pastas de plugins, caminhos locais, registro de início de sessão, atalhos globais e preferências do atualizador.",
+    "ru": "Имя и ключи устройства, учётные данные сопряжения, настройки и папки плагинов, локальные пути, регистрация автозапуска, глобальные клавиши и настройки средства обновления."
   },
   "诊断与隐私": {
     "en": "Diagnostics & Privacy",
     "ja": "診断とプライバシー",
     "pt-BR": "Diagnóstico e privacidade",
-    "ru": "Диагностика и приватность"
+    "ru": "Диагностика и конфиденциальность"
   },
   "诊断状态不可用": {
     "en": "Diagnostics unavailable",
@@ -6981,7 +6981,7 @@
     "en": "Pauses sync and clipboard capture before migrating. Existing v1 data stays untouched.",
     "ja": "移行前に現在の同期とクリップボード取得を停止します。旧データはそのまま保持されます。",
     "pt-BR": "Interrompe a sincronização e a captura antes de migrar. Os dados antigos são preservados.",
-    "ru": "Перед миграцией синхронизация и захват буфера приостанавливаются; старые данные сохраняются."
+    "ru": "Перед переносом синхронизация и захват буфера обмена приостанавливаются; старые данные сохраняются."
   },
   "配额": {
     "en": "Quota",
@@ -6993,7 +6993,7 @@
     "en": "Privacy & Telemetry",
     "ja": "プライバシーとテレメトリ",
     "pt-BR": "Privacidade e telemetria",
-    "ru": "Приватность и телеметрия"
+    "ru": "Конфиденциальность и телеметрия"
   },
   "需重开窗口": {
     "en": "Reopen window",
@@ -7005,13 +7005,13 @@
     "en": "Nothing has been written yet. Confirming replaces only the portable settings listed above.",
     "ja": "プレビュー段階では設定は書き込まれていません。確定すると上記のポータブル設定のみが置き換わります。",
     "pt-BR": "Nenhuma configuração foi gravada ainda. Confirmar substituirá apenas os itens portáteis listados acima.",
-    "ru": "Настройки еще не изменены. После подтверждения будут заменены только перечисленные выше параметры."
+    "ru": "Настройки ещё не изменены. После подтверждения будут заменены только перечисленные выше параметры."
   },
   "性能指标": {
     "en": "Performance metrics",
     "ja": "パフォーマンス指標",
     "pt-BR": "Métricas de desempenho",
-    "ru": "Метрики производительности"
+    "ru": "Показатели производительности"
   },
   "采样追踪": {
     "en": "Sampled traces",
@@ -7051,7 +7051,7 @@
   },
   "写入本机日志目录的持久化日志级别，独立于上传日志等级。": {
     "en": "Persisted level written to the local logs folder, independent of upload level.",
-    "ja": "ローカルログディレクトリへ書き込む永続レベル（アップロードレベルとは独立）。",
+    "ja": "ローカルログフォルダーへ書き込む永続レベル（アップロードレベルとは独立）。",
     "pt-BR": "Nível persistente gravado na pasta local de logs, independente do nível de envio.",
     "ru": "Сохраняемый уровень записи в локальные журналы, независимый от уровня отправки."
   },
@@ -7070,8 +7070,8 @@
   "流水线标签": {
     "en": "Pipeline & Tags",
     "ja": "パイプラインとタグ",
-    "pt-BR": "Pipeline e tags",
-    "ru": "Конвейер и теги"
+    "pt-BR": "Etiquetas do pipeline",
+    "ru": "Конвейер и метки"
   },
   "插件与动作": {
     "en": "Plugins & Actions",
@@ -7080,7 +7080,7 @@
     "ru": "Плагины и действия"
   },
   "跨端直连": {
-    "en": "Direct Sync",
+    "en": "Direct sync",
     "ja": "ダイレクト同期",
     "pt-BR": "Sincronização direta",
     "ru": "Прямая синхронизация"
@@ -7117,7 +7117,7 @@
   },
   "12.4 MB · 目录快照": {
     "en": "12.4 MB · Folder snapshot",
-    "ja": "12.4 MB · フォルダスナップショット",
+    "ja": "12.4 MB · フォルダースナップショット",
     "pt-BR": "12,4 MB · Instantâneo de pasta",
     "ru": "12,4 МБ · Снимок папки"
   },
@@ -7128,7 +7128,7 @@
     "ru": "Действия для этой записи · Actions"
   },
   "临时分享": {
-    "en": "Temporary Share",
+    "en": "Temporary share",
     "ja": "一時共有",
     "pt-BR": "Compartilhamento temporário",
     "ru": "Временный обмен"
@@ -7158,7 +7158,7 @@
     "ru": "Пользовательский Lua-скрипт"
   },
   "插件市场 · 沙箱运行": {
-    "en": "Plugin marketplace · Sandboxed",
+    "en": "Plugin Marketplace · Sandboxed",
     "ja": "プラグイン市場 · サンドボックス実行",
     "pt-BR": "Loja de plugins · Em sandbox",
     "ru": "Каталог плагинов · В песочнице"
@@ -7185,7 +7185,7 @@
     "en": "Tailcat E2E encrypted · No cloud account",
     "ja": "Tailcat E2E暗号化 · クラウドアカウント不要",
     "pt-BR": "Tailcat E2E criptografado · Sem conta na nuvem",
-    "ru": "Tailcat E2E-шифрование · Без облачного аккаунта"
+    "ru": "Tailcat: сквозное шифрование · Без облачного аккаунта"
   },
   "Windows 台式机": {
     "en": "Windows Desktop",
@@ -7207,9 +7207,9 @@
   },
   "仅检查默认目录结构，不会读取剪贴板或请求系统凭据。": {
     "en": "Checks default folder structure only, without reading clipboard or requesting system credentials.",
-    "ja": "既定フォルダの構造のみを確認し、クリップボード読取やシステム資格情報の要求は行いません。",
+    "ja": "既定フォルダーの構造のみを確認し、クリップボード読取やシステム資格情報の要求は行いません。",
     "pt-BR": "Verifica apenas a estrutura padrão da pasta, sem ler a área de transferência nem pedir credenciais.",
-    "ru": "Проверяется только структура каталога по умолчанию, без чтения буфера и запроса системных учётных данных."
+    "ru": "Проверяется только структура папки по умолчанию, без чтения буфера обмена и запроса системных учётных данных."
   },
   "可导入": {
     "en": "Ready to import",
@@ -7218,7 +7218,7 @@
     "ru": "Готово к импорту"
   },
   "点击「开始使用」后可确认导入旧历史，或选择暂不迁移。": {
-    "en": "Click Get Started to review importing your old history or skip for now.",
+    "en": "Click Get started to review importing your old history or skip for now.",
     "ja": "「始める」を押すと旧履歴のインポート確認またはスキップを選択できます。",
     "pt-BR": "Clique em Começar para revisar a importação do histórico antigo ou pular por enquanto.",
     "ru": "Нажмите «Начать», чтобы подтвердить импорт старой истории или пропустить его."
@@ -7233,7 +7233,7 @@
     "en": "%d total",
     "ja": "全 %d 件",
     "pt-BR": "%d no total",
-    "ru": "Всего %d"
+    "ru": "Всего: %d"
   },
   "确认目录与范围": {
     "en": "Confirm source & scope",
@@ -7273,13 +7273,13 @@
   },
   "目录不受支持": {
     "en": "Unsupported folder",
-    "ja": "非対応のフォルダ",
+    "ja": "非対応のフォルダー",
     "pt-BR": "Pasta não suportada",
     "ru": "Неподдерживаемая папка"
   },
   "目标目录被占用": {
     "en": "Target folder in use",
-    "ja": "移行先フォルダが使用中",
+    "ja": "移行先フォルダーが使用中",
     "pt-BR": "Pasta de destino em uso",
     "ru": "Целевая папка занята"
   },
@@ -7311,7 +7311,7 @@
     "en": "%d / %d items",
     "ja": "%d / %d 件",
     "pt-BR": "%d / %d itens",
-    "ru": "%d / %d записей"
+    "ru": "Записей: %d / %d"
   },
   "正在导入…": {
     "en": "Importing…",
@@ -7347,7 +7347,7 @@
     "en": "%d kept",
     "ja": "%d 件保持",
     "pt-BR": "%d mantidos",
-    "ru": "Сохранено %d"
+    "ru": "Сохранено: %d"
   },
   "校验通过": {
     "en": "Verified",
@@ -7371,7 +7371,7 @@
     "en": "Stopped · %d kept",
     "ja": "停止済み · %d 件保持",
     "pt-BR": "Interrompido · %d mantidos",
-    "ru": "Остановлено · сохранено %d"
+    "ru": "Остановлено · сохранено: %d"
   },
   "尚未校验": {
     "en": "Not verified yet",
@@ -7392,16 +7392,16 @@
     "ru": "Не завершено"
   },
   "从 v1 迁移历史": {
-    "en": "Migrate v1 History",
+    "en": "Migrate v1 history",
     "ja": "v1 履歴を移行",
     "pt-BR": "Migrar histórico do v1",
-    "ru": "Миграция истории v1"
+    "ru": "Перенос истории v1"
   },
   "只读 v1 源目录，不修改也不删除旧数据。": {
     "en": "Reads v1 data strictly read-only; never modifies or deletes old files.",
     "ja": "v1 データは読み取り専用で開き、変更も削除もしません。",
     "pt-BR": "Lê a pasta do v1 em modo somente leitura, sem alterar ou excluir dados antigos.",
-    "ru": "Каталог v1 открывается только для чтения; старые данные не изменяются и не удаляются."
+    "ru": "Папка v1 открывается только для чтения; старые данные не изменяются и не удаляются."
   },
   "迁移期间离线独占，不捕获剪贴板与同步。": {
     "en": "Runs offline with exclusive access; clipboard capture and sync stay paused.",
@@ -7413,29 +7413,29 @@
     "en": "You can always migrate later from Settings › Storage.",
     "ja": "スキップ後も「設定 › ストレージ」からいつでも移行できます。",
     "pt-BR": "Se pular, você pode migrar depois em Configurações › Armazenamento.",
-    "ru": "После пропуска миграцию можно запустить позже в Настройки › Хранилище."
+    "ru": "После пропуска перенос можно запустить позже: Настройки › Хранилище."
   },
   "确认导入范围与目录": {
     "en": "Confirm import scope & folder",
-    "ja": "インポート範囲とフォルダを確認",
+    "ja": "インポート範囲とフォルダーを確認",
     "pt-BR": "Confirmar escopo e pasta",
     "ru": "Подтвердите папку и объём импорта"
   },
   "无法获取目录独占权": {
     "en": "Cannot acquire exclusive folder lock",
-    "ja": "フォルダの排他ロックを取得できません",
+    "ja": "フォルダーの排他ロックを取得できません",
     "pt-BR": "Não foi possível obter acesso exclusivo à pasta",
     "ru": "Не удалось получить монопольный доступ к папке"
   },
   "需要释放目标数据目录后才能继续。": {
     "en": "Stop any service using the target data folder before continuing.",
-    "ja": "移行先データフォルダの使用が解放されてから続行してください。",
+    "ja": "移行先データフォルダーの使用が解放されてから続行してください。",
     "pt-BR": "Libere a pasta de dados de destino antes de continuar.",
-    "ru": "Освободите целевой каталог данных перед продолжением."
+    "ru": "Освободите целевую папку данных перед продолжением."
   },
   "目录被占用": {
     "en": "Folder busy",
-    "ja": "フォルダ使用中",
+    "ja": "フォルダー使用中",
     "pt-BR": "Pasta ocupada",
     "ru": "Папка занята"
   },
@@ -7473,7 +7473,7 @@
     "en": "Migrating v1 history",
     "ja": "v1 履歴を移行中",
     "pt-BR": "Migrando histórico do v1",
-    "ru": "Миграция истории v1"
+    "ru": "Перенос истории v1"
   },
   "导入与校验分阶段进行，完成后才会呈现结果。": {
     "en": "Importing and verification run in separate phases before showing results.",
@@ -7497,7 +7497,7 @@
     "en": "Stopping migration safely",
     "ja": "移行を安全に停止中",
     "pt-BR": "Parando a migração com segurança",
-    "ru": "Безопасная остановка миграции"
+    "ru": "Безопасная остановка переноса"
   },
   "等待当前操作落盘并释放存储锁。": {
     "en": "Waiting for the current write to finish and release the storage lock.",
@@ -7515,7 +7515,7 @@
     "en": "Migration result",
     "ja": "移行結果",
     "pt-BR": "Resultado da migração",
-    "ru": "Результат миграции"
+    "ru": "Результат переноса"
   },
   "已校验完成": {
     "en": "Verified",
@@ -7539,7 +7539,7 @@
     "en": "Migration stopped safely and released the storage lock.",
     "ja": "移行は安全に停止し、ストレージロックを解放しました。",
     "pt-BR": "A migração foi interrompida com segurança e liberou o armazenamento.",
-    "ru": "Миграция безопасно остановлена, блокировка хранилища снята."
+    "ru": "Перенос безопасно остановлен, блокировка хранилища снята."
   },
   "已停止": {
     "en": "Stopped",
@@ -7584,7 +7584,7 @@
     "ru": "Только чтение v1; старые файлы не изменяются и не удаляются"
   },
   "需重新建立": {
-    "en": "Set up anew",
+    "en": "Set up as new",
     "ja": "再設定が必要",
     "pt-BR": "Configurar novamente",
     "ru": "Настраивается заново"
@@ -7599,25 +7599,25 @@
     "en": "Please quit UniClipboard v1 before starting.",
     "ja": "開始前に UniClipboard v1 を終了してください。",
     "pt-BR": "Feche o UniClipboard v1 antes de começar.",
-    "ru": "Пожалуйста, закройте UniClipboard v1 перед началом."
+    "ru": "Перед началом закройте UniClipboard v1."
   },
   "应用不会自动退出旧版进程；若 v1 仍在运行并回收文件，可能导致个别附件缺失。": {
     "en": "The app will not quit v1 automatically; if v1 is still running, some attachments may be missing.",
-    "ja": "アプリは v1 を自動終了しません。起動したままだと一部添付が欠落する可能性があります。",
+    "ja": "アプリは旧バージョンのプロセスを自動的に終了しません。v1 が実行中でファイルを回収すると、一部の添付ファイルが欠落する可能性があります。",
     "pt-BR": "O app não encerra o v1 automaticamente; se ele continuar aberto, alguns anexos podem faltar.",
     "ru": "Приложение не закрывает v1 автоматически; при работающем v1 часть вложений может отсутствовать."
   },
   "另一个 unic 服务正在使用目标数据目录": {
     "en": "Another unic service is using the target data folder",
-    "ja": "別の unic サービスが移行先データフォルダを使用中です",
+    "ja": "別の unic サービスが移行先データフォルダーを使用中です",
     "pt-BR": "Outro serviço unic está usando a pasta de dados de destino",
     "ru": "Другая служба unic использует целевую папку данных"
   },
   "离线迁移需要独占目标目录锁。请先手动停止正在运行的独立 unic 服务，然后重试。应用不会自动终止独立服务。": {
     "en": "Offline migration requires exclusive access to the target folder. Stop the standalone unic service manually and retry. The app will not terminate it automatically.",
-    "ja": "オフライン移行には移行先フォルダの排他ロックが必要です。独立した unic サービスを手動で停止してから再試行してください。",
+    "ja": "オフライン移行には移行先フォルダーの排他ロックが必要です。実行中の独立した unic サービスを手動で停止してから再試行してください。アプリは独立したサービスを自動的に終了しません。",
     "pt-BR": "A migração offline exige acesso exclusivo à pasta de destino. Pare manualmente o serviço unic independente e tente novamente.",
-    "ru": "Для офлайн-миграции требуется монопольный доступ к папке. Остановите отдельную службу unic вручную и повторите попытку."
+    "ru": "Для офлайн-переноса требуется монопольный доступ к папке. Остановите отдельную службу unic вручную и повторите попытку. Приложение не остановит её автоматически."
   },
   "安全边界": {
     "en": "Safety check",
@@ -7633,7 +7633,7 @@
   },
   "正在解锁源目录": {
     "en": "Unlocking source folder",
-    "ja": "ロック解除中のソースフォルダ",
+    "ja": "移行元フォルダーのロックを解除しています",
     "pt-BR": "Desbloqueando pasta de origem",
     "ru": "Разблокировка исходной папки"
   },
@@ -7647,13 +7647,13 @@
     "en": "Retry system credentials",
     "ja": "システム資格情報を再試行",
     "pt-BR": "Tentar credenciais do sistema",
-    "ru": "Повторить системные учётные данные"
+    "ru": "Повторить с системными учётными данными"
   },
   "口令仅在内存中用于本次解密，绝不进入命令参数、环境变量、磁盘或日志。": {
     "en": "Used in memory for this unlock only; never passed in arguments, environment variables, disk, or logs.",
-    "ja": "この解除のメモリ内のみで使用され、引数・環境変数・ディスク・ログには一切保存されません。",
+    "ja": "パスフレーズは今回の復号のためにメモリ内でのみ使用され、コマンド引数、環境変数、ディスク、ログには一切渡されません。",
     "pt-BR": "Usada apenas na memória para este desbloqueio; nunca salva em disco, logs ou argumentos.",
-    "ru": "Используется только в памяти для текущей разблокировки и никогда не сохраняется на диск или в логи."
+    "ru": "Используется только в памяти для текущей разблокировки; не передаётся в аргументах и переменных окружения, не пишется на диск и в журналы."
   },
   "已安全提交（中断不丢失）": {
     "en": "Safely committed (kept on stop)",
@@ -7683,7 +7683,7 @@
     "en": "Tags & links",
     "ja": "タグと関連付け",
     "pt-BR": "Tags e associações",
-    "ru": "Теги и связи"
+    "ru": "Метки и связи"
   },
   "兼容的设置": {
     "en": "Compatible settings",
@@ -7712,8 +7712,8 @@
   "自动识别代码、色值、图片与文件，支持 #标签 @设备 令牌检索": {
     "en": "Auto-classifies code, colors, images and files with #tag @device token search",
     "ja": "コード・色・画像・ファイルを自動分類し、#タグ @デバイス 検索に対応",
-    "pt-BR": "Classifica código, cores, imagens e arquivos com busca por #tag e @dispositivo",
-    "ru": "Автоклассификация кода, цветов, изображений и файлов с поиском по #тегу и @устройству"
+    "pt-BR": "Classifica código, cores, imagens e arquivos com busca por #etiqueta e @dispositivo",
+    "ru": "Автоклассификация кода, цветов, изображений и файлов с поиском по #метке и @устройству"
   },
   "通过内置动作与 Go / Lua 插件，把一次复制直接变成工作流": {
     "en": "Turn every copy into a workflow with built-in Actions and Go / Lua plugins",
@@ -7735,7 +7735,7 @@
   },
   "桌面托管的后台服务已安全暂停，确认源目录即可独占导入。": {
     "en": "The desktop-managed background service is paused; confirm the source folder to begin.",
-    "ja": "デスクトップ管理のバックグラウンドサービスは一時停止済みです。フォルダを確認して開始してください。",
+    "ja": "デスクトップ管理のバックグラウンドサービスは一時停止済みです。フォルダーを確認して開始してください。",
     "pt-BR": "O serviço em segundo plano foi pausado; confirme a pasta de origem para importar.",
     "ru": "Фоновая служба приостановлена; подтвердите исходную папку для импорта."
   },
@@ -7760,8 +7760,8 @@
   "关闭并重新打开目标库，通过公开接口逐条比对内容摘要、标签、收藏与兼容设置。": {
     "en": "Reopens the target database and verifies content digests, tags, favorites, and compatible settings.",
     "ja": "移行先DBを再オープンし、内容ダイジェスト・タグ・お気に入り・互換設定を照合しています。",
-    "pt-BR": "Reabre o banco de destino e verifica resumos de conteúdo, tags, favoritos e configurações compatíveis.",
-    "ru": "Повторно открывает базу и проверяет хеши содержимого, теги, избранное и совместимые настройки."
+    "pt-BR": "Reabre o banco de destino e verifica resumos de conteúdo, etiquetas, favoritos e configurações compatíveis.",
+    "ru": "Повторно открывает базу и проверяет хеши содержимого, метки, избранное и совместимые настройки."
   },
   "正在等待当前记录落盘并释放存储锁。所有已提交的记录都会完整保留。": {
     "en": "Waiting for the current record to commit and release the storage lock. Committed records are preserved.",
@@ -7778,8 +7778,8 @@
   "所有支持的历史记录、标签、收藏与兼容设置都已导入并通过校验。": {
     "en": "All supported history records, tags, favorites, and compatible settings were imported and verified.",
     "ja": "対応する履歴レコード・タグ・お気に入り・互換設定がすべてインポートされ検証されました。",
-    "pt-BR": "Todos os registros, tags, favoritos e configurações compatíveis foram importados e verificados.",
-    "ru": "Все поддерживаемые записи истории, теги, избранное и совместимые настройки импортированы и проверены."
+    "pt-BR": "Todos os registros, etiquetas, favoritos e configurações compatíveis foram importados e verificados.",
+    "ru": "Все поддерживаемые записи истории, метки, избранное и совместимые настройки импортированы и проверены."
   },
   "没有新的记录需要导入。此前导入的记录均安然保留在历史中。": {
     "en": "No new records needed importing. Previously imported records remain intact in history.",
@@ -7791,7 +7791,7 @@
     "en": "Committed records were kept and can be used in history. Resuming will skip them automatically.",
     "ja": "コミット済みレコードは保持され履歴で利用できます。再開時は自動でスキップされます。",
     "pt-BR": "Os registros gravados foram mantidos no histórico. Continuar a migração os pulará automaticamente.",
-    "ru": "Сохранённые записи доступны в истории. При продолжении миграции они будут автоматически пропущены."
+    "ru": "Сохранённые записи доступны в истории. При продолжении переноса они будут автоматически пропущены."
   },
   "首次安装引导": {
     "en": "First-install setup",
@@ -7803,6 +7803,6 @@
     "en": "Settings › Storage migration",
     "ja": "設定 › ストレージからの移行",
     "pt-BR": "Configurações › Migração de armazenamento",
-    "ru": "Настройки › Миграция из хранилища"
+    "ru": "Настройки › Хранилище: перенос"
   }
 }

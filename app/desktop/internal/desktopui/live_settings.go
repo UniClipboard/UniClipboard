@@ -28,15 +28,15 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 	group := func(id, title string, body func()) {
 		k.SettingsGroup(c.Key(id), desktopkit.SettingsGroupProps{Title: title}, body)
 	}
-	toggle := func(id, label, desc string, value *bool) {
-		k.SettingsRow(c.Key(id), desktopkit.SettingsRowProps{Label: label, Description: desc}, nil, func() {
-			if k.Switch(c, value, desktopkit.SwitchProps{Label: label, Disabled: l.busy}).Changed() {
+	toggle := func(id, label, desc string, value *bool, dim, disabled bool) {
+		k.SettingsRow(c.Key(id), desktopkit.SettingsRowProps{Label: label, Description: desc, Dim: dim}, nil, func() {
+			if k.Switch(c, value, desktopkit.SwitchProps{Label: label, Disabled: l.busy || disabled}).Changed() {
 				changed = true
 			}
 		})
 	}
-	number := func(id, label, desc string, value *int, values []int, unit string, disabled bool) {
-		k.SettingsRow(c.Key(id), desktopkit.SettingsRowProps{Label: label, Description: desc}, nil, func() {
+	number := func(id, label, desc string, value *int, values []int, unit string, dim, disabled bool) {
+		k.SettingsRow(c.Key(id), desktopkit.SettingsRowProps{Label: label, Description: desc, Dim: dim}, nil, func() {
 			opts := []desktopkit.SelectItem{}
 			if !slices.Contains(values, *value) {
 				values = append(slices.Clone(values), *value)
@@ -55,11 +55,15 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 			}
 		})
 	}
+
 	switch d.settings.Value {
 	case "general":
-		group("language", d.tr("语言"), func() { d.languageRow(c, k) })
-		group("device", d.tr("设备"), func() {
-			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("设备名称"), Description: d.tr("输入后按回车保存。")}, nil, func() {
+		group("language-device", d.tr("语言与设备"), func() {
+			d.languageRow(c, k)
+			k.SettingsRow(c.Key("device-name"), desktopkit.SettingsRowProps{
+				Label:       d.tr("设备名称"),
+				Description: d.tr("其他已配对设备将看到此名称，按回车保存。"),
+			}, nil, func() {
 				field := k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("设备名称"), Value: &d.deviceName})
 				if field.Submitted && !l.busy && strings.TrimSpace(d.deviceName) != "" {
 					cfg.DeviceName = strings.TrimSpace(d.deviceName)
@@ -67,130 +71,226 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 				}
 			})
 		})
-		group("startup", d.tr("启动与运行模式"), func() {
-			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("运行模式"), Description: d.tr("常规模式关闭主窗口后保留托盘和同步服务。轻量模式关闭主窗口后仅保留同步服务。点击应用图标可重新打开。")}, nil, func() {
-				if k.Select(c, desktopkit.SelectProps{Label: d.tr("运行模式"), Value: &cfg.Desktop.Mode, Disabled: l.busy, Items: []desktopkit.SelectItem{{Value: "normal", Label: d.tr("常规模式")}, {Value: "lightweight", Label: d.tr("轻量模式")}}}).Changed {
-					changed = true
-				}
-			})
-			toggle("startup", d.tr("登录时启动"), d.tr("登录系统后自动启动。"), &cfg.Desktop.LaunchAtLogin)
-			toggle("background", d.tr("后台启动"), d.tr("仅控制常规模式的登录启动。手动点击应用图标始终打开主窗口。"), &cfg.Desktop.StartInBackground)
-			if l.loginStatus != nil {
-				enabled, message := l.loginStatus()
-				label := d.tr("系统登录启动已关闭")
-				if enabled {
-					label = d.tr("系统登录启动已开启")
-				}
-				k.Text(c, label, footnote)
-				if message != "" {
-					k.Text(c, message, desktopkit.TextProps{Tone: desktopkit.ToneCritical})
-				}
-				if enabled != cfg.Desktop.LaunchAtLogin || message != "" {
-					if k.Button(c, d.tr("重新应用登录启动设置"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() && l.retryLogin != nil {
-						l.retryLogin()
-					}
+
+		var loginEnabled bool
+		var loginMsg string
+		hasLoginStatus := l.loginStatus != nil
+		if hasLoginStatus {
+			loginEnabled, loginMsg = l.loginStatus()
+		}
+		var startupTrailing func()
+		if hasLoginStatus {
+			startupTrailing = func() {
+				if loginEnabled {
+					settingsPill(c.Key("login-pill"), k, d.tr("系统登录启动已开启"), desktopkit.StatusPositive, true, false)
+				} else {
+					settingsPill(c.Key("login-pill"), k, d.tr("系统登录启动已关闭"), desktopkit.StatusNeutral, true, false)
 				}
 			}
-		})
-		group("tray", d.tr("托盘"), func() {
-			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("托盘图标"), Description: d.tr("更改后立即生效。")}, nil, func() {
-				if k.Select(c, desktopkit.SelectProps{Label: d.tr("托盘图标"), Value: &cfg.Desktop.TrayIcon, Disabled: l.busy, Items: []desktopkit.SelectItem{{Value: "glyph", Label: d.tr("默认")}, {Value: "cat", Label: d.tr("经典猫头")}}}).Changed {
+		}
+		k.SettingsGroup(c.Key("startup"), desktopkit.SettingsGroupProps{
+			Title:    d.tr("启动与运行模式"),
+			Trailing: startupTrailing,
+		}, func() {
+			k.SettingsRow(c.Key("mode"), desktopkit.SettingsRowProps{
+				Label:       d.tr("运行模式"),
+				Description: d.tr("常规模式关闭主窗口后保留托盘与同步服务；轻量模式仅保留后台同步服务。"),
+			}, nil, func() {
+				if k.Select(c, desktopkit.SelectProps{
+					Label:    d.tr("运行模式"),
+					Value:    &cfg.Desktop.Mode,
+					Disabled: l.busy,
+					Items: []desktopkit.SelectItem{
+						{Value: "normal", Label: d.tr("常规模式")},
+						{Value: "lightweight", Label: d.tr("轻量模式")},
+					},
+				}).Changed {
 					changed = true
 				}
 			})
+			toggle("startup", d.tr("登录时启动"), d.tr("登录操作系统后自动启动 UniClipboard。"), &cfg.Desktop.LaunchAtLogin, false, false)
+			lightweight := cfg.Desktop.Mode == "lightweight"
+			toggle("background", d.tr("后台启动"), d.tr("仅控制常规模式的登录启动；手动点击应用图标始终打开主窗口。"), &cfg.Desktop.StartInBackground, lightweight, lightweight)
+			if hasLoginStatus && (loginEnabled != cfg.Desktop.LaunchAtLogin || loginMsg != "") {
+				msg := loginMsg
+				if msg == "" {
+					msg = d.tr("系统登录注册状态与配置不一致，可重新应用。")
+				}
+				settingsFooterBar(c.Key("login-retry"), k, msg, true, func() {
+					if k.Button(c.Key("retry-login"), d.tr("重新应用登录启动设置"), desktopkit.ButtonProps{
+						Size:     desktopkit.SizeSmall,
+						Disabled: l.busy,
+					}).Clicked() && l.retryLogin != nil {
+						l.retryLogin()
+					}
+				})
+			}
 		})
-		group("window", d.tr("窗口"), func() {
-			toggle("system-window-frame", d.tr("使用系统边框"), d.tr("关闭并重新打开主窗口后生效。"), &cfg.Desktop.SystemWindowFrame)
-		})
-		group("privacy", d.tr("隐私与诊断"), func() {
-			toggle("telemetry", d.tr("发送使用数据与诊断"), d.tr("关闭后停止遥测上传。"), &cfg.Telemetry.Enabled)
-		})
+
+	case "appearance":
+		changed = d.liveAppearanceContent(c, k, &cfg)
+
+	case "diagnostics":
+		d.diagnosticsSettings(c, k, &cfg, &changed)
+
 	case "plugins":
 		d.builtinPluginsContent(c, k)
 		return
+
 	case "sync":
 		group("sync", d.tr("同步行为"), func() {
-			toggle("enabled", d.tr("启用同步"), d.tr("控制所有同步后端。"), &cfg.Sync.Enabled)
-			toggle("directoryAutomatic", d.tr("自动同步目录"), d.tr("默认关闭。开启后，每次复制目录都会扫描并发送。"), &cfg.Sync.Directories.Automatic)
+			toggle("enabled", d.tr("启用同步"), d.tr("控制所有同步后端的发送与接收。"), &cfg.Sync.Enabled, false, false)
+			dim := !cfg.Sync.Enabled
+			toggle("automatic", d.tr("自动同步"), d.tr("复制内容后自动发送给已授权设备。"), &cfg.Sync.Automatic, dim, false)
+			toggle("restore", d.tr("使用历史时同步"), d.tr("再次应用本机历史条目后发送一次。"), &cfg.Sync.OnRestore, dim, false)
+			toggle("files", d.tr("同步文件"), d.tr("允许在设备之间发送和接收文件。"), &cfg.Sync.Files, dim, false)
+			toggle("directoryAutomatic", d.tr("自动同步目录"), d.tr("默认关闭。开启后，每次复制目录都会扫描并发送。"), &cfg.Sync.Directories.Automatic, dim, false)
 			if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
-				k.Text(c, d.tr("此平台无法识别同一路径的重复复制。请使用主动发送。"), desktopkit.TextProps{Tone: desktopkit.ToneSecondary})
+				settingsStrip(c.Key("dir-platform-note"), k, desktopkit.ToneInfo, d.tr("此平台无法识别同一路径的重复复制。请使用主动发送。"))
 			}
-			toggle("automatic", d.tr("自动同步"), d.tr("复制内容后自动发送。"), &cfg.Sync.Automatic)
-			toggle("restore", d.tr("使用历史时同步"), d.tr("再次使用历史后发送。"), &cfg.Sync.OnRestore)
-			toggle("files", d.tr("同步文件"), d.tr("允许发送和接收文件。"), &cfg.Sync.Files)
 		})
 		group("limits", d.tr("文件传输"), func() {
 			n := int(cfg.Limits.MaxFileBytes / (1 << 20))
-			number("limit", d.tr("单文件传输上限"), d.tr("限制单个文件的传输大小。"), &n, []int{10, 50, 100, 500}, "MB", false)
+			number("limit", d.tr("单文件传输上限"), d.tr("双向限制单个文件的最大传输大小。"), &n, []int{10, 50, 100, 500}, "MB", false, false)
 			cfg.Limits.MaxFileBytes = config.Size(n) * (1 << 20)
 		})
+
 	case "storage":
-		if l.openMigration != nil {
-			group("migration", d.tr("数据迁移"), func() {
-				k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("从 v1 迁移"), Description: d.tr("迁移前会停止当前同步和剪贴板捕获。旧数据会保留。")}, nil, func() {
-					if k.Button(c.Key("open-migration"), d.tr("从 v1 迁移"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
-						l.openMigration()
+		d.storageCacheGroup(c, k, &cfg, &changed)
+
+		group("history", d.tr("历史保留"), func() {
+			toggle("cleanup", d.tr("自动清理历史"), d.tr("定期清理过期历史记录及应用管理的关联文件。"), &cfg.History.AutoCleanup, false, false)
+			dim := !cfg.History.AutoCleanup
+			number("days", d.tr("历史保留时间"), d.tr("按记录创建时间计算。"), &cfg.History.RetentionDays, []int{7, 30, 90, 180, 365, 0}, d.tr("天"), dim, dim)
+			number("count", d.tr("最大历史条目数"), d.tr("排除标签命中的记录不计入上限。"), &cfg.History.MaxItems, []int{100, 500, 1000, 5000, 0}, d.tr("条"), dim, dim)
+			k.SettingsRow(c.Key("excluded-tags"), desktopkit.SettingsRowProps{
+				Label:       d.tr("清理时保留标签"),
+				Description: d.tr("命中以下任一标签的历史将不会被自动清理。"),
+				Dim:         dim,
+			}, nil, func() {
+				ui.Row(c.Key("tag-pills")).Wrap().Gap(6).Justify(ui.End).MaxWidth(440).MinWidth(0).Children(func() {
+					for _, tag := range d.tags {
+						tag := tag
+						selected := slices.Contains(cfg.History.ExcludedTags, tag.id)
+						label := "#" + d.tagLabel(tag.id)
+						pill := ui.ButtonBase(c.Key("tag-"+tag.id)).
+							Label(d.tr("保留 ")+label).
+							Selected(selected).
+							Disabled(l.busy || dim).
+							Height(26).Padding(0, 9).Radius(13).Gap(5).
+							AlignItems(ui.Center).
+							FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(1)
+						if selected {
+							bg, fg := k.TagTint(tag.color)
+							pill.Background(bg).TextColor(fg)
+						} else {
+							pill.Background(k.SubtleCardSurface()).
+								Border(1, k.Color("border-button-default")).
+								TextColor(k.Color("text-secondary"))
+						}
+						pill.Children(func() {
+							ui.Box(c.Key("dot")).Size(7, 7).Radius(3.5).Shrink(0).Background(k.SwatchColor(tag.color)).AccessHidden(true)
+							w := 500
+							if selected {
+								w = 600
+							}
+							ui.Text(c.Key("name"), label).FontSize(12).FontWeight(w).SingleLine()
+							if selected {
+								ui.Text(c.Key("chk"), "✓").FontSize(11).FontWeight(700).SingleLine().AccessHidden(true)
+							}
+						})
+						if pill.Clicked() && !l.busy && !dim {
+							if selected {
+								cfg.History.ExcludedTags = slices.DeleteFunc(cfg.History.ExcludedTags, func(t string) bool { return t == tag.id })
+							} else {
+								cfg.History.ExcludedTags = append(cfg.History.ExcludedTags, tag.id)
+							}
+							changed = true
+						}
 					}
 				})
 			})
-		}
-		group("history", d.tr("历史保留"), func() {
-			toggle("cleanup", d.tr("自动清理历史"), d.tr("清理历史记录及应用管理的文件。"), &cfg.History.AutoCleanup)
-			number("days", d.tr("历史保留时间"), d.tr("按创建时间计算。"), &cfg.History.RetentionDays, []int{7, 30, 90, 180, 365, 0}, d.tr("天"), !cfg.History.AutoCleanup)
-			number("count", d.tr("最大历史条目数"), d.tr("排除标签命中的记录不计入上限。"), &cfg.History.MaxItems, []int{100, 500, 1000, 5000, 0}, d.tr("条"), !cfg.History.AutoCleanup)
-			for _, tag := range d.tags {
-				selected := slices.Contains(cfg.History.ExcludedTags, tag.id)
-				if k.Checkbox(c.Key(tag.id), &selected, desktopkit.CheckboxProps{Label: d.tr("保留 #") + d.tagLabel(tag.id), Disabled: l.busy || !cfg.History.AutoCleanup}).Changed() {
-					if selected {
-						cfg.History.ExcludedTags = append(cfg.History.ExcludedTags, tag.id)
-					} else {
-						cfg.History.ExcludedTags = slices.DeleteFunc(cfg.History.ExcludedTags, func(t string) bool { return t == tag.id })
-					}
-					changed = true
-				}
-			}
 		})
-		group("cache", d.tr("文件存储"), func() {
-			n := int(cfg.FileCache.MaxBytes / (1 << 20))
-			number("quota", d.tr("单设备缓存配额"), d.tr("仅限制应用管理的文件缓存。"), &n, []int{100, 500, 1024, 2048, 4096}, "MB", false)
-			cfg.FileCache.MaxBytes = config.Size(n) * (1 << 20)
-			inbox := cfg.Inbox
-			if inbox == "" {
-				inbox = d.tr("应用管理的缓存")
-			}
-			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("接收目录"), Description: inbox}, nil, nil)
-		})
+
+		d.backupSettingsContent(c, k)
+		d.storageLocalDataGroup(c, k)
+
 	case "quickPanel":
 		group("shortcut", d.tr("全局快捷键"), func() {
-			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("打开快捷面板"), Description: d.tr("在常规模式运行时生效。")}, nil, func() {
-				if k.Select(c, desktopkit.SelectProps{Label: d.tr("全局快捷键"), Value: &cfg.Desktop.QuickPanelShortcut, Disabled: l.busy, Items: []desktopkit.SelectItem{{Value: "Ctrl+Alt+V", Label: "Ctrl+Alt+V"}, {Value: "Cmd+Ctrl+V", Label: "Command+Ctrl+V"}, {Value: "Ctrl+`", Label: "Ctrl+`"}, {Value: "CmdOrCtrl+Shift+Space", Label: "Command/Ctrl+Shift+Space"}, {Value: "", Label: d.tr("关闭")}}}).Changed {
+			k.SettingsRow(c.Key("shortcut-select"), desktopkit.SettingsRowProps{
+				Label:       d.tr("打开快捷面板"),
+				Description: d.tr("在常规模式运行时生效。切换后由托盘进程原子替换注册。"),
+			}, nil, func() {
+				if k.Select(c, desktopkit.SelectProps{
+					Label:    d.tr("全局快捷键"),
+					Value:    &cfg.Desktop.QuickPanelShortcut,
+					Disabled: l.busy,
+					Items: []desktopkit.SelectItem{
+						{Value: "Ctrl+Alt+V", Label: "Ctrl+Alt+V"},
+						{Value: "Cmd+Ctrl+V", Label: "Command+Ctrl+V"},
+						{Value: "Ctrl+`", Label: "Ctrl+`"},
+						{Value: "CmdOrCtrl+Shift+Space", Label: "Command/Ctrl+Shift+Space"},
+						{Value: "", Label: d.tr("关闭")},
+					},
+				}).Changed {
 					changed = true
 				}
 			})
 			if d.quickShortcutStatus != nil {
 				effective, message := d.quickShortcutStatus()
-				if effective == "" {
-					effective = d.tr("关闭")
-				}
-				k.Text(c, d.tr("当前注册：")+effective, footnote)
+				desc := d.tr("显示系统全局快捷键实际注册结果。")
 				if message != "" {
-					k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: message})
-					if k.Button(c, d.tr("重试注册快捷键"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() && d.retryQuickShortcut != nil {
-						d.retryQuickShortcut()
-					}
+					desc = message
 				}
+				k.SettingsRow(c.Key("shortcut-status"), desktopkit.SettingsRowProps{
+					Label:       d.tr("当前注册状态"),
+					Description: desc,
+				}, nil, func() {
+					if message != "" {
+						pillText := d.tr("注册冲突")
+						if effective != "" {
+							pillText = d.tr("注册冲突 · 仍为 ") + effective
+						}
+						settingsPill(c.Key("conflict-pill"), k, pillText, desktopkit.StatusWarning, true, false)
+						if k.Button(c.Key("retry-shortcut"), d.tr("重试注册快捷键"), desktopkit.ButtonProps{
+							Size:     desktopkit.SizeSmall,
+							Disabled: l.busy,
+						}).Clicked() && d.retryQuickShortcut != nil {
+							d.retryQuickShortcut()
+						}
+					} else if effective != "" {
+						settingsPill(c.Key("active-pill"), k, d.tr("已注册：")+effective, desktopkit.StatusPositive, true, false)
+					} else {
+						settingsPill(c.Key("off-pill"), k, d.tr("已关闭"), desktopkit.StatusNeutral, true, false)
+					}
+				})
 			}
+			k.SettingsRow(c.Key("preview-quick-panel"), desktopkit.SettingsRowProps{
+				Label:       d.tr("预览快捷面板"),
+				Description: d.tr("立即打开快捷面板查看当前外观与键盘交互。"),
+			}, nil, func() {
+				if k.Button(c.Key("open-quick-panel"), d.tr("打开快捷面板"), desktopkit.ButtonProps{
+					Size:     desktopkit.SizeSmall,
+					Disabled: d.openQuickPanel == nil,
+				}).Clicked() && d.openQuickPanel != nil {
+					d.openQuickPanel()
+				}
+			})
 		})
-		if k.Button(c, d.tr("打开快捷面板"), desktopkit.ButtonProps{}).Clicked() && d.openQuickPanel != nil {
-			d.openQuickPanel()
-		}
+		d.shortcutPermissionSettings(c, k)
+
 	case "about":
 		d.aboutContent(c, k)
+
 	default:
 		k.ContentUnavailable(c, desktopkit.ContentUnavailableProps{Title: d.tr("此设置暂不可用"), Description: d.tr("当前版本尚不支持此设置。")}, nil)
 	}
+
 	if len(l.config.RestartRequired) > 0 || (d.windowFrame != nil && *d.windowFrame != cfg.Desktop.SystemWindowFrame) {
-		k.Text(c, d.tr("部分设置将在下次启动时生效。"), footnote)
+		k.InlineNotice(c.Key("restart-notice"), desktopkit.NoticeProps{
+			Tone:  desktopkit.ToneWarning,
+			Title: d.tr("部分设置将在下次启动时生效。"),
+		})
 	}
 	if changed {
 		d.saveLiveConfig(cfg)

@@ -1,0 +1,11 @@
+# Case: Storage inventory and directory action
+# Mode: process
+# Purpose: Read the real service cache ledger through the production settings model without scanning or deleting user files.
+# Steps:
+#   Start an isolated service, refresh inventory, preserve unrelated files, restart with a custom destination, and exercise directory callbacks and failed refresh.
+# Expected:
+#   Ledger bytes and reservations match the service, custom files remain outside the measurement, callback errors stay sanitized, and no setting is changed by reading.
+# Forbidden:
+#   Native GUI or file-manager launch, user-file deletion, whole-disk usage claims, stale success after a failed refresh, or missing checksummed evidence.
+
+acceptance desktopui settings-storage

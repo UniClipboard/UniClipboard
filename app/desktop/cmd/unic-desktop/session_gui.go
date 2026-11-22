@@ -109,6 +109,10 @@ func (s *desktopSession) start() {
 			s.setup = nil
 			ctx, cancel := context.WithCancel(s.ctx)
 			screen := desktopui.NewDesktop(ctx, s.g.c)
+			bindStorageActions(screen, s.dir)
+			bindDesktopDiagnostics(screen, s.dir, func() string { return s.settings.Current().Desktop.Language })
+			bindBackupActions(screen, func() string { return s.settings.Current().Desktop.Language })
+			bindDesktopShortcutPermissions(screen)
 			screen.SetWindowToolbar(s.windowFrame, s.windowControls)
 			r := &desktopRuntime{screen: screen, cancel: cancel}
 			s.runtime = r

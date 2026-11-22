@@ -40,4 +40,9 @@ func TestDesktopAcceptance(t *testing.T) {
 	t.Run("token-search", scenarioTokenSearch)
 	t.Run("toolbar-alignment", scenarioToolbarAlignment)
 	t.Run("source-application", scenarioSourceApplication)
+	t.Run("settings-diagnostics", scenarioSettingsDiagnostics)
+	t.Run("settings-storage", scenarioSettingsStorageProcess)
+	t.Run("settings-appearance", scenarioSettingsAppearance)
+	t.Run("settings-backup", scenarioSettingsBackup)
+	t.Run("settings-shortcuts", scenarioSettingsShortcuts)
 }

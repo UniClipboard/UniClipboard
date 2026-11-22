@@ -39,6 +39,12 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [search-disclosure-reduced-motion](#search-disclosure-reduced-motion) | view | Toolbar search disclosure with Reduce Motion enabled. |
 | [search-disclosure](#search-disclosure) | view | Animated toolbar search expansion, collapse, filtering and keyboard dismissal. |
 | [send-device-menu](#send-device-menu) | view | Send-menu device projection, disabled targets and selected-device dispatch. |
+| [settings-appearance](#settings-appearance) | process | Verify appearance defaults, saves, rejection, external edits and service restart without a renderer. |
+| [settings-backup](#settings-backup) | process | Verify portable allowlisting, strict preflight, preview confirmation, revision conflicts and restart persistence. |
+| [settings-diagnostics](#settings-diagnostics) | process | Verify persistent logging, bounded overrides, telemetry controls and safe diagnostic export through production processes. |
+| [settings-shortcuts](#settings-shortcuts) | process | Exercise the production Desktop binding against a private service with controlled permission-host callbacks. |
+| [settings-storage](#settings-storage) | process | Read the real service cache ledger through the production settings model without scanning or deleting user files. |
+| [settings-visual-evidence](#settings-visual-evidence) | native | Capture the actual settings composition for diagnostics, storage, appearance, permission guidance and portable backup. |
 | [setup-later-migration](#setup-later-migration) | native | Resume a later migration after cancelling and reopening the real Desktop. |
 | [setup-onboarding](#setup-onboarding) | native | Record the real welcome, migration confirmation, passphrase fallback, import, verification and history entry. |
 | [setup-pages](#setup-pages) | view | Exercise the production BoardUI setup renderer in light and dark. |
@@ -866,6 +872,122 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 acceptance desktopui send-device-menu
 ```
 
+## settings-appearance
+
+Persisted Desktop appearance through the production service
+
+Steps: Start a private production service; inspect the default mode; save dark/light/system; reject an invalid mode and a stale revision; reload a valid external edit; restart the owned service and read the saved value.
+
+Expected: Color mode defaults to system, valid changes persist, invalid or stale writes retain the last valid mode, unrelated sync and telemetry settings survive, and service restart preserves the saved appearance.
+
+Forbidden: Native GUI, browser, software renderer, system clipboard, personal profiles, sync or telemetry upload.
+
+```text
+acceptance desktopui settings-appearance
+```
+
+## settings-backup
+
+Portable settings export and confirmed import
+
+Steps: Start production unicd, drive Desktop backup actions, reject invalid inputs, confirm a portable import and restart.
+
+Expected: Exports exclude local secrets/paths, preview never writes, confirmation preserves excluded local state and refuses stale revisions.
+
+Forbidden: Secret export, implicit import, invalid document mutation, lost external edits, or claims of native dialog acceptance.
+
+```text
+acceptance desktopui settings-backup
+```
+
+## settings-diagnostics
+
+Diagnostic settings and safe local export
+
+Steps: Drive the production Desktop binding against unicd, restart, and inspect an archive made by the production CLI.
+
+Expected: Saved and effective values agree, overrides reset, telemetry retains signal preferences, and export preserves unrelated files.
+
+Forbidden: A skipped scenario, stale status labeled current, silent conflict overwrite, secret archive membership, or claims of native dialog acceptance.
+
+```text
+acceptance desktopui settings-diagnostics
+```
+
+## settings-shortcuts
+
+Passive shortcut permission status and explicit System Settings guidance
+
+Steps: Read denied/granted/unsupported/error states; explicitly request settings guidance without granting permission; overlap an outstanding read with opening settings; replace callbacks and cancel a late completion.
+
+Expected: Reads never request permission or open settings; opening settings never grants permission; operations do not block each other; stale or cancelled results do not replace current state.
+
+Forbidden: Native permission calls, GUI, renderer, browser, system settings launch, system clipboard, public-contract changes or arbitrary shortcut registration.
+
+```text
+acceptance desktopui settings-shortcuts
+```
+
+## settings-storage
+
+Storage inventory and directory action
+
+Steps: Start an isolated service, refresh inventory, preserve unrelated files, restart with a custom destination, and exercise directory callbacks and failed refresh.
+
+Expected: Ledger bytes and reservations match the service, custom files remain outside the measurement, callback errors stay sanitized, and no setting is changed by reading.
+
+Forbidden: Native GUI or file-manager launch, user-file deletion, whole-disk usage claims, stale success after a failed refresh, or missing checksummed evidence.
+
+```text
+acceptance desktopui settings-storage
+```
+
+## settings-visual-evidence
+
+Native settings screenshots for the parallel settings delivery
+
+Steps: Start an isolated production desktop, visit each implemented settings section, reveal its controls and retain native window captures.
+
+Expected: Settings controls render in the live composition; the real service supplies diagnostic and cache values; screenshots and a continuous recording are retained.
+
+Forbidden: Personal profiles, system clipboard access, telemetry uploads, permission requests, file dialogs, invented pixels or claims of completed update/paste acceptance.
+
+```text
+start
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 通用
+screenshot general
+ui-wait listItem 诊断与隐私
+ui-click listItem 诊断与隐私
+ui-wait popUpButton 本机日志等级
+ui-click button 刷新诊断状态
+ui-enabled button 刷新诊断状态
+screenshot diagnostics-levels
+ui-reveal button 打开日志目录
+screenshot diagnostics-signals-export
+ui-click listItem 存储与备份
+ui-wait button 刷新缓存用量
+ui-click button 刷新缓存用量
+ui-enabled button 刷新缓存用量
+screenshot storage-usage
+ui-reveal button 导入配置
+screenshot backup-controls
+ui-click listItem 外观
+ui-wait button 深色
+screenshot appearance
+ui-click button 深色
+config-equals desktop.color_mode '"dark"'
+observe 1
+screenshot appearance-dark
+ui-click button 跟随系统
+config-equals desktop.color_mode '"system"'
+ui-click listItem 快捷面板
+ui-wait button 刷新权限状态
+ui-enabled button 刷新权限状态
+screenshot shortcut-permissions
+```
+
 ## setup-later-migration
 
 Settings migration cancellation and restart
@@ -885,9 +1007,10 @@ ui-click button '暂不迁移'
 history-count 0
 ui-wait listItem 设置…
 ui-click listItem 设置…
-ui-wait listItem 存储
-ui-click listItem 存储
+ui-wait listItem 存储与备份
+ui-click listItem 存储与备份
 ui-wait button '从 v1 迁移'
+ui-reveal button '从 v1 迁移'
 screenshot settings
 ui-click button '从 v1 迁移'
 ui-wait button '开始迁移'
@@ -1128,12 +1251,12 @@ start
 submit text 'UNIC-D cleanup settings synthetic'
 ui-wait listItem 'UNIC-D cleanup settings synthetic'
 ui-click listItem 设置…
-ui-wait listItem 存储
-ui-click listItem 存储
+ui-wait listItem 存储与备份
+ui-click listItem 存储与备份
 config-equals history.auto_cleanup false
 ui-disabled popUpButton 历史保留时间
 ui-disabled popUpButton 最大历史条目数
-ui-disabled checkBox '保留 #文本'
+ui-disabled button '保留 #文本'
 ui-enabled popUpButton 单设备缓存配额
 screenshot cleanup-off
 ui-enabled switch 自动清理历史
@@ -1141,19 +1264,19 @@ ui-click switch 自动清理历史
 config-equals history.auto_cleanup true
 ui-enabled popUpButton 历史保留时间
 ui-enabled popUpButton 最大历史条目数
-ui-enabled checkBox '保留 #文本'
+ui-enabled button '保留 #文本'
 ui-enabled switch 自动清理历史
 ui-click switch 自动清理历史
 config-equals history.auto_cleanup false
 restart-desktop
 ui-wait listItem 设置…
 ui-click listItem 设置…
-ui-wait listItem 存储
-ui-click listItem 存储
+ui-wait listItem 存储与备份
+ui-click listItem 存储与备份
 config-equals history.auto_cleanup false
 ui-disabled popUpButton 历史保留时间
 ui-disabled popUpButton 最大历史条目数
-ui-disabled checkBox '保留 #文本'
+ui-disabled button '保留 #文本'
 ui-enabled popUpButton 单设备缓存配额
 screenshot persisted-after-restart
 ```
@@ -1743,6 +1866,9 @@ screenshot custom-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-reveal switch '使用系统边框'
 ui-click switch '使用系统边框'
@@ -1763,6 +1889,9 @@ screenshot system-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 ui-reveal switch '使用系统边框'
@@ -1780,6 +1909,9 @@ screenshot custom-reopened
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 
@@ -1823,7 +1955,7 @@ role-checkpoint initial
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
-ui-wait switch '使用系统边框'
+ui-wait switch '登录时启动'
 windows-frame physical-drag-resize-os custom drag-resize
 role-close-gui caption
 role-reopen-gui
@@ -1852,6 +1984,9 @@ screenshot custom-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-reveal switch '使用系统边框'
 ui-click switch '使用系统边框'
@@ -1872,6 +2007,9 @@ screenshot system-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 ui-reveal switch '使用系统边框'
@@ -1889,6 +2027,9 @@ screenshot custom-reopened
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 

@@ -1,0 +1,50 @@
+{
+  "run_id": "20261122T073255Z-9bfd6143",
+  "status": "PASS",
+  "source_head": "fcf5611662039c1db79fc6537c4f79aff2a5b436",
+  "worktree_dirty": true,
+  "runner_sha256": "1fa9946b71159a38e1851551edd36caef8e91a0f4d3ae0274a976a409fd5f4c3",
+  "snapshot_unchanged": true,
+  "private_cleanup": "PASS",
+  "host_os": "macOS-27.0-arm64-arm-64bit-Mach-O",
+  "go": "go version go1.27.3 darwin/arm64",
+  "race_detector": true,
+  "elapsed_ms": 29179,
+  "command": "make desktop-e2e CASE=settings-backup",
+  "report": ".build/desktop-e2e/20261122T073255Z-9bfd6143/index.html",
+  "scenario": {
+    "checks": [
+      "explicit production migration initialization with private source discovery",
+      "explicit export allowlist excludes machine paths and private settings",
+      "preview and cancellation never mutate configuration",
+      "malformed oversize unknown version invalid value unknown key and trailing JSON rejected",
+      "confirmed import applies through revision-checked production config and preserves excluded state",
+      "confirmation is bound to preview revision and cannot overwrite external changes",
+      "portable import and excluded local changes survive restart"
+    ],
+    "export_sha256": "9dcca0b97be774b232c4604377468931e0e1d6d19eae7f40a85407a899eec4e4",
+    "go": "go1.27.3",
+    "native_ui": false,
+    "passed": true,
+    "renderer": false,
+    "system_clipboard": false,
+    "unic_sha256": "fbdf8d95d0d2e119236b6f4e1150010c7f815fdbfdf5c5dbadb5a53675d377e6",
+    "unicd_sha256": "ad4d095f71d588804bac69759b141f89026f7e0200294cb494d12b6fe7aae214"
+  },
+  "native_dialogs": "NOT_RUN",
+  "native_folder_open": "NOT_RUN",
+  "native_file_callbacks": "NOT_RUN",
+  "visual_acceptance": "NOT_RUN",
+  "report_file_sha256": {
+    "manifest.json": "3ccbed40d838ad030bfb7f3f1fc19baed727e1a7f19c44551ec09ec007404165",
+    "cases/settings-backup/scenario-receipt.json": "f9ebeb084b29f8487f0c1688666181bbb624991e5a599badc7c348d502782524",
+    "cases/settings-backup/result.json": "d31eefebde036b67891846eae567d372e5e3d1b432657f11b519e4fbdc0b86c9"
+  },
+  "backup_source_sha256": {
+    "app/desktop/cmd/unic-desktop/backup_actions.go": "916a3ca5ae9db713a4c6b9b95c80678df4c6ab51126a8a3085de3193d48edc63",
+    "app/desktop/e2e/cases/settings-backup.txtar": "92c84ab9c17e6a7294aab7e915a71d82aa8182a6599a0b9b3b4ed8d30ac6f12f",
+    "app/desktop/internal/desktopui/acceptance_settings_backup_process_test.go": "eb5593cd12f9cc447857c07424fb3e54e9c7209fad8f8045e2f60d0fdd9ef004",
+    "app/desktop/internal/desktopui/settings_backup.go": "8aa623e15fd4e9ff0913445adc04ce64d9d421aae5a3c25fb3c4a79592efa4e0",
+    "docs/exec/desktop-settings-backup.md": "8f84b983e3f52e9a7c2e97bf4a836d0ce86b32b67970b12612a0be259e11e55e"
+  }
+}

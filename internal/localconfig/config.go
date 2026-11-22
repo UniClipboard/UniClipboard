@@ -85,6 +85,7 @@ type Config struct {
 
 // Desktop configures the graphical launcher. The service only stores these values.
 type Desktop struct {
+	ColorMode     string `toml:"color_mode" json:"color_mode"`
 	TrayIcon      string `toml:"tray_icon" json:"tray_icon"`
 	UpdateChannel string `toml:"update_channel" json:"update_channel"`
 	// TagColors maps SHA-256 tag identifiers to local presentation colors. It stores no tag names.
@@ -240,7 +241,7 @@ func Default() Config {
 		shortcut = "Cmd+Ctrl+V"
 	}
 	return Config{
-		Desktop: Desktop{TrayIcon: "glyph", UpdateChannel: "stable", Language: "zh-CN", Mode: "normal", QuickPanelShortcut: shortcut},
+		Desktop: Desktop{ColorMode: "system", TrayIcon: "glyph", UpdateChannel: "stable", Language: "zh-CN", Mode: "normal", QuickPanelShortcut: shortcut},
 		Logging: observability.Default().Logging, Telemetry: observability.Default().Telemetry,
 		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
 		Sync:      Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
@@ -302,6 +303,11 @@ func (c Config) backendPolicies() map[engine.PluginID]engine.BackendSyncPolicy {
 // uses, so the file and the SDK cannot disagree. Messages never include the
 // offending values of fields that could carry secrets.
 func (c Config) Validate() error {
+	switch c.Desktop.ColorMode {
+	case "system", "light", "dark":
+	default:
+		return errors.New("desktop.color_mode: must be system, light or dark")
+	}
 	switch c.Desktop.Language {
 	case "", "zh-CN", "en", "ja", "pt-BR", "ru":
 	default:

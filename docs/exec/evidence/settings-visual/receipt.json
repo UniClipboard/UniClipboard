@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "run_id": "20261122T075547Z-03d03c5b",
+  "source_head": "fcf5611662039c1db79fc6537c4f79aff2a5b436",
+  "worktree_dirty": true,
+  "status": "PASS",
+  "snapshot_unchanged": true,
+  "private_cleanup": "PASS",
+  "binary_sha256": {
+    "unicd": "965922099375811ca20358bb1c8ecfd761531bda021c3e54090ba41673e4ced4",
+    "unic-desktop": "4af4f5ea4ea4abd3388a5e28c27ecc8958868e3fbd5778e590b0d8eacf5ae787"
+  },
+  "manifest_sha256": "064c0662da0f6cda0bcb4b59e50349239c8365c2c18bf84bea80e5d825d7c3d7",
+  "checksums_verified": 14,
+  "replay": "make desktop-e2e CASE=settings-visual-evidence",
+  "report": ".build/desktop-e2e/20261122T075547Z-03d03c5b/index.html",
+  "images_uploaded_inline": 6,
+  "user_visual_approval": "NOT_RECORDED",
+  "system_clipboard": "NOT_RUN",
+  "cross_application_paste": "NOT_RUN",
+  "native_permission_prompt": "NOT_RUN",
+  "file_dialogs": "NOT_RUN",
+  "screenshots": {
+    "02-diagnostics-levels.png": {
+      "path": ".build/desktop-e2e/20261122T075547Z-03d03c5b/cases/settings-visual-evidence/02-diagnostics-levels.png",
+      "sha256": "e314f1276a3f0d9d1d53a33697ee395f4f73abf8120962dd02e2c588bfa7fa93"
+    },
+    "03-diagnostics-signals-export.png": {
+      "path": ".build/desktop-e2e/20261122T075547Z-03d03c5b/cases/settings-visual-evidence/03-diagnostics-signals-export.png",
+      "sha256": "5bb167eec9e3727a09797e09bfdffcf6adbb01ae459448a0c80a58af8c0efa8f"
+    },
+    "04-storage-usage.png": {
+      "path": ".build/desktop-e2e/20261122T075547Z-03d03c5b/cases/settings-visual-evidence/04-storage-usage.png",
+      "sha256": "c4c1a136ff96e9a3408631e71198e22ff4bc46070c39fbca73ff3fa3d36f72a4"
+    },
+    "05-backup-controls.png": {
+      "path": ".build/desktop-e2e/20261122T075547Z-03d03c5b/cases/settings-visual-evidence/05-backup-controls.png",
+      "sha256": "a911cdd07842d58f4fa574f4aca3eb2da56811aef85f616d1a5231c078ae49e9"
+    },
+    "07-appearance-dark.png": {
+      "path": ".build/desktop-e2e/20261122T075547Z-03d03c5b/cases/settings-visual-evidence/07-appearance-dark.png",
+      "sha256": "fc317c59a57f67e3cc8bba3c7f954b91a76d8d373b4fb835e5d35d289fd4cec4"
+    },
+    "08-shortcut-permissions.png": {
+      "path": ".build/desktop-e2e/20261122T075547Z-03d03c5b/cases/settings-visual-evidence/08-shortcut-permissions.png",
+      "sha256": "a6b360afd370d6c35e7c7e58fadf06e03c3799754ad3dad9d710b522af28fa07"
+    }
+  },
+  "assertions": [
+    "an isolated native content window and production service are running",
+    "listItem \"设置…\" present=true",
+    "listItem \"通用\" present=true",
+    "popUpButton \"本机日志等级\" present=true",
+    "button \"刷新诊断状态\" is enabled",
+    "button \"刷新缓存用量\" present=true",
+    "button \"刷新缓存用量\" is enabled",
+    "popUpButton \"颜色模式\" present=true",
+    "listItem \"深色\" present=true",
+    "persisted desktop.color_mode = \"dark\"",
+    "popUpButton \"颜色模式\" shows \"深色\"",
+    "listItem \"跟随系统\" present=true",
+    "persisted desktop.color_mode = \"system\"",
+    "popUpButton \"颜色模式\" shows \"跟随系统\"",
+    "button \"刷新权限状态\" present=true",
+    "button \"刷新权限状态\" is enabled",
+    "cleanup observed gui PID 59180 exit and endpoint removal",
+    "cleanup observed tray PID 59185 exit and endpoint removal"
+  ],
+  "retained_failed_run": {
+    "run_id": "20261122T075336Z-cd744dbc",
+    "cause": "Script expected option; pinned mygo native accessRole maps RoleOption to listItem. Menu was visibly open. Corrected script role; one corrective replay passed."
+  }
+}

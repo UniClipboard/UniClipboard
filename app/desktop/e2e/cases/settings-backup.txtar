@@ -1,0 +1,11 @@
+# Case: Portable settings export and confirmed import
+# Mode: process
+# Purpose: Verify portable allowlisting, strict preflight, preview confirmation, revision conflicts and restart persistence.
+# Steps:
+#   Start production unicd, drive Desktop backup actions, reject invalid inputs, confirm a portable import and restart.
+# Expected:
+#   Exports exclude local secrets/paths, preview never writes, confirmation preserves excluded local state and refuses stale revisions.
+# Forbidden:
+#   Secret export, implicit import, invalid document mutation, lost external edits, or claims of native dialog acceptance.
+
+acceptance desktopui settings-backup

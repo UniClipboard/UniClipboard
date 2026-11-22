@@ -94,6 +94,7 @@ func scenarioTagManager(t *testing.T) {
 				}
 				var items []string
 				var heights []float32
+				initialTagCount := len(d.tags)
 				switch scenario {
 				case "builtin":
 					items = menu("#链接")
@@ -225,7 +226,7 @@ func scenarioTagManager(t *testing.T) {
 					}
 					tt.Type("临时标签")
 					tt.Key(0, ui.KeyEscape)
-					if !d.tagsOpen || d.tagManager.editing != "" || len(d.tags) != 10 {
+					if !d.tagsOpen || d.tagManager.editing != "" || len(d.tags) != initialTagCount {
 						t.Fatal("Escape did not cancel inline creation")
 					}
 				case "duplicate":
@@ -234,13 +235,13 @@ func scenarioTagManager(t *testing.T) {
 					}
 					tt.Type("工作")
 					tt.Key(0, ui.KeyEnter)
-					if !tt.HasText("已存在同名标签") || len(d.tags) != 10 {
+					if !tt.HasText("已存在同名标签") || len(d.tags) != initialTagCount {
 						t.Fatal("duplicate tag was accepted")
 					}
 					tt.Key(ui.Cmd, ui.KeyA)
 					tt.Type("外出")
 					tt.Key(0, ui.KeyEnter)
-					if !tt.HasText("#外出") || len(d.tags) != 11 {
+					if !tt.HasText("#外出") || len(d.tags) != initialTagCount+1 {
 						t.Fatal("duplicate error could not be corrected")
 					}
 				case "bulk":

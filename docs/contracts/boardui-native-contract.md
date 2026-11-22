@@ -81,8 +81,8 @@ overlay indicator clear of row content and align the 28-DIP quiet chrome toggle
 with the navigation grid. Footer actions stay fixed outside the scroll viewport.
 Application rows are 30 DIP with 13-DIP `body-2` typography, 16-DIP icons (8-DIP
 circular swatches for tags), 8-DIP icon/label gaps, 2-DIP intra-section gaps and
-14-DIP section separation. Built-in content tags stay off the sidebar by default
-while remaining opt-in from the tag manager; sidebar tag rows omit redundant `#`
+14-DIP section separation. Text, Images and Files appear in the sidebar by default.
+Other built-in tags are opt-in from the tag manager. Sidebar tag rows omit redundant `#`
 prefixes. Section commands are quiet 24-DIP buttons aligned visually with row
 counts; More is a 26-DIP secondary row aligned with navigation labels.
 This is an application composition, not a claim that the full official dashboard

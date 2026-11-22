@@ -15,7 +15,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: aa8ed52c9d762a1f39d6e945f42ad1e8ab27a806
+verified: 7d16bcf8b12928aef0e9437b36f6f444092260e7
 ---
 # 仓库布局与依赖边界
 
@@ -195,7 +195,7 @@ The canonical Desktop acceptance entry is `make desktop-e2e`. It runs the declar
 
 ### Tag controls and colors
 
-Desktop lists Text, Images, Files, Folders, Code and Links as protected built-in tags, including in an empty library. The labels use the selected interface language. Search, history, assignment and cleanup use stable `builtin:text`, `builtin:image`, `builtin:files`, `builtin:folder`, `builtin:code` and `builtin:link` IDs. Text defaults to blue, Images to green, Files to orange, Links to blue, Code to purple and Folders to gray. Text, Images and Files appear in the sidebar by default, including in an empty library; the other built-in tags remain hidden by default. Persisted color overrides apply to built-in and custom tags, including v1 migration colors. Built-in tags cannot be manually assigned, removed, renamed, merged or recolored in the manager. Custom tags retain their literal labels. The [pipeline](pipeline.md#built-in-content-tags) defines automatic classification and the no-backfill boundary.
+Desktop lists Text, Images, Files, Folders, Code, Links, Email addresses, Color, Version number, UUID and IPv4 address as protected built-in tags, including in an empty library. The labels use the selected interface language. Search, history, assignment and cleanup use stable built-in tag IDs. Text and Links default to blue, Images to green, Files to orange and Code to purple. The other built-in tags default to gray. Text, Images and Files appear in the sidebar by default, including in an empty library. The tag manager can add other built-in tags to the sidebar. Persisted color overrides apply to built-in and custom tags, including v1 migration colors. Built-in tags cannot be manually assigned, removed, renamed, merged or recolored in the manager. Custom tags retain their literal labels. The [pipeline](pipeline.md#built-in-content-tags) defines automatic classification and the no-backfill boundary.
 
 The detail view uses BoardUI-backed application tag chips and an inline assignment composition. Add Tag or T opens the native editor. Suggestions put Create first for a new nonempty name, followed by unattached matching tags or frequent tags. Names are trimmed, limited to 64 Unicode scalars and matched without case for duplicate prevention. Built-in names/IDs cannot become new custom tags. Creation colors remain orange, blue, green, purple and gray. Clicking a swatch keeps editor focus. Arrows select, Return attaches, Tab/Shift+Tab cycle creation colors and Escape cancels. Changing focus or the selected record cancels the editor. Removing a custom chip detaches the tag from that record and keeps the registry.
 

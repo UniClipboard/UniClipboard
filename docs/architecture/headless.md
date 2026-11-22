@@ -32,7 +32,7 @@ All programs expose `--version --json` before configuration and host initializat
 
 The product has three runtime programs and two development distributions.
 `unic` is a command-line client. `unicd` is the Engine owner and local service.
-`unic-desktop` provides three independent OS processes from one executable: tray, GUI and quick panel. The tray owns system integration; the GUI and quick panel own their respective views. `unicd` remains a fourth, UI-free process.
+`unic-desktop` provides three independent OS processes from one executable: tray, GUI and quick panel. On Linux each role sets its process/thread name via `PR_SET_NAME` (`unic-tray`, `unic-gui`, `unic-panel`) without changing `/proc/<pid>/exe`. The tray owns system integration; the GUI and quick panel own their respective views. `unicd` remains a fourth, UI-free process.
 The headless distribution includes `unic` and `unicd`.
 The desktop distribution includes those same binary files plus `unic-desktop`.
 Both archives expose `uniclip` as an alias of `unic`.

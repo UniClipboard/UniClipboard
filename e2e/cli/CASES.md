@@ -826,6 +826,7 @@ Verify four built-in regular expressions and their independent switches through 
 
 ```
 node-start alpha
+until alpha '^startup-probe$' dev paste
 board-set alpha text color.txt
 until alpha '"tags":\["builtin:color","builtin:text"\]' h list -n 1 --json
 board-set alpha text version.txt
@@ -854,6 +855,7 @@ until alpha '"tags":\["builtin:color","builtin:text"\]' h list -n 1 --json
 
 node-stop alpha
 node-start alpha
+until alpha '^#12AB34$' dev paste
 u alpha config --json
 ! stdout 'plugins.settings'
 board-set alpha text color-after-restart.txt
@@ -866,6 +868,7 @@ stdout '"builtin:color"'
 u alpha config apply $WORK/alpha-defaults.toml
 node-stop alpha
 node-start alpha
+until alpha '^v2\.4\.0$' dev paste
 board-set alpha text color-reenabled.txt
 until alpha '"tags":\["builtin:color","builtin:text"\]' h list -n 1 --json
 ```

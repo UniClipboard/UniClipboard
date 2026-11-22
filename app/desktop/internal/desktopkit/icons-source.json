@@ -10,7 +10,7 @@
     "esm_sha256": "6fb6c465b78ba9d68640aaca14b9e5fc13721d94c083f10df8a47dbda1859c9d"
   },
   "compiler": {
-    "generator_sha256": "676fb856260f59cc71df3c7ff35a312e0305946e956a1393d774c7b3962dc187",
+    "generator_sha256": "01e4b9373e4f3910c11c48d02adb68ffadaca106f91a5194f67c5b0222e1be5e",
     "node": "v22.23.4",
     "react": "19.2.4",
     "lock_sha256": "a2b76d8a2a20270e1748a3ac2d39df0a3aa265f95e0ead25c05bbab588073c0d"
@@ -166,8 +166,8 @@
       "sha256": "b0b9e186266de23a4095fba2cafd4de94024a79a10f7923385a3bae5fec7a85f"
     },
     "pin": {
-      "export": "RiPushpinLine",
-      "sha256": "bc2b1f1a431f1e6550150a2e75a18da081bc3b090d460a9a773e2f1ca31b1ad1"
+      "export": "RiStarLine",
+      "sha256": "22fd08cf2afcb380787de873cdef2c02b635151ce686d005280a25d672d9ffa1"
     },
     "plus": {
       "export": "RiAddLine",

@@ -14,3 +14,6 @@ const (
 	TagUUID    = "builtin:uuid"
 	TagIPv4    = "builtin:ipv4"
 )
+
+// TagFavorite marks a locally saved favorite and is omitted from tag catalogues.
+const TagFavorite = "favorite"

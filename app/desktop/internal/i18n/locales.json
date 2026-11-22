@@ -899,23 +899,23 @@
     "pt-BR": "Cancelar",
     "ru": "Отмена"
   },
-  "已置顶": {
-    "en": "Pinned",
-    "ja": "固定済み",
-    "pt-BR": "Fixado",
-    "ru": "Закреплено"
+  "已收藏": {
+    "en": "Favorites",
+    "ja": "お気に入り",
+    "pt-BR": "Favoritos",
+    "ru": "Избранное"
   },
-  "切换置顶": {
-    "en": "Toggle pin",
-    "ja": "固定を切り替え",
-    "pt-BR": "Alternar fixação",
-    "ru": "Закрепить или открепить"
+  "切换收藏": {
+    "en": "Toggle favorite",
+    "ja": "お気に入りを切り替え",
+    "pt-BR": "Alternar favorito",
+    "ru": "Добавить в избранное или убрать"
   },
-  "置顶或取消置顶": {
-    "en": "Pin or unpin",
-    "ja": "固定または固定解除",
-    "pt-BR": "Fixar ou desafixar",
-    "ru": "Закрепить или открепить"
+  "收藏或取消收藏": {
+    "en": "Add or remove favorite",
+    "ja": "お気に入りに追加または解除",
+    "pt-BR": "Adicionar ou remover dos favoritos",
+    "ru": "Добавить в избранное или убрать"
   },
   "快速查看": {
     "en": "Quick Look",
@@ -2542,24 +2542,6 @@
     "ja": "タグ管理は利用できません。履歴の詳細でタグを割り当ててください。",
     "pt-BR": "O gerenciamento de etiquetas está indisponível. Atribua etiquetas nos detalhes do histórico.",
     "ru": "Управление метками недоступно. Назначайте метки в сведениях о записи."
-  },
-  "置顶功能尚不可用。": {
-    "en": "Pinning is unavailable.",
-    "ja": "固定機能は利用できません。",
-    "pt-BR": "A fixação está indisponível.",
-    "ru": "Закрепление недоступно."
-  },
-  "置顶": {
-    "en": "Pin",
-    "ja": "固定",
-    "pt-BR": "Fixar",
-    "ru": "Закрепить"
-  },
-  "取消置顶": {
-    "en": "Unpin",
-    "ja": "固定を解除",
-    "pt-BR": "Desafixar",
-    "ru": "Открепить"
   },
   "发送历史到设备暂不可用。": {
     "en": "Sending history to devices is unavailable.",

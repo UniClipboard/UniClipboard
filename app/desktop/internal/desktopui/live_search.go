@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 func searchQueryKey(q engine.HistorySearchQuery) string { b, _ := json.Marshal(q); return string(b) }
@@ -17,8 +18,16 @@ func (d *viewState) historySearchQuery() engine.HistorySearchQuery {
 	}
 	base := d.liveQuery()
 	q := engine.HistorySearchQuery{Tags: selectedSearchTags(d.tag), TagMatch: "all", CreatedFromMs: base.FromMs, CreatedBeforeMs: base.BeforeMs}
+	favorite := d.nav.Value == "pinned"
 	for _, w := range searchWords(d.query) {
+		if w.dimension == "tag" && w.partial == plugin.TagFavorite {
+			favorite = true
+			continue
+		}
 		q.TextTerms = append(q.TextTerms, literalSearchWord(w.raw))
+	}
+	if favorite && !slices.Contains(q.Tags, plugin.TagFavorite) {
+		q.Tags = append(q.Tags, plugin.TagFavorite)
 	}
 	switch d.kind {
 	case "文本", "text":

@@ -47,7 +47,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: 0605f05fd6aa2d14ee972c387b22004364c76156
+verified: c739f3f01dafb75541098854b9723bcfd32dae07
 ---
 # Clipboard pipeline and local history
 
@@ -78,6 +78,8 @@ It also adds `builtin:link` when the first 64 KiB of text contains an HTTP(S) UR
 The classifier runs four default full-text rules for colors, version numbers, UUIDs and IPv4 addresses. It trims surrounding whitespace before matching text up to 64 KiB. Each default rule has an independent switch. The classifier applies custom [regular expression rules](../contracts/plugin-contract.md#built-in-content-classification) to the original text prefix. Local Lua processors can apply tags through `ctx:add_tag` under the existing sandbox and event subscriptions. Tags belong to the local history, so each peer applies its own rules.
 These processors annotate content without changing it. The classifier performs no network or file-body reads. Changes to its rules or enablement apply after service restart. Existing history retains its stored tags.
 Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes built-in labels, protects their management operations and lists them even when history is empty. Custom tag labels retain their literal names. Built-in sidebar visibility survives refresh within the current desktop session.
+
+The reserved `favorite` tag is local history metadata. Desktop writes it through the existing revision-checked tag update from the history and Quick Panel actions. The Favorites sidebar uses the existing Engine tag search and exact count. The tag is omitted from tag catalogues and ordinary tag displays. See the [history contract](../contracts/history-contract.md#favorites).
 
 The offline v1 importer preserves canonical link, image, folder and code memberships from the profile-scoped v1 search tag table, separately from encrypted custom assignments. The default classifier has no code-detection rule. A custom rule may target `builtin:code`. The importer also preserves palette and hexadecimal colors from the v1 presentation layout through host configuration. Every CLI and Desktop migration automatically fills safe missing tags and colors while preserving target edits, existing color overrides and deletions. See the [history contract](../contracts/history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252).
 

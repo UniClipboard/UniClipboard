@@ -386,7 +386,7 @@ func TestHistoryItemContextMenu(t *testing.T) {
 	if len(pinnedMenu) != 5 {
 		t.Fatalf("menu entries=%d, want 5", len(pinnedMenu))
 	}
-	if pinnedMenu[0].ID != "copy" || pinnedMenu[1].ID != "pin" || pinnedMenu[1].Label != "取消置顶" || pinnedMenu[2].ID != "send" || !pinnedMenu[3].Separator || pinnedMenu[4].ID != "delete" || !pinnedMenu[4].Destructive {
+	if pinnedMenu[0].ID != "copy" || pinnedMenu[1].ID != "pin" || pinnedMenu[1].Label != "取消收藏" || pinnedMenu[2].ID != "send" || !pinnedMenu[3].Separator || pinnedMenu[4].ID != "delete" || !pinnedMenu[4].Destructive {
 		t.Fatalf("unexpected pinned item menu: %+v", pinnedMenu)
 	}
 	if len(pinnedMenu[2].Children) < 2 || pinnedMenu[2].Children[0].ID != "send:all" {
@@ -394,7 +394,7 @@ func TestHistoryItemContextMenu(t *testing.T) {
 	}
 
 	unpinnedMenu := d.historyItemMenu([]string{"code"})
-	if unpinnedMenu[1].Label != "置顶" {
+	if unpinnedMenu[1].Label != "收藏" {
 		t.Fatalf("unpinned label=%q, want 置顶", unpinnedMenu[1].Label)
 	}
 
@@ -415,7 +415,7 @@ func TestHistoryItemContextMenu(t *testing.T) {
 			}
 			tt.RightClickAt(target.Bounds.X+target.Bounds.W/2, target.Bounds.Y+target.Bounds.H/2)
 			tt.Advance(200 * time.Millisecond)
-			for _, lbl := range []string{"复制", "置顶", "发送到", "删除"} {
+			for _, lbl := range []string{"复制", "收藏", "发送到", "删除"} {
 				if !tt.HasText(lbl) {
 					t.Fatalf("BoardUI context menu missing %q", lbl)
 				}
@@ -428,7 +428,7 @@ func TestHistoryItemContextMenu(t *testing.T) {
 					}
 				}
 			}
-			if err := tt.Click("置顶"); err != nil {
+			if err := tt.Click("收藏"); err != nil {
 				t.Fatalf("click pin from context menu: %v", err)
 			}
 			if !d.entries[1].pinned {

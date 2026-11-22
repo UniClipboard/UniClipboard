@@ -19,11 +19,17 @@ import (
 )
 
 func (d *viewState) sidebar(c *ui.Context, k desktopkit.Kit) {
-	pinned := 0
-	for _, v := range d.entries {
-		if v.pinned {
-			pinned++
+	favoriteCount := ""
+	if d.live == nil {
+		count := 0
+		for _, v := range d.entries {
+			if v.pinned {
+				count++
+			}
 		}
+		favoriteCount = fmt.Sprint(count)
+	} else if count, ok := d.live.counts[searchQueryKey(favoriteHistoryQuery())]; ok {
+		favoriteCount = fmt.Sprint(count)
 	}
 	tags := []desktopkit.SidebarNavItem{}
 	for _, tag := range d.tags {
@@ -48,7 +54,7 @@ func (d *viewState) sidebar(c *ui.Context, k desktopkit.Kit) {
 		devices = append(devices, desktopkit.SidebarNavItem{ID: "device:" + v.id, Label: v.name, Status: &tone, Count: state})
 	}
 	k.SidebarNav(c, &d.nav, desktopkit.SidebarNavProps{Label: d.tr("资料库"), Sections: []desktopkit.SidebarNavSection{
-		{ID: "library", Items: []desktopkit.SidebarNavItem{{ID: "all", Label: d.tr("全部项目"), Icon: desktopkit.IconHistory, Count: d.historyCountLabel()}, {ID: "pinned", Label: d.tr("已置顶"), Icon: desktopkit.IconPin, Count: fmt.Sprint(pinned)}}},
+		{ID: "library", Items: []desktopkit.SidebarNavItem{{ID: "all", Label: d.tr("全部项目"), Icon: desktopkit.IconHistory, Count: d.historyCountLabel()}, {ID: "pinned", Label: d.tr("已收藏"), Icon: desktopkit.IconPin, Count: favoriteCount}}},
 		{ID: "tags", Title: d.tr("标签"), Items: tags, Action: &desktopkit.NavAction{Label: d.tr("管理标签"), Icon: desktopkit.IconAdd}, More: &desktopkit.NavAction{Label: fmt.Sprintf(d.tr("全部标签 · %d"), len(d.tags))}},
 		{ID: "devices", Title: d.tr("设备"), Items: devices},
 	}, Footer: []desktopkit.SidebarNavItem{{ID: "manage", Label: d.tr("管理设备…"), Icon: desktopkit.IconDevices}, {ID: "settings", Label: d.tr("设置…"), Icon: desktopkit.IconSettings, ShortcutHint: "⌘,"}}}).Grow(1)
@@ -308,7 +314,7 @@ func (d *viewState) historyCommands(c *ui.Context, k desktopkit.Kit) {
 	if command != "" {
 		d.sendTo(command)
 	}
-	if fit(k.Button(c.Key("pin"), "", desktopkit.ButtonProps{Icon: desktopkit.IconPin, Label: d.tr("切换置顶"), Variant: desktopkit.Subtle, Disabled: v == nil || d.live != nil})).Clicked() {
+	if fit(k.Button(c.Key("pin"), "", desktopkit.ButtonProps{Icon: desktopkit.IconPin, Label: d.tr("切换收藏"), Variant: desktopkit.Subtle, Disabled: v == nil || d.live != nil && d.live.busy})).Clicked() {
 		d.togglePin()
 	}
 	if d.live != nil && v != nil && !d.live.busy {
@@ -392,19 +398,15 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 				Pinned:        v.pinned,
 				Tags:          cardTags,
 				CopyLabel:     d.tr("复制"),
-				PinLabel:      d.tr("切换置顶"),
+				PinLabel:      d.tr("切换收藏"),
 				OnCopy: func() {
 					d.selected = entryItem.id
 					d.list.Select(entryItem.id)
 					d.useEntry()
 				},
 			}
-			if d.live == nil {
-				card.OnPin = func() {
-					d.selected = entryItem.id
-					d.list.Select(entryItem.id)
-					d.togglePin()
-				}
+			if d.live == nil || !d.live.busy {
+				card.OnPin = func() { d.toggleFavorites([]string{entryItem.id}) }
 			}
 			if v.kind == desktopkit.KindImage {
 				card.Media = func() { ui.Image(c, d.entryImage(c, entryItem)).FillWidth().Grow(1).Fit(ui.Cover) }
@@ -486,7 +488,7 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 		case cmd == "copy":
 			d.useEntry()
 		case cmd == "pin":
-			d.togglePin()
+			d.toggleFavorites(ids)
 		case strings.HasPrefix(cmd, "send:"):
 			d.sendTo(strings.TrimPrefix(cmd, "send:"))
 		case strings.HasPrefix(cmd, "action:"):
@@ -537,17 +539,9 @@ func (d *viewState) historyActionsFor(id, placement, idPrefix string) []desktopk
 }
 
 func (d *viewState) historyItemMenu(ids []string) []desktopkit.MenuEntry {
-	allPinned := len(ids) > 0
-	for _, id := range ids {
-		idx := slices.IndexFunc(d.entries, func(e entry) bool { return e.id == id })
-		if idx < 0 || !d.entries[idx].pinned {
-			allPinned = false
-			break
-		}
-	}
-	pinLabel := d.tr("置顶")
-	if allPinned {
-		pinLabel = d.tr("取消置顶")
+	pinLabel := d.tr("收藏")
+	if d.allFavorited(ids) {
+		pinLabel = d.tr("取消收藏")
 	}
 	rawSend := d.sendMenuItems()
 	sendChildren := make([]desktopkit.MenuEntry, len(rawSend))
@@ -560,7 +554,7 @@ func (d *viewState) historyItemMenu(ids []string) []desktopkit.MenuEntry {
 	sendDisabled := len(ids) != 1 || len(sendChildren) == 0 || sendChildren[0].Disabled
 	entries := []desktopkit.MenuEntry{
 		{ID: "copy", Label: d.tr("复制"), Icon: desktopkit.IconCopy, Disabled: len(ids) != 1},
-		{ID: "pin", Label: pinLabel, Icon: desktopkit.IconPin, Disabled: len(ids) == 0 || d.live != nil},
+		{ID: "pin", Label: pinLabel, Icon: desktopkit.IconPin, Disabled: len(ids) == 0 || d.live != nil && d.live.busy},
 		{ID: "send", Label: d.tr("发送到"), Icon: desktopkit.IconSend, Disabled: sendDisabled, Children: sendChildren},
 	}
 	if len(ids) == 1 {
@@ -1109,13 +1103,14 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 					}
 				})
 
+				busy := d.live != nil && d.live.busy
 				pinBtn := ui.ButtonBase(c.Key("drawer-pin")).Size(28, 28).Radius(7).Center().
-					Label(d.tr("切换置顶")).Tooltip(d.tr("切换置顶")).Disabled(d.live != nil)
+					Label(d.tr("切换收藏")).Tooltip(d.tr("切换收藏")).Disabled(busy)
 				pinCol := k.Color("text-secondary")
 				if v.pinned {
 					pinCol = k.Color("status-orange-text")
 				}
-				if pinBtn.Hovered() && d.live == nil {
+				if pinBtn.Hovered() && !busy {
 					pinBtn.Background(k.Color("background-secondary-hover"))
 					if !v.pinned {
 						pinCol = k.Color("text-primary")
@@ -1123,7 +1118,7 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 				}
 				pinBtn.Children(func() { k.Icon(c, desktopkit.IconPin, 13).TextColor(pinCol) })
 				if pinBtn.Clicked() {
-					d.togglePin()
+					d.toggleFavorites([]string{v.id})
 				}
 
 				delBtn := ui.ButtonBase(c.Key("drawer-del")).Size(28, 28).Radius(7).Center().

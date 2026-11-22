@@ -52,7 +52,7 @@ const mapping={
   "picture": "RiImageLine",
   "box": "RiArchiveLine",
   "phone": "RiSmartphoneLine",
-  "pin": "RiPushpinLine",
+  "pin": "RiStarLine",
   "retry": "RiRestartLine",
   "search": "RiSearchLine",
   "arrowRight": "RiArrowRightLine",

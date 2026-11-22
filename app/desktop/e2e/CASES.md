@@ -23,6 +23,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [gui-approval-reconnect](#gui-approval-reconnect) | view | Legacy GUI fingerprint approval and recovery after service disconnection. |
 | [gui-empty-layout](#gui-empty-layout) | view | Legacy GUI empty-history layout and narrow-window bounds. |
 | [gui-navigation](#gui-navigation) | view | Legacy GUI navigation, pairing input and destructive-confirmation barriers. |
+| [history-favorites](#history-favorites) | native | Verify persistent favorites, chronological history and the hidden reserved tag using production history. |
 | [history-search-copy](#history-search-copy) | native | Connect visible user actions to production history and clipboard application. |
 | [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
 | [idle-event-wakeup](#idle-event-wakeup) | native | Verify native service event and content completion delivery. |
@@ -35,7 +36,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [quick-panel-screenshots](#quick-panel-screenshots) | view | Quick-panel history, action menu and image-grid compositions in both themes. |
 | [quick-panel](#quick-panel) | view | Quick-panel keyboard, search, actions, previews, scrolling and simulated effects. |
 | [search-badge-delete](#search-badge-delete) | view | Whole-condition deletion from composite search badges. |
-| [search-contract](#search-contract) | process | Literal matching, paging, counts, candidates, repair, cancellation and viewport detail prefetch. |
+| [search-contract](#search-contract) | process | Literal matching, paging, counts, candidates, repair, cancellation, viewport detail prefetch and persistent favorites. |
 | [search-disclosure-reduced-motion](#search-disclosure-reduced-motion) | view | Toolbar search disclosure with Reduce Motion enabled. |
 | [search-disclosure](#search-disclosure) | view | Animated toolbar search expansion, collapse, filtering and keyboard dismissal. |
 | [send-device-menu](#send-device-menu) | view | Send-menu device projection, disabled targets and selected-device dispatch. |
@@ -597,6 +598,53 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 acceptance gui gui-navigation
 ```
 
+## history-favorites
+
+Save and filter favorites in the native desktop
+
+Steps: Submit two text entries. Favorite the older entry and select Favorites. Restart and inspect Favorites and the tag manager. Remove the favorite.
+
+Expected: Both entries appear in All Items with the original newer entry first. Favorites shows only the older entry before and after restart. The tag manager omits the reserved tag. Removing the favorite empties Favorites and leaves both entries in All Items.
+
+Forbidden: Demo rows, system clipboard writes, missing screenshots or missing continuous recording.
+
+```text
+start
+submit favorite '收藏验证：保留这条记录'
+submit ordinary '普通记录：仍在全部项目中'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-wait listItem '普通记录：仍在全部项目中'
+ui-click listItem '收藏验证：保留这条记录'
+ui-enabled button '切换收藏'
+ui-click button '切换收藏'
+ui-click listItem '已收藏'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-absent listItem '普通记录：仍在全部项目中'
+screenshot favorites-filter
+ui-click listItem '全部项目'
+ui-wait listItem '普通记录：仍在全部项目中'
+ui-wait listItem '收藏验证：保留这条记录'
+screenshot all-items-after-favoriting
+restart-desktop
+ui-wait listItem '已收藏'
+ui-click listItem '已收藏'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-absent listItem '普通记录：仍在全部项目中'
+screenshot favorites-after-restart
+ui-click button '管理标签'
+ui-wait text '~系统类型.*'
+ui-absent text '#favorite'
+screenshot tag-manager
+ui-click button '完成'
+ui-enabled button '切换收藏'
+ui-click button '切换收藏'
+ui-wait text '没有匹配的历史'
+screenshot favorite-removed
+ui-click listItem '全部项目'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-wait listItem '普通记录：仍在全部项目中'
+```
+
 ## history-search-copy
 
 Search and copy real history through the native desktop
@@ -822,7 +870,7 @@ History search contract
 
 Steps: Execute the registered production-process suite and validate its receipt.
 
-Expected: The suite runs, passes its assertions and emits a successful receipt.
+Expected: Favorites persist across a service restart, combine with search filters and remain hidden from tag catalogues. The suite emits a successful receipt.
 
 Forbidden: A skipped suite, a missing receipt, or labeling fixtures as native OS acceptance.
 
@@ -1866,6 +1914,7 @@ screenshot custom-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
 ui-click button '切换设置侧栏'
 ui-wait listItem '外观'
 ui-click listItem '外观'
@@ -1889,6 +1938,7 @@ screenshot system-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
 ui-click button '切换设置侧栏'
 ui-wait listItem '外观'
 ui-click listItem '外观'
@@ -1909,6 +1959,7 @@ screenshot custom-reopened
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
 ui-click button '切换设置侧栏'
 ui-wait listItem '外观'
 ui-click listItem '外观'
@@ -1984,6 +2035,7 @@ screenshot custom-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
 ui-click button '切换设置侧栏'
 ui-wait listItem '外观'
 ui-click listItem '外观'
@@ -2007,6 +2059,7 @@ screenshot system-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
 ui-click button '切换设置侧栏'
 ui-wait listItem '外观'
 ui-click listItem '外观'
@@ -2027,6 +2080,7 @@ screenshot custom-reopened
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
 ui-click button '切换设置侧栏'
 ui-wait listItem '外观'
 ui-click listItem '外观'

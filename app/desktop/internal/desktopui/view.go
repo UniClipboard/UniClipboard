@@ -329,22 +329,6 @@ func (d *viewState) selectEntry(id string) {
 	d.notice = ""
 }
 
-func (d *viewState) togglePin() {
-	if d.live != nil {
-		d.live.message = "置顶功能尚不可用。"
-		return
-	}
-	if v := d.current(); v != nil {
-		on := !v.pinned
-		ids := d.list.Selection()
-		for i := range d.entries {
-			if slices.Contains(ids, d.entries[i].id) {
-				d.entries[i].pinned = on
-			}
-		}
-	}
-}
-
 func (d *viewState) requestDelete(ids []string) {
 	if len(ids) == 0 {
 		return

@@ -41,3 +41,57 @@ jobs:
             dist/legacy-alpha/v1-signature-verification.json
             dist/legacy-alpha/release-manifest.json
           if-no-files-found: error
+  native:
+    needs: sign
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            target: darwin-aarch64
+          - runner: macos-15-intel
+            target: darwin-x86_64
+          - runner: ubuntu-24.04
+            target: linux-x86_64
+          - runner: ubuntu-24.04-arm
+            target: linux-aarch64
+          - runner: windows-2025
+            target: windows-x86_64
+          - runner: windows-11-arm
+            target: windows-aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: 0a72be0fc1532824b72d8d3828462c205ad348f5
+          path: v1-source
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: v1-source/apps/gui-go/go.mod
+          cache-dependency-path: v1-source/apps/gui-go/go.sum
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-legacy-alpha
+          path: dist/legacy-alpha
+      - name: Verify the old installer and replace an isolated v1 installation
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LEGACY_TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          python e2e/packaging/legacy-alpha-native.py --target "$LEGACY_TARGET" \
+            --legacy-source v1-source --offer dist/legacy-alpha --output dist/legacy-native
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: legacy-native-${{ matrix.target }}
+          path: dist/legacy-native
+          if-no-files-found: error

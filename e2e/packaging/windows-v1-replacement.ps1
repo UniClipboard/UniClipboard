@@ -6,11 +6,17 @@ param(
   [Parameter(Mandatory=$true)][string]$FixtureMetadata,
   [Parameter(Mandatory=$true)][string]$Root,
   [Parameter(Mandatory=$true)][string]$Receipt,
+  [string]$Target = 'windows-arm64',
   [switch]$LegacyUpdater
 )
 $ErrorActionPreference = 'Stop'
-if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18') { throw 'Use only the isolated SYSTEM account in an explicitly authorized VM.' }
-if ($Root -notmatch '^C:\\ProgramData\\UniClipboard-Acceptance-[a-zA-Z0-9-]+$' -or (Test-Path $Root)) { throw 'Require a fresh task-owned root.' }
+if (Test-Path $Root) { throw 'Require a fresh task-owned root.' }
+if ($env:GITHUB_ACTIONS -eq 'true') {
+  if ((Split-Path $Root) -ne $env:RUNNER_TEMP) { throw 'Use a runner-owned temporary directory.' }
+} else {
+  if ([Security.Principal.WindowsIdentity]::GetCurrent().User.Value -ne 'S-1-5-18') { throw 'Use only the isolated SYSTEM account in an explicitly authorized VM.' }
+  if ($Root -notmatch '^C:\\ProgramData\\UniClipboard-Acceptance-[a-zA-Z0-9-]+$') { throw 'Require a fresh task-owned root.' }
+}
 $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard'
 if (Test-Path $key) { throw 'Refuse an existing installation.' }
 if (Get-Process -Name UniClipboard,uniclipd,uniclip-quick-panel,unic-desktop,unicd -ErrorAction SilentlyContinue) { throw 'Refuse running applications in any session.' }
@@ -19,6 +25,14 @@ $install = Join-Path $Root 'Installation with spaces'
 $legacy = Join-Path $Root 'v1-data'
 $profile = Join-Path $Root 'v2-data'
 $checks = @()
+function Stop-LaunchedDesktop {
+  foreach ($process in (Get-Process -Name unic-desktop,unicd -ErrorAction SilentlyContinue)) {
+    if ($process.Path -and (Split-Path $process.Path) -eq $install) {
+      Stop-Process -InputObject $process -ErrorAction SilentlyContinue
+      $null = $process.WaitForExit(10000)
+    }
+  }
+}
 $oldHome = $env:UNIC_HOME
 $oldPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $oldMachinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
@@ -47,12 +61,25 @@ try {
   $before = Snapshot $legacy
   if ($LegacyUpdater) {
     if ($v1Version -ne '1.6.2-alpha.2') { throw 'The legacy updater origin must be 1.6.2-alpha.2.' }
-    # The old updater launches with these arguments and then exits. The isolated
-    # harness exercises the installer invocation without launching a desktop GUI.
-    $p = Start-Process -FilePath $Installer -ArgumentList '/P /UPDATE /ARGS' -PassThru
-    if (-not $p.WaitForExit(60000)) { $p.Kill(); throw 'Legacy updater installer timed out.' }
-    if ($p.ExitCode -ne 0) { throw "Legacy updater installer failed: $($p.ExitCode)" }
-    $checks += 'legacy_updater_passive_arguments_accepted'
+    $env:UNIC_HOME = Join-Path $Root 'restart-profile'
+    try {
+      $p = Start-Process -FilePath $Installer -ArgumentList '/P /R /UPDATE /ARGS --resident-restart' -PassThru
+      if (-not $p.WaitForExit(60000)) { $p.Kill(); throw 'Legacy updater installer timed out.' }
+      if ($p.ExitCode -ne 0) { throw "Legacy updater installer failed: $($p.ExitCode)" }
+      $deadline = [DateTime]::UtcNow.AddSeconds(15)
+      $desktopPath = Join-Path $install 'unic-desktop.exe'
+      do {
+        $restarted = Get-Process -Name unic-desktop -ErrorAction SilentlyContinue |
+          Where-Object { $_.Path -eq $desktopPath }
+        if (-not $restarted) { Start-Sleep -Milliseconds 100 }
+      } while (-not $restarted -and [DateTime]::UtcNow -lt $deadline)
+      if (-not $restarted) { throw 'The legacy installer invocation did not relaunch v2.' }
+      $checks += 'legacy_updater_passive_arguments_accepted'
+      $checks += 'legacy_updater_relaunched_installed_v2'
+    } finally {
+      Stop-LaunchedDesktop
+      $env:UNIC_HOME = $profile
+    }
   } else {
     Install $Installer ''
   }
@@ -80,7 +107,7 @@ try {
   if ((Snapshot $legacy) -ne $before -or (Snapshot $profile) -ne $profileBefore) { throw 'Uninstall changed v1/v2 user data.' }
   if ([Environment]::GetEnvironmentVariable('Path', 'User') -ne $oldPath -or [Environment]::GetEnvironmentVariable('Path', 'Machine') -ne $oldMachinePath) { throw 'Public CLI PATH changed.' }
   $checks += 'uninstall_preserves_v1_and_migrated_v2_data'
-  $report = @{status='passed'; assertions=$checks; target='windows-arm64'; v1_version=$v1Version; v1_binary_sha256=$v1Binary; v1_installer_sha256=$V1Sha256; v2_installer_sha256=(Get-FileHash $Installer -Algorithm SHA256).Hash.ToLower(); v2_identity=$identity; gui='not_run'; scope='actual official v1 NSIS replacement; synthetic frozen encrypted v3 history; SYSTEM session 0; WebView2 bootstrap excluded'}
+  $report = @{status='passed'; assertions=$checks; target=$Target; v1_version=$v1Version; v1_binary_sha256=$v1Binary; v1_installer_sha256=$V1Sha256; v2_installer_sha256=(Get-FileHash $Installer -Algorithm SHA256).Hash.ToLower(); v2_identity=$identity; gui='interaction_not_run'; scope='actual official v1 NSIS replacement; synthetic frozen encrypted v3 history; WebView2 bootstrap excluded'}
 } catch {
   $report = @{status='failed'; assertions=$checks; error_type=$_.Exception.GetType().FullName; error=$_.Exception.Message; v1_version=$v1Version}
   throw

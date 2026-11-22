@@ -449,7 +449,7 @@ Before writing a prepared tree, the adapter rechecks the current clipboard again
 
 ## Application and tray icons
 
-Desktop reuses the original v1 application assets in `app/desktop/internal/appicons`. The asset README records their source commit and SHA-256 digests. The main window, macOS Dock and About view share the embedded application PNG.
+Desktop generates its launch artwork from the supplied Unic logo. The packaged macOS Dock uses the bundle icon through Launch Services. The unbundled macOS binary uses the matching embedded PNG. Windows and Linux windows use their platform artwork. About uses the 512-pixel PNG. See the [asset guide](../../app/desktop/internal/appicons/README.md).
 
 Settings > General > Tray icon selects `glyph` (the v1 default, two offset rounded cards) or `cat` (the original cat alpha mask). The revision-checked configuration API persists `desktop.tray_icon`. The existing Desktop file watcher applies the saved preference immediately. `unic config set desktop.tray_icon '"cat"'` and direct TOML edits use the same validation and update path. Invalid values retain the previous valid configuration. The tray applies this preference while it runs. Normal GUI close retains the tray; lightweight GUI close removes it.
 

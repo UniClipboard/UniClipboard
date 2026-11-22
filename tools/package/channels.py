@@ -322,7 +322,9 @@ rpm2cpio %{{SOURCE0}} | cpio -idm
 /usr/lib/uniclipboard
 /usr/bin/uniclipboard
 /usr/share/applications/{APP_ID}.desktop
+/usr/share/icons/hicolor/48x48/apps/uniclipboard.png
 /usr/share/icons/hicolor/512x512/apps/uniclipboard.png
+/usr/share/icons/hicolor/scalable/apps/uniclipboard.svg
 """,
             )
         elif channel in ["aur", "pacman"]:

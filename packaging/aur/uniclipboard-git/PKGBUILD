@@ -45,5 +45,7 @@ package() {
   ln -s /usr/lib/uniclipboard/unic-desktop "$pkgdir/usr/bin/uniclipboard"
   install -Dm644 packaging/linux/uniclipboard.desktop "$pkgdir/usr/share/applications/app.uniclipboard.desktop.desktop"
   install -Dm644 "$srcdir/desktop-stage/payload/icon.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/uniclipboard.png"
+  install -Dm644 "$srcdir/desktop-stage/payload/icon-linux-48.png" "$pkgdir/usr/share/icons/hicolor/48x48/apps/uniclipboard.png"
+  install -Dm644 "$srcdir/desktop-stage/payload/icon-linux.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/uniclipboard.svg"
   install -Dm644 "$srcdir/desktop-stage/manifest.json" "$pkgdir/usr/share/doc/uniclipboard/source-build.json"
 }

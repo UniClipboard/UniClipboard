@@ -1,5 +1,5 @@
 #!/bin/sh
-# Regenerate the checked-in Windows icon resources from the unchanged v1 ICO.
+# Regenerate the checked-in Windows executable resources from the app ICO.
 set -eu
 cd "$(dirname "$0")/../.."
 work=$(mktemp -d)

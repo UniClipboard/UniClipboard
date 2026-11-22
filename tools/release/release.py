@@ -13,10 +13,11 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 import tomllib
 from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -343,8 +344,11 @@ def registry_url(value):
 
 
 def registry_get(registry, name):
+    request = Request(
+        registry + "/" + quote(name, safe="@"), headers={"Cache-Control": "no-cache"}
+    )
     try:
-        with urlopen(registry + "/" + quote(name, safe="@"), timeout=30) as response:
+        with urlopen(request, timeout=30) as response:
             data = response.read(16 * 1024 * 1024 + 1)
             if len(data) > 16 * 1024 * 1024:
                 raise ValueError("registry response too large")
@@ -353,6 +357,18 @@ def registry_get(registry, name):
         if error.code == 404:
             return {"versions": {}, "dist-tags": {}}
         raise
+
+
+def registry_readback(registry, name, select, error):
+    deadline = time.monotonic() + 180
+    while True:
+        observed = select(registry_get(registry, name))
+        if observed:
+            return observed
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError(error + ": " + name)
+        time.sleep(min(2, remaining))
 
 
 def validate_manifest(path):
@@ -504,16 +520,16 @@ def distribute(args):
                 if not fixture:
                     command.append("--provenance")
                 run(command)
-            remote = (
-                registry_get(registry, package["name"])
-                .get("versions", {})
-                .get(package["version"])
+            remote = registry_readback(
+                registry,
+                package["name"],
+                lambda data: data.get("versions", {}).get(package["version"]),
+                "package read-back timed out",
             )
-            if (
-                not remote
-                or remote.get("dist", {}).get("integrity") != package["integrity"]
-            ):
-                raise ValueError("package read-back failed: " + package["name"])
+            if remote.get("dist", {}).get("integrity") != package["integrity"]:
+                raise ValueError(
+                    "package read-back integrity conflict: " + package["name"]
+                )
             run(
                 [
                     "npm",
@@ -525,11 +541,12 @@ def distribute(args):
                     registry,
                 ]
             )
-            if (
-                registry_get(registry, package["name"]).get("dist-tags", {}).get(tag)
-                != package["version"]
-            ):
-                raise ValueError("channel read-back failed: " + package["name"])
+            registry_readback(
+                registry,
+                package["name"],
+                lambda data: data.get("dist-tags", {}).get(tag) == package["version"],
+                "channel read-back timed out",
+            )
             item["status"] = "available"
             save(args.receipt, receipt)
         receipt["status"] = "available"

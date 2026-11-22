@@ -44,6 +44,19 @@ Behavior is documented in the [Desktop runtime architecture](../architecture/des
   The remaining warnings concern observability, overview, pipeline, real-machine
   testing and releases; this checkpoint does not certify those whole pages.
 
+## PR base integration
+
+The initial draft had one conflict with `v2`, in the Desktop runtime architecture
+verification marker. Merge commit `e0174bb` incorporates the current `v2`
+Desktop E2E sharding and timing changes. Both the device-management documentation
+and the upstream runtime-budget documentation are retained. No production
+behavior changed in this merge. Desktop E2E package compilation is checked
+without running a native window (`go test ./app/desktop/e2e -run '^$'`, PASS;
+no scenarios executed). Pinned lint passed again with zero issues. Documentation
+checks passed again with the same five stale-page warnings, and the Desktop
+runtime verification marker now names the merge commit. The earlier production process results above
+remain evidence for their pre-merge source; they are not a new post-merge run.
+
 ## Acceptance limits
 
 The earlier unexplained Tailcat failure and the merge hold remain recorded in

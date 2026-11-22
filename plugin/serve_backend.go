@@ -65,6 +65,26 @@ func (s *server) submit(ctx context.Context, c *rpc.Call) (any, error) {
 	return rpc.SubmitResult{Queued: queued}, nil
 }
 
+func (s *server) pairChannel(ctx context.Context, c *rpc.Call) (any, error) {
+	pairer, ok := s.p.(ChannelPairer)
+	if !ok || !s.spec.ExternalChannels {
+		return nil, rpc.NewError(rpc.CodeUnsupported)
+	}
+	var in rpc.ChannelPair
+	if err := rpc.Decode(c.Params, &in); err != nil || in.Validate() != nil {
+		return nil, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	if err := s.started(); err != nil {
+		return nil, err
+	}
+	var out rpc.ChannelPairResult
+	err := safely(func() (err error) {
+		out.RemoteContext, out.ReportedName, err = pairer.PairChannel(ctx, in.Code)
+		return err
+	})
+	return out, err
+}
+
 func (s *server) leaveChannel(ctx context.Context, c *rpc.Call) (any, error) {
 	l, ok := s.p.(ChannelLeaver)
 	if !ok || !s.spec.RemoteRevocation {
@@ -97,6 +117,13 @@ func (h remoteSyncHost) Report(target string, state SyncState, _ error) {
 }
 
 type remoteReceiver struct{ s *server }
+
+func (r remoteReceiver) ResolveChannel(ctx context.Context, remoteContext []byte) (string, error) {
+	var out rpc.ChannelResolution
+	_, err := r.s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodResolveChannel, Timeout: 5 * time.Second,
+		Params: rpc.ChannelContext{RemoteContext: remoteContext}}, &out)
+	return out.ID, err
+}
 
 func (r remoteReceiver) AuthorizeChannel(ctx context.Context, channelID, mime string) (bool, error) {
 	var result rpc.AuthorizeChannelResult

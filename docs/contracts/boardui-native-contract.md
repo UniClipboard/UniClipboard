@@ -28,7 +28,7 @@ The caller owns validation, persistence, requests, cancellation and stale-result
 
 ## Implemented control interfaces and limits
 
-- Button preserves the source's four named variants, three named sizes, leading/trailing glyphs, icon-only accessible names, disabled activation and 0.98 press motion. `DressButton` applies that presentation to an existing native action base. Busy is a host extension that exposes busy and blocks activation; it is not an additional official source visual variant.
+- Button preserves the source's four named variants, three named sizes, leading/trailing glyphs, icon-only accessible names, disabled activation and 0.98 press motion. `DressButton` applies that presentation to an existing native action base. The host's busy state displays the native spinner in the leading slot, exposes busy to accessibility and blocks activation.
 - `DressLinkButton` styles an existing native button action. It does not create an anchor, URL navigation or browser behavior.
 - Input accepts caller-owned text and preserves label/description/error association, placeholder, password, read-only and disabled behavior in two sizes. Error replaces the visible description. Required paints the source marker and adds an accessible description; the fixed mygo bridge exposes no separate required state. Hidden visual labels retain the accessible name.
 - Select accepts a selected-value pointer, stable item IDs and an optional open pointer. It uses a real nonmodal in-window listbox on every OS. PopoverBase, FocusGroup and ButtonBase own outside dismissal, keyboard navigation and activation. The component retains initial selected focus, disabled choices, top-scope Escape, selection and trigger focus restoration. Typeahead, rich option renderers, sections and async option loading remain outside this API. Selection is read from the bound value; no trigger Changed() notification is promised.
@@ -38,6 +38,8 @@ The caller owns validation, persistence, requests, cancellation and stale-result
 - SegmentedControl accepts one caller-owned value and stable items, with solid/plain presentation. Native focus groups own arrows/Home/End/Tab and native buttons own Enter/Space. Arrow focus alone does not commit or clear selection. Disabled items remain noninteractive.
 
 New control implementation is not automatic visual acceptance. Each added state set requires its own actual-React/native comparison and behavior evidence. Application search, code/combobox fields, lists/tables, settings/status/tag views, menus, sheets and previews are explicit `desktopkit`/`desktopui` compositions, not claims that all similarly named official catalogue APIs have been ported.
+
+Informational inline notices pair the active scheme's notification information background and icon tokens with primary text for the title and body.
 
 Unknown variants/resource names and nil mandatory pointers are programmer errors. Fail visibly rather than selecting an approximate fallback skin or missing token. Icon-only actions require a nonempty accessible name. Glyphs are decorative; the action or field supplies its semantic name.
 

@@ -152,10 +152,12 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 			pending = true
 		}
 	}
-	if pending {
+	p := &d.pluginSettings
+	external, externalSelected := d.installedExternalPlugin(p.id)
+	externalPending := externalSelected && (external.Restart || p.form != nil && p.form.state.Restart)
+	if pending || externalPending {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("插件设置已保存。请退出并重新启动桌面端以生效。")})
 	}
-	p := &d.pluginSettings
 	if p.installError != "" {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: p.installError})
 	} else if p.installNotice != "" {
@@ -192,11 +194,9 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 		}
 	}
 	if entry.id == "" {
-		for _, item := range l.externalPlugins {
-			if item.ID == p.id {
-				d.externalPluginDetail(c, k, item, cfg)
-				return
-			}
+		if externalSelected {
+			d.externalPluginDetail(c, k, external, cfg)
+			return
 		}
 		p.id = ""
 		p.form = nil
@@ -242,7 +242,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 		d.syncPluginPolicy(c, k, p.id, cfg)
 		return
 	}
-	k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name}, func() {
+	k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name, Footer: d.tr("以下策略保存后立即生效，仍受全局同步设置限制。")}, func() {
 		enabled := cfg.PluginEnabled(p.id)
 		label := "启用文本工具"
 		if p.id == "builtin.classify" {
@@ -404,20 +404,16 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 				shown := 0
 				for _, item := range l.externalPlugins {
 					cat, hasCat := d.marketplaceEntry(item.ID)
-					displayName := item.ID
-					summary := "v" + item.Version
+					displayName, catSummary := d.pluginDisplay(item)
+					summary := pluginSubtitle(item, catSummary)
 					meta := "v" + item.Version
 					icon, tone := pluginIconForCategory("", item.Capabilities)
 					if hasCat {
-						displayName = cat.Name
-						summary = cat.Summary
 						meta = "v" + item.Version + " · " + cat.Author
 						if cat.ZeroConfig {
 							meta += " · " + d.tr("免配置")
 						}
 						icon, tone = pluginIconForCategory(cat.Category, item.Capabilities)
-					} else if item.ImplementationID != "" && item.ImplementationID != item.ID {
-						summary = item.ImplementationID + " · v" + item.Version
 					}
 					if query != "" && !strings.Contains(strings.ToLower(displayName+" "+item.ID+" "+summary), query) {
 						continue
@@ -548,7 +544,6 @@ func (d *viewState) syncPluginPolicy(c *ui.Context, k desktopkit.Kit, id string,
 				instance.Enabled = &enabled
 			}
 		}
-		k.Text(c, d.tr("以下策略保存后立即生效，仍受全局同步设置限制。"), footnote)
 		on := func(v *bool) bool { return v == nil || *v }
 		text, images, files := on(instance.Sync.Text), on(instance.Sync.Images), on(instance.Sync.Files)
 		toggle("text", "同步文本", "允许此后端发送和接收文本。", &text)

@@ -30,6 +30,7 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 	searchRoutes(mux, b)
 	bindingRoutes(mux, b)
 	pluginRoutes(mux, b)
+	channelPairRoute(mux, b)
 
 	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
 		st, err := b.Status(r.Context())

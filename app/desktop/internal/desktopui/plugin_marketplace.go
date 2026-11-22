@@ -625,6 +625,10 @@ func (d *viewState) pluginsAdvancedView(c *ui.Context, k desktopkit.Kit, cfg con
 				return d.tr(b.name)
 			}
 		}
+		if item, ok := d.installedExternalPlugin(id); ok {
+			name, _ := d.pluginDisplay(item)
+			return name
+		}
 		if cat, ok := d.marketplaceEntry(id); ok {
 			return cat.Name
 		}
@@ -718,15 +722,21 @@ func (d *viewState) pluginManualInstallDialog(c *ui.Context, k desktopkit.Kit) {
 			if k.Button(c.Key("manual-cancel"), d.tr("取消"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
 				p.manualOpen = false
 			}
-			canSubmit := strings.HasPrefix(strings.TrimSpace(p.manualRepo), "https://github.com/") && !l.busy && p.installingID == ""
-			if k.Button(c.Key("manual-submit"), d.tr("安装"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Busy: p.installingID != "", Disabled: !canSubmit}).Clicked() {
+			repo := strings.TrimSpace(p.manualRepo)
+			installing := p.installingID != "" && p.installingID == repo
+			label := d.tr("安装")
+			if installing {
+				label = d.tr("正在安装…")
+			}
+			canSubmit := strings.HasPrefix(repo, "https://github.com/") && !l.busy && p.installingID == ""
+			if k.Button(c.Key("manual-submit"), label, desktopkit.ButtonProps{Variant: desktopkit.Primary, Busy: installing, Disabled: !canSubmit}).Clicked() {
 				d.installMarketplacePlugin(api.PluginInstallRequest{
-					Repository: strings.TrimSpace(p.manualRepo),
+					Repository: repo,
 					Ref:        strings.TrimSpace(p.manualRef),
 					Path:       strings.TrimSpace(p.manualPath),
 					Build:      p.manualBuild,
 					Enable:     p.manualEnable,
-				}, "", strings.TrimSpace(p.manualRepo))
+				}, "", repo)
 			}
 		})
 	})

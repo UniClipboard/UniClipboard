@@ -8,7 +8,8 @@ import (
 
 // ButtonProps preserves the fixed source's named variants and sizes. An empty
 // label with Icon is icon-only. Label supplies its accessible name. Busy is a
-// host state: it disables activation and exposes the accessibility busy flag.
+// host state: it shows a progress indicator, disables activation, and exposes
+// the accessibility busy flag.
 type ButtonProps struct {
 	Variant, Size             string
 	Icon, TrailingIcon, Label string
@@ -115,6 +116,9 @@ func (k Kit) DressButton(c *ui.Context, base ui.Element, label string, p ButtonP
 		}
 		e.Background(Token(k.Dark, fill))
 	}
+	if p.Busy {
+		ink = Token(k.Dark, "text-primary")
+	}
 	e.TextColor(ink)
 	colorDuration := time.Duration(Number("color-ms")) * time.Millisecond
 	if c.Preferences().ReduceMotion {
@@ -126,7 +130,9 @@ func (k Kit) DressButton(c *ui.Context, base ui.Element, label string, p ButtonP
 	}
 	e.FocusRingColor(Token(k.Dark, "border-focus-ring")).FocusRingOffset(2)
 	e.Children(func() {
-		if p.Leading != nil {
+		if p.Busy {
+			ui.Spinner(c.Key("busy")).Size(m.IconSize, m.IconSize).TextColor(ink).AccessHidden(true)
+		} else if p.Leading != nil {
 			p.Leading(m.IconSize)
 		} else if p.Icon != "" {
 			ui.Icon(c.Key("leading"), IconSVG(p.Icon)).Size(m.IconSize, m.IconSize).Shrink(0).TextColor(ink).AccessHidden(true)

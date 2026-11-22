@@ -58,6 +58,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0027](docs/decisions/proposed/0027-wenshushu-share-action.md) | Wenshushu temporary-share Action | Host and independent plugin implemented; process/live provider E2E passed. Repository: `UniClipboard/unic-plugin-wenshushu`; plugin ID: `unic.wenshushu`. Native UI and packaged releases pending. |
 | [0028](docs/decisions/proposed/0028-desktop-plugin-marketplace.md) | Desktop online plugin marketplace | Accepted; Obsidian-style online plugin marketplace backed by static `registry.json` + local cache + bundled fallback, reusing the verified GitHub installer. Prototype in `prototype/plugins.html`. |
 | [0029](docs/decisions/proposed/0029-extensible-sync-backend-integration.md) | Extensible sync backend integration | Initial independent SyncClipboard text and image slice implemented. Generic management, file streaming, and Engine-owned one-hop forwarding remain pending. |
+| [0030](docs/decisions/proposed/0030-plugin-display-i18n.md) | Plugin display text i18n | Implemented; optional manifest `name`/`summary` and `[i18n.<lang>]`, Schema `x-unic-ui.i18n`; Desktop resolves by UI language with default fallback. Action titles and marketplace entries stay single-language. Native visual acceptance pending. |
 
 ### 接口契约（`docs/contracts/`）
 

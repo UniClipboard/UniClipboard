@@ -1,10 +1,14 @@
 package desktopui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/png"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -27,6 +31,9 @@ func TestPluginMarketplaceFlowAndZeroConfigStatus(t *testing.T) {
 
 	var mu sync.Mutex
 	installed := []api.PluginInfo{}
+	const manualRepo = "https://github.com/mkdir700/unic-plugin-wxime"
+	manualStarted := make(chan struct{}, 2)
+	finishManual := make(chan struct{})
 	var installReq api.PluginInstallRequest
 	var uninstalledID string
 	cfgState := config.State{Revision: "rev-1", Config: config.Default()}
@@ -101,6 +108,15 @@ func TestPluginMarketplaceFlowAndZeroConfigStatus(t *testing.T) {
 	mux.HandleFunc("POST /v1/plugins/install", func(w http.ResponseWriter, r *http.Request) {
 		var req api.PluginInstallRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.Repository == manualRepo {
+			manualStarted <- struct{}{}
+			select {
+			case <-finishManual:
+				http.Error(w, "fixture rejected installation", http.StatusBadGateway)
+			case <-r.Context().Done():
+			}
+			return
+		}
 		mu.Lock()
 		installReq = req
 		info := api.PluginInfo{
@@ -182,6 +198,68 @@ func TestPluginMarketplaceFlowAndZeroConfigStatus(t *testing.T) {
 	wait("marketplace view", func() bool {
 		return d.pluginSettings.view == "marketplace" && tt.HasText("如何使用") && tt.HasText("隐私与安全")
 	})
+
+	// Hold a manual installation so its pending state can be observed.
+	if err := tt.Click("开发者：从链接手动安装"); err != nil {
+		t.Fatal(err)
+	}
+	wait("manual install dialog", func() bool { return tt.HasText("仓库链接") })
+	d.pluginSettings.manualRepo = manualRepo
+	tt.Advance(350 * time.Millisecond)
+	if err := tt.Click("安装"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-manualStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("manual install did not reach the service")
+	}
+	tt.Advance(350 * time.Millisecond)
+	bounds, ok := tt.Find("正在安装…")
+	if !ok {
+		t.Fatal("manual submit did not show its loading label")
+	}
+	crop := image.Rect(int(bounds.X)-24, int(bounds.Y)-2, int(bounds.X+bounds.W), int(bounds.Y+bounds.H)+2)
+	capture := func(name string) []byte {
+		t.Helper()
+		frame := tt.Image()
+		if !crop.In(frame.Bounds()) {
+			t.Fatal("loading button is outside the rendered frame")
+		}
+		var bytesOut bytes.Buffer
+		if err := png.Encode(&bytesOut, frame.SubImage(crop)); err != nil {
+			t.Fatal(err)
+		}
+		if dir := os.Getenv("UNIC_MANUAL_INSTALL_ARTIFACTS"); dir != "" {
+			var full bytes.Buffer
+			if err := png.Encode(&full, frame); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, name), full.Bytes(), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return bytesOut.Bytes()
+	}
+	first := capture("manual-install-loading-1.png")
+	tt.Advance(150 * time.Millisecond)
+	if bytes.Equal(first, capture("manual-install-loading-2.png")) {
+		t.Fatal("manual install button did not animate while the request was pending")
+	}
+	tt.ClickAt(bounds.X+bounds.W/2, bounds.Y+bounds.H/2)
+	select {
+	case <-manualStarted:
+		t.Fatal("loading button submitted a second installation")
+	default:
+	}
+	close(finishManual)
+	wait("manual install failure restores submit", func() bool {
+		return d.pluginSettings.manualOpen && !d.live.busy && tt.HasText("安装失败：") && !tt.HasText("正在安装…")
+	})
+	if err := tt.Click("取消"); err != nil {
+		t.Fatal(err)
+	}
+	wait("manual install dialog closed", func() bool { return !tt.HasText("仓库链接") })
 
 	// One-click install Wenshushu from the marketplace.
 	if err := tt.Click("安装"); err != nil {

@@ -129,6 +129,24 @@ sync_host.receive 参数只有 receive_id，其 RESPONSE 等所有 part 和 rece
 - Engine 为每个 transfer 保存目标表（≤ 256），全部目标终态或进程退出后清除；进程崩溃时未终态目标按失败结束，重启后重新装载。
 - 真实子进程测试：`engine/pluginchannel_proc_test.go`。P2P 的撤销屏障、`authorize_send`、接收准入与身份方法仍未实现。
 
+### Provider pairing and group resolution
+
+An external-channel plugin can implement `plugin.ChannelPairer`. Engine sends
+`backend.pair_channel` with a six-digit ASCII code. An empty payload explicitly
+resumes an existing provider pairing. The plugin returns a private group context
+of 1 to 256 bytes and a display name after the provider confirms membership.
+Engine then creates the channel through `AddChannel`. Pairing the same context
+again preserves the existing channel and its settings.
+
+Plugins use `backend.resolve_channel` with the private context to look up the
+local ID before polling or sending. An empty result means the channel is absent,
+disabled, or globally paused. The lookup is scoped to the calling plugin
+instance. The plugin verifies that the resolved ID appears in the submitted
+targets before publication and pins the provider request to that group.
+Engine checks receive authorization again when it admits content.
+Providers can return `unsupported` for pairing. Both methods keep the
+provider code and group context out of public status and error text.
+
 ## 6. 失败恢复、权限与待实现测试
 
 后端重启后重新 Bind、完整 ApplyState、Start，重新握手获取 session_token；旧 attempt、grant、content_handle、receive_id、流和连接事件全部失效。其他后端的 binding 与在途任务不因此失效。本地已保存身份与信任不因插件崩溃清空，未完成发送按失败结束，不重试结果不确定的 dispatch；本后端 pending 历史同步摘要按历史契约转 interrupted，不覆盖其他后端的成功/失败。

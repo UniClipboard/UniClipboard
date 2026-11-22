@@ -123,6 +123,8 @@ const (
 
 	// External-channel sync backend profile (sync-backend-contract §6a).
 	MethodSubmit           = "backend.submit"            // Engine→plugin
+	MethodPairChannel      = "backend.pair_channel"      // Engine→plugin
+	MethodResolveChannel   = "backend.resolve_channel"   // plugin→Engine
 	MethodLeaveChannel     = "backend.leave_channel"     // Engine→plugin
 	MethodRegister         = "backend.register"          // plugin→Engine
 	MethodReport           = "backend.report"            // plugin→Engine

@@ -586,6 +586,8 @@
             "sync_host.receive",
             "sync_host.receive_part",
             "backend.submit",
+            "backend.pair_channel",
+            "backend.resolve_channel",
             "backend.leave_channel",
             "backend.register",
             "backend.report",
@@ -1533,6 +1535,37 @@
         "queued"
       ],
       "additionalProperties": false
+    },
+    "ext_channel_pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string", "pattern": "^(|[0-9]{6})$" }
+      }
+    },
+    "ext_channel_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["remote_context"],
+      "properties": {
+        "remote_context": { "type": "string", "contentEncoding": "base64", "minLength": 4, "maxLength": 344 }
+      }
+    },
+    "ext_channel_pair_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["remote_context", "reported_name"],
+      "properties": {
+        "remote_context": { "type": "string", "contentEncoding": "base64", "minLength": 4, "maxLength": 344 },
+        "reported_name": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "ext_channel_resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
     },
     "ext_leave_channel": {
       "type": "object",

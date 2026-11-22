@@ -7,6 +7,7 @@ import (
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
 // External channels (decision 0009): peers of a backend that cannot prove a
@@ -134,6 +135,80 @@ func (b *pluginBackend) enabledChannels() []string {
 		}
 	}
 	return out
+}
+
+// PairChannelRequest chooses a provider instance and its six-digit code.
+// An empty code explicitly resumes the instance's existing provider pairing.
+type PairChannelRequest struct {
+	BackendID PluginID
+	Code      string
+}
+
+// PairChannel pairs through the selected provider and records its private group
+// context. Retrying an existing group preserves the user's channel settings.
+func (e *Engine) PairChannel(ctx context.Context, req PairChannelRequest) (Channel, error) {
+	if (rpc.ChannelPair{Code: req.Code}).Validate() != nil {
+		return Channel{}, newErr(CodeInvalidArgument, "channel pairing requires six ASCII digits")
+	}
+	release, gerr := e.historyGate(ctx, true, false)
+	if gerr != nil {
+		return Channel{}, gerr
+	}
+	b := e.channelBackend(req.BackendID)
+	release()
+	if b == nil {
+		return Channel{}, newErr(CodeNotFound, "no such external-channel backend")
+	}
+	pairer, ok := b.sb.(plugin.ChannelPairer)
+	if !ok {
+		return Channel{}, newErr(CodeUnsupported, "this backend does not support channel pairing")
+	}
+	remote, name, err := pairer.PairChannel(ctx, req.Code)
+	if ctx.Err() != nil {
+		return Channel{}, ctxErr(ctx.Err())
+	}
+	if err != nil {
+		var re *rpc.Error
+		if errors.As(err, &re) {
+			switch re.Code {
+			case rpc.CodeUnsupported:
+				return Channel{}, newErr(CodeUnsupported, "this backend does not support channel pairing")
+			case rpc.CodeInvalidArgument:
+				return Channel{}, newErr(CodeInvalidArgument, "the provider rejected channel pairing")
+			case rpc.CodeConflict:
+				return Channel{}, newErr(CodeConflict, "the backend already has a pairing or pairing is in progress")
+			case rpc.CodeInvalidState:
+				return Channel{}, newErr(CodeInvalidState, "the backend has no pairing to resume")
+			}
+		}
+		return Channel{}, newErr(CodeUnavailable, "channel pairing could not complete")
+	}
+	return e.AddChannel(ctx, AddChannelRequest{BackendID: req.BackendID, RemoteContext: remote, ReportedName: name})
+}
+
+func (b *pluginBackend) ResolveChannel(ctx context.Context, remote []byte) (string, error) {
+	release, err := b.e.historyGate(ctx, false, false)
+	if err != nil {
+		return "", err
+	}
+	defer release()
+	b.e.mu.Lock()
+	enabled := b.e.life == LifecycleRunning && b.e.runtime == RuntimeActive && b.e.settings.Value.Sync.Enabled
+	b.e.mu.Unlock()
+	if !enabled {
+		return "", nil
+	}
+	c, lookupErr := b.e.st.ChannelByContext(string(b.id), remote)
+	switch {
+	case errors.Is(lookupErr, store.ErrChannelNotFound):
+		return "", nil
+	case lookupErr != nil:
+		return "", channelStoreErr(lookupErr)
+	case !c.Enabled:
+		return "", nil
+	default:
+		return c.ID, nil
+	}
 }
 
 func (e *Engine) AddChannel(ctx context.Context, req AddChannelRequest) (Channel, error) {

@@ -31,7 +31,7 @@ paths:
   - internal/session/engine.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
-verified: 8bbc04226f011acf58c005af520f25564163501d
+verified: bbbbe5ed418e40009cea22eaf6e9be8e1d1dba2d
 ---
 # 设备身份、信任与配对
 
@@ -126,3 +126,12 @@ Implementation IDs and runtime instance IDs are distinct. The user-approved cont
 `engine/plugins.go` preserves handshake `Spec.ID` while using `PluginInstance.ID` for backend runtime authority and private directories. `engine/backend_status.go` projects local availability. `internal/store/backend_instances.go` atomically fixes implementation ownership and invalidates old instance authorizations when a changed Go configuration loads. The receiver selects a local instance through `JoinRequest.BackendID`; the ticket `be` names its implementation. Issuer redemption still checks the actual issuing instance. Protocol version remains 1.
 
 `app/service/internal/host/plugin_settings.go` resolves immutable installations separately from per-instance Schema settings. Desktop exposes these in Plugins, selects a running compatible instance in invite/connect tasks, and displays per-instance history outcomes. `app/service/internal/host/bindings.go` maps per-path pause/remove to the existing Engine CAS/barrier operations. Device details use the same service routes and show one device with multiple paths.
+
+
+## External provider pairing
+
+An installed external-channel plugin can expose provider pairing. The local
+service accepts an explicit pairing code or a resume request. Engine keeps the
+provider group context private and creates a channel after confirmation. An
+external backend resolves its private group to the local channel before
+transferring clipboard content. See the [sync backend contract](../contracts/sync-backend-contract.md#provider-pairing-and-group-resolution).

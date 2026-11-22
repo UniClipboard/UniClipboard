@@ -66,12 +66,13 @@ schema ≤256 KiB，节点深度≤16（根为 0）、总数≤512；配置输�
 | object / `group` | 嵌套分组 |
 | array / `list` | 可添加/删除的基础字段列表 |
 
-`x-unic-ui` 只有 `widget`、`order`、`group`、`option_labels`：
+`x-unic-ui` 只有 `widget`、`order`、`group`、`option_labels`、`i18n`：
 
 - `widget` 可省略，按上表推导；与 type/enum/writeOnly 冲突则拒绝。
 - `order` 是整数，缺省 0；同级字段按 order 升序，再按字段名升序排列。
 - `group` 是同级字段的展示组名，组按有序字段中首次出现的顺序排列。对象本身仍保留层级，不扁平化配置键。
 - `option_labels` 是与 enum 一一对应的字符串数组，省略或空数组时展示值本身。label 不改变实际提交值。
+- `i18n` 是 `{语言: {title, description, group, option_labels}}`，最多 16 种语言，键为 `en`、`pt-BR` 这类标签。各字段可省略，省略即沿用默认文本（无标签的 `title`、`description`、`group`、`option_labels`）。`option_labels` 非空时必须与 enum 数量一致。`title`/`group`/标签 ≤256 字符、`description` ≤1024 字符，拒绝控制字符。shell 按“完整标签、主语言子标签、默认文本”逐字段回退，忽略大小写。Go 生成器读取 `i18n:"{\"en\":{\"title\":\"Mode\"}}"` 标签。
 
 必填字段始终需要有效值；可选字段必须区分“未设置”与已设置的 false/0/空串。macOS 预览以“Set…”和“Remove value”表达可选值，使用原生 Form、TextField、Stepper、Picker、Toggle、TextEditor、SecureField，保持系统键盘导航和语义颜色。
 

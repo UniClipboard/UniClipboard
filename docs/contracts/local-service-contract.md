@@ -395,6 +395,8 @@ across service restarts. Review cleanup policy before importing old real history
 
 The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PUT /v1/plugins/{id}/settings`. The [settings contract](plugin-settings-contract.md#4-runtime-configuration) defines DTOs, revisions, write-only fields, and activation.
 
+`PluginInfo` also carries the optional manifest display text: `name`, `summary` and `i18n` (`{language: {name?, summary?}}`). The service does not know the UI language; the client resolves it as described in the [plugin contract](plugin-contract.md#展示文本与多语言).
+
 ### Marketplace and installation lifecycle
 
 | Method and path | Request | Result |
@@ -438,6 +440,13 @@ cancellation revokes upload readers when the opt-in flag is true.
 `GET /v1/sync-backends` returns an array of `{id, implementation_id, transport_kind, pairing, external_channels, state}` for assembled sync backends. One installed Go sync implementation can have multiple runtime instances. `pairing` describes device-pairing support and never applies to external channels. This projection contains no address, ticket, credential or process-private state. `state` reports local process availability and does not attest to current remote connectivity.
 
 `POST /v1/code` and `POST /v1/pairing-ticket` accept an empty body or `{ "backend_id": "instance.id" }`. An empty selection uses Tailcat. Unknown selections and unsupported transports fail explicitly and never fall back. Backend selection does not grant trust. The existing fingerprint and complete device/binding revision approval still applies.
+
+Pair an installed external-channel backend through `POST /v1/channels/pair`.
+Send `{backend_id, code}` for a new pairing or `{backend_id, resume: true}`
+to resume an existing provider pairing. The response is the external peer
+projection. The pairing code and group context are private. The CLI command
+`unic channel pair INSTANCE` reads the code from standard input.
+`unic channel pair INSTANCE --resume` requests explicit recovery without a code.
 
 CLI exposes `unic device backends` and `unic device addr --backend INSTANCE`. Desktop exposes the same backend selection in the invitation task. Standard backend policies use `plugins.instances."INSTANCE".sync` through the existing revision-checked configuration route. Enablement changes require service restart. Global sync and policies apply to the assembled running backend set while restart is pending. A zero-backend service retains local content, history and Actions.
 

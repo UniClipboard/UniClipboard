@@ -425,6 +425,14 @@ func (n *Node) channelName(ctx context.Context, id string) string {
 	return ""
 }
 
+func (n *Node) PairChannel(ctx context.Context, req api.ChannelPairRequest) (api.PeerStatus, error) {
+	c, err := n.e.PairChannel(ctx, engine.PairChannelRequest{BackendID: engine.PluginID(req.BackendID), Code: req.Code})
+	if err != nil {
+		return api.PeerStatus{}, apiErr(err, false)
+	}
+	return apiChannel(c), nil
+}
+
 func (n *Node) AddChannel(ctx context.Context, in api.ChannelAdd) (api.PeerStatus, error) {
 	c, err := n.e.AddChannel(ctx, engine.AddChannelRequest{
 		BackendID: engine.PluginID(in.BackendID), RemoteContext: []byte("local:" + in.Name),

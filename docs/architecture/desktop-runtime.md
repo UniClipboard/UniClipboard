@@ -42,7 +42,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: b065510e2903ffc3cd861a0e8c806b36a6ba07fa
+verified: afd685be5c67b5d7b8aa4044e9720d828370ecc3
 ---
 # Desktop configuration and received files
 
@@ -71,7 +71,11 @@ The three built-in plugins have no plugin-specific Schema fields. See the [execu
 
 ## External plugin settings
 
+The Plugins page shows a single restart banner at the top when plugin configuration or the selected external plugin's settings require a restart.
+
 Settings > Plugins lists external plugins discovered by the service. An external plugin detail page shows enablement, pending restart and any form defined by its manifest. The mygo renderer uses the same portable Schema as the service. Password fields show presence and allow replacement or clearing. Save checks the last revision. The service hot-replaces running Lua settings and reports a restart for Go settings. Install and uninstall are CLI operations.
+
+The detail and list names come from the manifest's text for the current UI language, then the marketplace entry, then the plugin ID; the subtitle never repeats the ID. Schema `title`, `description`, `group` and `option_labels` resolve the same way through `x-unic-ui.i18n` (see [plugin contract](../contracts/plugin-contract.md#展示文本与多语言)). Top-level schema fields carry the same inset as a settings row, the instance-creation control is a settings row, and the sync policy caption is the group footer.
 
 The history toolbar (`history.toolbar`) and the history list/grid right-click context menu "动作" submenu (`history.item_menu`) expose matching plugin Actions filtered by both declared `Accepts` and `Placements`, displaying each Action's plugin provenance subtitle. When a single item has no matching Actions (or multiple items are selected), the context menu hides the "动作" submenu. Desktop honors each Action's declared `PostActions`: `copy` requests clipboard application through the active adapter, `notify` shows a window-level status toast (with running cancellation), `present` opens a BoardUI result dialog with copy, view-item and explicit `http(s)://` open-link controls, `select` focuses the new history item, and `none` commits silently to history. A clipboard failure leaves the committed result in history. See the [settings contract](../contracts/plugin-settings-contract.md) and [Action contract](../contracts/clipboard-action-contract.md).
 

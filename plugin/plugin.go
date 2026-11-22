@@ -259,6 +259,18 @@ type SyncBackend interface {
 	Submit(ctx context.Context, v SyncView, h SyncHost) (queued bool, err error)
 }
 
+// ChannelPairer joins a provider group using a code. An empty code resumes
+// the provider's persisted pairing. The context identifies the group privately.
+type ChannelPairer interface {
+	PairChannel(ctx context.Context, code string) (remoteContext []byte, reportedName string, err error)
+}
+
+// ChannelResolver is an optional extension of Receiver for external-channel
+// backends. An empty result means the group has no active local channel.
+type ChannelResolver interface {
+	ResolveChannel(ctx context.Context, remoteContext []byte) (id string, err error)
+}
+
 // ChannelLeaver is implemented by external-channel backends that declare
 // RemoteRevocation: LeaveChannel removes this device from the remote group.
 // The engine deletes its own channel record only after it returns nil.

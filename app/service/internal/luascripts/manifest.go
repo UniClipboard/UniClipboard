@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/plugin/settings"
 )
 
 var pluginID = regexp.MustCompile(`^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+$`)
@@ -27,6 +28,9 @@ func (m Manifest) validate(installed bool) error {
 		len(m.Capabilities) == 0 || !m.validKind(installed) {
 		return errors.New("invalid plugin identity or kind")
 	}
+	if err := m.validateDisplay(); err != nil {
+		return err
+	}
 	if m.SettingsSchema != "" && !localPath(m.SettingsSchema) ||
 		m.SettingsSHA256 != "" && (m.SettingsSchema == "" || !hashPattern.MatchString(m.SettingsSHA256)) {
 		return errors.New("invalid settings schema declaration")
@@ -39,6 +43,24 @@ func (m Manifest) validate(installed bool) error {
 			return errors.New("invalid or duplicate plugin artifact")
 		}
 		platforms[key] = true
+	}
+	return nil
+}
+
+const (
+	maxNameRunes    = 64
+	maxSummaryRunes = 200
+)
+
+// validateDisplay bounds the optional display name, summary and per-language
+// overrides. They are plain text and never affect plugin identity.
+func (m Manifest) validateDisplay() error {
+	bad := !settings.ValidText(m.Name, maxNameRunes) || !settings.ValidText(m.Summary, maxSummaryRunes) || len(m.I18N) > settings.MaxLanguages
+	for tag, text := range m.I18N {
+		bad = bad || !settings.ValidLanguage(tag) || !settings.ValidText(text.Name, maxNameRunes) || !settings.ValidText(text.Summary, maxSummaryRunes)
+	}
+	if bad {
+		return errors.New("invalid plugin display text")
 	}
 	return nil
 }

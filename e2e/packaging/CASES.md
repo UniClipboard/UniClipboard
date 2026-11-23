@@ -34,6 +34,7 @@ Public destinations, native windows and system clipboard acceptance are separate
 - A CI CLI candidate with the wrong workflow/run/repository/SHA, missing target or altered package must fail lock selection before metadata changes.
 - Mixed Desktop sources, missing formats, absent lifecycle/signing receipts or an untrusted updater key must fail final assembly.
 - A destination object with different bytes must never be overwritten; retry of identical bytes must resume; partial upload must not move a channel.
+- A conditional write conflict must preserve the conflicting object and block registration and the availability receipt, even when other independent uploads succeeded.
 - A live FlareRelease contract mismatch, stale revision or missing stable CLI must prevent channel mutation.
 - The updater must reject corrupt signatures, oversized responses, wrong format/target and downgrades; package-managed/Scoop/portable installs must not replace manager-owned files.
 - Reuse mygo's native updater and authenticated extraction/swap implementation. Its raw Ed25519/SHA256 protocol must not be confused with Minisign.

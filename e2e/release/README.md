@@ -14,6 +14,9 @@ Failure inventory recorded before implementation:
 - An archive escapes its extraction directory or omits the sibling daemon.
 - An already published package version has conflicting bytes.
 - A required platform package is missing but the main package is exposed.
+- Platform uploads remain serialized, or a platform failure lets the main package advance.
+- An already verified tag is written again on retry or after `npm publish` sets it.
+- A corrupt Linux tool cache entry bypasses the download digest.
 - Promotion repacks/reuploads or selects mutable latest artifacts.
 - Stable advances to an older build or changes alpha's pointer.
 - An existing v1 alpha tag blocks a strictly newer v2 release, or an unknown/same-base legacy tag is silently replaced.

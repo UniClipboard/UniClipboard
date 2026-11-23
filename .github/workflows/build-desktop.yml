@@ -93,12 +93,19 @@ jobs:
       - name: Sign Desktop payload
         if: matrix.goos == 'darwin' && inputs.distribution
         run: python3 tools/package/desktop.py sign --stage dist/stage --identity "$UNIC_MACOS_SIGNING_IDENTITY"
+      - name: Restore Linux packaging tool downloads
+        if: matrix.goos == 'linux'
+        uses: actions/cache@v4
+        with:
+          path: .cache/packaging-tools
+          key: packaging-tools-v1-${{ matrix.target }}-${{ hashFiles('packaging/tools.json') }}
+          restore-keys: packaging-tools-v1-${{ matrix.target }}-
       - name: Install pinned Linux format tools
         if: matrix.goos == 'linux'
         run: |
-          python3 tools/package/install-tools.py --output dist/tools/nfpm
-          python3 tools/package/install-tools.py --tool appimagetool --output dist/tools/appimagetool
-          python3 tools/package/install-tools.py --tool appimage-runtime --output dist/tools/appimage-runtime
+          python3 tools/package/install-tools.py --cache-dir .cache/packaging-tools --output dist/tools/nfpm
+          python3 tools/package/install-tools.py --cache-dir .cache/packaging-tools --tool appimagetool --output dist/tools/appimagetool
+          python3 tools/package/install-tools.py --cache-dir .cache/packaging-tools --tool appimage-runtime --output dist/tools/appimage-runtime
       - name: Construct Linux packages
         if: matrix.goos == 'linux'
         env:

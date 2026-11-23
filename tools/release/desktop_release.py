@@ -2,6 +2,7 @@
 """Immutable Desktop catalogue, conditional R2 delivery and FlareRelease API promotion."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 import hashlib
 import json
@@ -130,7 +131,9 @@ def acquire(args):
         return subprocess.check_output(["gh", *map(str, argv)], text=True).strip()
 
     run = json.loads(gh("api", f"repos/{repo}/actions/runs/{args.run_id}"))
-    workflow = json.loads(gh("api", f"repos/{repo}/actions/workflows/build-desktop.yml"))
+    workflow = json.loads(
+        gh("api", f"repos/{repo}/actions/workflows/build-desktop.yml")
+    )
     if (
         run.get("conclusion") != "success"
         or run.get("workflow_id") != workflow["id"]
@@ -446,7 +449,7 @@ def verify_stable_acceptance(manifest, desktop, path):
             )
 
 
-def matches(client, bucket, key, path):
+def matches(client, bucket, key, path, expected_sha256=None):
     from botocore.exceptions import ClientError
 
     try:
@@ -457,12 +460,15 @@ def matches(client, bucket, key, path):
         raise
     h, size = hashlib.sha256(), 0
     with result["Body"] as body:
+        expected_size = path.stat().st_size
+        if expected_sha256 is None:
+            expected_sha256 = package.sha(path)
         while block := body.read(1 << 20):
             size += len(block)
-            if size > path.stat().st_size:
+            if size > expected_size:
                 raise ValueError("conflicting immutable object: " + key)
             h.update(block)
-    if size != path.stat().st_size or h.hexdigest() != package.sha(path):
+    if size != expected_size or h.hexdigest() != expected_sha256:
         raise ValueError("conflicting immutable object: " + key)
     return True
 
@@ -530,34 +536,35 @@ def publish(args):
     ]
     files.append((prefix + manifest.name, manifest))
     expected = {key: package.sha(path) for key, path in files}
-    # Preflight all existing objects before the first remote mutation.
-    present = {key: matches(client, args.bucket, key, path) for key, path in files}
     from botocore.exceptions import ClientError
 
-    for key, path in files:
+    def verify_stored(entry):
+        key, path = entry
+        return matches(client, args.bucket, key, path, expected[key])
+
+    def store(entry):
+        key, path = entry
         if package.sha(path) != expected[key]:
             raise ValueError("candidate changed during publication")
-        if not present[key]:
-            try:
-                with path.open("rb") as stream:
-                    client.put_object(
-                        Bucket=args.bucket,
-                        Key=key,
-                        Body=stream,
-                        ContentLength=path.stat().st_size,
-                        IfNoneMatch="*",
-                        Metadata={"sha256": package.sha(path)},
-                    )
-            except ClientError as e:
-                if e.response["Error"]["Code"] not in ("PreconditionFailed", "412"):
-                    raise
-        if not matches(client, args.bucket, key, path):
+        try:
+            with path.open("rb") as stream:
+                client.put_object(
+                    Bucket=args.bucket,
+                    Key=key,
+                    Body=stream,
+                    ContentLength=path.stat().st_size,
+                    IfNoneMatch="*",
+                    Metadata={"sha256": expected[key]},
+                )
+        except ClientError as e:
+            if e.response["Error"]["Code"] not in ("PreconditionFailed", "412"):
+                raise
+        if not verify_stored(entry):
             raise ValueError("uploaded object is missing")
-    if any(package.sha(path) != expected[key] for key, path in files):
-        raise ValueError("candidate changed during publication")
-    result = request(admin, "/api/releases/register", body, access=True)["data"]
-    # Registration does not advance a channel.
-    for key, path in files:
+
+    def verify_public(entry):
+        key, path = entry
+        size = path.stat().st_size
         with urlopen(
             Request(
                 public + "/" + key + "?source=origin",
@@ -569,10 +576,23 @@ def publish(args):
             while block := response.read(1 << 20):
                 h.update(block)
                 n += len(block)
-                if n > path.stat().st_size:
+                if n > size:
                     raise ValueError("public artifact exceeds accepted size")
-        if n != path.stat().st_size or h.hexdigest() != package.sha(path):
+        if n != size or h.hexdigest() != expected[key]:
             raise ValueError("public artifact read-back mismatch")
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        # Preflight all existing objects before the first remote mutation.
+        present = list(executor.map(verify_stored, files))
+        missing = [
+            entry for entry, found in zip(files, present, strict=True) if not found
+        ]
+        list(executor.map(store, missing))
+        if any(package.sha(path) != expected[key] for key, path in files):
+            raise ValueError("candidate changed during publication")
+        result = request(admin, "/api/releases/register", body, access=True)["data"]
+        # Registration does not advance a channel.
+        list(executor.map(verify_public, files))
     save(
         args.receipt,
         {

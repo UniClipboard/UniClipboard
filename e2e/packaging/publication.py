@@ -163,7 +163,7 @@ try:
                 assert self.headers.get("If-None-Match") == "*"
                 key = unquote(urlparse(self.path).path).removeprefix("/bucket/")
                 body = self.rfile.read(int(self.headers["Content-Length"]))
-                if inject == "race":
+                if inject == key:
                     objects[key] = b"racing-conflict"
                     inject = None
                 if key in objects:
@@ -421,13 +421,26 @@ try:
         objects.clear()
         writes.clear()
         registrations.clear()
-        inject = "race"
-        run(command, passed=False)
-        assert not writes and not registrations
+        catalogue_file = catalogue_json["artifacts"][0]["file"]
+        conflict_key = f"artifacts/desktop/2.0.0/build.1/{catalogue_file}"
+        inject = conflict_key
+        publication.unlink()
+        run(command, passed=False, error="conflicting immutable object")
+        assert objects[conflict_key] == b"racing-conflict"
+        assert (
+            conflict_key not in writes
+            and not registrations
+            and not any(key.endswith("/publication.json") for key in objects)
+            and release.package.cli.read_json(publication)["status"] == "failed"
+        )
         report["checks"].append("racing conditional writer cannot overwrite an object")
         server.shutdown()
         server.server_close()
         report["status"] = "passed"
+except BaseException as error:
+    report["status"] = "failed"
+    report["error"] = str(error)
+    raise
 finally:
     release.save(out / "report.json", report)
     (out / "SHA256SUMS").write_text(

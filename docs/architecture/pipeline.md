@@ -47,7 +47,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: 40d3bc84281bd5f74d3b0b6c6bee18f9cb3e9ba4
+verified: 5fe04abc83db1ff76b505e20699bf3c655cb1177
 ---
 # Clipboard pipeline and local history
 
@@ -74,6 +74,11 @@ The service can activate an installed Go Action-only plugin or external-channel
 backend at runtime. Engine assembles the verified child process before
 registering its Actions or publishing the backend and its policy. An inactive,
 enabled instance can activate when the user saves its required settings.
+External Go plugin subprocesses receive a minimal allowlisted environment
+(`UNIC_PLUGIN_PROTOCOL`, `UNIC_PLUGIN_DIR`, OS temporary-directory and Windows
+system-root variables, Unix TLS certificate variables, and outbound HTTP proxy
+variables) without inheriting unrelated host environment variables or
+credentials.
 
 ## Built-in content tags
 

@@ -54,11 +54,10 @@ The system linter could not read the repository's v2 configuration. The pinned
 linter initially selected an unavailable Go download. Running the pinned linter
 with the already installed Go 1.27.3 completed successfully.
 
-The overview `verified` bump was attempted and refused because the covered code
-is uncommitted. The existing SHA remains unchanged. The component contract has
-no architecture front matter and does not support `-bump`. Re-run the overview
-bump after committing the reviewed code; do not name the old HEAD as verification
-of an uncommitted implementation.
+The overview `verified` bump initially refused uncommitted code. During PR
+preparation, the implementation was committed and the overview marker was
+refreshed to that implementation commit. The component contract has no
+architecture front matter and does not support `-bump`.
 
 ## Twelve-color authoring acceptance
 
@@ -86,8 +85,9 @@ to mygo Color.Alpha, whose documented operation multiplies the stored alpha.
 Default settings acceptance passed: `20261123T011054Z-8cf27455`.
 The final Desktop build, all Desktop test-package compilation, targeted go vet,
 pinned lint (0 issues), formatter diff, catalogue freshness and whitespace checks
-passed. docscheck passed with the same seven stale-page warnings. The architecture
-verified bump still requires committed code, as recorded above.
+passed. docscheck initially passed with seven stale-page warnings. PR preparation
+refreshed the overview verification marker after committing the implementation;
+the final docscheck has six unrelated stale-page warnings.
 
 The final palette artifact contains five resolved palettes, 160 tokens per
 palette and ten PNG checkpoints (control scene plus dialog per palette). The

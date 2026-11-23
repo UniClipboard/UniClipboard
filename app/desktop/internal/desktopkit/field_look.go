@@ -123,12 +123,20 @@ const (
 // fldKindColors returns the chip fill and ink for a token kind.
 func (k Kit) fldKindColors(kind SearchTokenKind) (bg, ink ui.Color) {
 	switch kind {
-	case SearchKindTag:
-		return k.fldTagInk("orange")
-	case SearchKindSource:
-		return k.fldTagInk("green")
-	case SearchKindTime:
+	case SearchKindType:
 		return k.fldTagInk("blue")
+	case SearchKindTag:
+		return k.fldTagInk("purple")
+	case SearchKindSource:
+		if k.Dark {
+			return ui.RGBA(20, 184, 166, .20), ui.RGB(94, 234, 212)
+		}
+		return ui.RGB(204, 251, 241), ui.RGB(15, 118, 110)
+	case SearchKindTime:
+		if k.Dark {
+			return ui.RGBA(245, 158, 11, .20), ui.RGB(252, 211, 77)
+		}
+		return ui.RGB(254, 243, 199), ui.RGB(180, 83, 9)
 	}
 	return k.Color("background-secondary-default"), k.Color("text-primary")
 }

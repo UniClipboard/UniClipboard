@@ -7804,5 +7804,329 @@
     "ja": "設定 › ストレージからの移行",
     "pt-BR": "Configurações › Migração de armazenamento",
     "ru": "Настройки › Хранилище: перенос"
+  },
+  "标签「%s」": {
+    "en": "tag \"%s\"",
+    "ja": "タグ「%s」",
+    "pt-BR": "etiqueta \"%s\"",
+    "ru": "метка «%s»"
+  },
+  "设备「%s」": {
+    "en": "device \"%s\"",
+    "ja": "デバイス「%s」",
+    "pt-BR": "dispositivo \"%s\"",
+    "ru": "устройство «%s»"
+  },
+  "在「全部项目」中查找（退出%s）": {
+    "en": "Search in All items (leave %s)",
+    "ja": "すべての項目で検索（%sを解除）",
+    "pt-BR": "Pesquisar em Todos os itens (sair de %s)",
+    "ru": "Искать во всех записях (выйти из «%s»)"
+  },
+  "移除时间限制「%s」": {
+    "en": "Remove time filter \"%s\"",
+    "ja": "日時の絞り込み「%s」を解除",
+    "pt-BR": "Remover filtro de data \"%s\"",
+    "ru": "Снять фильтр по времени «%s»"
+  },
+  "不限内容类型（移除「%s」）": {
+    "en": "Any content type (remove \"%s\")",
+    "ja": "種類を問わない（「%s」を解除）",
+    "pt-BR": "Qualquer tipo (remover \"%s\")",
+    "ru": "Любой тип контента (убрать «%s»)"
+  },
+  "不限来源设备（移除「%s」）": {
+    "en": "Any source device (remove \"%s\")",
+    "ja": "デバイスを問わない（「%s」を解除）",
+    "pt-BR": "Qualquer dispositivo (remover \"%s\")",
+    "ru": "Любое устройство (убрать «%s»)"
+  },
+  "移除标签「%s」": {
+    "en": "Remove tag \"%s\"",
+    "ja": "タグ「%s」を解除",
+    "pt-BR": "Remover etiqueta \"%s\"",
+    "ru": "Снять метку «%s»"
+  },
+  "移除扩展名「%s」": {
+    "en": "Remove extension \"%s\"",
+    "ja": "拡張子「%s」を解除",
+    "pt-BR": "Remover extensão \"%s\"",
+    "ru": "Убрать расширение «%s»"
+  },
+  "清除关键词 “%s”，仅保留筛选条件": {
+    "en": "Clear \"%s\" and keep filters",
+    "ja": "キーワード「%s」をクリアして絞り込みを維持",
+    "pt-BR": "Limpar \"%s\" e manter os filtros",
+    "ru": "Очистить «%s» и оставить фильтры"
+  },
+  "让每一次复制更有用 — UniClipboard 示例文本": {
+    "en": "Make every copy useful — UniClipboard sample clip",
+    "ja": "すべてのコピーをもっと便利に — UniClipboard サンプル",
+    "pt-BR": "Torne cada cópia mais útil — Exemplo do UniClipboard",
+    "ru": "Делайте каждое копирование полезнее — пример UniClipboard"
+  },
+  "已捕获新剪贴板内容": {
+    "en": "New clipboard item captured",
+    "ja": "新しいクリップボード項目を保存しました",
+    "pt-BR": "Novo item da área de transferência salvo",
+    "ru": "Новая запись буфера обмена сохранена"
+  },
+  "无法创建示例内容，请稍后重试。": {
+    "en": "Couldn't create sample item. Try again later.",
+    "ja": "サンプル項目を作成できませんでした。しばらくしてからもう一度お試しください。",
+    "pt-BR": "Não foi possível criar o item de exemplo. Tente novamente.",
+    "ru": "Не удалось создать пример записи. Повторите попытку позже."
+  },
+  "搜索索引暂不可用": {
+    "en": "Search index unavailable",
+    "ja": "検索インデックスを利用できません",
+    "pt-BR": "Índice de pesquisa indisponível",
+    "ru": "Поисковый индекс недоступен"
+  },
+  "本地搜索索引正在修复或遇到预算限制。为避免漏检，当前暂停关键词检索；你仍可按侧栏或时间浏览完整历史。": {
+    "en": "The local search index is rebuilding or reached its storage budget. Keyword search is paused to avoid incomplete results, while browsing by sidebar or date remains available.",
+    "ja": "ローカル検索インデックスを再構築中、または容量上限に達しています。検索漏れを防ぐためキーワード検索を一時停止していますが、サイドバーや日時からの閲覧は利用できます。",
+    "pt-BR": "O índice de pesquisa local está em reconstrução ou atingiu o limite. A busca por texto foi pausada para evitar resultados incompletos; você ainda pode navegar pela barra lateral ou por data.",
+    "ru": "Локальный поисковый индекс восстанавливается или достиг лимита. Поиск по тексту приостановлен, чтобы избежать неполных результатов; просмотр по боковой панели и дате по-прежнему доступен."
+  },
+  "浏览全部历史": {
+    "en": "Browse all history",
+    "ja": "すべての履歴を表示",
+    "pt-BR": "Ver todo o histórico",
+    "ru": "Открыть всю историю"
+  },
+  "重试搜索": {
+    "en": "Retry search",
+    "ja": "再検索",
+    "pt-BR": "Tentar novamente",
+    "ru": "Повторить поиск"
+  },
+  "正在监听本机剪贴板": {
+    "en": "Listening to clipboard",
+    "ja": "クリップボードを監視中",
+    "pt-BR": "Monitorando a área de transferência",
+    "ru": "Отслеживание буфера обмена активно"
+  },
+  "正在连接本地服务…": {
+    "en": "Connecting to local service…",
+    "ja": "ローカルサービスに接続中…",
+    "pt-BR": "Conectando ao serviço local…",
+    "ru": "Подключение к локальной службе…"
+  },
+  "现在复制任意文字、代码、图片或文件，这里就会自动记录。": {
+    "en": "Copy any text, code, image, or file and it will appear here automatically.",
+    "ja": "テキスト、コード、画像、ファイルをコピーすると、ここに自動で記録されます。",
+    "pt-BR": "Copie qualquer texto, código, imagem ou arquivo para registrá-lo automaticamente aqui.",
+    "ru": "Скопируйте любой текст, код, изображение или файл — запись появится здесь автоматически."
+  },
+  "复制即刻整理": {
+    "en": "Organized as you copy",
+    "ja": "コピーと同時に整理",
+    "pt-BR": "Organizado ao copiar",
+    "ru": "Упорядочивание при копировании"
+  },
+  "自动归类文本、图片与文件夹，仅保存在本机": {
+    "en": "Automatically sorts text, images, and folders — stored locally",
+    "ja": "テキスト・画像・フォルダを自動分類し、このデバイスに保存します",
+    "pt-BR": "Classifica texto, imagens e pastas automaticamente, salvo apenas neste dispositivo",
+    "ru": "Автоматическая сортировка текста, изображений и папок с локальным хранением"
+  },
+  "随时唤起快捷面板": {
+    "en": "Open Quick panel anytime",
+    "ja": "いつでもクイックパネルを呼び出し",
+    "pt-BR": "Abra o Painel rápido a qualquer momento",
+    "ru": "Быстрая панель всегда под рукой"
+  },
+  "无需切出当前应用，搜索后直接粘贴": {
+    "en": "Search and paste right into your current app without switching windows",
+    "ja": "作業中のアプリから離れずに検索してそのまま貼り付けられます",
+    "pt-BR": "Pesquise e cole sem sair do aplicativo atual",
+    "ru": "Ищите и вставляйте записи, не переключаясь из текущего приложения"
+  },
+  "关联其他设备": {
+    "en": "Pair another device",
+    "ja": "他のデバイスを関連付け",
+    "pt-BR": "Parear outro dispositivo",
+    "ru": "Подключить другое устройство"
+  },
+  "与另一台电脑或手机配对，端到端加密同步剪贴板": {
+    "en": "Pair with another computer or phone for end-to-end encrypted sync",
+    "ja": "他のパソコンやスマートフォンとペアリングしてエンドツーエンド暗号化で同期",
+    "pt-BR": "Pareie com outro computador ou celular com sincronização criptografada de ponta a ponta",
+    "ru": "Свяжите с другим компьютером или телефоном для сквозной шифрованной синхронизации"
+  },
+  "去关联": {
+    "en": "Pair",
+    "ja": "関連付け",
+    "pt-BR": "Parear",
+    "ru": "Связать"
+  },
+  "跨设备同步已就绪": {
+    "en": "Cross-device sync ready",
+    "ja": "デバイス間同期の準備完了",
+    "pt-BR": "Sincronização entre dispositivos pronta",
+    "ru": "Синхронизация устройств готова"
+  },
+  "已关联 %d 台设备（%d 台在线），复制后自动同步": {
+    "en": "%d paired devices (%d online) — new copies sync automatically",
+    "ja": "%d台のデバイスを関連付け済み（%d台オンライン）・コピー時に自動同期",
+    "pt-BR": "%d dispositivos pareados (%d online) — novas cópias sincronizam automaticamente",
+    "ru": "Связано устройств: %d (в сети: %d) — новые записи синхронизируются автоматически"
+  },
+  "复制示例试试": {
+    "en": "Try a sample clip",
+    "ja": "サンプルをコピーして試す",
+    "pt-BR": "Testar com exemplo",
+    "ru": "Попробовать пример"
+  },
+  "从旧版导入…": {
+    "en": "Import from v1…",
+    "ja": "旧バージョンから読み込む…",
+    "pt-BR": "Importar da v1…",
+    "ru": "Импорт из v1…"
+  },
+  "还没有收藏的内容": {
+    "en": "No favorites yet",
+    "ja": "お気に入りはまだありません",
+    "pt-BR": "Nenhum favorito ainda",
+    "ru": "В избранном пока пусто"
+  },
+  "选中任意历史条目后点击工具栏星标，或按下 %s，即可把常用片段固定在这里。": {
+    "en": "Select any item and click the star in the toolbar or press %s to keep it here.",
+    "ja": "履歴を選択してツールバーの星をクリックするか %s を押すと、よく使う項目をここに固定できます。",
+    "pt-BR": "Selecione um item e clique na estrela na barra de ferramentas ou pressione %s para fixá-lo aqui.",
+    "ru": "Выберите запись и нажмите на звёздочку на панели инструментов или %s, чтобы закрепить её здесь."
+  },
+  "返回全部项目": {
+    "en": "Back to All items",
+    "ja": "すべての項目に戻る",
+    "pt-BR": "Voltar para Todos os itens",
+    "ru": "К списку всех записей"
+  },
+  "返回全部项目 (%d)": {
+    "en": "Back to All items (%d)",
+    "ja": "すべての項目に戻る (%d)",
+    "pt-BR": "Voltar para Todos os itens (%d)",
+    "ru": "Ко всем записям (%d)"
+  },
+  "“%s” 标签下还没有内容": {
+    "en": "No items tagged \"%s\"",
+    "ja": "タグ「%s」の項目はありません",
+    "pt-BR": "Nenhum item com a etiqueta \"%s\"",
+    "ru": "Нет записей с меткой «%s»"
+  },
+  "选中任意历史条目后按 T 添加「%s」标签，相关内容会自动归集在这里。": {
+    "en": "Select any item and press T to add the \"%s\" tag; matching items will appear here.",
+    "ja": "履歴を選択して T キーで「%s」タグを付けると、関連する項目がここにまとまります。",
+    "pt-BR": "Selecione qualquer item e pressione T para adicionar a etiqueta \"%s\".",
+    "ru": "Выберите запись и нажмите T, чтобы добавить метку «%s»."
+  },
+  "管理标签…": {
+    "en": "Manage tags…",
+    "ja": "タグを管理…",
+    "pt-BR": "Gerenciar etiquetas…",
+    "ru": "Управление метками…"
+  },
+  "还没有来自 %s 的历史": {
+    "en": "No history from %s yet",
+    "ja": "%s からの履歴はまだありません",
+    "pt-BR": "Nenhum histórico de %s ainda",
+    "ru": "Нет записей с устройства %s"
+  },
+  "%s 当前离线。设备重新连线后，新复制的内容会自动同步到这里。": {
+    "en": "%s is currently offline. New items copied there will sync once it reconnects.",
+    "ja": "%s は現在オフラインです。再接続すると、新しくコピーした内容が自動で同期されます。",
+    "pt-BR": "%s está offline no momento. Novos itens sincronizarão automaticamente quando reconectar.",
+    "ru": "Устройство %s сейчас не в сети. Новые записи синхронизируются после подключения."
+  },
+  "在 %s 上复制内容后，会自动同步到这台设备。": {
+    "en": "Items copied on %s will sync to this device automatically.",
+    "ja": "%s でコピーした内容は、このデバイスに自動で同期されます。",
+    "pt-BR": "Itens copiados em %s serão sincronizados automaticamente para este dispositivo.",
+    "ru": "Скопированные на %s записи автоматически синхронизируются с этим устройством."
+  },
+  "查看设备状态…": {
+    "en": "View device status…",
+    "ja": "デバイスの状態を確認…",
+    "pt-BR": "Ver status dos dispositivos…",
+    "ru": "Состояние устройств…"
+  },
+  "范围": {
+    "en": "Scope",
+    "ja": "範囲",
+    "pt-BR": "Escopo",
+    "ru": "Область"
+  },
+  "当前筛选条件下没有内容": {
+    "en": "No items match these filters",
+    "ja": "現在の条件に一致する項目はありません",
+    "pt-BR": "Nenhum item corresponde aos filtros",
+    "ru": "Нет записей, соответствующих фильтрам"
+  },
+  "同时满足以下条件的历史条目为空，可以移除部分条件或扩大时间范围。": {
+    "en": "No history entries match all active filters. Try removing a filter or widening the time range.",
+    "ja": "すべての条件を満たす履歴が見つかりませんでした。一部の条件を外すか期間を広げてみてください。",
+    "pt-BR": "Nenhum item atende a todos os filtros ativos. Remova algum critério ou amplie o período.",
+    "ru": "Ни одна запись не соответствует всем условиям. Попробуйте снять часть фильтров или расширить период."
+  },
+  "没有找到匹配 %s 的内容": {
+    "en": "No results for %s",
+    "ja": "%s に一致する項目がありません",
+    "pt-BR": "Nenhum resultado para %s",
+    "ru": "По запросу %s ничего не найдено"
+  },
+  "当前同时生效了 %d 项范围或筛选条件，放宽任意一项即可扩大查找范围。": {
+    "en": "%d scope or filter conditions are active. Relax any one of them to broaden your search.",
+    "ja": "%d件の範囲・絞り込み条件が有効です。いずれかを外すと検索範囲が広がります。",
+    "pt-BR": "%d condições de escopo ou filtro estão ativas. Remova qualquer uma para ampliar a busca.",
+    "ru": "Активно условий области и фильтров: %d. Ослабьте любое из них, чтобы расширить поиск."
+  },
+  "请检查拼写或换用更短的关键词。搜索匹配纯文本、网页正文与文件名，不检索图片文字或文件内部内容。": {
+    "en": "Check your spelling or try a shorter term. Search covers plain text, web text, and filenames, not text inside images or file contents.",
+    "ja": "スペルを確認するか、短いキーワードをお試しください。検索対象はテキスト・HTML本文・ファイル名で、画像内文字やファイル内容は対象外です。",
+    "pt-BR": "Verifique a ortografia ou use um termo mais curto. A busca cobre texto, conteúdo HTML e nomes de arquivos, não texto em imagens nem conteúdo interno de arquivos.",
+    "ru": "Проверьте написание или используйте более короткий запрос. Поиск выполняется по тексту, содержимому HTML и именам файлов, но не по тексту на изображениях или внутри файлов."
+  },
+  "清除%s筛选": {
+    "en": "Clear %s filter",
+    "ja": "%sの絞り込みを解除",
+    "pt-BR": "Limpar filtro de %s",
+    "ru": "Сбросить фильтр: %s"
+  },
+  "试试放宽条件": {
+    "en": "Try relaxing filters",
+    "ja": "条件を緩めてみる",
+    "pt-BR": "Tente ampliar os filtros",
+    "ru": "Попробуйте ослабить фильтры"
+  },
+  "点击立即切换": {
+    "en": "Click to apply",
+    "ja": "クリックで切り替え",
+    "pt-BR": "Clique para aplicar",
+    "ru": "Нажмите для применения"
+  },
+  "在全部项目中搜索 (%d)": {
+    "en": "Search in All items (%d)",
+    "ja": "すべての項目で検索 (%d)",
+    "pt-BR": "Pesquisar em Todos os itens (%d)",
+    "ru": "Искать во всех записях (%d)"
+  },
+  "清除全部筛选": {
+    "en": "Clear all filters",
+    "ja": "すべての絞り込みを解除",
+    "pt-BR": "Limpar todos os filtros",
+    "ru": "Сбросить все фильтры"
+  },
+  "清除搜索词": {
+    "en": "Clear search",
+    "ja": "検索をクリア",
+    "pt-BR": "Limpar pesquisa",
+    "ru": "Очистить поиск"
+  },
+  "按条件筛选：": {
+    "en": "Filter by:",
+    "ja": "条件で絞り込む:",
+    "pt-BR": "Filtrar por:",
+    "ru": "Фильтр по:"
   }
 }

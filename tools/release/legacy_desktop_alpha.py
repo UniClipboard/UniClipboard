@@ -6,7 +6,9 @@ import json
 from pathlib import Path
 import re
 import subprocess
-import urllib.request
+from urllib.parse import quote
+
+from desktop_release import request, safe_base
 
 TARGETS = {
     "darwin-aarch64": "darwin-arm64.app.tar.gz",
@@ -16,7 +18,10 @@ TARGETS = {
     "windows-aarch64": "windows-arm64-setup.exe",
     "windows-x86_64": "windows-amd64-setup.exe",
 }
-OLD_SOURCE = "0a72be0fc1532824b72d8d3828462c205ad348f5"
+SOURCE_COMMITS = {
+    "1.6.2-alpha.2": "0a72be0fc1532824b72d8d3828462c205ad348f5",
+    "1.6.2": "c6483d73c7a0234be68571fdb5fa3d38a17c4871",
+}
 REPOSITORY = "UniClipboard/UniClipboard"
 PUBLIC = "https://release.uniclipboard.app"
 
@@ -26,33 +31,43 @@ def digest(path):
         return hashlib.file_digest(data, "sha256").hexdigest()
 
 
-def public_json(path):
-    request = urllib.request.Request(
-        PUBLIC + path,
-        headers={"User-Agent": "UniClipboard-Release", "Accept": "application/json"},
-    )
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return json.load(response)
-
-
-def prepare(build, legacy_source, output):
+def prepare(version, build, admin, legacy_source, output):
+    if not re.fullmatch(r"2\.0\.(?:0|[1-9][0-9]*)", version):
+        raise ValueError("invalid Desktop version")
     if not re.fullmatch(r"[1-9][0-9]{0,8}", build):
         raise ValueError("invalid Desktop build number")
     commit = subprocess.check_output(
         ["git", "-C", legacy_source, "rev-parse", "HEAD"], text=True
     ).strip()
-    if commit != OLD_SOURCE:
+    if commit != SOURCE_COMMITS["1.6.2-alpha.2"]:
         raise ValueError("unexpected v1 updater source")
-    selected = public_json("/v1/desktop/alpha.json")
-    version = selected.get("version", "")
-    registration_digest = selected.get("manifestDigest", "")
+    publication = request(
+        PUBLIC,
+        f"/artifacts/desktop/{version}/build.{build}/publication.json?source=origin",
+    )
     if (
-        not re.fullmatch(r"2\.0\.(?:0|[1-9][0-9]*)", version)
-        or selected.get("buildNumber") != build
-        or not re.fullmatch(r"[a-f0-9]{64}", registration_digest)
+        publication.get("status") != "available"
+        or publication.get("product") != "desktop"
+        or publication.get("version") != version
+        or publication.get("build_number") != int(build)
+        or publication.get("fixture") is not False
     ):
-        raise ValueError("numbered alpha is not the requested release")
+        raise ValueError("unexpected numbered Desktop publication receipt")
+    release_id = publication["release"]["id"]
+    registered = request(
+        safe_base(admin), "/api/releases/" + quote(release_id, safe=""), access=True
+    )["data"]
     tag = f"desktop/v{version}-build.{build}"
+    registration_digest = registered.get("contentHash", "")
+    if (
+        registered.get("productId") != "desktop"
+        or registered.get("version") != version
+        or registered.get("buildNumber") != build
+        or registered.get("tagName") != tag
+        or registered.get("status") != "ready"
+        or not re.fullmatch(r"[a-f0-9]{64}", registration_digest or "")
+    ):
+        raise ValueError("unexpected numbered Desktop registration")
     release = json.loads(
         subprocess.check_output(
             [
@@ -93,13 +108,17 @@ def prepare(build, legacy_source, output):
         + [arg for name in filenames.values() for arg in ("--pattern", name)],
         check=True,
     )
-    catalogue = json.loads((output / "release-manifest.json").read_text())
+    manifest = output / "release-manifest.json"
+    if digest(manifest) != publication["manifest_sha256"]:
+        raise ValueError("GitHub catalogue differs from the origin publication")
+    catalogue = json.loads(manifest.read_text())
     if (
         catalogue["version"] != version
         or catalogue["build_number"] != int(build)
         or catalogue["product"] != "desktop"
         or catalogue["development"]
         or not catalogue["source_clean"]
+        or catalogue["source_sha"] != registered.get("source")
     ):
         raise ValueError("unexpected GitHub release catalogue")
     records = {record["file"]: record for record in catalogue["artifacts"]}
@@ -148,6 +167,7 @@ def prepare(build, legacy_source, output):
         "version": version,
         "buildNumber": build,
         "manifestDigest": registration_digest,
+        "sourceVersions": list(SOURCE_COMMITS),
         "signatures": signatures,
     }
     (output / "desktop-legacy-alpha.json").write_text(
@@ -157,11 +177,19 @@ def prepare(build, legacy_source, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", required=True)
     parser.add_argument("--build", required=True)
+    parser.add_argument("--admin", required=True)
     parser.add_argument("--legacy-source", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    prepare(args.build, args.legacy_source.resolve(), args.output.resolve())
+    prepare(
+        args.version,
+        args.build,
+        args.admin,
+        args.legacy_source.resolve(),
+        args.output.resolve(),
+    )
 
 
 if __name__ == "__main__":

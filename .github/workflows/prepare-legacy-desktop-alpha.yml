@@ -2,14 +2,19 @@ name: Prepare legacy Desktop alpha
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: Published Desktop Alpha version
+        type: string
+        default: '2.0.0'
       build_number:
-        description: Published numbered Desktop alpha build to sign for 1.6.2-alpha.2
+        description: Published Desktop Alpha build to sign for 1.6.2 and 1.6.2-alpha.2
         type: string
         required: true
 permissions:
   contents: read
 jobs:
   sign:
+    environment: Production
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -27,12 +32,17 @@ jobs:
           cache-dependency-path: v1-source/apps/gui-go/go.sum
       - name: Sign exact published assets and check with the embedded v1 public key
         env:
+          VERSION: ${{ inputs.version }}
           BUILD_NUMBER: ${{ inputs.build_number }}
+          RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          python3 tools/release/legacy_desktop_alpha.py --build "$BUILD_NUMBER" --legacy-source v1-source --output dist/legacy-alpha
+          python3 tools/release/legacy_desktop_alpha.py --version "$VERSION" --build "$BUILD_NUMBER" \
+            --admin "$RELEASE_ADMIN" --legacy-source v1-source --output dist/legacy-alpha
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-legacy-alpha
@@ -47,6 +57,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        source_version: ['1.6.2', '1.6.2-alpha.2']
+        target: [darwin-aarch64, darwin-x86_64, linux-x86_64, linux-aarch64, windows-x86_64, windows-aarch64]
         include:
           - runner: macos-15
             target: darwin-aarch64
@@ -67,7 +79,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v6
         with:
-          ref: 0a72be0fc1532824b72d8d3828462c205ad348f5
+          ref: ${{ matrix.source_version == '1.6.2' && 'c6483d73c7a0234be68571fdb5fa3d38a17c4871' || '0a72be0fc1532824b72d8d3828462c205ad348f5' }}
           path: v1-source
           persist-credentials: false
       - uses: actions/setup-go@v6
@@ -85,13 +97,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LEGACY_TARGET: ${{ matrix.target }}
+          LEGACY_SOURCE_VERSION: ${{ matrix.source_version }}
         shell: bash
         run: |
-          python e2e/packaging/legacy-alpha-native.py --target "$LEGACY_TARGET" \
+          python e2e/packaging/legacy-alpha-native.py --target "$LEGACY_TARGET" --source-version "$LEGACY_SOURCE_VERSION" \
             --legacy-source v1-source --offer dist/legacy-alpha --output dist/legacy-native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: legacy-native-${{ matrix.target }}
+          name: legacy-native-${{ matrix.source_version }}-${{ matrix.target }}
           path: dist/legacy-native
           if-no-files-found: error

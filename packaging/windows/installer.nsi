@@ -56,7 +56,11 @@ Function .onInit
   ReadRegStr $R0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard" "DisplayVersion"
   ${If} $LegacyUpdate == 1
     ${If} $R0 != "1.6.2-alpha.2"
-    ${OrIfNot} ${FileExists} "$INSTDIR\UniClipboard.exe"
+    ${AndIf} $R0 != "1.6.2"
+      SetErrorLevel 2
+      Abort
+    ${EndIf}
+    ${IfNot} ${FileExists} "$INSTDIR\UniClipboard.exe"
       SetErrorLevel 2
       Abort
     ${EndIf}

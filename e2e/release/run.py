@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import tomllib
 from urllib.parse import unquote, urlparse
 
 sys.dont_write_bytecode = True
@@ -584,6 +585,56 @@ try:
                 (resumed / p["file"]).read_bytes() == (staged / p["file"]).read_bytes()
                 for p in value["packages"]
             ),
+        )
+        joint_metadata = temp / "joint-products.toml"
+        joint_metadata.write_text(
+            (temp / "products-41.toml").read_text()
+            + '\n[products.desktop]\nversion = "2.0.0"\nbuild_number = 42\n'
+            + f'targets = ["{target}"]\nupdate_public_key = ""\n'
+        )
+        joint_output = temp / "joint-cli"
+        joint_resume = [
+            joint_metadata
+            if x == temp / "products-41.toml"
+            else joint_output
+            if x == resumed
+            else x
+            for x in resume
+        ] + ["--reuse-published"]
+        draft = execute(joint_resume, 1)
+        check(
+            "joint resume rejects a draft from different metadata",
+            "conflicts with the selected source or metadata" in draft.stderr,
+        )
+        execute(["gh", "release", "edit", "cli/v2.0.0-build.41", "--draft=false"])
+        execute(joint_resume)
+        desktop_lock = temp / "desktop-lock.toml"
+        execute(
+            [
+                sys.executable,
+                ROOT / "tools/release/joint.py",
+                "2.0.0",
+                "--metadata",
+                joint_metadata,
+                "--cli-manifest",
+                joint_output / "release-manifest.json",
+                "--output",
+                desktop_lock,
+                "--github-output",
+                output,
+            ]
+        )
+        lock = tomllib.loads(desktop_lock.read_text())["products"]["desktop"]
+        check(
+            "joint release reuses published CLI bytes and binds the exact Desktop lock",
+            (joint_output / "release-manifest.json").read_bytes()
+            == staged_manifest.read_bytes()
+            and (
+                lock["build_number"],
+                lock["cli_build_number"],
+                lock["cli_manifest_sha256"],
+            )
+            == (42, 41, hashlib.sha256(staged_manifest.read_bytes()).hexdigest()),
         )
         bad_asset = fixture / "assets" / value["packages"][0]["file"]
         bad_asset.write_bytes(b"changed")

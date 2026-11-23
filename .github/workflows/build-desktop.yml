@@ -32,6 +32,9 @@ on:
       source_sha:
         type: string
         required: true
+      joint:
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -85,7 +88,13 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: python3 tools/package/signing.py keychain --path "$RUNNER_TEMP/unic-desktop.keychain-db" --env-output "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        if: inputs.joint
+        with:
+          name: joint-desktop-cli
+          path: dist/cli-input
       - name: Fetch exact accepted CLI files
+        if: '!inputs.joint'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -93,7 +102,9 @@ jobs:
       - name: Stage and inspect native Desktop
         shell: bash
         run: |
-          go run ./tools/package -product desktop -target '${{ matrix.target }}' -cli-manifest dist/cli-input/release-manifest.json -output dist/stage
+          metadata=release/products.toml
+          if [[ -f dist/cli-input/products.toml ]]; then metadata=dist/cli-input/products.toml; fi
+          go run ./tools/package -metadata "$metadata" -product desktop -target '${{ matrix.target }}' -cli-manifest dist/cli-input/release-manifest.json -output dist/stage
           python tools/package/desktop.py smoke --stage dist/stage
       - name: Sign Desktop payload
         if: matrix.goos == 'darwin' && inputs.distribution
@@ -178,7 +189,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-${{ matrix.target }}
+          name: ${{ inputs.joint && job.status != 'success' && format('joint-desktop-failure-{0}-{1}', matrix.target, github.run_attempt) || format('desktop-{0}', matrix.target) }}
           path: |
             dist/stage/manifest.json
             dist/notarized/manifest.json

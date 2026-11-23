@@ -131,14 +131,20 @@ def acquire(args):
         return subprocess.check_output(["gh", *map(str, argv)], text=True).strip()
 
     run = json.loads(gh("api", f"repos/{repo}/actions/runs/{args.run_id}"))
-    workflow = json.loads(
-        gh("api", f"repos/{repo}/actions/workflows/build-desktop.yml")
-    )
+    workflow_name = "release-cli.yml" if args.current_artifacts else "build-desktop.yml"
+    workflow = json.loads(gh("api", f"repos/{repo}/actions/workflows/{workflow_name}"))
     if (
-        run.get("conclusion") != "success"
-        or run.get("workflow_id") != workflow["id"]
+        run.get("workflow_id") != workflow["id"]
         or run.get("repository", {}).get("full_name") != repo
     ):
+        raise ValueError("candidate is not a successful canonical repository build")
+    if args.current_artifacts:
+        if (str(run["id"]), run["head_sha"]) != (
+            os.environ.get("GITHUB_RUN_ID"),
+            os.environ.get("GITHUB_SHA"),
+        ):
+            raise ValueError("in-run candidate must belong to this workflow and source")
+    elif run.get("conclusion") != "success":
         raise ValueError("candidate is not a successful canonical repository build")
     output = package.fresh_output(args.output)
     import tempfile
@@ -147,18 +153,21 @@ def acquire(args):
         prefix=".desktop-candidate-", dir=output.parent
     ) as temporary:
         work = Path(temporary) / "packages"
-        work.mkdir()
-        gh(
-            "run",
-            "download",
-            args.run_id,
-            "--repo",
-            repo,
-            "--pattern",
-            "desktop-*",
-            "--dir",
-            work,
-        )
+        if args.current_artifacts:
+            shutil.move(args.current_artifacts, work)
+        else:
+            work.mkdir()
+            gh(
+                "run",
+                "download",
+                args.run_id,
+                "--repo",
+                repo,
+                "--pattern",
+                "desktop-*",
+                "--dir",
+                work,
+            )
         targets = set()
         slots = set()
         for path in work.rglob("artifacts.json"):
@@ -708,6 +717,7 @@ def main():
     s = sub.add_parser("acquire")
     s.add_argument("--run-id", required=True)
     s.add_argument("--output", required=True)
+    s.add_argument("--current-artifacts", type=Path)
     s = sub.add_parser("assemble")
     s.add_argument("--input", required=True)
     s.add_argument("--output", required=True)

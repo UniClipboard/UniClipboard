@@ -125,6 +125,7 @@ func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 					d.pluginSettings.id = ""
 					d.pluginSettings.view = ""
 					d.pluginSettings.form = nil
+					d.pluginSettings.channelPair = weTypePairing{}
 				}
 			}
 		} else {

@@ -581,10 +581,15 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 						}
 					}
 					if inst.HasSettings || slices.Contains(inst.Capabilities, "sync_backend") {
-						if k.Button(c.Key("m-options"), d.tr("选项"), desktopkit.ButtonProps{Icon: desktopkit.IconSettings, Disabled: l.busy}).Clicked() {
+						label, icon := "选项", desktopkit.IconSettings
+						if isWeType(inst) && inst.Configured && d.channelForPlugin(inst.ID) == nil {
+							label, icon = "加入共享空间", desktopkit.IconLink
+						}
+						if k.Button(c.Key("m-options"), d.tr(label), desktopkit.ButtonProps{Icon: icon, Disabled: l.busy}).Clicked() {
 							p.id = inst.ID
 							p.view = ""
 							p.form = nil
+							p.channelPair = weTypePairing{}
 						}
 					}
 					if inst.Source != "local" {

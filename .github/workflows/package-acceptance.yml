@@ -18,6 +18,7 @@ on:
       - '.github/workflows/build-cli.yml'
       - '.github/workflows/build-desktop-test.yml'
       - '.github/workflows/release-desktop.yml'
+      - '.github/workflows/release-joint.yml'
       - '.github/release-notes/**'
   workflow_dispatch:
 permissions:
@@ -41,6 +42,8 @@ jobs:
         run: python3 e2e/packaging/signing_policy.py
       - name: Actual gh process and isolated HTTP Release service
         run: python3 e2e/packaging/github_release.py
+      - name: Joint release orchestration with disposable workflow runs
+        run: python3 e2e/packaging/joint_release.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -48,6 +51,7 @@ jobs:
           path: |
             .cache/github-release-e2e/
             .cache/signing-policy-e2e/
+            .cache/joint-release-e2e/
           include-hidden-files: true
           if-no-files-found: error
   native:

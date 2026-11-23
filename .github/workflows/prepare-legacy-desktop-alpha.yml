@@ -14,6 +14,9 @@ on:
         description: Verify all twelve native upgrade receipts and stage the legacy Alpha offer in R2
         type: boolean
         default: false
+      expected_source:
+        type: string
+        description: Expected source SHA for a joint release
 permissions:
   contents: read
 jobs:
@@ -22,6 +25,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
+      - if: inputs.expected_source != '' && inputs.expected_source != github.sha
+        run: exit 1
       - uses: actions/checkout@v6
         with:
           persist-credentials: false

@@ -23,6 +23,9 @@ on:
       stable_acceptance:
         type: string
         description: JSON with darwin, linux and windows receipts for stable promotion
+      expected_source:
+        type: string
+        description: Expected source SHA for a joint release
 permissions:
   contents: read
   actions: read
@@ -66,6 +69,8 @@ jobs:
     environment: Production
     timeout-minutes: 60
     steps:
+      - if: inputs.expected_source != '' && inputs.expected_source != github.sha
+        run: exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -87,6 +92,18 @@ jobs:
           python3 tools/release/desktop_release.py acquire --run-id "$CANDIDATE_RUN" --output dist/candidate
           python3 tools/package/desktop.py fetch-cli --allow-ci --target linux-amd64 --output dist/cli-input
           python3 tools/release/desktop_release.py assemble --input dist/candidate --output dist/catalogue
+      - name: Verify stable acceptance before joint publication
+        if: inputs.expected_source != '' && inputs.operation == 'publish' && inputs.channel == 'stable'
+        env:
+          STABLE_ACCEPTANCE: ${{ inputs.stable_acceptance }}
+        run: |
+          printf '%s\n' "$STABLE_ACCEPTANCE" > dist/stable-acceptance.json
+          PYTHONPATH=tools/release python3 - <<'PY'
+          from desktop_release import load, verify_stable_acceptance
+
+          manifest, catalogue = load('dist/catalogue/release-manifest.json', True)
+          verify_stable_acceptance(manifest, catalogue, 'dist/stable-acceptance.json')
+          PY
       - name: Stage or verify immutable GitHub Release before delivery
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -133,6 +150,7 @@ jobs:
           RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
           CHANNEL: ${{ inputs.channel }}
           EXPECTED_REVISION: ${{ inputs.expected_revision }}
+          EXPECTED_SOURCE: ${{ inputs.expected_source }}
           STABLE_ACCEPTANCE: ${{ inputs.stable_acceptance }}
         run: |
           python3 - <<'PY'
@@ -147,6 +165,9 @@ jobs:
           open('dist/publication.json', 'wb').write(data)
           PY
           args=()
+          if [[ -n "$EXPECTED_SOURCE" ]]; then
+            args+=(--forward-only)
+          fi
           if [[ "$CHANNEL" == stable ]]; then
             printf '%s\n' "$STABLE_ACCEPTANCE" > dist/stable-acceptance.json
             args+=(--acceptance dist/stable-acceptance.json --cli-manifest dist/cli-input/release-manifest.json)

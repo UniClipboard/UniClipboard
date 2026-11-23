@@ -20,6 +20,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
 	"github.com/uniclipboard/unic/internal/desktopkeys"
+	"github.com/uniclipboard/unic/internal/desktopupdate"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
@@ -89,7 +90,7 @@ func runTray(settings *config.Manager) error {
 	r.state.Updates = updateStatus{Supported: updatesSupported, Owner: updateOwner}
 	r.mu.Unlock()
 	if updatesSupported {
-		source := &appupdates.Source{
+		var source mygo.UpdateSource = &appupdates.Source{
 			Base:           appupdates.FeedBase,
 			Target:         runtime.GOOS + "-" + runtime.GOARCH,
 			Key:            appupdates.PublicKey,
@@ -97,7 +98,10 @@ func runTray(settings *config.Manager) error {
 			Channel:        func() string { return settings.Current().Desktop.UpdateChannel },
 			Language:       func() string { return settings.Current().Desktop.Language },
 		}
-		mygo.Updater.SetSource(&desktopUpdateSource{runtime: r, Source: source})
+		if runtime.GOOS == "darwin" {
+			source = &desktopupdate.DaemonSource{Client: api.NewClient(r.socket), CurrentVersion: mygo.App.Version(), Key: appupdates.PublicKey}
+		}
+		mygo.Updater.SetSource(&desktopUpdateSource{runtime: r, UpdateSource: source})
 		mygo.Use(native.Plugin)
 		checkDesktopUpdates = updater.CheckForUpdates
 		readUpdateStatus := func() updateStatus {

@@ -20,6 +20,8 @@ paths:
   - app/desktop/cmd/unic-desktop
   - internal/localconfig
   - internal/desktopkeys
+  - internal/desktopupdate
+  - internal/pairnotice
   - internal/v1migration/shortcuts.go
   - internal/localapi
   - app/service/internal/server
@@ -125,7 +127,7 @@ satellite windows retain their independent decoration. See the
 
 ## Native application updates
 
-Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences (`AutomaticChecks` and `AutomaticDownloads`) remain owned by the tray process in the same v2 user-data directory as the Desktop profile, and are exposed to the Settings → About view over Desktop role IPC (`status`, `check-updates`, and `set-update-prefs`). Switching the About channel selector to `alpha` requires explicit confirmation before persisting `desktop.update_channel` and triggering a check. Package-manager installations and portable archives retain external update ownership and route About's update check to package-manager or release-page instructions. AppImage self-update remains unsupported. The About view also lazily loads the public sponsor feed (`GET https://www.uniclipboard.app/api/v1/sponsors`) on demand and hides the sponsors section when empty or offline. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.
+Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. macOS delegates release selection, download and archive verification to unicd. The tray receives the verified file before closing views or retiring its service. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences (`AutomaticChecks` and `AutomaticDownloads`) remain owned by the tray process in the same v2 user-data directory as the Desktop profile, and are exposed to the Settings → About view over Desktop role IPC (`status`, `check-updates`, and `set-update-prefs`). Switching the About channel selector to `alpha` requires explicit confirmation before persisting `desktop.update_channel` and triggering a check. Package-manager installations and portable archives retain external update ownership and route About's update check to package-manager or release-page instructions. AppImage self-update remains unsupported. The About view also lazily loads the public sponsor feed (`GET https://www.uniclipboard.app/api/v1/sponsors`) on demand and hides the sponsors section when empty or offline. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.
 
 ## Incremental history browsing
 

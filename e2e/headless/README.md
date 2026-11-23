@@ -33,6 +33,20 @@ go test -tags unic_e2e ./e2e/headless -run '^TestMacOSDaemonClipboard$' -count=1
 Run this from the active macOS desktop user's session. The test uses a private
 named pasteboard and isolated daemon profiles. It checks headless startup,
 explicit Desktop opt-in on an existing standalone generation, duplicate adapter
-rejection, native content transfer, tracked application and lifecycle handoff.
+rejection, native content transfer, tracked application and lifecycle handoff. The daemon runs as a secondary
+executable in a signed test bundle to verify notification ownership admission.
 The receipt binds source and binary hashes. The general pasteboard and native
 application focus remain outside this test.
+
+## macOS daemon update acceptance
+
+```sh
+UNIC_MACOS_UPDATE_ARTIFACTS="$(mktemp -d /tmp/unic-macos-update.XXXXXX)" \
+go test -race ./e2e/headless -run '^TestMacOSDaemonUpdate$' -count=1 -v
+```
+
+The runner starts a real daemon and an isolated loopback release feed with an
+ephemeral signing key. It checks numbered selection, localized notes, tamper
+rejection and the verified transfer across daemon exit. It does not modify the
+running application or install an update. The receipt binds source and binary
+hashes.

@@ -102,6 +102,12 @@ Quick Panel uses the owner-only service socket for tracked write and match on ma
 
 On macOS, `POST /v1/desktop/notifications/enable` returns a boolean identifying whether the daemon accepted notification responsibility. A bundled service for the active console user subscribes once per daemon generation. It applies the current Desktop language and submits only new pairing events to the native notification center. System authorization is requested in response to the first pairing notification. An unbundled, retiring or CLI-temporary service declines responsibility. A running tray may provide notifications for an unbundled service. Neither the endpoint nor the daemon logs notification text.
 
+## macOS Desktop updates
+
+`POST /v1/desktop/update/check` accepts the current Desktop version and its public archive verification key. It selects the release from the configured stable or alpha feed, using the service host target and current Desktop language. It returns a manifest and an opaque selection token. The endpoint uses the fixed release origin and takes no archive URL from the caller. A CLI-temporary service or an inactive console session cannot check or fetch a Desktop update.
+
+`GET /v1/desktop/update/archive/{token}` streams the selected archive only after verifying the advertised size, digest, signature and embedded numbered release identity. The daemon admits one check or archive operation at a time. A later successful check replaces the previous selection. Desktop completes and verifies the local transfer with its embedded public key before allowing shutdown or installation. Download errors do not retire Desktop processes.
+
 ## Export and CLI behavior
 
 `unic send [text]` reads stdin when text is omitted. `-f` submits local file references; `--png PATH` imports PNG.

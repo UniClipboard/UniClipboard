@@ -4,19 +4,19 @@ import (
 	"context"
 	"io"
 
-	"github.com/uniclipboard/unic/app/desktop/internal/appupdates"
+	"github.com/egoist/mygo"
 )
 
 // Verify the complete signed archive before retiring other processes. The
 // updater may replace the executable immediately after Open returns, so all
 // old-role IPC and owned-service shutdown must finish before that return.
 type desktopUpdateSource struct {
-	*appupdates.Source
+	mygo.UpdateSource
 	runtime *trayRuntime
 }
 
 func (s *desktopUpdateSource) Open(ctx context.Context, url string) (io.ReadCloser, error) {
-	archive, err := s.Source.Open(ctx, url)
+	archive, err := s.UpdateSource.Open(ctx, url)
 	if err != nil {
 		return nil, err
 	}

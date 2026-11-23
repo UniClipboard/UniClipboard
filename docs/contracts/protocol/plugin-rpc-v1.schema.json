@@ -309,7 +309,8 @@
             "local_system",
             "remote_device",
             "action",
-            "explicit"
+            "explicit",
+            "external"
           ]
         },
         "device_id": {

@@ -440,7 +440,7 @@ func (i Item) Validate() error {
 		return protoErr("bad item type")
 	}
 	switch i.Origin.Kind {
-	case "local_system", "remote_device", "action", "explicit":
+	case "local_system", "remote_device", "action", "explicit", "external":
 	default:
 		return protoErr("bad origin")
 	}

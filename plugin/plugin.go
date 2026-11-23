@@ -140,7 +140,7 @@ type Actor interface {
 }
 
 type Origin struct {
-	Kind     string // local_system, remote_device, explicit or action
+	Kind     string // local_system, remote_device, explicit, action or external
 	DeviceID string
 	PluginID string
 }

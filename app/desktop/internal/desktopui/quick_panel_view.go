@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/mygo/ui/richtext"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
+	"github.com/uniclipboard/unic/internal/desktopkeys"
 )
 
 type qpPalette struct{ background, foreground, muted, quiet, border, primary, white ui.Color }
@@ -51,7 +52,7 @@ func (p *quickPanelState) panel(c *ui.Context) {
 	root.Children(func() {
 		if !p.visible {
 			ui.Column(c).Fill().Gap(12).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, p.tr("面板已关闭")).FontSize(15)
+				ui.Text(c, p.tr("面板已关闭")).FontSize(15 * zoomScale(p.textZoom))
 				if ui.Button(c, p.tr("重新唤起")).Clicked() {
 					p.visible = true
 					p.query = ""
@@ -83,7 +84,7 @@ func (p *quickPanelState) panel(c *ui.Context) {
 				}
 				switch {
 				case !p.queryDue.IsZero() || (p.live != nil && p.live.d.live.foregroundLoading):
-					ui.Text(c, p.tr("正在搜索…")).FontSize(13).TextColor(a.quiet).Padding(24)
+					ui.Text(c, p.tr("正在搜索…")).FontSize(13 * zoomScale(p.textZoom)).TextColor(a.quiet).Padding(24)
 				case len(p.rows) == 0:
 					p.emptyView(c, a)
 				case p.kind == "图片":
@@ -108,11 +109,11 @@ func (p *quickPanelState) panel(c *ui.Context) {
 			if p.message == "已复制" || p.message == "已发送粘贴指令" {
 				tone = a.quiet
 			}
-			ui.Text(c, p.tr(p.message)).Role(ui.RoleAlert).FontSize(11).TextColor(tone).Padding(8, 12)
+			ui.Text(c, p.tr(p.message)).Role(ui.RoleAlert).FontSize(11*zoomScale(p.textZoom)).TextColor(tone).Padding(8, 12)
 		}
 		ui.Row(c).Height(34).Shrink(0).Padding(0, 10, 0, 12).BorderWidth(1, 0, 0, 0).BorderColor(a.border).AlignItems(ui.Center).Gap(7).Children(func() {
-			ui.Row(c).Size(16, 16).Radius(4).Background(a.foreground).AlignItems(ui.Center).Justify(ui.Center).Children(func() { ui.Text(c, "T").FontSize(9).TextColor(a.background) })
-			ui.Text(c, p.pasteTargetLabel()).FontSize(12)
+			ui.Row(c).Size(16, 16).Radius(4).Background(a.foreground).AlignItems(ui.Center).Justify(ui.Center).Children(func() { ui.Text(c, "T").FontSize(9 * zoomScale(p.textZoom)).TextColor(a.background) })
+			ui.Text(c, p.pasteTargetLabel()).FontSize(12 * zoomScale(p.textZoom))
 			shortcut := "⏎"
 			if p.live != nil && (p.live.system == nil || !p.live.system.CanPaste) {
 				shortcut = p.commandLabel() + "C"
@@ -121,8 +122,14 @@ func (p *quickPanelState) panel(c *ui.Context) {
 			ui.Spacer(c)
 			b := ui.ButtonBase(c.Key("actions")).Label(p.tr("操作")).Row().Gap(6).AlignItems(ui.Center)
 			b.Children(func() {
-				ui.Text(c, p.tr("操作")).FontSize(12).TextColor(a.quiet)
-				qpKeycap(c, p.commandLabel()+"K", a)
+				ui.Text(c, p.tr("操作")).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
+				hint := p.commandLabel() + "K"
+				if p.live != nil {
+					hint = shortcutHint(p.live.d.live.config.Config.Desktop.Shortcuts, desktopkeys.PanelActions)
+				}
+				if hint != "" {
+					qpKeycap(c, hint, a)
+				}
 			})
 			b.OnClick(p.openActions)
 		})
@@ -140,7 +147,7 @@ func (p *quickPanelState) searchRow(c *ui.Context, a qpPalette) {
 		desktopkit.For(false).Icon(c, desktopkit.IconSearch, 16).TextColor(a.foreground)
 		for i, f := range p.chips {
 			b := ui.ButtonBase(c.Key(f.dimension + f.value)).Label(p.tr("移除 ") + p.filterLabel(f)).Height(24).PaddingX(8).Radius(6).Background(a.muted)
-			b.Children(func() { ui.Text(c, p.filterLabel(f)).FontSize(12.5).TextColor(a.primary) })
+			b.Children(func() { ui.Text(c, p.filterLabel(f)).FontSize(12.5 * zoomScale(p.textZoom)).TextColor(a.primary) })
 			b.OnClick(func() {
 				p.chips = append(p.chips[:i], p.chips[i+1:]...)
 				p.queryChanged()
@@ -148,7 +155,7 @@ func (p *quickPanelState) searchRow(c *ui.Context, a qpPalette) {
 				p.input.Focus()
 			})
 		}
-		in := ui.TextInputBase(c.Key("search"), &p.query).Label(p.tr("搜索快捷面板")).Placeholder(p.tr("搜索，或输入 # 标签  @ 设备  / 类型")).PlaceholderColor(a.quiet).FontSize(15).Height(32).Grow(1).MinWidth(0).AutoFocus()
+		in := ui.TextInputBase(c.Key("search"), &p.query).Label(p.tr("搜索快捷面板")).Placeholder(p.tr("搜索，或输入 # 标签  @ 设备  / 类型")).PlaceholderColor(a.quiet).FontSize(15 * zoomScale(p.textZoom)).Height(32).Grow(1).MinWidth(0).AutoFocus()
 		in.Bind(&p.input).OnChange(p.queryChanged)
 		p.bindKeys(c, in)
 		if p.query != "" || p.kind != "" || len(p.chips) > 0 {
@@ -157,7 +164,7 @@ func (p *quickPanelState) searchRow(c *ui.Context, a qpPalette) {
 					return fmt.Sprintf(p.tr("%d 条文字匹配"), len(p.rows))
 				}
 				return fmt.Sprintf(p.tr("%d 条"), len(p.rows))
-			}()).FontSize(12).TextColor(a.quiet).Shrink(0)
+			}()).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet).Shrink(0)
 		}
 		b := ui.ButtonBase(c.Key("type")).Label(p.tr("切换类型")).Row().Gap(6).AlignItems(ui.Center).Shrink(0)
 		b.Children(func() {
@@ -165,12 +172,12 @@ func (p *quickPanelState) searchRow(c *ui.Context, a qpPalette) {
 			if label == "" {
 				label = p.tr("全部")
 			}
-			ui.Text(c, p.tr(label)).FontSize(12).TextColor(a.quiet)
+			ui.Text(c, p.tr(label)).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
 			qpKeycap(c, "⇥", a)
 		})
 		b.OnClick(func() { p.tab(false); p.input.Focus() })
 		if p.query != "" || p.kind != "" || len(p.chips) > 0 {
-			ui.ButtonBase(c.Key("clear")).Label(p.tr("清空")).Size(18, 18).Children(func() { ui.Text(c, "×").FontSize(16).TextColor(a.quiet) }).OnClick(func() { p.clear(); p.input.Focus() })
+			ui.ButtonBase(c.Key("clear")).Label(p.tr("清空")).Size(18, 18).Children(func() { ui.Text(c, "×").FontSize(16 * zoomScale(p.textZoom)).TextColor(a.quiet) }).OnClick(func() { p.clear(); p.input.Focus() })
 		}
 	})
 }
@@ -180,15 +187,38 @@ func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
 		key  ui.Key
 	}
 	handlers := map[binding]func(){}
+	var overrides map[string][]string
+	if p.live != nil {
+		overrides = p.live.d.live.config.Config.Desktop.Shortcuts
+	}
+	commands := shortcutCommands(overrides, map[string]func(){
+		desktopkeys.PanelActions: p.openActions,
+		desktopkeys.PanelClear:   p.clear,
+		desktopkeys.PanelFavorite: func() {
+			if p.active() != nil && p.queryDue.IsZero() {
+				p.runAction("favorite")
+			}
+		},
+		desktopkeys.PanelWindowIn:  func() { p.windowZoom = min(5, p.windowZoom+1) },
+		desktopkeys.PanelWindowOut: func() { p.windowZoom = max(-2, p.windowZoom-1) },
+		desktopkeys.PanelTextIn:    func() { p.textZoom = min(4, p.textZoom+1) },
+		desktopkeys.PanelTextOut:   func() { p.textZoom = max(-2, p.textZoom-1) },
+	})
 	bind := func(mods ui.Modifiers, key ui.Key, fn func()) { handlers[binding{mods, key}] = fn }
 	in.OnTextKey(func(key ui.TextKey) bool {
-		fn, ok := handlers[binding{key.Mods, key.Key}]
-		if !ok || !p.visible {
+		if !p.visible {
 			return false
 		}
 		p.query = key.Text()
 		before := p.query
-		fn()
+		taken := p.keySequence.take(shortcutStroke{key.Mods, key.Key}, commands)
+		if !taken {
+			fn := handlers[binding{key.Mods, key.Key}]
+			if fn == nil {
+				return false
+			}
+			fn()
+		}
 		if before != p.query {
 			key.SetText(p.query)
 		}
@@ -200,7 +230,6 @@ func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
 		command = ui.Ctrl
 	}
 	bind(0, ui.KeyEscape, p.escape)
-	bind(command, ui.KeyK, p.openActions)
 	bind(0, ui.KeyTab, func() { p.tab(false) })
 	bind(ui.Shift, ui.KeyTab, func() { p.tab(true) })
 	bind(0, ui.KeyUp, func() { p.navigate(false) })
@@ -259,8 +288,17 @@ func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
 		bind(command, ui.KeyV, func() { p.restore(true, false, false) })
 		bind(command|ui.Shift, ui.KeyV, func() { p.restore(true, true, false) })
 	}
-	bind(command, ui.KeyBackspace, p.clear)
 	bind(command|ui.Shift, ui.KeyBackspace, func() { p.runAction("delete") })
+	if runtime.GOOS == "linux" {
+		bind(ui.Alt, ui.KeyBackspace, func() { p.runAction("delete") })
+		bind(ui.Alt, ui.KeyEnter, func() { enter(true, false) })
+		for i, key := range []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9, ui.Key0} {
+			if key == ui.Key0 {
+				bind(command, key, func() { p.selectAndPaste(i, false) })
+			}
+			bind(command|ui.Alt, key, func() { p.selectAndPaste(i, true) })
+		}
+	}
 	start, end := in.TextSelection()
 	if start == end {
 		bind(command, ui.KeyC, func() { p.restore(false, false, false) })
@@ -280,14 +318,7 @@ func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
 				mods |= ui.Shift
 			}
 			bind(mods, key, func() {
-				at := i
-				if p.kind == "图片" {
-					at += p.gridTop * 3
-				}
-				if at < len(p.rows) {
-					p.selectRow(at)
-					p.restore(true, plain, false)
-				}
+				p.selectAndPaste(i, plain)
 			})
 		}
 	}
@@ -315,12 +346,22 @@ func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
 		p.update()
 	})
 }
+func (p *quickPanelState) selectAndPaste(index int, plain bool) {
+	if p.kind == "图片" {
+		index += p.gridTop * 3
+	}
+	if index < len(p.rows) {
+		p.selectRow(index)
+		p.restore(true, plain, false)
+	}
+}
+
 func (p *quickPanelState) suggestionList(c *ui.Context, a qpPalette, options []qpFilter) {
 	heading := func(title, note string) {
 		ui.Row(c).Height(22).PaddingX(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, title).FontSize(11).Bold().TextColor(a.quiet)
+			ui.Text(c, title).FontSize(11 * zoomScale(p.textZoom)).Bold().TextColor(a.quiet)
 			ui.Spacer(c)
-			ui.Text(c, note).FontSize(11).TextColor(a.quiet)
+			ui.Text(c, note).FontSize(11 * zoomScale(p.textZoom)).TextColor(a.quiet)
 		})
 	}
 	heading(p.tr("建议"), p.tr("按顺序接受 ⇥"))
@@ -337,17 +378,17 @@ func (p *quickPanelState) suggestionList(c *ui.Context, a qpPalette, options []q
 		}
 		b.Children(func() {
 			ui.Column(c).Width(16)
-			ui.Text(c, f.matched).Font("monospace").FontSize(11.5).PaddingX(5).Radius(4).Background(a.muted).MaxLines(1)
-			ui.Text(c, "→").FontSize(12.5).TextColor(a.quiet)
+			ui.Text(c, f.matched).Font("monospace").FontSize(11.5 * zoomScale(p.textZoom)).PaddingX(5).Radius(4).Background(a.muted).MaxLines(1)
+			ui.Text(c, "→").FontSize(12.5 * zoomScale(p.textZoom)).TextColor(a.quiet)
 			labels := map[string]string{"type": "类型", "tag": "标签", "source": "设备", "time": "时间"}
-			ui.Text(c, p.tr(labels[f.dimension])).FontSize(12.5).TextColor(a.quiet)
-			ui.Text(c, p.filterLabel(f)).FontSize(12.5).Bold().TextColor(a.primary).Padding(1, 7).Radius(5).Background(a.muted).Grow(1).MinWidth(0).MaxLines(1)
+			ui.Text(c, p.tr(labels[f.dimension])).FontSize(12.5 * zoomScale(p.textZoom)).TextColor(a.quiet)
+			ui.Text(c, p.filterLabel(f)).FontSize(12.5*zoomScale(p.textZoom)).Bold().TextColor(a.primary).Padding(1, 7).Radius(5).Background(a.muted).Grow(1).MinWidth(0).MaxLines(1)
 			qpKeycap(c, "⇥", a)
 		})
 		b.OnClick(func() { p.accept(f); p.input.Focus() })
 	}
 	if hidden := len(options) - min(len(options), start+3); hidden > 0 {
-		ui.Text(c, fmt.Sprintf(p.tr("还有 %d 条"), hidden)).FontSize(11).TextColor(a.quiet).Padding(4, 8)
+		ui.Text(c, fmt.Sprintf(p.tr("还有 %d 条"), hidden)).FontSize(11*zoomScale(p.textZoom)).TextColor(a.quiet).Padding(4, 8)
 	}
 	heading(p.tr("文字匹配"), "")
 }
@@ -411,9 +452,9 @@ func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry
 				desktopkit.For(false).Icon(c, icons[e.kind], 14).TextColor(quiet)
 			}
 		})
-		text := ui.RichText(c, qpMarkedSpans(e, p.query, selected, ink, quiet)...).FontSize(13).Grow(1).MinWidth(0).MaxLines(1)
+		text := ui.RichText(c, qpMarkedSpans(e, p.query, selected, ink, quiet)...).FontSize(13 * zoomScale(p.textZoom)).Grow(1).MinWidth(0).MaxLines(1)
 		if e.kind == "代码" {
-			text.Font("monospace").FontSize(12)
+			text.Font("monospace").FontSize(12 * zoomScale(p.textZoom))
 		}
 		if e.lost {
 			text.Opacity(.5)
@@ -426,15 +467,15 @@ func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry
 					label = "ZIP"
 				}
 			}
-			ui.Text(c, p.tr(label)).FontSize(10.5).TextColor(quiet).Background(a.muted).Radius(4).Padding(1, 5)
+			ui.Text(c, p.tr(label)).FontSize(10.5*zoomScale(p.textZoom)).TextColor(quiet).Background(a.muted).Radius(4).Padding(1, 5)
 		}
 		if e.favorite {
-			ui.Text(c, "★").FontSize(12).TextColor(p.colors.Color(c.Theme().Dark, "status-yellow-text"))
+			ui.Text(c, "★").FontSize(12 * zoomScale(p.textZoom)).TextColor(p.colors.Color(c.Theme().Dark, "status-yellow-text"))
 		}
 		if e.source != "本机" && e.source != p.tr("本机") {
 			desktopkit.For(false).Icon(c, desktopkit.IconDownload, 12).TextColor(quiet)
 		}
-		ui.Text(c, e.age).FontSize(11).TextColor(quiet).Shrink(0)
+		ui.Text(c, e.age).FontSize(11 * zoomScale(p.textZoom)).TextColor(quiet).Shrink(0)
 		if i < 9 {
 			qpKeycap(c, p.commandLabel()+fmt.Sprint(i+1), a)
 		}
@@ -520,30 +561,30 @@ func (p *quickPanelState) emptyView(c *ui.Context, a qpPalette) {
 		hint = p.tr("试试其他关键词或筛选条件")
 	}
 	ui.Column(c).FillWidth().MinHeight(220).Gap(10).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
-		ui.Text(c, title).Role(ui.RoleHeading).FontSize(15).Bold()
-		ui.Text(c, hint).FontSize(12).TextColor(a.quiet)
+		ui.Text(c, title).Role(ui.RoleHeading).FontSize(15 * zoomScale(p.textZoom)).Bold()
+		ui.Text(c, hint).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
 		if p.mode == "disconnected" {
 			ui.Button(c, p.tr("立即重连")).OnClick(func() { p.mode = "history"; p.applySearch(); p.update() })
 		} else if p.query != "" || p.kind != "" || len(p.chips) > 0 {
 			options := p.relaxations()
 			if len(options) > 0 {
-				ui.Text(c, p.tr("试试放宽：")).FontSize(12).TextColor(a.quiet)
+				ui.Text(c, p.tr("试试放宽：")).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
 				for i, r := range options {
 					b := ui.ButtonBase(c.Key(r.dimension)).Label(r.label).FillWidth().Height(30).Radius(7).PaddingX(10).Row().Gap(8).AlignItems(ui.Center)
 					if i == p.relaxCursor {
 						b.Background(a.muted)
 					}
 					b.Children(func() {
-						ui.Text(c, fmt.Sprint(i+1)).FontSize(12).TextColor(a.quiet)
-						ui.Text(c, r.label).FontSize(13).Grow(1)
-						ui.Text(c, fmt.Sprintf(p.tr("%d 条"), r.count)).FontSize(12).TextColor(a.quiet)
+						ui.Text(c, fmt.Sprint(i+1)).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
+						ui.Text(c, r.label).FontSize(13 * zoomScale(p.textZoom)).Grow(1)
+						ui.Text(c, fmt.Sprintf(p.tr("%d 条"), r.count)).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
 					})
 					b.OnClick(func() { p.relax(r.dimension); p.input.Focus() })
 				}
 			}
 			ui.Button(c, p.tr("清空筛选")).OnClick(func() { p.clear(); p.input.Focus() })
 		} else {
-			ui.Text(c, p.tr("随时唤起  ")+p.commandLabel()+"Ctrl+V").FontSize(12).TextColor(a.quiet)
+			ui.Text(c, p.tr("随时唤起  ")+p.commandLabel()+"Ctrl+V").FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
 		}
 	})
 }
@@ -577,7 +618,7 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 				title = p.tr("发送到")
 			}
 		}
-		ui.Text(c, title).FontSize(11).TextColor(a.quiet).Padding(12).Shrink(0)
+		ui.Text(c, title).FontSize(11 * zoomScale(p.textZoom)).TextColor(a.quiet).Padding(12).Shrink(0)
 		scroll := k.Scroll(c.Key("satellite-scroll")).Grow(1).MinHeight(0)
 		scroll.Children(func() {
 			if p.menu != "" {
@@ -591,7 +632,7 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 							b.Opacity(.45)
 						}
 						b.Children(func() {
-							ui.Text(c, p.actionLabel(row)).FontSize(13).Grow(1)
+							ui.Text(c, p.actionLabel(row)).FontSize(13 * zoomScale(p.textZoom)).Grow(1)
 							if row.shortcut != "" {
 								qpKeycap(c, row.shortcut, a)
 							}
@@ -607,7 +648,7 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 					ui.Image(c, p.quickImage(c, *e)).FillWidth().Height(230).Fit(ui.Contain).Label(e.title)
 				case "富文本":
 					if p.live != nil {
-						ui.Text(c, e.text).FontSize(14).FillWidth().Selectable()
+						ui.Text(c, e.text).FontSize(14 * zoomScale(p.textZoom)).FillWidth().Selectable()
 						break
 					}
 					if p.richPreview == nil {
@@ -615,22 +656,22 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 					}
 					richtext.EditorBase(c, p.richPreview, richtext.EditorOptions{Label: p.tr("富文本预览"), ReadOnly: true}).FillWidth().Height(200)
 				case "链接":
-					ui.Text(c, e.title).FontSize(14).Bold().Selectable()
-					ui.Text(c, e.text).FontSize(12).TextColor(a.quiet).Selectable()
+					ui.Text(c, e.title).FontSize(14 * zoomScale(p.textZoom)).Bold().Selectable()
+					ui.Text(c, e.text).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet).Selectable()
 				case "文件":
 					for _, file := range strings.Split(e.text, "\n") {
-						ui.Row(c).Gap(8).Children(func() { k.Icon(c, desktopkit.IconFile, 24); ui.Text(c, file).FontSize(13) })
+						ui.Row(c).Gap(8).Children(func() { k.Icon(c, desktopkit.IconFile, 24); ui.Text(c, file).FontSize(13 * zoomScale(p.textZoom)) })
 					}
 				default:
-					text := ui.Text(c, e.text).FontSize(14).FillWidth().Selectable()
+					text := ui.Text(c, e.text).FontSize(14 * zoomScale(p.textZoom)).FillWidth().Selectable()
 					if e.kind == "代码" {
-						text.Font("monospace").FontSize(12)
+						text.Font("monospace").FontSize(12 * zoomScale(p.textZoom))
 					}
 				}
 			})
 		})
 		if p.menu != "" {
-			ui.Text(c, p.tr("↑↓ 选择 · ⏎ 执行 · esc 返回")).FontSize(11).TextColor(a.quiet).Padding(10, 12).Shrink(0)
+			ui.Text(c, p.tr("↑↓ 选择 · ⏎ 执行 · esc 返回")).FontSize(11*zoomScale(p.textZoom)).TextColor(a.quiet).Padding(10, 12).Shrink(0)
 		}
 	})
 }

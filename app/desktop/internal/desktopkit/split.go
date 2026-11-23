@@ -62,6 +62,9 @@ func (k Kit) layRadius() float32 {
 const SinglePaneWidth = 760
 
 type SplitViewProps struct {
+	// ContentScale converts the physical view width to the scaled layout width.
+	// Zero preserves unscaled layout.
+	ContentScale float32
 	// Title of the content at the leading end of the toolbar band; Subtitle is secondary
 	// text after it, e.g. the item count.
 	Title, Subtitle string
@@ -138,6 +141,9 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 	hidden := p.SidebarHidden != nil && *p.SidebarHidden
 	overlay := p.SidebarOverlay && p.Sidebar != nil
 	w, _ := c.Size()
+	if p.ContentScale > 0 {
+		w /= p.ContentScale
+	}
 	single := p.DetailOpen != nil && w < SinglePaneWidth
 	detail := single && *p.DetailOpen
 

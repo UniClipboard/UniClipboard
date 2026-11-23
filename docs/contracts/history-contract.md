@@ -324,6 +324,11 @@ edits. Dry runs only read and validate the source. Reports expose
 `preferences_imported` and `preference_failures`. A preference failure yields a
 partial result while recoverable history can still be imported.
 
+Shortcut import updates only the shortcut fields in the stored configuration.
+Unset fields remain eligible for preference recovery. Reports track imported
+and skipped shortcut bindings separately. A shortcut import failure counts as
+a preference failure and verification of migrated history still runs.
+
 CLI directory snapshot export follows the [directory export contract](directory-contract.md#cli-snapshot-export). Indexed root containers preserve equal root names, empty directories and independent user-owned copies. Export does not apply a system clipboard ticket. Existing Received/history/content holders remain independent; release each holder before asserting that a temporary materialized view has no owner.
 
 ## v1 system credentials and process resilience

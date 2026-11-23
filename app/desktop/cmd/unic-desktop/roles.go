@@ -26,8 +26,9 @@ var runRole = runNativeRole
 
 // panelActivation is ephemeral. Never write it to a file or a log.
 type panelActivation struct {
-	Target quickpanel.Target `json:"target"`
-	Error  string            `json:"error,omitempty"`
+	Target    quickpanel.Target `json:"target"`
+	Error     string            `json:"error,omitempty"`
+	Favorites bool              `json:"favorites,omitempty"`
 }
 type clipboardReply struct {
 	Mark    string `json:"mark"`
@@ -227,6 +228,10 @@ func (r *trayRuntime) openGUILocked(ctx context.Context, action string) error {
 	return desktopprocess.Call(ctx, r.dir, desktopprocess.GUI, "activate", action, nil)
 }
 func (r *trayRuntime) openPanel(ctx context.Context) error {
+	return r.openPanelFiltered(ctx, false)
+}
+
+func (r *trayRuntime) openPanelFiltered(ctx context.Context, favorites bool) error {
 	select {
 	case <-r.nativeReady:
 	case <-ctx.Done():
@@ -252,6 +257,9 @@ func (r *trayRuntime) openPanel(ctx context.Context) error {
 	}
 	var state roleStatus
 	if err := desktopprocess.Call(ctx, r.dir, desktopprocess.QuickPanel, "status", nil, &state); err == nil && state.Visible {
+		if favorites {
+			return desktopprocess.Call(ctx, r.dir, desktopprocess.QuickPanel, "favorites", nil, nil)
+		}
 		return desktopprocess.Call(ctx, r.dir, desktopprocess.QuickPanel, "close", nil, nil)
 	}
 	activation := panelActivation{Error: "target"}
@@ -265,6 +273,7 @@ func (r *trayRuntime) openPanel(ctx context.Context) error {
 			}
 		}
 	}
+	activation.Favorites = favorites
 	info, err := launchDesktopRole(ctx, r.dir, r.socket, desktopprocess.QuickPanel)
 	if err != nil {
 		return err

@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
+	"github.com/uniclipboard/unic/internal/desktopkeys"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 )
 
@@ -215,12 +216,21 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 		d.backupSettingsContent(c, k)
 		d.storageLocalDataGroup(c, k)
 
+	case "shortcuts":
+		changed = d.editShortcuts(c, k, &cfg)
+
 	case "quickPanel":
 		group("shortcut", d.tr("全局快捷键"), func() {
 			k.SettingsRow(c.Key("shortcut-select"), desktopkit.SettingsRowProps{
 				Label:       d.tr("打开快捷面板"),
 				Description: d.tr("在常规模式运行时生效。切换后由托盘进程原子替换注册。"),
 			}, nil, func() {
+				if _, custom := cfg.Desktop.Shortcuts[desktopkeys.TogglePanel]; custom {
+					if k.Button(c.Key("shortcut-settings"), d.tr("编辑快捷键"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall}).Clicked() {
+						d.settings.Value = "shortcuts"
+					}
+					return
+				}
 				if k.Select(c, desktopkit.SelectProps{
 					Label:    d.tr("全局快捷键"),
 					Value:    &cfg.Desktop.QuickPanelShortcut,
@@ -231,6 +241,19 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 						{Value: "Ctrl+`", Label: "Ctrl+`"},
 						{Value: "CmdOrCtrl+Shift+Space", Label: "Command/Ctrl+Shift+Space"},
 						{Value: "", Label: d.tr("关闭")},
+					},
+				}).Changed {
+					changed = true
+				}
+			})
+			k.SettingsRow(c.Key("double-tap"), desktopkit.SettingsRowProps{
+				Label: d.tr("双击修饰键打开快捷面板"),
+			}, nil, func() {
+				if k.Select(c, desktopkit.SelectProps{
+					Label: d.tr("双击修饰键打开快捷面板"), Value: &cfg.Desktop.QuickPanelDoubleTap, Disabled: l.busy,
+					Items: []desktopkit.SelectItem{
+						{Value: "", Label: d.tr("关闭")}, {Value: "alt", Label: "Option / Alt"},
+						{Value: "control", Label: "Ctrl"}, {Value: "meta", Label: "Command / Win / Super"},
 					},
 				}).Changed {
 					changed = true

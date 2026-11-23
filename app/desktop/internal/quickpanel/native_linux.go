@@ -193,3 +193,39 @@ func (p *x11Platform) Paste(t Target) error {
 	}
 	return nil
 }
+
+func (p *x11Platform) modifierSnapshot(modifier string) func() (bool, bool) {
+	symbols := map[string][]xproto.Keysym{
+		"alt": {0xffe9, 0xffea}, "control": {0xffe3, 0xffe4}, "meta": {0xffeb, 0xffec, 0xffe7, 0xffe8},
+	}[modifier]
+	setup := xproto.Setup(p.conn)
+	count := int(setup.MaxKeycode) - int(setup.MinKeycode) + 1
+	reply, err := xproto.GetKeyboardMapping(p.conn, setup.MinKeycode, byte(count)).Reply()
+	if len(symbols) == 0 || err != nil || reply.KeysymsPerKeycode == 0 {
+		return nil
+	}
+	var selected [32]byte
+	for i := range count {
+		sym := reply.Keysyms[i*int(reply.KeysymsPerKeycode)]
+		for _, wanted := range symbols {
+			if sym == wanted {
+				key := int(setup.MinKeycode) + i
+				selected[key/8] |= 1 << (key % 8)
+			}
+		}
+	}
+	if selected == ([32]byte{}) {
+		return nil
+	}
+	return func() (down, other bool) {
+		keys, err := xproto.QueryKeymap(p.conn).Reply()
+		if err != nil {
+			return false, true
+		}
+		for i, key := range keys.Keys {
+			down = down || key&selected[i] != 0
+			other = other || key&^selected[i] != 0
+		}
+		return
+	}
+}

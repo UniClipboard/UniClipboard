@@ -8134,5 +8134,173 @@
     "ja": "条件で絞り込む:",
     "pt-BR": "Filtrar por:",
     "ru": "Фильтр по:"
+  },
+  "主窗口": {
+    "en": "Main window",
+    "ja": "メインウインドウ",
+    "pt-BR": "Janela principal",
+    "ru": "Главное окно"
+  },
+  "历史记录": {
+    "en": "History",
+    "ja": "履歴",
+    "pt-BR": "Histórico",
+    "ru": "История"
+  },
+  "切换设置页": {
+    "en": "Toggle Settings",
+    "ja": "設定を開く／閉じる",
+    "pt-BR": "Alternar Ajustes",
+    "ru": "Открыть или закрыть настройки"
+  },
+  "打开全部历史": {
+    "en": "Open All History",
+    "ja": "すべての履歴を開く",
+    "pt-BR": "Abrir todo o histórico",
+    "ru": "Открыть всю историю"
+  },
+  "打开已收藏": {
+    "en": "Open Favorites",
+    "ja": "お気に入りを開く",
+    "pt-BR": "Abrir favoritos",
+    "ru": "Открыть избранное"
+  },
+  "打开快捷面板并筛选已收藏": {
+    "en": "Open Quick Panel with Favorites",
+    "ja": "クイックパネルでお気に入りを開く",
+    "pt-BR": "Abrir favoritos no Painel rápido",
+    "ru": "Открыть избранное в быстрой панели"
+  },
+  "聚焦历史搜索框": {
+    "en": "Focus History Search",
+    "ja": "履歴の検索欄に移動",
+    "pt-BR": "Focar busca no histórico",
+    "ru": "Перейти к поиску по истории"
+  },
+  "切换列表和网格": {
+    "en": "Toggle List and Grid",
+    "ja": "リスト表示とグリッド表示を切り替える",
+    "pt-BR": "Alternar entre lista e grade",
+    "ru": "Переключить список и сетку"
+  },
+  "打开动作菜单": {
+    "en": "Open Actions Menu",
+    "ja": "アクションメニューを開く",
+    "pt-BR": "Abrir menu de ações",
+    "ru": "Открыть меню действий"
+  },
+  "清空搜索和筛选": {
+    "en": "Clear Search and Filters",
+    "ja": "検索条件とフィルタをクリア",
+    "pt-BR": "Limpar busca e filtros",
+    "ru": "Очистить поиск и фильтры"
+  },
+  "放大主界面": {
+    "en": "Zoom In",
+    "ja": "表示を拡大",
+    "pt-BR": "Ampliar interface",
+    "ru": "Увеличить масштаб"
+  },
+  "缩小主界面": {
+    "en": "Zoom Out",
+    "ja": "表示を縮小",
+    "pt-BR": "Reduzir interface",
+    "ru": "Уменьшить масштаб"
+  },
+  "放大快捷面板窗口": {
+    "en": "Enlarge Quick Panel Window",
+    "ja": "クイックパネルのウインドウを拡大",
+    "pt-BR": "Ampliar janela do Painel rápido",
+    "ru": "Увеличить окно быстрой панели"
+  },
+  "缩小快捷面板窗口": {
+    "en": "Shrink Quick Panel Window",
+    "ja": "クイックパネルのウインドウを縮小",
+    "pt-BR": "Reduzir janela do Painel rápido",
+    "ru": "Уменьшить окно быстрой панели"
+  },
+  "放大快捷面板文字": {
+    "en": "Increase Quick Panel Text Size",
+    "ja": "クイックパネルの文字を拡大",
+    "pt-BR": "Aumentar texto do Painel rápido",
+    "ru": "Увеличить текст быстрой панели"
+  },
+  "缩小快捷面板文字": {
+    "en": "Decrease Quick Panel Text Size",
+    "ja": "クイックパネルの文字を縮小",
+    "pt-BR": "Diminuir texto do Painel rápido",
+    "ru": "Уменьшить текст быстрой панели"
+  },
+  "编辑快捷键": {
+    "en": "Edit Shortcuts",
+    "ja": "ショートカットを編集",
+    "pt-BR": "Editar atalhos",
+    "ru": "Изменить сочетания клавиш"
+  },
+  "录制快捷键": {
+    "en": "Record Shortcut",
+    "ja": "ショートカットを記録",
+    "pt-BR": "Gravar atalho",
+    "ru": "Записать сочетание клавиш"
+  },
+  "按下一组或两组组合键": {
+    "en": "Press one or two key combinations",
+    "ja": "キーの組み合わせを1つまたは2つ入力",
+    "pt-BR": "Pressione uma ou duas combinações de teclas",
+    "ru": "Нажмите одно или два сочетания клавиш"
+  },
+  "全部恢复默认": {
+    "en": "Reset All to Defaults",
+    "ja": "すべてデフォルトに戻す",
+    "pt-BR": "Restaurar todos os padrões",
+    "ru": "Восстановить все сочетания по умолчанию"
+  },
+  "双击修饰键打开快捷面板": {
+    "en": "Double-Press a Modifier to Open Quick Panel",
+    "ja": "修飾キーを2回押してクイックパネルを開く",
+    "pt-BR": "Pressionar duas vezes uma tecla modificadora para abrir o Painel rápido",
+    "ru": "Открывать быструю панель двойным нажатием клавиши-модификатора"
+  },
+  "此快捷键与现有绑定冲突。": {
+    "en": "This shortcut conflicts with an existing binding.",
+    "ja": "既存のショートカットと競合しています。",
+    "pt-BR": "Este atalho entra em conflito com outro já configurado.",
+    "ru": "Это сочетание конфликтует с уже назначенным."
+  },
+  "无法启用双击修饰键。请检查系统权限或会话类型后重试。": {
+    "en": "Couldn't enable the modifier shortcut. Check system permissions or the session type, then retry.",
+    "ja": "修飾キーのショートカットを有効にできませんでした。システムの権限またはセッションの種類を確認してから、やり直してください。",
+    "pt-BR": "Não foi possível ativar o atalho da tecla modificadora. Verifique as permissões do sistema ou o tipo de sessão e tente novamente.",
+    "ru": "Не удалось включить сочетание с клавишей-модификатором. Проверьте разрешения системы или тип сеанса и повторите попытку."
+  },
+  "已导入 %d 个快捷键，跳过 %d 个不支持的绑定。": {
+    "en": "Imported %d shortcuts and skipped %d unsupported bindings.",
+    "ja": "%d件のショートカットを読み込み、非対応の割り当て%d件をスキップしました。",
+    "pt-BR": "Atalhos importados: %d. Associações sem suporte ignoradas: %d.",
+    "ru": "Импортировано сочетаний: %d. Пропущено неподдерживаемых назначений: %d."
+  },
+  "按下组合键": {
+    "en": "Press a key combination",
+    "ja": "キーの組み合わせを入力",
+    "pt-BR": "Pressione uma combinação de teclas",
+    "ru": "Нажмите сочетание клавиш"
+  },
+  "清除绑定": {
+    "en": "Clear Binding",
+    "ja": "割り当てを解除",
+    "pt-BR": "Remover atalho",
+    "ru": "Снять назначение"
+  },
+  "确认": {
+    "en": "Confirm",
+    "ja": "確定",
+    "pt-BR": "Confirmar",
+    "ru": "Подтвердить"
+  },
+  "Enter 确认 · Esc 取消": {
+    "en": "Enter to confirm · Esc to cancel",
+    "ja": "Enterで確定 · Escでキャンセル",
+    "pt-BR": "Enter para confirmar · Esc para cancelar",
+    "ru": "Enter — подтвердить · Esc — отменить"
   }
 }

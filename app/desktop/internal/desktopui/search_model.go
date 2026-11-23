@@ -12,6 +12,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/desktopkeys"
 	"github.com/uniclipboard/unic/plugin"
 )
 
@@ -477,13 +478,17 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 		}
 	}
 	filterCount := d.activeFilterCount()
-	res := k.TokenSearchField(c, desktopkit.TokenSearchFieldProps{
+	var overrides map[string][]string
+	if d.live != nil {
+		overrides = d.live.config.Config.Desktop.Shortcuts
+	}
+	res := k.TokenSearchField(c, desktopkit.TokenSearchFieldProps{ExternalShortcut: true,
 		Toolbar:           true,
 		Unified:           true,
 		Label:             d.tr("搜索历史"),
 		Value:             &s.buffer,
 		Placeholder:       d.tr("搜索或筛选…"),
-		ShortcutHint:      "⌘F",
+		ShortcutHint:      shortcutHint(overrides, desktopkeys.Search),
 		Tokens:            s.tokens(d),
 		Suggestions:       suggestions,
 		Open:              &s.open,

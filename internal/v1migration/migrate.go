@@ -40,6 +40,8 @@ type Report struct {
 	ColorFailures       int    `json:"color_failures"`
 	PreferencesImported int    `json:"preferences_imported"`
 	PreferenceFailures  int    `json:"preference_failures"`
+	ShortcutsImported   int    `json:"shortcuts_imported"`
+	ShortcutsSkipped    int    `json:"shortcuts_skipped"`
 }
 type Progress struct {
 	Stage     string `json:"stage"`
@@ -197,6 +199,9 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		return
 	}
 	if target != nil {
+		if err := s.importShortcuts(dst, &report); err != nil {
+			report.PreferenceFailures++
+		}
 		importPreferences(ctx, dst, colors, prefs, &report)
 		runErr = target.Close(ctx)
 		target = nil

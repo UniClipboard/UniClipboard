@@ -31,14 +31,22 @@ func renderMigration(c *ui.Context, k desktopkit.Kit, m Model, fields *Fields, a
 		ui.Column(c.Key("mig-compact")).Fill().Background(p.workspace).Children(func() {
 			renderCompactRail(c, k, p, steps, topBand)
 			ui.Box(c).FillWidth().Height(1).Background(p.sep).Shrink(0)
-			renderMigrationWorkspace(c, k, p, m, fields, a, tr, true, 0)
+			renderMigrationWorkspace(c, k, p, m, fields, a, tr, true, 0, 0)
 		})
 		return
 	}
+	// Both headers end at the same height so their dividers meet at the seam.
+	headerHeight, railTop, workspaceTop := float32(74), float32(0), float32(0)
+	if m.WindowControls != nil {
+		headerHeight += topBand
+		railTop, workspaceTop = topBand, topBand
+	} else if topBand > 0 {
+		headerHeight, railTop, workspaceTop = 88, 42, 12
+	}
 	ui.Row(c.Key("mig-split")).Fill().AlignItems(ui.Stretch).Background(p.workspace).Children(func() {
-		renderJourneyRail(c, k, p, m, steps, tr, topBand)
+		renderJourneyRail(c, k, p, m, steps, tr, headerHeight, railTop)
 		ui.Box(c).Width(1).FillHeight().Background(p.sep).Shrink(0)
-		renderMigrationWorkspace(c, k, p, m, fields, a, tr, false, topBand)
+		renderMigrationWorkspace(c, k, p, m, fields, a, tr, false, headerHeight, workspaceTop)
 	})
 }
 
@@ -118,22 +126,14 @@ func journeyStepsFor(m Model, tr func(string) string) []journeyStep {
 	return d
 }
 
-func renderJourneyRail(c *ui.Context, k desktopkit.Kit, p setupColors, m Model, steps []journeyStep, tr func(string) string, topBand float32) {
+func renderJourneyRail(c *ui.Context, k desktopkit.Kit, p setupColors, m Model, steps []journeyStep, tr func(string) string, headerHeight, captionH float32) {
 	entryTag := "首次安装引导"
 	if m.MigrationOnly {
 		entryTag = "设置 › 存储补迁移"
 	}
 	rail := ui.Column(c.Key("j-rail")).Width(220).FillHeight().Shrink(0).Background(p.sidebar).Gap(0)
 	rail.Children(func() {
-		// Top header band matches right m-head height (88px with macOS traffic lights, 74px otherwise)
-		// so the horizontal divider aligns cleanly across the split seam.
-		headBandH := float32(74)
-		captionH := float32(0)
-		if topBand > 0 {
-			headBandH = 88
-			captionH = 42
-		}
-		ui.Column(c.Key("j-top")).FillWidth().Height(headBandH).Shrink(0).Padding(0, 14, 0).Gap(0).Children(func() {
+		ui.Column(c.Key("j-top")).FillWidth().Height(headerHeight).Shrink(0).Padding(0, 14, 0).Gap(0).Children(func() {
 			if captionH > 0 {
 				ui.Row(c.Key("j-caption")).FillWidth().Height(captionH).Shrink(0).DragWindow()
 			}
@@ -248,7 +248,7 @@ func trustRow(c *ui.Context, k desktopkit.Kit, p setupColors, icon desktopkit.Ic
 	})
 }
 
-func renderMigrationWorkspace(c *ui.Context, k desktopkit.Kit, p setupColors, m Model, fields *Fields, a Actions, tr func(string) string, compact bool, topBand float32) {
+func renderMigrationWorkspace(c *ui.Context, k desktopkit.Kit, p setupColors, m Model, fields *Fields, a Actions, tr func(string) string, compact bool, headerHeight, captionPadding float32) {
 	title, sub, pillLabel, pillKind := workspaceHeaderFor(m, tr)
 	padX := float32(26)
 	if compact {
@@ -262,16 +262,11 @@ func renderMigrationWorkspace(c *ui.Context, k desktopkit.Kit, p setupColors, m 
 		pane.FillWidth()
 	}
 	pane.Children(func() {
-		// Top workspace header band (draggable on macOS when setup owns the window top).
-		headBandH := float32(74)
-		if topBand > 0 && !compact {
-			headBandH = 88
-		}
 		head := ui.Row(c.Key("m-head")).FillWidth().Shrink(0).Gap(12).AlignItems(ui.Center)
 		if !compact {
-			head.Height(headBandH).Padding(0, padX, 0)
-			if topBand > 0 {
-				head.Padding(12, padX, 0).DragWindow()
+			head.Height(headerHeight).Padding(captionPadding, padX, 0)
+			if captionPadding > 0 {
+				head.DragWindow()
 			}
 		} else {
 			head.Padding(14, padX, 12)

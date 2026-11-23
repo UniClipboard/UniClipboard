@@ -155,10 +155,12 @@ func (s *Screen) RequestClose(done func()) bool {
 	s.stop()
 	return false
 }
-func (s *Screen) View(c *ui.Context) {
+func (s *Screen) View(c *ui.Context, windowControls func(*ui.Context)) {
 	s.poll()
 	c.After(50 * time.Millisecond)
-	Render(c, s.model, &s.fields, Actions{
+	model := s.model
+	model.WindowControls = windowControls
+	Render(c, model, &s.fields, Actions{
 		Begin: s.begin, Redetect: func() { s.detect("") }, Pick: s.pick,
 		Start: func() { s.start(nil) }, Unlock: func() { s.start([]byte(s.fields.Passphrase)) },
 		Stop: s.stop, Enter: s.enterApp,

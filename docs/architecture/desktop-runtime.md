@@ -100,8 +100,8 @@ its persistent toggle remains outside the hidden/inert sidebar. The content
 heading leads its toolbar, and view/search/actions trail. Collapsed/overlay
 layouts continuously clear the native control area reported by mygo. Traffic
 lights use a (14,18)-DIP native inset; no replacement buttons are drawn.
-Setup and startup keep a separate draggable safe-area wrapper until normal
-runtime content takes ownership of the window top. Linux
+Setup extends its panel backgrounds behind the traffic lights and reserves a
+draggable area. Startup uses a separate draggable safe-area wrapper. Linux
 reserves GTK's reported caption-control area above the application content. With
 the preference on, all three platforms use the normal native title bar and buttons.
 
@@ -112,8 +112,10 @@ caption buttons share one 52-DIP band. Settings and plugin details use the same
 slot. Ordinary pages have no separate `unic` caption row. Search shrinks to the
 available width while caption and command hit targets retain their sizes.
 
-Setup, offline migration, loading and startup-error pages have no SplitView;
-these pages use a single minimal draggable fallback band with the same controls.
+Setup and offline migration extend their panel backgrounds to the window top.
+The same controls occupy the top-right of a transparent 40-DIP draggable
+region. Setup reserves space for the region in both wide and compact layouts.
+Loading and startup-error pages use a separate minimal fallback band.
 Only empty toolbar regions drag. Interactive children retain input. mygo owns
 native hit testing, edge resize and double-click maximize. Maximize/Restore reads
 the OS window state; the maximize element uses mygo's native maximize-button

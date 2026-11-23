@@ -49,7 +49,7 @@ func parseStroke(value string) shortcutStroke {
 	return stroke
 }
 
-func recordStroke(key ui.TextKey) string {
+func recordStroke(key ui.InputEvent) string {
 	for name, code := range shortcutKeys {
 		if key.Key != code {
 			continue
@@ -258,6 +258,7 @@ func (d *viewState) openHistoryLibrary(id string) {
 
 type shortcutEditor struct {
 	id, value, error string
+	confirm          bool
 }
 
 func (d *viewState) editShortcuts(c *ui.Context, k desktopkit.Kit, cfg *localconfig.Config) bool {
@@ -280,13 +281,27 @@ func (d *viewState) editShortcuts(c *ui.Context, k desktopkit.Kit, cfg *localcon
 					if caption == "" {
 						caption = d.tr("关闭")
 					}
-					if k.Button(c.Key("edit"), caption, desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Disabled: d.live.busy}).Clicked() {
+					trigger := k.Button(c.Key("edit"), caption, desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Disabled: d.live.busy})
+					if trigger.Clicked() {
 						*editor = shortcutEditor{id: action.ID}
 					}
+					if editor.id == action.ID {
+						changed = d.recordShortcut(c.Key("record"), k, cfg, trigger) || changed
+					}
+					_, command := k.ToolbarIconMenu(c.Key("binding-menu"), desktopkit.ToolbarIconMenuProps{
+						Label: d.tr("更多操作"), Icon: desktopkit.IconMore, Disabled: d.live.busy,
+						Items: []desktopkit.MenuEntry{
+							{ID: "reset", Label: d.tr("恢复默认"), Disabled: d.live.busy || cfg.Desktop.Shortcuts[action.ID] == nil},
+							{ID: "clear", Label: d.tr("清除绑定"), Disabled: d.live.busy || len(keys) == 0},
+						},
+					})
+					switch command {
+					case "reset":
+						changed = d.applyShortcut(cfg, action.ID, nil) || changed
+					case "clear":
+						changed = d.applyShortcut(cfg, action.ID, []string{}) || changed
+					}
 				})
-				if editor.id == action.ID {
-					changed = d.recordShortcut(c.Key("record-"+action.ID), k, cfg, action.ID) || changed
-				}
 			}
 		})
 	}
@@ -298,62 +313,114 @@ func (d *viewState) editShortcuts(c *ui.Context, k desktopkit.Kit, cfg *localcon
 	return changed
 }
 
-func (d *viewState) recordShortcut(c *ui.Context, k desktopkit.Kit, cfg *localconfig.Config, id string) bool {
+func (d *viewState) recordShortcut(c *ui.Context, k desktopkit.Kit, cfg *localconfig.Config, trigger ui.Element) bool {
 	editor := &d.shortcutEditor
-	display := editor.value
-	field := ui.TextInputBase(c.Key("keys"), &display).Label(d.tr("录制快捷键")).Placeholder(d.tr("按下一组或两组组合键")).Height(30).AutoFocus()
-	field.OnTextKey(func(key ui.TextKey) bool {
-		if key.Key == ui.KeyEscape {
-			*editor = shortcutEditor{}
-			return true
+	save := func() bool {
+		editor.confirm = false
+		if d.live.busy || editor.value == "" {
+			return false
 		}
-		if stroke := recordStroke(key); stroke != "" {
-			if strings.Count(editor.value, " ") == 1 {
-				editor.value = ""
-			}
-			editor.value = strings.TrimSpace(editor.value + " " + stroke)
-			editor.error = ""
-			key.SetText(editor.value)
-		}
+		return d.applyShortcut(cfg, editor.id, []string{editor.value})
+	}
+	if editor.confirm && save() {
+		trigger.Focus()
 		return true
-	})
-	changed := false
-	settingsFooterBar(c, k, editor.error, editor.error != "", func() {
-		for _, button := range []struct{ id, label string }{
-			{"cancel", "取消"}, {"disable", "关闭"}, {"reset", "恢复默认"}, {"save", "保存"},
-		} {
-			if !k.Button(c.Key(button.id), d.tr(button.label), desktopkit.ButtonProps{
-				Size: desktopkit.SizeSmall, Disabled: d.live.busy || button.id == "save" && editor.value == "",
-			}).Clicked() {
-				continue
+	}
+	open, changed := true, false
+	popup := ui.PopoverBase(c, trigger, &open, func(panel ui.Element) {
+		panel.AttachTo(trigger, ui.AnchorBottomEnd, ui.AnchorTopEnd).MarginY(6).
+			Width(284).MaxWidthPercent(92).Radius(10).Padding(10, 12).Gap(8).
+			Background(k.Color("background-primary-default")).Border(1, k.Color("border-button-default")).
+			Label(d.tr("录制快捷键"))
+		target := ui.Row(c.Key("keys")).Wrap().Gap(6).AlignItems(ui.Center).MinHeight(30).
+			Focusable().AutoFocus().Role(ui.RoleGroup).Label(d.tr("按下一组或两组组合键"))
+		target.OnClick(func() { target.Focus() })
+		target.HandleInput(func(key ui.InputEvent) bool {
+			if key.Kind != ui.InputKeyDown || key.Key == ui.KeyTab && key.Mods&^ui.Shift == 0 {
+				return false
 			}
-			if button.id == "cancel" {
-				*editor = shortcutEditor{}
-				return
+			if key.Repeat {
+				return true
 			}
-			next := make(map[string][]string, len(cfg.Desktop.Shortcuts)+1)
-			maps.Copy(next, cfg.Desktop.Shortcuts)
-			switch button.id {
-			case "disable":
-				next[id] = []string{}
-			case "reset":
-				delete(next, id)
-			case "save":
-				value, err := desktopkeys.Normalize(editor.value)
-				if err != nil {
-					editor.error = err.Error()
-					return
+			if key.Mods == 0 {
+				switch key.Key {
+				case ui.KeyEscape:
+					*editor = shortcutEditor{}
+					return true
+				case ui.KeyEnter:
+					editor.confirm = true
+					return true
 				}
-				next[id] = []string{value}
 			}
-			if err := desktopkeys.Validate(next, cfg.Desktop.QuickPanelShortcut); err != nil {
-				editor.error = d.tr("此快捷键与现有绑定冲突。")
+			if stroke := recordStroke(key); stroke != "" {
+				if strings.Contains(editor.value, " ") {
+					editor.value = ""
+				}
+				editor.value = strings.TrimSpace(editor.value + " " + stroke)
+				editor.error = ""
+			}
+			return true
+		})
+		target.Children(func() {
+			first, second, _ := strings.Cut(editor.value, " ")
+			if first == "" {
+				ui.Text(c, d.tr("按下组合键")).FontSize(12).TextColor(k.Color("text-secondary"))
 				return
 			}
-			cfg.Desktop.Shortcuts = next
-			*editor = shortcutEditor{}
-			changed = true
+			recordedShortcutKey(c.Key("first"), k, first)
+			if second != "" {
+				ui.Text(c.Key("sequence-arrow"), "→").FontSize(12).TextColor(k.Color("text-tertiary")).AccessHidden(true)
+				recordedShortcutKey(c.Key("second"), k, second)
+			}
+		})
+		if editor.error != "" {
+			ui.Text(c.Key("error"), editor.error).Role(ui.RoleAlert).FontSize(12).TextColor(k.Color("text-error-primary"))
 		}
+		ui.Row(c.Key("actions")).Gap(8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+			ui.Text(c.Key("hint"), d.tr("Enter 确认 · Esc 取消")).FontSize(11).TextColor(k.Color("text-secondary"))
+			if k.Button(c.Key("save"), d.tr("确认"), desktopkit.ButtonProps{
+				Variant: desktopkit.Primary, Size: desktopkit.SizeSmall,
+				Disabled: d.live.busy || editor.value == "",
+			}).Clicked() {
+				changed = save()
+			}
+		})
 	})
+	if popup.Dismissed() {
+		*editor = shortcutEditor{}
+		trigger.Focus()
+	}
+	if changed {
+		trigger.Focus()
+	}
 	return changed
+}
+
+func (d *viewState) applyShortcut(cfg *localconfig.Config, id string, keys []string) bool {
+	next := make(map[string][]string, len(cfg.Desktop.Shortcuts)+1)
+	maps.Copy(next, cfg.Desktop.Shortcuts)
+	if keys == nil {
+		delete(next, id)
+	} else {
+		next[id] = keys
+	}
+	if err := desktopkeys.Validate(next, cfg.Desktop.QuickPanelShortcut); err != nil {
+		message := d.tr("此快捷键与现有绑定冲突。")
+		if d.shortcutEditor.id == id {
+			d.shortcutEditor.error = message
+		} else {
+			d.live.message = message
+		}
+		return false
+	}
+	cfg.Desktop.Shortcuts = next
+	d.shortcutEditor = shortcutEditor{}
+	return true
+}
+
+func recordedShortcutKey(c *ui.Context, k desktopkit.Kit, stroke string) {
+	ui.Row(c).Height(26).PaddingX(8).Radius(5).Border(1, k.Color("border-button-default")).
+		Background(k.SubtleCardSurface()).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, formatShortcutBindings([]string{stroke})).FontSize(12).FontWeight(600).SingleLine()
+	})
 }

@@ -31,6 +31,11 @@ within system-wide bindings. A step claimed by a system-wide binding cannot
 also belong to a window binding. History and main window scopes overlap.
 The two independent windows may share bindings.
 
+The shortcut editor opens beside the selected binding. Unmodified Enter
+confirms the recorded sequence and Escape dismisses the editor. Pressing Enter
+without a recorded combination leaves the binding unchanged. The row menu
+provides clear and reset actions.
+
 The tray registers the complete replacement set before releasing superseded
 registrations. If registration fails, it rolls back added registrations and
 reports the previous effective panel binding. A saved preference can differ

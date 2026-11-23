@@ -8272,5 +8272,23 @@
     "ja": "%d件のショートカットを読み込み、非対応の割り当て%d件をスキップしました。",
     "pt-BR": "Atalhos importados: %d. Associações sem suporte ignoradas: %d.",
     "ru": "Импортировано сочетаний: %d. Пропущено неподдерживаемых назначений: %d."
+  },
+  "按下组合键": {
+    "en": "Press a key combination",
+    "ja": "キーの組み合わせを入力",
+    "pt-BR": "Pressione uma combinação de teclas",
+    "ru": "Нажмите сочетание клавиш"
+  },
+  "清除绑定": {
+    "en": "Clear Binding",
+    "ja": "割り当てを解除",
+    "pt-BR": "Remover atalho",
+    "ru": "Снять назначение"
+  },
+  "Enter 确认 · Esc 取消": {
+    "en": "Enter to confirm · Esc to cancel",
+    "ja": "Enterで確定 · Escでキャンセル",
+    "pt-BR": "Enter para confirmar · Esc para cancelar",
+    "ru": "Enter — подтвердить · Esc — отменить"
   }
 }

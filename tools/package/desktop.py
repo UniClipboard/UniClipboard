@@ -170,7 +170,11 @@ def fetch_cli(args):
         ) as temporary:
             work = Path(temporary) / "candidate"
             cli_candidate.acquire(
-                record.get("cli_artifact_run_id"), work, args.metadata, signed=True
+                record.get("cli_artifact_run_id"),
+                work,
+                args.metadata,
+                signed=True,
+                desktop_lock=True,
             )
             locked_cli(record, work / "release-manifest.json", args.target, False)
             work.rename(output)

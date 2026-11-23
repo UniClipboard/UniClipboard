@@ -17,6 +17,20 @@ on:
       expected_source:
         type: string
         description: Expected source SHA for a joint release
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      build_number:
+        type: string
+        required: true
+      stage:
+        type: boolean
+        required: true
+    outputs:
+      expected_revision:
+        value: ${{ jobs.stage.outputs.expected_revision }}
 permissions:
   contents: read
 jobs:
@@ -114,7 +128,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: legacy-native-${{ matrix.source_version }}-${{ matrix.target }}
+          name: ${{ job.status == 'success' && format('legacy-native-{0}-{1}', matrix.source_version, matrix.target) || format('legacy-failure-{0}-{1}-{2}', matrix.source_version, matrix.target, github.run_attempt) }}
           path: dist/legacy-native
           if-no-files-found: error
   stage:
@@ -123,6 +137,8 @@ jobs:
     environment: Production
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      expected_revision: ${{ steps.stage.outputs.expected_revision }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -142,6 +158,7 @@ jobs:
           pattern: legacy-native-*
           path: dist/legacy-receipts
       - name: Verify and stage the immutable legacy Alpha offer
+        id: stage
         env:
           VERSION: ${{ inputs.version }}
           BUILD_NUMBER: ${{ inputs.build_number }}
@@ -212,6 +229,8 @@ jobs:
                     'current_version': state['currentVersion'],
                     'current_build_number': state['currentBuildNumber']}
           (work / 'legacy-staging.json').write_text(json.dumps(result, indent=2) + '\n')
+          with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+              print(f"expected_revision={state['internalRevision']}", file=output)
           print(json.dumps(result))
           PY
       - uses: actions/upload-artifact@v4

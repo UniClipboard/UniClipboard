@@ -26,6 +26,25 @@ on:
       expected_source:
         type: string
         description: Expected source SHA for a joint release
+  workflow_call:
+    inputs:
+      operation:
+        type: string
+        required: true
+      candidate_run_id:
+        type: string
+        required: true
+      channel:
+        type: string
+        required: true
+      expected_revision:
+        type: string
+        default: '0'
+      stable_acceptance:
+        type: string
+      joint:
+        type: boolean
+        required: true
 permissions:
   contents: read
   actions: read
@@ -84,16 +103,34 @@ jobs:
           cache: pip
           cache-dependency-path: tools/release/requirements.txt
       - run: pip install -r tools/release/requirements.txt
+      - uses: actions/download-artifact@v4
+        if: inputs.joint && inputs.channel == 'alpha'
+        with:
+          name: joint-desktop-cli
+          path: dist/cli-input
+      - uses: actions/download-artifact@v4
+        if: inputs.joint && inputs.channel == 'alpha'
+        with:
+          pattern: desktop-*64
+          path: dist/desktop-build-artifacts
       - name: Acquire exact accepted native candidate and locked CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+          IN_RUN_BUILD: ${{ inputs.joint && inputs.channel == 'alpha' }}
         run: |
-          python3 tools/release/desktop_release.py acquire --run-id "$CANDIDATE_RUN" --output dist/candidate
-          python3 tools/package/desktop.py fetch-cli --allow-ci --target linux-amd64 --output dist/cli-input
-          python3 tools/release/desktop_release.py assemble --input dist/candidate --output dist/catalogue
+          metadata=release/products.toml
+          args=()
+          if [[ "$IN_RUN_BUILD" == true ]]; then
+            metadata=dist/cli-input/products.toml
+            args+=(--current-artifacts dist/desktop-build-artifacts)
+          else
+            python3 tools/package/desktop.py fetch-cli --allow-ci --target linux-amd64 --output dist/cli-input
+          fi
+          python3 tools/release/desktop_release.py acquire --run-id "$CANDIDATE_RUN" --output dist/candidate "${args[@]}"
+          python3 tools/release/desktop_release.py assemble --metadata "$metadata" --input dist/candidate --output dist/catalogue
       - name: Verify stable acceptance before joint publication
-        if: inputs.expected_source != '' && inputs.operation == 'publish' && inputs.channel == 'stable'
+        if: inputs.joint && inputs.operation == 'github-draft' && inputs.channel == 'stable'
         env:
           STABLE_ACCEPTANCE: ${{ inputs.stable_acceptance }}
         run: |
@@ -150,7 +187,7 @@ jobs:
           RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
           CHANNEL: ${{ inputs.channel }}
           EXPECTED_REVISION: ${{ inputs.expected_revision }}
-          EXPECTED_SOURCE: ${{ inputs.expected_source }}
+          FORWARD_ONLY: ${{ inputs.joint || inputs.expected_source != '' }}
           STABLE_ACCEPTANCE: ${{ inputs.stable_acceptance }}
         run: |
           python3 - <<'PY'
@@ -165,7 +202,7 @@ jobs:
           open('dist/publication.json', 'wb').write(data)
           PY
           args=()
-          if [[ -n "$EXPECTED_SOURCE" ]]; then
+          if [[ "$FORWARD_ONLY" == true ]]; then
             args+=(--forward-only)
           fi
           if [[ "$CHANNEL" == stable ]]; then
@@ -190,7 +227,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-delivery-receipt
+          name: ${{ inputs.joint && format('desktop-delivery-{0}-{1}', inputs.operation, github.run_attempt) || 'desktop-delivery-receipt' }}
           path: |
             dist/publication.json
             dist/promotion.json

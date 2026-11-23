@@ -829,7 +829,8 @@ def resume(args):
     record = metadata(args.metadata)
     tag = f"cli/v{record['version']}-build.{record['build_number']}"
     repository = "UniClipboard/UniClipboard"
-    if find_github_release(repository, tag) is None:
+    release = find_github_release(repository, tag)
+    if release is None:
         staged = False
     else:
         output = Path(args.output).resolve()
@@ -846,17 +847,30 @@ def resume(args):
         ]
         run(base + ["--pattern", "release-manifest.json"])
         manifest = validate_manifest(output / "release-manifest.json")
-        if (
-            manifest["version"],
-            manifest["build_number"],
-            manifest["source_sha"],
-            manifest["metadata_sha256"],
-        ) != (
+        if (manifest["version"], manifest["build_number"]) != (
             record["version"],
             record["build_number"],
-            run(["git", "rev-parse", "HEAD"]),
-            digest(args.metadata),
         ):
+            raise ValueError(
+                "staged candidate conflicts with the selected product identity"
+            )
+        reuse_published = args.reuse_published and release.get("draft") is False
+        if reuse_published:
+            ref = json.loads(
+                run(
+                    [
+                        "gh",
+                        "api",
+                        f"repos/{repository}/git/ref/tags/{quote(tag, safe='')}",
+                    ]
+                )
+            )["object"]
+            if (ref["type"], ref["sha"]) != ("commit", manifest["source_sha"]):
+                raise ValueError("published CLI tag source conflicts with its manifest")
+        if not reuse_published and (
+            manifest["source_sha"],
+            manifest["metadata_sha256"],
+        ) != (run(["git", "rev-parse", "HEAD"]), digest(args.metadata)):
             raise ValueError(
                 "staged candidate conflicts with the selected source or metadata"
             )
@@ -886,6 +900,7 @@ def main():
     p.add_argument("--metadata", default=str(ROOT / "release/products.toml"))
     p.add_argument("--output", required=True)
     p.add_argument("--github-output", required=True)
+    p.add_argument("--reuse-published", action="store_true")
     p = sub.add_parser("smoke")
     p.add_argument("--directory", required=True)
     p = sub.add_parser("assemble")

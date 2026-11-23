@@ -17,7 +17,12 @@ import release as cli  # noqa: E402
 
 
 def acquire(
-    run_id, output, metadata, repository="UniClipboard/UniClipboard", signed=False
+    run_id,
+    output,
+    metadata,
+    repository="UniClipboard/UniClipboard",
+    signed=False,
+    desktop_lock=False,
 ):
     if not str(run_id).isdigit() or int(run_id) < 1:
         raise ValueError("invalid CLI build run ID")
@@ -56,6 +61,13 @@ def acquire(
         )
         manifest = cli.validate_manifest(work / "release-manifest.json")
         record = cli.metadata(metadata, "cli")
+        if desktop_lock:
+            desktop = cli.metadata(metadata, "desktop")
+            record = dict(
+                record,
+                version=desktop["cli_version"],
+                build_number=desktop["cli_build_number"],
+            )
         if (
             manifest["version"],
             manifest["build_number"],

@@ -30,9 +30,8 @@ paths:
   - app/desktop/e2e/run.py
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
-  - .github/workflows/release-joint.yml
   - .github/workflows/promote.yml
-verified: acf44a989b788f187710f6ab2edb99a03475c594
+verified: 1cd17c916ea5d3436bebd521293f2827b825a3dd
 ---
 # Product builds and CLI releases
 
@@ -44,13 +43,16 @@ verified: acf44a989b788f187710f6ab2edb99a03475c594
 
 Run **Release CLI and Desktop** from the selected release source. Supply
 `channel` and `version`. The version must match both product records in
-`release/products.toml`. Each build number and the bundled CLI lock come from
-that file. The workflow pins its commit with a `release-source/<sha>` tag
-and dispatches the existing workflows on that tag. Each child checks the
-expected source before release work. npm uses the existing CLI workflow's
-trusted publishing identity.
+`release/products.toml`. Each product reads its own build number from that file.
+The entry uses `release-cli.yml` to retain the npm trusted publishing identity.
+Leave `version` empty to release the CLI independently.
 
-Alpha publishes the CLI and builds the signed Desktop candidate in parallel.
+Alpha creates the Desktop CLI lock from the exact accepted CLI manifest.
+An already published CLI build can be recovered from its verified tag and
+immutable assets. Draft recovery still requires the original source and
+metadata. CLI publication and signed Desktop construction run in parallel
+after CLI candidate acceptance. Desktop construction verifies the selected
+CLI manifest, package integrity and shared source compatibility on each target.
 Once both succeed, the workflow publishes the Desktop candidate, stages the
 legacy upgrade after all twelve native receipts pass, and promotes Desktop
 using the channel revision from the staging receipt.
@@ -63,12 +65,10 @@ Desktop promotion reads the current revision and checks it when changing the
 channel. Joint promotion rejects a downgrade and verifies the public feed
 when the requested build is already selected.
 
-Each attempt uploads `joint-release-<attempt>` with the source, build
-identities, child run IDs, and observed results. Re-run the same joint
-workflow run after a failure to resume its child runs. Successful builds are
-reused. Failed child jobs rerun under their original run ID. The final result
-requires both products to be available. Each destination records its own
-publication result when another destination fails.
+The same Actions run displays CLI construction and publication, Desktop
+construction and publication, legacy acceptance and Desktop promotion.
+Its artifacts hold the exact Desktop CLI lock and the publication receipts.
+Re-run failed jobs to reuse the successful build jobs and their artifacts.
 
 `go run ./tools/package -product cli` builds `unic` and `unicd` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
 

@@ -32,7 +32,7 @@ paths:
   - .github/workflows/release-cli.yml
   - .github/workflows/release-joint.yml
   - .github/workflows/promote.yml
-verified: a1f71799530bf095d82eb4eb5ffa97773fd07f4b
+verified: acf44a989b788f187710f6ab2edb99a03475c594
 ---
 # Product builds and CLI releases
 

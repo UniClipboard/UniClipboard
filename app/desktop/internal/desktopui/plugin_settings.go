@@ -19,6 +19,7 @@ import (
 type builtinPluginSettings struct {
 	id, revision, threshold, thresholdError string
 	instanceName                            string
+	channelPair                             weTypePairing
 	tab, query                              string
 	view                                    string // "" (list) | "marketplace" | "advanced"
 	marketQuery                             string
@@ -460,6 +461,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 								p.view = ""
 								p.detailTechOpen = false
 								p.form = nil
+								p.channelPair = weTypePairing{}
 							}
 							if item.Source != "local" {
 								if k.Button(c.Key("uninstall-"+item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconDelete, Label: d.tr("卸载") + displayName, Tooltip: d.tr("卸载"), Disabled: l.busy}).Clicked() {

@@ -532,3 +532,16 @@ Engine keys standard policies, private directories, locks, authority, operations
 `ListSyncBackends(ctx)` returns assembled instance IDs, implementation IDs, transport kinds, device-pairing support, external-channel classification and local runtime state (`running`, `restarting`, `unavailable`, `suspended`, `stopped`). Runtime state does not imply remote connectivity. Disabled instances are not assembled. No transport address, credential, process token or absolute path appears in this projection.
 
 `JoinRequest.BackendID` and `JoinTicketRequest.BackendID` select a local compatible instance and participate in request idempotency. The selected implementation must match the ticket descriptor. Omission uses only an exact singleton ID match; no alias guessing or Tailcat fallback occurs. The issuer checks its own issuing instance when redeeming PairProof. RPC frames, identity proofs, peer metadata and ticket envelopes use protocol version 1. No previous ticket-shape compatibility is provided.
+
+
+### Live external plugin start
+
+
+`StartExternalPlugin` admits an inactive external Go Action-only instance or
+external-channel object-store backend while the Engine is running. The Engine
+verifies and starts the candidate child process, calls the host's persistence
+callback, then publishes its Action or backend registration. The callback
+may read or update settings and must return without waiting for service
+shutdown or another plugin startup. Callbacks from a candidate backend have no
+channel access before publication. A failed request publishes no runtime.
+Existing plugin instances and the host lifecycle remain in place.

@@ -2441,6 +2441,24 @@
     "pt-BR": "Configurações salvas",
     "ru": "Настройки сохранены"
   },
+  "启动": {
+    "en": "Start",
+    "ja": "起動",
+    "pt-BR": "Iniciar",
+    "ru": "Запустить"
+  },
+  "启动失败": {
+    "en": "Could not start the plugin",
+    "ja": "プラグインを起動できませんでした",
+    "pt-BR": "Não foi possível iniciar o plug-in",
+    "ru": "Не удалось запустить плагин"
+  },
+  "已安装「%s」。": {
+    "en": "Installed %s.",
+    "ja": "「%s」をインストールしました。",
+    "pt-BR": "%s instalado.",
+    "ru": "Плагин «%s» установлен."
+  },
   "操作失败": {
     "en": "Action failed",
     "ja": "操作に失敗しました",
@@ -5092,6 +5110,78 @@
     "ja": "インスタンスを作成",
     "pt-BR": "Criar instância",
     "ru": "Создать экземпляр"
+  },
+  "微信输入法共享空间": {
+    "en": "WeType shared space",
+    "ja": "WeTypeの共有スペース",
+    "pt-BR": "Espaço compartilhado do WeType",
+    "ru": "Общее пространство WeType"
+  },
+  "加入共享空间": {
+    "en": "Join Shared Space",
+    "ja": "共有スペースに参加",
+    "pt-BR": "Entrar no espaço compartilhado",
+    "ru": "Подключиться к общему пространству"
+  },
+  "已加入共享空间": {
+    "en": "Shared space joined",
+    "ja": "共有スペースに参加済み",
+    "pt-BR": "Espaço compartilhado conectado",
+    "ru": "Общее пространство подключено"
+  },
+  "启用插件并重启后，即可输入配对码。": {
+    "en": "Enable the plugin and restart to enter the pairing code.",
+    "ja": "プラグインを有効にして再起動すると、ペアリングコードを入力できます。",
+    "pt-BR": "Ative o plugin e reinicie para inserir o código de pareamento.",
+    "ru": "Включите плагин и перезапустите приложение, чтобы ввести код сопряжения."
+  },
+  "重启后即可输入配对码。": {
+    "en": "Restart to enter the pairing code.",
+    "ja": "再起動すると、ペアリングコードを入力できます。",
+    "pt-BR": "Reinicie para inserir o código de pareamento.",
+    "ru": "Перезапустите приложение, чтобы ввести код сопряжения."
+  },
+  "在微信输入法的跨设备设置中获取配对码。如有提示，请在微信输入法中确认配对。": {
+    "en": "Get a pairing code in WeType’s cross-device settings. Confirm the pairing in WeType if prompted.",
+    "ja": "WeTypeのデバイス間共有設定でペアリングコードを取得します。確認を求められたら、WeTypeでペアリングを承認してください。",
+    "pt-BR": "Obtenha um código nas configurações de sincronização entre dispositivos do WeType. Se solicitado, confirme o pareamento no WeType.",
+    "ru": "Получите код сопряжения в настройках синхронизации между устройствами в WeType. При появлении запроса подтвердите сопряжение в WeType."
+  },
+  "正在连接…": {
+    "en": "Connecting…",
+    "ja": "接続中…",
+    "pt-BR": "Conectando…",
+    "ru": "Подключение…"
+  },
+  "连接选项": {
+    "en": "Connection Options",
+    "ja": "接続オプション",
+    "pt-BR": "Opções de conexão",
+    "ru": "Параметры подключения"
+  },
+  "恢复已有连接": {
+    "en": "Restore Existing Connection",
+    "ja": "既存の接続を復元",
+    "pt-BR": "Restaurar conexão existente",
+    "ru": "Восстановить подключение"
+  },
+  "此插件已有配对。请在连接选项中恢复已有连接。": {
+    "en": "This plugin is already paired. Restore the existing connection in Connection Options.",
+    "ja": "このプラグインはペアリング済みです。「接続オプション」で既存の接続を復元してください。",
+    "pt-BR": "Este plugin já está pareado. Restaure a conexão existente em Opções de conexão.",
+    "ru": "Сопряжение с плагином уже выполнено. Восстановите подключение в параметрах подключения."
+  },
+  "没有可恢复的连接。请使用新的配对码。": {
+    "en": "There’s no connection to restore. Use a new pairing code.",
+    "ja": "復元できる接続がありません。新しいペアリングコードを使用してください。",
+    "pt-BR": "Não há conexão para restaurar. Use um novo código de pareamento.",
+    "ru": "Нет подключения для восстановления. Используйте новый код сопряжения."
+  },
+  "未能加入共享空间。请检查微信输入法并重试。": {
+    "en": "Couldn’t join the shared space. Check WeType and try again.",
+    "ja": "共有スペースに参加できませんでした。WeTypeを確認して、もう一度お試しください。",
+    "pt-BR": "Não foi possível entrar no espaço compartilhado. Verifique o WeType e tente novamente.",
+    "ru": "Не удалось подключиться к общему пространству. Проверьте WeType и повторите попытку."
   },
   "此后端使用外部渠道。请在插件设置中配置授权。无需设备指纹或设备配对码。": {
     "en": "This backend uses external channels. Configure authorization in plugin settings; no device fingerprint or pairing code is required.",

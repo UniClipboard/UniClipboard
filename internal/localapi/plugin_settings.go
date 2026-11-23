@@ -43,6 +43,7 @@ type PluginInfo struct {
 	Actions          []PluginActionInfo    `json:"actions,omitempty"`
 	Configured       bool                  `json:"configured_enabled"`
 	RunningVersion   string                `json:"running_version,omitempty"`
+	LiveStart        bool                  `json:"live_start,omitempty"`
 	HasSettings      bool                  `json:"has_settings"`
 	NeedsSettings    bool                  `json:"needs_settings,omitempty"`
 	Restart          bool                  `json:"restart_required"`
@@ -114,6 +115,11 @@ func (c *Client) PluginMarketplace(ctx context.Context, refresh bool) (out Plugi
 
 func (c *Client) InstallPlugin(ctx context.Context, in PluginInstallRequest) (out PluginInfo, err error) {
 	err = c.do(ctx, http.MethodPost, "/v1/plugins/install", in, &out)
+	return
+}
+
+func (c *Client) StartPlugin(ctx context.Context, id string) (out PluginInfo, err error) {
+	err = c.do(ctx, http.MethodPost, "/v1/plugins/"+url.PathEscape(id)+"/start", nil, &out)
 	return
 }
 

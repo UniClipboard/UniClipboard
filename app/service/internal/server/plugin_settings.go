@@ -86,6 +86,21 @@ func pluginRoutes(mux *http.ServeMux, backend api.Backend) {
 		}
 		reply(w, 200, out)
 	})
+	mux.HandleFunc("POST /v1/plugins/{id}/start", func(w http.ResponseWriter, r *http.Request) {
+		sb, ok := backend.(interface {
+			StartPlugin(context.Context, string) (api.PluginInfo, error)
+		})
+		if !ok {
+			fail(w, 400, &api.Error{Reason: "unsupported", Message: "live plugin startup unavailable"})
+			return
+		}
+		out, err := sb.StartPlugin(r.Context(), r.PathValue("id"))
+		if err != nil {
+			fail(w, 400, err)
+			return
+		}
+		reply(w, 200, out)
+	})
 	mux.HandleFunc("DELETE /v1/plugins/{id}", func(w http.ResponseWriter, r *http.Request) {
 		ub, ok := backend.(interface {
 			UninstallPlugin(context.Context, string) error

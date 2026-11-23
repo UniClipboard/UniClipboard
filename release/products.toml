@@ -2,18 +2,18 @@ schema = 1
 
 [products.cli]
 version = "2.0.0"
-build_number = 2
+build_number = 3
 targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64", "windows-amd64", "windows-arm64"]
 
 [products.desktop]
 version = "2.0.0"
-build_number = 3
+build_number = 4
 targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64", "windows-amd64", "windows-arm64"]
 cli_version = "2.0.0"
-cli_build_number = 2
-cli_manifest_sha256 = "19a091d691c8d1ad5ea7bdfb12be39a2e6a2235756a919b7c9f415c4719dd8ec"
+cli_build_number = 3
+cli_manifest_sha256 = "e09cf4ed4ca6c357c585d11660ca64583d565901af64e15c5a6a8ca8e46fbdc4"
 
-cli_artifact_run_id = 45030337326
+cli_artifact_run_id = 45138690798
 # Configure the durable raw Ed25519 public key before enabling in-app updates.
 update_public_key = "4/pGKRfV8KGneAnMEci+DnpdrnoFLM5uVhDq0Kp/pvk="
 

@@ -16,6 +16,8 @@ python3 tools/package/desktop.py package --stage dist/desktop-stage \
 
 Supported construction entrypoints: DEB, RPM, pacman binary package, Windows NSIS setup EXE, portable ZIP, macOS DMG/app archive, and Linux AppImage/update archive. Tools and platforms are required per format. Format construction is separate from signing, installation, sandbox capability and public publication acceptance. AppImage currently requires the host GTK3 runtime; self-contained runtime acceptance is pending.
 
+macOS DMG construction (`tools/package/macos_dmg.py`) builds a `ULFO` (LZFSE) disk image without GUI/AppleScript dependencies. It copies `UniClipboard.app` with `ditto`, adds an `Applications` symlink, applies the multi-resolution text-free BoardUI background (`packaging/macos/dmg-background.tiff`, regenerated on macOS via `python3 tools/package/macos-dmg-assets.py`) and volume icon (`app/desktop/internal/appicons/icon.icns`), and writes a deterministic `.DS_Store` layout with both HFS+ Alias and CoreFoundation bookmark records. Signed stages also sign the DMG container with `codesign`, and `--notarize-container` notarizes and staples the final DMG.
+
 Generate channel definitions only from final files listed in verified `artifacts.json` records:
 
 ```sh

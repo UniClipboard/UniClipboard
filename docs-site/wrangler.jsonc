@@ -19,5 +19,19 @@
   },
   "vars": {
     "NEXT_PUBLIC_SITE_URL": "https://docs.uniclipboard.app"
+  },
+  "env": {
+    "preview": {
+      "name": "uc-docs-preview",
+      "routes": [
+        {
+          "pattern": "preview.docs.uniclipboard.app",
+          "custom_domain": true
+        }
+      ],
+      "vars": {
+        "NEXT_PUBLIC_SITE_URL": "https://preview.docs.uniclipboard.app"
+      }
+    }
   }
 }

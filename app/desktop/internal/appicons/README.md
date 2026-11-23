@@ -5,7 +5,7 @@
 | Platform | Artwork and delivery |
 |---|---|
 | macOS | `icon.icns` contains 16, 32, 128, 256 and 512 point images at 1× and 2×. The 1024 px master uses an inset 824 px rounded square for the existing macOS 13+ bundle. Launch Services supplies the packaged Dock icon. The unbundled binary uses `icon-macos.png`. |
-| Windows | `icon.ico` contains 14 sizes from 16 to 256 px. The icon uses a 48-unit grid with a 44-unit silhouette and a 2-unit exterior corner radius. Its neutral edge separates the black field from dark surfaces. Both executable architectures and the NSIS installer use the ICO. The main window uses `icon-windows.png` through mygo. |
+| Windows | `icon.ico` contains 14 sizes from 16 to 256 px. The icon uses a 48-unit grid with a 44-unit silhouette and a 2-unit exterior corner radius. Its neutral edge separates the black field from dark surfaces. Both executable architectures embed the ICO and PE `VERSIONINFO` metadata (from `release/products.toml`) via `tools/package/windows-icons.sh`, and the NSIS installer uses the same ICO. The main window uses `icon-windows.png` through mygo. |
 | Linux | `icon-linux.svg` uses a 128-unit canvas, a 96-unit field and a 4-unit lower face. Installed packages provide the scalable SVG and 48 and 512 px fallbacks in the hicolor theme. AppImage uses the 512 px PNG at its root. Linux windows and the About view use the same 512 px PNG. |
 
 Platform references:

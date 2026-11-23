@@ -97,10 +97,12 @@ try:
             # Inspect the resources of the actual cross-built executable.
             resources = run(["llvm-readobj", "--coff-resources", payload / "unic-desktop.exe"])
             _, _, count = struct.unpack_from("<HHH", (payload / "icon.ico").read_bytes())
-            icon_entries, group_entries = resources.split("Type: ICON (ID 3)", 1)[1].split("Type: GROUP_ICON (ID 14)", 1)
+            icon_entries, rest = resources.split("Type: ICON (ID 3)", 1)[1].split("Type: GROUP_ICON (ID 14)", 1)
+            group_entries, version_entries = rest.split("Type: VERSIONINFO (ID 16)", 1)
             assert icon_entries.count("Name: (ID ") == count
             assert "Name: (ID 1)" in group_entries
-            report["checks"].append(f"{arch} executable embeds all {count} app icon sizes")
+            assert "Name: (ID 1)" in version_entries
+            report["checks"].append(f"{arch} executable embeds all {count} app icon sizes and VERSIONINFO")
 
             (payload / "release-identity.json").write_text(json.dumps({
                 "product": "desktop", "version": "2.0.0", "build_number": 1,

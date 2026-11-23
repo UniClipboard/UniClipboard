@@ -56,3 +56,28 @@ func (c *Client) AdapterCall(ctx context.Context, session, method string, in, ou
 	}
 	return nil
 }
+
+// ClipboardApplication is the result used by the Quick Panel before paste.
+type ClipboardApplication struct {
+	Mark    string `json:"mark,omitempty"`
+	Failure string `json:"failure,omitempty"`
+}
+
+type ClipboardApplicationRequest struct {
+	ID    string `json:"id"`
+	Plain bool   `json:"plain"`
+}
+
+func (c *Client) EnableDesktopClipboard(ctx context.Context) error {
+	return c.do(ctx, http.MethodPost, "/v1/desktop/clipboard/enable", nil, nil)
+}
+
+func (c *Client) ApplyDesktopClipboard(ctx context.Context, id string, plain bool) (out ClipboardApplication, err error) {
+	err = c.do(ctx, http.MethodPost, "/v1/desktop/clipboard/apply", ClipboardApplicationRequest{ID: id, Plain: plain}, &out)
+	return
+}
+
+func (c *Client) MatchDesktopClipboard(ctx context.Context, mark string) (out bool, err error) {
+	err = c.do(ctx, http.MethodPost, "/v1/desktop/clipboard/match", mark, &out)
+	return
+}

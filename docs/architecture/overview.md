@@ -160,7 +160,7 @@ The fixture accepts filters explicitly, combines values with OR within a dimensi
 The standalone fixture never creates an Engine client and records restore/paste/send/open/reveal as simulated effects. The normal Desktop uses the same composition through a separate live-data binding and its native host dispatch; fixture success does not establish those real integrations.
 The standalone entry can start in history, disconnected or empty state with `--quick-state`.
 The daemon-backed Desktop shares the renderer through its live binding. The independently launched demo keeps its isolated fixture data and effects.
-The standalone demo uses isolated fixtures. The production quick-panel role reuses the live history binding from `NewDesktop` and creates its own history window and satellite. It delegates clipboard application to the tray adapter.
+The standalone demo uses isolated fixtures. The production quick-panel role reuses the live history binding from `NewDesktop` and creates its own history window and satellite. It delegates clipboard application through the tray to the active adapter.
 The [quick panel acceptance guide](../../app/desktop/QUICK-PANEL-DEMO.md) records the source map, reproduction steps, artifact format and differences.
 The explicit `quick-panel-screenshots` export composes separately rendered history and satellite rasters at 2x scale and records source and image hashes.
 View-level E2E verifies mygo input and layout without opening a native app. Native focus, multi-monitor placement, icon/font rendering and one-to-one visual acceptance remain unverified.

@@ -80,7 +80,7 @@ Adapter RPC operations have an eight-second deadline.
 An expired queued command is not dispatched. A dispatched write whose response is lost has an uncertain outcome.
 The caller must not infer success or automatically replay that write.
 
-Clipboard reads, explicit copy, history application and restore execute in the desktop process.
+Clipboard reads, explicit copy, history application and restore execute in the active clipboard adapter. macOS hosts the adapter in `unicd` after explicit Desktop opt-in. Other platforms host it in the tray.
 The adapter serializes these operations with observation and automatic application.
 A write succeeds only after actual read-back and an accepted Engine application result.
 Copy writes, establishes a new baseline and submits once, even for unchanged content.
@@ -94,7 +94,11 @@ A service restart invalidates all sessions, handles and application tokens.
 The service does not retain a system clipboard lease across restart.
 On reconnect the adapter reads a fresh baseline, does not broadcast that content, and ignores the receipt IDs returned by the service readiness snapshot. A failed receipt snapshot cannot establish readiness.
 The adapter never replays disconnected backlog into the system clipboard.
-Normal GUI close terminates the GUI process and leaves tray capture/application running. Lightweight GUI close also terminates tray and quick panel, releases shortcut and adapter, and retains only the same unicd generation after confirmed ownership release. Manual application activation always opens GUI again. Explicit application Quit releases integration and stops only a still-owned service. A standalone service, including a confirmed lightweight handoff, survives later borrowed Desktop sessions and continues network reception and explicit headless submissions.
+Normal GUI close terminates the GUI process and leaves clipboard capture and application running. Lightweight GUI close also terminates tray and quick panel, unregisters the shortcut, and retains the same service generation after confirmed ownership release. Explicit application Quit stops only an owned service. An enabled macOS service retains its adapter until service exit, including after ownership release and after a borrowing Desktop exits. Other platforms release their tray-owned adapter at tray exit. Manual activation opens the GUI again.
+
+On macOS, the local Desktop client uses `POST /v1/desktop/clipboard/enable` to opt in after setup. An existing standalone service can opt in without changing its generation. A CLI-temporary service rejects opt-in. The repeated request uses the same adapter. The first successful response follows the ordinary adapter baseline and readiness barrier. Ordinary service startup is headless and needs no graphical session. Clipboard access requires the active console user. The setting is in memory and resets when the service stops.
+
+Quick Panel uses the private Desktop bridge for tracked write and match. On macOS the bridge calls `POST /v1/desktop/clipboard/apply` with a history ID and a plain-text flag. The response carries a write mark or a stable failure category. `POST /v1/desktop/clipboard/match` checks the mark immediately before the Desktop sends native paste input. Neither operation records clipboard contents or paste targets.
 
 ## Export and CLI behavior
 

@@ -1,6 +1,6 @@
 # Service application
 
-`unic` is the CLI. `unicd` is the headless Engine owner. Neither program imports a UI toolkit.
+`unic` is the CLI. `unicd` owns the Engine and starts headless by default. Neither program imports the desktop UI toolkit. macOS Desktop may explicitly enable the native clipboard adapter in the service.
 Packaged archives expose the `uniclip` alias for `unic`: a relative symlink on macOS/Linux or a `uniclip.cmd` launcher on Windows.
 
 ```sh

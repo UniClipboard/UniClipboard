@@ -22,3 +22,17 @@ The same scenario checks v1 palette/hex colors, default built-in colors,
 protection of existing target overrides, automatic color completion and persistence
 through the real service configuration API. Missing colors and color failures
 must report partial completion.
+
+## macOS daemon clipboard acceptance
+
+```sh
+UNIC_MACOS_CLIPBOARD_ARTIFACTS="$(mktemp -d /tmp/unic-macos-clipboard.XXXXXX)" \
+go test -tags unic_e2e ./e2e/headless -run '^TestMacOSDaemonClipboard$' -count=1 -v
+```
+
+Run this from the active macOS desktop user's session. The test uses a private
+named pasteboard and isolated daemon profiles. It checks headless startup,
+explicit Desktop opt-in on an existing standalone generation, duplicate adapter
+rejection, native content transfer, tracked application and lifecycle handoff.
+The receipt binds source and binary hashes. The general pasteboard and native
+application focus remain outside this test.

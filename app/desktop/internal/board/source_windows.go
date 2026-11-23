@@ -4,6 +4,7 @@ package board
 
 import (
 	"bytes"
+	"github.com/uniclipboard/unic/internal/nativeboard"
 	"image"
 	"image/png"
 	"path/filepath"
@@ -48,7 +49,7 @@ func nativeSource() sourceState {
 	if a.Validate() != nil {
 		return state
 	}
-	a.IconPNG = cachedIcon("windows:"+path, func() []byte { return executableIcon(path) })
+	a.IconPNG = nativeboard.CachedIcon("windows:"+path, func() []byte { return executableIcon(path) })
 	state.app = a
 	return state
 }

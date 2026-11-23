@@ -94,6 +94,11 @@ func runDaemon(mode servicelifecycle.Mode) error {
 	mux := http.NewServeMux()
 	lifecycle.Register(mux)
 	mux.Handle("/", server.Handler(n, settings))
+	waitClipboard := registerDesktopClipboard(ctx, mux, sock, lifecycle)
+	defer func() {
+		cancel()
+		waitClipboard()
+	}()
 	daemonTestRoutes(ctx, mux, n, sock)
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second}
 	go func() { <-ctx.Done(); retireHold(); _ = server.Close() }()

@@ -44,7 +44,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: f539381d19f53c0027c6f85eb222831d7f49df43
+verified: a58e365647136312db2025316e739d8f547b1354
 ---
 # Desktop configuration and received files
 
@@ -491,6 +491,11 @@ welcome/skip and history navigation do not publish CLI completion. See the
 ## External sync instances
 
 Plugins separates installed program identity from configured runtime instances. Create an instance with its own ID, edit its Schema values, enable it and restart. A new instance starts disabled and never copies another instance's credentials. The detail shows local runtime state; standard content policies save through the existing revision-checked configuration route. Go settings changes take effect after restart and invalidate that instance's old authorizations before its new process starts.
+
+An enabled external plugin with missing required Schema values stays inactive.
+The service and Desktop start with the other plugins. The Plugins page shows
+**Setup required** and keeps the settings available. Saving the required values
+allows the plugin to activate on the next service start.
 
 Device management uses one unified BoardUI presentation for live and preview data with user-facing "sync channel" terminology. The left canvas opens with a runtime sync-channel status strip that surfaces running, restarting, unavailable, and disabled channels plus pending-restart notices and jumps directly to Settings > Plugins (or a specific plugin detail). A global-sync-off warning banner offers one-click re-enablement. Pending banners distinguish brand-new device join requests from new-path requests on already-trusted devices, and external channels (`kind == "external"`) appear in their own section without device fingerprints.
 

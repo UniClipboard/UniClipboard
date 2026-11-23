@@ -4,6 +4,9 @@
 # 期望: Lua 立即使用新标签。重启后设置保留。清除后凭据状态为 false。
 # 不应: 显示凭据明文，或在 Lua 拒绝配置时替换已保存的设置。
 node-start alpha
+u alpha plugin settings show example.required
+stdout '"/keyword":false'
+stdout '"restart_required":false'
 u alpha plugin settings show example.schema
 stdout '"/credential":false'
 u alpha plugin settings save example.schema $WORK/valid.json
@@ -19,6 +22,10 @@ u alpha plugin settings show example.schema
 stdout '"tag":"saved"'
 board-set alpha text first.txt
 until alpha 'saved' h list -n 1
+u alpha h list -n 1
+! stdout 'required-ready'
+u alpha plugin settings save example.required $WORK/required.json
+stdout '"restart_required":true'
 node-stop alpha
 node-start alpha
 u alpha plugin settings show example.schema
@@ -27,6 +34,7 @@ stdout '"/credential":true'
 board-set alpha text second.txt
 until alpha 'second setting fixture' h show @1
 until alpha 'saved' h list -n 1
+until alpha 'required-ready' h list -n 1
 cp broken.lua alpha/plugins/lua/schema/main.lua
 sleep 400ms
 board-set alpha text third.txt
@@ -47,7 +55,7 @@ u alpha plugin enable example.schema
 -- alpha/config.toml --
 device_name = "alpha"
 [plugins]
-lua = ["example.schema"]
+lua = ["example.schema", "example.required"]
 [plugins.instances."example.schema"]
 on_error = "block_sync"
 -- alpha/plugins/lua/schema/spec.toml --
@@ -70,6 +78,23 @@ return { id = "example.schema", version = "1.0.0", api_version = 1, capabilities
   end,
   process = function(ctx) ctx:add_tag(tag) end
 }
+-- alpha/plugins/lua/required/spec.toml --
+manifest_version = 1
+id = "example.required"
+version = "1.0.0"
+api_version = 1
+kind = "lua"
+entry = "main.lua"
+capabilities = ["processor"]
+settings_schema = "settings.schema.json"
+-- alpha/plugins/lua/required/settings.schema.json --
+{"$schema":"https://json-schema.org/draft/2020-12/schema","x-unic-settings-version":1,"type":"object","additionalProperties":false,"properties":{"keyword":{"type":"string","minLength":1,"writeOnly":true}},"required":["keyword"]}
+-- alpha/plugins/lua/required/main.lua --
+return { id = "example.required", version = "1.0.0", api_version = 1, capabilities = {"processor"},
+  process = function(ctx) ctx:add_tag("required-ready") end
+}
+-- required.json --
+{"values":{"keyword":"fixture-required"}}
 -- valid.json --
 {"values":{"tag":"saved","credential":"fixture-secret"}}
 -- invalid.json --

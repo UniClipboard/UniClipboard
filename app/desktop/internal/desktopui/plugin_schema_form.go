@@ -42,6 +42,9 @@ func (f *pluginSettingsForm) load(state api.PluginSettings) error {
 }
 
 func (d *viewState) externalPluginStatus(item api.PluginInfo) (string, desktopkit.StatusTone) {
+	if item.NeedsSettings {
+		return d.tr("需要配置"), desktopkit.StatusWarning
+	}
 	l := d.live
 	if l != nil && slices.Contains(item.Capabilities, "sync_backend") {
 		for _, backend := range l.syncBackends {

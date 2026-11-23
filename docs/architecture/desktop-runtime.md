@@ -24,6 +24,7 @@ paths:
   - internal/localapi
   - app/service/internal/server
   - app/service/internal/host
+  - app/service/internal/luascripts/marketplace.go
   - app/service/cmd/unic/cli.go
   - app/service/cmd/unic/history.go
   - app/service/cmd/unic/requirements.go
@@ -44,7 +45,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: afe9826d7f2d4e245076c7c408630c9a2bafe02f
+verified: 1145da5db807c5f869f8a6e74f954f5d1c215bda
 ---
 # Desktop configuration and received files
 
@@ -536,8 +537,11 @@ the installed third-party plugins and built-in features. `GET /v1/plugins/market
 reads a static JSON registry (`UNIC_PLUGIN_REGISTRY_URL`, defaulting to the
 official `registry.json` and accepting `off` for offline bundled mode), caches
 validated entries locally under `$UNIC_HOME/plugins/marketplace-cache.json`,
-and falls back to the cached or bundled official catalog (including zero-config
-`unic.wenshushu`) when offline.
+and falls back to the cached or bundled official catalog when offline. The
+bundled catalog includes the zero-configuration [Wenshushu](https://github.com/UniClipboard/unic-plugin-wenshushu)
+and [Wormhole](https://github.com/UniClipboard/unic-plugin-wormhole) share
+Actions. The Wormhole link contains the decryption key and follows normal
+Action result history and sync policy.
 
 The marketplace lists one plugin per row beside a detail pane. Each card shows
 the available author, version, category and install status. Selecting a card

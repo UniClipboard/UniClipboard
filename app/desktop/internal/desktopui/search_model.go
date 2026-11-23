@@ -464,10 +464,12 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 		if d.filterOpen && len(prospective) == 0 {
 			prospective = d.filterPopoverProspectiveQueries()
 		}
-		if len(d.entries) == 0 && d.hasActiveSearchOrFilter() && !d.unsupportedSearch() && d.live.readError == "" {
+		if len(d.entries) == 0 && !d.live.foregroundLoading && d.hasActiveSearchOrFilter() && !d.unsupportedSearch() && d.live.readError == "" {
 			prospective = append(prospective, d.searchRelaxationQueries()...)
 		}
-		d.live.requestCounts(append([]engine.HistorySearchQuery{allHistoryQuery(), favoriteHistoryQuery()}, prospective...))
+		if len(prospective) > 0 {
+			d.live.requestCounts(prospective)
+		}
 	}
 	feedback := ""
 	if w, ok := s.active(); ok {
@@ -500,6 +502,7 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 		FilterCount:       filterCount,
 		FilterLabel:       d.tr("筛选条件"),
 		FilterPanel:       func() { d.filterPopover(c.Key("filter-popover"), k) },
+		Loading:           d.live != nil && d.live.showForegroundLoading(),
 		OnKey:             func(key desktopkit.SearchFieldKey) bool { return s.key(d, key) },
 		OnSelectionChange: func(start, end int) {
 			if !restore && !s.restore && (s.start != start || s.end != end) {

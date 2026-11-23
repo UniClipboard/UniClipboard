@@ -90,7 +90,9 @@ func (n *Node) rescanLua(ctx context.Context) {
 				continue
 			}
 			n.lua[id] = now
+			n.runningPluginsMu.Lock()
 			n.runningPlugins[id] = now
+			n.runningPluginsMu.Unlock()
 			n.logf("lua: %s: reloaded", id)
 		}
 	}

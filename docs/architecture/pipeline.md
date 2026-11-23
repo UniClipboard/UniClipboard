@@ -47,7 +47,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: c739f3f01dafb75541098854b9723bcfd32dae07
+verified: 40d3bc84281bd5f74d3b0b6c6bee18f9cb3e9ba4
 ---
 # Clipboard pipeline and local history
 
@@ -69,6 +69,11 @@ The stage chain is Capture/Receive → Processing → Commit → Sync → Use �
 - **Actions**: User-triggered `ListActions`/`RunAction` support text, image and file history for Go plugins; Lua Actions remain text-only. Every Action must explicitly declare non-empty unique `Placements` from `{history.item_menu, history.toolbar, quick_panel}` and non-empty unique `PostActions` from `{copy, notify, present, select, none}` (`none` exclusive) so cross-platform hosts render matching surfaces and execute bounded follow-up behavior. A plugin action must produce one nonempty UTF-8 text result. The new `action` record forces persistence and passes captured processors and normal sync decisions. The source remains unchanged. Action execution shares the processor instance gate. Go declarations can select deadlines up to five minutes; zero keeps the ten-second default. Lua retains its VM budget. Request IDs share the submission namespace. Plugin failures return opaque errors. The host applies the new history item. `builtin.text` provides upper/lower/trim/plain (`history.item_menu`, `history.toolbar`; `copy`, `notify`) and email tagging. Service routes are `GET /v1/actions` and `POST /v1/history/{id}/actions/{key}`.
 - **History**: SQLite records and private blobs belong to Engine. Host-managed files remain external references. Stable IDs, pagination, edits, leases, expiry and apply follow the [history contract](../contracts/history-contract.md). Cleanup defaults to enabled, 180 days, unlimited eligible records and no excluded tags. The startup history byte budget is 4 GiB. Live history settings affect existing records. Tag exclusions protect records and managed files. Explicit item expiry is independent. The service exposes `/v1/history*` and `unic history`.
 - **Notifications**: Observers receive content-free events and cannot mutate content. Each observer has a 64-entry queue that drops the newest event when full and a 200 ms callback budget. Delivery is lossy. Successful capacity eviction emits `clipboard.deleted` once per deleted history ID.
+
+The service can activate an installed Go Action-only plugin or external-channel
+backend at runtime. Engine assembles the verified child process before
+registering its Actions or publishing the backend and its policy. An inactive,
+enabled instance can activate when the user saves its required settings.
 
 ## Built-in content tags
 

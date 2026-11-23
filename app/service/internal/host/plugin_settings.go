@@ -51,7 +51,8 @@ func (n *Node) pluginsLocked() []api.PluginInfo {
 			_, err := s.RuntimeConfig(n.luaDir, nil)
 			needsSettings = luascripts.MissingRequiredSettings(err)
 		}
-		restart := !needsSettings && (wanted != active || active && !running.Same(s))
+		liveStart := canStartLive(s)
+		restart := active && (!wanted || !running.Same(s)) || wanted && !active && !needsSettings && !liveStart
 		if !restart && active && s.Manifest.Kind == "go" && s.Schema != nil {
 			revision, _, err := s.ReadSettings(n.luaDir)
 			restart = err != nil || revision != n.pluginRevisions[id]
@@ -92,6 +93,7 @@ func (n *Node) pluginsLocked() []api.PluginInfo {
 			ExternalChannels: s.Manifest.ExternalChannels,
 			Configured:       wanted,
 			RunningVersion:   running.Manifest.Version,
+			LiveStart:        liveStart,
 			HasSettings:      s.Schema != nil,
 			NeedsSettings:    needsSettings,
 			Restart:          restart,
@@ -242,6 +244,8 @@ func (n *Node) pluginSettings(ctx context.Context, id string, edit *api.PluginSe
 		return out, err
 	}
 	running, active := n.runningPlugins[id]
+	wanted := slices.Contains(n.cfg.Current().ExternalPlugins(), id)
+	canStart := !active && wanted && canStartLive(s)
 	canReload := active && s.Manifest.Kind == "lua" && running.Same(s)
 	if edit != nil {
 		if edit.Revision != revision {
@@ -267,6 +271,15 @@ func (n *Node) pluginSettings(ctx context.Context, id string, edit *api.PluginSe
 			if err := n.e.ConfigureLuaPlugin(ctx, engine.PluginID(id), cfg, persist); err != nil {
 				return out, err
 			}
+		} else if canStart {
+			var cfg plugin.Config
+			if err := json.Unmarshal(values, &cfg); err != nil {
+				return out, err
+			}
+			onError, _ := n.cfg.Current().ProcessorSettings(id)
+			if err := n.activatePluginLocked(ctx, s, id, onError, cfg, &revision, persist); err != nil {
+				return out, err
+			}
 		} else if err := persist(); err != nil {
 			return out, err
 		}
@@ -274,7 +287,7 @@ func (n *Node) pluginSettings(ctx context.Context, id string, edit *api.PluginSe
 	}
 	out, err = s.SettingsView(revision, values)
 	out.Restart = active && !canReload && (!running.Same(s) || revision != n.pluginRevisions[id])
-	if !active && slices.Contains(n.cfg.Current().ExternalPlugins(), id) {
+	if !active && wanted && !canStart {
 		_, validationErr := s.Schema.Normalize(values)
 		out.Restart = !luascripts.MissingRequiredSettings(validationErr)
 	}

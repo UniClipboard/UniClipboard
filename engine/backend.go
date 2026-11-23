@@ -174,12 +174,14 @@ func (e *Engine) refreshOpLocked(o *opEntry) (done *contentObj) {
 }
 
 func (e *Engine) selectBackends(ids []PluginID) []syncBackend {
+	e.mu.Lock()
 	var out []syncBackend
 	for _, b := range e.syncBackends {
 		if len(ids) == 0 || containsID(ids, b.ID()) {
 			out = append(out, b)
 		}
 	}
+	e.mu.Unlock()
 	sort.Slice(out, func(i, j int) bool { return out[i].ID() < out[j].ID() })
 	return out
 }

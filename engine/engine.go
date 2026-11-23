@@ -44,8 +44,9 @@ type Engine struct {
 	instLocks []*dirLock // runtime.lock of each backend instance
 	defName   string
 
-	use sync.RWMutex  // held (read) by every call; Close takes it to free the store
-	ctl chan struct{} // serializes suspend/resume
+	use           sync.RWMutex  // held (read) by every call; Close takes it to free the store
+	ctl           chan struct{} // serializes suspend/resume
+	pluginStartMu sync.Mutex    // serializes runtime plugin activation
 
 	mu                  sync.Mutex // guards everything below
 	life                Lifecycle
@@ -101,10 +102,10 @@ type Engine struct {
 	lastApply     applyDone
 
 	processors      []*pipelineProcessor // private adapters, fixed before Start
-	actions         []*pipelineAction    // likewise
-	observers       []*pipelineObserver  // likewise
+	actions         []*pipelineAction
+	observers       []*pipelineObserver // likewise
 	pluginInstances map[PluginID]plugin.Plugin
-	plugins         []plugin.Plugin // started in New, closed with the engine
+	plugins         []plugin.Plugin // closed with the engine
 	submissions     map[RequestID]*submissionEntry
 }
 
@@ -570,6 +571,10 @@ func (e *Engine) Close(ctx context.Context) error {
 
 func (e *Engine) finalize() {
 	<-e.stopped
+	// An activation may enter the Engine again through the host's configuration
+	// callback. Let it finish before acquiring the exclusive use lock.
+	e.pluginStartMu.Lock()
+	defer e.pluginStartMu.Unlock()
 	e.notifyObservers(plugin.EventAppShutdown, "") // delivered while observers are drained below
 	e.use.Lock()                                   // in-flight calls finish before the store goes away
 	e.mu.Lock()

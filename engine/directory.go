@@ -119,7 +119,7 @@ func (e *Engine) prepareDirectory(ctx context.Context, c *contentObj, entry *sub
 		return nil, newErr(CodeSyncDisabled, "directory send is disabled")
 	}
 	allowed := false
-	for _, b := range e.syncBackends {
+	for _, b := range e.selectBackends(nil) {
 		if e.policyOf(b.ID()).Files {
 			allowed = true
 		}

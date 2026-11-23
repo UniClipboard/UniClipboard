@@ -2441,6 +2441,24 @@
     "pt-BR": "Configurações salvas",
     "ru": "Настройки сохранены"
   },
+  "启动": {
+    "en": "Start",
+    "ja": "起動",
+    "pt-BR": "Iniciar",
+    "ru": "Запустить"
+  },
+  "启动失败": {
+    "en": "Could not start the plugin",
+    "ja": "プラグインを起動できませんでした",
+    "pt-BR": "Não foi possível iniciar o plug-in",
+    "ru": "Не удалось запустить плагин"
+  },
+  "已安装「%s」。": {
+    "en": "Installed %s.",
+    "ja": "「%s」をインストールしました。",
+    "pt-BR": "%s instalado.",
+    "ru": "Плагин «%s» установлен."
+  },
   "操作失败": {
     "en": "Action failed",
     "ja": "操作に失敗しました",

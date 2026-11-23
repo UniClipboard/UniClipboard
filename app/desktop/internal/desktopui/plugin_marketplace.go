@@ -92,6 +92,10 @@ func (d *viewState) installedExternalPlugin(id string) (api.PluginInfo, bool) {
 }
 
 func (d *viewState) setExternalPluginEnabled(cfg config.Config, id string, on bool) {
+	if item, ok := d.installedExternalPlugin(id); on && ok && item.LiveStart && item.RunningVersion == "" {
+		d.startExternalPlugin(id)
+		return
+	}
 	cfg.Plugins.Lua = slices.DeleteFunc(slices.Clone(cfg.Plugins.Lua), func(x string) bool { return x == id })
 	cfg.Plugins.Order = slices.DeleteFunc(slices.Clone(cfg.Plugins.Order), func(x string) bool { return x == id })
 	if cfg.Plugins.Instances != nil {
@@ -108,6 +112,36 @@ func (d *viewState) setExternalPluginEnabled(cfg config.Config, id string, on bo
 		cfg.Plugins.Order = append(cfg.Plugins.Order, id)
 	}
 	d.saveLiveConfig(cfg)
+}
+
+func (d *viewState) startExternalPlugin(id string) {
+	l := d.live
+	p := &d.pluginSettings
+	if l.busy {
+		return
+	}
+	p.installError = ""
+	p.installNotice = ""
+	l.busy = true
+	if !l.enqueueWithin(func(ctx context.Context) func() {
+		info, err := l.client.StartPlugin(ctx, id)
+		return func() {
+			l.busy = false
+			l.nextRefresh = time.Time{}
+			if err != nil {
+				p.installError = d.tr("启动失败") + " · " + liveErrorMessage(err)
+				return
+			}
+			if i := slices.IndexFunc(l.externalPlugins, func(item api.PluginInfo) bool { return item.ID == id }); i >= 0 {
+				l.externalPlugins[i] = info
+			}
+			if info.NeedsSettings {
+				p.id, p.view, p.form = id, "", nil
+			}
+		}
+	}, 15*time.Second) {
+		l.busy = false
+	}
 }
 
 func (d *viewState) installMarketplacePlugin(req api.PluginInstallRequest, displayName, trackID string) {
@@ -153,6 +187,8 @@ func (d *viewState) installMarketplacePlugin(req api.PluginInstallRequest, displ
 				p.installNotice = name + " · " + d.tr("需要配置")
 			} else if req.Replace {
 				p.installNotice = fmt.Sprintf(d.tr("已更新「%s」，请重启桌面端生效。"), name)
+			} else if info.LiveStart && !req.Enable {
+				p.installNotice = fmt.Sprintf(d.tr("已安装「%s」。"), name)
 			} else if req.Enable {
 				p.installNotice = fmt.Sprintf(d.tr("已安装并启用「%s」，请重启桌面端生效。"), name)
 			} else {
@@ -531,8 +567,12 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 							}, entry.Name, entry.ID)
 						}
 					}
-					if !inst.Configured {
-						if k.Button(c.Key("m-enable"), d.tr("启用"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy}).Clicked() {
+					if !inst.Configured || inst.LiveStart && inst.RunningVersion == "" && !inst.NeedsSettings {
+						label := "启用"
+						if inst.LiveStart && inst.RunningVersion == "" {
+							label = "启动"
+						}
+						if k.Button(c.Key("m-enable"), d.tr(label), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy}).Clicked() {
 							d.setExternalPluginEnabled(cfg, inst.ID, true)
 						}
 					} else {

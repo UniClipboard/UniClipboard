@@ -138,7 +138,7 @@ credentials, databases or history. See section 12 of the
 - The CLI does not launch a GUI or silently replace system clipboard reads with history reads.
 - A CLI command stops only a temporary generation whose last lease it released. It never stops a standalone or desktop-owned service.
 - The launcher never unlinks a socket or kills a process it did not create and verify.
-- On macOS, Desktop explicitly enables the native clipboard adapter in `unicd` over the owner-only local socket. The adapter loads AppKit on demand and accesses the pasteboard only for the active console user. Tray retains the menu, shortcut and target capture. On other platforms, the tray hosts the adapter. The service owns submission, sync and history policy on every platform.
+- On macOS, Desktop explicitly enables the native clipboard adapter in `unicd` over the owner-only local socket. The adapter loads AppKit on demand and accesses the pasteboard only for the active console user. Tray retains the menu, shortcut and target capture. A bundled macOS service may also take over pairing notifications after Desktop opts in. It keeps its subscription through lightweight handoff. A Desktop borrowing an unbundled service sends notifications from the tray. On other platforms, the tray hosts the adapter. The service owns submission, sync and history policy on every platform.
 - Reconnect establishes a baseline and does not apply disconnected backlog.
 - A lost write result is uncertain and is never automatically retried.
 - Snapshot uploads, session leases and pending commands have fixed limits.

@@ -285,7 +285,9 @@ func runTray(settings *config.Manager) error {
 		}
 		go apply()
 		go func() { _ = settings.Watch(ctx) }()
-		go notifyPending(ctx, r.socket, func() string { return settings.Current().Desktop.Language })
+		if !useDaemonClipboard {
+			go notifyPending(ctx, r.socket, func() string { return settings.Current().Desktop.Language })
+		}
 		// Relaunch preserves the original tray intent. A background tray must
 		// not create GUI before the no-role launcher can deliver its request.
 		go func() {

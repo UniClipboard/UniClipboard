@@ -100,6 +100,8 @@ On macOS, the local Desktop client uses `POST /v1/desktop/clipboard/enable` to o
 
 Quick Panel uses the owner-only service socket for tracked write and match on macOS. The panel calls `POST /v1/desktop/clipboard/apply` with a history ID and a plain-text flag. The response carries a write mark or a stable failure category. `POST /v1/desktop/clipboard/match` checks the mark immediately before the Desktop sends native paste input. Neither operation records clipboard contents or paste targets.
 
+On macOS, `POST /v1/desktop/notifications/enable` returns a boolean identifying whether the daemon accepted notification responsibility. A bundled service for the active console user subscribes once per daemon generation. It applies the current Desktop language and submits only new pairing events to the native notification center. System authorization is requested in response to the first pairing notification. An unbundled, retiring or CLI-temporary service declines responsibility. A running tray may provide notifications for an unbundled service. Neither the endpoint nor the daemon logs notification text.
+
 ## Export and CLI behavior
 
 `unic send [text]` reads stdin when text is omitted. `-f` submits local file references; `--png PATH` imports PNG.

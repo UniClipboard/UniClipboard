@@ -81,3 +81,9 @@ func (c *Client) MatchDesktopClipboard(ctx context.Context, mark string) (out bo
 	err = c.do(ctx, http.MethodPost, "/v1/desktop/clipboard/match", mark, &out)
 	return
 }
+
+// EnableDesktopNotifications reports whether unicd owns system pair notifications.
+func (c *Client) EnableDesktopNotifications(ctx context.Context) (enabled bool, err error) {
+	err = c.do(ctx, http.MethodPost, "/v1/desktop/notifications/enable", nil, &enabled)
+	return
+}

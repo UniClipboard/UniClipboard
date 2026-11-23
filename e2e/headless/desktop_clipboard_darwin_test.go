@@ -41,13 +41,32 @@ func TestMacOSDaemonClipboard(t *testing.T) {
 	work, err := os.MkdirTemp("/tmp", "unic-board-")
 	need(t, err)
 	t.Cleanup(func() { _ = os.RemoveAll(work) })
-	binary := filepath.Join(work, "unicd")
+	bundle := filepath.Join(work, "Pairing Fixture.app")
+	contents := filepath.Join(bundle, "Contents")
+	programs := filepath.Join(contents, "MacOS")
+	need(t, os.MkdirAll(programs, 0700))
+	plist := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>org.uniclipboard.e2e.notifications</string>
+<key>CFBundleExecutable</key><string>unic-desktop</string>
+<key>CFBundleName</key><string>UniClipboard E2E</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+</dict></plist>`)
+	need(t, os.WriteFile(filepath.Join(contents, "Info.plist"), plist, 0600))
+	binary := filepath.Join(programs, "unicd")
 	build := exec.CommandContext(ctx, "go", "build", "-tags", "unic_e2e", "-o", binary, "./app/service/cmd/unicd")
 	build.Dir = root
 	if output, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build unicd: %v\n%s", err, output)
 	}
 	payload, err := os.ReadFile(binary)
+	need(t, err)
+	need(t, os.WriteFile(filepath.Join(programs, "unic-desktop"), payload, 0700))
+	sign := exec.CommandContext(ctx, "codesign", "--force", "--sign", "-", bundle)
+	if output, err := sign.CombinedOutput(); err != nil {
+		t.Fatalf("sign fixture: %v\n%s", err, output)
+	}
+	payload, err = os.ReadFile(binary)
 	need(t, err)
 	var checks []string
 	defer func() {
@@ -107,6 +126,12 @@ func TestMacOSDaemonClipboard(t *testing.T) {
 				t.Fatal("clipboard enabled before Desktop opt-in")
 			}
 			checks = append(checks, tc.name+": startup has no adapter")
+			notifications, err := client.EnableDesktopNotifications(ctx)
+			need(t, err)
+			if notifications != (tc.name != "temporary") {
+				t.Fatalf("notification routing is wrong for %s: %t", tc.name, notifications)
+			}
+			checks = append(checks, tc.name+": notification ownership honors launch mode")
 			if tc.name == "temporary" {
 				if err := client.EnableDesktopClipboard(ctx); err == nil {
 					t.Fatal("CLI temporary service allowed clipboard integration")

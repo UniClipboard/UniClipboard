@@ -19,7 +19,8 @@ const maxRepresentation = 64 << 20
 // Board accesses the system pasteboard without starting a graphical application.
 type Board struct{ name string }
 
-func activeConsoleUser() bool {
+// ActiveConsoleUser reports whether the process owns the active macOS console.
+func ActiveConsoleUser() bool {
 	console, err := os.Stat("/dev/console")
 	if err != nil {
 		return false
@@ -29,7 +30,7 @@ func activeConsoleUser() bool {
 }
 
 func New() (*Board, error) {
-	if !activeConsoleUser() {
+	if !ActiveConsoleUser() {
 		return nil, errors.New("macOS desktop session is unavailable")
 	}
 	if !appKit() {
@@ -43,7 +44,7 @@ func changeCount(board objc.ID) uint64 {
 }
 
 func (b *Board) use(work func(objc.ID) error) error {
-	if !activeConsoleUser() {
+	if !ActiveConsoleUser() {
 		return errors.New("macOS desktop session is unavailable")
 	}
 	runtime.LockOSThread()

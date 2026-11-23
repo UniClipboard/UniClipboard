@@ -95,6 +95,7 @@ func runDaemon(mode servicelifecycle.Mode) error {
 	lifecycle.Register(mux)
 	mux.Handle("/", server.Handler(n, settings))
 	waitClipboard := registerDesktopClipboard(ctx, mux, sock, lifecycle)
+	registerDesktopNotifications(ctx, mux, n, settings, lifecycle)
 	defer func() {
 		cancel()
 		waitClipboard()

@@ -184,6 +184,10 @@ func (r *trayRuntime) start(ctx context.Context, entering bool) error {
 	r.adapterCancel = cancel
 	r.adapterDone = make(chan struct{})
 	if useDaemonClipboard {
+		enabled, err := api.NewClient(r.socket).EnableDesktopNotifications(ctx)
+		if err == nil && !enabled {
+			go notifyPending(adapterCtx, r.socket, func() string { return r.settings.Current().Desktop.Language })
+		}
 		close(r.adapterDone)
 	} else {
 		done := r.adapterDone

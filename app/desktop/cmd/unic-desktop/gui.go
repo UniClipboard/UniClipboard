@@ -248,7 +248,7 @@ func runGUI(settings *config.Manager) error {
 		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(view)}
 		windowchrome.Configure(&opts, runtime.GOOS, session.windowFrame)
 		if flow.Required() {
-			opts.Width, opts.Height = 780, 540
+			opts.Width, opts.Height = setupWindowWidth, setupWindowHeight
 		}
 		g.win = mygo.NewWindow(opts)
 		switch runtime.GOOS {

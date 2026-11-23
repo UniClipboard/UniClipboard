@@ -224,17 +224,6 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 				pane = desktopkit.PaneMain
 			}
 			k.Pane(c.Key("browse"), desktopkit.PaneProps{Kind: pane, Label: d.tr("历史列表"), DetailOpen: &d.detailOpen}, func() {
-				if d.live != nil {
-					if d.live.readError != "" && (!empty || !d.isSearchUnavailableState()) {
-						k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr(d.live.readError)})
-					}
-					if d.live.message != "" {
-						k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr(d.live.message)})
-					}
-					if d.unsupportedSearch() && !empty {
-						k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("此搜索条件暂不可用"), Text: d.tr("请选择类型、设备、标签或时间筛选。")})
-					}
-				}
 				resultsStage := ui.Column(c.Key("results-stage")).Grow(1).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
 				rsw := ui.Local(resultsStage, "results-transition", func() resultsTransitionState { return resultsTransitionState{} })
 				resultKey := d.resultsTransitionKey(empty)

@@ -45,7 +45,9 @@ type Artifact struct {
 
 type Source struct {
 	Base, Target, Key string
+	CurrentVersion    string
 	Channel           func() string
+	Language          func() string
 	mu                sync.Mutex
 	selected          Artifact
 	version           string
@@ -91,7 +93,11 @@ func (s *Source) Manifest(ctx context.Context, _ bool) (io.ReadCloser, error) {
 	if channel != "stable" && channel != "alpha" {
 		return nil, errors.New("invalid update channel")
 	}
-	body, e := get(ctx, strings.TrimRight(s.Base, "/")+"/v1/desktop/"+channel+".json")
+	address := strings.TrimRight(s.Base, "/") + "/v1/desktop/" + channel + ".json"
+	if s.CurrentVersion != "" {
+		address += "?from=" + url.QueryEscape(s.CurrentVersion)
+	}
+	body, e := get(ctx, address)
 	if e != nil {
 		return nil, e
 	}
@@ -142,12 +148,25 @@ func (s *Source) Manifest(ctx context.Context, _ bool) (io.ReadCloser, error) {
 	s.version = feed.Version
 	s.build = build
 	s.mu.Unlock()
-	m := map[string]any{"version": fmt.Sprintf("%s-build.%d", feed.Version, build), "notes": feed.Notes, "url": selected.DownloadURL, "size": selected.Size, "signature": selected.Signature}
+	language := "en"
+	if s.Language != nil {
+		language = s.Language()
+	}
+	m := map[string]any{"version": fmt.Sprintf("%s-build.%d", feed.Version, build), "notes": localizedNotes(feed.Notes, language), "url": selected.DownloadURL, "size": selected.Size, "signature": selected.Signature}
 	encoded, e := json.Marshal(m)
 	if e != nil {
 		return nil, e
 	}
 	return io.NopCloser(strings.NewReader(string(encoded))), nil
+}
+
+func localizedNotes(notes, language string) string {
+	english, chinese, _ := strings.Cut(notes, "<!-- zh -->")
+	primary, _, _ := strings.Cut(language, "-")
+	if strings.EqualFold(primary, "zh") && strings.TrimSpace(chinese) != "" {
+		return strings.TrimSpace(chinese)
+	}
+	return strings.TrimSpace(english)
 }
 
 type temporaryFile struct {

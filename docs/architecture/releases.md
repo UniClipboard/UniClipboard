@@ -30,7 +30,7 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: ae09a5c2d53a3ffc814e21f448d74b125e2864c6
+verified: 71f163da2c87d4e2d1b2056fcdde6b99faf56d67
 ---
 # Product builds and CLI releases
 
@@ -103,6 +103,10 @@ The primary PR Desktop suite uses the same Ubuntu 24.04 and native GTK 3/indicat
 The Desktop host uses the pinned mygo native updater plugin. `appupdates.Source` converts the numbered FlareRelease feed into mygo manifests. The app version includes `-build.<number>` so later builds of one product version compare numerically. The adapter validates the target, archive format, bounded size, SHA-256, raw Ed25519 signature over the archive digest and the signed embedded `release-identity.json`. mygo owns extraction and installation.
 
 `desktop.update_channel` accepts `stable` (default) or `alpha` and takes effect on the next check. Updater preferences use the v2 data directory. `release/products.toml` selects the durable `update_public_key`; an empty key disables in-app updates. The production private key must use mygo's raw Ed25519 format, independent of existing Minisign/Tauri keys. `go run ./tools/release/update-sign` generates a private key directory or signs archives from `UNIC_UPDATE_PRIVATE_KEY` without logging the private key.
+
+Each update check selects the release notes using the current `desktop.language`. The adapter sends the Chinese section to mygo for Chinese when the feed includes a translation. Other languages and missing Chinese translations use the English section.
+
+The adapter sends the installed identity as `from=<version>-build.<number>` to the numbered Desktop feed. FlareRelease can return the selected build and up to four intervening, published builds from the selected channel in newest-first order. The adapter accepts single-build notes from the feed when there is no cumulative history.
 
 The host enables automatic/native-menu updates only for direct installations. System Linux packages, Snap, Flatpak, AppImage, Homebrew-owned bundles, Scoop and portable archives remain externally managed. NSIS records winget/Chocolatey ownership from `/MANAGED=`. Manual reinstalls preserve that receipt. Windows and Linux updates use mygo's owned-file list and preserve unowned data. AppImage self-update remains unsupported by the pinned SDK. Public feed/key provisioning remains a deployment prerequisite.
 

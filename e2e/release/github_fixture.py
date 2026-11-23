@@ -34,15 +34,20 @@ if args[0] == "api":
         if "tag" not in state:
             missing()
         print(json.dumps({"object": state["tag"]}))
+    elif "/releases?" in args[1]:
+        page = args[1].rsplit("page=", 1)[1] if "page=" in args[1] else "1"
+        releases = [state["release"]] if page == "1" and state.get("release") else []
+        print(json.dumps(releases))
     elif "/releases/tags/" in args[1]:
-        if not state.get("release"):
+        release = state.get("release")
+        if not release or release.get("draft"):
             missing()
-        print(json.dumps({"id": 1}))
+        print(json.dumps(release))
     else:
         raise AssertionError(args)
 elif args[:2] == ["release", "create"]:
     assert "--verify-tag" in args and "tag" in state
-    state["release"] = True
+    state["release"] = {"id": 1, "tag_name": args[2], "draft": "--draft" in args}
 elif args[:2] == ["release", "upload"]:
     source = Path(args[3])
     (root / "assets").mkdir(exist_ok=True)
@@ -60,6 +65,8 @@ elif args[:2] == ["release", "download"]:
     shutil.copyfile(source, destination / source.name)
 elif args[:2] == ["release", "edit"]:
     state["finalized"] = True
+    if state.get("release") and "--draft=false" in args:
+        state["release"]["draft"] = False
 else:
     raise AssertionError(args)
 state_path.write_text(json.dumps(state))

@@ -59,14 +59,16 @@ var builtinPluginEntries = []builtinPluginEntry{
 func (d *viewState) pluginsToolbarActions(c *ui.Context, k desktopkit.Kit) {
 	l := d.live
 	p := &d.pluginSettings
-	if k.Button(c.Key("tb-refresh-marketplace"), d.tr("检查更新"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconRetry, Busy: l.marketplaceLoading, Disabled: l.marketplaceLoading}).Clicked() {
+	if k.ToolbarQuietButton(c.Key("tb-refresh-marketplace"), d.tr("检查更新"), desktopkit.ToolbarQuietButtonProps{
+		Icon:     desktopkit.IconRetry,
+		Busy:     l.marketplaceLoading,
+		Disabled: l.marketplaceLoading,
+	}).Clicked() {
 		d.ensureMarketplaceLoaded(true)
 	}
-	_, cmd := k.Menu(c.Key("tb-plugin-more"), desktopkit.MenuProps{
-		Label:    d.tr("更多"),
-		Icon:     desktopkit.IconMore,
-		IconOnly: true,
-		Variant:  desktopkit.Subtle,
+	_, cmd := k.ToolbarIconMenu(c.Key("tb-plugin-more"), desktopkit.ToolbarIconMenuProps{
+		Label: d.tr("更多"),
+		Icon:  desktopkit.IconMore,
 		Items: []desktopkit.MenuEntry{
 			{ID: "advanced", Label: d.tr("执行顺序与高级设置"), Icon: desktopkit.IconList},
 			{ID: "manual", Label: d.tr("从链接手动安装"), Icon: desktopkit.IconLink},

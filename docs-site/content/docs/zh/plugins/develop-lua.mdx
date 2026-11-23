@@ -100,7 +100,7 @@ return {
 | `ctx:add_tag(s)` / `ctx:remove_tag(s)` | 标签最多 32 个，每个 ≤64 UTF-8 字节 |
 | `ctx:set_persist(bool)` | 是否保存到历史 |
 | `ctx:set_sync(bool)` | 是否同步到其他设备 |
-| `ctx:set_expire(ms)` | 正整数毫秒，自提交时起算 |
+| `ctx:set_expire(ms)` | 整数毫秒（如 `600000` 表示 10 分钟），必须大于 0，不接受 `"30s"` 这类字符串；自提交时起算 |
 | `ctx:notify(msg)` | 短提示 |
 
 任何方法出错或回调抛错，会**回滚本次回调的全部修改**。
@@ -279,7 +279,14 @@ unic plugin enable yourname.demo
 # 重启 unicd 后生效
 ```
 
-也可以直接在 `config.toml` 中用 `[plugins] lua = ["yourname.demo"]` 启用本地 Lua 插件，列表顺序即执行顺序。
+`unic plugin enable` 按插件来源写入 `config.toml` 的不同列表：
+
+| 插件来源 | 写入位置 |
+|---|---|
+| 手动放入 `plugins/lua/` 的本地插件 | `[plugins] lua = ["yourname.demo"]` |
+| 通过 `unic plugin install` 从 GitHub 安装的插件（记录了 Commit） | `[plugins] order = ["yourname.demo"]` |
+
+`unic plugin disable` 会同时从这两个列表中移除该 ID。如果插件声明了设置 Schema，启用前必须先完成必填设置。两种方式都要重启 `unicd` 才生效。
 
 </Step>
 <Step>

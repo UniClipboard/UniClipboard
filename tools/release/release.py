@@ -360,7 +360,7 @@ def registry_get(registry, name):
 
 
 def registry_readback(registry, name, select, error):
-    deadline = time.monotonic() + 240
+    deadline = time.monotonic() + 900
     while True:
         observed = select(registry_get(registry, name))
         if observed:

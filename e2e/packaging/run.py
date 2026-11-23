@@ -326,6 +326,26 @@ cli_manifest_sha256 = "{lock}"
                     sha(packages / x["file"]) == x["sha256"] for x in built["artifacts"]
                 ),
             )
+            if format_name == "dmg":
+                sys.path.insert(0, str(ROOT / "tools/package"))
+                import macos_dmg
+
+                expected_bundle_files = {
+                    name.removeprefix("UniClipboard.app/"): digest
+                    for name, digest in receipt["files"].items()
+                    if name.startswith("UniClipboard.app/")
+                }
+                dmg_info = macos_dmg.verify_dmg(
+                    packages / built["artifacts"][0]["file"],
+                    expected_bundle_files=expected_bundle_files,
+                )
+                check(
+                    "macOS DMG uses ULFO format, Applications drop link, BoardUI background and exact bundle bytes",
+                    dmg_info["format"] == "ULFO"
+                    and dmg_info["app_position"] == list(macos_dmg.APP_POSITION)
+                    and dmg_info["applications_position"]
+                    == list(macos_dmg.APPLICATIONS_POSITION),
+                )
             if format_name == "deb":
                 unpacked = temp / "deb-content"
                 run(["dpkg-deb", "-x", packages / built["artifacts"][0]["file"], unpacked])

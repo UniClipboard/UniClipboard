@@ -86,6 +86,9 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	layoutPath := filepath.Join(source, "history-tags", "layout.v1.json")
 	must(t, os.MkdirAll(filepath.Dir(layoutPath), 0700))
 	must(t, os.WriteFile(layoutPath, []byte(`{"version":1,"sidebar":["link"],"colors":{"tag-one":"#23AB45","link":"orange"}}`), 0600))
+	settingsPath := filepath.Join(source, "settings.json")
+	must(t, os.WriteFile(settingsPath, []byte(`{"general":{"device_name":"Desktop Fixture","theme":"light","usage_analytics_enabled":false}}`), 0600))
+	initialSettingsHash := hash(t, settingsPath)
 	initialLayoutHash := hash(t, layoutPath)
 	shortcutPath := filepath.Join(source, "desktop-settings.json")
 	legacySettings := []byte(`{"version":1,"keyboardShortcuts":{"nav.settings":"mod+1","clipboard.favorite":["f","alt+f"],"clipboard.search":"","global.toggleQuickPanel":"ctrl+alt+j ctrl+alt+k"},"quickPanel":{"doubleTapModifier":"alt"}}`)
@@ -297,8 +300,19 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	if state.Config.Desktop.TagColors[colorKey("标签")] != "#23ab45" || state.Config.Desktop.TagColors[colorKey("builtin:link")] != "orange" {
 		t.Fatal("desktop migrated colors lost after service restart")
 	}
+	visible := state.Config.Desktop.TagSidebar
+	if state.Config.DeviceName != "Desktop Fixture" || state.Config.Desktop.ColorMode != "light" ||
+		state.Config.Telemetry.Analytics.Enabled || !visible[colorKey("builtin:link")] {
+		t.Fatal("desktop migrated preferences lost after service restart")
+	}
+	if value, exists := visible[colorKey("builtin:image")]; !exists || value {
+		t.Fatal("desktop lost hidden tag preference")
+	}
+	if hash(t, settingsPath) != initialSettingsHash {
+		t.Fatal("migration changed the source settings")
+	}
 	must(t, restarted.Stop())
-	checks = append(checks, "desktop default migration colors survive service restart")
+	checks = append(checks, "desktop migrated colors and preferences survive service restart without changing the source settings")
 	// Settings has stopped its owned service before entering a later migration.
 	// Its explicit pending transition must survive cancellation and app restart.
 	must(t, flow.BeginMigration())

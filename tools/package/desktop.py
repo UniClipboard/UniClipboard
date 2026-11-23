@@ -798,20 +798,12 @@ def package(args):
                 bundle = bundle_copy
             file = output / (base + (".dmg" if kind == "dmg" else ".app.tar.gz"))
             if kind == "dmg":
-                run(
-                    [
-                        "hdiutil",
-                        "create",
-                        "-quiet",
-                        "-volname",
-                        "UniClipboard",
-                        "-srcfolder",
-                        bundle,
-                        "-format",
-                        "UDZO",
-                        file,
-                    ]
-                )
+                package_dir = str(Path(__file__).resolve().parent)
+                if package_dir not in sys.path:
+                    sys.path.insert(0, package_dir)
+                import macos_dmg
+
+                macos_dmg.build_dmg(bundle, file)
             else:
                 with tarfile.open(file, "w:gz", dereference=False) as t:
                     t.add(bundle, arcname=bundle.name)
@@ -868,6 +860,45 @@ def package(args):
         if args.notarize:
             shutil.rmtree(output / "notary-input")
         container_signed = False
+        container_notarized = False
+        if kind == "dmg" and m["acceptance"].get("signing"):
+            identity = m.get("signing_identity", "")
+            if platform.system() != "Darwin" or not identity:
+                raise ValueError(
+                    "macOS DMG signing requires the accepted native identity"
+                )
+            run(
+                [
+                    "codesign",
+                    "--force",
+                    "--timestamp",
+                    "--sign",
+                    identity,
+                    file,
+                ]
+            )
+            run(["codesign", "--verify", "--strict", file])
+            container_signed = True
+        if args.notarize_container:
+            if kind != "dmg" or not container_signed:
+                raise ValueError(
+                    "container notarization requires a signed macOS DMG"
+                )
+            run(
+                [
+                    sys.executable,
+                    ROOT / "tools/package/signing.py",
+                    "notarize",
+                    "--file",
+                    file,
+                    "--staple",
+                    file,
+                    "--receipt",
+                    output / "dmg-notarization.json",
+                ]
+            )
+            run(["codesign", "--verify", "--strict", file])
+            container_notarized = True
         if kind == "setup.exe" and m["acceptance"].get("signing"):
             if platform.system() != "Windows" or not re.fullmatch(
                 r"[a-fA-F0-9]{40}", m.get("signing_identity", "")
@@ -915,8 +946,9 @@ def package(args):
                 "size": file.stat().st_size,
                 "payload_signed": bool(m["acceptance"].get("signing")),
                 "container_signed": container_signed,
+                "container_notarized": container_notarized,
                 "signed": bool(m["acceptance"].get("signing"))
-                and (kind != "setup.exe" or container_signed),
+                and (kind not in {"setup.exe", "dmg"} or container_signed),
                 "notarized": bool(args.notarize or m["acceptance"].get("notarization")),
             }
         )
@@ -1018,6 +1050,7 @@ def main():
     s.add_argument("--output", required=True)
     s.add_argument("--nfpm", default="nfpm")
     s.add_argument("--notarize", action="store_true")
+    s.add_argument("--notarize-container", action="store_true")
     s.add_argument("--appimagetool", default="appimagetool")
     s.add_argument("--appimage-runtime")
     args = p.parse_args()

@@ -3941,6 +3941,12 @@
     "pt-BR": "Cores ausentes",
     "ru": "Отсутствующие цвета"
   },
+  "偏好设置导入失败": {
+    "en": "Preference import failures",
+    "ja": "環境設定の読み込みエラー",
+    "pt-BR": "Falhas ao importar preferências",
+    "ru": "Ошибки импорта настроек"
+  },
   "托盘": {
     "en": "Tray",
     "ja": "トレイ",

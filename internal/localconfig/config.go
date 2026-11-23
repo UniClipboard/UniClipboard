@@ -90,7 +90,9 @@ type Desktop struct {
 	TrayIcon      string `toml:"tray_icon" json:"tray_icon"`
 	UpdateChannel string `toml:"update_channel" json:"update_channel"`
 	// TagColors maps SHA-256 tag identifiers to local presentation colors. It stores no tag names.
-	TagColors           map[string]string   `toml:"tag_colors,omitempty" json:"tag_colors,omitempty"`
+	TagColors map[string]string `toml:"tag_colors,omitempty" json:"tag_colors,omitempty"`
+	// TagSidebar uses the same hashed identifiers as TagColors.
+	TagSidebar          map[string]bool     `toml:"tag_sidebar,omitempty" json:"tag_sidebar,omitempty"`
 	Language            string              `toml:"language" json:"language"`
 	Shortcuts           map[string][]string `toml:"shortcuts,omitempty" json:"shortcuts,omitempty"`
 	QuickPanelDoubleTap string              `toml:"quick_panel_double_tap,omitempty" json:"quick_panel_double_tap,omitempty"`
@@ -346,6 +348,14 @@ func (c Config) Validate() error {
 			if _, err := hex.DecodeString(color[1:]); err != nil {
 				return errors.New("desktop.tag_colors: invalid color")
 			}
+		}
+	}
+	if len(c.Desktop.TagSidebar) > 4096 {
+		return errors.New("desktop.tag_sidebar: at most 4096 overrides")
+	}
+	for id := range c.Desktop.TagSidebar {
+		if key, err := hex.DecodeString(id); err != nil || len(key) != 32 {
+			return errors.New("desktop.tag_sidebar: invalid tag identifier")
 		}
 	}
 	switch c.Desktop.QuickPanelDoubleTap {

@@ -140,8 +140,10 @@ func TestProductionMigrationTags(t *testing.T) {
 	}
 	layoutPath := filepath.Join(source, "history-tags", "layout.v1.json")
 	need(t, os.MkdirAll(filepath.Dir(layoutPath), 0700))
-	layout := []byte(`{"version":1,"sidebar":["link","code","image","directory"],"colors":{"tag-one":"orange","tag-collision":"#12AB34","tag-unused":"green","link":"purple","image":"#ABCDEF","00000000-0000-4000-8000-000000000001":"orange"}}`)
+	layout := []byte(`{"version":1,"sidebar":["link","code","directory","tag-one","deleted-tag"],"colors":{"tag-one":"orange","tag-collision":"#12AB34","tag-unused":"green","link":"purple","image":"#ABCDEF","00000000-0000-4000-8000-000000000001":"orange"}}`)
 	need(t, os.WriteFile(layoutPath, layout, 0600))
+	need(t, os.WriteFile(filepath.Join(source, "settings.json"), []byte(`{"general":{"device_name":"Migration Fixture","theme":"light","usage_analytics_enabled":true}}`), 0600))
+	need(t, os.WriteFile(filepath.Join(source, "desktop-settings.json"), []byte(`{"version":1,"general":{"theme":"dark","usageAnalyticsEnabled":false}}`), 0600))
 	colorKey := func(id string) string { sum := sha256.Sum256([]byte(id)); return hex.EncodeToString(sum[:]) }
 	expectedColors := map[string]string{"标签": "orange", "Links": "#12ab34", "unused": "green", "builtin:link": "purple", "builtin:code": "purple", "builtin:image": "#abcdef", "builtin:folder": "gray"}
 	readConfig := func(dir string) config.Config {
@@ -207,7 +209,19 @@ func TestProductionMigrationTags(t *testing.T) {
 	receipt["dry_run_report"] = dry
 	first := migrate(target, 0)
 	receipt["initial_report"] = first
-	checkColors(readConfig(target), expectedColors)
+	initialConfig := readConfig(target)
+	checkColors(initialConfig, expectedColors)
+	if initialConfig.DeviceName != "Migration Fixture" || initialConfig.Desktop.ColorMode != "dark" || initialConfig.Telemetry.Analytics.Enabled || !initialConfig.Telemetry.Logs.Enabled {
+		t.Fatal("v1 desktop preferences were not imported independently of other telemetry signals")
+	}
+	wantSidebar := map[string]bool{}
+	for tag, visible := range map[string]bool{"builtin:link": true, "builtin:code": true, "builtin:folder": true, "builtin:image": false, "标签": true, "Links": false, "unused": false} {
+		wantSidebar[colorKey(tag)] = visible
+	}
+	if got := initialConfig.Desktop.TagSidebar; !reflect.DeepEqual(got, wantSidebar) {
+		t.Fatalf("migrated sidebar = %v, want %v", got, wantSidebar)
+	}
+	receipt["migrated_preferences"] = map[string]any{"theme": initialConfig.Desktop.ColorMode, "device_name": initialConfig.DeviceName, "analytics_enabled": initialConfig.Telemetry.Analytics.Enabled, "sidebar": wantSidebar}
 	receipt["expected_colors"] = expectedColors
 	receipt["actual_color_overrides"] = readConfig(target).Desktop.TagColors
 
@@ -249,11 +263,19 @@ func TestProductionMigrationTags(t *testing.T) {
 		t.Fatal(repeat)
 	}
 	receipt["repeat_report"] = repeat
+	checks = append(checks, "CLI migrates theme, display name, analytics opt-out and v1 sidebar visibility")
+	if repeat["preferences_imported"] != float64(0) {
+		t.Fatal(repeat)
+	}
 	saveConfig(target, func(cfg *config.Config) {
 		cfg.Telemetry.Enabled = false
 		cfg.History.RetentionDays = 0
 		cfg.Sync.Enabled = false
 		cfg.DeviceName = "preserved-target"
+		cfg.Desktop.ColorMode = "system"
+		cfg.Telemetry.Analytics.Enabled = true
+		cfg.Desktop.TagSidebar[colorKey("builtin:link")] = false
+		cfg.Desktop.TagSidebar[colorKey("builtin:image")] = true
 		cfg.Desktop.TagColors[colorKey("Links")] = "blue"
 		cfg.Desktop.TagColors[colorKey("unrelated")] = "orange"
 	})
@@ -264,7 +286,7 @@ func TestProductionMigrationTags(t *testing.T) {
 	targetColors["Links"] = "blue"
 	targetColors["unrelated"] = "orange"
 	editedRepeat := migrate(target, 0)
-	if editedRepeat["colors_imported"] != float64(0) {
+	if editedRepeat["colors_imported"] != float64(0) || editedRepeat["preferences_imported"] != float64(0) {
 		t.Fatal(editedRepeat)
 	}
 	checkColors(readConfig(target), targetColors)
@@ -277,8 +299,10 @@ func TestProductionMigrationTags(t *testing.T) {
 		state, err := c.Config(ctx)
 		need(t, err)
 		checkColors(state.Config, targetColors)
-		if state.Config.DeviceName != "preserved-target" {
-			t.Fatal("unrelated setting lost")
+		if state.Config.DeviceName != "preserved-target" || state.Config.Desktop.ColorMode != "system" ||
+			!state.Config.Telemetry.Analytics.Enabled || state.Config.Telemetry.Enabled ||
+			state.Config.Desktop.TagSidebar[colorKey("builtin:link")] || !state.Config.Desktop.TagSidebar[colorKey("builtin:image")] {
+			t.Fatal("v2 preference edits did not survive repeat migration and service restart")
 		}
 		tags, err := c.HistoryTags(ctx)
 		need(t, err)
@@ -301,7 +325,7 @@ func TestProductionMigrationTags(t *testing.T) {
 		}
 		p.stop()
 	}
-	checks = append(checks, "real history/tag/search socket filters after two daemon starts")
+	checks = append(checks, "v2 preference edits and real history/tag/search socket filters survive retry and two daemon starts")
 	// Reproduce the old importer through the public offline import API.
 	old := filepath.Join(work, "old")
 	e, err := engine.New(ctx, engine.Options{DataDir: old, MigrationMode: true})

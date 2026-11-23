@@ -82,7 +82,8 @@ func (s *Source) importShortcuts(target string, report *Report) error {
 	if err != nil {
 		return err
 	}
-	metadata, err := toml.Decode(string(rawConfig), new(map[string]any))
+	var fields map[string]any
+	metadata, err := toml.Decode(string(rawConfig), &fields)
 	if err != nil {
 		return err
 	}
@@ -95,6 +96,7 @@ func (s *Source) importShortcuts(target string, report *Report) error {
 		legacy.Bindings[desktopkeys.TogglePanel] = json.RawMessage("[]")
 	}
 	actions := desktopkeys.ActionsForPlatform()
+	imported := 0
 	for _, id := range slices.Sorted(maps.Keys(legacy.Bindings)) {
 		if _, ok := next[id]; ok || (id == desktopkeys.TogglePanel && preservePanel) {
 			continue
@@ -135,7 +137,7 @@ func (s *Source) importShortcuts(target string, report *Report) error {
 			continue // Empty v1 global binding selected its built-in default.
 		}
 		next[id] = keys
-		report.ShortcutsImported++
+		imported++
 	}
 	cfg.Desktop.Shortcuts = next
 	if !metadata.IsDefined("desktop", "quick_panel_double_tap") {
@@ -158,18 +160,34 @@ func (s *Source) importShortcuts(target string, report *Report) error {
 			}
 		}
 	}
-	if report.ShortcutsImported == 0 && cfg.Desktop.QuickPanelDoubleTap == state.Config.Desktop.QuickPanelDoubleTap {
+	if imported == 0 && cfg.Desktop.QuickPanelDoubleTap == state.Config.Desktop.QuickPanelDoubleTap {
 		return nil
 	}
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("migrate v1 shortcuts: %w", err)
 	}
+	// Write only imported settings. Encoding cfg would record unrelated
+	// defaults as explicit choices before the preference importer runs.
+	desktop, ok := fields["desktop"].(map[string]any)
+	if !ok {
+		desktop = map[string]any{}
+		fields["desktop"] = desktop
+	}
+	if imported > 0 {
+		desktop["shortcuts"] = next
+	}
+	if cfg.Desktop.QuickPanelDoubleTap != state.Config.Desktop.QuickPanelDoubleTap {
+		desktop["quick_panel_double_tap"] = cfg.Desktop.QuickPanelDoubleTap
+	}
 	var buf bytes.Buffer
-	if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
+	if err := toml.NewEncoder(&buf).Encode(fields); err != nil {
 		return err
 	}
-	_, err = manager.Replace(state.Revision, buf.Bytes())
-	return err
+	if _, err := manager.Replace(state.Revision, buf.Bytes()); err != nil {
+		return err
+	}
+	report.ShortcutsImported = imported
+	return nil
 }
 
 func collidesWithExplicit(action desktopkeys.Action, actions []desktopkeys.Action, overrides map[string][]string) bool {

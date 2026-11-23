@@ -18,28 +18,30 @@ import (
 )
 
 type Report struct {
-	Status             string `json:"status"`
-	Total              int    `json:"total"`
-	Imported           int    `json:"imported"`
-	Recoverable        int    `json:"recoverable"`
-	Skipped            int    `json:"skipped"`
-	Failed             int    `json:"failed"`
-	MissingParts       int    `json:"missing_parts"`
-	Verified           int    `json:"verified"`
-	VerificationFailed int    `json:"verification_failed"`
-	Tags               int    `json:"tags"`
-	TagFailures        int    `json:"tag_failures"`
-	UnsupportedTags    int    `json:"unsupported_tags"`
-	TagMismatches      int    `json:"tag_mismatches"`
-	TagsRepaired       int    `json:"tags_repaired"`
-	TagRepairsSkipped  int    `json:"tag_repairs_skipped"`
-	ColorsImported     int    `json:"colors_imported"`
-	ColorsPreserved    int    `json:"colors_preserved"`
-	ColorsMissing      int    `json:"colors_missing"`
-	ColorsVerified     int    `json:"colors_verified"`
-	ColorFailures      int    `json:"color_failures"`
-	ShortcutsImported  int    `json:"shortcuts_imported"`
-	ShortcutsSkipped   int    `json:"shortcuts_skipped"`
+	Status              string `json:"status"`
+	Total               int    `json:"total"`
+	Imported            int    `json:"imported"`
+	Recoverable         int    `json:"recoverable"`
+	Skipped             int    `json:"skipped"`
+	Failed              int    `json:"failed"`
+	MissingParts        int    `json:"missing_parts"`
+	Verified            int    `json:"verified"`
+	VerificationFailed  int    `json:"verification_failed"`
+	Tags                int    `json:"tags"`
+	TagFailures         int    `json:"tag_failures"`
+	UnsupportedTags     int    `json:"unsupported_tags"`
+	TagMismatches       int    `json:"tag_mismatches"`
+	TagsRepaired        int    `json:"tags_repaired"`
+	TagRepairsSkipped   int    `json:"tag_repairs_skipped"`
+	ColorsImported      int    `json:"colors_imported"`
+	ColorsPreserved     int    `json:"colors_preserved"`
+	ColorsMissing       int    `json:"colors_missing"`
+	ColorsVerified      int    `json:"colors_verified"`
+	ColorFailures       int    `json:"color_failures"`
+	PreferencesImported int    `json:"preferences_imported"`
+	PreferenceFailures  int    `json:"preference_failures"`
+	ShortcutsImported   int    `json:"shortcuts_imported"`
+	ShortcutsSkipped    int    `json:"shortcuts_skipped"`
 }
 type Progress struct {
 	Stage     string `json:"stage"`
@@ -61,10 +63,12 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		return
 	}
 	report.Tags = len(s.tags)
-	colors, colorErr := s.tagColors()
+	colors, sidebar, colorErr := s.tagLayout()
 	if colorErr != nil {
 		report.ColorFailures++
 	}
+	prefs := s.preferences(&report)
+	prefs.sidebar = sidebar
 	notify := func(stage string, n int) {
 		if opts.Progress != nil {
 			opts.Progress(Progress{stage, n, report.Total})
@@ -195,12 +199,10 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		return
 	}
 	if target != nil {
-		if runErr = s.importShortcuts(dst, &report); runErr != nil {
-			return
+		if err := s.importShortcuts(dst, &report); err != nil {
+			report.PreferenceFailures++
 		}
-		if colorErr == nil {
-			importTagColors(ctx, dst, colors, &report)
-		}
+		importPreferences(ctx, dst, colors, prefs, &report)
 		runErr = target.Close(ctx)
 		target = nil
 		if runErr != nil {
@@ -247,7 +249,7 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		}
 	}
 	report.Status = "complete"
-	if report.Failed > 0 || report.MissingParts > 0 || report.VerificationFailed > 0 || report.UnsupportedTags > 0 || report.ColorFailures > 0 || report.ColorsMissing > 0 {
+	if report.Failed > 0 || report.MissingParts > 0 || report.VerificationFailed > 0 || report.UnsupportedTags > 0 || report.ColorFailures > 0 || report.ColorsMissing > 0 || report.PreferenceFailures > 0 {
 		report.Status = "partial"
 	}
 	if opts.DryRun && report.Status == "complete" {

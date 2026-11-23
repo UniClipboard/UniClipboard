@@ -106,6 +106,8 @@ The Desktop host uses the pinned mygo native updater plugin. `appupdates.Source`
 
 Each update check selects the release notes using the current `desktop.language`. The adapter sends the Chinese section to mygo for Chinese when the feed includes a translation. Other languages and missing Chinese translations use the English section.
 
+The adapter sends the installed identity as `from=<version>-build.<number>` to the numbered Desktop feed. FlareRelease can return the selected build and up to four intervening, published builds from the selected channel in newest-first order. The adapter accepts single-build notes from the feed when there is no cumulative history.
+
 The host enables automatic/native-menu updates only for direct installations. System Linux packages, Snap, Flatpak, AppImage, Homebrew-owned bundles, Scoop and portable archives remain externally managed. NSIS records winget/Chocolatey ownership from `/MANAGED=`. Manual reinstalls preserve that receipt. Windows and Linux updates use mygo's owned-file list and preserve unowned data. AppImage self-update remains unsupported by the pinned SDK. Public feed/key provisioning remains a deployment prerequisite.
 
 The registered CLI build entry can also call `native-desktop-acceptance.yml` to run the canonical history/search/copy native-window case on all six targets. Its screenshots, continuous recording, source/binary hashes and cleanup receipt remain distinct from production installer and real-system clipboard acceptance. Windows arm64 records the pinned Go toolchain's unavailable race detector explicitly.

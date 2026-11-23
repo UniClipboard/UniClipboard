@@ -45,6 +45,7 @@ type Artifact struct {
 
 type Source struct {
 	Base, Target, Key string
+	CurrentVersion    string
 	Channel           func() string
 	Language          func() string
 	mu                sync.Mutex
@@ -92,7 +93,11 @@ func (s *Source) Manifest(ctx context.Context, _ bool) (io.ReadCloser, error) {
 	if channel != "stable" && channel != "alpha" {
 		return nil, errors.New("invalid update channel")
 	}
-	body, e := get(ctx, strings.TrimRight(s.Base, "/")+"/v1/desktop/"+channel+".json")
+	address := strings.TrimRight(s.Base, "/") + "/v1/desktop/" + channel + ".json"
+	if s.CurrentVersion != "" {
+		address += "?from=" + url.QueryEscape(s.CurrentVersion)
+	}
+	body, e := get(ctx, address)
 	if e != nil {
 		return nil, e
 	}

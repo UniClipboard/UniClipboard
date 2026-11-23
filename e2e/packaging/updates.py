@@ -16,6 +16,7 @@ import tarfile
 import tempfile
 import threading
 import time
+from urllib.parse import parse_qs, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 p = argparse.ArgumentParser()
@@ -154,10 +155,14 @@ try:
                 pass
 
             def do_GET(self):
+                request = urlsplit(self.path)
+                feed = state["feed"]
+                if parse_qs(request.query).get("from") == ["2.0.0-build.1"]:
+                    feed = {**feed, "notes": state.get("cumulative_notes", feed["notes"])}
                 data = (
                     state["archive"]
-                    if self.path == "/archive.tar.gz"
-                    else json.dumps(state["feed"]).encode()
+                    if request.path == "/archive.tar.gz"
+                    else json.dumps(feed).encode()
                 )
                 self.send_response(200)
                 self.send_header("Content-Length", str(len(data)))
@@ -258,6 +263,19 @@ try:
             )
             assert actual == expected, f"wrong update notes for {language}: {actual!r}"
         report["checks"].append("mygo receives notes in one language with English fallback")
+        english = "## v2.0.0-build.3\n\nLatest\n\n## v2.0.0-build.2\n\nIntermediate"
+        chinese = "## v2.0.0-build.3\n\n最新\n\n## v2.0.0-build.2\n\n中间版本"
+        state["cumulative_notes"] = english + "\n\n<!-- zh -->\n\n" + chinese
+        state["feed"] = {**original, "buildNumber": "3"}
+        report["cumulative_release_notes"] = []
+        for language, expected in [("en", english), ("zh-CN", chinese)]:
+            actual = json.loads(run(command + ["-notes", "-language", language], env=probe_env))
+            report["cumulative_release_notes"].append(
+                {"language": language, "expected": expected, "actual": actual}
+            )
+            assert actual == expected, f"wrong cumulative update notes for {language}: {actual!r}"
+        del state["cumulative_notes"]
+        report["checks"].append("mygo receives cumulative notes for the installed build and selected language")
         for label, mutate in [
             ("wrong product", lambda f: f.update(product="cli")),
             ("wrong build", lambda f: f.update(buildNumber="0")),

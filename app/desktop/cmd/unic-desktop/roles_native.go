@@ -90,11 +90,12 @@ func runTray(settings *config.Manager) error {
 	r.mu.Unlock()
 	if updatesSupported {
 		source := &appupdates.Source{
-			Base:     appupdates.FeedBase,
-			Target:   runtime.GOOS + "-" + runtime.GOARCH,
-			Key:      appupdates.PublicKey,
-			Channel:  func() string { return settings.Current().Desktop.UpdateChannel },
-			Language: func() string { return settings.Current().Desktop.Language },
+			Base:           appupdates.FeedBase,
+			Target:         runtime.GOOS + "-" + runtime.GOARCH,
+			Key:            appupdates.PublicKey,
+			CurrentVersion: mygo.App.Version(),
+			Channel:        func() string { return settings.Current().Desktop.UpdateChannel },
+			Language:       func() string { return settings.Current().Desktop.Language },
 		}
 		mygo.Updater.SetSource(&desktopUpdateSource{runtime: r, Source: source})
 		mygo.Use(native.Plugin)

@@ -35,14 +35,15 @@ func main() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	mygo.App.SetVersion("2.0.0-build.1")
 	source := &appupdates.Source{
 		Base: *base, Target: runtime.GOOS + "-" + runtime.GOARCH, Key: *key,
-		Channel:  func() string { return *channel },
-		Language: func() string { return *language },
+		CurrentVersion: mygo.App.Version(),
+		Channel:        func() string { return *channel },
+		Language:       func() string { return *language },
 	}
 	err := func() error {
 		if *install || *notes {
-			mygo.App.SetVersion("2.0.0-build.1")
 			mygo.Updater.SetSource(source)
 			candidate, err := mygo.Updater.Check(ctx)
 			if err != nil {

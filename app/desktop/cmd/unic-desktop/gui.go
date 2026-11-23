@@ -227,7 +227,7 @@ func runGUI(settings *config.Manager) error {
 				windowchrome.Controls(c, actions, settings.Current().Desktop.Language)
 			}
 			view = func(c *ui.Context) {
-				if session.setup == nil && session.runtime != nil {
+				if session.setup != nil || session.runtime != nil {
 					session.view(c)
 					return
 				}

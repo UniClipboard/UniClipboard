@@ -309,13 +309,62 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 		k.ContentUnavailable(c, desktopkit.ContentUnavailableProps{Title: d.tr("此设置暂不可用"), Description: d.tr("当前版本尚不支持此设置。")}, nil)
 	}
 
-	if len(l.config.RestartRequired) > 0 || (d.windowFrame != nil && *d.windowFrame != cfg.Desktop.SystemWindowFrame) {
-		k.InlineNotice(c.Key("restart-notice"), desktopkit.NoticeProps{
-			Tone:  desktopkit.ToneWarning,
-			Title: d.tr("部分设置将在下次启动时生效。"),
-		})
+	restartService := len(l.config.RestartRequired) > 0
+	if restartService || (d.windowFrame != nil && *d.windowFrame != cfg.Desktop.SystemWindowFrame) {
+		d.restartNotice(c.Key("restart-notice"), k, desktopkit.ToneWarning, d.tr("部分设置将在下次启动时生效。"), restartService)
 	}
 	if changed {
 		d.saveLiveConfig(cfg)
+	}
+}
+
+func (d *viewState) requestRestart(restartService bool) {
+	if d.live == nil || d.live.restartApp == nil || d.live.restarting {
+		return
+	}
+	l := d.live
+	l.restarting = true
+	l.message = ""
+	l.restartApp(restartService, func(err error) {
+		select {
+		case <-l.ctx.Done():
+		case l.results <- func() {
+			l.restarting = false
+			if err != nil {
+				l.message = "无法重启应用。请手动退出并重新启动桌面端。"
+			}
+		}:
+			l.wake()
+		}
+	})
+}
+
+func (d *viewState) restartNotice(c *ui.Context, k desktopkit.Kit, tone desktopkit.NoticeTone, title string, restartService bool) {
+	props := desktopkit.NoticeProps{
+		Tone:  tone,
+		Title: title,
+	}
+	if d.live != nil && d.live.restartApp != nil {
+		props.ActionLabel = d.tr("立即重启")
+		props.ActionIcon = desktopkit.IconRetry
+		props.ActionBusy = d.live.restarting
+		props.ActionDisabled = d.live.restarting
+	}
+	if k.InlineNotice(c, props).Acted {
+		d.requestRestart(restartService)
+	}
+}
+
+func (d *viewState) restartActionButton(c *ui.Context, k desktopkit.Kit) {
+	if d.live == nil || d.live.restartApp == nil {
+		return
+	}
+	if k.Button(c, d.tr("立即重启"), desktopkit.ButtonProps{
+		Size:     desktopkit.SizeSmall,
+		Icon:     desktopkit.IconRetry,
+		Busy:     d.live.restarting,
+		Disabled: d.live.restarting,
+	}).Shrink(0).Clicked() {
+		d.requestRestart(true)
 	}
 }

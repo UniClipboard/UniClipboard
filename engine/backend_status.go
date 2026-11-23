@@ -26,7 +26,7 @@ func (e *Engine) ListSyncBackends(ctx context.Context) ([]SyncBackendInfo, error
 	defer release()
 	e.mu.Lock()
 	life, runtime := e.life, e.runtime
-	e.mu.Unlock()
+	defer e.mu.Unlock()
 	out := make([]SyncBackendInfo, 0, len(e.syncBackends))
 	for _, backend := range e.syncBackends {
 		p := e.pluginInstances[backend.ID()]

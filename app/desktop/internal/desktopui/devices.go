@@ -703,9 +703,10 @@ func (d *viewState) syncChannelsStrip(c *ui.Context, k desktopkit.Kit) {
 			})
 			if d.restartPending {
 				ui.Box(c.Key("div")).Height(1).Background(edge)
-				ui.Row(c.Key("restart")).Gap(6).AlignItems(ui.Center).Children(func() {
+				ui.Row(c.Key("restart")).Gap(8).AlignItems(ui.Center).Children(func() {
 					k.Icon(c.Key("ric"), desktopkit.IconRetry, 13).TextColor(fg).Shrink(0)
-					k.Text(c.Key("rtxt"), d.tr("同步渠道配置已更改，请退出并重新启动桌面端以生效。"), desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(fg)
+					k.Text(c.Key("rtxt"), d.tr("同步渠道配置已更改，请退出并重新启动桌面端以生效。"), desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(fg).Grow(1).MinWidth(0)
+					d.restartActionButton(c.Key("rbtn"), k)
 				})
 			}
 		})
@@ -770,9 +771,10 @@ func (d *viewState) syncChannelsStrip(c *ui.Context, k desktopkit.Kit) {
 		if d.restartPending {
 			_, _, fg := deviceWarnBannerSurface(k)
 			ui.Box(c.Key("div")).Height(1).Background(k.Color("separator-border"))
-			ui.Row(c.Key("restart")).Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.Row(c.Key("restart")).Gap(8).AlignItems(ui.Center).Children(func() {
 				k.Icon(c.Key("ric"), desktopkit.IconRetry, 13).TextColor(fg).Shrink(0)
-				k.Text(c.Key("rtxt"), d.tr("同步渠道设置已保存，请退出并重新启动桌面端以生效。"), desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(fg)
+				k.Text(c.Key("rtxt"), d.tr("同步渠道设置已保存，请退出并重新启动桌面端以生效。"), desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(fg).Grow(1).MinWidth(0)
+				d.restartActionButton(c.Key("rbtn"), k)
 			})
 		}
 	})

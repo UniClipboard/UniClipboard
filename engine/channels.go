@@ -99,6 +99,8 @@ func channelStoreErr(err error) *Error {
 
 // channelBackend finds an installed external-channel backend.
 func (e *Engine) channelBackend(id PluginID) *pluginBackend {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	for _, b := range e.syncBackends {
 		if pb, ok := b.(*pluginBackend); ok && pb.id == id && pb.spec.ExternalChannels {
 			return pb
@@ -187,6 +189,9 @@ func (e *Engine) PairChannel(ctx context.Context, req PairChannelRequest) (Chann
 }
 
 func (b *pluginBackend) ResolveChannel(ctx context.Context, remote []byte) (string, error) {
+	if b.preparing.Load() {
+		return "", nil
+	}
 	release, err := b.e.historyGate(ctx, false, false)
 	if err != nil {
 		return "", err
@@ -388,6 +393,9 @@ func (e *Engine) channelAllowed(backend PluginID, id string) (bool, error) {
 }
 
 func (b *pluginBackend) AuthorizeChannel(ctx context.Context, channelID, mime string) (bool, error) {
+	if b.preparing.Load() {
+		return false, nil
+	}
 	e := b.e
 	release, gateErr := e.historyGate(ctx, false, false)
 	if gateErr != nil {
@@ -410,6 +418,9 @@ func (b *pluginBackend) AuthorizeChannel(ctx context.Context, channelID, mime st
 // dedup as content from a device, tagged with the channel instead.
 func (b *pluginBackend) Receive(ctx context.Context, channelID string, r plugin.Received) error {
 	declined := newErr(CodeUnavailable, "the content was declined")
+	if b.preparing.Load() {
+		return declined
+	}
 	if ok, err := b.e.channelAllowed(b.id, channelID); err != nil || !ok || len(r.Parts) == 0 || len(r.Parts) > 16 {
 		return declined
 	}

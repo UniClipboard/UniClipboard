@@ -298,15 +298,11 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	}
 	req.Value.DeviceName = strings.TrimSpace(req.Value.DeviceName)
 	req.Value.RendezvousURL = strings.TrimRight(req.Value.RendezvousURL, "/")
-	value, perr := normalizePolicies(req.Value, e.backendIDs())
-	if perr != nil {
-		return SettingsState{}, perr
-	}
-	tags, tagErr := normalizeTags(value.History.ExcludedTags)
+	tags, tagErr := normalizeTags(req.Value.History.ExcludedTags)
 	if tagErr != nil {
 		return SettingsState{}, tagErr
 	}
-	value.History.ExcludedTags = tags
+	req.Value.History.ExcludedTags = tags
 	changed := false
 	defer func() {
 		if changed && e.cache != nil {
@@ -322,6 +318,10 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	defer e.mu.Unlock()
 	if req.ExpectedRevision != e.settings.Revision {
 		return SettingsState{}, newErr(CodeConflict, "the settings changed; read them again")
+	}
+	value, perr := normalizePolicies(req.Value, e.backendIDs())
+	if perr != nil {
+		return SettingsState{}, perr
 	}
 	if reflect.DeepEqual(value, e.settings.Value) {
 		return e.settingsLocked(), nil

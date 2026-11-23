@@ -92,6 +92,10 @@ func (d *viewState) installedExternalPlugin(id string) (api.PluginInfo, bool) {
 }
 
 func (d *viewState) setExternalPluginEnabled(cfg config.Config, id string, on bool) {
+	if item, ok := d.installedExternalPlugin(id); on && ok && item.LiveStart && item.RunningVersion == "" {
+		d.startExternalPlugin(id)
+		return
+	}
 	cfg.Plugins.Lua = slices.DeleteFunc(slices.Clone(cfg.Plugins.Lua), func(x string) bool { return x == id })
 	cfg.Plugins.Order = slices.DeleteFunc(slices.Clone(cfg.Plugins.Order), func(x string) bool { return x == id })
 	if cfg.Plugins.Instances != nil {
@@ -108,6 +112,36 @@ func (d *viewState) setExternalPluginEnabled(cfg config.Config, id string, on bo
 		cfg.Plugins.Order = append(cfg.Plugins.Order, id)
 	}
 	d.saveLiveConfig(cfg)
+}
+
+func (d *viewState) startExternalPlugin(id string) {
+	l := d.live
+	p := &d.pluginSettings
+	if l.busy {
+		return
+	}
+	p.installError = ""
+	p.installNotice = ""
+	l.busy = true
+	if !l.enqueueWithin(func(ctx context.Context) func() {
+		info, err := l.client.StartPlugin(ctx, id)
+		return func() {
+			l.busy = false
+			l.nextRefresh = time.Time{}
+			if err != nil {
+				p.installError = d.tr("启动失败") + " · " + liveErrorMessage(err)
+				return
+			}
+			if i := slices.IndexFunc(l.externalPlugins, func(item api.PluginInfo) bool { return item.ID == id }); i >= 0 {
+				l.externalPlugins[i] = info
+			}
+			if info.NeedsSettings {
+				p.id, p.view, p.form = id, "", nil
+			}
+		}
+	}, 15*time.Second) {
+		l.busy = false
+	}
 }
 
 func (d *viewState) installMarketplacePlugin(req api.PluginInstallRequest, displayName, trackID string) {
@@ -153,6 +187,8 @@ func (d *viewState) installMarketplacePlugin(req api.PluginInstallRequest, displ
 				p.installNotice = name + " · " + d.tr("需要配置")
 			} else if req.Replace {
 				p.installNotice = fmt.Sprintf(d.tr("已更新「%s」，请重启桌面端生效。"), name)
+			} else if info.LiveStart && !req.Enable {
+				p.installNotice = fmt.Sprintf(d.tr("已安装「%s」。"), name)
 			} else if req.Enable {
 				p.installNotice = fmt.Sprintf(d.tr("已安装并启用「%s」，请重启桌面端生效。"), name)
 			} else {
@@ -364,7 +400,7 @@ func (d *viewState) pluginsMarketplaceWorkspace(c *ui.Context, k desktopkit.Kit)
 			// Left Column: L1 neutral canvas with plugin cards + sticky bottom developer footer.
 			ui.Column(c.Key("market-left")).Grow(1).MinWidth(0).MinHeight(0).Background(deviceCanvasBg(k)).Children(func() {
 				k.Scroll(c.Key("market-cards-scroll")).Role(ui.RoleRegion).Label(d.tr("插件市场")).Grow(1).MinHeight(0).Children(func() {
-					ui.Column(c.Key("market-cards-pad")).Padding(16, 18, 20, 18).Gap(12).MinWidth(0).Children(func() {
+					ui.Column(c.Key("market-cards-pad")).Padding(16, 18, 20, 18).Gap(10).MinWidth(0).Children(func() {
 						if len(filtered) == 0 {
 							ui.Column(c.Key("market-empty")).Padding(32, 20).Radius(13).Background(deviceCardBg(k)).Border(1, deviceCardBorder(k)).AlignItems(ui.Center).Gap(6).Children(func() {
 								k.Text(c.Key("t"), d.tr("无匹配插件"), desktopkit.TextProps{Emphasized: true})
@@ -372,18 +408,9 @@ func (d *viewState) pluginsMarketplaceWorkspace(c *ui.Context, k desktopkit.Kit)
 							})
 							return
 						}
-						// 2-column card rows matching Obsidian / prototype/plugins.html.
-						for i := 0; i < len(filtered); i += 2 {
-							ui.Row(c.Key(fmt.Sprintf("crow-%d", i))).Gap(12).AlignItems(ui.Stretch).MinWidth(0).Children(func() {
-								for j := i; j < i+2; j++ {
-									if j >= len(filtered) {
-										ui.Box(c.Key("spacer")).Grow(1).Basis(0)
-										continue
-									}
-									entry := filtered[j]
-									d.marketplaceCard(c.Key("card-"+entry.ID), k, entry, selected != nil && selected.ID == entry.ID)
-								}
-							})
+						// Single-column rectangular card list (one plugin per row).
+						for _, entry := range filtered {
+							d.marketplaceCard(c.Key("card-"+entry.ID), k, entry, selected != nil && selected.ID == entry.ID)
 						}
 					})
 				})
@@ -418,6 +445,10 @@ func (d *viewState) marketplaceCard(c *ui.Context, k desktopkit.Kit, entry api.M
 	canUpdate := isInstalled && entry.Version != "" && entry.Version != inst.Version
 	icon, tone := pluginIconForCategory(entry.Category, entry.Capabilities)
 
+	card := ui.ButtonBase(c).Label(entry.Name).FillWidth().MinWidth(0).Radius(12).Padding(13, 15).
+		FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
+	card.AccessSelected(isSelected)
+
 	bg := deviceCardBg(k)
 	border := deviceCardBorder(k)
 	borderW := float32(1)
@@ -425,39 +456,48 @@ func (d *viewState) marketplaceCard(c *ui.Context, k desktopkit.Kit, entry api.M
 		bg, _ = deviceAccentSurface(k)
 		border = k.Color("accent-500")
 		borderW = 1.5
+	} else if card.Hovered() {
+		border = deviceCardBorderHover(k)
 	}
+	card.Background(bg).Border(borderW, border)
 
-	card := ui.ButtonBase(c).Label(entry.Name).Grow(1).Basis(0).MinWidth(0).Radius(13).Background(bg).Border(borderW, border).Padding(13, 14).Children(func() {
-		ui.Column(c.Key("body")).FillWidth().Gap(9).MinWidth(0).Children(func() {
-			ui.Row(c.Key("top")).Gap(10).AlignItems(ui.Start).Children(func() {
-				pluginIconTile(c.Key("ico"), k, icon, tone, 36)
-				ui.Column(c.Key("title-col")).Grow(1).MinWidth(0).Gap(2).Children(func() {
-					ui.Row(c.Key("title-row")).Gap(5).AlignItems(ui.Center).Wrap().Children(func() {
+	card.Children(func() {
+		ui.Row(c.Key("row")).FillWidth().Gap(12).AlignItems(ui.Start).MinWidth(0).Children(func() {
+			pluginIconTile(c.Key("ico"), k, icon, tone, 40)
+			ui.Column(c.Key("body")).Grow(1).MinWidth(0).Gap(5).Children(func() {
+				ui.Row(c.Key("top")).FillWidth().Gap(8).AlignItems(ui.Center).MinWidth(0).Children(func() {
+					ui.Row(c.Key("title-row")).Grow(1).MinWidth(0).Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
 						k.Text(c.Key("name"), entry.Name, desktopkit.TextProps{Emphasized: true})
 						if entry.Official {
 							k.Tag(c.Key("off"), d.tr("官方"), desktopkit.TagProps{Color: "blue"})
 						}
 					})
-					k.Text(c.Key("author"), entry.Author, footnote)
-				})
-			})
-			k.Text(c.Key("summary"), entry.Summary, secondary).Grow(1)
-			ui.Box(c.Key("div")).Height(1).FillWidth().Background(k.Color("separator-border"))
-			ui.Row(c.Key("foot")).Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-				k.Text(c.Key("ver"), "v"+entry.Version, footnote)
-				if canUpdate {
-					k.Tag(c.Key("st"), d.tr("可更新"), desktopkit.TagProps{Color: "green"})
-				} else if isInstalled {
-					lbl := d.tr("已安装")
-					if inst.Configured {
-						lbl = d.tr("已启用")
+					if canUpdate {
+						k.Tag(c.Key("st"), d.tr("可更新"), desktopkit.TagProps{Color: "green"}).Shrink(0)
+					} else if isInstalled {
+						lbl := d.tr("已安装")
+						if inst.Configured {
+							lbl = d.tr("已启用")
+						}
+						k.Tag(c.Key("st"), lbl, desktopkit.TagProps{Color: "green"}).Shrink(0)
+					} else if entry.ZeroConfig {
+						k.Tag(c.Key("zc"), d.tr("免配置"), desktopkit.TagProps{Color: "gray"}).Shrink(0)
 					}
-					k.Tag(c.Key("st"), lbl, desktopkit.TagProps{Color: "green"})
-				} else if entry.ZeroConfig {
-					k.Text(c.Key("zc"), d.tr("免配置"), footnote)
-				} else {
-					k.Text(c.Key("cat"), d.categoryLabel(entry.Category), footnote)
-				}
+				})
+				k.Text(c.Key("summary"), entry.Summary, secondary)
+				ui.Row(c.Key("foot")).FillWidth().Gap(8).Justify(ui.SpaceBetween).AlignItems(ui.Center).MinWidth(0).Children(func() {
+					meta := entry.Author
+					if entry.Version != "" {
+						if meta != "" {
+							meta += " · "
+						}
+						meta += "v" + entry.Version
+					}
+					k.Text(c.Key("meta"), meta, footnote).Grow(1).MinWidth(0)
+					if catLabel := d.categoryLabel(entry.Category); catLabel != "" {
+						k.Text(c.Key("cat"), catLabel, footnote).Shrink(0)
+					}
+				})
 			})
 		})
 	})
@@ -527,8 +567,12 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 							}, entry.Name, entry.ID)
 						}
 					}
-					if !inst.Configured {
-						if k.Button(c.Key("m-enable"), d.tr("启用"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy}).Clicked() {
+					if !inst.Configured || inst.LiveStart && inst.RunningVersion == "" && !inst.NeedsSettings {
+						label := "启用"
+						if inst.LiveStart && inst.RunningVersion == "" {
+							label = "启动"
+						}
+						if k.Button(c.Key("m-enable"), d.tr(label), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy}).Clicked() {
 							d.setExternalPluginEnabled(cfg, inst.ID, true)
 						}
 					} else {
@@ -537,10 +581,15 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 						}
 					}
 					if inst.HasSettings || slices.Contains(inst.Capabilities, "sync_backend") {
-						if k.Button(c.Key("m-options"), d.tr("选项"), desktopkit.ButtonProps{Icon: desktopkit.IconSettings, Disabled: l.busy}).Clicked() {
+						label, icon := "选项", desktopkit.IconSettings
+						if isWeType(inst) && inst.Configured && d.channelForPlugin(inst.ID) == nil {
+							label, icon = "加入共享空间", desktopkit.IconLink
+						}
+						if k.Button(c.Key("m-options"), d.tr(label), desktopkit.ButtonProps{Icon: icon, Disabled: l.busy}).Clicked() {
 							p.id = inst.ID
 							p.view = ""
 							p.form = nil
+							p.channelPair = weTypePairing{}
 						}
 					}
 					if inst.Source != "local" {

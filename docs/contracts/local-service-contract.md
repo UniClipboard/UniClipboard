@@ -424,6 +424,7 @@ The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PU
 |---|---|---|
 | `GET /v1/plugins/marketplace` | Optional `refresh=1` or `refresh=true` | `{version,source,updated_at?,warning?,plugins}` |
 | `POST /v1/plugins/install` | `{repository,ref?,path?,build?,replace?,enable?}` | Installed `PluginInfo` |
+| `POST /v1/plugins/{id}/start` | None | Enabled or configuration-pending `PluginInfo` |
 | `DELETE /v1/plugins/{id}` | None | `{ok:true}` |
 | `POST /v1/plugins/{id}/rollback` | None | Selected `PluginInfo` |
 
@@ -431,6 +432,13 @@ The install request is limited to 8192 bytes. Unknown fields, trailing JSON and
 an empty repository are rejected. Boolean options default false. Installation
 uses the existing commit-locked GitHub installer. `enable=true` also updates
 the plugin configuration; a service restart activates the installed version.
+For an inactive installed Go Action-only plugin or external-channel backend
+with `live_start: true`, the explicit start route requests activation in the
+current service. It enables the instance, starts the verified process and
+publishes its capabilities when ready. An instance with missing required
+values returns `needs_settings: true` and activates on the first successful
+settings save. Sending the same start request to the running configured
+version is idempotent. Start failures return an error and publish no runtime.
 Uninstall disables the plugin and removes its installation lock entry. Running
 code stops and old files are cleaned up after restart. Rollback selects the
 retained previous version and also requires restart. History and local plugin

@@ -401,6 +401,15 @@ summary = "Send clipboard content to WeChat IME."
 
 首次安装默认不启用；--enable 等价显式 enable，采用清单配置默认值并追加到阶段顺序末尾，不覆盖用户已有配置。启用列表变更按第 3 节在重启时生效。The installed version and its previous version remain immutable. Use `unic plugin rollback ID` to select the previous commit, then restart the service.
 
+Desktop Marketplace offers an explicit Start operation for installed,
+inactive external Go plugins that declare only Action or an external-channel
+object-store backend. Start preserves the service process and registers the
+plugin only after its verified subprocess is ready. If required settings are
+missing, Start records enablement and the first successful settings save
+activates the plugin. Disable, uninstall, version replacement and rollback
+still follow their existing lifecycle. See the [local service
+contract](local-service-contract.md#marketplace-and-installation-lifecycle).
+
 list 显示 installed/ready、source、configured_enabled、running_version、restart_required，区分磁盘与实际运行状态。Disable and uninstall take effect after restart. The service closes the process, and startup prunes version directories that the current lock and running service no longer reference. Uninstall preserves history and settings.内置 builtin.tailcat 随宿主编译和升级，不经外部安装器安装/卸载，不允许第三方覆盖保留 ID；可禁用，其关联记录保留，全部后端禁用后进入本机模式。
 
 桌面管理器负责 GitHub、文件、锁与配置；Engine 只接收已校验程序描述/脚本。锁文件不含配对或剪贴板秘密。交付必须包含资产探测、--build 兜底、原子安装/回滚、进程启动与回收，不能以下载成功代替运行成功。

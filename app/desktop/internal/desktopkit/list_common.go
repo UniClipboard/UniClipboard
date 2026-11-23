@@ -4,6 +4,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -331,32 +332,19 @@ func (k Kit) rowTitle(c *ui.Context, title string, mono bool, terms []string, co
 }
 
 func (k Kit) rowTitleWeighted(c *ui.Context, title string, mono bool, terms []string, col ui.Color, size float32, weight int) {
-	runs, hit := highlightRuns(title, terms)
-	if len(runs) == 1 && !hit[0] {
-		e := ui.Text(c, title).FontSize(size).TextColor(col).SingleLine()
-		if weight > 0 {
-			e.FontWeight(weight)
-		}
-		if mono {
-			e.Font("monospace")
-		}
-		return
-	}
-	row := ui.Row(c).AlignItems(ui.Center).MinWidth(0).Shrink(1)
-	row.Children(func() {
-		for i, r := range runs {
-			t := ui.Text(c.Key(i), r).FontSize(size).TextColor(col).SingleLine()
-			if weight > 0 {
-				t.FontWeight(weight)
-			}
-			if mono {
-				t.Font("monospace")
-			}
-			if hit[i] {
-				t.Background(k.Color("status-yellow-background").Alpha(.28)).Radius(2)
-			}
-		}
+	k.HighlightedText(c, title, terms, HighlightTextProps{
+		FontSize:   size,
+		FontWeight: weight,
+		TextColor:  col,
+		Monospace:  mono,
+		SingleLine: true,
 	})
+}
+
+type thumbFadeState struct {
+	initialized bool
+	lastID      string
+	hadImage    bool
 }
 
 // l1ListRow renders the L1 + S-A floating-selection card row: rounded 10-DIP inset row
@@ -399,9 +387,34 @@ func (k Kit) l1ListRow(c *ui.Context, r ui.ListRow, it ItemListItem) ui.Element 
 
 	row.Children(func() {
 		// Leading provenance / media tile.
-		if it.Kind == KindImage && it.Image != nil {
-			ui.Image(c.Key("thumb"), it.Image).Size(34, 34).Radius(7).Fit(ui.Cover).
+		if it.Kind == KindImage && (it.Image != nil || it.ImageLoading) {
+			slot := ui.Box(c.Key("thumb-slot")).Size(34, 34).Radius(7).Clip().
 				Border(1, k.Color("separator-border")).Shrink(0).AccessHidden(true)
+			tf := ui.Local(slot, "thumb-fade", func() thumbFadeState { return thumbFadeState{} })
+			if !tf.initialized || tf.lastID != it.ID {
+				tf.initialized = true
+				tf.lastID = it.ID
+				tf.hadImage = it.Image != nil
+				slot.Jump("thumb-a", 1)
+			} else if !tf.hadImage && it.Image != nil {
+				tf.hadImage = true
+				slot.Jump("thumb-a", 0)
+			}
+			alpha := slot.AnimateTo("thumb-a", 1, ui.Animation{
+				Duration:  140 * time.Millisecond,
+				Ease:      ui.EaseOut,
+				NonMotion: true,
+			})
+			slot.Children(func() {
+				if it.Image == nil {
+					k.ShimmerBox(c.Key("thumb-skel"), 0).Fill()
+					return
+				}
+				imgEl := ui.Image(c.Key("thumb"), it.Image).Fill().Fit(ui.Cover)
+				if alpha < 0.999 {
+					imgEl.Opacity(alpha)
+				}
+			})
 		} else if it.SourceAppName != "" {
 			bg, fg := k.gridKindTint(it.Kind)
 			ui.Box(c.Key("app-tile")).Size(28, 28).Margin(2, 0, 0, 0).Shrink(0).AccessHidden(true).Children(func() {
@@ -449,13 +462,21 @@ func (k Kit) l1ListRow(c *ui.Context, r ui.ListRow, it ItemListItem) ui.Element 
 			})
 
 			if it.Excerpt != "" {
-				ex := ui.Text(c.Key("excerpt"), it.Excerpt).FontSize(11.8).TextColor(k.Color("text-secondary")).SingleLine()
+				exCol := k.Color("text-secondary")
+				exMono := false
 				switch it.ExcerptKind {
 				case KindCode:
-					ex.Font("monospace")
+					exMono = true
 				case KindLink:
-					ex.Font("monospace").TextColor(k.Color("accent-500"))
+					exMono = true
+					exCol = k.Color("accent-500")
 				}
+				k.HighlightedText(c.Key("excerpt"), it.Excerpt, it.Highlight, HighlightTextProps{
+					FontSize:   11.8,
+					TextColor:  exCol,
+					Monospace:  exMono,
+					SingleLine: true,
+				})
 			}
 
 			meta := it.Meta

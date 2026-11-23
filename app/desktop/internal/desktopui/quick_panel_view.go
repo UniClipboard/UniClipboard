@@ -64,11 +64,25 @@ func (p *quickPanelState) panel(c *ui.Context) {
 			})
 			return
 		}
-		p.searchRow(c, a)
+		p.searchRow(c, k, a)
+		qpSlow := p.live != nil && p.live.d.live.showForegroundLoading()
+		qpPending := !p.queryDue.IsZero() || (p.live != nil && p.live.d.live.foregroundLoading)
 		scroll := k.Scroll(c.Key("history-scroll")).Grow(1).MinHeight(0)
 		first, last := len(p.rows), -1
 		scroll.Children(func() {
 			body := ui.Column(c).FillWidth().Padding(6)
+			staleTarget := float32(1)
+			if qpSlow && len(p.rows) > 0 {
+				staleTarget = 0.76
+			}
+			staleA := body.AnimateTo("qp-stale-a", staleTarget, ui.Animation{
+				Duration:  140 * time.Millisecond,
+				Ease:      ui.EaseOut,
+				NonMotion: true,
+			})
+			if staleA < 0.999 {
+				body.Opacity(staleA)
+			}
 			// Pointer motion re-enables hover. A stationary pointer cannot undo a key.
 			x, y, over := body.PointerPosition()
 			if over && (!p.pointerKnown || x != p.pointerX || y != p.pointerY) {
@@ -83,16 +97,21 @@ func (p *quickPanelState) panel(c *ui.Context) {
 					p.suggestionList(c, a, options)
 				}
 				switch {
-				case !p.queryDue.IsZero() || (p.live != nil && p.live.d.live.foregroundLoading):
-					ui.Text(c, p.tr("正在搜索…")).FontSize(13 * zoomScale(p.textZoom)).TextColor(a.quiet).Padding(24)
+				case len(p.rows) == 0 && qpPending:
+					if qpSlow || !p.queryDue.IsZero() {
+						ui.Row(c.Key("qp-loading")).Padding(24).Gap(8).AlignItems(ui.Center).Children(func() {
+							ui.Spinner(c.Key("spin")).Size(14, 14).TextColor(a.quiet).AccessHidden(true)
+							ui.Text(c, p.tr("正在搜索…")).FontSize(13 * zoomScale(p.textZoom)).TextColor(a.quiet)
+						})
+					}
 				case len(p.rows) == 0:
 					p.emptyView(c, a)
 				case p.kind == "图片":
-					p.imageGrid(c, a)
+					p.imageGrid(c, k, a)
 					first, last = p.gridTop*3, min(len(p.rows)-1, p.gridTop*3+8)
 				default:
 					for i, e := range p.rows {
-						row := p.resultRow(c.Key(e.id), a, i, e).Bounds()
+						row := p.resultRow(c.Key(e.id), k, a, i, e, qpPending).Bounds()
 						viewport := scroll.Bounds()
 						if row.H > 0 && viewport.H > 0 && row.Y < viewport.Y+viewport.H && row.Y+row.H > viewport.Y {
 							first, last = min(first, i), i
@@ -103,13 +122,6 @@ func (p *quickPanelState) panel(c *ui.Context) {
 		})
 		if p.live != nil && p.queryDue.IsZero() {
 			p.live.d.live.prefetchDetails(p.live.d, p.live.d.entries, first, last)
-		}
-		if p.message != "" {
-			tone := k.Color("text-error-primary")
-			if p.message == "已复制" || p.message == "已发送粘贴指令" {
-				tone = a.quiet
-			}
-			ui.Text(c, p.tr(p.message)).Role(ui.RoleAlert).FontSize(11*zoomScale(p.textZoom)).TextColor(tone).Padding(8, 12)
 		}
 		ui.Row(c).Height(34).Shrink(0).Padding(0, 10, 0, 12).BorderWidth(1, 0, 0, 0).BorderColor(a.border).AlignItems(ui.Center).Gap(7).Children(func() {
 			ui.Row(c).Size(16, 16).Radius(4).Background(a.foreground).AlignItems(ui.Center).Justify(ui.Center).Children(func() { ui.Text(c, "T").FontSize(9 * zoomScale(p.textZoom)).TextColor(a.background) })
@@ -142,9 +154,15 @@ func (p *quickPanelState) panel(c *ui.Context) {
 		c.After(max(time.Millisecond, p.previewDue.Sub(c.Now())))
 	}
 }
-func (p *quickPanelState) searchRow(c *ui.Context, a qpPalette) {
+func (p *quickPanelState) searchRow(c *ui.Context, k desktopkit.Kit, a qpPalette) {
+	qpSlow := p.live != nil && p.live.d.live.showForegroundLoading()
+	qpPending := !p.queryDue.IsZero() || (p.live != nil && p.live.d.live.foregroundLoading)
 	ui.Row(c).Height(48).Shrink(0).PaddingX(14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(a.border).Children(func() {
-		desktopkit.For(false).Icon(c, desktopkit.IconSearch, 16).TextColor(a.foreground)
+		if qpSlow {
+			ui.Spinner(c.Key("search-spin")).Size(16, 16).TextColor(a.primary).Shrink(0).AccessHidden(true)
+		} else {
+			k.Icon(c, desktopkit.IconSearch, 16).TextColor(a.foreground)
+		}
 		for i, f := range p.chips {
 			b := ui.ButtonBase(c.Key(f.dimension + f.value)).Label(p.tr("移除 ") + p.filterLabel(f)).Height(24).PaddingX(8).Radius(6).Background(a.muted)
 			b.Children(func() { ui.Text(c, p.filterLabel(f)).FontSize(12.5 * zoomScale(p.textZoom)).TextColor(a.primary) })
@@ -159,12 +177,24 @@ func (p *quickPanelState) searchRow(c *ui.Context, a qpPalette) {
 		in.Bind(&p.input).OnChange(p.queryChanged)
 		p.bindKeys(c, in)
 		if p.query != "" || p.kind != "" || len(p.chips) > 0 {
-			ui.Text(c, func() string {
+			cnt := ui.Text(c.Key("qp-count"), func() string {
 				if len(p.suggestions()) > 0 {
 					return fmt.Sprintf(p.tr("%d 条文字匹配"), len(p.rows))
 				}
 				return fmt.Sprintf(p.tr("%d 条"), len(p.rows))
 			}()).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet).Shrink(0)
+			cntTarget := float32(1)
+			if qpPending {
+				cntTarget = 0.45
+			}
+			cntA := cnt.AnimateTo("qp-cnt-a", cntTarget, ui.Animation{
+				Duration:  140 * time.Millisecond,
+				Ease:      ui.EaseOut,
+				NonMotion: true,
+			})
+			if cntA < 0.999 {
+				cnt.Opacity(cntA)
+			}
 		}
 		b := ui.ButtonBase(c.Key("type")).Label(p.tr("切换类型")).Row().Gap(6).AlignItems(ui.Center).Shrink(0)
 		b.Children(func() {
@@ -179,6 +209,7 @@ func (p *quickPanelState) searchRow(c *ui.Context, a qpPalette) {
 		if p.query != "" || p.kind != "" || len(p.chips) > 0 {
 			ui.ButtonBase(c.Key("clear")).Label(p.tr("清空")).Size(18, 18).Children(func() { ui.Text(c, "×").FontSize(16 * zoomScale(p.textZoom)).TextColor(a.quiet) }).OnClick(func() { p.clear(); p.input.Focus() })
 		}
+		k.TopHairlineProgress(c.Key("qp-progress"), qpSlow || !p.queryDue.IsZero())
 	})
 }
 func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
@@ -392,7 +423,7 @@ func (p *quickPanelState) suggestionList(c *ui.Context, a qpPalette, options []q
 	}
 	heading(p.tr("文字匹配"), "")
 }
-func qpMarkedSpans(e qpEntry, query string, selected bool, ink, quiet ui.Color) []ui.Span {
+func qpMarkedSpans(e qpEntry, query string, selected, staleQuery bool, ink, quiet ui.Color) []ui.Span {
 	text := strings.NewReplacer("\n", " ", "\r", " ").Replace(e.title)
 	q := strings.ToLower(strings.TrimSpace(query))
 	lower := []rune(strings.ToLower(text))
@@ -409,7 +440,7 @@ func qpMarkedSpans(e qpEntry, query string, selected bool, ink, quiet ui.Color) 
 		}
 		span := ui.Span{Text: string(r), Color: ink, Strikethrough: e.lost}
 		matched := at < end
-		if len(e.highlights) > 0 {
+		if !staleQuery && len(e.highlights) > 0 {
 			matched = false
 			for _, range_ := range e.highlights {
 				matched = matched || (at >= range_.Start && at < range_.End)
@@ -417,6 +448,8 @@ func qpMarkedSpans(e qpEntry, query string, selected bool, ink, quiet ui.Color) 
 		}
 		if matched {
 			span.Background = tint
+			span.Radius = 3
+			span.PaddingX = 1.5
 		}
 		if e.kind == "链接" {
 			slash := slices.Index([]rune(text), '/')
@@ -426,11 +459,18 @@ func qpMarkedSpans(e qpEntry, query string, selected bool, ink, quiet ui.Color) 
 				span.Color = quiet
 			}
 		}
+		if n := len(spans); n > 0 {
+			prev := &spans[n-1]
+			if prev.Color == span.Color && prev.Background == span.Background && prev.Weight == span.Weight && prev.Strikethrough == span.Strikethrough && prev.Radius == span.Radius {
+				prev.Text += span.Text
+				continue
+			}
+		}
 		spans = append(spans, span)
 	}
 	return spans
 }
-func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry) ui.Element {
+func (p *quickPanelState) resultRow(c *ui.Context, k desktopkit.Kit, a qpPalette, i int, e qpEntry, staleQuery bool) ui.Element {
 	selected := i == p.selected && !p.suggestFocused
 	ink, quiet := a.foreground, a.quiet
 	if selected {
@@ -446,13 +486,17 @@ func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry
 	b.Children(func() {
 		ui.Row(c).Width(24).Shrink(0).Justify(ui.Center).Children(func() {
 			if e.kind == "图片" {
-				ui.Image(c, p.quickImage(c, e)).Size(24, 16).Radius(3).Fit(ui.Cover)
+				if img := p.quickImage(c, e); img != nil {
+					ui.Image(c, img).Size(24, 16).Radius(3).Fit(ui.Cover)
+				} else {
+					k.ShimmerBox(c.Key("thumb-skel"), 3).Size(24, 16)
+				}
 			} else {
 				icons := map[string]desktopkit.IconName{"文本": desktopkit.IconList, "代码": desktopkit.IconPackage, "链接": desktopkit.IconGlobe, "文件": desktopkit.IconFile, "富文本": desktopkit.IconList}
-				desktopkit.For(false).Icon(c, icons[e.kind], 14).TextColor(quiet)
+				k.Icon(c, icons[e.kind], 14).TextColor(quiet)
 			}
 		})
-		text := ui.RichText(c, qpMarkedSpans(e, p.query, selected, ink, quiet)...).FontSize(13 * zoomScale(p.textZoom)).Grow(1).MinWidth(0).MaxLines(1)
+		text := ui.RichText(c, qpMarkedSpans(e, p.query, selected, staleQuery, ink, quiet)...).FontSize(13 * zoomScale(p.textZoom)).Grow(1).MinWidth(0).MaxLines(1)
 		if e.kind == "代码" {
 			text.Font("monospace").FontSize(12 * zoomScale(p.textZoom))
 		}
@@ -500,7 +544,7 @@ func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry
 	}
 	return b
 }
-func (p *quickPanelState) imageGrid(c *ui.Context, a qpPalette) {
+func (p *quickPanelState) imageGrid(c *ui.Context, k desktopkit.Kit, a qpPalette) {
 	grid := ui.Column(c.Key("image-wall")).FillWidth().HandleInput(func(ev ui.InputEvent) bool {
 		if ev.Kind != ui.InputScroll {
 			return false
@@ -525,7 +569,11 @@ func (p *quickPanelState) imageGrid(c *ui.Context, a qpPalette) {
 						b.BorderColor(a.primary)
 					}
 					b.Children(func() {
-						ui.Image(c, p.quickImage(c, e)).Fill().Fit(ui.Cover).Radius(5)
+						if img := p.quickImage(c, e); img != nil {
+							ui.Image(c, img).Fill().Fit(ui.Cover).Radius(5)
+						} else {
+							k.ShimmerBox(c.Key("img-skel"), 5).Fill()
+						}
 						ui.Row(c).Absolute().Right(4).Bottom(4).Children(func() { qpKeycap(c, p.commandLabel()+fmt.Sprint(row*3+col+1), a) })
 					})
 					if b.Hovered() && !p.keyboard && p.menu == "" && p.hovered != at {

@@ -108,6 +108,11 @@ func (d *viewState) entryHasTag(e entry, id string) bool {
 	return slices.Contains(e.tags, id)
 }
 func (d *viewState) tagCount(id string) int {
+	if d.live != nil {
+		if n, ok := d.live.countFor(tagHistoryQuery(id)); ok {
+			return int(n)
+		}
+	}
 	n := 0
 	for _, e := range d.entries {
 		if d.entryHasTag(e, id) {

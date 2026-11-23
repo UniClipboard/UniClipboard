@@ -147,16 +147,8 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 		}
 		e.pluginInstances[PluginID(id)] = in.Plugin
 		if slices.Contains(spec.Capabilities, plugin.CapSyncBackend) {
-			config, err := json.Marshal(in.Config)
-			if err != nil {
-				return invalidPlugin(id, "configuration must contain JSON values")
-			}
-			digest := sha256.Sum256(config)
-			if err := e.st.BindBackendInstance(id, spec.ID, hex.EncodeToString(digest[:])); err != nil {
-				if errors.Is(err, store.ErrDeviceConflict) {
-					return newErr(CodeConflict, "backend implementation changed; create a new instance")
-				}
-				return newErr(CodeUnavailable, "cannot bind backend configuration")
+			if err := e.bindBackendInstance(id, spec.ID, in.Config); err != nil {
+				return err
 			}
 			if backends++; backends > e.res.MaxSyncBackends {
 				return newErr(CodeLimitExceeded, "too many sync backends are enabled")
@@ -417,12 +409,31 @@ func (e *Engine) registerPlugin(in PluginInstance, spec plugin.Spec) {
 		e.observers = append(e.observers, newPipelineObserver(spec.ID, events, o.OnEvent))
 	}
 	if a, ok := in.Plugin.(plugin.Actor); ok {
-		ap := newActionPlugin(PluginID(spec.ID))
-		for _, as := range spec.Actions {
-			e.actions = append(e.actions, &pipelineAction{plugin: ap, id: as.ID, title: as.Title, accepts: slices.Clone(as.Accepts), placements: slices.Clone(as.Placements), postActions: slices.Clone(as.PostActions), timeout: time.Duration(as.TimeoutMS) * time.Millisecond,
-				run: func(ctx context.Context, c *actionContext) error { return a.Run(ctx, actionView{c, as.ID}) }})
-		}
+		e.registerActions(spec, a)
 	}
+}
+
+func (e *Engine) registerActions(spec plugin.Spec, a plugin.Actor) {
+	ap := newActionPlugin(PluginID(spec.ID))
+	for _, as := range spec.Actions {
+		e.actions = append(e.actions, &pipelineAction{plugin: ap, id: as.ID, title: as.Title, accepts: slices.Clone(as.Accepts), placements: slices.Clone(as.Placements), postActions: slices.Clone(as.PostActions), timeout: time.Duration(as.TimeoutMS) * time.Millisecond,
+			run: func(ctx context.Context, c *actionContext) error { return a.Run(ctx, actionView{c, as.ID}) }})
+	}
+}
+
+func (e *Engine) bindBackendInstance(id, implementation string, cfg plugin.Config) *Error {
+	config, err := json.Marshal(cfg)
+	if err != nil {
+		return invalidPlugin(id, "configuration must contain JSON values")
+	}
+	digest := sha256.Sum256(config)
+	if err := e.st.BindBackendInstance(id, implementation, hex.EncodeToString(digest[:])); err != nil {
+		if errors.Is(err, store.ErrDeviceConflict) {
+			return newErr(CodeConflict, "backend implementation changed; create a new instance")
+		}
+		return newErr(CodeUnavailable, "cannot bind backend configuration")
+	}
+	return nil
 }
 
 func (e *Engine) closePlugins(ctx context.Context) {
@@ -442,7 +453,9 @@ func (e *Engine) RestartPlugin(ctx context.Context, id PluginID) error {
 		return gerr
 	}
 	defer release()
+	e.mu.Lock()
 	p, exists := e.pluginInstances[id]
+	e.mu.Unlock()
 	if !exists {
 		return newErr(CodeNotFound, "no such plugin")
 	}

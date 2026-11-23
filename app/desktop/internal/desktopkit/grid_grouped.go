@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -46,8 +47,13 @@ type GridItem struct {
 	Pinned bool
 	// Tags holds compact colored tag pills rendered in the card footer.
 	Tags []GridTag
+	// Highlight marks matched search terms inside card titles and bodies.
+	Highlight []string
 	// Media 构建图片主体（如缩略图元素）。
 	Media func()
+	// ImageLoading draws a BoardUI shimmer placeholder while the grid image thumbnail
+	// is still decoding and Media is nil.
+	ImageLoading bool
 	// Badges 画在卡片上的额外小标记。
 	Badges func()
 	// OnCopy and OnPin handle hover quick actions without changing selection.
@@ -423,9 +429,31 @@ func (k Kit) gridA1Header(c *ui.Context, it GridItem, hideTrailing bool) {
 
 func (k Kit) gridImageBody(c *ui.Context, it GridItem) {
 	wrap := ui.Box(c.Key("img-wrap")).Grow(1).Basis(0).MinHeight(0).Clip().Background(k.Color(k.thumbToken()))
+	tf := ui.Local(wrap, "grid-img-fade", func() thumbFadeState { return thumbFadeState{} })
+	hasMedia := it.Media != nil
+	if !tf.initialized || tf.lastID != it.ID {
+		tf.initialized = true
+		tf.lastID = it.ID
+		tf.hadImage = hasMedia
+		wrap.Jump("gimg-a", 1)
+	} else if !tf.hadImage && hasMedia {
+		tf.hadImage = true
+		wrap.Jump("gimg-a", 0)
+	}
+	alpha := wrap.AnimateTo("gimg-a", 1, ui.Animation{
+		Duration:  140 * time.Millisecond,
+		Ease:      ui.EaseOut,
+		NonMotion: true,
+	})
 	wrap.Children(func() {
 		if it.Media != nil {
-			it.Media()
+			holder := ui.Box(c.Key("media-box")).Fill()
+			if alpha < 0.999 {
+				holder.Opacity(alpha)
+			}
+			holder.Children(it.Media)
+		} else if it.ImageLoading {
+			k.ShimmerBox(c.Key("img-skel"), 0).Fill()
 		} else {
 			ui.Row(c).Grow(1).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 				k.Icon(c, IconImage, 24).TextColor(k.Color("text-secondary"))
@@ -453,7 +481,12 @@ func (k Kit) gridImageBody(c *ui.Context, it GridItem) {
 		}
 	})
 	ui.Row(c.Key("img-cap")).Padding(6, 11, 0, 11).Gap(6).AlignItems(ui.Baseline).Shrink(0).Children(func() {
-		ui.Text(c.Key("title"), it.Title).FontSize(12.5).FontWeight(600).TextColor(k.Color("text-primary")).SingleLine().Grow(1).MinWidth(0)
+		k.HighlightedText(c.Key("title"), it.Title, it.Highlight, HighlightTextProps{
+			FontSize:   12.5,
+			FontWeight: 600,
+			TextColor:  k.Color("text-primary"),
+			SingleLine: true,
+		}).Grow(1).MinWidth(0)
 		if it.Time != "" {
 			ui.Text(c.Key("time"), it.Time).FontSize(10.5).TextColor(k.Color("text-tertiary")).SingleLine().Shrink(0)
 		}
@@ -466,7 +499,13 @@ func (k Kit) gridSemanticBody(c *ui.Context, it GridItem) {
 		switch it.Kind {
 		case KindCode:
 			ui.Box(c.Key("code")).Grow(1).MinHeight(0).Radius(8).Clip().Background(k.Color(k.codeBgToken())).Padding(8, 10).Children(func() {
-				ui.Text(c, it.Text).Font("monospace").FontSize(11).TextColor(k.codeInk()).MaxLines(4)
+				k.HighlightedText(c, it.Text, it.Highlight, HighlightTextProps{
+					FontSize:  11,
+					TextColor: k.codeInk(),
+					Monospace: true,
+					MaxLines:  4,
+					OnDark:    true,
+				})
 			})
 		case KindLink:
 			host, path := splitLinkPreview(it.Text)
@@ -480,21 +519,41 @@ func (k Kit) gridSemanticBody(c *ui.Context, it GridItem) {
 						ui.Box(c.Key("fav")).Size(15, 15).Radius(4).Background(bg).Center().Shrink(0).Children(func() {
 							k.Icon(c, IconLink, 9.5).TextColor(fg)
 						})
-						ui.Text(c.Key("h"), host).FontSize(11).FontWeight(600).TextColor(fg).SingleLine().MinWidth(0)
+						k.HighlightedText(c.Key("h"), host, it.Highlight, HighlightTextProps{
+							FontSize:   11,
+							FontWeight: 600,
+							TextColor:  fg,
+							SingleLine: true,
+						}).MinWidth(0)
 					})
 				}
 				if it.Title != "" && it.Title != it.Text {
-					ui.Text(c.Key("t"), it.Title).FontSize(12.5).FontWeight(600).TextColor(k.Color("text-primary")).SingleLine()
+					k.HighlightedText(c.Key("t"), it.Title, it.Highlight, HighlightTextProps{
+						FontSize:   12.5,
+						FontWeight: 600,
+						TextColor:  k.Color("text-primary"),
+						SingleLine: true,
+					})
 				}
 				urlText := path
 				if urlText == "" {
 					urlText = it.Text
 				}
-				ui.Text(c.Key("u"), urlText).Font("monospace").FontSize(10.5).TextColor(k.Color("text-tertiary")).SingleLine()
+				k.HighlightedText(c.Key("u"), urlText, it.Highlight, HighlightTextProps{
+					FontSize:   10.5,
+					TextColor:  k.Color("text-tertiary"),
+					Monospace:  true,
+					SingleLine: true,
+				})
 			})
 		case KindFile, KindFolder:
 			if it.Title != "" {
-				ui.Text(c.Key("t"), it.Title).FontSize(12.5).FontWeight(600).TextColor(k.Color("text-primary")).SingleLine()
+				k.HighlightedText(c.Key("t"), it.Title, it.Highlight, HighlightTextProps{
+					FontSize:   12.5,
+					FontWeight: 600,
+					TextColor:  k.Color("text-primary"),
+					SingleLine: true,
+				})
 			}
 			names := nonEmptyLines(it.Text)
 			if len(names) > 0 {
@@ -508,7 +567,11 @@ func (k Kit) gridSemanticBody(c *ui.Context, it GridItem) {
 							ui.Box(c.Key("ext")).Padding(1, 4).Radius(4).Background(ebg).Shrink(0).Children(func() {
 								ui.Text(c, ext).FontSize(9).FontWeight(700).TextColor(efg).SingleLine()
 							})
-							ui.Text(c.Key("fn"), name).FontSize(11).TextColor(k.Color("text-primary")).SingleLine().MinWidth(0).Grow(1)
+							k.HighlightedText(c.Key("fn"), name, it.Highlight, HighlightTextProps{
+								FontSize:   11,
+								TextColor:  k.Color("text-primary"),
+								SingleLine: true,
+							}).MinWidth(0).Grow(1)
 						})
 					}
 				})
@@ -523,14 +586,28 @@ func (k Kit) gridSemanticBody(c *ui.Context, it GridItem) {
 				if display == "" {
 					display = trimmedTitle
 				}
-				ui.Text(c.Key("short"), display).FontSize(13).FontWeight(500).TextColor(k.Color("text-primary")).MaxLines(4)
+				k.HighlightedText(c.Key("short"), display, it.Highlight, HighlightTextProps{
+					FontSize:   13,
+					FontWeight: 500,
+					TextColor:  k.Color("text-primary"),
+					MaxLines:   4,
+				})
 			} else {
 				excerpt := stripLeadingTitle(trimmedText, trimmedTitle)
 				if trimmedTitle != "" {
-					ui.Text(c.Key("t"), trimmedTitle).FontSize(13).FontWeight(600).TextColor(k.Color("text-primary")).SingleLine()
+					k.HighlightedText(c.Key("t"), trimmedTitle, it.Highlight, HighlightTextProps{
+						FontSize:   13,
+						FontWeight: 600,
+						TextColor:  k.Color("text-primary"),
+						SingleLine: true,
+					})
 				}
 				if excerpt != "" {
-					ui.Text(c.Key("body-text"), excerpt).FontSize(12).TextColor(k.Color("text-secondary")).MaxLines(3)
+					k.HighlightedText(c.Key("body-text"), excerpt, it.Highlight, HighlightTextProps{
+						FontSize:  12,
+						TextColor: k.Color("text-secondary"),
+						MaxLines:  3,
+					})
 				}
 			}
 		}

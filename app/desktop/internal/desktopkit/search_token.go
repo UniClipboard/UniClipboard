@@ -55,7 +55,10 @@ type TokenSearchFieldProps struct {
 	FilterCount int
 	FilterLabel string
 	FilterPanel func()
-	Disabled    bool
+	// Loading replaces the leading search glyph with a quiet spinner of the same size
+	// while a foreground query is taking noticeably long.
+	Loading  bool
+	Disabled bool
 }
 
 // TokenSearchResult is what TokenSearchField reports for one frame.
@@ -232,7 +235,13 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 		}
 	}
 	row.Children(func() {
-		glyph := func() { k.Icon(c.Key("glyph"), IconSearch, 14).TextColor(pal.fg2).Shrink(0) }
+		glyph := func() {
+			if p.Loading {
+				ui.Spinner(c.Key("glyph-spin")).Size(14, 14).TextColor(k.Color("accent-500")).Shrink(0).AccessHidden(true)
+				return
+			}
+			k.Icon(c.Key("glyph"), IconSearch, 14).TextColor(pal.fg2).Shrink(0)
+		}
 		if disclosure {
 			trigger = ui.ButtonBase(c.Key("search-icon")).Label(p.Label).Size(32, 32).Shrink(0).KeepFocus().Disabled(p.Disabled).Center().TextColor(pal.fg2)
 			trigger.Children(glyph)

@@ -474,6 +474,10 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 			return nil, err
 		}
 		return r.clipboard != nil && r.clipboard.Matches(in.Mark), nil
+	case "restart", "restart-gui":
+		var action string
+		_ = json.Unmarshal(raw, &action)
+		return nil, r.restart(command == "restart", action)
 	case "quit":
 		r.opening.Lock()
 		r.mu.Lock()
@@ -494,8 +498,67 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 func (r *trayRuntime) close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	_ = r.closeViews(ctx)
+	_ = r.closeViews(ctx, desktopprocess.GUI, desktopprocess.QuickPanel)
 	_ = r.pause(false)
+}
+
+func (r *trayRuntime) restart(restartService bool, action string) error {
+	if !r.opening.TryLock() {
+		return errors.New("another desktop operation is in progress")
+	}
+	defer r.opening.Unlock()
+	r.mu.Lock()
+	retiring, paused := r.retiring, r.paused
+	r.mu.Unlock()
+	if retiring || r.ctx.Err() != nil {
+		return desktopprocess.ErrUnavailable
+	}
+	if paused {
+		return errors.New("desktop integration is paused for migration")
+	}
+	// Finish the close phase within the GUI client's request deadline. Close the
+	// panel first so a panel failure leaves the requesting GUI available.
+	closeCtx, cancelClose := context.WithTimeout(r.ctx, 8*time.Second)
+	defer cancelClose()
+	if restartService {
+		if err := r.closeViews(closeCtx, desktopprocess.QuickPanel); err != nil {
+			return err
+		}
+	}
+	if err := r.closeViews(closeCtx, desktopprocess.GUI); err != nil {
+		return err
+	}
+	if err := closeCtx.Err(); err != nil {
+		return err
+	}
+	if r.isRetiring() {
+		return desktopprocess.ErrUnavailable
+	}
+	// The closing GUI cancels its IPC call. Use the tray lifetime to complete
+	// the restart even after the requesting process has exited.
+	ctx, cancel := context.WithTimeout(r.ctx, 45*time.Second)
+	defer cancel()
+	var startErr error
+	if restartService {
+		if r.settings != nil {
+			_ = r.settings.Reload()
+		}
+		if err := r.pause(false); err != nil {
+			logHostFailure()
+		}
+		if r.isRetiring() {
+			return desktopprocess.ErrUnavailable
+		}
+		startErr = r.start(ctx, false)
+	}
+	openErr := r.openGUILocked(ctx, action)
+	if startErr != nil || openErr != nil {
+		logHostFailure()
+	}
+	if startErr != nil {
+		return startErr
+	}
+	return openErr
 }
 func roleContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -535,8 +598,7 @@ func (r remoteClipboard) Matches(mark string) bool {
 }
 
 // closeViews is a shutdown barrier. No PID-only kill is permitted.
-func (r *trayRuntime) closeViews(ctx context.Context) error {
-	roles := []desktopprocess.Role{desktopprocess.GUI, desktopprocess.QuickPanel}
+func (r *trayRuntime) closeViews(ctx context.Context, roles ...desktopprocess.Role) error {
 	for _, role := range roles {
 		err := desktopprocess.Call(ctx, r.dir, role, "quit", nil, nil)
 		if err != nil && !errors.Is(err, desktopprocess.ErrUnavailable) {

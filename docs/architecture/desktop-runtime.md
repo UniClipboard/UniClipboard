@@ -26,6 +26,7 @@ paths:
   - internal/localapi
   - app/service/internal/server
   - app/service/internal/host
+  - app/service/internal/luascripts/marketplace.go
   - app/service/cmd/unic/cli.go
   - app/service/cmd/unic/history.go
   - app/service/cmd/unic/requirements.go
@@ -67,7 +68,7 @@ Settings > Plugins lists Tailcat sync, text tools and content classification. Pl
 
 Tailcat exposes its standard `text`, `images`, `files` and `auto_file_max_bytes` backend policies. They apply immediately. The file permission covers files and entire directory snapshots, including empty trees. The automatic threshold uses the selected files' total byte count; explicit sends bypass only that threshold. Global synchronization permissions and automatic-directory intent remain on Settings > Sync. Tailcat stays assembled and cannot be independently disabled or uninstalled.
 
-Text tools and classification expose enablement and a processor failure policy. The dropdown offers inheritance from `plugins.on_error`, explicit continue and explicit block-sync choices. The inherited choice shows the current global policy; the accessible value shows the displayed choice. These settings apply after restarting the service. Quitting and reopening Desktop restarts a tray-owned service. An independently started service requires a separate restart by its owner. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
+Text tools and classification expose enablement and a processor failure policy. The dropdown offers inheritance from `plugins.on_error`, explicit continue and explicit block-sync choices. The inherited choice shows the current global policy; the accessible value shows the displayed choice. These settings apply after restarting the service. Quitting and reopening Desktop restarts a tray-owned service. An independently started service requires a separate restart by its owner. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Service restart notices across Settings and Devices expose a restart action. The tray closes the graphical views, restarts its owned service, and reopens the main window. If the tray cannot close a view, it returns the error to the requesting window so the user can retry. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
 
 Content classification provides an independent switch for each default regular expression. Users can add, edit and delete custom rules that pair a pattern with a target tag. The form validates the draft before saving it through the same revision-checked configuration API. A valid save that changes the active rules appears in the service restart notice. See [classifier settings](../contracts/plugin-contract.md#built-in-content-classification).
 
@@ -81,6 +82,8 @@ Settings > Plugins lists external plugins discovered by the service. An external
 
 The detail and list names come from the manifest's text for the current UI language, then the marketplace entry, then the plugin ID; the subtitle never repeats the ID. Schema `title`, `description`, `group` and `option_labels` resolve the same way through `x-unic-ui.i18n` (see [plugin contract](../contracts/plugin-contract.md#展示文本与多语言)). Top-level schema fields carry the same inset as a settings row, the instance-creation control is a settings row, and the sync policy caption is the group footer.
 
+The WeType marketplace detail opens the installed plugin's shared-space setup after enablement. Once the service runs the plugin, Desktop accepts the six-digit WeType code on the plugin detail and submits it to the existing channel pairing endpoint using the selected instance. The first space uses the installed default instance. The form clears the code on submission and shows the joined space when the service reports its external channel. Connection options contain explicit recovery of an existing provider pairing and creation of additional instances for other spaces.
+
 The history toolbar (`history.toolbar`) and the history list/grid right-click context menu "动作" submenu (`history.item_menu`) expose matching plugin Actions filtered by both declared `Accepts` and `Placements`, displaying each Action's plugin provenance subtitle. When a single item has no matching Actions (or multiple items are selected), the context menu hides the "动作" submenu. Desktop honors each Action's declared `PostActions`: `copy` requests clipboard application through the active adapter, `notify` shows a window-level status toast (with running cancellation), `present` opens a BoardUI result dialog with copy, view-item and explicit `http(s)://` open-link controls, `select` focuses the new history item, and `none` commits silently to history. A clipboard failure leaves the committed result in history. See the [settings contract](../contracts/plugin-settings-contract.md) and [Action contract](../contracts/clipboard-action-contract.md).
 
 ## Main-window decoration
@@ -88,7 +91,9 @@ The history toolbar (`history.toolbar`) and the history list/grid right-click co
 `desktop.system_window_frame` is a persisted boolean, defaulting to `false`.
 Settings > General exposes the same switch on Windows, Linux and macOS. The host
 captures its value when creating each GUI window. Saving a change leaves the
-existing window intact. Close and reopen the main window to apply it. The GUI
+existing window intact. The restart action recreates only the main window when
+the frame preference is the only pending change. It preserves the tray, quick
+panel, and service. Closing and reopening the main window also applies the preference. The GUI
 compares saved intent with its own captured value for the pending notice. The
 UI-free service stores the preference and never adds this host-only key to
 `restart_required`; an older service generation does not keep a recreated GUI pending.
@@ -102,8 +107,8 @@ its persistent toggle remains outside the hidden/inert sidebar. The content
 heading leads its toolbar, and view/search/actions trail. Collapsed/overlay
 layouts continuously clear the native control area reported by mygo. Traffic
 lights use a (14,18)-DIP native inset; no replacement buttons are drawn.
-Setup and startup keep a separate draggable safe-area wrapper until normal
-runtime content takes ownership of the window top. Linux
+Setup extends its panel backgrounds behind the traffic lights and reserves a
+draggable area. Startup uses a separate draggable safe-area wrapper. Linux
 reserves GTK's reported caption-control area above the application content. With
 the preference on, all three platforms use the normal native title bar and buttons.
 
@@ -114,8 +119,10 @@ caption buttons share one 52-DIP band. Settings and plugin details use the same
 slot. Ordinary pages have no separate `unic` caption row. Search shrinks to the
 available width while caption and command hit targets retain their sizes.
 
-Setup, offline migration, loading and startup-error pages have no SplitView;
-these pages use a single minimal draggable fallback band with the same controls.
+Setup and offline migration extend their panel backgrounds to the window top.
+The same controls occupy the top-right of a transparent 40-DIP draggable
+region. Setup reserves space for the region in both wide and compact layouts.
+Loading and startup-error pages use a separate minimal fallback band.
 Only empty toolbar regions drag. Interactive children retain input. mygo owns
 native hit testing, edge resize and double-click maximize. Maximize/Restore reads
 the OS window state; the maximize element uses mygo's native maximize-button
@@ -534,8 +541,17 @@ the installed third-party plugins and built-in features. `GET /v1/plugins/market
 reads a static JSON registry (`UNIC_PLUGIN_REGISTRY_URL`, defaulting to the
 official `registry.json` and accepting `off` for offline bundled mode), caches
 validated entries locally under `$UNIC_HOME/plugins/marketplace-cache.json`,
-and falls back to the cached or bundled official catalog (including zero-config
-`unic.wenshushu`) when offline.
+and falls back to the cached or bundled official catalog when offline. The
+bundled catalog includes the zero-configuration [Wenshushu](https://github.com/UniClipboard/unic-plugin-wenshushu)
+and [Wormhole](https://github.com/UniClipboard/unic-plugin-wormhole) share
+Actions. The Wormhole link contains the decryption key and follows normal
+Action result history and sync policy.
+
+The marketplace lists one plugin per row beside a detail pane. Each card shows
+the available author, version, category and install status. Selecting a card
+updates the detail pane and exposes the selected state to accessibility. The
+marketplace and plugin list use quiet 28-DIP toolbar controls for navigation,
+catalog refresh, update checks and the overflow menu.
 
 One-click install and update call `POST /v1/plugins/install`, reusing the
 existing GitHub commit-locked, SHA-256-verified installer (`luascripts.Install`)

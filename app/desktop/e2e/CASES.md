@@ -82,6 +82,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep unified production history controls within the toolbar at 600x480. |
 | [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
+| [wetype-pairing](#wetype-pairing) | view | Join the first shared space with a six-digit code using the installed default plugin instance. |
 | [window-chrome-native-dark](#window-chrome-native-dark) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
 | [window-chrome-native-input](#window-chrome-native-input) | native | Verify physical input on the owned main window without clipboard access. |
 | [window-chrome-native](#window-chrome-native) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
@@ -472,9 +473,9 @@ screenshot recreated-gui
 
 Independent Desktop role processes
 
-Steps: Start normal mode with explicit background intent, verify no initial GUI, reopen and close each UI role, then verify durable state and cleanup.
+Steps: Start normal mode with explicit background intent, verify no initial GUI, reopen and close each UI role, then verify durable state and cleanup. Reject a GUI quit, retry the GUI-only restart, and request a full restart after saving a plugin change.
 
-Expected: Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running.
+Expected: Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running. GUI-only restart returns the quit failure and preserves the tray, quick panel and unicd on retry. Full restart replaces the owned unicd and clears the pending configuration.
 
 Forbidden: Resident hidden GUI, shared role PID, duplicate owners, foreign-profile activation, lost state, leaked processes, or native acceptance claims.
 
@@ -1616,7 +1617,7 @@ Environment: disposable guest; explicit GUEST=<VM UUID> required.
 
 Steps: Open the production panel from settings, attempt Enter, copy through Ctrl+C, reopen and dismiss through Escape.
 
-Expected: The panel reports unsupported automatic paste; Enter leaves the clipboard unchanged; Copy applies exact bytes; Escape hides the panel without changing the clipboard.
+Expected: The panel falls back to Copy without an inline alert banner; Enter leaves the clipboard unchanged; Copy applies exact bytes; Escape hides the panel without changing the clipboard.
 
 Forbidden: Synthetic target capture authority, automatic paste claims, portal approval claims or host clipboard access.
 
@@ -1631,7 +1632,8 @@ ui-click listItem 快捷面板
 ui-wait button 打开快捷面板
 ui-click button 打开快捷面板
 system-window 'unic · 快捷面板' visible
-ui-wait alert 当前桌面会话不支持自动粘贴。请使用复制。
+ui-wait text 复制到剪贴板
+ui-absent alert '~.*'
 screenshot wayland-copy-fallback
 system-key Enter
 system-board-equals 'UNIC-D panel baseline'
@@ -1923,6 +1925,20 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 acceptance desktopui unified-scrollbars
 ```
 
+## wetype-pairing
+
+WeType shared-space pairing from Desktop
+
+Steps: Open the production plugin detail with a local service fixture, check the pending-restart and short-code states, reject one code, then accept a new code and show the joined space.
+
+Expected: The request selects the default instance, the user sees useful rejection feedback, and the joined space replaces the form after refresh.
+
+Forbidden: Instance IDs in the first-run form, requests before restart or for incomplete codes, repeated submission while pending, and a native or live WeType acceptance claim.
+
+```text
+acceptance desktopui wetype-pairing
+```
+
 ## window-chrome-native-dark
 
 Native dark main-window frame persistence and GUI recreation
@@ -2138,11 +2154,11 @@ ui-absent text '部分设置将在下次启动时生效。'
 
 ## window-chrome-setup
 
-Native setup and migration fallback controls
+Native setup and migration caption controls
 
 Steps: Open isolated first-install setup, enter migration confirmation and the synthetic passphrase fallback, and exercise caption actions.
 
-Expected: Each setup page has one minimal fallback band; the existing migration controls remain usable; the service remains absent before consent.
+Expected: Windows caption controls share the window top with the setup panels; the existing migration controls remain usable; the service remains absent before consent.
 
 Forbidden: Personal profiles, real credential access, clipboard changes, an extra normal-page caption row, or native-frame claims from content captures.
 

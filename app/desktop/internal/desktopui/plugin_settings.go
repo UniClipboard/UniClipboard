@@ -19,6 +19,7 @@ import (
 type builtinPluginSettings struct {
 	id, revision, threshold, thresholdError string
 	instanceName                            string
+	channelPair                             weTypePairing
 	tab, query                              string
 	view                                    string // "" (list) | "marketplace" | "advanced"
 	marketQuery                             string
@@ -59,14 +60,16 @@ var builtinPluginEntries = []builtinPluginEntry{
 func (d *viewState) pluginsToolbarActions(c *ui.Context, k desktopkit.Kit) {
 	l := d.live
 	p := &d.pluginSettings
-	if k.Button(c.Key("tb-refresh-marketplace"), d.tr("检查更新"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconRetry, Busy: l.marketplaceLoading, Disabled: l.marketplaceLoading}).Clicked() {
+	if k.ToolbarQuietButton(c.Key("tb-refresh-marketplace"), d.tr("检查更新"), desktopkit.ToolbarQuietButtonProps{
+		Icon:     desktopkit.IconRetry,
+		Busy:     l.marketplaceLoading,
+		Disabled: l.marketplaceLoading,
+	}).Clicked() {
 		d.ensureMarketplaceLoaded(true)
 	}
-	_, cmd := k.Menu(c.Key("tb-plugin-more"), desktopkit.MenuProps{
-		Label:    d.tr("更多"),
-		Icon:     desktopkit.IconMore,
-		IconOnly: true,
-		Variant:  desktopkit.Subtle,
+	_, cmd := k.ToolbarIconMenu(c.Key("tb-plugin-more"), desktopkit.ToolbarIconMenuProps{
+		Label: d.tr("更多"),
+		Icon:  desktopkit.IconMore,
 		Items: []desktopkit.MenuEntry{
 			{ID: "advanced", Label: d.tr("执行顺序与高级设置"), Icon: desktopkit.IconList},
 			{ID: "manual", Label: d.tr("从链接手动安装"), Icon: desktopkit.IconLink},
@@ -141,7 +144,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 		cfg.Plugins.Instances = map[string]config.Instance{}
 	}
 	if l.config.ApplyError != "" {
-		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: d.tr("设置已保存，但未能生效。请重试或重新启动桌面端。")})
+		d.restartNotice(c.Key("apply-error-notice"), k, desktopkit.ToneError, d.tr("设置已保存，但未能生效。请重试或重新启动桌面端。"), true)
 	}
 	if l.config.Error != "" {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("配置文件无效。当前保留上一份有效设置。")})
@@ -156,7 +159,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	external, externalSelected := d.installedExternalPlugin(p.id)
 	externalPending := externalSelected && (external.Restart || p.form != nil && p.form.state.Restart)
 	if pending || externalPending {
-		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("插件设置已保存。请退出并重新启动桌面端以生效。")})
+		d.restartNotice(c.Key("plugin-restart-notice"), k, desktopkit.ToneWarning, d.tr("插件设置已保存。请退出并重新启动桌面端以生效。"), true)
 	}
 	if p.installError != "" {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: p.installError})
@@ -458,6 +461,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 								p.view = ""
 								p.detailTechOpen = false
 								p.form = nil
+								p.channelPair = weTypePairing{}
 							}
 							if item.Source != "local" {
 								if k.Button(c.Key("uninstall-"+item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconDelete, Label: d.tr("卸载") + displayName, Tooltip: d.tr("卸载"), Disabled: l.busy}).Clicked() {

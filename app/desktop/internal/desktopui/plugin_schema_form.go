@@ -147,10 +147,22 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 	})
 
 	k.SettingsGroup(c.Key("external-plugin-control"), desktopkit.SettingsGroupProps{}, func() {
+		if item.LiveStart && item.RunningVersion == "" && !item.NeedsSettings {
+			k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{Label: d.tr("启动")}, nil, func() {
+				if k.Button(c.Key("start"), d.tr("启动"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy || l.loading}).Clicked() {
+					d.startExternalPlugin(item.ID)
+				}
+			})
+			return
+		}
 		on := item.Configured
+		description := ""
+		if !item.LiveStart {
+			description = d.tr("退出并重新启动桌面端后生效。")
+		}
 		k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{
 			Label:       d.tr("启用"),
-			Description: d.tr("退出并重新启动桌面端后生效。"),
+			Description: description,
 		}, nil, func() {
 			if k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.busy || l.loading}).Changed() {
 				d.setExternalPluginEnabled(cfg, item.ID, on)
@@ -195,29 +207,18 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 		}
 	}
 
-	if item.Kind == "go" && isSyncBackend {
-		k.SettingsGroup(c.Key("create-instance"), desktopkit.SettingsGroupProps{Title: d.tr("新增同步实例")}, func() {
-			k.SettingsRow(c.Key("create-instance-row"), desktopkit.SettingsRowProps{
-				Label:       d.tr("实例 ID"),
-				Description: d.tr("新实例使用独立设置和私有数据。配置并启用后重启生效。"),
-			}, nil, func() {
-				ui.Row(c.Key("create-instance-controls")).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
-					ui.Box(c.Key("instance-id")).Width(200).Children(func() {
-						k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("实例 ID"), Value: &p.instanceName, Placeholder: "example.work", Disabled: l.busy})
-					})
-					if k.Button(c.Key("create-instance-btn"), d.tr("创建实例"), desktopkit.ButtonProps{Disabled: l.busy || strings.TrimSpace(p.instanceName) == ""}).Clicked() {
-						in := api.PluginInstanceCreate{ID: strings.TrimSpace(p.instanceName), ImplementationID: item.ImplementationID, Revision: l.config.Revision}
-						d.mutate(func(ctx context.Context) error { _, err := l.client.CreatePluginInstance(ctx, in); return err }, "实例已创建。请配置并启用。")
-					}
-				})
-			})
-		})
+	weType := isWeType(item)
+	canPair := item.Configured && !item.Restart && stateTone == desktopkit.StatusPositive
+	if weType {
+		d.weTypePairingContent(c.Key("wetype"), k, item, stateText, canPair)
+	} else if item.Kind == "go" && isSyncBackend {
+		d.createPluginInstance(c.Key("create-instance"), k, item)
 	}
 	if isSyncBackend {
 		d.syncPluginPolicy(c, k, item.ID, cfg)
-		if item.ExternalChannels {
+		if item.ExternalChannels && !weType {
 			k.Text(c, d.tr("此后端使用外部渠道。请在插件设置中配置授权。无需设备指纹或设备配对码。"), footnote)
-		} else if item.TransportKind == "object_store" {
+		} else if !item.ExternalChannels && item.TransportKind == "object_store" {
 			k.Text(c, d.tr("对象存储设备协议尚未实现。此类型暂不可用。"), footnote)
 		}
 	}
@@ -254,6 +255,10 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 				}
 			})
 		}
+	}
+
+	if weType {
+		d.weTypeConnectionOptions(c.Key("wetype-options"), k, item, canPair)
 	}
 
 	// Collapsible source & technical info (kept out of sight until expanded).
@@ -314,6 +319,27 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 			}
 		})
 	}
+}
+
+func (d *viewState) createPluginInstance(c *ui.Context, k desktopkit.Kit, item api.PluginInfo) {
+	l := d.live
+	p := &d.pluginSettings
+	k.SettingsGroup(c, desktopkit.SettingsGroupProps{Title: d.tr("新增同步实例")}, func() {
+		k.SettingsRow(c.Key("create-instance-row"), desktopkit.SettingsRowProps{
+			Label:       d.tr("实例 ID"),
+			Description: d.tr("新实例使用独立设置和私有数据。配置并启用后重启生效。"),
+		}, nil, func() {
+			ui.Row(c.Key("create-instance-controls")).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
+				ui.Box(c.Key("instance-id")).Width(200).Children(func() {
+					k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("实例 ID"), Value: &p.instanceName, Placeholder: "example.work", Disabled: l.busy})
+				})
+				if k.Button(c.Key("create-instance-btn"), d.tr("创建实例"), desktopkit.ButtonProps{Disabled: l.busy || strings.TrimSpace(p.instanceName) == ""}).Clicked() {
+					in := api.PluginInstanceCreate{ID: strings.TrimSpace(p.instanceName), ImplementationID: item.ImplementationID, Revision: l.config.Revision}
+					d.mutate(func(ctx context.Context) error { _, err := l.client.CreatePluginInstance(ctx, in); return err }, "实例已创建。请配置并启用。")
+				}
+			})
+		})
+	})
 }
 
 func (d *viewState) refreshPluginForm(id string, f *pluginSettingsForm, edit *api.PluginSettingsEdit) {

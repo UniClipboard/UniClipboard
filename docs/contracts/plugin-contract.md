@@ -129,7 +129,7 @@ RPC 的 SetExpire 使用正整数毫秒，小于 1ms 或非整毫秒返回 inval
 
 Host 只提供 Notify(ctx, message)，限流并限制长度，由宿主展示，不进入事件或日志，失败不阻断。PluginEvent 只有 Kind、ItemID、AtMs，不含正文；观察者不能修改 commit 后内容。普通 Host 不提供再入 Engine 提交或数据库访问。
 
-Lua 处理器使用 ctx.item、ctx.policy 及 ctx:add_tag/remove_tag/set_persist/set_sync/set_expire；时长如 "30s"。方法错误回滚整次回调。订阅由配置控制，不使用全局 events.on。
+Lua 处理器使用 ctx.item、ctx.policy 及 ctx:add_tag/remove_tag/set_persist/set_sync/set_expire；set_expire 接受正整数毫秒（如 600000 表示 10 分钟），自 commit 起算，不接受 "30s" 这类时长字符串，非正值返回 invalid_argument。方法错误回滚整次回调。订阅由配置控制，不使用全局 events.on。
 
 **Action 上下文**：Go 的 `ActionContext` 提供 `Action() string`、只读 `Item()` 快照（同上，含 Text）和 `SetText(string) error`，没有标签/策略方法；`Host.Notify` 可用。必须恰好调用一次 SetText，规则、限制与失败语义见[Action 契约](clipboard-action-contract.md)。Lua 在插件表声明 `actions = {{id=..., title=..., accepts={"text"}, placements={"history.item_menu", "history.toolbar"}, post_actions={"copy", "notify"}}}` 并实现 `run_action(ctx)`，ctx.action 为 ID，ctx.item 只读，`ctx:set_text(s)`、`ctx:notify(msg)` 可用。Action 不订阅事件，只在用户触发时运行；Go 经 RPC `plugin.run_action`（见 [RPC 核心协议](plugin-rpc-contract.md)）。
 

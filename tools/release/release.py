@@ -13,10 +13,11 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 import tomllib
 from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -343,8 +344,11 @@ def registry_url(value):
 
 
 def registry_get(registry, name):
+    request = Request(
+        registry + "/" + quote(name, safe="@"), headers={"Cache-Control": "no-cache"}
+    )
     try:
-        with urlopen(registry + "/" + quote(name, safe="@"), timeout=30) as response:
+        with urlopen(request, timeout=30) as response:
             data = response.read(16 * 1024 * 1024 + 1)
             if len(data) > 16 * 1024 * 1024:
                 raise ValueError("registry response too large")
@@ -353,6 +357,18 @@ def registry_get(registry, name):
         if error.code == 404:
             return {"versions": {}, "dist-tags": {}}
         raise
+
+
+def registry_readback(registry, name, select, error):
+    deadline = time.monotonic() + 240
+    while True:
+        observed = select(registry_get(registry, name))
+        if observed:
+            return observed
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError(error + ": " + name)
+        time.sleep(min(2, remaining))
 
 
 def validate_manifest(path):
@@ -421,21 +437,27 @@ def distribute_package(package, exists, manifest_path, registry, tag, fixture):
         if not fixture:
             command.append("--provenance")
         run(command)
-    remote = registry_get(registry, name)
-    published = remote.get("versions", {}).get(version)
-    if (
-        not published
-        or published.get("dist", {}).get("integrity") != package["integrity"]
-    ):
-        raise ValueError("package read-back failed: " + name)
+    remote = registry_readback(
+        registry,
+        name,
+        lambda data: data if version in data.get("versions", {}) else None,
+        "package read-back timed out",
+    )
+    published = remote["versions"][version]
+    if published.get("dist", {}).get("integrity") != package["integrity"]:
+        raise ValueError("package read-back integrity conflict: " + name)
     selected = remote.get("dist-tags", {}).get(tag)
     if selected == version:
         return
     if selected and channel_downgrade(selected, version):
         raise ValueError("refusing channel downgrade: " + name)
     run(["npm", "dist-tag", "add", name + "@" + version, tag, "--registry", registry])
-    if registry_get(registry, name).get("dist-tags", {}).get(tag) != version:
-        raise ValueError("channel read-back failed: " + name)
+    registry_readback(
+        registry,
+        name,
+        lambda data: data.get("dist-tags", {}).get(tag) == version,
+        "channel read-back timed out",
+    )
 
 
 def distribute(args):

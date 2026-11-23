@@ -3,6 +3,8 @@ package desktopui
 import (
 	"context"
 	"errors"
+	"image"
+	"net/netip"
 	"net/url"
 	"os/exec"
 	"runtime"
@@ -11,8 +13,15 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	"github.com/skip2/go-qrcode"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
+)
+
+const (
+	maxActionQRURLBytes  = 1024
+	actionQRMediumCutoff = 512
+	actionQRMinPixels    = 512
 )
 
 type actionResultState struct {
@@ -22,6 +31,7 @@ type actionResultState struct {
 	historyID   string
 	text        string
 	url         string
+	qr          *ui.Bitmap
 	copied      bool
 	applyFailed bool
 	truncated   bool
@@ -51,6 +61,86 @@ func validHTTPURL(raw string) string {
 		return ""
 	}
 	return s
+}
+
+// qrScannableURL returns a trimmed http(s) URL suitable for a phone-scannable
+// QR code, or "" when raw is not a valid non-loopback URL within length bounds.
+func qrScannableURL(raw string) string {
+	target := validHTTPURL(raw)
+	if target == "" || len(target) > maxActionQRURLBytes {
+		return ""
+	}
+	u, err := url.Parse(target)
+	if err != nil {
+		return ""
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "" || host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return ""
+	}
+	if addr, err := netip.ParseAddr(host); err == nil && (addr.IsLoopback() || addr.IsUnspecified()) {
+		return ""
+	}
+	return target
+}
+
+// encodeActionQRImage renders a local, integer-scaled QR code with the standard
+// four-module white quiet zone. It never performs network I/O or logs the URL.
+func encodeActionQRImage(raw string) *image.NRGBA {
+	target := qrScannableURL(raw)
+	if target == "" {
+		return nil
+	}
+	level := qrcode.Medium
+	if len(target) > actionQRMediumCutoff {
+		level = qrcode.Low
+	}
+	code, err := qrcode.New(target, level)
+	if err != nil {
+		return nil
+	}
+	matrix := code.Bitmap()
+	n := len(matrix)
+	if n == 0 {
+		return nil
+	}
+	scale := max(1, (actionQRMinPixels+n-1)/n)
+	side := n * scale
+	img := image.NewNRGBA(image.Rect(0, 0, side, side))
+	for i := 0; i < len(img.Pix); i += 4 {
+		img.Pix[i] = 255
+		img.Pix[i+1] = 255
+		img.Pix[i+2] = 255
+		img.Pix[i+3] = 255
+	}
+	for row := 0; row < n; row++ {
+		line := matrix[row]
+		for col := 0; col < len(line); col++ {
+			if !line[col] {
+				continue
+			}
+			y0 := row * scale
+			x0 := col * scale
+			for dy := 0; dy < scale; dy++ {
+				off := (y0+dy)*img.Stride + x0*4
+				for dx := 0; dx < scale; dx++ {
+					p := off + dx*4
+					img.Pix[p] = 0
+					img.Pix[p+1] = 0
+					img.Pix[p+2] = 0
+					img.Pix[p+3] = 255
+				}
+			}
+		}
+	}
+	return img
+}
+
+func newActionResultQR(img *image.NRGBA) *ui.Bitmap {
+	if img == nil {
+		return nil
+	}
+	return ui.NewBitmap(img)
 }
 
 func openSystemURL(raw string) error {
@@ -170,8 +260,14 @@ func (d *viewState) actionResultDialog(c *ui.Context, k desktopkit.Kit) {
 		if content == "" {
 			content = d.tr("结果已保存到历史。")
 		}
-		ui.Box(c.Key("result-card")).Padding(12, 14).Radius(10).Background(k.DrawerInnerSurface()).Border(1, border).MaxHeight(220).Children(func() {
-			scroll := k.Scroll(c.Key("result-scroll")).MaxHeight(196)
+		cardMaxHeight := float32(220)
+		scrollMaxHeight := float32(196)
+		if d.actionResult.qr != nil {
+			cardMaxHeight = 120
+			scrollMaxHeight = 96
+		}
+		ui.Box(c.Key("result-card")).Padding(12, 14).Radius(10).Background(k.DrawerInnerSurface()).Border(1, border).MaxHeight(cardMaxHeight).Children(func() {
+			scroll := k.Scroll(c.Key("result-scroll")).MaxHeight(scrollMaxHeight)
 			scroll.Children(func() {
 				txt := ui.Text(c.Key("result-text"), content).FontSize(13)
 				if d.actionResult.url != "" {
@@ -185,6 +281,17 @@ func (d *viewState) actionResultDialog(c *ui.Context, k desktopkit.Kit) {
 			k.Text(c.Key("trunc"), d.tr("内容较长，仅展示前段，完整内容已保存到历史。"), desktopkit.TextProps{
 				Role: desktopkit.RoleCaption,
 				Tone: desktopkit.ToneTertiary,
+			})
+		}
+		if d.actionResult.qr != nil {
+			ui.Column(c.Key("qr-card")).Padding(14, 16).Radius(10).Background(k.DrawerInnerSurface()).Border(1, border).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Box(c.Key("qr-frame")).Padding(6).Radius(10).Background(ui.RGB(255, 255, 255)).Border(1, border).Children(func() {
+					ui.Image(c.Key("qr-image"), d.actionResult.qr).Size(168, 168).Fit(ui.Contain).Role(ui.RoleImage).Label(d.tr("链接二维码"))
+				})
+				k.Text(c.Key("qr-hint"), d.tr("使用手机扫码打开链接"), desktopkit.TextProps{
+					Role: desktopkit.RoleCaption,
+					Tone: desktopkit.ToneSecondary,
+				})
 			})
 		}
 		ui.Row(c.Key("footer")).AlignItems(ui.Center).Gap(8).Children(func() {

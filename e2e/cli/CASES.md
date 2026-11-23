@@ -2183,6 +2183,9 @@ Lua 立即使用新标签。重启后设置保留。清除后凭据状态为 fal
 
 ```
 node-start alpha
+u alpha plugin settings show example.required
+stdout '"/keyword":false'
+stdout '"restart_required":false'
 u alpha plugin settings show example.schema
 stdout '"/credential":false'
 u alpha plugin settings save example.schema $WORK/valid.json
@@ -2198,6 +2201,10 @@ u alpha plugin settings show example.schema
 stdout '"tag":"saved"'
 board-set alpha text first.txt
 until alpha 'saved' h list -n 1
+u alpha h list -n 1
+! stdout 'required-ready'
+u alpha plugin settings save example.required $WORK/required.json
+stdout '"restart_required":true'
 node-stop alpha
 node-start alpha
 u alpha plugin settings show example.schema
@@ -2206,6 +2213,7 @@ stdout '"/credential":true'
 board-set alpha text second.txt
 until alpha 'second setting fixture' h show @1
 until alpha 'saved' h list -n 1
+until alpha 'required-ready' h list -n 1
 cp broken.lua alpha/plugins/lua/schema/main.lua
 sleep 400ms
 board-set alpha text third.txt

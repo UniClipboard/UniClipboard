@@ -103,7 +103,11 @@ func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 			if d.pluginSettings.view == "marketplace" && d.pluginSettings.id == "" {
 				title = d.tr("插件市场")
 				toolbar = func() {
-					if k.Button(c.Key("market-refresh-tb"), d.tr("刷新目录"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconRetry, Busy: d.live.marketplaceLoading, Disabled: d.live.marketplaceLoading}).Clicked() {
+					if k.ToolbarQuietButton(c.Key("market-refresh-tb"), d.tr("刷新目录"), desktopkit.ToolbarQuietButtonProps{
+						Icon:     desktopkit.IconRetry,
+						Busy:     d.live.marketplaceLoading,
+						Disabled: d.live.marketplaceLoading,
+					}).Clicked() {
 						d.ensureMarketplaceLoaded(true)
 					}
 				}
@@ -112,7 +116,12 @@ func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 			}
 			titleLeading = func() {
 				label := d.tr("返回插件列表")
-				if k.Button(c.Key("back-to-plugins"), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconBack, Label: label, Tooltip: label, Disabled: d.live.busy || d.live.loading}).Clicked() {
+				if k.ToolbarIconButton(c.Key("back-to-plugins"), desktopkit.ToolbarIconButtonProps{
+					Icon:     desktopkit.IconBack,
+					Label:    label,
+					Tooltip:  label,
+					Disabled: d.live.busy || d.live.loading,
+				}).Clicked() {
 					d.pluginSettings.id = ""
 					d.pluginSettings.view = ""
 					d.pluginSettings.form = nil

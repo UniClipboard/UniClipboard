@@ -44,7 +44,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 4bb6fbbe2ee3cbfe3234c6edadad3db2254e9c0d
+verified: 34b61e2b82f802f0c92821984761877a1ca6db65
 ---
 # Desktop configuration and received files
 
@@ -536,6 +536,12 @@ official `registry.json` and accepting `off` for offline bundled mode), caches
 validated entries locally under `$UNIC_HOME/plugins/marketplace-cache.json`,
 and falls back to the cached or bundled official catalog (including zero-config
 `unic.wenshushu`) when offline.
+
+The marketplace lists one plugin per row beside a detail pane. Each card shows
+the available author, version, category and install status. Selecting a card
+updates the detail pane and exposes the selected state to accessibility. The
+marketplace and plugin list use quiet 28-DIP toolbar controls for navigation,
+catalog refresh, update checks and the overflow menu.
 
 One-click install and update call `POST /v1/plugins/install`, reusing the
 existing GitHub commit-locked, SHA-256-verified installer (`luascripts.Install`)

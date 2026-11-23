@@ -65,7 +65,7 @@ Settings > Plugins lists Tailcat sync, text tools and content classification. Pl
 
 Tailcat exposes its standard `text`, `images`, `files` and `auto_file_max_bytes` backend policies. They apply immediately. The file permission covers files and entire directory snapshots, including empty trees. The automatic threshold uses the selected files' total byte count; explicit sends bypass only that threshold. Global synchronization permissions and automatic-directory intent remain on Settings > Sync. Tailcat stays assembled and cannot be independently disabled or uninstalled.
 
-Text tools and classification expose enablement and a processor failure policy. The dropdown offers inheritance from `plugins.on_error`, explicit continue and explicit block-sync choices. The inherited choice shows the current global policy; the accessible value shows the displayed choice. These settings apply after restarting the service. Quitting and reopening Desktop restarts a tray-owned service. An independently started service requires a separate restart by its owner. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
+Text tools and classification expose enablement and a processor failure policy. The dropdown offers inheritance from `plugins.on_error`, explicit continue and explicit block-sync choices. The inherited choice shows the current global policy; the accessible value shows the displayed choice. These settings apply after restarting the service. Quitting and reopening Desktop restarts a tray-owned service. An independently started service requires a separate restart by its owner. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Service restart notices across Settings and Devices expose a restart action. The tray closes the graphical views, restarts its owned service, and reopens the main window. If the tray cannot close a view, it returns the error to the requesting window so the user can retry. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
 
 Content classification provides an independent switch for each default regular expression. Users can add, edit and delete custom rules that pair a pattern with a target tag. The form validates the draft before saving it through the same revision-checked configuration API. A valid save that changes the active rules appears in the service restart notice. See [classifier settings](../contracts/plugin-contract.md#built-in-content-classification).
 
@@ -86,7 +86,9 @@ The history toolbar (`history.toolbar`) and the history list/grid right-click co
 `desktop.system_window_frame` is a persisted boolean, defaulting to `false`.
 Settings > General exposes the same switch on Windows, Linux and macOS. The host
 captures its value when creating each GUI window. Saving a change leaves the
-existing window intact. Close and reopen the main window to apply it. The GUI
+existing window intact. The restart action recreates only the main window when
+the frame preference is the only pending change. It preserves the tray, quick
+panel, and service. Closing and reopening the main window also applies the preference. The GUI
 compares saved intent with its own captured value for the pending notice. The
 UI-free service stores the preference and never adds this host-only key to
 `restart_required`; an older service generation does not keep a recreated GUI pending.

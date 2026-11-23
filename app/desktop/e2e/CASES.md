@@ -472,9 +472,9 @@ screenshot recreated-gui
 
 Independent Desktop role processes
 
-Steps: Start normal mode with explicit background intent, verify no initial GUI, reopen and close each UI role, then verify durable state and cleanup.
+Steps: Start normal mode with explicit background intent, verify no initial GUI, reopen and close each UI role, then verify durable state and cleanup. Reject a GUI quit, retry the GUI-only restart, and request a full restart after saving a plugin change.
 
-Expected: Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running.
+Expected: Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running. GUI-only restart returns the quit failure and preserves the tray, quick panel and unicd on retry. Full restart replaces the owned unicd and clears the pending configuration.
 
 Forbidden: Resident hidden GUI, shared role PID, duplicate owners, foreign-profile activation, lost state, leaked processes, or native acceptance claims.
 

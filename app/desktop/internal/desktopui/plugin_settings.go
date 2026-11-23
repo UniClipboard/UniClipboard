@@ -141,7 +141,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 		cfg.Plugins.Instances = map[string]config.Instance{}
 	}
 	if l.config.ApplyError != "" {
-		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: d.tr("设置已保存，但未能生效。请重试或重新启动桌面端。")})
+		d.restartNotice(c.Key("apply-error-notice"), k, desktopkit.ToneError, d.tr("设置已保存，但未能生效。请重试或重新启动桌面端。"), true)
 	}
 	if l.config.Error != "" {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("配置文件无效。当前保留上一份有效设置。")})
@@ -156,7 +156,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	external, externalSelected := d.installedExternalPlugin(p.id)
 	externalPending := externalSelected && (external.Restart || p.form != nil && p.form.state.Restart)
 	if pending || externalPending {
-		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("插件设置已保存。请退出并重新启动桌面端以生效。")})
+		d.restartNotice(c.Key("plugin-restart-notice"), k, desktopkit.ToneWarning, d.tr("插件设置已保存。请退出并重新启动桌面端以生效。"), true)
 	}
 	if p.installError != "" {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: p.installError})

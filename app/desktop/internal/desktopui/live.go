@@ -75,6 +75,12 @@ func (s *Desktop) SetLoginStatus(read func() (bool, string), retry func()) {
 // SetMigrationOpener delegates exclusive runtime ownership to the Desktop host.
 func (s *Desktop) SetMigrationOpener(open func()) { s.d.live.openMigration = open }
 
+// SetRestarter delegates GUI recreation or a restart that includes the
+// tray-owned service. The host reports failures to a still-open GUI.
+func (s *Desktop) SetRestarter(restart func(restartService bool, done func(error))) {
+	s.d.live.restartApp = restart
+}
+
 type liveState struct {
 	wakeMu       sync.Mutex
 	wakeServices ui.Services
@@ -82,6 +88,8 @@ type liveState struct {
 	wakeDue      time.Time
 
 	openMigration                              func()
+	restartApp                                 func(restartService bool, done func(error))
+	restarting                                 bool
 	sendCancel                                 context.CancelFunc
 	sendStage                                  string
 	queryOverride                              func() engine.HistorySearchQuery

@@ -243,6 +243,21 @@ try:
         command = [probe, "-base", base, "-key", key]
         run(command, env=probe_env)
         report["checks"].append("valid signed archive accepted")
+        report["release_notes"] = []
+        for language, notes, expected in [
+            ("zh-CN", "Latest\n\n<!-- zh -->\n\n最新", "最新"),
+            ("en", "Latest\n\n<!-- zh -->\n\n最新", "Latest"),
+            ("ja", "Latest\n\n<!-- zh -->\n\n最新", "Latest"),
+            ("zh-CN", "Latest\n\n<!-- zh -->\n\n", "Latest"),
+            ("zh-CN", "Latest", "Latest"),
+        ]:
+            state["feed"]["notes"] = notes
+            actual = json.loads(run(command + ["-notes", "-language", language], env=probe_env))
+            report["release_notes"].append(
+                {"language": language, "expected": expected, "actual": actual}
+            )
+            assert actual == expected, f"wrong update notes for {language}: {actual!r}"
+        report["checks"].append("mygo receives notes in one language with English fallback")
         for label, mutate in [
             ("wrong product", lambda f: f.update(product="cli")),
             ("wrong build", lambda f: f.update(buildNumber="0")),

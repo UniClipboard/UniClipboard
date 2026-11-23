@@ -31,7 +31,7 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 1cd17c916ea5d3436bebd521293f2827b825a3dd
+verified: 2f71b35cb8ac152a04dde3d51989bf895551e084
 ---
 # Product builds and CLI releases
 
@@ -69,6 +69,9 @@ The same Actions run displays CLI construction and publication, Desktop
 construction and publication, legacy acceptance and Desktop promotion.
 Its artifacts hold the exact Desktop CLI lock and the publication receipts.
 Re-run failed jobs to reuse the successful build jobs and their artifacts.
+Recovering a CLI candidate skips CLI construction and still starts Desktop
+construction. The final joint result requires successful CLI publication and
+successful Desktop channel verification.
 
 `go run ./tools/package -product cli` builds `unic` and `unicd` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
 

@@ -129,6 +129,8 @@ The tag is `desktop/v<version>-build.<number>` and points to the accepted candid
 
 The existing delivery workflow supports `github-draft`, `publish` and `promote`. It stages or verifies the page before origin/channel mutation. Alpha pages become public prereleases only after origin publication read-back. Stable publication leaves a draft until verified stable promotion, then marks the page as the latest Desktop release. The page context restores the original comparison tag/contributors across workflows. Local `preview --development` produces reviewable files without creating a page; remote operations retain all production signing gates.
 
+The CLI and Desktop controllers search the paginated GitHub release list by exact tag to find both drafts and published releases.
+
 `e2e/packaging/github_release.py` drives the real GitHub CLI and release subprocess against disposable loopback HTTP endpoints. Its report and checksums establish process/transport behavior only. It does not create a real draft or public GitHub Release.
 
 `sandbox-acceptance.yml` runs actual Nix, Flatpak and strict Snap construction/execution on both Linux architectures. The harness overrides source acquisition with the exact verified pre-publication DEB; generated runtime/build steps remain unchanged. Missing runtimes, namespace failures or confinement failures fail the job. Nix sets only the Desktop ELF interpreter and supplies GTK libraries through the existing wrapper; it does not add RUNPATH to the prebuilt Go binary. The locked private CLI pair remains unchanged. The process harness verifies real private CLI/service IPC and bounded shutdown inside each environment. These nonvisual process checks do not establish clipboard, file/network, refresh or sandbox GUI acceptance.
@@ -157,9 +159,12 @@ The workflow tests both source versions on all six targets. The native jobs
 verify the old and new signatures, replace an isolated installation, verify
 the restart entry and explicitly migrate synthetic clipboard history.
 
-Verify the source version, target, candidate hash, and registration digest
-in each of the twelve upgrade receipts. Stage the accepted offer at
+Enable the workflow's optional `stage` input to verify the source version,
+target, candidate hash, and registration digest in all twelve upgrade receipts.
+The staging job verifies the ready origin registration and writes the offer
+using a create-only R2 operation at
 `_control/desktop-legacy-alpha/<manifestDigest>.json` in the release bucket.
+Its receipt records the offer hash and the observed alpha channel revision.
 The numbered alpha promotion activates that offer. Staging leaves the
 current offer available. Roll back the numbered alpha selection to restore
 the previous offer, or remove the selected offer object to stop new offers.
@@ -189,6 +194,10 @@ Public npm operations require clean source, GitHub Actions OIDC and npm with dis
 Publication validates every local archive and every existing registry version before the first mutation. Up to three platform packages publish or promote concurrently. The main package runs only after every platform's integrity and tag pass registry read-back. A tag write is required only if the tag differs from the selected build. Platform worker results are recorded in manifest order. A durable record becomes public only after a real availability receipt passes validation.
 
 `promote.yml` currently offers CLI only. It downloads the requested durable manifest, verifies all existing npm package integrity values and moves the exact package set to `latest`. It does not rebuild, pack or upload. It retains alpha. Both mutating workflows share one CLI concurrency group.
+
+Registry reads request cache revalidation. The controller polls for each package
+version and each required tag update with a separate 15-minute deadline.
+A visible package version with conflicting integrity fails immediately.
 
 Retries preserve exact identity and reject integrity conflicts. An older build cannot replace a newer selected build. Known v1 alpha/beta/rc tags may advance only to a strictly higher product version. Unknown or same-base legacy tags require review. npm changes across packages are not atomic; a partial failure has a failed receipt and can be retried with the same candidate. External writers outside the workflow concurrency group remain an operational constraint because npm does not expose a compare-and-swap tag API.
 

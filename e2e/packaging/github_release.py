@@ -182,7 +182,19 @@ try:
                     asset = state["assets"][int(path.rsplit("/", 1)[1])]
                     asset["downloads"] = asset.get("downloads", 0) + 1
                     return self.send(200, asset["data"])
-                if "/releases/tags/" in path or path.endswith("/releases/1"):
+                if path.endswith("/releases"):
+                    page = parse_qs(urlparse(self.path).query).get("page", ["1"])[0]
+                    releases = (
+                        [self.current()] if page == "1" and state["release"] else []
+                    )
+                    return self.send(200, releases)
+                if "/releases/tags/" in path:
+                    return (
+                        self.send(200, self.current())
+                        if state["release"] and not state["release"].get("draft")
+                        else self.send(404, {"message": "Not Found"})
+                    )
+                if path.endswith("/releases/1"):
                     return (
                         self.send(200, self.current())
                         if state["release"]

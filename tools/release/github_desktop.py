@@ -290,8 +290,8 @@ def run(args):
         m["source_sha"],
     ):
         raise ValueError("Desktop tag source conflict")
-    existing = gh.api(
-        "GET", prefix + "/releases/tags/" + quote(tag, safe=""), missing=True
+    existing = release.package.cli.find_github_release(
+        REPO, tag, read=lambda endpoint: gh.api("GET", "/" + endpoint)
     )
     title = f"UniClipboard Desktop {m['version']} (build {m['build_number']})"
     if (

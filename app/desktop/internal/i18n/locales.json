@@ -8308,5 +8308,17 @@
     "ja": "Enterで確定 · Escでキャンセル",
     "pt-BR": "Enter para confirmar · Esc para cancelar",
     "ru": "Enter — подтвердить · Esc — отменить"
+  },
+  "立即重启": {
+    "en": "Restart now",
+    "ja": "今すぐ再起動",
+    "pt-BR": "Reiniciar agora",
+    "ru": "Перезапустить сейчас"
+  },
+  "无法重启应用。请手动退出并重新启动桌面端。": {
+    "en": "Could not restart the app. Quit and reopen Desktop manually.",
+    "ja": "アプリを再起動できませんでした。手動で終了して再起動してください。",
+    "pt-BR": "Não foi possível reiniciar o aplicativo. Saia e reabra o aplicativo manualmente.",
+    "ru": "Не удалось перезапустить приложение. Закройте и откройте приложение вручную."
   }
 }

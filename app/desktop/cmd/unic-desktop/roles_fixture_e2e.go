@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
@@ -87,6 +88,11 @@ func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error
 			}
 			return nil, nil
 		case "quit":
+			if role == desktopprocess.GUI {
+				if _, err := os.Stat(filepath.Join(dir, "fixture-reject-gui-quit")); err == nil {
+					return nil, errors.New("fixture rejected GUI quit")
+				}
+			}
 			return desktopprocess.ReplyAfter(nil, cancel), nil
 		case "complete-setup":
 			return nil, desktopprocess.Call(ctx, dir, desktopprocess.Tray, "start-runtime", nil, nil)

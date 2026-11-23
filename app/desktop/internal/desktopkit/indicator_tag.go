@@ -70,6 +70,12 @@ type NoticeProps struct {
 	Text  string
 	// ActionLabel shows a secondary command button.
 	ActionLabel string
+	// ActionIcon optionally prefixes the action button label.
+	ActionIcon IconName
+	// ActionDisabled disables the action button.
+	ActionDisabled bool
+	// ActionBusy shows a busy indicator on the action button and disables activation.
+	ActionBusy bool
 	// DismissLabel shows a close button named by it.
 	DismissLabel string
 }
@@ -104,19 +110,23 @@ func (k Kit) InlineNotice(c *ui.Context, p NoticeProps) NoticeResult {
 	e := ui.Row(c).Padding(10, 12).Radius(r).Gap(10).AlignItems(ui.Center).Background(bg).Label(p.Title)
 
 	e.Children(func() {
-		k.glyph(c, glyph, 16).TextColor(iconColor)
-		ui.Text(c, p.Title).FontSize(titleSize).FontWeight(titleWeight).NoWrap()
+		k.glyph(c, glyph, 16).TextColor(iconColor).Shrink(0)
 		if p.Text != "" {
-			ui.Text(c, p.Text).FontSize(textSize).TextColor(textColor)
+			ui.Text(c, p.Title).FontSize(titleSize).FontWeight(titleWeight).NoWrap().Shrink(0)
+			ui.Text(c, p.Text).FontSize(textSize).TextColor(textColor).Grow(1).MinWidth(0)
+		} else {
+			ui.Text(c, p.Title).FontSize(titleSize).FontWeight(titleWeight).Grow(1).MinWidth(0)
 		}
-		if p.ActionLabel != "" || p.DismissLabel != "" {
-			ui.Box(c).Grow(1)
-			if p.ActionLabel != "" {
-				res.Acted = k.Button(c.Key("action"), p.ActionLabel, ButtonProps{Size: SizeSmall}).Clicked()
-			}
-			if p.DismissLabel != "" {
-				res.Dismissed = k.RemoveButton(c.Key("dismiss"), p.DismissLabel).Clicked()
-			}
+		if p.ActionLabel != "" {
+			res.Acted = k.Button(c.Key("action"), p.ActionLabel, ButtonProps{
+				Size:     SizeSmall,
+				Icon:     p.ActionIcon,
+				Disabled: p.ActionDisabled,
+				Busy:     p.ActionBusy,
+			}).Shrink(0).Clicked()
+		}
+		if p.DismissLabel != "" {
+			res.Dismissed = k.RemoveButton(c.Key("dismiss"), p.DismissLabel).Shrink(0).Clicked()
 		}
 	})
 	res.Element = e

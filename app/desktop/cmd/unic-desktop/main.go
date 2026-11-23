@@ -112,7 +112,9 @@ func runDesktop(args []string) error {
 	}
 	desktopLaunchBackground = *background
 	if *role != "" {
-		return runRole(desktopprocess.Role(*role), settings)
+		selectedRole := desktopprocess.Role(*role)
+		setRoleProcessName(selectedRole)
+		return runRole(selectedRole, settings)
 	}
 	dir, err := paths.Dir()
 	if err != nil {

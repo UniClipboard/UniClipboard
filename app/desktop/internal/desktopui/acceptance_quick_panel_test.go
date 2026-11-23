@@ -208,8 +208,13 @@ func scenarioQuickPanel(t *testing.T) {
 		tt.Type("丢失的文件")
 		tt.Advance(310 * time.Millisecond)
 		tt.Key(0, ui.KeyEnter)
-		if len(p.effects) != 0 || p.message == "" {
+		if len(p.effects) != 0 || !p.visible {
 			t.Fatal("lost payload restored")
+		}
+		for _, node := range tt.AccessAll() {
+			if node.Role == ui.RoleAlert {
+				t.Fatalf("unexpected quick-panel alert node: %+v", node)
+			}
 		}
 		tt.Key(ui.Cmd|ui.Shift, ui.KeyBackspace)
 		tt.Advance(310 * time.Millisecond)

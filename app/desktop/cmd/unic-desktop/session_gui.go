@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -118,6 +119,7 @@ func (s *desktopSession) start() {
 			s.runtime = r
 			s.navigate(s.pendingAction)
 			screen.SetMigrationOpener(s.migrate)
+			screen.SetRestarter(s.restart)
 			screen.SetQuickPanelOpener(func(string) {
 				nativeAsync(func(ctx context.Context) error {
 					return desktopprocess.Call(ctx, s.dir, desktopprocess.Tray, "open-quick-panel", nil, nil)
@@ -220,6 +222,29 @@ func (s *desktopSession) startFailed() {
 	}
 	s.g.win.Invalidate()
 }
+func (s *desktopSession) restart(restartService bool, done func(error)) {
+	if s.starting || s.runtime == nil {
+		if done != nil {
+			done(errors.New("desktop session is not ready to restart"))
+		}
+		return
+	}
+	command := "restart-gui"
+	if restartService {
+		command = "restart"
+	}
+	s.workers.Add(1)
+	go func() {
+		defer s.workers.Done()
+		ctx, cancel := context.WithTimeout(s.ctx, 12*time.Second)
+		defer cancel()
+		err := desktopprocess.Call(ctx, s.dir, desktopprocess.Tray, command, nil, nil)
+		if done != nil && s.ctx.Err() == nil {
+			done(err)
+		}
+	}()
+}
+
 func (s *desktopSession) migrate() {
 	if s.starting || s.runtime == nil {
 		return

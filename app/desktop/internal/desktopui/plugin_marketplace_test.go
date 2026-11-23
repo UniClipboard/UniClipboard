@@ -36,6 +36,7 @@ func TestPluginMarketplaceFlowAndZeroConfigStatus(t *testing.T) {
 	finishManual := make(chan struct{})
 	var installReq api.PluginInstallRequest
 	var uninstalledID string
+	marketIcon := "link"
 	cfgState := config.State{Revision: "rev-1", Config: config.Default()}
 
 	mux := http.NewServeMux()
@@ -80,6 +81,9 @@ func TestPluginMarketplaceFlowAndZeroConfigStatus(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(installed)
 	})
 	mux.HandleFunc("GET /v1/plugins/marketplace", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		icon := marketIcon
+		mu.Unlock()
 		_ = json.NewEncoder(w).Encode(api.PluginMarketplace{
 			Version: 1,
 			Source:  "remote",
@@ -87,6 +91,7 @@ func TestPluginMarketplaceFlowAndZeroConfigStatus(t *testing.T) {
 				{
 					ID:            "unic.wenshushu",
 					Name:          "文叔叔临时分享",
+					Icon:          icon,
 					Author:        "UniClipboard 官方",
 					Official:      true,
 					Category:      "share",
@@ -198,6 +203,57 @@ func TestPluginMarketplaceFlowAndZeroConfigStatus(t *testing.T) {
 	wait("marketplace view", func() bool {
 		return d.pluginSettings.view == "marketplace" && tt.HasText("如何使用") && tt.HasText("隐私与安全")
 	})
+
+	card, ok := tt.AccessByRole(ui.RoleButton, "文叔叔临时分享")
+	if !ok {
+		t.Fatal("marketplace card missing")
+	}
+	detail, ok := tt.AccessByRole(ui.RoleRegion, "文叔叔临时分享")
+	if !ok {
+		t.Fatal("marketplace detail missing")
+	}
+	iconCrops := []image.Rectangle{
+		image.Rect(int(card.Bounds.X)+15, int(card.Bounds.Y)+13, int(card.Bounds.X)+55, int(card.Bounds.Y)+53),
+		image.Rect(int(detail.Bounds.X)+20, int(detail.Bounds.Y)+18, int(detail.Bounds.X)+66, int(detail.Bounds.Y)+64),
+	}
+	captureIcons := func(name string) [2][]byte {
+		t.Helper()
+		tt.Advance(350 * time.Millisecond)
+		frame := tt.Image()
+		var crops [2][]byte
+		for i, crop := range iconCrops {
+			var out bytes.Buffer
+			if err := png.Encode(&out, frame.SubImage(crop)); err != nil {
+				t.Fatal(err)
+			}
+			crops[i] = out.Bytes()
+			if dir := os.Getenv("UNIC_MARKETPLACE_ICON_ARTIFACTS"); dir != "" {
+				if err := os.WriteFile(filepath.Join(dir, name+"-"+[]string{"card", "detail"}[i]+".png"), crops[i], 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		return crops
+	}
+	refreshIcon := func(next string) {
+		mu.Lock()
+		marketIcon = next
+		mu.Unlock()
+		d.ensureMarketplaceLoaded(true)
+		wait("refreshed marketplace icon", func() bool {
+			return !d.live.marketplaceLoading && d.live.marketplace.Plugins[0].Icon == next
+		})
+	}
+	declared := captureIcons("declared")
+	refreshIcon("future-icon")
+	unknown := captureIcons("unknown")
+	refreshIcon("")
+	missing := captureIcons("missing")
+	for i, want := range missing {
+		if bytes.Equal(declared[i], want) || !bytes.Equal(unknown[i], want) {
+			t.Fatalf("icon crop %d must show the declared glyph and use the same fallback for unknown and missing icons", i)
+		}
+	}
 
 	// Hold a manual installation so its pending state can be observed.
 	if err := tt.Click("开发者：从链接手动安装"); err != nil {

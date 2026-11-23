@@ -26,6 +26,7 @@ type PluginText struct {
 type PluginInfo struct {
 	ImplementationID string                `json:"implementation_id"`
 	Name             string                `json:"name,omitempty"`
+	Icon             string                `json:"icon,omitempty"`
 	Summary          string                `json:"summary,omitempty"`
 	I18N             map[string]PluginText `json:"i18n,omitempty"`
 	Capabilities     []string              `json:"capabilities"`
@@ -65,6 +66,7 @@ type PluginSettingsEdit struct {
 type MarketplaceEntry struct {
 	ID            string   `json:"id"`
 	Name          string   `json:"name"`
+	Icon          string   `json:"icon,omitempty"`
 	Author        string   `json:"author"`
 	Official      bool     `json:"official,omitempty"`
 	Category      string   `json:"category"`

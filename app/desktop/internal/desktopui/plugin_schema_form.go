@@ -131,7 +131,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 	case desktopkit.StatusWarning, desktopkit.StatusCritical:
 		statusColor = "orange"
 	}
-	icon, tone := pluginIconForCategory(cat.Category, item.Capabilities)
+	icon, tone := pluginPresentationIcon(cat.Category, item.Capabilities, item.Icon, cat.Icon)
 	ui.Row(c.Key("external-plugin-header")).Gap(12).AlignItems(ui.Start).Children(func() {
 		pluginIconTile(c.Key("ico"), k, icon, tone, 46)
 		ui.Column(c.Key("meta")).Grow(1).MinWidth(0).Gap(4).Children(func() {

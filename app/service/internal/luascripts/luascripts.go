@@ -34,6 +34,7 @@ type Manifest struct {
 	ID               string              `toml:"id"`
 	Version          string              `toml:"version"`
 	Name             string              `toml:"name"`
+	Icon             string              `toml:"icon"`
 	Summary          string              `toml:"summary"`
 	I18N             map[string]Text     `toml:"i18n"`
 	APIVersion       int                 `toml:"api_version"`

@@ -45,6 +45,7 @@ func BundledMarketplace() api.PluginMarketplace {
 			{
 				ID:            "unic.wenshushu",
 				Name:          "文叔叔临时分享",
+				Icon:          "link",
 				Author:        "UniClipboard 官方",
 				Official:      true,
 				Category:      "share",
@@ -63,6 +64,7 @@ func BundledMarketplace() api.PluginMarketplace {
 			{
 				ID:            "unic.wormhole",
 				Name:          "Wormhole 临时分享",
+				Icon:          "lock",
 				Author:        "UniClipboard 官方",
 				Official:      true,
 				Category:      "share",
@@ -81,6 +83,7 @@ func BundledMarketplace() api.PluginMarketplace {
 			{
 				ID:            "unic.security",
 				Name:          "敏感内容拦截",
+				Icon:          "shield",
 				Author:        "UniClipboard 官方",
 				Official:      true,
 				Category:      "organize",
@@ -214,6 +217,9 @@ func validateMarketplace(cat api.PluginMarketplace) error {
 		seen[p.ID] = true
 		if !validText(p.Name, 1, 80) || !validText(p.Author, 1, 80) || !validText(p.Version, 1, 64) || !validText(p.Summary, 1, 240) {
 			return errors.New("invalid marketplace plugin metadata")
+		}
+		if !validIcon(p.Icon) {
+			return errors.New("invalid marketplace plugin icon")
 		}
 		if p.Description != "" && !validText(p.Description, 1, 2000) {
 			return errors.New("invalid marketplace plugin description")

@@ -418,6 +418,10 @@ The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PU
 
 `PluginInfo` also carries the optional manifest display text: `name`, `summary` and `i18n` (`{language: {name?, summary?}}`). The service does not know the UI language; the client resolves it as described in the [plugin contract](plugin-contract.md#展示文本与多语言).
 
+The optional `PluginInfo.icon` string comes from the plugin manifest. The
+optional `plugins[].icon` string in the marketplace response comes from the
+catalog. Both fields use the [plugin icon syntax](plugin-contract.md#display-icon).
+
 ### Marketplace and installation lifecycle
 
 | Method and path | Request | Result |

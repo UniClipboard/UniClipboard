@@ -14,6 +14,11 @@ import (
 
 var pluginID = regexp.MustCompile(`^[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+$`)
 var hashPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var iconPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+
+func validIcon(icon string) bool {
+	return icon == "" || iconPattern.MatchString(icon)
+}
 
 func ValidID(id string) bool {
 	return len(id) <= 128 && pluginID.MatchString(id) && !strings.HasPrefix(id, "builtin.")
@@ -30,6 +35,9 @@ func (m Manifest) validate(installed bool) error {
 	}
 	if err := m.validateDisplay(); err != nil {
 		return err
+	}
+	if !validIcon(m.Icon) {
+		return errors.New("invalid plugin icon")
 	}
 	if m.SettingsSchema != "" && !localPath(m.SettingsSchema) ||
 		m.SettingsSHA256 != "" && (m.SettingsSchema == "" || !hashPattern.MatchString(m.SettingsSHA256)) {

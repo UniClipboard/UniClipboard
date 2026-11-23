@@ -1,0 +1,2176 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UniClipboard · History 空状态与搜索无结果原型（BoardUI v2）</title>
+<!--
+  BoardUI v2 Interactive Prototype: History Empty States & Search No-Results States.
+  Open directly in any modern browser — zero external dependencies.
+
+  Design goals:
+    1. Eliminate the current bug where empty History falsely shows "没有匹配的历史" + "清除筛选",
+       and where List mode renders two competing empty states side-by-side (list pane + "未选择历史" detail pane).
+    2. Unified full-canvas empty state: whenever items.length === 0 in either List or Grid mode,
+       collapse the dead detail pane so the empty state centers calmly across the entire workspace.
+    3. Distinct, context-aware Empty History states:
+       - Fresh / zero-item History (reassuring live listening badge + concise 3-row capability card + instant try/import affordances)
+       - Cleared History (adapts when devices are already paired)
+       - Scoped Empty States (Favorites, Tag, Online/Offline Device) with direct return-to-all navigation
+    4. Distinct, high-utility Search / Filter No-Results states backed directly by Engine's existing
+       POST /v1/history/search/counts API (docs/contracts/history-search-contract.md):
+       - Keyword-only miss (echoes truncated query, explains truthful search scope, quick syntax hints)
+       - Composite query + filter miss (removable constraint chips + Smart Relaxation proposals with live counts)
+       - Scoped search miss (e.g., searching inside Favorites -> 1-click "Search in All Items")
+       - Filter-only miss (no keyword, filter icon + live relaxation rows)
+       - Index/query unavailable boundary state (never misreports as empty history)
+-->
+<style>
+:root {
+  /* BoardUI v2 Light Surface Hierarchy (aligned with app/desktop/internal/desktopkit/surface.go) */
+  --bg-canvas-outer: #e7e7eb;
+  --bg-sidebar: #f6f6f8;
+  --bg-nav-active: #ffffff;
+  --bg-nav-hover: #ececf0;
+  --bg-workspace: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-subtle: #f7f7f9;
+  --bg-card-subtle-hover: #f0f0f4;
+  --bg-inset: #f1f1f5;
+  --bg-sheet: #ffffff;
+  --bg-tertiary: #ececf0;
+  --bg-hover: #f3f3f6;
+
+  --sep: #e8e8ec;
+  --border-sidebar: #e5e5e8;
+  --card-border: #e4e4e8;
+  --border-btn: #dcdce2;
+  --border-hover: #c5c5ce;
+
+  --text-primary: #111114;
+  --text-secondary: #686870;
+  --text-tertiary: #96969f;
+  --icon-primary: #18181c;
+  --icon-secondary: #686870;
+  --icon-tertiary: #9a9aa3;
+
+  --accent-50: #f0f6ff;
+  --accent-100: #dbeafe;
+  --accent-200: #bfd8ff;
+  --accent-500: #2b7fff;
+  --accent-600: #155dfc;
+
+  /* Semantic Status & Token Colors */
+  --ok-bg: #eaf9d0;
+  --ok-fg: #2f5700;
+  --ok-dot: #5ea500;
+  --ok-border: #c5e88e;
+
+  --warn-bg: #fffbeb;
+  --warn-pill-bg: #fef3c7;
+  --warn-fg: #92400e;
+  --warn-border: #fde68a;
+  --warn-dot: #d97706;
+
+  --info-bg: #eff6ff;
+  --info-fg: #1d4ed8;
+  --info-border: #bfdbfe;
+
+  --tag-blue-bg: #e0edff;   --tag-blue-fg: #155dfc;   --tag-blue-dot: #2b7fff;
+  --tag-orange-bg: #ffedd5; --tag-orange-fg: #c2410c; --tag-orange-dot: #f97316;
+  --tag-lime-bg: #ecfccb;   --tag-lime-fg: #3f6212;   --tag-lime-dot: #65a30d;
+  --tag-purple-bg: #f3e8ff; --tag-purple-fg: #7e22ce; --tag-purple-dot: #a855f7;
+  --tag-teal-bg: #ccfbf1;   --tag-teal-fg: #0f766e;   --tag-teal-dot: #14b8a6;
+  --tag-amber-bg: #fef3c7;  --tag-amber-fg: #b45309;  --tag-amber-dot: #f59e0b;
+  --tag-gray-bg: #f1f1f4;   --tag-gray-fg: #52525b;   --tag-gray-dot: #71717a;
+
+  --seg-bg: #f1f1f4;
+  --seg-sel: #ffffff;
+
+  --shadow-window: 0 24px 64px rgba(0, 0, 0, .13), 0 0 0 1px rgba(0, 0, 0, .07);
+  --shadow-nav: 0 1px 2px rgba(0, 0, 0, .05), 0 0 0 1px rgba(0, 0, 0, .06);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .035);
+  --shadow-emblem: 0 6px 18px rgba(17, 17, 20, .06), 0 1px 2px rgba(17, 17, 20, .04);
+  --shadow-popover: 0 12px 32px rgba(0, 0, 0, .12), 0 0 0 1px var(--card-border);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .04);
+  --scrim: rgba(0, 0, 0, .28);
+}
+
+[data-theme="dark"] {
+  --bg-canvas-outer: #09090b;
+  --bg-sidebar: #161618;
+  --bg-nav-active: rgba(255, 255, 255, .09);
+  --bg-nav-hover: rgba(255, 255, 255, .05);
+  --bg-workspace: #1d1d20;
+  --bg-card: #242428;
+  --bg-card-subtle: #232327;
+  --bg-card-subtle-hover: #2b2b31;
+  --bg-inset: #19191c;
+  --bg-sheet: #232328;
+  --bg-tertiary: #2c2c32;
+  --bg-hover: rgba(255, 255, 255, .06);
+
+  --sep: rgba(255, 255, 255, .08);
+  --border-sidebar: rgba(255, 255, 255, .08);
+  --card-border: rgba(255, 255, 255, .095);
+  --border-btn: rgba(255, 255, 255, .14);
+  --border-hover: rgba(255, 255, 255, .24);
+
+  --text-primary: #f4f4f6;
+  --text-secondary: #9c9ca6;
+  --text-tertiary: #6e6e78;
+  --icon-primary: #f4f4f6;
+  --icon-secondary: #9c9ca6;
+  --icon-tertiary: #686872;
+
+  --accent-50: rgba(43, 127, 255, .14);
+  --accent-100: rgba(43, 127, 255, .22);
+  --accent-200: rgba(77, 160, 255, .34);
+  --accent-500: #4da0ff;
+  --accent-600: #3b8eff;
+
+  --ok-bg: rgba(94, 165, 0, .20);
+  --ok-fg: #a3e635;
+  --ok-dot: #84cc16;
+  --ok-border: rgba(132, 204, 22, .30);
+
+  --warn-bg: rgba(217, 119, 6, .14);
+  --warn-pill-bg: rgba(245, 158, 11, .20);
+  --warn-fg: #fbbf24;
+  --warn-border: rgba(245, 158, 11, .28);
+  --warn-dot: #f59e0b;
+
+  --info-bg: rgba(43, 127, 255, .14);
+  --info-fg: #7cb8ff;
+  --info-border: rgba(77, 160, 255, .28);
+
+  --tag-blue-bg: rgba(43, 127, 255, .20);   --tag-blue-fg: #7cb8ff;   --tag-blue-dot: #4da0ff;
+  --tag-orange-bg: rgba(249, 115, 22, .20); --tag-orange-fg: #fdba74; --tag-orange-dot: #fb923c;
+  --tag-lime-bg: rgba(132, 204, 22, .20);   --tag-lime-fg: #bef264;   --tag-lime-dot: #a3e635;
+  --tag-purple-bg: rgba(168, 85, 247, .22); --tag-purple-fg: #d8b4fe; --tag-purple-dot: #c084fc;
+  --tag-teal-bg: rgba(20, 184, 166, .20);   --tag-teal-fg: #5eead4;   --tag-teal-dot: #2dd4bf;
+  --tag-amber-bg: rgba(245, 158, 11, .20);  --tag-amber-fg: #fcd34d;  --tag-amber-dot: #fbbf24;
+  --tag-gray-bg: rgba(255, 255, 255, .09);  --tag-gray-fg: #a1a1aa;   --tag-gray-dot: #a1a1aa;
+
+  --seg-bg: #141417;
+  --seg-sel: #2c2c32;
+
+  --shadow-window: 0 28px 72px rgba(0, 0, 0, .62), 0 0 0 1px rgba(255, 255, 255, .09);
+  --shadow-nav: 0 0 0 1px rgba(255, 255, 255, .08);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .24);
+  --shadow-emblem: 0 10px 26px rgba(0, 0, 0, .38), 0 0 0 1px rgba(255, 255, 255, .08);
+  --shadow-popover: 0 14px 36px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .12);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .25);
+  --scrim: rgba(0, 0, 0, .54);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg-canvas-outer);
+  color: var(--text-primary);
+  font: 13px/1.48 "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background .18s ease, color .18s ease;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+svg { display: block; flex: none; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+/* ---------------- Top Prototype Control Bar ---------------- */
+.proto-bar {
+  position: sticky; top: 0; z-index: 40;
+  background: color-mix(in srgb, var(--bg-workspace) 90%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--sep);
+  padding: 9px 18px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.proto-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.proto-title {
+  font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 7px;
+  margin-right: 4px;
+}
+.proto-badge {
+  font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-50); color: var(--accent-600); border: 1px solid var(--accent-200);
+}
+.proto-grp { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.proto-lbl { font-size: 11.5px; color: var(--text-secondary); margin-right: 2px; font-weight: 500; }
+.proto-div { width: 1px; height: 16px; background: var(--sep); margin: 0 2px; }
+.proto-sp { flex: 1; }
+.chip {
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  transition: background .12s, border-color .12s, color .12s, transform .08s;
+}
+.chip:hover { border-color: var(--border-hover); background: var(--bg-card-subtle); }
+.chip:active { transform: scale(.98); }
+.chip.on {
+  background: var(--accent-500);
+  border-color: var(--accent-500);
+  color: #fff;
+  font-weight: 500;
+}
+.chip.sim {
+  border-color: var(--accent-200);
+  background: var(--accent-50);
+  color: var(--accent-600);
+  font-weight: 500;
+}
+.chip.sim:hover { background: var(--accent-100); }
+
+/* ---------------- Stage & App Window ---------------- */
+.stage {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 24px 20px 44px;
+  gap: 28px;
+}
+.app-window {
+  width: 1120px; height: 688px;
+  max-width: calc(100vw - 40px);
+  background: var(--bg-workspace);
+  border-radius: 14px;
+  box-shadow: var(--shadow-window);
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  transition: width .22s cubic-bezier(.32,.72,0,1), height .22s ease, background .18s ease;
+}
+.app-window.compact { width: 700px; height: 640px; }
+
+/* ---------------- Sidebar (BoardUI SplitView + SidebarNav) ---------------- */
+.sidebar {
+  width: 246px; flex: none;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-sidebar);
+  display: flex; flex-direction: column;
+  user-select: none;
+  transition: width .22s cubic-bezier(.32,.72,0,1), transform .22s cubic-bezier(.32,.72,0,1), opacity .18s ease;
+  overflow: hidden;
+}
+.app-window.sb-hidden:not(.compact) .sidebar { width: 0; border-right-color: transparent; }
+.app-window.compact .sidebar {
+  position: absolute; top: 0; bottom: 0; left: 0; z-index: 25;
+  box-shadow: 12px 0 36px rgba(0, 0, 0, .18);
+}
+.app-window.compact.sb-hidden .sidebar { transform: translateX(-100%); box-shadow: none; }
+.sb-scrim {
+  display: none; position: absolute; inset: 0; z-index: 20; background: var(--scrim);
+}
+.app-window.compact:not(.sb-hidden) .sb-scrim { display: block; }
+
+.sb-inner {
+  width: 246px; height: 100%;
+  display: flex; flex-direction: column;
+}
+.sb-top {
+  height: 52px; padding: 0 12px 0 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex: none;
+}
+.lights { display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+.lights i:nth-child(1) { background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }
+
+.sb-scroll {
+  flex: 1; overflow-y: auto; padding: 4px 12px 10px 12px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.sb-scroll::-webkit-scrollbar { width: 4px; }
+.sb-scroll::-webkit-scrollbar-thumb { background: var(--border-btn); border-radius: 2px; }
+
+.sb-sec { display: flex; flex-direction: column; gap: 2px; }
+.sb-sec-hd {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 4px 2px 8px;
+}
+.sb-sec-lbl {
+  font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+  letter-spacing: .02em;
+}
+.sb-sec-act {
+  width: 22px; height: 22px; border: 0; background: transparent;
+  border-radius: 6px; display: grid; place-items: center;
+  color: var(--text-tertiary); transition: background .1s, color .1s;
+}
+.sb-sec-act:hover { background: var(--bg-nav-hover); color: var(--text-primary); }
+
+.nav-item {
+  width: 100%; height: 30px; padding: 0 8px;
+  border: 1px solid transparent; background: transparent; border-radius: 8px;
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text-primary); text-align: left;
+  transition: background .1s, border-color .1s;
+}
+.nav-item:hover { background: var(--bg-nav-hover); }
+.nav-item.on {
+  background: var(--bg-nav-active);
+  border-color: var(--sep);
+  box-shadow: var(--shadow-xs);
+  font-weight: 500;
+}
+[data-theme="dark"] .nav-item.on { border-color: rgba(255, 255, 255, .08); box-shadow: none; }
+.nav-item .nav-ic { width: 16px; height: 16px; color: var(--icon-secondary); flex: none; }
+.nav-item:hover .nav-ic { color: var(--icon-primary); }
+.nav-item.on .nav-ic { color: var(--accent-600); }
+[data-theme="dark"] .nav-item.on .nav-ic { color: var(--accent-500); }
+.nav-item .nav-swatch {
+  width: 16px; height: 16px; display: grid; place-items: center; flex: none;
+}
+.nav-item .nav-swatch i { width: 8px; height: 8px; border-radius: 50%; display: block; }
+.nav-item .nav-status {
+  width: 16px; height: 16px; display: grid; place-items: center; flex: none;
+}
+.nav-item .nav-status i { width: 7px; height: 7px; border-radius: 50%; display: block; }
+.nav-item .nav-lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-item .nav-cnt { font-size: 11.5px; color: var(--text-secondary); flex: none; font-variant-numeric: tabular-nums; }
+.nav-item.on .nav-cnt { font-weight: 500; }
+.nav-item .nav-kbd { font-size: 11px; color: var(--text-tertiary); flex: none; }
+.nav-more {
+  height: 26px; padding: 0 8px 0 32px;
+  border: 0; background: transparent; border-radius: 7px;
+  text-align: left; font-size: 12px; color: var(--text-secondary);
+  transition: background .1s, color .1s;
+}
+.nav-more:hover { background: var(--bg-nav-hover); color: var(--text-primary); }
+.sb-empty-dev {
+  padding: 4px 8px; font-size: 11.5px; color: var(--text-tertiary);
+}
+
+.sb-foot {
+  padding: 6px 12px 10px;
+  border-top: 1px solid var(--border-sidebar);
+  display: flex; flex-direction: column; gap: 2px;
+  flex: none;
+}
+
+/* ---------------- Main Workspace & 52px Toolbar ---------------- */
+.workspace {
+  flex: 1; min-width: 0; min-height: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg-workspace);
+  position: relative;
+}
+.toolbar {
+  height: 52px; flex: none;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--sep);
+  background: var(--bg-workspace);
+  display: flex; align-items: center; gap: 10px;
+  position: relative; z-index: 12;
+}
+.icon-btn {
+  width: 28px; height: 28px; border: 0; background: transparent; border-radius: 7px;
+  display: grid; place-items: center; color: var(--icon-secondary); flex: none;
+  transition: background .1s, color .1s, transform .08s, opacity .12s;
+}
+.icon-btn:hover:not(:disabled) { background: var(--bg-hover); color: var(--icon-primary); }
+.icon-btn:active:not(:disabled) { transform: scale(.96); }
+.icon-btn:disabled { opacity: .35; cursor: default; }
+
+.tb-heading {
+  display: flex; align-items: baseline; gap: 7px; min-width: 64px; flex: none;
+}
+.tb-title {
+  font-size: 14.5px; font-weight: 600; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px;
+}
+.tb-sub {
+  font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums;
+}
+
+/* Unified U1 Centered Omnibar */
+.tb-sp { flex: 1; min-width: 4px; }
+.omnibar-wrap {
+  flex: 3; min-width: 150px; max-width: 484px;
+  position: relative;
+}
+.omnibar {
+  height: 32px; width: 100%;
+  border-radius: 9px;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--sep);
+  padding: 0 4px 0 10px;
+  display: flex; align-items: center; gap: 5px;
+  transition: background .12s, border-color .12s, box-shadow .12s;
+}
+.omnibar:focus-within, .omnibar.open {
+  background: var(--bg-card);
+  border-color: var(--accent-500);
+  box-shadow: 0 0 0 3px var(--accent-50);
+}
+.omnibar-ic { color: var(--icon-secondary); flex: none; }
+.omnibar-tokens {
+  display: flex; align-items: center; gap: 4px; flex: none;
+  max-width: 74%; overflow-x: auto; scrollbar-width: none;
+}
+.omnibar-tokens::-webkit-scrollbar { display: none; }
+.omni-tok {
+  height: 22px; padding: 0 3px 0 7px; border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 11.5px; white-space: nowrap; flex: none;
+}
+.omni-tok .f { opacity: .76; }
+.omni-tok .v { font-weight: 600; max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+.omni-tok button {
+  width: 16px; height: 16px; border: 0; background: transparent; border-radius: 50%;
+  display: grid; place-items: center; color: inherit; opacity: .75; padding: 0;
+}
+.omni-tok button:hover { opacity: 1; background: rgba(0, 0, 0, .09); }
+[data-theme="dark"] .omni-tok button:hover { background: rgba(255, 255, 255, .14); }
+.tok-type   { background: var(--tag-blue-bg);   color: var(--tag-blue-fg); }
+.tok-tag    { background: var(--tag-purple-bg); color: var(--tag-purple-fg); }
+.tok-source { background: var(--tag-teal-bg);   color: var(--tag-teal-fg); }
+.tok-time   { background: var(--tag-amber-bg);  color: var(--tag-amber-fg); }
+.tok-other  { background: var(--tag-gray-bg);   color: var(--tag-gray-fg); }
+
+.omnibar input {
+  flex: 1; min-width: 48px; height: 100%;
+  border: 0; background: transparent; outline: none;
+  font-size: 12.5px; color: var(--text-primary);
+}
+.omnibar input::placeholder { color: var(--text-tertiary); }
+.omni-kbd {
+  font-size: 10px; font-weight: 500; color: var(--text-tertiary);
+  background: var(--bg-card); border: 1px solid var(--sep);
+  border-radius: 5px; padding: 1px 5px; line-height: 1.3; flex: none;
+}
+.omni-clear {
+  width: 18px; height: 18px; border: 0; border-radius: 50%;
+  background: var(--bg-tertiary); color: var(--icon-secondary);
+  display: grid; place-items: center; padding: 0; flex: none;
+}
+.omni-clear:hover { color: var(--text-primary); background: var(--border-btn); }
+.omni-sep { width: 1px; height: 14px; background: var(--sep); flex: none; }
+.omni-filter {
+  height: 24px; min-width: 24px; padding: 0 6px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--icon-secondary);
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex: none;
+  transition: background .1s, color .1s;
+}
+.omni-filter:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.omni-filter.active { background: var(--accent-50); color: var(--accent-600); }
+[data-theme="dark"] .omni-filter.active { color: var(--accent-500); }
+.omni-fcnt {
+  min-width: 15px; height: 15px; padding: 0 4px; border-radius: 999px;
+  background: var(--accent-500); color: #fff;
+  font-size: 9.5px; font-weight: 700; display: grid; place-items: center;
+}
+
+/* Filter Popover */
+.filter-pop {
+  position: absolute; top: calc(100% + 6px); right: 0; width: 320px;
+  background: var(--bg-sheet); border-radius: 12px;
+  box-shadow: var(--shadow-popover); padding: 12px 14px;
+  display: none; flex-direction: column; gap: 12px; z-index: 30;
+}
+.filter-pop.open { display: flex; }
+.fp-sec-lbl { font-size: 11px; font-weight: 600; color: var(--text-tertiary); margin-bottom: 6px; }
+.fp-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+.fp-pill {
+  height: 26px; padding: 0 9px; border-radius: 7px;
+  border: 1px solid var(--card-border); background: var(--bg-card-subtle);
+  color: var(--text-primary); font-size: 12px;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: background .1s, border-color .1s, color .1s;
+}
+.fp-pill:hover { border-color: var(--border-hover); }
+.fp-pill.on { background: var(--accent-50); border-color: var(--accent-200); color: var(--accent-600); font-weight: 500; }
+[data-theme="dark"] .fp-pill.on { color: var(--accent-500); }
+.fp-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  padding-top: 8px; border-top: 1px solid var(--sep);
+}
+
+/* Trailing Segmented Control + Actions */
+.tb-trailing { display: flex; align-items: center; gap: 6px; flex: none; }
+.seg {
+  display: inline-flex; padding: 2px; border-radius: 8px;
+  background: var(--seg-bg); border: 1px solid var(--sep);
+}
+.seg button {
+  width: 26px; height: 24px; border: 0; background: transparent; border-radius: 6px;
+  display: grid; place-items: center; color: var(--icon-secondary);
+  transition: background .12s, color .12s;
+}
+.seg button:hover { color: var(--text-primary); }
+.seg button.on { background: var(--seg-sel); color: var(--text-primary); box-shadow: var(--shadow-xs); }
+.tb-cmds { display: flex; align-items: center; gap: 2px; }
+
+/* ---------------- Content Stage ---------------- */
+.stage-body {
+  flex: 1; min-height: 0; min-width: 0;
+  display: flex; position: relative; overflow: hidden;
+}
+
+/* ---------------- UNIFIED EMPTY STATE CANVAS ---------------- */
+.empty-canvas {
+  flex: 1; min-width: 0; min-height: 0;
+  overflow-y: auto;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 28px 28px 44px;
+  animation: emptyIn .22s cubic-bezier(.22, 1, .36, 1);
+}
+@keyframes emptyIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.empty-shell {
+  width: 100%; max-width: 448px;
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  margin-top: -12px;
+}
+
+/* -- Fresh History Layered Canvas Emblem -- */
+.canvas-emblem {
+  position: relative; width: 112px; height: 74px;
+  margin-bottom: 18px;
+}
+.ce-ghost {
+  position: absolute; border-radius: 10px;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--card-border);
+}
+[data-theme="dark"] .ce-ghost {
+  background: #25252b;
+  border-color: rgba(255, 255, 255, .11);
+}
+.ce-ghost.back-l {
+  width: 68px; height: 46px; left: 4px; top: 14px;
+  transform: rotate(-7deg); opacity: .78;
+}
+.ce-ghost.back-r {
+  width: 68px; height: 46px; right: 4px; top: 16px;
+  transform: rotate(7deg); opacity: .78;
+}
+.ce-front {
+  position: absolute; left: 50%; top: 4px; transform: translateX(-50%);
+  width: 78px; height: 58px; border-radius: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-emblem);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+}
+[data-theme="dark"] .ce-front {
+  background: #2b2b32;
+  border-color: rgba(255, 255, 255, .14);
+}
+.ce-cat {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: var(--text-primary); color: var(--bg-workspace);
+  display: grid; place-items: center;
+}
+.ce-lines { display: flex; flex-direction: column; gap: 3.5px; width: 42px; }
+.ce-lines span {
+  display: block; height: 3px; border-radius: 2px; background: var(--bg-tertiary);
+}
+.ce-lines span:last-child { width: 65%; margin: 0 auto; }
+
+/* Live Listening Status Pill */
+.listen-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 10px; border-radius: 999px;
+  background: var(--bg-card-subtle); border: 1px solid var(--card-border);
+  font-size: 11.5px; font-weight: 500; color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+.pulse-dot {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--ok-dot);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok-dot) 45%, transparent);
+  animation: livePulse 2.4s ease-out infinite;
+}
+@keyframes livePulse {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok-dot) 48%, transparent); }
+  65%  { box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok-dot) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok-dot) 0%, transparent); }
+}
+
+/* -- Standard BoardUI Squircle Icon Badge (for Scoped & Search Empty States) -- */
+.empty-icon-badge {
+  position: relative;
+  width: 52px; height: 52px; border-radius: 15px;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--card-border);
+  display: grid; place-items: center;
+  color: var(--icon-secondary);
+  margin-bottom: 16px;
+}
+.empty-icon-badge.warn {
+  background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-fg);
+}
+.empty-icon-badge.star {
+  background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-dot);
+}
+.empty-icon-badge .badge-pip {
+  position: absolute; right: -3px; bottom: -3px;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--bg-workspace);
+  display: grid; place-items: center;
+}
+.empty-icon-badge .badge-pip i {
+  width: 9px; height: 9px; border-radius: 50%; display: block;
+}
+
+/* Typography */
+.empty-title {
+  margin: 0;
+  font-size: 17px; font-weight: 600; line-height: 1.35;
+  letter-spacing: -.015em; color: var(--text-primary);
+  max-width: 420px; word-break: break-word;
+}
+.empty-title .q-highlight {
+  display: inline; padding: 0 5px; margin: 0 2px; border-radius: 5px;
+  background: var(--bg-card-subtle); border: 1px solid var(--sep);
+  font-weight: 600; color: var(--text-primary);
+}
+.empty-desc {
+  margin: 7px 0 0;
+  font-size: 13px; line-height: 1.58; color: var(--text-secondary);
+  max-width: 420px; text-wrap: balance;
+}
+kbd {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 11px; font-weight: 500; line-height: 1;
+  padding: 3px 6px; border-radius: 5px;
+  background: var(--bg-card); color: var(--text-primary);
+  border: 1px solid var(--border-btn);
+  box-shadow: 0 1px 0 var(--sep);
+  vertical-align: 1px;
+}
+
+/* -- BoardUI Inset Capability / Guide Card (Empty History) -- */
+.inset-card {
+  width: 100%; max-width: 424px;
+  margin-top: 20px;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  overflow: hidden;
+  text-align: left;
+}
+.guide-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px;
+}
+.guide-row + .guide-row { border-top: 1px solid var(--sep); }
+.guide-row.clickable {
+  width: 100%; border: 0; background: transparent; text-align: left;
+  transition: background .1s;
+}
+.guide-row.clickable + .guide-row,
+.guide-row + .guide-row.clickable { border-top: 1px solid var(--sep); }
+.guide-row.clickable:hover { background: var(--bg-card-subtle-hover); }
+.guide-ic {
+  width: 32px; height: 32px; border-radius: 8px; flex: none;
+  background: var(--bg-card); border: 1px solid var(--sep);
+  display: grid; place-items: center; color: var(--icon-secondary);
+}
+[data-theme="dark"] .guide-ic { background: #2c2c33; border-color: rgba(255, 255, 255, .09); }
+.guide-ic.accent { color: var(--accent-600); background: var(--accent-50); border-color: var(--accent-100); }
+[data-theme="dark"] .guide-ic.accent { color: var(--accent-500); }
+.guide-body { flex: 1; min-width: 0; }
+.guide-t { font-size: 12.5px; font-weight: 600; color: var(--text-primary); line-height: 1.3; }
+.guide-s { font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; line-height: 1.4; }
+.guide-end { flex: none; display: flex; align-items: center; gap: 5px; color: var(--text-tertiary); font-size: 11.5px; }
+
+/* -- Active Filter Echo Row (Search Empty State) -- */
+.active-echo {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
+  margin-top: 14px; max-width: 424px;
+}
+.echo-chip {
+  height: 24px; padding: 0 4px 0 8px; border-radius: 7px;
+  font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;
+}
+.echo-chip .k { opacity: .75; }
+.echo-chip .v { font-weight: 600; }
+.echo-chip button {
+  width: 16px; height: 16px; border: 0; background: transparent; border-radius: 50%;
+  display: grid; place-items: center; color: inherit; opacity: .7; padding: 0;
+}
+.echo-chip button:hover { opacity: 1; background: rgba(0, 0, 0, .09); }
+[data-theme="dark"] .echo-chip button:hover { background: rgba(255, 255, 255, .14); }
+
+/* -- Smart Relaxation Card (Search Empty State) -- */
+.relax-card {
+  width: 100%; max-width: 424px;
+  margin-top: 18px;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  overflow: hidden;
+  text-align: left;
+}
+.relax-hd {
+  padding: 8px 14px 6px;
+  font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+  letter-spacing: .02em;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.relax-row {
+  width: 100%; border: 0; background: transparent;
+  border-top: 1px solid var(--sep);
+  padding: 9px 14px;
+  display: flex; align-items: center; gap: 10px; text-align: left;
+  transition: background .1s;
+}
+.relax-row:hover { background: var(--bg-card-subtle-hover); }
+.relax-ic {
+  width: 24px; height: 24px; border-radius: 6px; flex: none;
+  background: var(--bg-card); border: 1px solid var(--sep);
+  display: grid; place-items: center; color: var(--icon-secondary);
+}
+.relax-row:hover .relax-ic { color: var(--accent-600); border-color: var(--accent-200); }
+[data-theme="dark"] .relax-row:hover .relax-ic { color: var(--accent-500); }
+.relax-lbl { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 500; color: var(--text-primary); }
+.relax-cnt {
+  font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-50); color: var(--accent-600); flex: none;
+  font-variant-numeric: tabular-nums;
+}
+[data-theme="dark"] .relax-cnt { color: var(--accent-500); }
+.relax-chev { color: var(--text-tertiary); flex: none; }
+
+/* -- Action Buttons Row (BoardUI Native Button Variants) -- */
+.empty-actions {
+  display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 18px;
+}
+.btn {
+  height: 32px; padding: 0 14px; border-radius: 8px;
+  font-size: 12.5px; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card); color: var(--text-primary);
+  box-shadow: var(--shadow-xs);
+  transition: background .1s, border-color .1s, transform .08s;
+}
+.btn:hover { background: var(--bg-card-subtle); border-color: var(--border-hover); }
+.btn:active { transform: scale(.98); }
+.btn.primary {
+  background: var(--accent-500); border-color: var(--accent-500); color: #fff;
+  box-shadow: 0 1px 2px rgba(21, 93, 252, .22);
+}
+.btn.primary:hover { background: var(--accent-600); border-color: var(--accent-600); }
+.btn.subtle {
+  background: transparent; border-color: transparent; box-shadow: none;
+  color: var(--text-secondary);
+}
+.btn.subtle:hover { background: var(--bg-hover); color: var(--text-primary); }
+.btn .btn-kbd {
+  font-size: 10.5px; opacity: .65; font-weight: 500;
+  padding: 1px 4px; border-radius: 4px; background: var(--bg-tertiary);
+}
+.btn.primary .btn-kbd { background: rgba(255, 255, 255, .2); opacity: .9; }
+
+/* Subtle Syntax Hint Strip (Keyword-only Search Miss) */
+.syntax-strip {
+  margin-top: 20px;
+  display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--text-secondary);
+}
+.syntax-pill {
+  border: 1px solid var(--card-border); background: var(--bg-card-subtle);
+  color: var(--text-primary); border-radius: 6px; padding: 2px 8px;
+  font-size: 11.5px; transition: background .1s, color .1s, border-color .1s;
+}
+.syntax-pill:hover { background: var(--bg-card); border-color: var(--border-hover); color: var(--text-primary); }
+
+/* ---------------- Populated History (List & Grid Modes) ---------------- */
+.list-pane {
+  width: 352px; flex: none;
+  border-right: 1px solid var(--sep);
+  overflow-y: auto; padding: 8px 10px 16px;
+}
+.app-window.compact .list-pane { width: 100%; border-right: 0; }
+.day-hdr {
+  font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+  padding: 10px 10px 4px;
+}
+.day-hdr:first-child { padding-top: 4px; }
+.h-row {
+  padding: 10px 11px; border-radius: 10px; cursor: pointer;
+  border: 1px solid transparent; margin-bottom: 2px;
+  transition: background .1s, border-color .1s;
+}
+.h-row:hover { background: var(--bg-card-subtle); }
+.h-row.sel {
+  background: var(--accent-50); border-color: var(--accent-200);
+}
+.h-row-top { display: flex; align-items: center; gap: 6px; }
+.h-row-t {
+  flex: 1; min-width: 0; font-size: 13px; font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.h-row-ex {
+  font-size: 12px; color: var(--text-secondary); margin-top: 3px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.h-row-meta {
+  display: flex; align-items: center; gap: 6px; margin-top: 5px;
+  font-size: 11px; color: var(--text-tertiary);
+}
+.kind-pill {
+  font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px;
+}
+.kp-text   { background: var(--tag-blue-bg);   color: var(--tag-blue-fg); }
+.kp-code   { background: var(--tag-purple-bg); color: var(--tag-purple-fg); }
+.kp-link   { background: var(--tag-teal-bg);   color: var(--tag-teal-fg); }
+.kp-image  { background: var(--tag-orange-bg); color: var(--tag-orange-fg); }
+.kp-file   { background: var(--tag-lime-bg);   color: var(--tag-lime-fg); }
+.kp-folder { background: var(--tag-amber-bg);  color: var(--tag-amber-fg); }
+
+.detail-pane {
+  flex: 1; min-width: 0; overflow-y: auto; padding: 20px 24px 80px;
+  position: relative;
+}
+.app-window.compact .detail-pane { display: none; }
+.detail-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 12px; color: var(--text-secondary); }
+.detail-box {
+  padding: 18px 20px; border-radius: 12px;
+  background: var(--bg-card-subtle); border: 1px solid var(--card-border);
+  font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+}
+.detail-box.code {
+  background: #141720; color: #e8ebf4; border-color: rgba(255,255,255,.08);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+}
+.facts-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.fact-box {
+  padding: 9px 11px; border-radius: 9px;
+  background: var(--bg-card-subtle); border: 1px solid var(--sep);
+}
+.fact-k { font-size: 10.5px; color: var(--text-tertiary); }
+.fact-v { font-size: 12px; font-weight: 600; margin-top: 2px; }
+.action-dock {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%);
+  display: inline-flex; align-items: center; gap: 4px; padding: 4px;
+  background: var(--bg-sheet); border: 1px solid var(--card-border);
+  border-radius: 999px; box-shadow: var(--shadow-popover);
+}
+
+/* Grid View */
+.grid-pane {
+  flex: 1; overflow-y: auto; padding: 14px 20px 24px;
+}
+.grid-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
+  gap: 10px; margin-top: 6px;
+}
+.g-card {
+  padding: 12px 13px; border-radius: 12px; cursor: pointer;
+  background: var(--bg-card); border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-card);
+  display: flex; flex-direction: column; gap: 8px; height: 146px;
+  transition: border-color .12s, transform .12s;
+}
+.g-card:hover { border-color: var(--border-hover); transform: translateY(-1px); }
+.g-card.sel { border-color: var(--accent-500); box-shadow: 0 0 0 2px var(--accent-100); }
+.g-card-body {
+  flex: 1; overflow: hidden; font-size: 12px; color: var(--text-secondary);
+  line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+}
+
+/* Toast */
+.app-toast {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(8px);
+  background: var(--text-primary); color: var(--bg-workspace);
+  padding: 7px 14px; border-radius: 9px; font-size: 12px; font-weight: 500;
+  opacity: 0; pointer-events: none; z-index: 35;
+  transition: opacity .18s, transform .18s;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .2);
+}
+.app-toast.show { opacity: .96; transform: translateX(-50%) translateY(0); }
+
+/* ---------------- Design Spec Notes Below Stage ---------------- */
+.notes {
+  width: 1120px; max-width: calc(100vw - 40px);
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+}
+@media (max-width: 860px) { .notes { grid-template-columns: 1fr; } }
+.note-card {
+  background: var(--bg-workspace); border: 1px solid var(--card-border);
+  border-radius: 12px; padding: 16px 18px;
+}
+.note-card h3 {
+  margin: 0 0 8px; font-size: 13.5px; font-weight: 600;
+  display: flex; align-items: center; gap: 7px;
+}
+.note-card ul { margin: 0; padding-left: 17px; color: var(--text-secondary); font-size: 12.5px; line-height: 1.65; }
+.note-card li { margin: 4px 0; }
+.note-card b { color: var(--text-primary); font-weight: 600; }
+.note-card code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px;
+  padding: 1px 5px; border-radius: 4px; background: var(--bg-card-subtle); color: var(--text-primary);
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== Top Prototype Review Toolbar ==================== -->
+<div class="proto-bar">
+  <div class="proto-row">
+    <div class="proto-title">
+      <span>History 空状态 &amp; 搜索无结果</span>
+      <span class="proto-badge">BoardUI v2</span>
+    </div>
+
+    <div class="proto-grp">
+      <span class="proto-lbl">空状态 History</span>
+      <button class="chip on" data-preset="empty-fresh">全新空白</button>
+      <button class="chip" data-preset="empty-cleared">已清空(有设备)</button>
+      <button class="chip" data-preset="empty-pinned">收藏为空</button>
+      <button class="chip" data-preset="empty-tag">标签为空</button>
+      <button class="chip" data-preset="empty-device">设备为空</button>
+    </div>
+
+    <div class="proto-div"></div>
+
+    <div class="proto-grp">
+      <span class="proto-lbl">搜索无结果</span>
+      <button class="chip" data-preset="search-keyword">纯关键词</button>
+      <button class="chip" data-preset="search-composite">组合筛选过严</button>
+      <button class="chip" data-preset="search-scoped">收藏内未命中</button>
+      <button class="chip" data-preset="search-filter-only">仅筛选无命中</button>
+      <button class="chip" data-preset="search-unavailable">索引不可用</button>
+    </div>
+
+    <div class="proto-div"></div>
+
+    <div class="proto-grp">
+      <button class="chip" data-preset="populated">有内容(对照)</button>
+    </div>
+  </div>
+
+  <div class="proto-row">
+    <div class="proto-grp">
+      <span class="proto-lbl">视图</span>
+      <button class="chip on" data-layout="list">列表</button>
+      <button class="chip" data-layout="grid">网格</button>
+    </div>
+    <div class="proto-div"></div>
+    <div class="proto-grp">
+      <span class="proto-lbl">窗口</span>
+      <button class="chip on" data-size="wide">宽屏 1120</button>
+      <button class="chip" data-size="compact">紧凑 700</button>
+    </div>
+    <div class="proto-div"></div>
+    <div class="proto-grp">
+      <span class="proto-lbl">外观</span>
+      <button class="chip on" data-theme-btn="light">浅色</button>
+      <button class="chip" data-theme-btn="dark">深色</button>
+    </div>
+    <div class="proto-sp"></div>
+    <button class="chip sim" id="btn-sim-copy">+ 模拟本机复制 (⌘C)</button>
+  </div>
+</div>
+
+<!-- ==================== Desktop Window Stage ==================== -->
+<div class="stage">
+  <div class="app-window" id="app-window">
+    <div class="sb-scrim" id="sb-scrim"></div>
+
+    <!-- Left Sidebar -->
+    <aside class="sidebar" aria-label="资料库">
+      <div class="sb-inner">
+        <div class="sb-top">
+          <div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+          <button class="icon-btn" id="btn-sb-toggle-in" title="切换侧栏"></button>
+        </div>
+        <div class="sb-scroll" id="sb-scroll"></div>
+        <div class="sb-foot" id="sb-foot"></div>
+      </div>
+    </aside>
+
+    <!-- Main Content Workspace -->
+    <main class="workspace">
+      <header class="toolbar">
+        <button class="icon-btn" id="btn-sb-toggle-out" title="展开侧栏" style="display:none"></button>
+        <div class="tb-heading">
+          <span class="tb-title" id="tb-title">全部</span>
+          <span class="tb-sub" id="tb-sub">0</span>
+        </div>
+        <div class="tb-sp"></div>
+
+        <!-- Unified U1 Centered Omnibar -->
+        <div class="omnibar-wrap" id="omnibar-wrap">
+          <div class="omnibar" id="omnibar">
+            <span class="omnibar-ic" id="omni-ic"></span>
+            <div class="omnibar-tokens" id="omni-tokens"></div>
+            <input id="omni-input" type="text" placeholder="搜索或筛选…" autocomplete="off" spellcheck="false">
+            <span class="omni-kbd" id="omni-kbd">⌘F</span>
+            <button class="omni-clear" id="omni-clear" title="清除搜索" style="display:none"></button>
+            <span class="omni-sep"></span>
+            <button class="omni-filter" id="omni-filter-btn" title="筛选条件"></button>
+          </div>
+          <div class="filter-pop" id="filter-pop"></div>
+        </div>
+
+        <div class="tb-sp"></div>
+
+        <!-- Layout Switch & History Commands -->
+        <div class="tb-trailing">
+          <div class="seg" role="radiogroup" aria-label="显示方式">
+            <button id="seg-list" class="on" title="列表"></button>
+            <button id="seg-grid" title="网格"></button>
+          </div>
+          <div class="tb-cmds" id="tb-cmds"></div>
+        </div>
+      </header>
+
+      <div class="stage-body" id="stage-body"></div>
+      <div class="app-toast" id="app-toast"></div>
+    </main>
+  </div>
+
+  <!-- ==================== Design Rationale Notes ==================== -->
+  <section class="notes">
+    <div class="note-card">
+      <h3>1. 解决的现况问题与布局决策</h3>
+      <ul>
+        <li><b>消除误报：</b>现况 <code>history.go</code> 对所有 <code>len(items)==0</code> 统一显示「没有匹配的历史 / 清除筛选」，首次使用空白历史时语义错误。新设计将<b>空历史</b>与<b>搜索/筛选无结果</b>彻底分流。</li>
+        <li><b>统一全画布空状态：</b>列表模式下 <code>len(items)==0</code> 时不再渲染右侧 <code>PaneDetail</code>（「未选择历史」），避免双栏同时出现两个空状态；列表与网格两种布局共享同一居中画布。</li>
+        <li><b>复用现有 BoardUI / desktopkit 资产：</b>所有视觉元素均由 <code>SubtleCardSurface</code>、圆角卡片、<code>InsetList</code>、<code>SearchToken</code> 与既有 Remix 图标构成，无额外外部依赖。</li>
+      </ul>
+    </div>
+    <div class="note-card">
+      <h3>2. 空状态 History 页面设计要点</h3>
+      <ul>
+        <li><b>实时监听安心感：</b>全新空白态顶部提供温和的 <code>● 正在监听本机剪贴板</code> 状态胶囊，消除新用户“是否需要手动开启监听”的疑虑。</li>
+        <li><b>3 行紧凑能力卡：</b>用单张 <code>InsetList</code> 风格卡片收束「复制即记录」「快捷面板」「跨设备同步」，不堆砌大卡片；当已关联设备时自动切换为已连接状态摘要。</li>
+        <li><b>侧栏分区独立语义：</b>「已收藏」「标签」「设备（区分在线/离线）」各自拥有精准图标、色点/状态点、操作提示与一键「返回全部项目」。</li>
+      </ul>
+    </div>
+    <div class="note-card">
+      <h3>3. 未搜索到内容的空状态设计要点</h3>
+      <ul>
+        <li><b>直接复用 Engine 计数契约：</b>「放宽条件」卡片基于既有 <code>POST /v1/history/search/counts</code>（与快捷面板一致），对当前生效的每个维度独立计算移除后的精确命中数（如 <code>移除「时间：今天」 · 3 条</code>），一键点开结果。</li>
+        <li><b>明确回显与就地移除：</b>标题准确回显搜索词（超长截断），组合筛选时以同色可移除 Token 回显条件，点击 <code>×</code> 或放宽行均可立即恢复结果。</li>
+        <li><b>诚实解释搜索边界：</b>纯关键词未命中时说明仅检索文本、HTML 正文与文件名（不检索图片 OCR/文件内容），并给出 <code>/类型 #标签 @设备 on:时间</code> 可点选语法提示；索引异常时独立呈现警告态而非误报为空。</li>
+      </ul>
+    </div>
+    <div class="note-card">
+      <h3>4. 交互试玩指南</h3>
+      <ul>
+        <li>点击顶部场景标签切换全部 11 种状态，也可直接点击左侧栏导航、在搜索栏输入文字或点击漏斗按钮修改筛选。</li>
+        <li>在<b>「组合筛选过严」「收藏内未命中」「仅筛选无命中」</b>下，直接点击<b>「放宽条件」</b>里的任意一行，即可实时看到匹配结果出现。</li>
+        <li>在<b>「全新空白」</b>下点击画布内的「复制示例试试」或右上角 <b>+ 模拟本机复制</b>，可体验从空历史平滑进入正常列表的过渡。</li>
+      </ul>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ---------------- Minimal Remix-aligned Crisp Icons ---------------- */
+const IC = {
+  sidebar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></svg>',
+  history: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>',
+  star: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 3 14.9 8.9 21.4 9.8 16.7 14.4 17.8 20.8 12 17.8 6.2 20.8 7.3 14.4 2.6 9.8 9.1 8.9 12 3"/></svg>',
+  plus: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  devices: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="11" rx="2"/><path d="M6 19h6"/><rect x="15" y="9" width="7" height="11" rx="1.5"/></svg>',
+  settings: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  search: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  searchLg: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/><path d="M8.5 11h5" opacity=".7"/></svg>',
+  filter: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>',
+  filterLg: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg>',
+  close: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  list: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+  grid: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+  send: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>',
+  more: '<svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>',
+  copy: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  zap: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>',
+  tagLg: '<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7.5" cy="7.5" r="1.2" fill="currentColor"/></svg>',
+  starLg: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 3 14.9 8.9 21.4 9.8 16.7 14.4 17.8 20.8 12 17.8 6.2 20.8 7.3 14.4 2.6 9.8 9.1 8.9 12 3"/></svg>',
+  laptopLg: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>',
+  warnLg: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>',
+  chevRight: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+  arrowBack: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
+  undo: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>',
+  catMark: '<svg width="15" height="15" viewBox="0 0 1254 1254" fill="currentColor"><path fill-rule="evenodd" d="M313 274H425V336H482V397H537V460H717V397H772V336H829V274H941V590H1006V663H941V725H1067V785H941V843H1006V909H941V874H878V952H376V874H313V909H247V843H313V785H186V725H313V663H247V590H313ZM392 460H457V523H392ZM797 460H862V523H797ZM454 634H521V742H454ZM733 634H801V742H733ZM565 779H689V829H653V875H601V829H565Z"/></svg>'
+};
+
+/* ---------------- Sample Dataset ---------------- */
+const BASE_ENTRIES = [
+  { id:'e1', kind:'code', title:'docker compose up -d --build', text:'docker compose -f deploy/docker-compose.prod.yml up -d --build\n# 部署前确认 .env.production 已同步', source:'local', date:'今天 14:22', day:'今天', timeBucket:'today', size:'92 字符', tags:['text'], pinned:true },
+  { id:'e2', kind:'text', title:'发布检查清单：v2.0.0-alpha.4 桌面端构建', text:'1. 运行 make docs-check 确认契约与架构页无过期\n2. 验证 macOS / Windows 签名与安装包替换路径\n3. 部署 release workflow 并核对 SHA256SUMS', source:'local', date:'今天 13:45', day:'今天', timeBucket:'today', size:'118 字符', tags:['text'], pinned:true },
+  { id:'e3', kind:'link', title:'UniClipboard Release Notes — deploy pipeline', text:'https://github.com/UniClipboard/uniclipboard/releases/tag/desktop/v2.0.0-build.1', source:'iphone', date:'今天 11:08', day:'今天', timeBucket:'today', size:'80 字符', tags:['text'], pinned:false },
+  { id:'e4', kind:'image', title:'boardui-empty-state-sketch.png', text:'boardui-empty-state-sketch.png · 1440 × 900 · PNG', source:'local', date:'今天 10:19', day:'今天', timeBucket:'today', size:'248 KB', tags:['image'], pinned:false },
+  { id:'e5', kind:'code', title:'deploy.sh — 蓝绿发布脚本片段', text:'#!/usr/bin/env bash\nset -euo pipefail\necho "Deploying release $RELEASE_TAG to staging..."\n./scripts/deploy --verify-health', source:'local', date:'昨天 21:14', day:'昨天', timeBucket:'yesterday', size:'136 字符', tags:['text'], pinned:false },
+  { id:'e6', kind:'text', title:'docker buildx multi-arch 命令备忘', text:'docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/uniclipboard/unicd:latest --push .', source:'iphone', date:'昨天 19:03', day:'昨天', timeBucket:'yesterday', size:'102 字符', tags:['text'], pinned:false },
+  { id:'e7', kind:'image', title:'deploy-architecture-diagram.png', text:'deploy-architecture-diagram.png · 1920 × 1080 · PNG', source:'iphone', date:'昨天 16:40', day:'昨天', timeBucket:'yesterday', size:'412 KB', tags:['image'], pinned:false },
+  { id:'e8', kind:'file', title:'Q4-产品路线图-终稿.pdf', text:'Q4-产品路线图-终稿.pdf\n会议纪要-11月.md', source:'local', date:'昨天 15:10', day:'昨天', timeBucket:'yesterday', size:'2.4 MB', tags:['file'], pinned:false },
+  { id:'e9', kind:'folder', title:'design-tokens-export/', text:'design-tokens-export/\n├── light.json\n├── dark.json\n└── typography.json', source:'local', date:'3 天前 18:05', day:'最近 7 天', timeBucket:'last_7d', size:'14 个文件 · 320 KB', tags:['file'], pinned:false },
+  { id:'e10', kind:'text', title:'Docker 容器日志排查常用参数', text:'docker logs --since 15m --tail 200 -f unic-sync-gateway', source:'local', date:'4 天前 09:50', day:'最近 7 天', timeBucket:'last_7d', size:'56 字符', tags:['text'], pinned:false },
+  { id:'e11', kind:'folder', title:'unic-release-artifacts/', text:'unic-release-artifacts/\n├── unic-darwin-arm64.tar.gz\n└── SHA256SUMS', source:'local', date:'5 天前 20:11', day:'最近 7 天', timeBucket:'last_7d', size:'6 个文件 · 41.2 MB', tags:['file'], pinned:false },
+  { id:'e12', kind:'image', title:'ios-quick-panel-screenshot.png', text:'ios-quick-panel-screenshot.png · 1179 × 2556 · PNG', source:'iphone', date:'6 天前 12:30', day:'最近 7 天', timeBucket:'last_7d', size:'518 KB', tags:['image'], pinned:false }
+];
+
+const TAGS = [
+  { id:'text',  label:'文本', color:'var(--tag-blue-dot)',   bg:'var(--tag-blue-bg)',   fg:'var(--tag-blue-fg)' },
+  { id:'image', label:'图片', color:'var(--tag-orange-dot)', bg:'var(--tag-orange-bg)', fg:'var(--tag-orange-fg)' },
+  { id:'file',  label:'文件', color:'var(--tag-lime-dot)',   bg:'var(--tag-lime-bg)',   fg:'var(--tag-lime-fg)' },
+  { id:'work',  label:'工作', color:'var(--tag-purple-dot)', bg:'var(--tag-purple-bg)', fg:'var(--tag-purple-fg)' }
+];
+
+const KIND_LABELS = { text:'文本', code:'代码', link:'链接', image:'图片', file:'文件', folder:'文件夹' };
+const TIME_LABELS = { today:'今天', yesterday:'昨天', last_7d:'最近 7 天' };
+
+/* ---------------- App State ---------------- */
+const state = {
+  preset: 'empty-fresh',
+  theme: 'light',
+  layout: 'list',
+  size: 'wide',
+  sidebarHidden: false,
+  filterOpen: false,
+  nav: 'all',          // 'all' | 'pinned' | 'tag:<id>' | 'device:<id>'
+  query: '',
+  kind: '',            // '' | 'text' | 'image' | 'file' | 'folder' | 'code' | 'link'
+  tag: '',             // '' | tag id
+  source: '',          // '' | 'local' | 'iphone' | 'mba'
+  timeRange: '',       // '' | 'today' | 'yesterday' | 'last_7d'
+  unavailable: false,  // simulates search index unavailable
+  entries: [],
+  devices: [],
+  selectedId: '',
+  simCounter: 0
+};
+
+const FULL_DEVICES = [
+  { id:'iphone', name:'iPhone 16 Pro', online:true },
+  { id:'mba',    name:'MacBook Air',   online:false }
+];
+
+const SAMPLE_CLIPS = [
+  { kind:'text', title:'让每一次复制更有用 — UniClipboard 示例文本', text:'让每一次复制更有用 — 这是一条刚刚捕获的本机剪贴板文本。你可以随时按 ⇧⌘V 唤起快捷面板搜索并粘贴它。', tags:['text'] },
+  { kind:'link', title:'https://uniclipboard.app/docs/quick-start', text:'https://uniclipboard.app/docs/quick-start', tags:['text'] },
+  { kind:'code', title:'go test -race ./...', text:'go test -race ./app/desktop/internal/desktopui/...', tags:['text'] }
+];
+
+/* ---------------- Filtering & Smart Relaxation Engine ---------------- */
+function matchesQuery(entry, q) {
+  if (q.nav === 'pinned' && !entry.pinned) return false;
+  if (q.nav.startsWith('tag:')) {
+    const tid = q.nav.slice(4);
+    if (!entry.tags.includes(tid)) return false;
+  }
+  if (q.nav.startsWith('device:')) {
+    const did = q.nav.slice(7);
+    if (entry.source !== did) return false;
+  }
+  if (q.kind) {
+    if (q.kind === 'text') {
+      if (!['text', 'code', 'link'].includes(entry.kind)) return false;
+    } else if (entry.kind !== q.kind) {
+      return false;
+    }
+  }
+  if (q.tag && !entry.tags.includes(q.tag)) return false;
+  if (q.source && entry.source !== q.source) return false;
+  if (q.timeRange) {
+    if (q.timeRange === 'today' && entry.timeBucket !== 'today') return false;
+    if (q.timeRange === 'yesterday' && entry.timeBucket !== 'yesterday') return false;
+    // last_7d includes all in sample dataset
+  }
+  if (q.query.trim()) {
+    const terms = q.query.trim().toLowerCase().split(/\s+/);
+    const hay = (entry.title + '\n' + entry.text).toLowerCase();
+    for (const t of terms) {
+      if (!hay.includes(t)) return false;
+    }
+  }
+  return true;
+}
+
+function getCurrentQueryObj() {
+  return {
+    nav: state.nav,
+    query: state.query,
+    kind: state.kind,
+    tag: state.tag,
+    source: state.source,
+    timeRange: state.timeRange
+  };
+}
+
+function getFiltered(customQ) {
+  const q = customQ || getCurrentQueryObj();
+  if (state.unavailable && (q.query.trim() || state.preset === 'search-unavailable')) return [];
+  return state.entries.filter(e => matchesQuery(e, q));
+}
+
+function activeFilterCount() {
+  let n = 0;
+  if (state.kind) n++;
+  if (state.tag) n++;
+  if (state.source) n++;
+  if (state.timeRange) n++;
+  return n;
+}
+
+function hasSearchOrFilter() {
+  return Boolean(state.query.trim() || state.kind || state.tag || state.source || state.timeRange);
+}
+
+function deviceName(id) {
+  if (id === 'local') return '本机';
+  const d = state.devices.find(x => x.id === id) || FULL_DEVICES.find(x => x.id === id);
+  return d ? d.name : id;
+}
+
+function tagObj(id) {
+  return TAGS.find(t => t.id === id) || { id, label:id, color:'var(--tag-gray-dot)', bg:'var(--tag-gray-bg)', fg:'var(--tag-gray-fg)' };
+}
+
+function computeRelaxations() {
+  const base = getCurrentQueryObj();
+  const candidates = [];
+
+  if (base.nav !== 'all') {
+    const next = { ...base, nav: 'all' };
+    const n = state.entries.filter(e => matchesQuery(e, next)).length;
+    if (n > 0) {
+      const scopeName = base.nav === 'pinned' ? '已收藏'
+        : base.nav.startsWith('tag:') ? `标签「${tagObj(base.nav.slice(4)).label}」`
+        : `设备「${deviceName(base.nav.slice(7))}」`;
+      candidates.push({
+        id: 'relax-scope',
+        label: `在「全部项目」中查找（退出${scopeName}）`,
+        count: n,
+        apply: () => { state.nav = 'all'; }
+      });
+    }
+  }
+  if (base.timeRange) {
+    const next = { ...base, timeRange: '' };
+    const n = state.entries.filter(e => matchesQuery(e, next)).length;
+    if (n > 0) {
+      candidates.push({
+        id: 'relax-time',
+        label: `移除时间限制「${TIME_LABELS[base.timeRange]}」`,
+        count: n,
+        apply: () => { state.timeRange = ''; }
+      });
+    }
+  }
+  if (base.kind) {
+    const next = { ...base, kind: '' };
+    const n = state.entries.filter(e => matchesQuery(e, next)).length;
+    if (n > 0) {
+      candidates.push({
+        id: 'relax-kind',
+        label: `不限内容类型（移除「${KIND_LABELS[base.kind]}」）`,
+        count: n,
+        apply: () => { state.kind = ''; }
+      });
+    }
+  }
+  if (base.source) {
+    const next = { ...base, source: '' };
+    const n = state.entries.filter(e => matchesQuery(e, next)).length;
+    if (n > 0) {
+      candidates.push({
+        id: 'relax-source',
+        label: `不限来源设备（移除「${deviceName(base.source)}」）`,
+        count: n,
+        apply: () => { state.source = ''; }
+      });
+    }
+  }
+  if (base.tag) {
+    const next = { ...base, tag: '' };
+    const n = state.entries.filter(e => matchesQuery(e, next)).length;
+    if (n > 0) {
+      candidates.push({
+        id: 'relax-tag',
+        label: `移除标签「${tagObj(base.tag).label}」`,
+        count: n,
+        apply: () => { state.tag = ''; }
+      });
+    }
+  }
+  if (base.query.trim() && (base.kind || base.tag || base.source || base.timeRange)) {
+    const next = { ...base, query: '' };
+    const n = state.entries.filter(e => matchesQuery(e, next)).length;
+    if (n > 0) {
+      candidates.push({
+        id: 'relax-query',
+        label: `清除关键词 “${trunc(base.query.trim(), 16)}”，仅保留筛选条件`,
+        count: n,
+        apply: () => { state.query = ''; }
+      });
+    }
+  }
+  return candidates.slice(0, 4);
+}
+
+function trunc(s, max) {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------------- Toast Helper ---------------- */
+let toastTimer = null;
+function showToast(msg) {
+  const el = document.getElementById('app-toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+/* ---------------- Preset Loader ---------------- */
+function applyPreset(name) {
+  state.preset = name;
+  state.filterOpen = false;
+  state.unavailable = false;
+  state.query = '';
+  state.kind = '';
+  state.tag = '';
+  state.source = '';
+  state.timeRange = '';
+  state.nav = 'all';
+
+  switch (name) {
+    case 'empty-fresh':
+      state.entries = [];
+      state.devices = [];
+      break;
+    case 'empty-cleared':
+      state.entries = [];
+      state.devices = JSON.parse(JSON.stringify(FULL_DEVICES));
+      break;
+    case 'empty-pinned':
+      state.entries = BASE_ENTRIES.map(e => ({ ...e, pinned: false }));
+      state.devices = JSON.parse(JSON.stringify(FULL_DEVICES));
+      state.nav = 'pinned';
+      break;
+    case 'empty-tag':
+      state.entries = JSON.parse(JSON.stringify(BASE_ENTRIES));
+      state.devices = JSON.parse(JSON.stringify(FULL_DEVICES));
+      state.nav = 'tag:work';
+      break;
+    case 'empty-device':
+      state.entries = JSON.parse(JSON.stringify(BASE_ENTRIES));
+      state.devices = JSON.parse(JSON.stringify(FULL_DEVICES));
+      state.nav = 'device:mba';
+      break;
+    case 'search-keyword':
+      state.entries = JSON.parse(JSON.stringify(BASE_ENTRIES));
+      state.devices = JSON.parse(JSON.stringify(FULL_DEVICES));
+      state.query = 'webpack.config.mjs';
+      break;
+    case 'search-composite':
+      state.entries = JSON.parse(JSON.stringify(BASE_ENTRIES));
+      state.devices = JSON.parse(JSON.stringify(FULL_DEVICES));
+      state.query = 'deploy';
+      state.kind = 'image';
+      state.source = 'iphone';
+      state.timeRange = 'today';
+      break;
+    case 'search-scoped':
+      state.entries = JSON.parse(JSON.stringify(BASE_ENTRIES));
+      state.devices = JSON.parse(JSON.stringify(FULL_DEVICES));
+      state.nav = 'pinned';
+      state.query = 'architecture';
+      break;
+    case 'search-filter-only':
+      state.entries = JSON.parse(JSON.stringify(BASE_ENTRIES));
+      state.devices = JSON.parse(JSON.stringify(FULL_DEVICES));
+      state.kind = 'folder';
+      state.timeRange = 'today';
+      break;
+    case 'search-unavailable':
+      state.entries = JSON.parse(JSON.stringify(BASE_ENTRIES));
+      state.devices = JSON.parse(JSON.stringify(FULL_DEVICES));
+      state.query = 'deploy';
+      state.unavailable = true;
+      break;
+    case 'populated':
+      state.entries = JSON.parse(JSON.stringify(BASE_ENTRIES));
+      state.devices = JSON.parse(JSON.stringify(FULL_DEVICES));
+      break;
+  }
+  syncPresetChips();
+  render();
+}
+
+function simulateCopy() {
+  const sample = SAMPLE_CLIPS[state.simCounter % SAMPLE_CLIPS.length];
+  state.simCounter++;
+  const newEntry = {
+    id: 'sim-' + Date.now() + '-' + state.simCounter,
+    kind: sample.kind,
+    title: sample.title,
+    text: sample.text,
+    source: 'local',
+    date: '刚刚',
+    day: '今天',
+    timeBucket: 'today',
+    size: sample.text.length + ' 字符',
+    tags: [...sample.tags],
+    pinned: state.nav === 'pinned'
+  };
+  if (state.nav.startsWith('tag:')) {
+    const tid = state.nav.slice(4);
+    if (!newEntry.tags.includes(tid)) newEntry.tags.push(tid);
+  }
+  if (state.nav.startsWith('device:')) {
+    newEntry.source = state.nav.slice(7);
+  }
+  state.entries.unshift(newEntry);
+  state.query = '';
+  state.kind = '';
+  state.tag = '';
+  state.source = '';
+  state.timeRange = '';
+  state.unavailable = false;
+  state.selectedId = newEntry.id;
+  showToast('已捕获新剪贴板内容');
+  render();
+}
+
+/* ---------------- Rendering ---------------- */
+function renderSidebar() {
+  const pinnedCount = state.entries.filter(e => e.pinned).length;
+  const tagCount = id => state.entries.filter(e => e.tags.includes(id)).length;
+
+  let html = `
+    <div class="sb-sec">
+      <button class="nav-item ${state.nav==='all'?'on':''}" data-nav="all">
+        <span class="nav-ic">${IC.history}</span>
+        <span class="nav-lbl">全部项目</span>
+        <span class="nav-cnt">${state.entries.length}</span>
+      </button>
+      <button class="nav-item ${state.nav==='pinned'?'on':''}" data-nav="pinned">
+        <span class="nav-ic">${IC.star}</span>
+        <span class="nav-lbl">已收藏</span>
+        <span class="nav-cnt">${pinnedCount}</span>
+      </button>
+    </div>
+
+    <div class="sb-sec">
+      <div class="sb-sec-hd">
+        <span class="sb-sec-lbl">标签</span>
+        <button class="sb-sec-act" data-toast="打开标签管理" title="管理标签">${IC.plus}</button>
+      </div>
+      ${TAGS.map(t => `
+        <button class="nav-item ${state.nav==='tag:'+t.id?'on':''}" data-nav="tag:${t.id}">
+          <span class="nav-swatch"><i style="background:${t.color}"></i></span>
+          <span class="nav-lbl">${t.label}</span>
+          <span class="nav-cnt">${tagCount(t.id)}</span>
+        </button>
+      `).join('')}
+      <button class="nav-more" data-toast="查看全部标签">全部标签 · ${TAGS.length}</button>
+    </div>
+
+    <div class="sb-sec">
+      <div class="sb-sec-hd">
+        <span class="sb-sec-lbl">设备</span>
+      </div>
+      ${state.devices.length === 0
+        ? `<div class="sb-empty-dev">尚未关联其他设备</div>`
+        : state.devices.map(d => `
+          <button class="nav-item ${state.nav==='device:'+d.id?'on':''}" data-nav="device:${d.id}">
+            <span class="nav-status"><i style="background:${d.online ? 'var(--ok-dot)' : 'var(--text-tertiary)'}"></i></span>
+            <span class="nav-lbl">${esc(d.name)}</span>
+            <span class="nav-cnt">${d.online ? '' : '离线'}</span>
+          </button>
+        `).join('')}
+    </div>
+  `;
+
+  document.getElementById('sb-scroll').innerHTML = html;
+  document.getElementById('sb-foot').innerHTML = `
+    <button class="nav-item" data-toast="前往设备管理页">
+      <span class="nav-ic">${IC.devices}</span>
+      <span class="nav-lbl">管理设备…</span>
+    </button>
+    <button class="nav-item" data-toast="前往设置页">
+      <span class="nav-ic">${IC.settings}</span>
+      <span class="nav-lbl">设置…</span>
+      <span class="nav-kbd">⌘,</span>
+    </button>
+  `;
+}
+
+function renderToolbar(items) {
+  const titleMap = () => {
+    if (state.nav === 'all') return '全部';
+    if (state.nav === 'pinned') return '已收藏';
+    if (state.nav.startsWith('tag:')) return tagObj(state.nav.slice(4)).label;
+    if (state.nav.startsWith('device:')) return deviceName(state.nav.slice(7));
+    return '全部';
+  };
+  document.getElementById('tb-title').textContent = titleMap();
+  document.getElementById('tb-sub').textContent = state.unavailable ? '—' : String(items.length);
+
+  // Sidebar toggles
+  const sbIn = document.getElementById('btn-sb-toggle-in');
+  const sbOut = document.getElementById('btn-sb-toggle-out');
+  sbIn.innerHTML = IC.sidebar;
+  sbOut.innerHTML = IC.sidebar;
+  sbOut.style.display = (state.sidebarHidden || state.size === 'compact') ? 'grid' : 'none';
+
+  // Omnibar
+  document.getElementById('omni-ic').innerHTML = IC.search;
+  const tokens = [];
+  if (state.kind)      tokens.push({ id:'kind',   cls:'tok-type',   f:'类型', v:KIND_LABELS[state.kind] });
+  if (state.tag)       tokens.push({ id:'tag',    cls:'tok-tag',    f:'标签', v:tagObj(state.tag).label });
+  if (state.source)    tokens.push({ id:'source', cls:'tok-source', f:'设备', v:deviceName(state.source) });
+  if (state.timeRange) tokens.push({ id:'time',   cls:'tok-time',   f:'时间', v:TIME_LABELS[state.timeRange] });
+
+  const visibleTokens = tokens.slice(0, 2);
+  const hiddenCount = tokens.length - visibleTokens.length;
+  document.getElementById('omni-tokens').innerHTML = visibleTokens.map(t => `
+    <span class="omni-tok ${t.cls}">
+      <span class="f">${t.f}</span>
+      <span class="v">${esc(t.v)}</span>
+      <button data-rm-tok="${t.id}" title="移除${t.f}">${IC.close}</button>
+    </span>
+  `).join('') + (hiddenCount > 0
+    ? `<button class="omni-tok tok-other" style="border:0;padding:0 7px;cursor:pointer" data-act="toggle-fp" title="查看全部 ${tokens.length} 项筛选"><span class="v">+${hiddenCount}</span></button>`
+    : '');
+
+  const input = document.getElementById('omni-input');
+  if (input.value !== state.query) input.value = state.query;
+  input.placeholder = tokens.length > 0 ? '' : '搜索或筛选…';
+
+  const active = hasSearchOrFilter();
+  document.getElementById('omni-kbd').style.display = active ? 'none' : 'inline-block';
+  const clearBtn = document.getElementById('omni-clear');
+  clearBtn.innerHTML = IC.close;
+  clearBtn.style.display = active ? 'grid' : 'none';
+
+  const fCnt = activeFilterCount();
+  const fBtn = document.getElementById('omni-filter-btn');
+  fBtn.className = 'omni-filter' + ((fCnt > 0 || state.filterOpen) ? ' active' : '');
+  fBtn.innerHTML = IC.filter + (fCnt > 0 ? `<span class="omni-fcnt">${fCnt}</span>` : '');
+
+  document.getElementById('omnibar').classList.toggle('open', state.filterOpen);
+  renderFilterPopover();
+
+  // Layout SegmentedControl & Commands
+  const segList = document.getElementById('seg-list');
+  const segGrid = document.getElementById('seg-grid');
+  segList.innerHTML = IC.list;
+  segGrid.innerHTML = IC.grid;
+  segList.classList.toggle('on', state.layout === 'list');
+  segGrid.classList.toggle('on', state.layout === 'grid');
+
+  const disabled = items.length === 0 ? 'disabled' : '';
+  document.getElementById('tb-cmds').innerHTML = `
+    <button class="icon-btn" ${disabled} data-toast="发送到设备" title="发送到设备">${IC.send}</button>
+    <button class="icon-btn" ${disabled} data-toast="切换收藏" title="切换收藏">${IC.star}</button>
+    <button class="icon-btn" data-toast="更多操作" title="更多操作">${IC.more}</button>
+  `;
+}
+
+function renderFilterPopover() {
+  const pop = document.getElementById('filter-pop');
+  pop.classList.toggle('open', state.filterOpen);
+  if (!state.filterOpen) return;
+
+  const kinds = [['text','文本'],['image','图片'],['file','文件'],['folder','文件夹']];
+  const times = [['today','今天'],['yesterday','昨天'],['last_7d','最近 7 天']];
+  const devs  = [['local','本机'], ...FULL_DEVICES.map(d => [d.id, d.name])];
+
+  pop.innerHTML = `
+    <div>
+      <div class="fp-sec-lbl">内容类型</div>
+      <div class="fp-pills">
+        ${kinds.map(([k,l]) => `<button class="fp-pill ${state.kind===k?'on':''}" data-fp-kind="${k}">${l}</button>`).join('')}
+      </div>
+    </div>
+    <div>
+      <div class="fp-sec-lbl">时间范围</div>
+      <div class="fp-pills">
+        ${times.map(([k,l]) => `<button class="fp-pill ${state.timeRange===k?'on':''}" data-fp-time="${k}">${l}</button>`).join('')}
+      </div>
+    </div>
+    <div>
+      <div class="fp-sec-lbl">来源设备</div>
+      <div class="fp-pills">
+        ${devs.map(([k,l]) => `<button class="fp-pill ${state.source===k?'on':''}" data-fp-source="${k}">${esc(l)}</button>`).join('')}
+      </div>
+    </div>
+    <div class="fp-foot">
+      <button class="btn subtle" style="height:26px;padding:0 8px;font-size:12px" data-act="clear-filters">清除筛选</button>
+      <button class="btn" style="height:26px;padding:0 10px;font-size:12px" data-act="close-fp">完成</button>
+    </div>
+  `;
+}
+
+/* ---------------- Empty States Rendering ---------------- */
+function renderEmptyState() {
+  // 1. Search Index Unavailable Boundary State
+  if (state.unavailable) {
+    return `
+      <div class="empty-canvas">
+        <div class="empty-shell">
+          <div class="empty-icon-badge warn">${IC.warnLg}</div>
+          <h2 class="empty-title">搜索索引暂不可用</h2>
+          <p class="empty-desc">
+            本地搜索索引正在修复或遇到预算限制。为避免漏检，当前暂停关键词检索；你仍可按侧栏或时间浏览完整历史。
+          </p>
+          <div class="empty-actions">
+            <button class="btn primary" data-act="clear-all">浏览全部历史</button>
+            <button class="btn" data-toast="正在重试索引检查…">重试搜索</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 2. Search / Filter No-Results State (any search text or filter token active)
+  if (hasSearchOrFilter()) {
+    return renderSearchEmptyState();
+  }
+
+  // 3. Scoped Empty History States (Favorites / Tag / Device)
+  if (state.nav === 'pinned') {
+    return `
+      <div class="empty-canvas">
+        <div class="empty-shell">
+          <div class="empty-icon-badge star">${IC.starLg}</div>
+          <h2 class="empty-title">还没有收藏的内容</h2>
+          <p class="empty-desc">
+            选中任意历史条目后点击工具栏星标，或按下 <kbd>⌘P</kbd>，即可把常用片段固定在这里。
+          </p>
+          <div class="empty-actions">
+            ${state.entries.length > 0
+              ? `<button class="btn" data-act="go-all">${IC.arrowBack} 返回全部项目 (${state.entries.length})</button>`
+              : `<button class="btn" data-act="sim-copy">${IC.copy} 复制示例试试</button>`}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (state.nav.startsWith('tag:')) {
+    const t = tagObj(state.nav.slice(4));
+    return `
+      <div class="empty-canvas">
+        <div class="empty-shell">
+          <div class="empty-icon-badge" style="background:${t.bg};color:${t.fg};border-color:color-mix(in srgb, ${t.color} 28%, transparent)">
+            ${IC.tagLg}
+            <span class="badge-pip"><i style="background:${t.color}"></i></span>
+          </div>
+          <h2 class="empty-title">“${esc(t.label)}” 标签下还没有内容</h2>
+          <p class="empty-desc">
+            选中任意历史条目后按 <kbd>T</kbd> 添加「${esc(t.label)}」标签，相关内容会自动归集在这里。
+          </p>
+          <div class="empty-actions">
+            ${state.entries.length > 0 ? `<button class="btn" data-act="go-all">${IC.arrowBack} 返回全部项目 (${state.entries.length})</button>` : ''}
+            <button class="btn subtle" data-toast="打开标签管理">管理标签…</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (state.nav.startsWith('device:')) {
+    const devId = state.nav.slice(7);
+    const dev = state.devices.find(d => d.id === devId) || { id: devId, name: deviceName(devId), online: false };
+    const dotCol = dev.online ? 'var(--ok-dot)' : 'var(--text-tertiary)';
+    return `
+      <div class="empty-canvas">
+        <div class="empty-shell">
+          <div class="empty-icon-badge">
+            ${IC.laptopLg}
+            <span class="badge-pip"><i style="background:${dotCol}"></i></span>
+          </div>
+          <h2 class="empty-title">还没有来自 ${esc(dev.name)} 的历史</h2>
+          <p class="empty-desc">
+            ${dev.online
+              ? `在 ${esc(dev.name)} 上复制内容后，会自动同步到这台设备。`
+              : `${esc(dev.name)} 当前离线。设备重新连线后，新复制的内容会自动同步到这里。`}
+          </p>
+          <div class="empty-actions">
+            ${state.entries.length > 0 ? `<button class="btn" data-act="go-all">${IC.arrowBack} 返回全部项目 (${state.entries.length})</button>` : ''}
+            <button class="btn subtle" data-toast="打开设备管理页">查看设备状态…</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // 4. Fresh / Completely Empty All-History State
+  const hasDevices = state.devices.length > 0;
+  const onlineCount = state.devices.filter(d => d.online).length;
+  return `
+    <div class="empty-canvas">
+      <div class="empty-shell">
+        <div class="canvas-emblem" aria-hidden="true">
+          <div class="ce-ghost back-l"></div>
+          <div class="ce-ghost back-r"></div>
+          <div class="ce-front">
+            <div class="ce-cat">${IC.catMark}</div>
+            <div class="ce-lines"><span></span><span></span></div>
+          </div>
+        </div>
+
+        <div class="listen-pill">
+          <span class="pulse-dot"></span>
+          <span>正在监听本机剪贴板</span>
+        </div>
+
+        <h2 class="empty-title">还没有剪贴板历史</h2>
+        <p class="empty-desc">
+          现在复制任意文字、代码、图片或文件，这里就会自动记录。
+        </p>
+
+        <div class="inset-card">
+          <div class="guide-row">
+            <div class="guide-ic">${IC.copy}</div>
+            <div class="guide-body">
+              <div class="guide-t">复制即刻整理</div>
+              <div class="guide-s">自动归类文本、图片与文件夹，仅保存在本机</div>
+            </div>
+            <div class="guide-end"><kbd>⌘C</kbd></div>
+          </div>
+          <div class="guide-row">
+            <div class="guide-ic">${IC.zap}</div>
+            <div class="guide-body">
+              <div class="guide-t">随时唤起快捷面板</div>
+              <div class="guide-s">无需切出当前应用，搜索后直接粘贴</div>
+            </div>
+            <div class="guide-end"><kbd>⇧⌘V</kbd></div>
+          </div>
+          <button class="guide-row clickable" data-toast="前往「管理设备」开始配对">
+            <div class="guide-ic ${hasDevices ? '' : 'accent'}">${IC.devices}</div>
+            <div class="guide-body">
+              <div class="guide-t">${hasDevices ? '跨设备同步已就绪' : '关联其他设备'}</div>
+              <div class="guide-s">${hasDevices
+                ? `已关联 ${state.devices.length} 台设备（${onlineCount} 台在线），复制后自动同步`
+                : '与另一台电脑或手机配对，端到端加密同步剪贴板'}</div>
+            </div>
+            <div class="guide-end">
+              ${hasDevices ? '管理' : '去关联'} ${IC.chevRight}
+            </div>
+          </button>
+        </div>
+
+        <div class="empty-actions">
+          <button class="btn" data-act="sim-copy">${IC.copy} 复制示例试试</button>
+          ${!hasDevices ? `<button class="btn subtle" data-toast="打开设置 › 存储 › 从旧版 v1 导入">从旧版导入…</button>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSearchEmptyState() {
+  const qText = state.query.trim();
+  const fCnt = activeFilterCount();
+  const relaxations = computeRelaxations();
+  const isFilterOnly = !qText && fCnt > 0;
+
+  // Build active constraint chips (echoed cleanly inside empty canvas when filters/scope exist)
+  const chips = [];
+  if (state.nav === 'pinned') chips.push({ id:'nav', cls:'tok-other', k:'范围', v:'已收藏' });
+  else if (state.nav.startsWith('tag:')) chips.push({ id:'nav', cls:'tok-tag', k:'范围', v:tagObj(state.nav.slice(4)).label });
+  else if (state.nav.startsWith('device:')) chips.push({ id:'nav', cls:'tok-source', k:'范围', v:deviceName(state.nav.slice(7)) });
+  if (state.kind)      chips.push({ id:'kind',   cls:'tok-type',   k:'类型', v:KIND_LABELS[state.kind] });
+  if (state.tag)       chips.push({ id:'tag',    cls:'tok-tag',    k:'标签', v:tagObj(state.tag).label });
+  if (state.source)    chips.push({ id:'source', cls:'tok-source', k:'设备', v:deviceName(state.source) });
+  if (state.timeRange) chips.push({ id:'time',   cls:'tok-time',   k:'时间', v:TIME_LABELS[state.timeRange] });
+
+  // Title & description
+  let titleHtml = '';
+  let descHtml = '';
+  if (isFilterOnly) {
+    titleHtml = '当前筛选条件下没有内容';
+    descHtml = '同时满足以下条件的历史条目为空，可以移除部分条件或扩大时间范围。';
+  } else {
+    titleHtml = `没有找到匹配 <span class="q-highlight">${esc(trunc(qText, 28))}</span> 的内容`;
+    if (chips.length > 0) {
+      descHtml = `当前同时生效了 ${chips.length} 项范围或筛选条件，放宽任意一项即可扩大查找范围。`;
+    } else {
+      descHtml = '请检查拼写或换用更短的关键词。搜索匹配纯文本、网页正文与文件名，不检索图片文字或文件内部内容。';
+    }
+  }
+
+  // Primary CTA adapts when scoped (e.g., searching inside Favorites)
+  const scopeRelax = relaxations.find(r => r.id === 'relax-scope');
+
+  return `
+    <div class="empty-canvas">
+      <div class="empty-shell">
+        <div class="empty-icon-badge">${isFilterOnly ? IC.filterLg : IC.searchLg}</div>
+        <h2 class="empty-title">${titleHtml}</h2>
+        <p class="empty-desc">${descHtml}</p>
+
+        ${chips.length > 0 ? `
+          <div class="active-echo">
+            ${chips.map(ch => `
+              <span class="echo-chip ${ch.cls}">
+                <span class="k">${ch.k}:</span>
+                <span class="v">${esc(ch.v)}</span>
+                <button data-rm-tok="${ch.id}" title="移除${ch.k}">${IC.close}</button>
+              </span>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        ${relaxations.length > 0 ? `
+          <div class="relax-card">
+            <div class="relax-hd">
+              <span>试试放宽条件</span>
+              <span>点击立即切换</span>
+            </div>
+            ${relaxations.map((r, i) => `
+              <button class="relax-row" data-relax-idx="${i}">
+                <span class="relax-ic">${IC.undo}</span>
+                <span class="relax-lbl">${esc(r.label)}</span>
+                <span class="relax-cnt">${r.count} 条</span>
+                <span class="relax-chev">${IC.chevRight}</span>
+              </button>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <div class="empty-actions">
+          ${scopeRelax
+            ? `<button class="btn primary" data-relax-idx="${relaxations.indexOf(scopeRelax)}">在全部项目中搜索 (${scopeRelax.count})</button>
+               <button class="btn" data-act="clear-all">清除全部筛选 <span class="btn-kbd">Esc</span></button>`
+            : `<button class="btn" data-act="clear-all">${qText && fCnt === 0 && state.nav === 'all' ? '清除搜索' : '清除全部筛选'} <span class="btn-kbd">Esc</span></button>`}
+        </div>
+
+        ${!isFilterOnly && chips.length === 0 ? `
+          <div class="syntax-strip">
+            <span>按条件筛选：</span>
+            <button class="syntax-pill" data-quick-filter="kind:image">/图片</button>
+            <button class="syntax-pill" data-quick-filter="kind:folder">/文件夹</button>
+            <button class="syntax-pill" data-quick-filter="time:today">on:今天</button>
+            <button class="syntax-pill" data-quick-filter="source:iphone">@iPhone</button>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+/* ---------------- Populated List & Grid Views ---------------- */
+function renderPopulated(items) {
+  if (!items.some(e => e.id === state.selectedId)) {
+    state.selectedId = items[0].id;
+  }
+  const cur = items.find(e => e.id === state.selectedId) || items[0];
+
+  if (state.layout === 'grid') {
+    const groups = groupByDay(items);
+    return `
+      <div class="grid-pane">
+        ${groups.map(([day, list]) => `
+          <div class="day-hdr">${day}</div>
+          <div class="grid-cards">
+            ${list.map(e => `
+              <div class="g-card ${e.id===cur.id?'sel':''}" data-sel-id="${e.id}">
+                <div class="h-row-top">
+                  <span class="kind-pill kp-${e.kind}">${KIND_LABELS[e.kind]}</span>
+                  <span class="h-row-t">${esc(e.title)}</span>
+                </div>
+                <div class="g-card-body">${esc(e.text)}</div>
+                <div class="h-row-meta">
+                  <span>${esc(deviceName(e.source))}</span>
+                  <span>·</span>
+                  <span>${e.date}</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  // List SplitView
+  const groups = groupByDay(items);
+  return `
+    <div class="list-pane">
+      ${groups.map(([day, list]) => `
+        <div class="day-hdr">${day}</div>
+        ${list.map(e => `
+          <div class="h-row ${e.id===cur.id?'sel':''}" data-sel-id="${e.id}">
+            <div class="h-row-top">
+              <span class="kind-pill kp-${e.kind}">${KIND_LABELS[e.kind]}</span>
+              <span class="h-row-t">${esc(e.title)}</span>
+            </div>
+            <div class="h-row-ex">${esc(e.text.replace(/\n/g, ' '))}</div>
+            <div class="h-row-meta">
+              <span>${esc(deviceName(e.source))}</span>
+              <span>·</span>
+              <span>${e.date}</span>
+              ${e.pinned ? '<span>· 已收藏</span>' : ''}
+            </div>
+          </div>
+        `).join('')}
+      `).join('')}
+    </div>
+    <div class="detail-pane">
+      <div class="detail-meta">
+        <span class="kind-pill kp-${cur.kind}">${KIND_LABELS[cur.kind]}</span>
+        <span>${esc(deviceName(cur.source))} · ${cur.date}</span>
+      </div>
+      <div class="detail-box ${cur.kind==='code'?'code':''}">${esc(cur.text)}</div>
+      <div class="facts-row">
+        <div class="fact-box"><div class="fact-k">内容类型</div><div class="fact-v">${KIND_LABELS[cur.kind]}</div></div>
+        <div class="fact-box"><div class="fact-k">规格</div><div class="fact-v">${cur.size}</div></div>
+        <div class="fact-box"><div class="fact-k">来源设备</div><div class="fact-v">${esc(deviceName(cur.source))}</div></div>
+      </div>
+      <div class="action-dock">
+        <button class="btn primary" style="height:28px;border-radius:999px;padding:0 12px" data-toast="已复制到本机剪贴板">${IC.copy} 复制 <span class="btn-kbd">↩</span></button>
+        <button class="btn subtle" style="height:28px;border-radius:999px;padding:0 11px" data-toast="选择目标设备发送">${IC.send} 发送到…</button>
+      </div>
+    </div>
+  `;
+}
+
+function groupByDay(items) {
+  const map = new Map();
+  for (const e of items) {
+    if (!map.has(e.day)) map.set(e.day, []);
+    map.get(e.day).push(e);
+  }
+  return [...map.entries()];
+}
+
+/* ---------------- Master Render ---------------- */
+let currentRelaxations = [];
+
+function render() {
+  const win = document.getElementById('app-window');
+  win.classList.toggle('compact', state.size === 'compact');
+  win.classList.toggle('sb-hidden', state.sidebarHidden);
+
+  const items = getFiltered();
+  renderSidebar();
+  renderToolbar(items);
+
+  const body = document.getElementById('stage-body');
+  if (items.length === 0) {
+    currentRelaxations = computeRelaxations();
+    body.innerHTML = renderEmptyState();
+  } else {
+    currentRelaxations = [];
+    body.innerHTML = renderPopulated(items);
+  }
+}
+
+function syncPresetChips() {
+  document.querySelectorAll('[data-preset]').forEach(b => {
+    b.classList.toggle('on', b.dataset.preset === state.preset);
+  });
+}
+
+/* ---------------- Event Delegation ---------------- */
+document.addEventListener('click', e => {
+  const presetBtn = e.target.closest('[data-preset]');
+  if (presetBtn) { applyPreset(presetBtn.dataset.preset); return; }
+
+  const layoutBtn = e.target.closest('[data-layout]');
+  if (layoutBtn) {
+    state.layout = layoutBtn.dataset.layout;
+    document.querySelectorAll('[data-layout]').forEach(b => b.classList.toggle('on', b.dataset.layout === state.layout));
+    render();
+    return;
+  }
+
+  const sizeBtn = e.target.closest('[data-size]');
+  if (sizeBtn) {
+    state.size = sizeBtn.dataset.size;
+    state.sidebarHidden = state.size === 'compact';
+    document.querySelectorAll('[data-size]').forEach(b => b.classList.toggle('on', b.dataset.size === state.size));
+    render();
+    return;
+  }
+
+  const themeBtn = e.target.closest('[data-theme-btn]');
+  if (themeBtn) {
+    state.theme = themeBtn.dataset.themeBtn;
+    document.documentElement.setAttribute('data-theme', state.theme);
+    document.querySelectorAll('[data-theme-btn]').forEach(b => b.classList.toggle('on', b.dataset.themeBtn === state.theme));
+    return;
+  }
+
+  const navBtn = e.target.closest('[data-nav]');
+  if (navBtn) {
+    state.nav = navBtn.dataset.nav;
+    state.unavailable = false;
+    if (state.size === 'compact') state.sidebarHidden = true;
+    render();
+    return;
+  }
+
+  const rmTok = e.target.closest('[data-rm-tok]');
+  if (rmTok) {
+    const id = rmTok.dataset.rmTok;
+    if (id === 'kind') state.kind = '';
+    else if (id === 'tag') state.tag = '';
+    else if (id === 'source') state.source = '';
+    else if (id === 'time') state.timeRange = '';
+    else if (id === 'nav') state.nav = 'all';
+    state.unavailable = false;
+    render();
+    return;
+  }
+
+  const relaxBtn = e.target.closest('[data-relax-idx]');
+  if (relaxBtn) {
+    const idx = Number(relaxBtn.dataset.relaxIdx);
+    const r = currentRelaxations[idx];
+    if (r) {
+      r.apply();
+      state.unavailable = false;
+      showToast('已放宽筛选条件');
+      render();
+    }
+    return;
+  }
+
+  const qfBtn = e.target.closest('[data-quick-filter]');
+  if (qfBtn) {
+    const [dim, val] = qfBtn.dataset.quickFilter.split(':');
+    state.query = '';
+    if (dim === 'kind') state.kind = val;
+    if (dim === 'time') state.timeRange = val;
+    if (dim === 'source') state.source = val;
+    state.unavailable = false;
+    render();
+    return;
+  }
+
+  const actBtn = e.target.closest('[data-act]');
+  if (actBtn) {
+    const act = actBtn.dataset.act;
+    if (act === 'clear-all') {
+      state.query = ''; state.kind = ''; state.tag = ''; state.source = ''; state.timeRange = '';
+      state.nav = 'all'; state.unavailable = false; state.filterOpen = false;
+      render();
+    } else if (act === 'clear-filters') {
+      state.kind = ''; state.tag = ''; state.source = ''; state.timeRange = '';
+      render();
+    } else if (act === 'close-fp') {
+      state.filterOpen = false;
+      render();
+    } else if (act === 'toggle-fp') {
+      state.filterOpen = !state.filterOpen;
+      render();
+    } else if (act === 'go-all') {
+      state.nav = 'all';
+      render();
+    } else if (act === 'sim-copy') {
+      simulateCopy();
+    }
+    return;
+  }
+
+  const fpKind = e.target.closest('[data-fp-kind]');
+  if (fpKind) { state.kind = state.kind === fpKind.dataset.fpKind ? '' : fpKind.dataset.fpKind; render(); return; }
+  const fpTime = e.target.closest('[data-fp-time]');
+  if (fpTime) { state.timeRange = state.timeRange === fpTime.dataset.fpTime ? '' : fpTime.dataset.fpTime; render(); return; }
+  const fpSrc = e.target.closest('[data-fp-source]');
+  if (fpSrc) { state.source = state.source === fpSrc.dataset.fpSource ? '' : fpSrc.dataset.fpSource; render(); return; }
+
+  const selItem = e.target.closest('[data-sel-id]');
+  if (selItem) { state.selectedId = selItem.dataset.selId; render(); return; }
+
+  const toastEl = e.target.closest('[data-toast]');
+  if (toastEl) { showToast(toastEl.dataset.toast); return; }
+
+  // Close filter popover when clicking outside
+  if (state.filterOpen && !e.target.closest('#omnibar-wrap')) {
+    state.filterOpen = false;
+    renderFilterPopover();
+    document.getElementById('omnibar').classList.remove('open');
+  }
+});
+
+document.getElementById('btn-sim-copy').addEventListener('click', simulateCopy);
+document.getElementById('btn-sb-toggle-in').addEventListener('click', () => { state.sidebarHidden = !state.sidebarHidden; render(); });
+document.getElementById('btn-sb-toggle-out').addEventListener('click', () => { state.sidebarHidden = !state.sidebarHidden; render(); });
+document.getElementById('sb-scrim').addEventListener('click', () => { state.sidebarHidden = true; render(); });
+document.getElementById('seg-list').addEventListener('click', () => {
+  state.layout = 'list';
+  document.querySelectorAll('[data-layout]').forEach(b => b.classList.toggle('on', b.dataset.layout === 'list'));
+  render();
+});
+document.getElementById('seg-grid').addEventListener('click', () => {
+  state.layout = 'grid';
+  document.querySelectorAll('[data-layout]').forEach(b => b.classList.toggle('on', b.dataset.layout === 'grid'));
+  render();
+});
+document.getElementById('omni-filter-btn').addEventListener('click', () => {
+  state.filterOpen = !state.filterOpen;
+  renderToolbar(getFiltered());
+});
+document.getElementById('omni-clear').addEventListener('click', () => {
+  state.query = ''; state.kind = ''; state.tag = ''; state.source = ''; state.timeRange = '';
+  state.unavailable = false; state.filterOpen = false;
+  render();
+});
+document.getElementById('omni-input').addEventListener('input', e => {
+  state.query = e.target.value;
+  state.unavailable = false;
+  render();
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
+    e.preventDefault();
+    document.getElementById('omni-input').focus();
+  } else if (e.key === 'Escape') {
+    if (state.filterOpen) {
+      state.filterOpen = false;
+      render();
+    } else if (hasSearchOrFilter() || state.unavailable) {
+      state.query = ''; state.kind = ''; state.tag = ''; state.source = ''; state.timeRange = '';
+      state.unavailable = false;
+      render();
+    }
+  }
+});
+
+/* ---------------- Boot ---------------- */
+(() => {
+  const params = new URLSearchParams(location.search);
+  const t = params.get('theme');
+  if (t === 'dark' || t === 'light') {
+    state.theme = t;
+    document.documentElement.setAttribute('data-theme', t);
+    document.querySelectorAll('[data-theme-btn]').forEach(b => b.classList.toggle('on', b.dataset.themeBtn === t));
+  }
+  const l = params.get('layout');
+  if (l === 'list' || l === 'grid') {
+    state.layout = l;
+    document.querySelectorAll('[data-layout]').forEach(b => b.classList.toggle('on', b.dataset.layout === l));
+  }
+  const sz = params.get('size');
+  if (sz === 'compact' || sz === 'wide') {
+    state.size = sz;
+    state.sidebarHidden = sz === 'compact';
+    document.querySelectorAll('[data-size]').forEach(b => b.classList.toggle('on', b.dataset.size === sz));
+  }
+  applyPreset(params.get('preset') || 'empty-fresh');
+})();
+</script>
+</body>
+</html>

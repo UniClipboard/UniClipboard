@@ -413,6 +413,12 @@
     "pt-BR": "Pesquisando…",
     "ru": "Поиск…"
   },
+  "正在加载原图…": {
+    "en": "Loading full image…",
+    "ja": "元の画像を読み込み中…",
+    "pt-BR": "Carregando imagem original…",
+    "ru": "Загрузка оригинала…"
+  },
   "部分设置将在下次启动时生效。": {
     "en": "Some settings apply on next launch.",
     "ja": "一部の設定は次回の起動時に適用します。",

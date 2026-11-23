@@ -172,7 +172,7 @@ func (d *viewState) totalHistoryCount() (int, bool) {
 	if d.live == nil {
 		return len(d.entries), true
 	}
-	if count, ok := d.live.counts[searchQueryKey(allHistoryQuery())]; ok {
+	if count, ok := d.live.countFor(allHistoryQuery()); ok {
 		return int(count), true
 	}
 	if d.nav.Value == "all" && !d.hasActiveSearchOrFilter() && d.live.loaded {

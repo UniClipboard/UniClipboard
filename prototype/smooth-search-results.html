@@ -1,0 +1,2074 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UniClipboard · 搜索与加载流畅度优化原型（BoardUI v2）</title>
+<!--
+  BoardUI v2 Interactive Prototype: Smooth Search Results, Stale-While-Revalidate & Progressive Loading.
+  Compare "当前变更 (Current WIP on smooth-search-results)" vs "优化方案 (Proposed)" interactively.
+  Zero external dependencies — open directly in any modern browser.
+-->
+<style>
+:root {
+  --bg-canvas-outer: #e7e7eb;
+  --bg-sidebar: #f6f6f8;
+  --bg-nav-active: #ffffff;
+  --bg-nav-hover: #ececf0;
+  --bg-workspace: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-subtle: #f7f7f9;
+  --bg-card-subtle-hover: #f0f0f4;
+  --bg-inset: #f1f1f5;
+  --bg-sheet: #ffffff;
+  --bg-tertiary: #ececf0;
+  --bg-hover: #f3f3f6;
+  --bg-code: #141821;
+
+  --sep: #e8e8ec;
+  --border-sidebar: #e5e5e8;
+  --card-border: #e4e4e8;
+  --border-btn: #dcdce2;
+  --border-hover: #c5c5ce;
+
+  --text-primary: #111114;
+  --text-secondary: #686870;
+  --text-tertiary: #96969f;
+  --icon-primary: #18181c;
+  --icon-secondary: #686870;
+  --icon-tertiary: #9a9aa3;
+
+  --accent-50: #f0f6ff;
+  --accent-100: #dbeafe;
+  --accent-200: #bfd8ff;
+  --accent-500: #2b7fff;
+  --accent-600: #155dfc;
+
+  --ok-bg: #eaf9d0; --ok-fg: #2f5700; --ok-dot: #5ea500; --ok-border: #c5e88e;
+  --warn-bg: #fffbeb; --warn-fg: #92400e; --warn-border: #fde68a; --warn-dot: #d97706;
+  --danger-bg: #fef2f2; --danger-fg: #b91c1c; --danger-border: #fecaca;
+
+  --tag-blue-bg: #e0edff;   --tag-blue-fg: #155dfc;   --tag-blue-dot: #2b7fff;
+  --tag-orange-bg: #ffedd5; --tag-orange-fg: #c2410c; --tag-orange-dot: #f97316;
+  --tag-lime-bg: #ecfccb;   --tag-lime-fg: #3f6212;   --tag-lime-dot: #65a30d;
+  --tag-purple-bg: #f3e8ff; --tag-purple-fg: #7e22ce; --tag-purple-dot: #a855f7;
+  --tag-teal-bg: #ccfbf1;   --tag-teal-fg: #0f766e;   --tag-teal-dot: #14b8a6;
+  --tag-amber-bg: #fef3c7;  --tag-amber-fg: #b45309;  --tag-amber-dot: #f59e0b;
+
+  --seg-bg: #f1f1f4;
+  --seg-sel: #ffffff;
+
+  --shimmer-base: #ededf1;
+  --shimmer-hi: #f8f8fb;
+
+  --shadow-window: 0 24px 64px rgba(0, 0, 0, .13), 0 0 0 1px rgba(0, 0, 0, .07);
+  --shadow-nav: 0 1px 2px rgba(0, 0, 0, .05), 0 0 0 1px rgba(0, 0, 0, .06);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .035);
+  --shadow-qp: 0 28px 80px rgba(0, 0, 0, .24), 0 0 0 1px rgba(0, 0, 0, .09);
+  --scrim: rgba(12, 12, 16, .26);
+}
+
+[data-theme="dark"] {
+  --bg-canvas-outer: #09090b;
+  --bg-sidebar: #161618;
+  --bg-nav-active: rgba(255, 255, 255, .09);
+  --bg-nav-hover: rgba(255, 255, 255, .05);
+  --bg-workspace: #1d1d20;
+  --bg-card: #242428;
+  --bg-card-subtle: #232327;
+  --bg-card-subtle-hover: #2b2b31;
+  --bg-inset: #19191c;
+  --bg-sheet: #232328;
+  --bg-tertiary: #2c2c32;
+  --bg-hover: rgba(255, 255, 255, .06);
+  --bg-code: #12151d;
+
+  --sep: rgba(255, 255, 255, .08);
+  --border-sidebar: rgba(255, 255, 255, .08);
+  --card-border: rgba(255, 255, 255, .095);
+  --border-btn: rgba(255, 255, 255, .14);
+  --border-hover: rgba(255, 255, 255, .24);
+
+  --text-primary: #f4f4f6;
+  --text-secondary: #9c9ca6;
+  --text-tertiary: #6e6e78;
+  --icon-primary: #f4f4f6;
+  --icon-secondary: #9c9ca6;
+  --icon-tertiary: #686872;
+
+  --accent-50: rgba(43, 127, 255, .14);
+  --accent-100: rgba(43, 127, 255, .22);
+  --accent-200: rgba(77, 160, 255, .34);
+  --accent-500: #4da0ff;
+  --accent-600: #3b8eff;
+
+  --ok-bg: rgba(94, 165, 0, .20); --ok-fg: #a3e635; --ok-dot: #84cc16; --ok-border: rgba(132, 204, 22, .30);
+  --warn-bg: rgba(217, 119, 6, .14); --warn-fg: #fbbf24; --warn-border: rgba(245, 158, 11, .28); --warn-dot: #f59e0b;
+  --danger-bg: rgba(239, 68, 68, .15); --danger-fg: #fca5a5; --danger-border: rgba(239, 68, 68, .28);
+
+  --tag-blue-bg: rgba(43, 127, 255, .20);   --tag-blue-fg: #7cb8ff;   --tag-blue-dot: #4da0ff;
+  --tag-orange-bg: rgba(249, 115, 22, .20); --tag-orange-fg: #fdba74; --tag-orange-dot: #fb923c;
+  --tag-lime-bg: rgba(132, 204, 22, .20);   --tag-lime-fg: #bef264;   --tag-lime-dot: #a3e635;
+  --tag-purple-bg: rgba(168, 85, 247, .22); --tag-purple-fg: #d8b4fe; --tag-purple-dot: #c084fc;
+  --tag-teal-bg: rgba(20, 184, 166, .20);   --tag-teal-fg: #5eead4;   --tag-teal-dot: #2dd4bf;
+  --tag-amber-bg: rgba(245, 158, 11, .20);  --tag-amber-fg: #fcd34d;  --tag-amber-dot: #fbbf24;
+
+  --seg-bg: #141417;
+  --seg-sel: #2c2c32;
+
+  --shimmer-base: rgba(255, 255, 255, .055);
+  --shimmer-hi: rgba(255, 255, 255, .11);
+
+  --shadow-window: 0 28px 72px rgba(0, 0, 0, .62), 0 0 0 1px rgba(255, 255, 255, .09);
+  --shadow-nav: 0 0 0 1px rgba(255, 255, 255, .08);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .24);
+  --shadow-qp: 0 32px 84px rgba(0, 0, 0, .72), 0 0 0 1px rgba(255, 255, 255, .12);
+  --scrim: rgba(0, 0, 0, .54);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg-canvas-outer);
+  color: var(--text-primary);
+  font: 13px/1.48 "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background .18s ease, color .18s ease;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+svg { display: block; flex: none; }
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+/* ---------------- Top Prototype Control Bar ---------------- */
+.proto-bar {
+  position: sticky; top: 0; z-index: 50;
+  background: color-mix(in srgb, var(--bg-workspace) 92%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--sep);
+  padding: 10px 18px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.proto-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.proto-title {
+  font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 7px;
+  margin-right: 4px;
+}
+.proto-badge {
+  font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-50); color: var(--accent-600); border: 1px solid var(--accent-200);
+}
+.proto-grp { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.proto-lbl { font-size: 11.5px; color: var(--text-secondary); margin-right: 2px; font-weight: 500; }
+.proto-div { width: 1px; height: 16px; background: var(--sep); margin: 0 3px; }
+.proto-sp { flex: 1; }
+
+.mode-switch {
+  display: inline-flex; padding: 2px; border-radius: 9px;
+  background: var(--seg-bg); border: 1px solid var(--card-border); gap: 2px;
+}
+.mode-btn {
+  border: 0; background: transparent; color: var(--text-secondary);
+  padding: 4px 11px; border-radius: 7px; font-size: 12px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: background .14s, color .14s, box-shadow .14s;
+}
+.mode-btn.on {
+  background: var(--seg-sel); color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+.mode-dot { width: 7px; height: 7px; border-radius: 99px; }
+.mode-dot.wip { background: #f59e0b; }
+.mode-dot.opt { background: #22c55e; }
+
+.chip {
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  transition: background .12s, border-color .12s, color .12s, transform .08s;
+}
+.chip:hover { border-color: var(--border-hover); background: var(--bg-card-subtle); }
+.chip:active { transform: scale(.98); }
+.chip.on {
+  background: var(--accent-500); border-color: var(--accent-500);
+  color: #fff; font-weight: 500;
+}
+.chip.sim {
+  border-color: var(--accent-200); background: var(--accent-50);
+  color: var(--accent-600); font-weight: 500;
+}
+.chip.sim:hover { background: var(--accent-100); }
+.chip.running {
+  background: var(--accent-600); border-color: var(--accent-600); color: #fff;
+}
+
+/* Live Callout Banner */
+.callout-bar {
+  width: 1140px; max-width: calc(100vw - 40px);
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-radius: 10px;
+  background: var(--bg-workspace);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-card);
+  font-size: 12.5px;
+}
+.callout-tag {
+  flex: none; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px;
+}
+.callout-tag.wip { background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-border); }
+.callout-tag.opt { background: var(--ok-bg); color: var(--ok-fg); border: 1px solid var(--ok-border); }
+.callout-text { color: var(--text-secondary); flex: 1; }
+.callout-text strong { color: var(--text-primary); font-weight: 600; }
+.telemetry-pill {
+  flex: none; font-size: 11px; color: var(--text-tertiary);
+  padding: 2px 8px; border-radius: 6px; background: var(--bg-card-subtle);
+  border: 1px solid var(--sep);
+}
+
+/* ---------------- Stage & App Window ---------------- */
+.stage {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 18px 20px 56px;
+  gap: 16px;
+}
+.app-window {
+  width: 1140px; height: 676px;
+  max-width: calc(100vw - 40px);
+  background: var(--bg-workspace);
+  border-radius: 14px;
+  box-shadow: var(--shadow-window);
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ---------------- Sidebar ---------------- */
+.sidebar {
+  width: 214px; flex: none;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-sidebar);
+  display: flex; flex-direction: column;
+  user-select: none;
+}
+.traffic-lights {
+  height: 52px; padding: 0 14px;
+  display: flex; align-items: center; gap: 8px;
+}
+.tl { width: 12px; height: 12px; border-radius: 99px; }
+.tl.r { background: #ff5f57; }
+.tl.y { background: #febc2e; }
+.tl.g { background: #28c840; }
+.brand-mini {
+  margin-left: auto; font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+  letter-spacing: .02em;
+}
+.side-scroll {
+  flex: 1; overflow-y: auto; padding: 4px 10px 14px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.nav-sec-lbl {
+  font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+  padding: 0 8px 4px; letter-spacing: .02em;
+}
+.nav-list { display: flex; flex-direction: column; gap: 2px; }
+.nav-item {
+  width: 100%; border: 0; background: transparent;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 9px; border-radius: 8px;
+  color: var(--text-primary); font-size: 13px; text-align: left;
+  transition: background .12s;
+}
+.nav-item:hover { background: var(--bg-nav-hover); }
+.nav-item.active {
+  background: var(--bg-nav-active);
+  box-shadow: var(--shadow-nav);
+  font-weight: 600;
+}
+.nav-item .ico { color: var(--icon-secondary); }
+.nav-item.active .ico { color: var(--accent-500); }
+.nav-swatch { width: 8px; height: 8px; border-radius: 99px; flex: none; }
+.nav-cnt {
+  margin-left: auto; font-size: 11.5px; color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.dev-dot { width: 7px; height: 7px; border-radius: 99px; background: var(--ok-dot); flex: none; }
+.dev-dot.off { background: var(--text-tertiary); opacity: .5; }
+
+/* ---------------- Main Shell ---------------- */
+.main-shell {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  background: var(--bg-workspace);
+  position: relative;
+}
+
+/* Toolbar (52px) */
+.toolbar {
+  height: 52px; flex: none;
+  padding: 0 14px 0 16px;
+  border-bottom: 1px solid var(--sep);
+  display: flex; align-items: center; gap: 12px;
+  position: relative;
+  background: var(--bg-workspace);
+  z-index: 5;
+}
+.tb-heading {
+  display: flex; align-items: baseline; gap: 7px; min-width: 112px; flex: none;
+}
+.tb-title { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.tb-sub {
+  font-size: 12px; color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  min-width: 18px;
+  transition: opacity .14s ease;
+}
+.tb-sub.muted-updating { opacity: .42; }
+
+/* Omnibar Search Field */
+.search-wrap {
+  flex: 1; max-width: 440px; margin: 0 auto;
+  display: flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 8px 0 9px;
+  border-radius: 9px;
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--card-border);
+  transition: border-color .14s, background .14s, box-shadow .14s;
+}
+.search-wrap:focus-within {
+  background: var(--bg-workspace);
+  border-color: var(--accent-500);
+  box-shadow: 0 0 0 3px var(--accent-50);
+}
+.search-glyph {
+  width: 14px; height: 14px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--icon-secondary);
+}
+.search-tokens { display: flex; align-items: center; gap: 4px; flex: none; }
+.tok {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 6px; border-radius: 5px; font-size: 11.5px; font-weight: 500;
+  background: var(--accent-50); color: var(--accent-600); border: 1px solid var(--accent-200);
+}
+.tok button {
+  border: 0; background: transparent; padding: 0; line-height: 1;
+  color: inherit; opacity: .7; font-size: 12px;
+}
+.tok button:hover { opacity: 1; }
+.search-input {
+  border: 0; outline: 0; background: transparent;
+  flex: 1; min-width: 60px; font-size: 12.5px;
+}
+.search-input::placeholder { color: var(--text-tertiary); }
+.search-clear {
+  border: 0; background: var(--bg-tertiary); color: var(--text-secondary);
+  width: 16px; height: 16px; border-radius: 99px; padding: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 11px;
+}
+.search-clear:hover { color: var(--text-primary); }
+.filter-btn {
+  border: 0; background: transparent; color: var(--icon-secondary);
+  width: 22px; height: 22px; border-radius: 6px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.filter-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Toolbar Trailing */
+.tb-right { display: flex; align-items: center; gap: 6px; flex: none; }
+.seg {
+  display: inline-flex; padding: 2px; border-radius: 8px;
+  background: var(--seg-bg); gap: 1px;
+}
+.seg button {
+  border: 0; background: transparent; color: var(--icon-secondary);
+  width: 28px; height: 24px; border-radius: 6px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.seg button.on {
+  background: var(--seg-sel); color: var(--icon-primary);
+  box-shadow: 0 1px 2px rgba(0,0,0,.07);
+}
+.tb-ico-btn {
+  border: 1px solid transparent; background: transparent; color: var(--icon-secondary);
+  width: 28px; height: 28px; border-radius: 7px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.tb-ico-btn:hover { background: var(--bg-hover); color: var(--icon-primary); }
+
+/* Indeterminate Top Hairline Progress (Proposed Optimization #1) */
+.hairline-progress {
+  position: absolute; left: 0; right: 0; bottom: -1px; height: 2px;
+  overflow: hidden; pointer-events: none;
+  opacity: 0; transition: opacity .16s ease;
+  z-index: 10;
+}
+.hairline-progress.active { opacity: 1; }
+.hairline-progress::after {
+  content: "";
+  position: absolute; top: 0; bottom: 0; left: -40%; width: 42%;
+  background: linear-gradient(90deg, transparent, var(--accent-500) 45%, var(--accent-500) 65%, transparent);
+  border-radius: 99px;
+  animation: hairline-slide 1.05s cubic-bezier(.4, 0, .2, 1) infinite;
+}
+@keyframes hairline-slide {
+  0% { left: -42%; }
+  100% { left: 104%; }
+}
+
+/* Spinner */
+.spinner {
+  border-radius: 999px;
+  border: 1.8px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: currentColor;
+  animation: spin .72s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Shimmer Skeleton */
+.skel {
+  background: linear-gradient(90deg, var(--shimmer-base) 25%, var(--shimmer-hi) 50%, var(--shimmer-base) 75%);
+  background-size: 220% 100%;
+  animation: shimmer 1.35s ease-in-out infinite;
+  border-radius: 6px;
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ---------------- Workspace Split ---------------- */
+.workspace {
+  flex: 1; min-height: 0; display: flex; position: relative; overflow: hidden;
+}
+
+/* Browse Pane */
+.browse-pane {
+  width: 344px; flex: none;
+  border-right: 1px solid var(--sep);
+  display: flex; flex-direction: column;
+  min-height: 0; background: var(--bg-workspace);
+  position: relative;
+}
+.browse-pane.full {
+  width: 100%; flex: 1; border-right: 0;
+}
+
+.results-stage {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  overflow-y: auto;
+  will-change: opacity, transform;
+}
+
+/* WIP aggressive bounce on every keystroke */
+.results-stage.wip-enter {
+  animation: wip-results-in 180ms cubic-bezier(.22, 1, .36, 1) both;
+}
+@keyframes wip-results-in {
+  from { opacity: .45; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Proposed: calm scope switch (only on sidebar/empty transition) */
+.results-stage.opt-scope-enter {
+  animation: opt-scope-in 165ms cubic-bezier(.22, 1, .36, 1) both;
+}
+@keyframes opt-scope-in {
+  from { opacity: .68; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Proposed: subtle live-typing cross-settle (zero vertical bounce!) */
+.results-stage.opt-refine-enter {
+  animation: opt-refine-in 115ms ease-out both;
+}
+@keyframes opt-refine-in {
+  from { opacity: .88; }
+  to   { opacity: 1; }
+}
+
+/* Stale states */
+.results-stage.stale-wip {
+  opacity: .62;
+  transition: opacity 140ms ease-out;
+}
+.results-stage.stale-opt {
+  opacity: .78;
+  transition: opacity 140ms ease-out;
+}
+.results-stage.fresh {
+  transition: opacity 140ms ease-out;
+}
+
+/* List Items */
+.list-pad { padding: 10px 10px 24px; display: flex; flex-direction: column; gap: 6px; }
+.grp-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 6px 2px; font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+}
+.row-card {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 11px; border-radius: 10px;
+  border: 1px solid var(--card-border);
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: background .12s, border-color .12s, box-shadow .12s;
+  position: relative;
+}
+.row-card:hover { background: var(--bg-card-subtle); border-color: var(--border-hover); }
+.row-card.sel {
+  background: var(--accent-50);
+  border-color: var(--accent-200);
+}
+.row-thumb {
+  width: 44px; height: 44px; border-radius: 7px; flex: none;
+  overflow: hidden; position: relative;
+  border: 1px solid var(--card-border);
+  background: var(--bg-card-subtle);
+}
+.row-thumb img, .row-thumb canvas {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.img-fade-in { animation: img-in 160ms ease-out both; }
+@keyframes img-in { from { opacity: 0; } to { opacity: 1; } }
+
+.row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.row-top { display: flex; align-items: center; gap: 6px; }
+.kind-pill {
+  font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 5px;
+  flex: none;
+}
+.kp-text { background: var(--bg-tertiary); color: var(--text-secondary); }
+.kp-code { background: var(--tag-purple-bg); color: var(--tag-purple-fg); }
+.kp-link { background: var(--tag-blue-bg); color: var(--tag-blue-fg); }
+.kp-image { background: var(--tag-teal-bg); color: var(--tag-teal-fg); }
+.kp-file { background: var(--tag-amber-bg); color: var(--tag-amber-fg); }
+.kp-folder { background: var(--tag-orange-bg); color: var(--tag-orange-fg); }
+
+.row-title {
+  font-size: 12.5px; font-weight: 600; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row-excerpt {
+  font-size: 11.5px; color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.row-meta {
+  display: flex; align-items: center; gap: 6px; margin-top: 2px;
+  font-size: 11px; color: var(--text-tertiary);
+}
+.row-pin { color: #f59e0b; font-size: 11px; }
+.mini-tag {
+  font-size: 10px; padding: 0 5px; border-radius: 4px; font-weight: 500;
+}
+mark {
+  background: color-mix(in srgb, var(--accent-500) 20%, transparent);
+  color: var(--accent-600);
+  border-radius: 3px; padding: 0 2px;
+}
+
+/* Grid View */
+.grid-pad { padding: 14px 18px 28px; display: flex; flex-direction: column; gap: 14px; }
+.grid-cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 12px;
+}
+.g-card {
+  height: 176px; border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--bg-card);
+  padding: 11px; display: flex; flex-direction: column; gap: 8px;
+  cursor: pointer; transition: border-color .12s, background .12s, transform .12s;
+  overflow: hidden;
+}
+.g-card:hover { border-color: var(--border-hover); background: var(--bg-card-subtle); }
+.g-card.sel { border-color: var(--accent-500); box-shadow: 0 0 0 2px var(--accent-50); }
+.g-media {
+  flex: 1; min-height: 0; border-radius: 8px; overflow: hidden;
+  background: var(--bg-card-subtle); border: 1px solid var(--sep);
+  position: relative;
+}
+.g-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.g-text {
+  flex: 1; min-height: 0; overflow: hidden;
+  font-size: 12px; color: var(--text-secondary); line-height: 1.5;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+}
+.g-code {
+  flex: 1; min-height: 0; border-radius: 8px; padding: 8px 9px;
+  background: var(--bg-code); color: #dce4f5;
+  font-size: 11px; line-height: 1.45; overflow: hidden;
+}
+
+/* ---------------- Detail Pane ---------------- */
+.detail-pane {
+  flex: 1; min-width: 0; display: flex; flex-direction: column;
+  background: var(--bg-workspace);
+  overflow-y: auto;
+  transition: opacity 140ms ease-out;
+}
+/* Proposed: coordinated gentle dim on slow query */
+.detail-pane.stale-opt { opacity: .76; }
+
+.detail-inner {
+  padding: 18px 24px 36px;
+  display: flex; flex-direction: column; gap: 15px;
+}
+.detail-inner.slide-in {
+  animation: detail-slide 180ms cubic-bezier(.22, 1, .36, 1) both;
+}
+@keyframes detail-slide {
+  from { opacity: .45; transform: translateX(14px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.detail-hdr {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.detail-prov { font-size: 12px; color: var(--text-secondary); }
+.preview-frame {
+  border-radius: 12px; border: 1px solid var(--card-border);
+  background: var(--bg-card-subtle); overflow: hidden;
+  position: relative;
+}
+.preview-frame.code {
+  background: var(--bg-code); color: #e8ecf5; border-color: rgba(255,255,255,.1);
+}
+.preview-text {
+  padding: 18px 20px; font-size: 13px; line-height: 1.65; white-space: pre-wrap;
+  word-break: break-word;
+}
+.preview-img-stage {
+  height: 224px; width: 100%; position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-inset); overflow: hidden;
+}
+.preview-img-stage img {
+  width: 100%; height: 100%; object-fit: contain; display: block;
+}
+.preview-img-stage img.blur-up {
+  filter: blur(10px); transform: scale(1.04); opacity: .88;
+}
+.preview-img-stage img.sharp {
+  animation: sharpen 220ms ease-out both;
+}
+@keyframes sharpen {
+  from { filter: blur(6px); opacity: .75; }
+  to   { filter: blur(0); opacity: 1; }
+}
+.img-hd-badge {
+  position: absolute; right: 10px; bottom: 10px;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 8px; border-radius: 999px;
+  background: rgba(17, 17, 20, .62); color: #fff;
+  backdrop-filter: blur(8px); font-size: 11px;
+}
+.streaming-tail {
+  margin: 0 20px 16px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--sep);
+  display: flex; flex-direction: column; gap: 7px;
+}
+.preview-frame.code .streaming-tail { border-top-color: rgba(255,255,255,.12); }
+
+.facts-row {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.fact-card {
+  padding: 9px 11px; border-radius: 9px;
+  background: var(--bg-card-subtle); border: 1px solid var(--card-border);
+}
+.fact-k { font-size: 10.5px; color: var(--text-tertiary); }
+.fact-v { font-size: 12px; font-weight: 600; margin-top: 2px; }
+
+/* Empty / Loading Center */
+.center-state {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 32px; text-align: center; gap: 10px; color: var(--text-secondary);
+}
+.empty-icon {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: var(--bg-card-subtle); border: 1px solid var(--card-border);
+  display: flex; align-items: center; justify-content: center; color: var(--icon-secondary);
+}
+.empty-title { font-size: 14.5px; font-weight: 700; color: var(--text-primary); }
+.empty-desc { font-size: 12.5px; color: var(--text-secondary); max-width: 340px; }
+
+/* ---------------- Quick Panel Overlay ---------------- */
+.qp-scrim {
+  position: absolute; inset: 0; z-index: 30;
+  background: var(--scrim); backdrop-filter: blur(3px);
+  display: none; align-items: flex-start; justify-content: center;
+  padding-top: 64px;
+}
+.qp-scrim.open { display: flex; }
+.qp-box {
+  width: 580px; max-width: calc(100% - 32px);
+  height: 430px;
+  background: var(--bg-workspace);
+  border-radius: 13px;
+  box-shadow: var(--shadow-qp);
+  display: flex; flex-direction: column; overflow: hidden;
+  position: relative;
+}
+.qp-search {
+  height: 48px; flex: none; padding: 0 14px;
+  border-bottom: 1px solid var(--sep);
+  display: flex; align-items: center; gap: 10px;
+  position: relative;
+}
+.qp-search input {
+  border: 0; outline: 0; background: transparent;
+  flex: 1; font-size: 15px;
+}
+.qp-count { font-size: 12px; color: var(--text-tertiary); flex: none; transition: opacity .14s; }
+.qp-body {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 6px;
+  transition: opacity 140ms ease-out;
+}
+.qp-body.stale-opt { opacity: .76; }
+.qp-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 8px; cursor: pointer;
+}
+.qp-row:hover { background: var(--bg-hover); }
+.qp-row.sel { background: var(--accent-50); }
+.qp-foot {
+  height: 34px; flex: none; padding: 0 12px;
+  border-top: 1px solid var(--sep);
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 11.5px; color: var(--text-secondary);
+}
+.kbd {
+  font-size: 10.5px; padding: 1px 5px; border-radius: 4px;
+  background: var(--bg-card-subtle); border: 1px solid var(--card-border);
+  color: var(--text-secondary);
+}
+
+/* ---------------- Comparison Matrix Card ---------------- */
+.matrix-card {
+  width: 1140px; max-width: calc(100vw - 40px);
+  background: var(--bg-workspace);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  padding: 18px 20px;
+}
+.matrix-hdr {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 12px; gap: 12px; flex-wrap: wrap;
+}
+.matrix-hdr h2 { margin: 0; font-size: 14.5px; font-weight: 700; }
+.matrix-hdr span { font-size: 12px; color: var(--text-secondary); }
+.matrix-table {
+  width: 100%; border-collapse: collapse; font-size: 12.5px;
+}
+.matrix-table th, .matrix-table td {
+  text-align: left; padding: 10px 10px;
+  border-top: 1px solid var(--sep); vertical-align: top;
+}
+.matrix-table th {
+  border-top: 0; font-size: 11.5px; font-weight: 600; color: var(--text-tertiary);
+  padding-top: 2px;
+}
+.code-ref {
+  display: inline-block; margin-top: 4px;
+  font-size: 11px; padding: 1px 6px; border-radius: 5px;
+  background: var(--bg-card-subtle); color: var(--text-secondary);
+  border: 1px solid var(--sep);
+}
+.badge-wip {
+  display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px;
+  background: var(--warn-bg); color: var(--warn-fg); margin-right: 4px;
+}
+.badge-opt {
+  display: inline-block; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px;
+  background: var(--ok-bg); color: var(--ok-fg); margin-right: 4px;
+}
+
+/* Reduce Motion override */
+[data-reduce-motion="true"] *,
+[data-reduce-motion="true"] *::before,
+[data-reduce-motion="true"] *::after {
+  animation-duration: .001ms !important;
+  transition-duration: .001ms !important;
+}
+</style>
+</head>
+<body>
+
+<!-- Top Interactive Prototype Bar -->
+<div class="proto-bar">
+  <div class="proto-row">
+    <div class="proto-title">
+      <span>UniClipboard</span>
+      <span class="proto-badge">smooth-search-results 优化对比原型</span>
+    </div>
+
+    <div class="mode-switch" role="tablist" aria-label="对比版本">
+      <button class="mode-btn" id="btnModeWip" onclick="setMode('wip')">
+        <span class="mode-dot wip"></span>当前变更 (WIP)
+      </button>
+      <button class="mode-btn on" id="btnModeOpt" onclick="setMode('opt')">
+        <span class="mode-dot opt"></span>优化方案 (Proposed)
+      </button>
+    </div>
+
+    <div class="proto-div"></div>
+
+    <div class="proto-grp">
+      <span class="proto-lbl">模拟查询延迟:</span>
+      <button class="chip" data-lat="35" onclick="setLatency(35)">极速 35ms</button>
+      <button class="chip on" data-lat="280" onclick="setLatency(280)">中等 280ms</button>
+      <button class="chip" data-lat="850" onclick="setLatency(850)">慢速 850ms</button>
+    </div>
+
+    <div class="proto-div"></div>
+
+    <div class="proto-grp">
+      <span class="proto-lbl">详情解码:</span>
+      <button class="chip on" data-dlat="450" onclick="setDetailLatency(450)">450ms</button>
+      <button class="chip" data-dlat="1100" onclick="setDetailLatency(1100)">1.1s 慢图</button>
+    </div>
+
+    <div class="proto-sp"></div>
+
+    <div class="proto-grp">
+      <button class="chip" id="btnTheme" onclick="toggleTheme()">🌙 深色</button>
+      <button class="chip" id="btnMotion" onclick="toggleReduceMotion()">减弱动态: 关</button>
+    </div>
+  </div>
+
+  <div class="proto-row">
+    <span class="proto-lbl">一键场景演示:</span>
+    <button class="chip sim" id="sc-type" onclick="runScenario('typing')">1. 连续键入搜索（对比弹跳/计数闪烁）</button>
+    <button class="chip sim" id="sc-keep" onclick="runScenario('keepSelection')">2. 筛选微调（对比选中项是否跳走）</button>
+    <button class="chip sim" id="sc-slow" onclick="runScenario('slowScope')">3. 慢速切侧栏（对比双栏协同与进度条）</button>
+    <button class="chip sim" id="sc-media" onclick="runScenario('mediaDetail')">4. 图片与长文详情加载（Blur-up / 骨架）</button>
+    <button class="chip sim" id="sc-cold" onclick="runScenario('coldStart')">5. 冷启动加载（单栏转圈 vs 结构骨架）</button>
+    <button class="chip sim" id="sc-qp" onclick="runScenario('quickPanel')">6. 快捷面板 300ms 防抖（清空 vs 保留）</button>
+  </div>
+</div>
+
+<div class="stage">
+  <!-- Live Diagnostic Banner -->
+  <div class="callout-bar">
+    <span class="callout-tag opt" id="calloutTag">优化方案</span>
+    <div class="callout-text" id="calloutText">
+      点击上方<strong>「一键场景演示」</strong>，或直接在搜索框打字 / 点击侧栏 / 切换<strong>「当前变更 (WIP)」</strong>与<strong>「优化方案 (Proposed)」</strong>直观感受差异。
+    </div>
+    <span class="telemetry-pill mono" id="telemetryPill">query: 280ms · detail: 450ms</span>
+  </div>
+
+  <!-- Desktop App Window -->
+  <div class="app-window" id="appWindow">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="traffic-lights">
+        <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+        <span class="brand-mini">BoardUI v2</span>
+      </div>
+      <div class="side-scroll" id="sidebarNav"></div>
+    </aside>
+
+    <!-- Main Shell -->
+    <section class="main-shell">
+      <header class="toolbar">
+        <div class="tb-heading">
+          <span class="tb-title" id="tbTitle">全部历史</span>
+          <span class="tb-sub" id="tbSub">8</span>
+        </div>
+
+        <div class="search-wrap" id="searchWrap">
+          <span class="search-glyph" id="searchGlyph"></span>
+          <div class="search-tokens" id="searchTokens"></div>
+          <input class="search-input" id="searchInput" type="text" placeholder="搜索历史内容、文件名或链接…">
+          <button class="search-clear" id="searchClear" style="display:none" title="清除搜索" onclick="clearSearch()">×</button>
+          <button class="filter-btn" title="快速切换图片筛选" onclick="toggleQuickFilter()">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 3.5h11M4.5 8h7M6.5 12.5h3"/></svg>
+          </button>
+        </div>
+
+        <div class="tb-right">
+          <div class="seg" role="group" aria-label="布局">
+            <button id="btnList" class="on" title="列表视图" onclick="setLayout('list')">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 4.5h10M3 8h10M3 11.5h10"/></svg>
+            </button>
+            <button id="btnGrid" title="网格视图" onclick="setLayout('grid')">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/></svg>
+            </button>
+          </div>
+          <button class="tb-ico-btn" title="打开快捷面板 (⌘⇧V)" onclick="openQuickPanel()">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="12" height="10" rx="2"/><path d="M5 7h6M5 9.8h3.5"/></svg>
+          </button>
+        </div>
+
+        <!-- Proposed Top Hairline Progress -->
+        <div class="hairline-progress" id="mainHairline"></div>
+      </header>
+
+      <div class="workspace" id="workspace">
+        <div class="browse-pane" id="browsePane">
+          <div class="results-stage fresh" id="resultsStage"></div>
+        </div>
+        <div class="detail-pane" id="detailPane"></div>
+      </div>
+    </section>
+
+    <!-- Quick Panel Modal Overlay -->
+    <div class="qp-scrim" id="qpScrim" onclick="if(event.target===this) closeQuickPanel()">
+      <div class="qp-box">
+        <div class="qp-search">
+          <span class="search-glyph" id="qpGlyph" style="width:16px;height:16px"></span>
+          <input id="qpInput" type="text" placeholder="搜索快捷面板，例如输入 release 或 docker…">
+          <span class="qp-count" id="qpCount">8 条</span>
+          <button class="chip" style="padding:2px 8px;font-size:11px" onclick="closeQuickPanel()">ESC 关闭</button>
+          <div class="hairline-progress" id="qpHairline"></div>
+        </div>
+        <div class="qp-body" id="qpBody"></div>
+        <div class="qp-foot">
+          <span>粘贴到 <strong>Cursor</strong> <span class="kbd">⏎</span></span>
+          <span>当前防抖: <strong class="mono">300ms</strong> · 操作 <span class="kbd">⌘K</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Structured Diff & Optimization Matrix -->
+  <div class="matrix-card">
+    <div class="matrix-hdr">
+      <h2>当前变更审查与 7 项流畅度优化方案</h2>
+      <span>基于当前工作区 10 个改动文件（branch: <code class="mono">smooth-search-results</code>）的逐项改进</span>
+    </div>
+    <table class="matrix-table">
+      <thead>
+        <tr>
+          <th style="width:170px">优化维度</th>
+          <th style="width:39%">当前变更（WIP）残留问题</th>
+          <th>优化方案（Proposed）</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <strong>1. 动效分层与双栏协同</strong>
+            <div class="code-ref mono">history.go:234-272</div>
+          </td>
+          <td>
+            <span class="badge-wip">问题</span>每次键入结果返回都会将 <code>res-p</code> 归零，整个列表反复跌到 <code>0.45</code> 透明度并上移 <code>6px</code>，同时右侧详情左滑 <code>14px</code>，形成垂直+水平双轴晃动；慢查询时仅左侧暗到 <code>0.62</code>，右侧却 100% 亮，视觉割裂。
+          </td>
+          <td>
+            <span class="badge-opt">优化</span>区分<strong>实时搜索微调</strong>（零位移、极轻交叉落定）与<strong>侧栏范围切换</strong>（4px 柔和过渡）；慢查询（&gt;120ms）在工具栏底缘增加 <strong>2px 极细进度流光条</strong>，并将列表与详情<strong>协同微暗至 0.78</strong>，保持旧内容可读且随时可点击。
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <strong>2. 标题计数零闪烁</strong>
+            <div class="code-ref mono">history.go:127-133</div>
+          </td>
+          <td>
+            <span class="badge-wip">问题</span><code>pendingQuery</code> 在第 0 帧（未等 120ms）就立刻将 <code>subtitle</code> 置为 <code>""</code>，导致哪怕 20ms 的本地极速搜索，标题旁的条目数也会每次按键“消失→重现”闪烁。
+          </td>
+          <td>
+            <span class="badge-opt">优化</span>计数同样采用 <strong>Stale-While-Revalidate</strong>：保留旧数字直到新结果落盘，仅在超过 120ms 慢查询时将计数柔和降透明（0.42），快查询全程零闪烁。
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <strong>3. 选中态连续性</strong>
+            <div class="code-ref mono">live.go:580-593</div>
+          </td>
+          <td>
+            <span class="badge-wip">问题</span>只要 <code>queryChanged</code> 就无条件强制选中 <code>d.entries[0]</code> 并滚回顶部；当用户在筛选微调时，正在阅读的条目即便仍在结果中也会被强行切走，触发多余的详情重加载与滑入动画。
+          </td>
+          <td>
+            <span class="badge-opt">优化</span>同范围搜索/筛选细化时，若原 <code>selected</code> 仍在新结果集中，<strong>原位保持选中</strong>且不重播详情入场动画；仅在原条目被过滤掉或切换侧栏范围时回落至首项。
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <strong>4. 快捷面板防抖去白屏</strong>
+            <div class="code-ref mono">quick_panel_view.go:86-89</div>
+          </td>
+          <td>
+            <span class="badge-wip">问题</span><code>case !p.queryDue.IsZero()</code> 排在渲染列表之前，导致快捷面板每次按键都会在 <strong>300ms 防抖期</strong>内立刻清空整个列表并显示 <code>“正在搜索…”</code>，视觉闪烁极明显。
+          </td>
+          <td>
+            <span class="badge-opt">优化</span>快捷面板与主窗口保持一致：防抖与查询期间<strong>保留当前行列表</strong>，搜索图标在超阈值后切换为 spinner + 顶部细进度条 + 行列微暗（0.76），仅当列表为空且超时才展示居中加载态。
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <strong>5. 渐进式媒体与详情占位</strong>
+            <div class="code-ref mono">history.go:394-427, 601, 900</div>
+          </td>
+          <td>
+            <span class="badge-wip">问题</span>网格图片卡与列表缩略图解码前为空白框、到达后硬跳；详情大图加载时仅在空框中央显示孤立 spinner；长文本由 <code>preview</code> 展开全文时无提示，富文本/文件夹仍是单行文字 <code>“正在读取内容…”</code>。
+          </td>
+          <td>
+            <span class="badge-opt">优化</span>列表/网格图片解码前展示等圆角 <strong>Shimmer 骨架</strong>并 140ms 淡入；详情大图优先复用已缓存缩略图做 <strong>Blur-up 柔和清晰化</strong>（无缩略图则用等高 Shimmer）；长文流式加载附带轻尾行骨架，富文本/文件夹用对应几何骨架。
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <strong>6. 冷启动结构化骨架</strong>
+            <div class="code-ref mono">history.go:217, 274-281</div>
+          </td>
+          <td>
+            <span class="badge-wip">问题</span>冷启动时 <code>empty == true</code> 会折叠右侧详情栏为单栏，0–120ms 全白、120ms 弹出孤立小圈，数据到达后再突兀劈开成双栏，产生剧烈的布局跳变。
+          </td>
+          <td>
+            <span class="badge-opt">优化</span>冷启动超过 120ms 时直接按当前布局渲染<strong>低对比度结构骨架</strong>（列表+详情分栏骨架或网格骨架），首屏数据到达后原地交叉淡入，消除单栏→双栏的视觉撕裂。
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <strong>7. 细节打磨（零回归）</strong>
+            <div class="code-ref mono">live_search.go / live_wake.go</div>
+          </td>
+          <td>
+            <span class="badge-wip">保留优点</span>当前变更里的 <strong>120ms 延迟显示阈值</strong>、<strong>侧栏计数独立缓存</strong>（不随搜索失效）、<strong>搜索框内联 spinner 消除垂直位移</strong> 与 <strong>图片尺寸占位防跳动</strong> 方向非常好。
+          </td>
+          <td>
+            <span class="badge-opt">延续并收口</span>完整保留上述四项优秀基础，同时尊重系统 <code>ReduceMotion</code> 偏好（关闭位移与流光闪烁，仅保留静态微态变化）。
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+// ==================== Synthetic High-Res & Thumb Images (SVG Data URIs) ====================
+function makeSvgImg(title, sub, c1, c2, c3, lowRes) {
+  const w = lowRes ? 80 : 720, h = lowRes ? 50 : 440;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 720 440">
+    <defs>
+      <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="${c1}"/><stop offset="55%" stop-color="${c2}"/><stop offset="100%" stop-color="${c3}"/>
+      </linearGradient>
+    </defs>
+    <rect width="720" height="440" fill="url(#g)"/>
+    <circle cx="560" cy="110" r="130" fill="rgba(255,255,255,0.14)"/>
+    <circle cx="150" cy="360" r="160" fill="rgba(255,255,255,0.10)"/>
+    <rect x="48" y="54" width="624" height="332" rx="18" fill="rgba(16,18,26,0.28)" stroke="rgba(255,255,255,0.22)" stroke-width="2"/>
+    <rect x="76" y="88" width="180" height="16" rx="8" fill="rgba(255,255,255,0.55)"/>
+    <rect x="76" y="122" width="380" height="10" rx="5" fill="rgba(255,255,255,0.28)"/>
+    <rect x="76" y="162" width="260" height="186" rx="12" fill="rgba(255,255,255,0.16)"/>
+    <rect x="358" y="162" width="286" height="84" rx="12" fill="rgba(255,255,255,0.20)"/>
+    <rect x="358" y="264" width="286" height="84" rx="12" fill="rgba(255,255,255,0.13)"/>
+    <text x="80" y="328" fill="#ffffff" font-family="-apple-system,sans-serif" font-size="24" font-weight="700">${title}</text>
+    <text x="80" y="358" fill="rgba(255,255,255,0.82)" font-family="ui-monospace,monospace" font-size="15">${sub}</text>
+  </svg>`;
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
+// ==================== Mock Clipboard History Dataset ====================
+const ITEMS = [
+  {
+    id: 'h1', kind: 'text', day: '今天', time: '18:24', device: 'MacBook Pro', app: 'Cursor',
+    pinned: true, tags: ['work', 'release'], size: '1,248 字符',
+    title: 'Desktop Alpha build 4 release checklist & notes',
+    preview: 'Desktop Alpha build 4 release checklist: verify notarized DMG, BoardUI search transition smoothness, and Quick Panel debounce latency…',
+    fullText: `Desktop Alpha build 4 release checklist & notes
+
+1. Verify signed & notarized macOS ULFO DMG installer appearance in Light/Dark mode.
+2. Confirm BoardUI search results use stale-while-revalidate without header subtitle flicker.
+3. Validate Quick Panel 300ms debounce preserves previous rows instead of flashing "正在搜索…".
+4. Smoke test live tailcat peer sync between MacBook Pro and Linux Workstation.
+5. Export diagnostic bundle and confirm OTLP span sampling respects config.toml switches.`
+  },
+  {
+    id: 'h2', kind: 'image', day: '今天', time: '18:10', device: 'MacBook Pro', app: 'Figma',
+    pinned: true, tags: ['design'], size: '1600 × 1000 · 286 KB', dims: '1600 × 1000',
+    title: 'BoardUI_Search_Transition_Spec.png',
+    preview: 'BoardUI_Search_Transition_Spec.png',
+    thumb: makeSvgImg('BoardUI v2 Spec', '1600 × 1000 · PNG', '#2563eb', '#4f46e5', '#0ea5e9', true),
+    fullImg: makeSvgImg('BoardUI v2 Spec', '1600 × 1000 · PNG · Full Resolution', '#2563eb', '#4f46e5', '#0ea5e9', false)
+  },
+  {
+    id: 'h3', kind: 'code', day: '今天', time: '17:42', device: 'Linux Workstation', app: 'WezTerm',
+    pinned: false, tags: ['work'], size: '418 字符',
+    title: 'docker compose up -d --build && go test -race ./app/desktop/...',
+    preview: 'docker compose up -d --build && go test -race ./app/desktop/internal/desktopui/... -run TestSearchSmoothness',
+    fullText: `# Run live desktop smoothness & search regression suite
+docker compose up -d --build
+go test -race -v ./app/desktop/internal/desktopui/... \\
+  -run 'TestLiveSearch|TestQuickPanelDebounce|TestSelectionContinuity'
+
+# Verify docs & architecture links stay clean
+go run ./tools/docscheck`
+  },
+  {
+    id: 'h4', kind: 'link', day: '今天', time: '16:55', device: 'iPhone 16 Pro', app: 'Safari',
+    pinned: false, tags: ['release'], size: '68 字符',
+    title: 'UniClipboard · History Search Contract Specification',
+    preview: 'https://github.com/UniClipboard/uniclipboard/blob/main/docs/contracts/history-search-contract.md',
+    fullText: 'https://github.com/UniClipboard/uniclipboard/blob/main/docs/contracts/history-search-contract.md'
+  },
+  {
+    id: 'h5', kind: 'image', day: '今天', time: '15:18', device: 'MacBook Pro', app: 'CleanShot X',
+    pinned: false, tags: ['design', 'release'], size: '2560 × 1440 · 512 KB', dims: '2560 × 1440',
+    title: 'QuickPanel_Debounce_Trace_Screenshot.png',
+    preview: 'QuickPanel_Debounce_Trace_Screenshot.png',
+    thumb: makeSvgImg('Quick Panel Trace', '2560 × 1440 · CleanShot', '#0f766e', '#0d9488', '#22c55e', true),
+    fullImg: makeSvgImg('Quick Panel Trace', '2560 × 1440 · High-DPI Capture', '#0f766e', '#0d9488', '#22c55e', false)
+  },
+  {
+    id: 'h6', kind: 'folder', day: '昨天', time: '22:05', device: 'MacBook Pro', app: 'Finder',
+    pinned: false, tags: ['work'], size: '14 个文件 · 8.4 MB',
+    title: 'release-alpha-4-artifacts/',
+    preview: 'release-alpha-4-artifacts/ (14 files)',
+    files: ['unic-desktop-darwin-arm64.dmg', 'unic-desktop-windows-amd64.exe', 'checksums.txt', 'release-manifest.json']
+  },
+  {
+    id: 'h7', kind: 'text', day: '昨天', time: '19:30', device: 'Linux Workstation', app: 'Obsidian',
+    pinned: true, tags: ['work'], size: '892 字符',
+    title: '搜索流畅度指标：120ms 静默阈值与 Stale-While-Revalidate 原则',
+    preview: '搜索流畅度核心原则：1) <120ms 本地查询不展示任何加载指示；2) 慢查询保持旧结果可读，不清空画布…',
+    fullText: `搜索流畅度核心原则：
+
+1. <120ms 的本地查询完全静默，不闪烁 spinner、不清空标题计数；
+2. >120ms 慢查询期间，保留上一份有效结果与详情可读性，仅以顶部 2px 流光条 + 搜索框内联 spinner + 轻微双栏柔暗表达进度；
+3. 连续键入细化时，列表不上下弹跳；若当前选中项仍在结果中，保持选中连续不切走。`
+  },
+  {
+    id: 'h8', kind: 'file', day: '昨天', time: '14:12', device: 'iPhone 16 Pro', app: 'Files',
+    pinned: false, tags: ['design'], size: '2.1 MB',
+    title: 'unic-boardui-tokens-v2.pdf',
+    preview: 'unic-boardui-tokens-v2.pdf\ncolor-contrast-audit.csv',
+    files: ['unic-boardui-tokens-v2.pdf', 'color-contrast-audit.csv']
+  }
+];
+
+const TAGS = {
+  work:    { label: '研发', color: 'var(--tag-blue-dot)', bg: 'var(--tag-blue-bg)', fg: 'var(--tag-blue-fg)' },
+  design:  { label: '设计', color: 'var(--tag-purple-dot)', bg: 'var(--tag-purple-bg)', fg: 'var(--tag-purple-fg)' },
+  release: { label: '发布', color: 'var(--tag-orange-dot)', bg: 'var(--tag-orange-bg)', fg: 'var(--tag-orange-fg)' }
+};
+
+const KIND_LABELS = { text:'文本', code:'代码', link:'链接', image:'图片', file:'文件', folder:'文件夹' };
+
+// ==================== Application State ====================
+const state = {
+  mode: 'opt',            // 'wip' | 'opt'
+  latency: 280,           // ms
+  detailLatency: 450,     // ms
+  layout: 'list',         // 'list' | 'grid'
+  nav: 'all',             // 'all' | 'fav' | 'tag:work' | ... | 'dev:MacBook Pro'
+  query: '',
+  kindFilter: '',         // '' | 'image'
+  selectedId: 'h1',
+  displayedItems: [...ITEMS],
+  displayedKey: 'all||',
+  displayedSubtitle: String(ITEMS.length),
+  resultEpoch: 0,
+  lastTransitionReason: 'init', // 'refine' | 'scope' | 'cold'
+  // Loading flags
+  foregroundLoading: false,
+  showLoadingUI: false,
+  coldStart: false,
+  // Caches for progressive loading
+  thumbReady: new Set(['h2', 'h5']),
+  detailCache: new Set(['h1']),
+  detailBusyId: null,
+  detailLoadingShow: false,
+  // Quick panel
+  qpOpen: false,
+  qpQuery: '',
+  qpRows: [...ITEMS],
+  qpSelectedIdx: 0,
+  qpDebouncePending: false,
+  qpLoading: false,
+  qpShowLoading: false,
+  // Timers
+  queryTimer: null,
+  delayTimer: null,
+  detailTimer: null,
+  detailDelayTimer: null,
+  qpDebounceTimer: null,
+  qpQueryTimer: null,
+  qpDelayTimer: null,
+  scenarioTimers: []
+};
+
+const DELAY_THRESHOLD = 120;
+
+// ==================== Filtering Helper ====================
+function queryKey() {
+  return `${state.nav}|${state.kindFilter}|${state.query.trim().toLowerCase()}`;
+}
+
+function computeItems(nav, kindFilter, q) {
+  const kw = q.trim().toLowerCase();
+  return ITEMS.filter(it => {
+    if (nav === 'fav' && !it.pinned) return false;
+    if (nav.startsWith('tag:') && !it.tags.includes(nav.slice(4))) return false;
+    if (nav.startsWith('dev:') && it.device !== nav.slice(4)) return false;
+    if (kindFilter && it.kind !== kindFilter) return false;
+    if (!kw) return true;
+    const hay = `${it.title} ${it.preview} ${it.fullText || ''} ${it.device} ${it.app} ${(it.files||[]).join(' ')}`.toLowerCase();
+    return hay.includes(kw);
+  });
+}
+
+// ==================== Trigger Query (Simulates Engine Search) ====================
+function triggerSearch(reason = 'refine') {
+  clearTimeout(state.queryTimer);
+  clearTimeout(state.delayTimer);
+
+  const key = queryKey();
+  state.foregroundLoading = true;
+  state.showLoadingUI = false;
+  state.lastTransitionReason = reason;
+
+  // Immediate render (shows WIP frame-0 subtitle vanish!)
+  renderToolbar();
+  renderResultsLoadingVisuals();
+
+  state.delayTimer = setTimeout(() => {
+    if (!state.foregroundLoading) return;
+    state.showLoadingUI = true;
+    renderToolbar();
+    renderResultsLoadingVisuals();
+    if (state.coldStart) renderResultsStage(false);
+  }, DELAY_THRESHOLD);
+
+  const runLat = state.latency;
+  state.queryTimer = setTimeout(() => {
+    const nextItems = computeItems(state.nav, state.kindFilter, state.query);
+    const prevSelected = state.selectedId;
+    const wasEmpty = state.displayedItems.length === 0;
+    const willBeEmpty = nextItems.length === 0;
+
+    state.foregroundLoading = false;
+    state.showLoadingUI = false;
+    state.coldStart = false;
+    state.displayedItems = nextItems;
+    state.displayedKey = key;
+    state.displayedSubtitle = String(nextItems.length);
+    state.resultEpoch++;
+
+    // Selection policy: WIP always jumps to [0], OPT preserves selection on refinement if still present!
+    let selectionChanged = false;
+    if (nextItems.length === 0) {
+      selectionChanged = state.selectedId !== '';
+      state.selectedId = '';
+    } else if (state.mode === 'opt' && reason === 'refine' && nextItems.some(x => x.id === prevSelected)) {
+      selectionChanged = false; // KEEP current selection seamlessly!
+    } else {
+      selectionChanged = state.selectedId !== nextItems[0].id;
+      state.selectedId = nextItems[0].id;
+    }
+
+    const animateKind = (wasEmpty !== willBeEmpty) ? 'scope' : reason;
+    renderAll(true, animateKind, selectionChanged);
+    if (state.selectedId && !state.detailCache.has(state.selectedId)) {
+      loadDetailFor(state.selectedId);
+    }
+  }, runLat);
+}
+
+// ==================== Trigger Detail Read ====================
+function loadDetailFor(id) {
+  clearTimeout(state.detailTimer);
+  clearTimeout(state.detailDelayTimer);
+  if (!id || state.detailCache.has(id)) {
+    state.detailBusyId = null;
+    state.detailLoadingShow = false;
+    renderDetail(false);
+    return;
+  }
+  state.detailBusyId = id;
+  state.detailLoadingShow = false;
+  renderDetail(false);
+
+  state.detailDelayTimer = setTimeout(() => {
+    if (state.detailBusyId !== id) return;
+    state.detailLoadingShow = true;
+    renderDetail(false);
+  }, DELAY_THRESHOLD);
+
+  state.detailTimer = setTimeout(() => {
+    if (state.detailBusyId !== id) return;
+    state.detailCache.add(id);
+    state.thumbReady.add(id);
+    state.detailBusyId = null;
+    state.detailLoadingShow = false;
+    renderDetail(false, true);
+    renderResultsStage(false); // update any thumbs
+  }, state.detailLatency);
+}
+
+// ==================== Renderers ====================
+const ICON_SEARCH = `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="M10.5 10.5L13.8 13.8"/></svg>`;
+const ICON_SEARCH_16 = `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="M10.5 10.5L13.8 13.8"/></svg>`;
+
+function renderSidebar() {
+  const nav = document.getElementById('sidebarNav');
+  const allCnt = ITEMS.length;
+  const favCnt = ITEMS.filter(x => x.pinned).length;
+  const tagItems = Object.entries(TAGS).map(([id, t]) => {
+    const cnt = ITEMS.filter(x => x.tags.includes(id)).length;
+    return `<button class="nav-item ${state.nav === 'tag:'+id ? 'active':''}" onclick="selectNav('tag:${id}')">
+      <span class="nav-swatch" style="background:${t.color}"></span>
+      <span>${t.label}</span>
+      <span class="nav-cnt">${cnt}</span>
+    </button>`;
+  }).join('');
+
+  const devices = [
+    { name: 'MacBook Pro', online: true },
+    { name: 'Linux Workstation', online: true },
+    { name: 'iPhone 16 Pro', online: false }
+  ].map(d => {
+    const cnt = ITEMS.filter(x => x.device === d.name).length;
+    return `<button class="nav-item ${state.nav === 'dev:'+d.name ? 'active':''}" onclick="selectNav('dev:${d.name}')">
+      <span class="dev-dot ${d.online ? '':'off'}"></span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.name}</span>
+      <span class="nav-cnt">${cnt}</span>
+    </button>`;
+  }).join('');
+
+  nav.innerHTML = `
+    <div>
+      <div class="nav-sec-lbl">剪贴板历史</div>
+      <div class="nav-list">
+        <button class="nav-item ${state.nav === 'all' ? 'active':''}" onclick="selectNav('all')">
+          <svg class="ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5.5 6h5M5.5 9.5h3.5"/></svg>
+          <span>全部历史</span>
+          <span class="nav-cnt">${allCnt}</span>
+        </button>
+        <button class="nav-item ${state.nav === 'fav' ? 'active':''}" onclick="selectNav('fav')">
+          <svg class="ico" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2.2l1.8 3.6 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4-2.9-2.8 4-.6z"/></svg>
+          <span>收藏</span>
+          <span class="nav-cnt">${favCnt}</span>
+        </button>
+      </div>
+    </div>
+    <div>
+      <div class="nav-sec-lbl">标签（独立计数不闪烁）</div>
+      <div class="nav-list">${tagItems}</div>
+    </div>
+    <div>
+      <div class="nav-sec-lbl">设备</div>
+      <div class="nav-list">${devices}</div>
+    </div>
+  `;
+}
+
+function headingTitle() {
+  if (state.nav === 'all') return '全部历史';
+  if (state.nav === 'fav') return '收藏';
+  if (state.nav.startsWith('tag:')) return TAGS[state.nav.slice(4)].label;
+  if (state.nav.startsWith('dev:')) return state.nav.slice(4);
+  return '全部历史';
+}
+
+function renderToolbar() {
+  document.getElementById('tbTitle').textContent = headingTitle();
+  const subEl = document.getElementById('tbSub');
+  const pending = state.foregroundLoading && state.displayedKey !== queryKey();
+
+  if (state.mode === 'wip') {
+    // WIP bug: immediately blanks subtitle on frame 0!
+    subEl.textContent = pending ? '' : state.displayedSubtitle;
+    subEl.classList.remove('muted-updating');
+  } else {
+    // Proposed: keep previous count visible; only softly mute if slow (>120ms)
+    subEl.textContent = state.coldStart ? '' : state.displayedSubtitle;
+    subEl.classList.toggle('muted-updating', state.showLoadingUI && !state.coldStart);
+  }
+
+  // Leading search glyph / spinner
+  const glyph = document.getElementById('searchGlyph');
+  if (state.showLoadingUI) {
+    glyph.innerHTML = `<span class="spinner" style="width:14px;height:14px;color:var(--accent-500)"></span>`;
+  } else {
+    glyph.innerHTML = ICON_SEARCH;
+  }
+
+  // Top hairline progress (Proposed only!)
+  const hairline = document.getElementById('mainHairline');
+  hairline.classList.toggle('active', state.mode === 'opt' && state.showLoadingUI);
+
+  // Filter tokens
+  const tokEl = document.getElementById('searchTokens');
+  tokEl.innerHTML = state.kindFilter
+    ? `<span class="tok">类型: 图片 <button onclick="toggleQuickFilter()" title="移除">×</button></span>`
+    : '';
+  document.getElementById('searchClear').style.display = (state.query || state.kindFilter) ? 'flex' : 'none';
+
+  document.getElementById('btnList').classList.toggle('on', state.layout === 'list');
+  document.getElementById('btnGrid').classList.toggle('on', state.layout === 'grid');
+}
+
+function renderResultsLoadingVisuals() {
+  const stage = document.getElementById('resultsStage');
+  const detail = document.getElementById('detailPane');
+  stage.classList.remove('stale-wip', 'stale-opt', 'fresh');
+  detail.classList.remove('stale-opt');
+
+  if (state.showLoadingUI && state.displayedItems.length > 0) {
+    if (state.mode === 'wip') {
+      stage.classList.add('stale-wip');
+      // WIP leaves detailPane at 100% opacity!
+    } else {
+      stage.classList.add('stale-opt');
+      detail.classList.add('stale-opt');
+    }
+  } else {
+    stage.classList.add('fresh');
+  }
+}
+
+function highlightHtml(text) {
+  const esc = s => s.replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));
+  const kw = state.query.trim();
+  if (!kw) return esc(text);
+  const re = new RegExp(`(${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig');
+  return esc(text).replace(re, '<mark>$1</mark>');
+}
+
+function renderColdSkeletonList() {
+  return `<div class="list-pad">
+    <div class="grp-hdr"><span class="skel" style="width:42px;height:11px"></span><span class="skel" style="width:28px;height:11px"></span></div>
+    ${[1,2,3,4,5].map((_,i) => `
+      <div class="row-card" style="pointer-events:none">
+        ${i===1 ? `<div class="row-thumb skel" style="border:0"></div>`:''}
+        <div class="row-body" style="gap:7px">
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="skel" style="width:34px;height:15px"></span>
+            <span class="skel" style="width:${62 + (i%3)*12}%;height:13px"></span>
+          </div>
+          <span class="skel" style="width:${48 + (i%2)*24}%;height:11px"></span>
+          <span class="skel" style="width:110px;height:10px"></span>
+        </div>
+      </div>`).join('')}
+  </div>`;
+}
+
+function renderColdSkeletonDetail() {
+  return `<div class="detail-inner" style="pointer-events:none">
+    <div style="display:flex;gap:10px;align-items:center">
+      <span class="skel" style="width:48px;height:20px;border-radius:6px"></span>
+      <span class="skel" style="width:170px;height:13px"></span>
+    </div>
+    <div class="preview-frame" style="padding:20px;display:flex;flex-direction:column;gap:10px">
+      <span class="skel" style="width:82%;height:14px"></span>
+      <span class="skel" style="width:94%;height:14px"></span>
+      <span class="skel" style="width:76%;height:14px"></span>
+      <span class="skel" style="width:45%;height:14px"></span>
+    </div>
+    <div class="facts-row">
+      <div class="fact-card"><div class="skel" style="width:40px;height:10px;margin-bottom:6px"></div><div class="skel" style="width:68px;height:13px"></div></div>
+      <div class="fact-card"><div class="skel" style="width:32px;height:10px;margin-bottom:6px"></div><div class="skel" style="width:74px;height:13px"></div></div>
+      <div class="fact-card"><div class="skel" style="width:48px;height:10px;margin-bottom:6px"></div><div class="skel" style="width:88px;height:13px"></div></div>
+    </div>
+  </div>`;
+}
+
+function renderColdSkeletonGrid() {
+  return `<div class="grid-pad">
+    <div class="grp-hdr"><span class="skel" style="width:42px;height:11px"></span></div>
+    <div class="grid-cards">
+      ${[1,2,3,4,5,6].map(() => `
+        <div class="g-card" style="pointer-events:none">
+          <div style="display:flex;gap:6px"><span class="skel" style="width:38px;height:15px"></span><span class="skel" style="width:60%;height:13px"></span></div>
+          <div class="skel" style="flex:1;border-radius:8px"></div>
+          <div class="skel" style="width:55%;height:10px"></div>
+        </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function renderResultsStage(animate = false, animateKind = 'refine') {
+  const browsePane = document.getElementById('browsePane');
+  const detailPane = document.getElementById('detailPane');
+  const stage = document.getElementById('resultsStage');
+  const items = state.displayedItems;
+  const empty = items.length === 0;
+
+  // Cold start handling
+  if (state.coldStart && empty) {
+    if (state.mode === 'wip') {
+      // WIP: collapses detail pane -> blank void (0-120ms) -> lone spinner -> abrupt split!
+      browsePane.classList.add('full');
+      detailPane.style.display = 'none';
+      stage.innerHTML = state.showLoadingUI
+        ? `<div class="center-state">
+            <span class="spinner" style="width:18px;height:18px;color:var(--text-tertiary)"></span>
+            <span>正在读取历史…</span>
+          </div>`
+        : '';
+    } else {
+      // Proposed: preserves layout geometry with calm structural skeleton (>120ms)
+      if (state.layout === 'grid') {
+        browsePane.classList.add('full');
+        detailPane.style.display = 'none';
+        stage.innerHTML = state.showLoadingUI ? renderColdSkeletonGrid() : '';
+      } else {
+        browsePane.classList.remove('full');
+        detailPane.style.display = 'flex';
+        stage.innerHTML = state.showLoadingUI ? renderColdSkeletonList() : '';
+        detailPane.innerHTML = state.showLoadingUI ? renderColdSkeletonDetail() : '';
+      }
+    }
+    return;
+  }
+
+  // Normal layout split vs full
+  if (state.layout === 'grid' || empty) {
+    browsePane.classList.add('full');
+    detailPane.style.display = 'none';
+  } else {
+    browsePane.classList.remove('full');
+    detailPane.style.display = 'flex';
+  }
+
+  // Trigger entrance animation cleanly
+  stage.classList.remove('wip-enter', 'opt-scope-enter', 'opt-refine-enter');
+  if (animate) {
+    void stage.offsetWidth;
+    if (state.mode === 'wip') {
+      stage.classList.add('wip-enter');
+    } else if (animateKind === 'scope' || animateKind === 'cold') {
+      stage.classList.add('opt-scope-enter');
+    } else {
+      stage.classList.add('opt-refine-enter');
+    }
+  }
+
+  if (empty) {
+    stage.innerHTML = `<div class="center-state">
+      <div class="empty-icon">${ICON_SEARCH_16}</div>
+      <div class="empty-title">没有匹配的历史记录</div>
+      <div class="empty-desc">尝试缩短关键词，或移除部分筛选条件以查看更多结果。</div>
+      <button class="chip sim" style="margin-top:4px;padding:5px 12px" onclick="clearSearch()">清除筛选条件</button>
+    </div>`;
+    return;
+  }
+
+  // Group by day
+  const groups = [];
+  for (const it of items) {
+    let g = groups[groups.length - 1];
+    if (!g || g.day !== it.day) { g = { day: it.day, items: [] }; groups.push(g); }
+    g.items.push(it);
+  }
+
+  if (state.layout === 'grid') {
+    stage.innerHTML = `<div class="grid-pad">${groups.map(g => `
+      <div>
+        <div class="grp-hdr"><span>${g.day}</span><span>${g.items.length} 项</span></div>
+        <div class="grid-cards" style="margin-top:6px">
+          ${g.items.map(it => {
+            const thumbLoaded = state.thumbReady.has(it.id);
+            let body = '';
+            if (it.kind === 'image') {
+              if (thumbLoaded) {
+                body = `<div class="g-media"><img class="img-fade-in" src="${it.thumb}" alt=""></div>`;
+              } else {
+                // WIP shows blank empty media box; OPT shows BoardUI shimmer!
+                body = state.mode === 'opt'
+                  ? `<div class="g-media skel" style="border:0"></div>`
+                  : `<div class="g-media"></div>`;
+              }
+            } else if (it.kind === 'code') {
+              body = `<div class="g-code mono">${highlightHtml(it.preview)}</div>`;
+            } else {
+              body = `<div class="g-text">${highlightHtml(it.preview)}</div>`;
+            }
+            return `<div class="g-card ${state.selectedId===it.id?'sel':''}" onclick="selectItem('${it.id}')">
+              <div class="row-top">
+                <span class="kind-pill kp-${it.kind}">${KIND_LABELS[it.kind]}</span>
+                <span class="row-title">${highlightHtml(it.title)}</span>
+              </div>
+              ${body}
+              <div class="row-meta">
+                <span>${it.device}</span><span>·</span><span>${it.time}</span>
+                ${it.pinned ? '<span class="row-pin" style="margin-left:auto">★</span>':''}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`).join('')}</div>`;
+  } else {
+    stage.innerHTML = `<div class="list-pad">${groups.map(g => `
+      <div class="grp-hdr"><span>${g.day}</span><span>${g.items.length} 项</span></div>
+      ${g.items.map(it => {
+        const thumbLoaded = state.thumbReady.has(it.id);
+        let thumbHtml = '';
+        if (it.kind === 'image') {
+          if (thumbLoaded) {
+            thumbHtml = `<div class="row-thumb"><img class="img-fade-in" src="${it.thumb}" alt=""></div>`;
+          } else {
+            thumbHtml = state.mode === 'opt'
+              ? `<div class="row-thumb skel" style="border:0"></div>`
+              : `<div class="row-thumb"></div>`;
+          }
+        }
+        const tagsHtml = it.tags.map(tid => `<span class="mini-tag" style="background:${TAGS[tid].bg};color:${TAGS[tid].fg}">${TAGS[tid].label}</span>`).join('');
+        return `<div class="row-card ${state.selectedId===it.id?'sel':''}" onclick="selectItem('${it.id}')">
+          ${thumbHtml}
+          <div class="row-body">
+            <div class="row-top">
+              <span class="kind-pill kp-${it.kind}">${KIND_LABELS[it.kind]}</span>
+              <span class="row-title">${highlightHtml(it.title)}</span>
+            </div>
+            <div class="row-excerpt">${highlightHtml(it.preview)}</div>
+            <div class="row-meta">
+              <span>${it.app} · ${it.device}</span>
+              <span>·</span><span>${it.time}</span>
+              ${tagsHtml}
+              ${it.pinned ? '<span class="row-pin" style="margin-left:auto">★</span>':''}
+            </div>
+          </div>
+        </div>`;
+      }).join('')}
+    `).join('')}</div>`;
+  }
+
+  renderResultsLoadingVisuals();
+}
+
+function renderDetail(animateSlide = false, justDecoded = false) {
+  const pane = document.getElementById('detailPane');
+  if (state.layout === 'grid' || state.displayedItems.length === 0) return;
+  const it = state.displayedItems.find(x => x.id === state.selectedId);
+  if (!it) { pane.innerHTML = ''; return; }
+
+  const busy = state.detailBusyId === it.id;
+  const showBusyCue = busy && state.detailLoadingShow;
+  let previewHtml = '';
+
+  if (it.kind === 'image') {
+    const hasThumb = state.thumbReady.has(it.id);
+    if (!busy) {
+      previewHtml = `<div class="preview-frame">
+        <div class="preview-img-stage">
+          <img class="${justDecoded ? (state.mode==='opt' ? 'sharp' : 'img-fade-in') : ''}" src="${it.fullImg}" alt="">
+        </div>
+      </div>`;
+    } else if (state.mode === 'wip') {
+      // WIP: empty box + lone spinner
+      previewHtml = `<div class="preview-frame">
+        <div class="preview-img-stage">
+          <span class="spinner" style="width:18px;height:18px;color:var(--text-tertiary)"></span>
+        </div>
+      </div>`;
+    } else {
+      // Proposed: Blur-up from cached thumbnail, or full-bleed shimmer skeleton
+      previewHtml = `<div class="preview-frame">
+        <div class="preview-img-stage">
+          ${hasThumb
+            ? `<img class="blur-up" src="${it.thumb}" alt="">
+               ${showBusyCue ? `<span class="img-hd-badge"><span class="spinner" style="width:11px;height:11px;color:#fff"></span> 正在加载原图…</span>` : ''}`
+            : `<div class="skel" style="width:100%;height:100%;border-radius:0"></div>`}
+        </div>
+      </div>`;
+    }
+  } else if (it.kind === 'folder') {
+    if (!busy) {
+      previewHtml = `<div class="preview-frame" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+        ${it.files.map(f => `<div style="display:flex;align-items:center;gap:8px;font-size:12.5px">
+          <span>📄</span><span class="mono">${f}</span><span style="margin-left:auto;font-size:11px;color:var(--text-tertiary)">快照文件</span>
+        </div>`).join('')}
+      </div>`;
+    } else if (state.mode === 'wip') {
+      previewHtml = `<div class="preview-frame" style="padding:20px 24px;display:flex;align-items:center;gap:8px;color:var(--text-secondary)">
+        <span class="spinner" style="width:14px;height:14px;color:var(--text-tertiary)"></span>
+        <span>正在读取内容…</span>
+      </div>`;
+    } else {
+      previewHtml = `<div class="preview-frame" style="padding:14px;display:flex;flex-direction:column;gap:10px">
+        ${[78, 64, 86, 52].map(w => `<div style="display:flex;align-items:center;gap:10px">
+          <span class="skel" style="width:16px;height:16px;border-radius:4px"></span>
+          <span class="skel" style="width:${w}%;height:12px"></span>
+        </div>`).join('')}
+      </div>`;
+    }
+  } else if (it.kind === 'file') {
+    const names = (it.files || it.preview.split('\n'));
+    previewHtml = `<div class="preview-frame" style="padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+      ${names.map(f => `<div style="display:flex;align-items:center;gap:8px;font-size:12.5px">
+        <span>📎</span><span class="mono">${f}</span><span style="margin-left:auto;font-size:11px;color:var(--text-tertiary)">已接收</span>
+      </div>`).join('')}
+    </div>`;
+  } else {
+    const isCode = it.kind === 'code';
+    const text = busy ? it.preview : (it.fullText || it.preview);
+    const hasMore = busy && it.fullText && it.fullText.length > it.preview.length;
+    previewHtml = `<div class="preview-frame ${isCode ? 'code':''}">
+      <div class="preview-text ${isCode ? 'mono':''}">${highlightHtml(text)}</div>
+      ${state.mode === 'opt' && hasMore && showBusyCue ? `
+        <div class="streaming-tail">
+          <span class="skel" style="width:88%;height:11px"></span>
+          <span class="skel" style="width:62%;height:11px"></span>
+        </div>` : ''}
+    </div>`;
+  }
+
+  const tagsHtml = it.tags.map(tid => `<span class="mini-tag" style="padding:2px 8px;font-size:11.5px;background:${TAGS[tid].bg};color:${TAGS[tid].fg}">${TAGS[tid].label}</span>`).join('');
+
+  pane.innerHTML = `<div class="detail-inner ${animateSlide ? 'slide-in':''}">
+    <div class="detail-hdr">
+      <span class="kind-pill kp-${it.kind}" style="font-size:11px;padding:2px 8px">${KIND_LABELS[it.kind]}</span>
+      <span class="detail-prov">${it.device} · ${it.day} ${it.time} · ${it.app}</span>
+    </div>
+    ${previewHtml}
+    <div class="facts-row">
+      <div class="fact-card"><div class="fact-k">内容类型</div><div class="fact-v">${KIND_LABELS[it.kind]}</div></div>
+      <div class="fact-card"><div class="fact-k">规格</div><div class="fact-v mono">${it.kind==='image' && busy ? '—' : it.size}</div></div>
+      <div class="fact-card"><div class="fact-k">来源设备</div><div class="fact-v">${it.device}</div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <span style="font-size:11.5px;color:var(--text-tertiary)">标签:</span>
+      ${tagsHtml || '<span style="font-size:11.5px;color:var(--text-tertiary)">无</span>'}
+    </div>
+  </div>`;
+}
+
+function renderAll(animateResults = false, animateKind = 'refine', animateDetail = false) {
+  renderSidebar();
+  renderToolbar();
+  renderResultsStage(animateResults, animateKind);
+  renderDetail(animateDetail);
+}
+
+// ==================== Quick Panel Logic (300ms Debounce Comparison) ====================
+function openQuickPanel() {
+  state.qpOpen = true;
+  state.qpQuery = '';
+  state.qpRows = [...ITEMS];
+  state.qpSelectedIdx = 0;
+  state.qpDebouncePending = false;
+  state.qpLoading = false;
+  state.qpShowLoading = false;
+  document.getElementById('qpScrim').classList.add('open');
+  const inp = document.getElementById('qpInput');
+  inp.value = '';
+  renderQuickPanel();
+  setTimeout(() => inp.focus(), 20);
+}
+
+function closeQuickPanel() {
+  state.qpOpen = false;
+  clearTimeout(state.qpDebounceTimer);
+  clearTimeout(state.qpQueryTimer);
+  clearTimeout(state.qpDelayTimer);
+  document.getElementById('qpScrim').classList.remove('open');
+}
+
+function onQuickPanelInput(val) {
+  state.qpQuery = val;
+  clearTimeout(state.qpDebounceTimer);
+  clearTimeout(state.qpQueryTimer);
+  clearTimeout(state.qpDelayTimer);
+
+  state.qpDebouncePending = true;
+  state.qpLoading = false;
+  state.qpShowLoading = false;
+  renderQuickPanel();
+
+  // Matches quick_panel_model.go:102 -> 300ms debounce!
+  state.qpDebounceTimer = setTimeout(() => {
+    state.qpDebouncePending = false;
+    state.qpLoading = true;
+    renderQuickPanel();
+
+    state.qpDelayTimer = setTimeout(() => {
+      if (!state.qpLoading) return;
+      state.qpShowLoading = true;
+      renderQuickPanel();
+    }, DELAY_THRESHOLD);
+
+    state.qpQueryTimer = setTimeout(() => {
+      state.qpLoading = false;
+      state.qpShowLoading = false;
+      state.qpRows = computeItems('all', '', state.qpQuery);
+      state.qpSelectedIdx = 0;
+      renderQuickPanel();
+    }, state.latency);
+  }, 300);
+}
+
+function renderQuickPanel() {
+  const glyph = document.getElementById('qpGlyph');
+  const hairline = document.getElementById('qpHairline');
+  const body = document.getElementById('qpBody');
+  const cnt = document.getElementById('qpCount');
+
+  const activeSlow = state.qpShowLoading || (state.mode === 'opt' && state.qpDebouncePending && state.qpQuery.length > 0 && state.latency >= 200);
+  glyph.innerHTML = state.qpShowLoading
+    ? `<span class="spinner" style="width:16px;height:16px;color:var(--accent-500)"></span>`
+    : ICON_SEARCH_16;
+  hairline.classList.toggle('active', state.mode === 'opt' && (state.qpShowLoading || state.qpDebouncePending));
+
+  cnt.textContent = `${state.qpRows.length} 条`;
+  cnt.style.opacity = (state.mode === 'opt' && (state.qpDebouncePending || state.qpShowLoading)) ? '.45' : '1';
+
+  body.classList.toggle('stale-opt', state.mode === 'opt' && state.qpShowLoading && state.qpRows.length > 0);
+
+  // WIP BUG: wipes ENTIRE list during 300ms debounce (`!p.queryDue.IsZero()`)!
+  if (state.mode === 'wip' && state.qpDebouncePending) {
+    body.innerHTML = `<div style="padding:24px;color:var(--text-secondary);font-size:13px">正在搜索…</div>`;
+    return;
+  }
+  if (state.qpRows.length === 0 && state.qpLoading) {
+    body.innerHTML = state.qpShowLoading
+      ? `<div style="padding:24px;display:flex;align-items:center;gap:8px;color:var(--text-secondary);font-size:13px"><span class="spinner" style="width:14px;height:14px"></span>正在搜索…</div>`
+      : '';
+    return;
+  }
+  if (state.qpRows.length === 0) {
+    body.innerHTML = `<div class="center-state" style="padding:48px 20px"><div class="empty-title">没有匹配项</div><div class="empty-desc">尝试其它关键词</div></div>`;
+    return;
+  }
+
+  body.innerHTML = state.qpRows.map((it, idx) => `
+    <div class="qp-row ${idx===state.qpSelectedIdx ? 'sel':''}" onclick="state.qpSelectedIdx=${idx};renderQuickPanel()">
+      <span class="kind-pill kp-${it.kind}">${KIND_LABELS[it.kind]}</span>
+      <span class="row-title" style="flex:1">${it.title}</span>
+      <span style="font-size:11.5px;color:var(--text-tertiary)">${it.device} · ${it.time}</span>
+    </div>
+  `).join('');
+}
+
+// ==================== Controls & Interactive Actions ====================
+function setMode(m) {
+  state.mode = m;
+  document.getElementById('btnModeWip').classList.toggle('on', m === 'wip');
+  document.getElementById('btnModeOpt').classList.toggle('on', m === 'opt');
+  const tag = document.getElementById('calloutTag');
+  tag.className = 'callout-tag ' + m;
+  tag.textContent = m === 'wip' ? '当前变更 (WIP)' : '优化方案 (Proposed)';
+  setCallout(m === 'wip'
+    ? '已切换到 <strong>当前变更 (WIP)</strong>：可观察连续输入时的列表 6px 弹跳、标题计数消失闪烁、双栏明暗割裂、以及快捷面板 300ms 防抖清屏。'
+    : '已切换到 <strong>优化方案 (Proposed)</strong>：连续输入零弹跳、计数不闪烁、选中态保持连续、顶部 2px 流光条 + 双栏协同柔暗、图片 Blur-up 渐进加载与快捷面板去白屏。');
+  renderAll(false);
+  if (state.qpOpen) renderQuickPanel();
+}
+
+function setLatency(ms) {
+  state.latency = ms;
+  document.querySelectorAll('[data-lat]').forEach(b => b.classList.toggle('on', Number(b.dataset.lat) === ms));
+  updateTelemetry();
+}
+
+function setDetailLatency(ms) {
+  state.detailLatency = ms;
+  document.querySelectorAll('[data-dlat]').forEach(b => b.classList.toggle('on', Number(b.dataset.dlat) === ms));
+  updateTelemetry();
+}
+
+function updateTelemetry() {
+  document.getElementById('telemetryPill').textContent = `query: ${state.latency}ms · detail: ${state.detailLatency}ms`;
+}
+
+function toggleTheme() {
+  const html = document.documentElement;
+  const dark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', dark ? 'light' : 'dark');
+  document.getElementById('btnTheme').textContent = dark ? '🌙 深色' : '☀️ 浅色';
+}
+
+function toggleReduceMotion() {
+  const html = document.documentElement;
+  const on = html.getAttribute('data-reduce-motion') === 'true';
+  html.setAttribute('data-reduce-motion', on ? 'false' : 'true');
+  document.getElementById('btnMotion').textContent = on ? '减弱动态: 关' : '减弱动态: 开';
+  document.getElementById('btnMotion').classList.toggle('on', !on);
+}
+
+function setLayout(l) {
+  state.layout = l;
+  renderAll(true, 'scope', false);
+}
+
+function selectNav(nav) {
+  state.nav = nav;
+  renderSidebar();
+  triggerSearch('scope');
+}
+
+function selectItem(id) {
+  const changed = state.selectedId !== id;
+  state.selectedId = id;
+  renderResultsStage(false);
+  renderDetail(changed);
+  if (!state.detailCache.has(id)) {
+    loadDetailFor(id);
+  }
+}
+
+function toggleQuickFilter() {
+  state.kindFilter = state.kindFilter === 'image' ? '' : 'image';
+  triggerSearch('refine');
+}
+
+function clearSearch() {
+  state.query = '';
+  state.kindFilter = '';
+  document.getElementById('searchInput').value = '';
+  triggerSearch('refine');
+}
+
+function setCallout(html) {
+  document.getElementById('calloutText').innerHTML = html;
+}
+
+// ==================== Guided Auto-Play Scenarios ====================
+function stopScenarios() {
+  state.scenarioTimers.forEach(t => clearTimeout(t));
+  state.scenarioTimers = [];
+  document.querySelectorAll('.chip.sim').forEach(b => b.classList.remove('running'));
+}
+
+function later(ms, fn) {
+  const id = setTimeout(fn, ms);
+  state.scenarioTimers.push(id);
+}
+
+function runScenario(name) {
+  stopScenarios();
+  closeQuickPanel();
+  const inp = document.getElementById('searchInput');
+
+  if (name === 'typing') {
+    document.getElementById('sc-type').classList.add('running');
+    state.nav = 'all'; state.kindFilter = ''; state.layout = 'list';
+    state.query = ''; inp.value = ''; state.selectedId = 'h1';
+    state.displayedItems = [...ITEMS]; state.displayedSubtitle = String(ITEMS.length);
+    renderAll(false);
+    setCallout(state.mode === 'wip'
+      ? '<strong>场景 1 · 连续键入（当前 WIP）</strong>：注意看顶部计数 <code>8</code> 每次按键瞬间消失，且每返回一次结果，整个列表都跌至 0.45 透明并向上弹跳 6px！'
+      : '<strong>场景 1 · 连续键入（优化方案）</strong>：计数保持稳定不闪烁、列表零垂直弹跳、仅高亮平滑更新，眼睛始终锚定在结果上。');
+
+    const steps = ['r', 're', 'rel', 'rele', 'release'];
+    const gap = Math.max(340, state.latency + 120);
+    steps.forEach((s, i) => {
+      later(200 + i * gap, () => {
+        state.query = s; inp.value = s;
+        triggerSearch('refine');
+      });
+    });
+    later(200 + steps.length * gap + 500, () => document.getElementById('sc-type').classList.remove('running'));
+  }
+
+  if (name === 'keepSelection') {
+    document.getElementById('sc-keep').classList.add('running');
+    state.nav = 'all'; state.kindFilter = ''; state.layout = 'list';
+    state.query = ''; inp.value = '';
+    state.displayedItems = [...ITEMS]; state.displayedSubtitle = String(ITEMS.length);
+    state.selectedId = 'h4'; state.detailCache.add('h4');
+    renderAll(false);
+    setCallout(state.mode === 'wip'
+      ? '<strong>场景 2 · 筛选微调（当前 WIP）</strong>：用户正在看第 4 条（链接），输入 <code>release</code> 后该条仍在结果中，但 WIP 强制跳回第 1 条并重播详情滑入动画！'
+      : '<strong>场景 2 · 筛选微调（优化方案）</strong>：用户正在看第 4 条（链接），输入 <code>release</code> 过滤后该条仍在结果集，原位保持选中、详情零打断！');
+
+    later(650, () => {
+      state.query = 'release'; inp.value = 'release';
+      triggerSearch('refine');
+    });
+    later(650 + state.latency + 500, () => document.getElementById('sc-keep').classList.remove('running'));
+  }
+
+  if (name === 'slowScope') {
+    document.getElementById('sc-slow').classList.add('running');
+    setLatency(850);
+    state.nav = 'all'; state.query = ''; state.kindFilter = ''; state.layout = 'list';
+    inp.value = ''; state.displayedItems = [...ITEMS]; state.displayedSubtitle = String(ITEMS.length);
+    renderAll(false);
+    setCallout(state.mode === 'wip'
+      ? '<strong>场景 3 · 慢速切侧栏 850ms（当前 WIP）</strong>：超过 120ms 后左侧暗至 0.62，右侧详情却保持 100% 亮且仍显示旧条目，同时标题计数被清空。'
+      : '<strong>场景 3 · 慢速切侧栏 850ms（优化方案）</strong>：超过 120ms 后，工具栏底缘出现 2px 流光进度条，左右双栏协同柔暗至 0.78，计数微暗而非消失，到达后柔和切换。');
+
+    later(350, () => selectNav('fav'));
+    later(1550, () => selectNav('tag:design'));
+    later(2600, () => document.getElementById('sc-slow').classList.remove('running'));
+  }
+
+  if (name === 'mediaDetail') {
+    document.getElementById('sc-media').classList.add('running');
+    setDetailLatency(1100);
+    state.nav = 'all'; state.query = ''; state.kindFilter = ''; state.layout = 'list';
+    inp.value = ''; state.displayedItems = [...ITEMS];
+    state.detailCache.delete('h2'); state.detailCache.delete('h7'); state.detailCache.delete('h6');
+    state.thumbReady.add('h2'); // thumb already decoded in list!
+    renderAll(false);
+    setCallout(state.mode === 'wip'
+      ? '<strong>场景 4 · 详情渐进加载 1.1s（当前 WIP）</strong>：点开图片时即使缩略图已就绪，详情仍先展示裸空盒+转圈；点开文件夹仅显示一行文字“正在读取内容…”。'
+      : '<strong>场景 4 · 详情渐进加载 1.1s（优化方案）</strong>：图片立刻复用缩略图做 Blur-up 柔化过渡 + 原图徽标；长文在 preview 下方展示尾行骨架；文件夹展示结构化文件行骨架。');
+
+    later(200, () => selectItem('h2'));
+    later(1650, () => selectItem('h7'));
+    later(3100, () => selectItem('h6'));
+    later(4500, () => document.getElementById('sc-media').classList.remove('running'));
+  }
+
+  if (name === 'coldStart') {
+    document.getElementById('sc-cold').classList.add('running');
+    setLatency(850);
+    state.nav = 'all'; state.query = ''; state.kindFilter = '';
+    inp.value = '';
+    state.displayedItems = []; state.displayedKey = ''; state.displayedSubtitle = '';
+    state.selectedId = ''; state.coldStart = true;
+    state.thumbReady.clear(); state.detailCache.clear();
+    renderAll(false);
+    setCallout(state.mode === 'wip'
+      ? '<strong>场景 5 · 冷启动 850ms（当前 WIP）</strong>：0–120ms 全白单栏 → 120ms 孤立居中转圈 → 850ms 突兀劈成左右双栏，且图片缩略图空白硬跳。'
+      : '<strong>场景 5 · 冷启动 850ms（优化方案）</strong>：120ms 后原地渲染列表+详情结构化骨架，数据到达后原地交叉淡入，无单栏→双栏跳变，图片缩略图带 Shimmer 占位渐显。');
+
+    triggerSearch('cold');
+    later(850 + 500, () => {
+      state.thumbReady.add('h2'); state.thumbReady.add('h5');
+      renderResultsStage(false);
+      document.getElementById('sc-cold').classList.remove('running');
+    });
+  }
+
+  if (name === 'quickPanel') {
+    document.getElementById('sc-qp').classList.add('running');
+    openQuickPanel();
+    const qpInp = document.getElementById('qpInput');
+    setCallout(state.mode === 'wip'
+      ? '<strong>场景 6 · 快捷面板 300ms 防抖（当前 WIP）</strong>：每次按键都立即清空全部结果并闪现“正在搜索…”，连续打字时整个面板剧烈白屏闪烁！'
+      : '<strong>场景 6 · 快捷面板 300ms 防抖（优化方案）</strong>：300ms 防抖与查询期间完整保留当前列表，仅在顶部以 2px 细进度条 + spinner 轻提示，全程丝滑无白屏！');
+
+    const keys = ['d', 'do', 'doc', 'dock', 'docker'];
+    keys.forEach((k, i) => {
+      later(250 + i * 240, () => {
+        qpInp.value = k;
+        onQuickPanelInput(k);
+      });
+    });
+    later(250 + keys.length * 240 + 700, () => document.getElementById('sc-qp').classList.remove('running'));
+  }
+}
+
+// ==================== Event Bindings ====================
+document.getElementById('searchInput').addEventListener('input', e => {
+  stopScenarios();
+  state.query = e.target.value;
+  triggerSearch('refine');
+});
+
+document.getElementById('qpInput').addEventListener('input', e => {
+  stopScenarios();
+  onQuickPanelInput(e.target.value);
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && state.qpOpen) closeQuickPanel();
+});
+
+// Initial Boot
+renderAll(false);
+updateTelemetry();
+</script>
+</body>
+</html>

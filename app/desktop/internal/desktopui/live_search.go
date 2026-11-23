@@ -184,13 +184,106 @@ func (d *viewState) liveSearchValues() []searchCandidate {
 	}
 	return out
 }
+
+const foregroundLoadingIndicatorDelay = 120 * time.Millisecond
+
+func (l *liveState) startForegroundLoading() {
+	if !l.foregroundLoading {
+		l.loadingSince = time.Now()
+	}
+	l.foregroundLoading = true
+}
+
+func (l *liveState) stopForegroundLoading() {
+	l.foregroundLoading = false
+	l.loadingSince = time.Time{}
+}
+
+func (l *liveState) showForegroundLoading() bool {
+	return l.foregroundLoading && !l.loadingSince.IsZero() && time.Since(l.loadingSince) >= foregroundLoadingIndicatorDelay
+}
+
+func (l *liveState) showDetailLoading() bool {
+	return !l.detailLoadingSince.IsZero() && time.Since(l.detailLoadingSince) >= foregroundLoadingIndicatorDelay
+}
+
+func (d *viewState) liveScopeKey() string {
+	return d.nav.Value
+}
+
+func tagHistoryQuery(tagID string) engine.HistorySearchQuery {
+	return engine.HistorySearchQuery{Tags: []string{tagID}, TagMatch: "all"}
+}
+
+func (l *liveState) countFor(q engine.HistorySearchQuery) (uint64, bool) {
+	k := searchQueryKey(q)
+	if n, ok := l.sidebarCounts[k]; ok {
+		return n, true
+	}
+	if n, ok := l.counts[k]; ok {
+		return n, true
+	}
+	return 0, false
+}
+
+func (l *liveState) loadSidebarCounts(d *viewState) {
+	if l.serviceID == "" {
+		return
+	}
+	queries := make([]engine.HistorySearchQuery, 0, 2+len(d.tags))
+	queries = append(queries, allHistoryQuery(), favoriteHistoryQuery())
+	for _, tag := range d.tags {
+		if !tag.sidebar {
+			continue
+		}
+		if len(queries) >= 32 {
+			break
+		}
+		queries = append(queries, tagHistoryQuery(tag.id))
+	}
+	b, _ := json.Marshal(struct {
+		ServiceID string
+		Revision  uint64
+		Queries   []engine.HistorySearchQuery
+	}{l.serviceID, l.historyRevision, queries})
+	key := string(b)
+	if key == l.sidebarCountKey {
+		return
+	}
+	l.sidebarCountKey = key
+	if l.sidebarCountCancel != nil {
+		l.sidebarCountCancel()
+	}
+	ctx, cancel := context.WithTimeout(l.ctx, 4*time.Second)
+	l.sidebarCountCancel = cancel
+	client := l.client
+	go func() {
+		defer cancel()
+		out, e := client.CountHistorySearches(ctx, engine.HistorySearchCountsRequest{Queries: queries})
+		select {
+		case l.results <- func() {
+			if key != l.sidebarCountKey || e != nil {
+				return
+			}
+			next := make(map[string]uint64, len(out.Counts))
+			for i, n := range out.Counts {
+				next[searchQueryKey(queries[i])] = n
+			}
+			l.sidebarCounts = next
+		}:
+			l.wake()
+		case <-l.ctx.Done():
+		}
+	}()
+}
+
 func (l *liveState) invalidateSearch() {
 	l.loadGeneration++
 	if l.searchCancel != nil {
 		l.searchCancel()
 	}
 	l.loading = false
-	l.foregroundLoading = false
+	l.stopForegroundLoading()
 	l.countKey = ""
 	l.counts = nil
 	if l.countCancel != nil {

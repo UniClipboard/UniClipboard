@@ -98,7 +98,7 @@ Normal GUI close terminates the GUI process and leaves clipboard capture and app
 
 On macOS, the local Desktop client uses `POST /v1/desktop/clipboard/enable` to opt in after setup. An existing standalone service can opt in without changing its generation. A CLI-temporary service rejects opt-in. The repeated request uses the same adapter. The first successful response follows the ordinary adapter baseline and readiness barrier. Ordinary service startup is headless and needs no graphical session. Clipboard access requires the active console user. The setting is in memory and resets when the service stops.
 
-Quick Panel uses the private Desktop bridge for tracked write and match. On macOS the bridge calls `POST /v1/desktop/clipboard/apply` with a history ID and a plain-text flag. The response carries a write mark or a stable failure category. `POST /v1/desktop/clipboard/match` checks the mark immediately before the Desktop sends native paste input. Neither operation records clipboard contents or paste targets.
+Quick Panel uses the owner-only service socket for tracked write and match on macOS. The panel calls `POST /v1/desktop/clipboard/apply` with a history ID and a plain-text flag. The response carries a write mark or a stable failure category. `POST /v1/desktop/clipboard/match` checks the mark immediately before the Desktop sends native paste input. Neither operation records clipboard contents or paste targets.
 
 ## Export and CLI behavior
 

@@ -459,22 +459,17 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 		if err := json.Unmarshal(raw, &in); err != nil {
 			return nil, err
 		}
-		client := api.NewClient(r.socket)
-		if useDaemonClipboard {
-			out, err := client.ApplyDesktopClipboard(ctx, in.ID, in.Plain)
-			return clipboardReply{Mark: out.Mark, Failure: out.Failure}, err
+		if r.clipboard == nil {
+			return nil, desktopprocess.ErrUnavailable
 		}
-		mark, err := r.clipboard.Apply(ctx, client, in.ID, in.Plain)
+		mark, err := r.clipboard.Apply(ctx, api.NewClient(r.socket), in.ID, in.Plain)
 		return clipboardReply{Mark: mark, Failure: quickpanel.FailureCode(err)}, nil
 	case "clipboard-matches":
 		var in clipboardRequest
 		if err := json.Unmarshal(raw, &in); err != nil {
 			return nil, err
 		}
-		if useDaemonClipboard {
-			return api.NewClient(r.socket).MatchDesktopClipboard(ctx, in.Mark)
-		}
-		return r.clipboard.Matches(in.Mark), nil
+		return r.clipboard != nil && r.clipboard.Matches(in.Mark), nil
 	case "quit":
 		r.opening.Lock()
 		r.mu.Lock()
@@ -504,9 +499,19 @@ func roleContext() (context.Context, context.CancelFunc) {
 
 // remoteClipboard preserves the tracked write receipt in the adapter owner.
 // UI processes neither acquire an adapter session nor access the native board.
-type remoteClipboard struct{ dir string }
+type remoteClipboard struct {
+	dir    string
+	daemon *api.Client
+}
 
 func (r remoteClipboard) Apply(ctx context.Context, _ *api.Client, id string, plain bool) (string, error) {
+	if r.daemon != nil {
+		out, err := r.daemon.ApplyDesktopClipboard(ctx, id, plain)
+		if err == nil {
+			err = quickpanel.FailureFromCode(out.Failure)
+		}
+		return out.Mark, err
+	}
 	var reply clipboardReply
 	err := desktopprocess.Call(ctx, r.dir, desktopprocess.Tray, "clipboard-apply", clipboardRequest{ID: id, Plain: plain}, &reply)
 	if err == nil {
@@ -517,6 +522,10 @@ func (r remoteClipboard) Apply(ctx context.Context, _ *api.Client, id string, pl
 func (r remoteClipboard) Matches(mark string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+	if r.daemon != nil {
+		matches, err := r.daemon.MatchDesktopClipboard(ctx, mark)
+		return err == nil && matches
+	}
 	var matches bool
 	return desktopprocess.Call(ctx, r.dir, desktopprocess.Tray, "clipboard-matches", clipboardRequest{Mark: mark}, &matches) == nil && matches
 }

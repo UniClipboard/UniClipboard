@@ -50,7 +50,7 @@ feature is active. macOS requires Accessibility permission. Windows and native
 X11 support the feature. Wayland cannot observe the global modifier gesture.
 
 The quick-panel process registers no global shortcuts and owns no clipboard
-adapter. On macOS the tray forwards tracked writes and clipboard checks to the adapter in unicd. Other platforms run the adapter in the tray. The quick-panel process starts on first activation and remains hidden between requests.
+adapter. On macOS the panel calls the adapter in unicd directly for tracked writes and clipboard checks. Other platforms use private tray IPC. The quick-panel process starts on first activation and remains hidden between requests.
 Normal GUI close retains the tray. Lightweight close and lightweight login
 keep only unicd. Manual activation reopens the GUI.
 

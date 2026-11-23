@@ -425,7 +425,11 @@ func runPanel(settings *config.Manager) error {
 		}
 	})
 	mygo.App.WhenReady(func() {
-		panel = desktopui.NewProcessPanel(ctx, c, remoteClipboard{dir}, func(action string) {
+		clipboard := remoteClipboard{dir: dir}
+		if useDaemonClipboard {
+			clipboard.daemon = c
+		}
+		panel = desktopui.NewProcessPanel(ctx, c, clipboard, func(action string) {
 			nativeAsync(func(ctx context.Context) error {
 				return roleCall(ctx, dir, desktopprocess.Tray, "open-gui", action, nil)
 			})

@@ -47,6 +47,18 @@ func (d *viewState) projectTags(ids []string) {
 	for _, tag := range d.tags {
 		visibility[tag.id] = tag.sidebar
 	}
+	sidebar := func(id string, fallback bool) bool {
+		if d.live != nil {
+			if saved, ok := d.live.config.Config.Desktop.TagSidebar[tagColorKey(id)]; ok {
+				return saved
+			}
+			return fallback
+		}
+		if previous, ok := visibility[id]; ok {
+			return previous
+		}
+		return fallback
+	}
 	builtins := builtinTags()
 	for i := range builtins {
 		if d.live != nil {
@@ -54,9 +66,7 @@ func (d *viewState) projectTags(ids []string) {
 				builtins[i].color = desktopkit.TagColor(saved)
 			}
 		}
-		if previous := d.tagByID(builtins[i].id); previous != nil {
-			builtins[i].sidebar = previous.sidebar
-		}
+		builtins[i].sidebar = sidebar(builtins[i].id, builtins[i].sidebar)
 	}
 	d.tags = builtins
 	for _, id := range ids {
@@ -67,11 +77,7 @@ func (d *viewState) projectTags(ids []string) {
 					color = desktopkit.TagColor(saved)
 				}
 			}
-			sidebar, known := visibility[id]
-			if !known {
-				sidebar = true
-			}
-			d.tags = append(d.tags, historyTag{id: id, name: id, color: color, sidebar: sidebar})
+			d.tags = append(d.tags, historyTag{id: id, name: id, color: color, sidebar: sidebar(id, true)})
 		}
 	}
 }
@@ -551,7 +557,11 @@ func (d *viewState) tagSheet(c *ui.Context, k desktopkit.Kit) {
 						// Entry count + sidebar toggle switch.
 						k.Text(c.Key("count"), fmt.Sprintf(d.tr("%d 项"), count), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary}).Shrink(0)
 						if tag := d.tagByID(id); tag != nil {
-							k.Switch(c.Key("sb"), &tag.sidebar, desktopkit.SwitchProps{Label: d.tr("在侧边栏显示 #") + d.tagLabel(tag.id)})
+							visible := tag.sidebar
+							k.Switch(c.Key("sb"), &visible, desktopkit.SwitchProps{Label: d.tr("在侧边栏显示 #") + d.tagLabel(tag.id), Disabled: d.live != nil && d.live.busy})
+							if visible != tag.sidebar {
+								d.setTagSidebar(id, visible)
+							}
 						}
 					})
 
@@ -603,6 +613,26 @@ func (d *viewState) tagSheet(c *ui.Context, k desktopkit.Kit) {
 func tagColorKey(id string) string {
 	sum := sha256.Sum256([]byte(id))
 	return hex.EncodeToString(sum[:])
+}
+
+func (d *viewState) setTagSidebar(id string, visible bool) {
+	if d.live == nil {
+		if tag := d.tagByID(id); tag != nil {
+			tag.sidebar = visible
+		}
+		return
+	}
+	cfg := d.live.config.Config
+	cfg.Desktop.TagSidebar = maps.Clone(cfg.Desktop.TagSidebar)
+	if cfg.Desktop.TagSidebar == nil {
+		cfg.Desktop.TagSidebar = map[string]bool{}
+	}
+	cfg.Desktop.TagSidebar[tagColorKey(id)] = visible
+	d.saveLiveConfigThen(cfg, func() {
+		if tag := d.tagByID(id); tag != nil {
+			tag.sidebar = visible
+		}
+	})
 }
 
 func (d *viewState) setTagColor(id string, color desktopkit.TagColor) {

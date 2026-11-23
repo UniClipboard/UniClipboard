@@ -2,7 +2,6 @@ package v1migration
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,24 +12,21 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/BurntSushi/toml"
-
-	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/plugin"
 )
 
-// tagColors reads the presentation file once. Custom identities come only from
+// tagLayout reads the presentation file once. Custom identities come only from
 // authenticated definitions; a display name never identifies a built-in tag.
-func (s *Source) tagColors() (map[string]string, error) {
+func (s *Source) tagLayout() (map[string]string, map[string]bool, error) {
 	ids := map[string]string{"link": plugin.TagLink, "code": plugin.TagCode, "image": plugin.TagImage, "directory": plugin.TagFolder}
 	colors := map[string]string{plugin.TagLink: "blue", plugin.TagCode: "purple", plugin.TagImage: "green", plugin.TagFolder: "gray"}
 	path := filepath.Join(s.root, "history-tags", "layout.v1.json")
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return colors, nil
+		return colors, nil, nil
 	}
 	data, err := readBounded(path, 1<<20)
 	if err != nil {
-		return nil, ErrTags
+		return nil, nil, ErrTags
 	}
 	var doc struct {
 		Version int               `json:"version"`
@@ -40,12 +36,12 @@ func (s *Source) tagColors() (map[string]string, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&doc) != nil || doc.Version != 1 || doc.Colors == nil || doc.Sidebar == nil || decoder.Decode(new(any)) != io.EOF {
-		return nil, ErrTags
+		return nil, nil, ErrTags
 	}
 	custom := map[string]string{}
 	for id, color := range doc.Colors {
 		if !validTagColor(color) {
-			return nil, ErrTags
+			return nil, nil, ErrTags
 		}
 		color = strings.ToLower(color)
 		if builtin, ok := ids[id]; ok {
@@ -57,12 +53,23 @@ func (s *Source) tagColors() (map[string]string, error) {
 			continue
 		} // v1 layouts can retain deleted custom IDs until pruning.
 		if old, exists := custom[name]; exists && old != color {
-			return nil, ErrTags
+			return nil, nil, ErrTags
 		}
 		custom[name] = color
 	}
 	maps.Copy(colors, custom)
-	return colors, nil
+	visible := make(map[string]bool, len(doc.Sidebar))
+	for _, id := range doc.Sidebar {
+		visible[id] = true
+	}
+	sidebar := make(map[string]bool, len(ids)+len(s.tags))
+	for id, name := range ids {
+		sidebar[name] = visible[id]
+	}
+	for id, name := range s.tags {
+		sidebar[name] = sidebar[name] || visible[id]
+	}
+	return colors, sidebar, nil
 }
 
 func validTagColor(color string) bool {
@@ -80,72 +87,4 @@ func validTagColor(color string) bool {
 func migrationColorKey(id string) string {
 	sum := sha256.Sum256([]byte(id))
 	return hex.EncodeToString(sum[:])
-}
-
-// importTagColors uses the host's existing config CAS while Run owns the target
-// directory lock. Existing target overrides always win, including explicit gray.
-func importTagColors(ctx context.Context, target string, colors map[string]string, report *Report) {
-	path := filepath.Join(target, "config.toml")
-	manager, err := config.Open(path, nil)
-	if err != nil {
-		report.ColorFailures++
-		return
-	}
-	cfg := manager.Current()
-	cfg.Desktop.TagColors = maps.Clone(cfg.Desktop.TagColors)
-	if cfg.Desktop.TagColors == nil {
-		cfg.Desktop.TagColors = map[string]string{}
-	}
-	expected := map[string]string{}
-	missing := 0
-	for id, color := range colors {
-		key := migrationColorKey(id)
-		if current, ok := cfg.Desktop.TagColors[key]; ok {
-			report.ColorsPreserved++
-			expected[key] = current
-			continue
-		}
-		missing++
-		cfg.Desktop.TagColors[key] = color
-		expected[key] = color
-	}
-	report.ColorsMissing = missing
-	if missing > 0 {
-		if ctx.Err() != nil {
-			report.ColorFailures++
-			return
-		}
-		var encoded bytes.Buffer
-		if toml.NewEncoder(&encoded).Encode(cfg) != nil {
-			report.ColorFailures++
-			return
-		}
-		if _, replaceErr := manager.Replace(manager.State().Revision, encoded.Bytes()); replaceErr != nil {
-			report.ColorFailures++
-			return
-		}
-		report.ColorsImported = missing
-		report.ColorsMissing = 0
-	}
-	// Reopen persisted configuration rather than trusting the in-memory candidate.
-	persisted, readErr := os.ReadFile(path)
-	if errors.Is(readErr, os.ErrNotExist) && len(expected) == 0 {
-		return
-	}
-	if readErr != nil {
-		report.ColorFailures++
-		return
-	}
-	reopened, parseErr := config.Parse(persisted)
-	if parseErr != nil {
-		report.ColorFailures++
-		return
-	}
-	for key, want := range expected {
-		if reopened.Desktop.TagColors[key] != want {
-			report.ColorFailures++
-			continue
-		}
-		report.ColorsVerified++
-	}
 }

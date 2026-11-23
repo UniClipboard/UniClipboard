@@ -22,7 +22,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: 3140a3490d5b9b38233548f64c3b41b6ddbf5e1b
+verified: 1c948499796e61d99b07158848b71edd126f785a
 ---
 # Headless service and desktop integration
 
@@ -111,6 +111,10 @@ rechecks initialization after waiting. Partial, failure, cancellation and dry-ru
 never grant permission. Explicit Desktop imports share this gate; welcome/skip
 does not initialize the CLI. Source identity prevents another source from completing
 a pending import. See the [CLI initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
+
+Offline import fills unset v2 display name, theme, anonymous usage-event
+preference and tag presentation settings. See the
+[v1 preference contract](../contracts/history-contract.md#v1-preference-preservation).
 
 ## Offline CLI operations
 

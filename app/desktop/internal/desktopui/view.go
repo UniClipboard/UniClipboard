@@ -239,8 +239,14 @@ func (d *viewState) view(c *ui.Context) {
 				// A narrow sidebar drawer owns Escape before page navigation.
 				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
 			}
-			if d.page == "devices" && !d.renaming {
-				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
+			if d.page == "devices" {
+				singlePane := w < desktopkit.SinglePaneWidth
+				c.OnWindowShortcut(0, ui.KeyEscape, func() {
+					if c.ShortcutRepeated() {
+						return
+					}
+					d.devicesBack(singlePane)
+				})
 			}
 		}
 		switch d.page {

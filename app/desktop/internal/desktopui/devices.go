@@ -579,6 +579,19 @@ func (d *viewState) fingerprintGrid(c *ui.Context, k desktopkit.Kit, fp string, 
 	})
 }
 
+func (d *viewState) devicesBack(singlePane bool) {
+	d.keyboardSequence = shortcutSequence{}
+	if d.renaming {
+		d.renaming = false
+		return
+	}
+	if singlePane && d.deviceDetailOpen {
+		d.deviceDetailOpen = false
+		return
+	}
+	d.page, d.renaming, d.deviceDetailOpen = "history", false, false
+}
+
 // devicesPage renders the full-window Device Management overview with a
 // refined 3-tier surface hierarchy, left overview canvas, and 380-DIP inspector.
 func (d *viewState) devicesPage(c *ui.Context, k desktopkit.Kit) {
@@ -613,7 +626,7 @@ func (d *viewState) devicesPage(c *ui.Context, k desktopkit.Kit) {
 			InsetShadow(0, -1, 0, 0, k.Color("separator-border")).DragWindow()
 		bar.Children(func() {
 			if singlePane && d.deviceDetailOpen {
-				back := ui.ButtonBase(c.Key("back-overview")).Label(d.tr("设备")).Height(28).Padding(0, 8).Radius(7).Gap(4).
+				back := ui.ButtonBase(c.Key("back-overview")).Label(d.tr("设备")).KeyShortcuts(0, ui.KeyEscape).Height(28).Padding(0, 8).Radius(7).Gap(4).
 					AlignItems(ui.Center).FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
 				if back.Hovered() {
 					back.Background(k.Color("background-secondary-hover"))
@@ -626,7 +639,7 @@ func (d *viewState) devicesPage(c *ui.Context, k desktopkit.Kit) {
 					d.deviceDetailOpen, d.renaming = false, false
 				}
 			} else {
-				back := ui.ButtonBase(c.Key("back-history")).Label(d.tr("返回历史")).Height(28).Padding(0, 8).Radius(7).Gap(4).
+				back := ui.ButtonBase(c.Key("back-history")).Label(d.tr("返回历史")).KeyShortcuts(0, ui.KeyEscape).Height(28).Padding(0, 8).Radius(7).Gap(4).
 					AlignItems(ui.Center).FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
 				if back.Hovered() {
 					back.Background(k.Color("background-secondary-hover"))

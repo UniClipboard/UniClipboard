@@ -64,7 +64,7 @@ func (k Kit) masterDetailSingle(c *ui.Context, p MasterDetailProps, list func(),
 			return
 		}
 		ui.Row(c.Key("detail-bar")).Padding(8, 12, 0).Children(func() {
-			if k.Button(c.Key("detail-back"), p.BackLabel, ButtonProps{Variant: Subtle, Icon: IconBack}).Clicked() {
+			if k.Button(c.Key("detail-back"), p.BackLabel, ButtonProps{Variant: Subtle, Size: SizeSmall, Icon: IconBack}).Clicked() {
 				*p.DetailOpen = false
 			}
 		})

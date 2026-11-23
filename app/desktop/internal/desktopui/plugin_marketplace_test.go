@@ -311,3 +311,320 @@ func TestPluginMarketplaceFlowAndZeroConfigStatus(t *testing.T) {
 		t.Fatalf("expected DELETE /v1/plugins/unic.wenshushu, got %q", gotUninstalled)
 	}
 }
+
+func TestPluginMarketplaceToolbarAndCardListLayout(t *testing.T) {
+	dir := t.TempDir()
+	sock := filepath.Join(dir, "unic.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	var mu sync.Mutex
+	refreshCount := 0
+	installed := []api.PluginInfo{
+		{
+			ID:           "unic.wenshushu",
+			Version:      "0.1.1",
+			Kind:         "go",
+			Capabilities: []string{"action"},
+			Configured:   true,
+		},
+		{
+			ID:           "unic.syncclipboard",
+			Version:      "0.1.0",
+			Kind:         "go",
+			Capabilities: []string{"sync_backend"},
+			Configured:   false,
+			HasSettings:  true,
+		},
+		{
+			ID:           "mkdir700.wxime",
+			Version:      "0.1.0",
+			Kind:         "go",
+			Capabilities: []string{"sync_backend"},
+			Configured:   true,
+			HasSettings:  true,
+		},
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.Status{ID: "svc-1", Name: "Test Mac", Peers: []api.PeerStatus{}, Pending: []api.PendingPeer{}})
+	})
+	mux.HandleFunc("GET /v1/config", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(config.State{Revision: "rev-1", Config: config.Default()})
+	})
+	mux.HandleFunc("GET /v1/plugins", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(installed)
+	})
+	mux.HandleFunc("GET /v1/plugins/marketplace", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("refresh") == "1" {
+			mu.Lock()
+			refreshCount++
+			mu.Unlock()
+		}
+		_ = json.NewEncoder(w).Encode(api.PluginMarketplace{
+			Version: 1,
+			Source:  "remote",
+			Plugins: []api.MarketplaceEntry{
+				{
+					ID:           "unic.wenshushu",
+					Name:         "文叔叔临时分享",
+					Author:       "UniClipboard 官方",
+					Official:     true,
+					Category:     "share",
+					Version:      "0.1.1",
+					Summary:      "将选中的文本、图片或文件一键生成约 24 小时有效的临时下载链接。",
+					Description:  "无需配置，选中任意条目即可分享。",
+					Highlights:   []string{"免配置开箱即用"},
+					HowTo:        []string{"选中条目", "点击通过文叔叔临时分享"},
+					Privacy:      "仅主动触发时上传。",
+					ZeroConfig:   true,
+					Capabilities: []string{"action"},
+				},
+				{
+					ID:           "unic.syncclipboard",
+					Name:         "SyncClipboard 同步",
+					Author:       "UniClipboard 官方",
+					Official:     true,
+					Category:     "sync",
+					Version:      "0.1.0",
+					Summary:      "通过 SyncClipboard 客户端双向同步文字和图片。需要支持外部渠道授权的 UniClipboard v2 宿主。",
+					Description:  "为兼容客户端提供文字和图片同步，单条内容上限为 2 MiB。",
+					Highlights:   []string{"独立同步插件", "每个客户端使用独立渠道凭据"},
+					HowTo:        []string{"在兼容宿主上安装插件", "按插件仓库说明配置密钥、启用插件并重启服务"},
+					Privacy:      "渠道凭据决定客户端可访问的内容。",
+					Capabilities: []string{"sync_backend"},
+				},
+				{
+					ID:           "mkdir700.wxime",
+					Name:         "微信输入法剪贴板",
+					Author:       "mkdir700",
+					Category:     "sync",
+					Version:      "0.1.0",
+					Summary:      "连接微信输入法跨设备剪贴板分组，双向同步文字和图片。需要支持外部渠道配对的 UniClipboard v2 宿主。",
+					Description:  "连接微信输入法剪贴板分组。",
+					Highlights:   []string{"跨设备同步"},
+					HowTo:        []string{"安装并启用插件"},
+					Privacy:      "仅同步配对分组内容。",
+					Capabilities: []string{"sync_backend"},
+				},
+			},
+		})
+	})
+	mux.HandleFunc("GET /v1/actions", func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode([]api.Action{}) })
+	mux.HandleFunc("GET /v1/sync-backends", func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode([]api.SyncBackendInfo{}) })
+	mux.HandleFunc("GET /v1/history", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.HistoryPage{Items: []api.HistoryItem{}})
+	})
+	mux.HandleFunc("POST /v1/history/search", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.HistorySearchPage{Hits: []api.HistorySearchHit{}})
+	})
+	mux.HandleFunc("GET /v1/history/tags", func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode([]string{}) })
+	mux.HandleFunc("GET /v1/candidates", func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode([]api.Candidate{}) })
+
+	srv := &http.Server{Handler: mux}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
+
+	shotDir := os.Getenv("UNIC_MARKETPLACE_LAYOUT_SHOTS")
+	saveShot := func(tt *ui.Tester, name string) {
+		if shotDir == "" {
+			return
+		}
+		if err := os.MkdirAll(shotDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		if err := png.Encode(&out, tt.Image()); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(shotDir, name), out.Bytes(), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, dark := range []bool{true, false} {
+		theme := "light"
+		if dark {
+			theme = "dark"
+		}
+		t.Run(theme, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			desktop := NewDesktop(ctx, api.NewClient(sock))
+			defer desktop.Close()
+			d := desktop.d
+			d.theme = theme
+			d.page = "settings"
+			d.settings.Value = "plugins"
+			d.pluginSettings.view = "marketplace"
+			d.pluginSettings.marketSelected = "unic.syncclipboard"
+
+			tt := ui.NewTesterWith(desktop.View, 1120, 860, ui.TesterOptions{Dark: dark})
+			tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 78})
+			deadline := time.Now().Add(5 * time.Second)
+			for time.Now().Before(deadline) {
+				d.live.poll(d)
+				tt.Advance(20 * time.Millisecond)
+				if d.live.loaded && d.live.marketplaceLoaded && tt.HasText("微信输入法剪贴板") {
+					break
+				}
+				time.Sleep(15 * time.Millisecond)
+			}
+			if !d.live.marketplaceLoaded {
+				t.Fatal("timeout loading marketplace")
+			}
+
+			saveShot(tt, "marketplace-"+theme+".png")
+
+			// Verify Area 1 (back button) and Area 2 (refresh button) match history toolbar's 28px quiet neutral style.
+			back, ok := tt.AccessByRole(ui.RoleButton, "返回插件列表")
+			if !ok {
+				t.Fatal("back button missing")
+			}
+			if back.Bounds.W != 28 || back.Bounds.H != 28 {
+				t.Fatalf("back button bounds=%+v, want 28x28", back.Bounds)
+			}
+			refresh, ok := tt.AccessByRole(ui.RoleButton, "刷新目录")
+			if !ok {
+				t.Fatal("refresh button missing")
+			}
+			if refresh.Bounds.H != 28 {
+				t.Fatalf("refresh button height=%v, want 28", refresh.Bounds.H)
+			}
+			bar, ok := tt.AccessByRole(ui.RoleToolbar, "插件市场")
+			if !ok {
+				t.Fatal("marketplace toolbar missing")
+			}
+			// Sample background corner of back & refresh buttons at rest: must match toolbar background (no blue ghost fill).
+			im := tt.Image()
+			tbBg := im.RGBAAt(int(bar.Bounds.X+bar.Bounds.W/2), int(bar.Bounds.Y+4))
+			for _, tc := range []struct {
+				name string
+				r    ui.Rect
+			}{
+				{"back", back.Bounds},
+				{"refresh", refresh.Bounds},
+			} {
+				px := im.RGBAAt(int(tc.r.X+2), int(tc.r.Y+2))
+				diff := absBoardUIChannel(int(px.R)-int(tbBg.R)) + absBoardUIChannel(int(px.G)-int(tbBg.G)) + absBoardUIChannel(int(px.B)-int(tbBg.B))
+				if diff > 12 {
+					t.Fatalf("%s button corner pixel=%v differs from toolbar bg=%v (diff=%d); expected transparent rest surface", tc.name, px, tbBg, diff)
+				}
+			}
+
+			// Verify Area 3: single-column full-width rectangular cards, stacked one per row.
+			names := []string{"文叔叔临时分享", "SyncClipboard 同步", "微信输入法剪贴板"}
+			cards := make([]ui.Rect, len(names))
+			for i, name := range names {
+				info, ok := tt.AccessByRole(ui.RoleButton, name)
+				if !ok {
+					t.Fatalf("card %q missing", name)
+				}
+				cards[i] = info.Bounds
+				if cards[i].W <= cards[i].H {
+					t.Fatalf("card %q bounds=%+v is not a horizontal rectangular card", name, cards[i])
+				}
+				if i > 0 {
+					if cards[i].X != cards[0].X || cards[i].W != cards[0].W {
+						t.Fatalf("card %q X/W=%v/%v does not match single-column card 0 X/W=%v/%v", name, cards[i].X, cards[i].W, cards[0].X, cards[0].W)
+					}
+					if cards[i].Y < cards[i-1].Y+cards[i-1].H {
+						t.Fatalf("card %q Y=%v overlaps previous row bottom=%v", name, cards[i].Y, cards[i-1].Y+cards[i-1].H)
+					}
+				}
+			}
+
+			// Click refresh in dark run and verify it triggers refresh=1.
+			if dark {
+				if err := tt.Click("刷新目录"); err != nil {
+					t.Fatalf("click refresh: %v", err)
+				}
+				deadline := time.Now().Add(3 * time.Second)
+				for time.Now().Before(deadline) {
+					d.live.poll(d)
+					tt.Advance(20 * time.Millisecond)
+					mu.Lock()
+					n := refreshCount
+					mu.Unlock()
+					if n > 0 && !d.live.marketplaceLoading {
+						break
+					}
+					time.Sleep(15 * time.Millisecond)
+				}
+				mu.Lock()
+				n := refreshCount
+				mu.Unlock()
+				if n == 0 {
+					t.Fatal("clicking 刷新目录 did not issue refresh=1 request")
+				}
+			}
+
+			// Navigate back to the Plugins list page via the real back button and verify
+			// titlebar + installed/builtin row subtle icon buttons are 28px quiet neutral controls.
+			if err := tt.Click("返回插件列表"); err != nil {
+				t.Fatalf("click back to plugins: %v", err)
+			}
+			tt.Advance(20 * time.Millisecond)
+			saveShot(tt, "plugins-list-"+theme+".png")
+
+			listIm := tt.Image()
+			pluginsBar, ok := tt.AccessByRole(ui.RoleToolbar, "插件")
+			if !ok {
+				t.Fatal("plugins toolbar missing")
+			}
+			pluginsBarBg := listIm.RGBAAt(int(pluginsBar.Bounds.X+pluginsBar.Bounds.W/2), int(pluginsBar.Bounds.Y+4))
+			for _, tc := range []struct {
+				name   string
+				square bool
+			}{
+				{"检查更新", false},
+				{"更多", true},
+			} {
+				info, ok := tt.Access(tc.name)
+				if !ok {
+					t.Fatalf("plugins toolbar button %q missing", tc.name)
+				}
+				if info.Bounds.H != 28 || (tc.square && info.Bounds.W != 28) {
+					t.Fatalf("plugins toolbar button %q bounds=%+v, want h=28 square=%v", tc.name, info.Bounds, tc.square)
+				}
+				px := listIm.RGBAAt(int(info.Bounds.X+2), int(info.Bounds.Y+2))
+				diff := absBoardUIChannel(int(px.R)-int(pluginsBarBg.R)) + absBoardUIChannel(int(px.G)-int(pluginsBarBg.G)) + absBoardUIChannel(int(px.B)-int(pluginsBarBg.B))
+				if diff > 12 {
+					t.Fatalf("plugins toolbar button %q corner pixel=%v differs from toolbar bg=%v (diff=%d)", tc.name, px, pluginsBarBg, diff)
+				}
+			}
+
+			rowButtons := []string{
+				"unic.wenshushu",
+				"卸载文叔叔临时分享",
+				"unic.syncclipboard",
+				"卸载SyncClipboard 同步",
+				"mkdir700.wxime",
+				"卸载微信输入法剪贴板",
+				"Tailcat 同步",
+				"文本工具",
+				"内容分类",
+			}
+			for _, name := range rowButtons {
+				info, ok := tt.AccessByRole(ui.RoleButton, name)
+				if !ok {
+					t.Fatalf("plugins row button %q missing", name)
+				}
+				if info.Bounds.W != 28 || info.Bounds.H != 28 {
+					t.Fatalf("plugins row button %q bounds=%+v, want 28x28", name, info.Bounds)
+				}
+				// Sample 4 DIP above/left of the button inside the same settings card row.
+				cardBg := listIm.RGBAAt(int(info.Bounds.X-4), int(info.Bounds.Y+info.Bounds.H/2))
+				px := listIm.RGBAAt(int(info.Bounds.X+2), int(info.Bounds.Y+2))
+				diff := absBoardUIChannel(int(px.R)-int(cardBg.R)) + absBoardUIChannel(int(px.G)-int(cardBg.G)) + absBoardUIChannel(int(px.B)-int(cardBg.B))
+				if diff > 12 {
+					t.Fatalf("plugins row button %q corner pixel=%v differs from row card bg=%v (diff=%d); expected transparent rest surface", name, px, cardBg, diff)
+				}
+			}
+		})
+	}
+}

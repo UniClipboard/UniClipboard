@@ -191,6 +191,7 @@ jobs:
   desktop_build:
     name: Build and sign Desktop
     needs: desktop_lock
+    if: ${{ !cancelled() && needs.desktop_lock.result == 'success' }}
     uses: ./.github/workflows/build-desktop.yml
     with:
       distribution: true
@@ -224,7 +225,7 @@ jobs:
   legacy_alpha:
     name: Verify and stage legacy upgrades
     needs: [plan, desktop_publish]
-    if: inputs.channel == 'alpha'
+    if: ${{ !cancelled() && inputs.channel == 'alpha' && needs.plan.result == 'success' && needs.desktop_publish.result == 'success' }}
     uses: ./.github/workflows/prepare-legacy-desktop-alpha.yml
     with:
       version: ${{ inputs.version }}
@@ -244,3 +245,19 @@ jobs:
       expected_revision: ${{ inputs.channel == 'stable' && 'auto' || needs.legacy_alpha.outputs.expected_revision }}
       joint: true
     secrets: inherit
+  verify_joint_release:
+    name: Verify both release results
+    needs: [publish, desktop_promote]
+    if: ${{ !cancelled() && inputs.version != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - env:
+          CLI_RESULT: ${{ needs.publish.result }}
+          DESKTOP_RESULT: ${{ needs.desktop_promote.result }}
+        run: |
+          if [[ "$CLI_RESULT" != success || "$DESKTOP_RESULT" != success ]]; then
+            printf 'Joint release incomplete (CLI: %s, Desktop: %s)\n' "$CLI_RESULT" "$DESKTOP_RESULT" >&2
+            exit 1
+          fi

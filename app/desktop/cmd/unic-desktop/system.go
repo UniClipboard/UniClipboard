@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/trayicon"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
+	"github.com/uniclipboard/unic/internal/pairnotice"
 )
 
 var checkDesktopUpdates func()
@@ -93,14 +93,8 @@ func notifyPending(ctx context.Context, sock string, language func() string) {
 			if ev.Kind != "pending" {
 				return
 			}
-			tr := func(text string) string { return i18n.Translate(language(), text) }
-			body := fmt.Sprintf(tr("%s 请求同步剪贴板。打开 unic 批准或拒绝。"), ev.Peer)
-			if ev.Info == "code" {
-				body = fmt.Sprintf(tr("%s 输入了本机配对码。打开 unic，核对指纹后批准。"), ev.Peer)
-			} else if ev.Info != "" {
-				body = fmt.Sprintf(tr("%s 由 %s 介绍，请求加入。打开 unic 批准或拒绝。"), ev.Peer, ev.Info)
-			}
-			n := mygo.NewNotification(mygo.NotificationOptions{Title: tr("新设备"), Body: body})
+			title, body := pairnotice.Text(language(), ev.Peer, ev.Info)
+			n := mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body})
 			if err := n.Show(); err != nil {
 				logHostFailure()
 			}

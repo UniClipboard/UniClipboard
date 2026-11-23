@@ -11,6 +11,8 @@ on:
       - 'release/**'
       - 'app/desktop/cmd/unic-desktop/**'
       - 'app/desktop/internal/appupdates/**'
+      - 'internal/desktopupdate/**'
+      - 'app/service/cmd/unicd/update*.go'
       - 'app/desktop/e2e/updateprobe/**'
       - '.github/workflows/package-acceptance.yml'
       - '.github/workflows/build-cli.yml'

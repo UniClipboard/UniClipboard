@@ -8,6 +8,7 @@ paths:
   - app/desktop/internal/appicons
   - app/desktop/boardui/assets
   - app/desktop/internal/appupdates
+  - internal/desktopupdate
   - app/desktop/e2e/updateprobe
   - internal/localconfig
   - app/desktop/cmd/unic-desktop
@@ -30,7 +31,7 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 71f163da2c87d4e2d1b2056fcdde6b99faf56d67
+verified: 24de48ecdc0001361ed5ffd2021d9269af85b4b3
 ---
 # Product builds and CLI releases
 
@@ -100,7 +101,7 @@ The primary PR Desktop suite uses the same Ubuntu 24.04 and native GTK 3/indicat
 
 ### Native application updates
 
-The Desktop host uses the pinned mygo native updater plugin. `appupdates.Source` converts the numbered FlareRelease feed into mygo manifests. The app version includes `-build.<number>` so later builds of one product version compare numerically. The adapter validates the target, archive format, bounded size, SHA-256, raw Ed25519 signature over the archive digest and the signed embedded `release-identity.json`. mygo owns extraction and installation.
+The Desktop host uses the pinned mygo native updater plugin. `internal/desktopupdate` converts the numbered FlareRelease feed into mygo manifests. The app version includes `-build.<number>` so later builds of one product version compare numerically. The adapter validates the target, archive format, bounded size, SHA-256, raw Ed25519 signature over the archive digest and the signed embedded `release-identity.json`. mygo owns extraction and installation. On macOS, Desktop asks unicd to select the release, fetch the archive and verify its complete signed identity. Desktop stages and revalidates the transferred file with its embedded public key before stopping the owned service. The tray updater keeps scheduling, preferences, user confirmation and restart coordination. Other platforms retrieve and verify the archive in the desktop updater.
 
 `desktop.update_channel` accepts `stable` (default) or `alpha` and takes effect on the next check. Updater preferences use the v2 data directory. `release/products.toml` selects the durable `update_public_key`; an empty key disables in-app updates. The production private key must use mygo's raw Ed25519 format, independent of existing Minisign/Tauri keys. `go run ./tools/release/update-sign` generates a private key directory or signs archives from `UNIC_UPDATE_PRIVATE_KEY` without logging the private key.
 

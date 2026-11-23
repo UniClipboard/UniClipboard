@@ -8,7 +8,7 @@ The persistent tray captures the external foreground target before creating or a
 
 Enter pastes. Shift+Enter requests the existing builtin.text/plain Action, applies its new history item, then pastes. A stored plain-text representation is required; HTML-only history receives an explicit rejection without a transform or clipboard write. Images/files cannot use plain mode. Command/Ctrl+Enter pastes and reopens the panel with the original target after a 150 ms dispatch interval and a fresh focus check. A user switch during that interval leaves the panel hidden. Copy applies history without synthetic input. Preserve current search, chip, preview and keyboard UX.
 
-Order: validate target and native permission; delegate application through private Desktop IPC to the tray's real clipboard adapter; confirm that exactly one tracked clipboard write completed; hide the panel and preview; activate the same target; wait for focus and all command modifiers to be released; recheck target and clipboard; send one paste chord. A one-second focus/modifier deadline bounds the final stage. An OS send acknowledgement is not proof that the receiving application inserted content.
+Order: validate target and native permission; delegate application through private Desktop IPC to the active clipboard adapter; confirm that exactly one tracked clipboard write completed; hide the panel and preview; activate the same target; wait for focus and all command modifiers to be released; recheck target and clipboard; send one paste chord. A one-second focus/modifier deadline bounds the final stage. An OS send acknowledgement is not proof that the receiving application inserted content.
 
 Cancellation, external blur, a newer session, shutdown, failed apply, missing permission, target exit/reuse, focus theft, clipboard replacement and partial input injection must never retry paste. Clipboard application may already have completed after cancellation; do not roll it back or report it as pasted. Explicit Escape dismissal can restore focus only while unic still owns the foreground. External blur never restores focus. Hide/reopen and mutation completion must remain generation-bound.
 
@@ -50,7 +50,7 @@ feature is active. macOS requires Accessibility permission. Windows and native
 X11 support the feature. Wayland cannot observe the global modifier gesture.
 
 The quick-panel process registers no global shortcuts and owns no clipboard
-adapter. It starts on first activation and remains hidden between requests.
+adapter. On macOS the panel calls the adapter in unicd directly for tracked writes and clipboard checks. Other platforms use private tray IPC. The quick-panel process starts on first activation and remains hidden between requests.
 Normal GUI close retains the tray. Lightweight close and lightweight login
 keep only unicd. Manual activation reopens the GUI.
 

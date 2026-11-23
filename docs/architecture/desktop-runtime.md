@@ -20,6 +20,8 @@ paths:
   - app/desktop/cmd/unic-desktop
   - internal/localconfig
   - internal/desktopkeys
+  - internal/desktopupdate
+  - internal/pairnotice
   - internal/v1migration/shortcuts.go
   - internal/localapi
   - app/service/internal/server
@@ -45,16 +47,16 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 09b12e5d6114ec73fdd84558b27e076e5ffe051b
+verified: 24de48ecdc0001361ed5ffd2021d9269af85b4b3
 ---
 # Desktop configuration and received files
 
 The UI-free service loads `config.toml` and exposes the effective saved configuration over its local socket.
 CLI changes and file edits use the same validation and Engine settings.
 
-The independent GUI process uses the production `desktopui` renderer with live service data. While active, the tray process owns the sole clipboard adapter, global shortcut, notifications, login intent and service-lifetime pipe. The quick panel runs in a third Desktop OS process and remains hidden between requests. The separate `unicd` process owns Engine. Manual activation always opens the GUI. Normal GUI close keeps tray and service; lightweight GUI close retires all Desktop roles and leaves only unicd.
+The independent GUI process uses the production `desktopui` renderer with live service data. While active, the tray process owns global shortcuts, login intent and the service-lifetime pipe. On macOS a bundled service delivers pairing notifications after Desktop opt-in. Other platforms and unbundled macOS services use tray delivery. macOS Desktop opts in the sole native clipboard adapter inside unicd. Other platforms host it in the tray. The quick panel runs in a third Desktop OS process and remains hidden between requests. The separate `unicd` process owns Engine. Manual activation always opens the GUI. Normal GUI close keeps tray and service; lightweight GUI close retires all Desktop roles and leaves only unicd.
 Fresh profiles show first-install setup and optional v1 migration before normal runtime startup. Completed setup and established v2 profiles open history directly. There is no recurring unlock flow. The marker, source detection and exclusive migration lifecycle are described in the [live desktop composition](overview.md#live-desktop-composition).
-Settings > Storage > Migrate from v1 reopens the migration flow. The GUI requests a serialized tray pause. The tray closes its quick panel and unregisters its shortcut, cancels and waits for its clipboard adapter, and stops its owned service before permitting offline import. The pause and pending setup marker form the migration admission barrier before the GUI shows migration. A marker write failure prevents migration. Cancellation or process exit preserves this pending state; reopening Desktop returns to migration with its selected source. Import completion alone does not complete setup. Explicit entry starts the normal runtime again and persists completion after service readiness. An external target owner blocks import before credential access; it is not automatically stopped by migration.
+Settings > Storage > Migrate from v1 reopens the migration flow. The GUI requests a serialized tray pause. The tray closes its quick panel and unregisters its shortcut. It retires the tray-owned adapter on platforms that use one. It stops and waits for its owned service, including the in-service adapter on macOS, before permitting offline import. The pause and pending setup marker form the migration admission barrier before the GUI shows migration. A marker write failure prevents migration. Cancellation or process exit preserves this pending state; reopening Desktop returns to migration with its selected source. Import completion alone does not complete setup. Explicit entry starts the normal runtime again and persists completion after service readiness. An external target owner blocks import before credential access; it is not automatically stopped by migration.
 General, Sync and Storage controls save through the revision-checked local configuration API.
 Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.
 See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.
@@ -132,7 +134,7 @@ satellite windows retain their independent decoration. See the
 
 ## Native application updates
 
-Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences (`AutomaticChecks` and `AutomaticDownloads`) remain owned by the tray process in the same v2 user-data directory as the Desktop profile, and are exposed to the Settings → About view over Desktop role IPC (`status`, `check-updates`, and `set-update-prefs`). Switching the About channel selector to `alpha` requires explicit confirmation before persisting `desktop.update_channel` and triggering a check. Package-manager installations and portable archives retain external update ownership and route About's update check to package-manager or release-page instructions. AppImage self-update remains unsupported. The About view also lazily loads the public sponsor feed (`GET https://www.uniclipboard.app/api/v1/sponsors`) on demand and hides the sponsors section when empty or offline. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.
+Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. macOS delegates release selection, download and archive verification to unicd. The tray receives the verified file before closing views or retiring its service. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences (`AutomaticChecks` and `AutomaticDownloads`) remain owned by the tray process in the same v2 user-data directory as the Desktop profile, and are exposed to the Settings → About view over Desktop role IPC (`status`, `check-updates`, and `set-update-prefs`). Switching the About channel selector to `alpha` requires explicit confirmation before persisting `desktop.update_channel` and triggering a check. Package-manager installations and portable archives retain external update ownership and route About's update check to package-manager or release-page instructions. AppImage self-update remains unsupported. The About view also lazily loads the public sponsor feed (`GET https://www.uniclipboard.app/api/v1/sponsors`) on demand and hides the sponsors section when empty or offline. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.
 
 ## Incremental history browsing
 
@@ -449,7 +451,7 @@ from the selected source profile. Existing v2 overrides take priority. An
 imported v1 binding takes priority over an overlapping newly added default.
 Migration reports unsupported bindings. See the [quick-panel contract](../contracts/desktop-quick-panel-contract.md).
 
-Enter applies history through the existing IPC clipboard adapter, hides both windows, restores the captured target and sends one paste chord. Shift+Enter uses the existing plain-text Action and applies its resulting history item. Command/Ctrl+Enter waits 150 ms after input dispatch and reopens the panel only if the target still owns focus. Copy does not inject keyboard input. The panel delegates application and clipboard-match checks to the tray through private IPC. The tray's tracked clipboard wrapper verifies exactly one adapter write and compares content plus file paths before paste. The panel never acquires another adapter.
+Enter applies history through the existing IPC clipboard adapter, hides both windows, restores the captured target and sends one paste chord. Shift+Enter uses the existing plain-text Action and applies its resulting history item. Command/Ctrl+Enter waits 150 ms after input dispatch and reopens the panel only if the target still owns focus. Copy does not inject keyboard input. The panel sends application and clipboard-match requests directly to unicd on macOS and uses private tray IPC on other platforms. The active adapter tracks the write and compares content plus file paths before paste. The panel never acquires another adapter.
 
 Generation cancellation prevents stale clipboard completions from sending input. Focus checks, held-key waits and input dispatch are bounded; errors never automatically replay input. External blur does not restore focus. Explicit Escape dismissal restores the original target only while unic still owns the foreground. Target names, IDs and clipboard fingerprints remain transient host state and never enter logs or analytics.
 

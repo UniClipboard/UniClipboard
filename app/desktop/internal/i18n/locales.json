@@ -1595,6 +1595,12 @@
     "pt-BR": "Escolher o proxy para conexões de saída",
     "ru": "Выбрать прокси для исходящих соединений"
   },
+  "6 位配对码": {
+    "en": "6-digit pairing code",
+    "ja": "6桁のペアリングコード",
+    "pt-BR": "Código de pareamento de 6 dígitos",
+    "ru": "6-значный код сопряжения"
+  },
   "支持 6 位配对码或完整票据。": {
     "en": "Accepts a six-digit pairing code or full ticket.",
     "ja": "6桁のペアリングコードまたは完全なチケットを使用できます。",
@@ -2692,30 +2698,6 @@
     "ja": "終了",
     "pt-BR": "Sair",
     "ru": "Выход"
-  },
-  "新设备": {
-    "en": "New device",
-    "ja": "新しいデバイス",
-    "pt-BR": "Novo dispositivo",
-    "ru": "Новое устройство"
-  },
-  "%s 请求同步剪贴板。打开 unic 批准或拒绝。": {
-    "en": "%s requests clipboard sync. Open unic to approve or reject.",
-    "ja": "%s がクリップボード同期を要求しています。unic を開いて承認または拒否してください。",
-    "pt-BR": "%s solicita sincronização. Abra o unic para aprovar ou rejeitar.",
-    "ru": "%s: введён код сопряжения этого устройства. Откройте unic, проверьте отпечатки и одобрите."
-  },
-  "%s 输入了本机配对码。打开 unic，核对指纹后批准。": {
-    "en": "%s entered this device's pairing code. Open unic, verify fingerprints and approve.",
-    "ja": "%s がこのデバイスのコードを入力しました。unic を開き、フィンガープリントを照合して承認してください。",
-    "pt-BR": "%s inseriu o código deste dispositivo. Abra o unic, verifique as impressões digitais e aprove.",
-    "ru": "%s ввёл код этого устройства. Откройте unic, проверьте отпечатки и одобрите."
-  },
-  "%s 由 %s 介绍，请求加入。打开 unic 批准或拒绝。": {
-    "en": "%s, introduced by %s, requests to join. Open unic to approve or reject.",
-    "ja": "%s が %s の紹介で参加を要求しています。unic を開いて承認または拒否してください。",
-    "pt-BR": "%s, apresentado por %s, solicita entrada. Abra o unic para aprovar ou rejeitar.",
-    "ru": "%s по рекомендации %s запрашивает подключение. Откройте unic для одобрения или отказа."
   },
   "打开主窗口": {
     "en": "Open main window",

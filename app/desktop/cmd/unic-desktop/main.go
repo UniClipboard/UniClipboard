@@ -153,6 +153,16 @@ func runDesktop(args []string) error {
 		if err != nil {
 			return err
 		}
+		if useDaemonClipboard {
+			client := api.NewClient(socket)
+			if err := client.EnableDesktopClipboard(ctx); err != nil {
+				if owned != nil {
+					_ = owned.Stop()
+				}
+				return err
+			}
+			_, _ = client.EnableDesktopNotifications(ctx)
+		}
 		if owned != nil {
 			return owned.Detach(ctx)
 		}

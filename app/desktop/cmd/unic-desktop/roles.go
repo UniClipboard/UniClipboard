@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -23,6 +24,7 @@ import (
 
 // Each role enters this function in a separate operating-system process.
 var runRole = runNativeRole
+var useDaemonClipboard = runtime.GOOS == "darwin"
 
 // panelActivation is ephemeral. Never write it to a file or a log.
 type panelActivation struct {
@@ -66,7 +68,7 @@ type shortcutStatus struct {
 	Error     string `json:"error"`
 }
 
-// trayRuntime owns the only clipboard adapter and only service-lifetime pipe.
+// trayRuntime owns the service-lifetime pipe and the adapter on hosts where the service does not provide one.
 // runtimeMu serializes service transitions, including migration and shutdown.
 type trayRuntime struct {
 	nativeReady             chan struct{}
@@ -110,7 +112,11 @@ func newTrayRuntime(ctx context.Context, cancel context.CancelFunc, settings *co
 	if err != nil {
 		return nil, err
 	}
-	return &trayRuntime{paused: flow.Required(), ctx: ctx, cancel: cancel, dir: dir, socket: socket, executable: executable, settings: settings, nativeReady: make(chan struct{}), clipboard: quickpanel.NewClipboard(newDesktopBoard())}, nil
+	r := &trayRuntime{paused: flow.Required(), ctx: ctx, cancel: cancel, dir: dir, socket: socket, executable: executable, settings: settings, nativeReady: make(chan struct{})}
+	if !useDaemonClipboard {
+		r.clipboard = quickpanel.NewClipboard(newDesktopBoard())
+	}
+	return r, nil
 }
 func (r *trayRuntime) status() roleStatus {
 	r.mu.Lock()
@@ -165,15 +171,31 @@ func (r *trayRuntime) start(ctx context.Context, entering bool) error {
 			return err
 		}
 	}
+	if useDaemonClipboard {
+		if err := api.NewClient(r.socket).EnableDesktopClipboard(ctx); err != nil {
+			if service != nil {
+				_ = service.Stop()
+			}
+			return err
+		}
+	}
 	adapterCtx, cancel := context.WithCancel(r.ctx)
 	r.service = service
 	r.adapterCancel = cancel
 	r.adapterDone = make(chan struct{})
-	done := r.adapterDone
-	go func() {
-		defer close(done)
-		_ = clipboardintegration.RunRemote(adapterCtx, api.NewClient(r.socket), r.clipboard, nil)
-	}()
+	if useDaemonClipboard {
+		enabled, err := api.NewClient(r.socket).EnableDesktopNotifications(ctx)
+		if err == nil && !enabled {
+			go notifyPending(adapterCtx, r.socket, func() string { return r.settings.Current().Desktop.Language })
+		}
+		close(r.adapterDone)
+	} else {
+		done := r.adapterDone
+		go func() {
+			defer close(done)
+			_ = clipboardintegration.RunRemote(adapterCtx, api.NewClient(r.socket), r.clipboard, nil)
+		}()
+	}
 	r.mu.Lock()
 	r.state.Ready = true
 	r.state.SetupRequired = false
@@ -441,6 +463,9 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 		if err := json.Unmarshal(raw, &in); err != nil {
 			return nil, err
 		}
+		if r.clipboard == nil {
+			return nil, desktopprocess.ErrUnavailable
+		}
 		mark, err := r.clipboard.Apply(ctx, api.NewClient(r.socket), in.ID, in.Plain)
 		return clipboardReply{Mark: mark, Failure: quickpanel.FailureCode(err)}, nil
 	case "clipboard-matches":
@@ -448,7 +473,7 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 		if err := json.Unmarshal(raw, &in); err != nil {
 			return nil, err
 		}
-		return r.clipboard.Matches(in.Mark), nil
+		return r.clipboard != nil && r.clipboard.Matches(in.Mark), nil
 	case "restart", "restart-gui":
 		var action string
 		_ = json.Unmarshal(raw, &action)
@@ -541,9 +566,19 @@ func roleContext() (context.Context, context.CancelFunc) {
 
 // remoteClipboard preserves the tracked write receipt in the adapter owner.
 // UI processes neither acquire an adapter session nor access the native board.
-type remoteClipboard struct{ dir string }
+type remoteClipboard struct {
+	dir    string
+	daemon *api.Client
+}
 
 func (r remoteClipboard) Apply(ctx context.Context, _ *api.Client, id string, plain bool) (string, error) {
+	if r.daemon != nil {
+		out, err := r.daemon.ApplyDesktopClipboard(ctx, id, plain)
+		if err == nil {
+			err = quickpanel.FailureFromCode(out.Failure)
+		}
+		return out.Mark, err
+	}
 	var reply clipboardReply
 	err := desktopprocess.Call(ctx, r.dir, desktopprocess.Tray, "clipboard-apply", clipboardRequest{ID: id, Plain: plain}, &reply)
 	if err == nil {
@@ -554,6 +589,10 @@ func (r remoteClipboard) Apply(ctx context.Context, _ *api.Client, id string, pl
 func (r remoteClipboard) Matches(mark string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
+	if r.daemon != nil {
+		matches, err := r.daemon.MatchDesktopClipboard(ctx, mark)
+		return err == nil && matches
+	}
 	var matches bool
 	return desktopprocess.Call(ctx, r.dir, desktopprocess.Tray, "clipboard-matches", clipboardRequest{Mark: mark}, &matches) == nil && matches
 }

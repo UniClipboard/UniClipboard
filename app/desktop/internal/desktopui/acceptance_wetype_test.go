@@ -32,6 +32,8 @@ func scenarioWeTypePairing(t *testing.T) {
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/history", reply(api.HistoryPage{}))
+	mux.HandleFunc("GET /v1/history/tags", reply([]string{}))
+	mux.HandleFunc("GET /v1/candidates", reply([]api.Candidate{}))
 	mux.HandleFunc("POST /v1/history/search", reply(api.HistorySearchPage{}))
 	mux.HandleFunc("GET /v1/config", reply(config.State{Revision: "fixture", Config: config.Default()}))
 	mux.HandleFunc("GET /v1/plugins/marketplace", reply(api.PluginMarketplace{}))
@@ -92,7 +94,7 @@ func scenarioWeTypePairing(t *testing.T) {
 	desktop := NewDesktop(context.Background(), api.NewClient(sock))
 	t.Cleanup(desktop.Close)
 	d := desktop.d
-	d.openPluginSettings(pluginID)
+	d.openPluginSettings("")
 	view := ui.NewTesterWith(desktop.View, 1120, 860, ui.TesterOptions{})
 	proof.Capture(t, view)
 	wait := func(label string, condition func() bool) {
@@ -128,6 +130,11 @@ func scenarioWeTypePairing(t *testing.T) {
 			t.Fatal("pairing did not reach the local service")
 		}
 	}
+	wait("installed plugin metadata", func() bool {
+		_, installed := d.installedExternalPlugin(pluginID)
+		return installed
+	})
+	d.openPluginSettings(pluginID)
 	wait("restart guidance", func() bool { return view.HasText("重启后即可输入配对码。") })
 	if inputVisible() {
 		t.Fatal("pairing accepts a code before restart")

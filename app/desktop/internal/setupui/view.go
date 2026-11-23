@@ -16,6 +16,7 @@ import (
 
 type Model struct {
 	Colors                                                  *boardui.ColorTheme
+	WindowControls                                          func(*ui.Context)
 	Stage, Source, Error, Language                          string
 	Detecting, Found, PendingStart, Entering, MigrationOnly bool
 	Progress                                                v1migration.Progress
@@ -49,13 +50,21 @@ func Render(c *ui.Context, m Model, fields *Fields, a Actions) {
 	w, _ := c.Size()
 	compact := w > 0 && w < compactBreakpoint
 	topBand := macCaptionBand(c)
+	if m.WindowControls != nil {
+		topBand = 40
+	}
 
 	k.UiRoot(c, func() {
 		if m.Stage == "welcome" {
 			renderWelcome(c, k, m, a, tr, compact, topBand)
-			return
+		} else {
+			renderMigration(c, k, m, fields, a, tr, compact, topBand)
 		}
-		renderMigration(c, k, m, fields, a, tr, compact, topBand)
+		if m.WindowControls != nil {
+			ui.Row(c.Key("setup-caption")).Absolute().Top(0).Left(0).Right(0).
+				Height(topBand).AlignItems(ui.Center).Justify(ui.End).DragWindow().
+				Children(func() { m.WindowControls(c) })
+		}
 	})
 }
 

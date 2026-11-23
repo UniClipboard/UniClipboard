@@ -2154,11 +2154,11 @@ ui-absent text '部分设置将在下次启动时生效。'
 
 ## window-chrome-setup
 
-Native setup and migration fallback controls
+Native setup and migration caption controls
 
 Steps: Open isolated first-install setup, enter migration confirmation and the synthetic passphrase fallback, and exercise caption actions.
 
-Expected: Each setup page has one minimal fallback band; the existing migration controls remain usable; the service remains absent before consent.
+Expected: Windows caption controls share the window top with the setup panels; the existing migration controls remain usable; the service remains absent before consent.
 
 Forbidden: Personal profiles, real credential access, clipboard changes, an extra normal-page caption row, or native-frame claims from content captures.
 

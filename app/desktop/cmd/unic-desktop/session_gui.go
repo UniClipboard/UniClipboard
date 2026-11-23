@@ -52,7 +52,7 @@ func (s *desktopSession) showSetup(migrationOnly bool) {
 func (s *desktopSession) view(c *ui.Context) {
 	c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
 	if s.setup != nil {
-		s.setup.View(c)
+		s.setup.View(c, s.windowControls)
 		return
 	}
 	if s.runtime != nil {

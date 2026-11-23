@@ -221,25 +221,37 @@ func scenarioWindowChrome(t *testing.T) {
 		}
 	}
 	for _, stage := range []string{"welcome", "import", "failed"} {
-		t.Run("fallback/"+stage, func(t *testing.T) {
-			closed, minimized := 0, 0
-			fields := setupui.Fields{}
-			tt := ui.NewTesterWith(func(c *ui.Context) {
-				windowchrome.View(c, windowchrome.Actions{Close: func() { closed++ }, Minimize: func() { minimized++ }}, "zh-CN", func() {
-					setupui.Render(c, setupui.Model{Stage: stage, Error: "Synthetic startup or migration failure"}, &fields, setupui.Actions{})
-				})
-			}, 640, 560, ui.TesterOptions{})
-			proof.Capture(t, tt)
-			for _, label := range []string{"最小化", "关闭"} {
-				if err := tt.Click(label); err != nil {
-					t.Fatal(err)
+		for _, width := range []int{640, 780} {
+			t.Run(fmt.Sprintf("setup/%s/%d", stage, width), func(t *testing.T) {
+				closed, minimized := 0, 0
+				fields := setupui.Fields{}
+				model := setupui.Model{Stage: stage, Error: "Synthetic migration failure"}
+				model.WindowControls = func(c *ui.Context) {
+					windowchrome.Controls(c, windowchrome.Actions{Close: func() { closed++ }, Minimize: func() { minimized++ }}, "zh-CN")
 				}
-				tt.Frame()
-			}
-			if closed != 1 || minimized != 1 {
-				t.Fatal("fallback controls did not dispatch")
-			}
-		})
+				tt := ui.NewTesterWith(func(c *ui.Context) {
+					setupui.Render(c, model, &fields, setupui.Actions{})
+				}, width, 560, ui.TesterOptions{Dark: width == 640})
+				proof.Capture(t, tt)
+				img := tt.Image()
+				if width == 780 && img.At(16, 20) == img.At(520, 20) {
+					t.Error("setup panels do not extend to the window top")
+				}
+				for _, label := range []string{"最小化", "关闭"} {
+					button, ok := tt.AccessByRole(ui.RoleButton, label)
+					if !ok || button.Bounds.X < float32(width)-132 || button.Bounds.Y+button.Bounds.H > 40 {
+						t.Fatalf("setup caption button outside the top-right band: %s %+v", label, button.Bounds)
+					}
+					if err := tt.Click(label); err != nil {
+						t.Fatal(err)
+					}
+					tt.Frame()
+				}
+				if closed != 1 || minimized != 1 {
+					t.Fatal("setup caption controls did not dispatch")
+				}
+			})
+		}
 	}
 
 }

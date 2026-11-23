@@ -11,6 +11,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/boardui"
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 type qpEntry struct {
@@ -43,7 +44,9 @@ type quickPanelState struct {
 	live         *quickLive
 	richPreview  *richtext.Document
 
-	revealSelection bool
+	revealSelection      bool
+	keySequence          shortcutSequence
+	windowZoom, textZoom int
 
 	blurDue                       time.Time
 	nativeFocused                 func() bool
@@ -777,4 +780,14 @@ func (p *quickPanelState) host(action string) {
 	p.visible = false
 	p.menu = ""
 	p.update()
+}
+
+func (p *quickPanelState) setFavoriteFilter(enabled bool) {
+	p.chips = slices.DeleteFunc(p.chips, func(f qpFilter) bool { return f.dimension == "tag" && f.value == plugin.TagFavorite })
+	if enabled {
+		p.query, p.kind, p.menu = "", "", ""
+		p.chips = []qpFilter{{dimension: "tag", value: plugin.TagFavorite}}
+		p.queryDue = time.Time{}
+		p.suggestOpen, p.suggestFocused = false, false
+	}
 }

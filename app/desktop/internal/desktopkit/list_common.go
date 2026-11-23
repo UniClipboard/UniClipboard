@@ -79,6 +79,14 @@ func (s *ListState) Selection() []string {
 	return append(out, rest...)
 }
 
+// Hovered returns the item under the pointer in the current layout.
+func (s *ListState) Hovered(grid bool) string {
+	if grid {
+		return s.grid.hover
+	}
+	return s.hoverID
+}
+
 // Has 报告 id 是否被选中。
 func (s *ListState) Has(id string) bool { return s.sel.Has(id) }
 

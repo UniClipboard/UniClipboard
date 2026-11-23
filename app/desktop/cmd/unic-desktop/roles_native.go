@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -18,6 +19,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopui"
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
+	"github.com/uniclipboard/unic/internal/desktopkeys"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
@@ -120,7 +122,16 @@ func runTray(settings *config.Manager) error {
 	}
 	mygo.App.WhenReady(func() {
 		nativePlatform := quickpanel.NewNative()
-		shortcut := quickpanel.NewShortcut(mygo.GlobalShortcut.Register, mygo.GlobalShortcut.Unregister, showQuickPanel)
+		var shortcuts globalShortcuts
+		var effective, listeningModifier string
+		var stopModifier context.CancelFunc
+		shortcutHandlers := map[string]func(){
+			desktopkeys.TogglePanel: showQuickPanel,
+			desktopkeys.ShowMain:    showDesktop,
+			desktopkeys.ShowFavorites: func() {
+				nativeAsync(func(ctx context.Context) error { return r.openPanelFiltered(ctx, true) })
+			},
+		}
 		r.capture = func() panelActivation {
 			result := make(chan panelActivation, 1)
 			mygo.RunOnMain(func() {
@@ -147,19 +158,45 @@ func runTray(settings *config.Manager) error {
 		r.shortcut = func(retry bool) shortcutStatus {
 			done := make(chan shortcutStatus, 1)
 			mygo.RunOnMain(func() {
-				requested := settings.Current().Desktop.QuickPanelShortcut
-				key := requested
+				desktop := settings.Current().Desktop
+				requested := desktop.QuickPanelShortcut
+				if values, ok := desktop.Shortcuts[desktopkeys.TogglePanel]; ok {
+					requested = strings.Join(values, " / ")
+				}
 				r.mu.Lock()
 				paused := r.paused
 				r.mu.Unlock()
-				if paused {
-					key = ""
-				}
 				message := ""
-				if err := shortcut.Set(key); err != nil {
-					message = "快捷键注册失败。原快捷键保持有效。请检查冲突后重试。"
+				modifier := desktop.QuickPanelDoubleTap
+				if paused {
+					modifier = ""
 				}
-				done <- shortcutStatus{Requested: requested, Effective: shortcut.Effective, Error: message}
+				if modifier != listeningModifier || (retry && modifier != "") {
+					if stopModifier != nil {
+						stopModifier()
+						stopModifier = nil
+					}
+					listeningModifier = ""
+					if modifier != "" {
+						listenerContext, cancelListener := context.WithCancel(ctx)
+						if quickpanel.WatchModifier(listenerContext, nativePlatform, modifier, showQuickPanel) {
+							stopModifier, listeningModifier = cancelListener, modifier
+						} else {
+							cancelListener()
+						}
+					}
+				}
+				if modifier != listeningModifier {
+					message = "无法启用双击修饰键。请检查系统权限或会话类型后重试。"
+				}
+				if err := shortcuts.apply(desktop, paused, shortcutHandlers); err != nil {
+					message = "快捷键注册失败。原快捷键保持有效。请检查冲突后重试。"
+				} else if paused {
+					effective = ""
+				} else {
+					effective = requested
+				}
+				done <- shortcutStatus{Requested: requested, Effective: effective, Error: message}
 			})
 			select {
 			case state := <-done:
@@ -212,7 +249,10 @@ func runTray(settings *config.Manager) error {
 			if stopUpdateChange != nil {
 				stopUpdateChange()
 			}
-			shortcut.Close()
+			if stopModifier != nil {
+				stopModifier()
+			}
+			_ = shortcuts.apply(config.Desktop{}, true, nil)
 			if closer, ok := nativePlatform.(interface{ Close() }); ok {
 				closer.Close()
 			}
@@ -332,7 +372,14 @@ func runPanel(settings *config.Manager) error {
 			}
 			mygo.RunOnMain(func() {
 				if panel != nil {
-					panel.Open(activation.Target, activation.Error)
+					panel.Open(activation.Target, activation.Error, activation.Favorites)
+				}
+			})
+			return nil, nil
+		case "favorites":
+			mygo.RunOnMain(func() {
+				if panel != nil {
+					panel.FilterFavorites()
 				}
 			})
 			return nil, nil

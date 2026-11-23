@@ -122,3 +122,30 @@ func (p windowsPlatform) Paste(t Target) error {
 	}
 	return nil
 }
+
+func (windowsPlatform) modifierSnapshot(modifier string) func() (bool, bool) {
+	keys := map[string][]uintptr{
+		"alt": {0x12, 0xa4, 0xa5}, "control": {0x11, 0xa2, 0xa3}, "meta": {0x5b, 0x5c},
+	}[modifier]
+	if len(keys) == 0 {
+		return nil
+	}
+	var selected [256]bool
+	for _, key := range keys {
+		selected[key] = true
+	}
+	return func() (down, other bool) {
+		for key := uintptr(7); key <= 0xfe; key++ {
+			state, _, _ := getKeyState.Call(key)
+			if state&0x8000 == 0 {
+				continue
+			}
+			if selected[key] {
+				down = true
+			} else {
+				other = true
+			}
+		}
+		return
+	}
+}

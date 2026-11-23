@@ -16,6 +16,7 @@ import (
 	"github.com/egoist/mygo/ui/richtext"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
+	"github.com/uniclipboard/unic/internal/desktopkeys"
 )
 
 func (d *viewState) sidebar(c *ui.Context, k desktopkit.Kit) {
@@ -53,11 +54,15 @@ func (d *viewState) sidebar(c *ui.Context, k desktopkit.Kit) {
 		}
 		devices = append(devices, desktopkit.SidebarNavItem{ID: "device:" + v.id, Label: v.name, Status: &tone, Count: state})
 	}
+	var overrides map[string][]string
+	if d.live != nil {
+		overrides = d.live.config.Config.Desktop.Shortcuts
+	}
 	k.SidebarNav(c, &d.nav, desktopkit.SidebarNavProps{Label: d.tr("资料库"), Sections: []desktopkit.SidebarNavSection{
 		{ID: "library", Items: []desktopkit.SidebarNavItem{{ID: "all", Label: d.tr("全部项目"), Icon: desktopkit.IconHistory, Count: d.historyCountLabel()}, {ID: "pinned", Label: d.tr("已收藏"), Icon: desktopkit.IconPin, Count: favoriteCount}}},
 		{ID: "tags", Title: d.tr("标签"), Items: tags, Action: &desktopkit.NavAction{Label: d.tr("管理标签"), Icon: desktopkit.IconAdd}, More: &desktopkit.NavAction{Label: fmt.Sprintf(d.tr("全部标签 · %d"), len(d.tags))}},
 		{ID: "devices", Title: d.tr("设备"), Items: devices},
-	}, Footer: []desktopkit.SidebarNavItem{{ID: "manage", Label: d.tr("管理设备…"), Icon: desktopkit.IconDevices}, {ID: "settings", Label: d.tr("设置…"), Icon: desktopkit.IconSettings, ShortcutHint: "⌘,"}}}).Grow(1)
+	}, Footer: []desktopkit.SidebarNavItem{{ID: "manage", Label: d.tr("管理设备…"), Icon: desktopkit.IconDevices}, {ID: "settings", Label: d.tr("设置…"), Icon: desktopkit.IconSettings, ShortcutHint: shortcutHint(overrides, desktopkeys.Settings)}}}).Grow(1)
 	if cmd, _ := d.nav.Command(); cmd == desktopkit.NavSectionAction || cmd == desktopkit.NavMore {
 		d.tagsOpen = true
 	}
@@ -115,7 +120,7 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 	if d.isSearchUnavailableState() {
 		subtitle = "—"
 	}
-	k.SplitView(c, desktopkit.SplitViewProps{ToolbarTrailing: d.trailingToolbar(c),
+	k.SplitView(c, desktopkit.SplitViewProps{ContentScale: zoomScale(d.zoomStep), ToolbarTrailing: d.trailingToolbar(c),
 		Title: d.historyHeadingTitle(), Subtitle: subtitle,
 		Sidebar: func() { d.sidebar(c, k) }, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact,
 		SidebarToggleLabel: d.tr("切换侧栏"), DetailOpen: &d.detailOpen, BackLabel: d.tr("返回历史"),
@@ -312,6 +317,7 @@ func (d *viewState) historyCommands(c *ui.Context, k desktopkit.Kit) {
 	v := d.current()
 	_, command := k.ToolbarIconMenu(c.Key("send"), desktopkit.ToolbarIconMenuProps{
 		Label:    d.tr("发送到设备"),
+		Open:     &d.historySendMenu,
 		Icon:     desktopkit.IconSend,
 		Disabled: v == nil,
 		Items:    d.sendMenuItems(),
@@ -332,13 +338,18 @@ func (d *viewState) historyCommands(c *ui.Context, k desktopkit.Kit) {
 		if actions := d.historyActionsFor(v.id, plugin.ActionPlacementHistoryToolbar, ""); len(actions) > 0 {
 			_, key := k.ToolbarIconMenu(c.Key("history-actions"), desktopkit.ToolbarIconMenuProps{
 				Label: d.tr("动作"),
+				Open:  &d.historyActionsMenu,
 				Icon:  desktopkit.IconEdit,
 				Items: actions,
 			})
 			if key != "" {
 				d.runHistoryAction(v.id, key)
 			}
+		} else {
+			d.historyActionsMenu = false
 		}
+	} else {
+		d.historyActionsMenu = false
 	}
 	_, command = k.ToolbarIconMenu(c.Key("more"), desktopkit.ToolbarIconMenuProps{
 		Label: d.tr("更多操作"),

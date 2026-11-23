@@ -1,8 +1,8 @@
-# Case: Passive shortcut permission status and explicit System Settings guidance
+# Case: Shortcut persistence, sequence dispatch, and explicit System Settings guidance
 # Mode: process
 # Purpose: Exercise the production Desktop binding against a private service with controlled permission-host callbacks.
-# Steps: Read denied/granted/unsupported/error states; explicitly request settings guidance without granting permission; overlap an outstanding read with opening settings; replace callbacks and cancel a late completion.
-# Expected: Reads never request permission or open settings; opening settings never grants permission; operations do not block each other; stale or cancelled results do not replace current state.
-# Forbidden: Native permission calls, GUI, renderer, browser, system settings launch, system clipboard, public-contract changes or arbitrary shortcut registration.
+# Steps: Save a two-step shortcut and a disabled binding; reopen and dispatch the saved sequence; reject a conflicting prefix; read denied/granted/unsupported/error states; explicitly request settings guidance without granting permission; overlap an outstanding read with opening settings; replace callbacks and cancel a late completion.
+# Expected: Bindings survive reopening and rejected conflicts preserve the revision; reads never request permission or open settings; opening settings never grants permission; operations do not block each other; stale or cancelled results do not replace current state.
+# Forbidden: Native permission calls, GUI, renderer, browser, system settings launch, system clipboard, OS shortcut registration.
 
 acceptance desktopui settings-shortcuts

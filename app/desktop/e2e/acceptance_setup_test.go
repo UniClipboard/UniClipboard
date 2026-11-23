@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/climigration"
+	"github.com/uniclipboard/unic/internal/desktopkeys"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/internal/v1migration"
@@ -88,6 +90,11 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	must(t, os.WriteFile(settingsPath, []byte(`{"general":{"device_name":"Desktop Fixture","theme":"light","usage_analytics_enabled":false}}`), 0600))
 	initialSettingsHash := hash(t, settingsPath)
 	initialLayoutHash := hash(t, layoutPath)
+	shortcutPath := filepath.Join(source, "desktop-settings.json")
+	legacySettings := []byte(`{"version":1,"keyboardShortcuts":{"nav.settings":"mod+1","clipboard.favorite":["f","alt+f"],"clipboard.search":"","global.toggleQuickPanel":"ctrl+alt+j ctrl+alt+k"},"quickPanel":{"doubleTapModifier":"alt"}}`)
+	must(t, os.WriteFile(shortcutPath, legacySettings, 0600))
+	initialShortcutHash := hash(t, shortcutPath)
+	receipt["source_shortcuts_sha256"] = initialShortcutHash
 	colorKey := func(id string) string { sum := sha256.Sum256([]byte(id)); return hex.EncodeToString(sum[:]) }
 	target := filepath.Join(base, "target")
 	flow, err := setupflow.Open(target)
@@ -173,6 +180,9 @@ func scenarioFirstInstallSetup(t *testing.T) {
 		t.Fatal("Desktop partial import did not block CLI no-source initialization")
 	}
 	checks = append(checks, "Desktop partial import persists the shared CLI pending gate")
+	if report.ShortcutsImported != 4 || report.ShortcutsSkipped != 0 || hash(t, shortcutPath) != initialShortcutHash {
+		t.Fatalf("shortcut import or read-only source check failed: %+v", report)
+	}
 	receipt["partial_report"] = report
 	db, err := sql.Open("sqlite", dbpath)
 	must(t, err)
@@ -245,6 +255,18 @@ func scenarioFirstInstallSetup(t *testing.T) {
 	if state.Config.Desktop.TagColors[colorKey("标签")] != "#23ab45" || state.Config.Desktop.TagColors[colorKey("builtin:link")] != "orange" {
 		t.Fatal("desktop migrated colors unavailable through service")
 	}
+	bindings := state.Config.Desktop.Shortcuts
+	disabledSearch, searchPresent := bindings[desktopkeys.Search]
+	disabledNewDefault, defaultPresent := bindings[desktopkeys.All]
+	if !slices.Equal(bindings[desktopkeys.Settings], []string{"mod+1"}) ||
+		!slices.Equal(bindings[desktopkeys.Favorite], []string{"f", "alt+f"}) ||
+		!slices.Equal(bindings[desktopkeys.TogglePanel], []string{"ctrl+alt+j ctrl+alt+k"}) ||
+		!searchPresent || len(disabledSearch) != 0 ||
+		!defaultPresent || len(disabledNewDefault) != 0 ||
+		state.Config.Desktop.QuickPanelDoubleTap != "alt" {
+		t.Fatalf("service did not expose imported shortcuts or preserved default priority: %v", bindings)
+	}
+	checks = append(checks, "v1 shortcut alternatives, two-step chords, disabled actions and modifier taps persist; old bindings take priority over new defaults")
 	tagged, err := client.QueryHistory(deadline, api.HistoryQuery{Tags: []string{"标签"}})
 	must(t, err)
 	if len(tagged.Items) != 1 {

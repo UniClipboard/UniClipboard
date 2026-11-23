@@ -8,8 +8,18 @@ import (
 
 // UiRoot installs the single BoardUI scheme for all supported desktop hosts.
 func (k Kit) UiRoot(c *ui.Context, body func()) ui.Element {
+	return k.ScaledUiRoot(c, 1, body)
+}
+
+// ScaledUiRoot lays out content in logical units before applying UI zoom.
+func (k Kit) ScaledUiRoot(c *ui.Context, scale float32, body func()) ui.Element {
 	k.Apply(c)
-	return ui.Column(c).Fill().Font(boardui.FontFamily).FontSize(k.baseFont()).TextColor(k.Color("text-primary")).Background(k.Color("background-full")).Children(body)
+	root := ui.Column(c).Fill().Font(boardui.FontFamily).FontSize(k.baseFont()).TextColor(k.Color("text-primary")).Background(k.Color("background-full"))
+	if scale != 1 {
+		w, h := c.Size()
+		root.Absolute().Left(0).Top(0).Size(w/scale, h/scale).TransformOrigin(0, 0).Scale(scale, scale)
+	}
+	return root.Children(body)
 }
 func (k Kit) baseFont() float32 { return boardui.Typography("body-regular").Size }
 

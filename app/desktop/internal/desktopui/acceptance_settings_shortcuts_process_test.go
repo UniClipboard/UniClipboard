@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/desktopkeys"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
@@ -126,6 +128,48 @@ func scenarioSettingsShortcuts(t *testing.T) {
 	defer screen.Close()
 	wait("production binding", func() bool { return screen.d.live.loaded && !screen.d.live.loading })
 	d := screen.d
+	cfg := d.live.config.Config
+	cfg.Desktop.Shortcuts = map[string][]string{
+		desktopkeys.Search:       {"mod+shift+f mod+s"},
+		desktopkeys.Tags:         {},
+		desktopkeys.PanelActions: {"mod+k"},
+		desktopkeys.ShowMain:     {"ctrl+alt+j ctrl+alt+h"},
+	}
+	d.saveLiveConfig(cfg)
+	wait("saved shortcut configuration", func() bool {
+		return !d.live.busy && len(d.live.config.Config.Desktop.Shortcuts) == 4
+	})
+	reopened := NewDesktop(ctx, client)
+	defer reopened.Close()
+	wait("reopened shortcut configuration", func() bool {
+		reopened.d.live.poll(reopened.d)
+		return reopened.d.live.loaded && !reopened.d.live.loading
+	})
+	saved := reopened.d.live.config.Config.Desktop.Shortcuts
+	if bindings, ok := saved[desktopkeys.Tags]; !ok || len(bindings) != 0 {
+		t.Fatal("disabled shortcut did not survive reopening the binding")
+	}
+	var ran int
+	bindings := shortcutCommands(saved, map[string]func(){desktopkeys.Search: func() { ran++ }})
+	var sequence shortcutSequence
+	if !sequence.take(parseStroke("mod+shift+f"), bindings) || ran != 0 ||
+		!sequence.take(parseStroke("mod+s"), bindings) || ran != 1 {
+		t.Fatal("persisted two-step shortcut did not dispatch exactly once")
+	}
+	conflict := reopened.d.live.config
+	conflict.Config.Desktop.Shortcuts[desktopkeys.Tags] = []string{"mod+shift+f"}
+	raw, err := toml.Marshal(conflict.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.SaveConfig(ctx, conflict.Revision, raw); err == nil {
+		t.Fatal("service accepted an overlapping shortcut")
+	}
+	state, err := client.Config(ctx)
+	if err != nil || state.Revision != conflict.Revision {
+		t.Fatalf("rejected collision changed the configuration: %v", err)
+	}
+	checks = append(checks, "real service persists two-step, disabled, and separate-scope shortcuts, and rejects a prefix collision without a revision change")
 	var opens atomic.Int32
 	open := func(context.Context) error { opens.Add(1); return nil }
 	for _, status := range []string{"denied", "granted", "unknown", "unsupported"} {

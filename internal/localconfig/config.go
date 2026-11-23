@@ -18,6 +18,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/desktopkeys"
 	"github.com/uniclipboard/unic/internal/observability"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
@@ -89,13 +90,15 @@ type Desktop struct {
 	TrayIcon      string `toml:"tray_icon" json:"tray_icon"`
 	UpdateChannel string `toml:"update_channel" json:"update_channel"`
 	// TagColors maps SHA-256 tag identifiers to local presentation colors. It stores no tag names.
-	TagColors          map[string]string `toml:"tag_colors,omitempty" json:"tag_colors,omitempty"`
-	Language           string            `toml:"language" json:"language"`
-	QuickPanelShortcut string            `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
-	Mode               string            `toml:"mode" json:"mode"`
-	LaunchAtLogin      bool              `toml:"launch_at_login" json:"launch_at_login"`
-	StartInBackground  bool              `toml:"start_in_background" json:"start_in_background"`
-	SystemWindowFrame  bool              `toml:"system_window_frame" json:"system_window_frame"`
+	TagColors           map[string]string   `toml:"tag_colors,omitempty" json:"tag_colors,omitempty"`
+	Language            string              `toml:"language" json:"language"`
+	Shortcuts           map[string][]string `toml:"shortcuts,omitempty" json:"shortcuts,omitempty"`
+	QuickPanelDoubleTap string              `toml:"quick_panel_double_tap,omitempty" json:"quick_panel_double_tap,omitempty"`
+	QuickPanelShortcut  string              `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
+	Mode                string              `toml:"mode" json:"mode"`
+	LaunchAtLogin       bool                `toml:"launch_at_login" json:"launch_at_login"`
+	StartInBackground   bool                `toml:"start_in_background" json:"start_in_background"`
+	SystemWindowFrame   bool                `toml:"system_window_frame" json:"system_window_frame"`
 }
 
 // History configures live cleanup and the startup storage budget.
@@ -345,6 +348,14 @@ func (c Config) Validate() error {
 			}
 		}
 	}
+	switch c.Desktop.QuickPanelDoubleTap {
+	case "", "alt", "control", "meta":
+	default:
+		return errors.New("desktop.quick_panel_double_tap: unsupported modifier")
+	}
+	if err := desktopkeys.Validate(c.Desktop.Shortcuts, c.Desktop.QuickPanelShortcut); err != nil {
+		return fmt.Errorf("desktop.shortcuts: %w", err)
+	}
 	switch c.Desktop.QuickPanelShortcut {
 	case "", "Ctrl+`", "CmdOrCtrl+Shift+Space", "Ctrl+Alt+V", "Cmd+Ctrl+V":
 	default:
@@ -463,6 +474,9 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # tray_icon = "glyph"  # "glyph" or "cat"; applies immediately
 # quick_panel_shortcut = "Ctrl+Alt+V"
 # macOS default: "Cmd+Ctrl+V"
+# quick_panel_double_tap = ""  # off, alt, control, or meta
+# [desktop.shortcuts]
+# "clipboard.search" = ["mod+f"]  # [] disables the binding
 
 # Logging and PostHog/OTLP upload. All four remote signals default on.
 # Traces use a fixed 1% root sample when enabled.

@@ -17,6 +17,7 @@ var settingsSections = []settingsSectionSpec{
 		items: []desktopkit.SidebarNavItem{
 			{ID: "general", Label: "通用", Icon: desktopkit.IconSettings},
 			{ID: "appearance", Label: "外观", Icon: desktopkit.IconSun},
+			{ID: "shortcuts", Label: "快捷键", Icon: desktopkit.IconList},
 			{ID: "quickPanel", Label: "快捷面板", Icon: desktopkit.IconList},
 		},
 	},
@@ -126,6 +127,7 @@ func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 	k.SplitView(c, desktopkit.SplitViewProps{Toolbar: toolbar, ToolbarTrailing: d.trailingToolbar(c), Title: title, TitleLeading: titleLeading, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
 		k.SidebarNav(c, &d.settings, desktopkit.SidebarNavProps{Label: d.tr("设置"), Sections: sections, Footer: []desktopkit.SidebarNavItem{{ID: "back", Label: d.tr("返回历史"), Icon: desktopkit.IconBack, ShortcutHint: "Esc"}}}).Grow(1)
 		if d.settings.Changed() {
+			d.shortcutEditor = shortcutEditor{}
 			if d.settings.Value == "back" {
 				d.page, d.settings.Value = "history", "general"
 			}

@@ -171,3 +171,37 @@ func (p *macPlatform) Paste(t Target) error {
 	p.post(int32(t.PID), up)
 	return nil
 }
+
+func (p *macPlatform) modifierSnapshot(modifier string) func() (bool, bool) {
+	mask := map[string]uint64{"alt": 1 << 19, "control": 1 << 18, "meta": 1 << 20}[modifier]
+	if mask == 0 || !p.trusted() {
+		return nil
+	}
+	const flagsMask = 1<<17 | 1<<18 | 1<<19 | 1<<20 | 1<<23
+	// Ignore keys that are already down until released. Some Apple devices
+	// report a phantom key at capture startup.
+	var held [128]bool
+	for key := range held {
+		if key < 0x36 || key > 0x3f {
+			held[key] = p.keyDown(0, uint16(key))
+		}
+	}
+	return func() (bool, bool) {
+		if !p.trusted() || p.secure() {
+			return false, true
+		}
+		flags := p.flags(0)
+		other := flags&(flagsMask&^mask) != 0
+		for key := range held {
+			if key >= 0x36 && key <= 0x3f {
+				continue
+			}
+			if !p.keyDown(0, uint16(key)) {
+				held[key] = false
+			} else if !held[key] {
+				other = true
+			}
+		}
+		return flags&mask != 0, other
+	}
+}

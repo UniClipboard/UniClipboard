@@ -281,9 +281,18 @@ Search pages contain only explicit bounded previews, not image bytes, host refer
 New search revisions serialize as decimal strings. Counts are JSON numbers in request order.
 Exact semantics and errors are in the [history search contract](history-search-contract.md).
 
-### Quick-panel host preference
+### Desktop shortcut preferences
 
-The shared configuration adds `desktop.quick_panel_shortcut`. It defaults to Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Accepted values are `Ctrl+` followed by a backtick, `CmdOrCtrl+Shift+Space`, `Ctrl+Alt+V`, `Cmd+Ctrl+V`, and the empty string (disabled). The existing configuration revision check and TOML hot reload apply. The service persists the preference; only the tray process registers it while Desktop integration is active. Lightweight GUI close removes the tray and shortcut. Registration failure does not revert the saved configuration and is shown separately from the effective host registration. No target identity, paste status or OS input command enters service DTOs. See the [Desktop quick-panel contract](desktop-quick-panel-contract.md).
+The revision-checked configuration accepts `desktop.shortcuts`, a mapping
+from supported action IDs to arrays of one- or two-step bindings. Empty arrays
+disable an action. Omitted entries select defaults. The existing
+`desktop.quick_panel_shortcut` preference remains the preset fallback for panel
+activation. `desktop.quick_panel_double_tap` accepts an empty string (off),
+`alt`, `control`, or `meta`. Validation rejects ambiguous bindings and retains
+the previous revision on rejected saves. The service persists preferences.
+The Desktop tray owns system-wide registration, retry and effective status.
+No target identity or OS input command enters service DTOs. See the
+[Desktop quick-panel contract](desktop-quick-panel-contract.md).
 
 ## Desktop language configuration
 

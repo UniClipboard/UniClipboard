@@ -19,6 +19,8 @@ paths:
   - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
   - internal/localconfig
+  - internal/desktopkeys
+  - internal/v1migration/shortcuts.go
   - internal/localapi
   - app/service/internal/server
   - app/service/internal/host
@@ -427,7 +429,18 @@ Unsupported OS paste and semantic classifications remain separate from retrieval
 
 The tray captures the external foreground target before starting or activating the independent quick-panel process. It sends the ephemeral target through private Desktop IPC. The quick-panel process owns the target session in `app/desktop/internal/quickpanel`, its history window and its nonfocusable preview. Global shortcuts, tray activation and the Settings button use the same opening path. Repeated activation while visible dismisses the panel without replacing the target.
 
-`desktop.quick_panel_shortcut` defaults to Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Settings offers both platform bindings, Ctrl plus backtick, Command/Ctrl+Shift+Space and disabled. The existing revision-checked configuration persists the choice. The host registers a replacement before removing the working registration and exposes requested/effective disagreement with an explicit retry. Normal mode keeps the tray shortcut available after GUI close. Lightweight GUI close and lightweight background/login entry leave only unicd, so no shortcut or clipboard adapter remains.
+Settings > Shortcuts records one or two key combinations and groups actions by
+where they run. Window navigation, history actions and quick-panel actions read
+the current profile preferences. The tray registers system-wide bindings and
+preserves the previous set if the operating system refuses a replacement.
+Settings > Quick Panel shows the registration result and lets the user retry.
+Normal mode keeps shortcuts available after the GUI closes. Lightweight mode
+releases all Desktop registrations when only unicd remains.
+
+Offline v1 migration imports configured shortcuts and the double-tap setting
+from the selected source profile. Existing v2 overrides take priority. An
+imported v1 binding takes priority over an overlapping newly added default.
+Migration reports unsupported bindings. See the [quick-panel contract](../contracts/desktop-quick-panel-contract.md).
 
 Enter applies history through the existing IPC clipboard adapter, hides both windows, restores the captured target and sends one paste chord. Shift+Enter uses the existing plain-text Action and applies its resulting history item. Command/Ctrl+Enter waits 150 ms after input dispatch and reopens the panel only if the target still owns focus. Copy does not inject keyboard input. The panel delegates application and clipboard-match checks to the tray through private IPC. The tray's tracked clipboard wrapper verifies exactly one adapter write and compares content plus file paths before paste. The panel never acquires another adapter.
 

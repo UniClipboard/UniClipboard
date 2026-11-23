@@ -192,6 +192,11 @@ type viewState struct {
 	confirmEntries                                                        []string
 	drawerSwitchDir                                                       int
 	sidebarHidden, detailOpen, inspector, tagsOpen, quickLook, filterOpen bool
+	zoomStep                                                              int
+	shortcutReturnPage                                                    string
+	shortcutEditor                                                        shortcutEditor
+	keyboardSequence                                                      shortcutSequence
+	historySendMenu, historyActionsMenu                                   bool
 	compact                                                               bool
 	gridSize                                                              float64
 	deviceTask, deviceTaskForID, pairingChannelID                         string
@@ -216,22 +221,21 @@ func (d *viewState) view(c *ui.Context) {
 	}
 	k := desktopkit.Kit{Dark: dark, Colors: d.colors}
 	k.Apply(c)
-	k.UiRoot(c, func() {
+	scale := zoomScale(d.zoomStep)
+	k.ScaledUiRoot(c, scale, func() {
 		w, _ := c.Size()
 		// main's library collapses its sidebar below 1100 px. The Kit separately
 		// switches list/detail navigation below SinglePaneWidth.
-		compact := w < 1100
+		compact := w/scale < 1100
 		if compact != d.compact {
 			d.sidebarHidden, d.compact = compact, compact
 		}
 		c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
-		if !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" && !d.about.alphaWarningOpen && !d.about.manualUpdateOpen && !d.backup.confirmOpen {
-			if d.page == "history" {
-				c.OnShortcut(ui.Cmd, ui.KeyComma, func() { d.page = "settings" })
-				c.OnShortcut(ui.Cmd, ui.KeyP, d.togglePin)
-				c.OnShortcut(0, ui.KeyT, d.openTagEditor)
+		if !d.quickLook && !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" && !d.about.alphaWarningOpen && !d.about.manualUpdateOpen && !d.backup.confirmOpen {
+			if d.shortcutEditor.id == "" || d.page != "settings" {
+				d.bindKeyboardCommands(c)
 			}
-			if d.page == "settings" && (!d.compact || d.sidebarHidden) {
+			if d.page == "settings" && d.shortcutEditor.id == "" && (!d.compact || d.sidebarHidden) {
 				// A narrow sidebar drawer owns Escape before page navigation.
 				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
 			}

@@ -14,7 +14,40 @@ Cancellation, external blur, a newer session, shutdown, failed apply, missing pe
 
 ## Shortcut preference
 
-Use mygo.GlobalShortcut. Persist desktop.quick_panel_shortcut in the existing revision-checked TOML config. Default: Cmd+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Supported choices: Ctrl+`, CmdOrCtrl+Shift+Space, Ctrl+Alt+V, Cmd+Ctrl+V, or empty to disable. These fixed choices avoid duplicating mygo's private accelerator parser. Register a replacement before removing the previous registration. Report requested and effective registration separately; a conflict preserves the previous working registration. Offer an explicit retry. Release owned registrations on quit. On Wayland, mygo acknowledges an asynchronous portal registration request; the in-process registration receipt does not prove that the user approved the desktop binding. The tray owns the only global registration while Desktop integration runs. The quick panel registers no global shortcut and acquires no clipboard adapter. It starts on first request and remains hidden between requests. Normal GUI close retains tray integration, so the shortcut can reopen the panel without a GUI process. Lightweight GUI close retires GUI, tray and panel and leaves only unicd, without a hotkey or adapter. Lightweight background/login entry also keeps only unicd after setup. Manual activation always reopens the GUI. Explicit application Quit closes all Desktop roles and releases the tray registration.
+The tray registers system-wide shortcuts with mygo.GlobalShortcut while Desktop
+integration runs. The default panel binding is Command+Ctrl+V on macOS and
+Ctrl+Alt+V on Windows/Linux. The optional Show Main Window and Open Favorites
+in Quick Panel actions are unbound by default. Opening favorites on a visible
+panel changes its filter without recapturing the target. The normal panel
+shortcut still dismisses an already visible panel.
+
+Settings stores recorded alternatives in `desktop.shortcuts`. Each binding
+contains one or two space-separated key combinations. A two-step sequence
+expires one second after its first combination. An empty array disables an
+action. An absent entry uses the action default. For panel activation only, the
+existing `desktop.quick_panel_shortcut` preset remains the fallback. Settings
+rejects overlapping bindings and prefixes within each application window and
+within system-wide bindings. A step claimed by a system-wide binding cannot
+also belong to a window binding. History and main window scopes overlap.
+The two independent windows may share bindings.
+
+The tray registers the complete replacement set before releasing superseded
+registrations. If registration fails, it rolls back added registrations and
+reports the previous effective panel binding. A saved preference can differ
+from an effective binding. The user can retry registration. On Wayland a mygo
+portal request is asynchronous and does not establish user approval. The tray
+drops its registrations on pause, explicit quit or lightweight retirement.
+
+`desktop.quick_panel_double_tap` independently enables two standalone presses
+of Alt, Ctrl or the platform Super key. The setting defaults to off. The tray
+samples only the selected modifier and the presence of other keys while this
+feature is active. macOS requires Accessibility permission. Windows and native
+X11 support the feature. Wayland cannot observe the global modifier gesture.
+
+The quick-panel process registers no global shortcuts and owns no clipboard
+adapter. It starts on first activation and remains hidden between requests.
+Normal GUI close retains the tray. Lightweight close and lightweight login
+keep only unicd. Manual activation reopens the GUI.
 
 ## Platforms and privacy
 

@@ -38,6 +38,8 @@ type Report struct {
 	ColorsMissing      int    `json:"colors_missing"`
 	ColorsVerified     int    `json:"colors_verified"`
 	ColorFailures      int    `json:"color_failures"`
+	ShortcutsImported  int    `json:"shortcuts_imported"`
+	ShortcutsSkipped   int    `json:"shortcuts_skipped"`
 }
 type Progress struct {
 	Stage     string `json:"stage"`
@@ -193,6 +195,9 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		return
 	}
 	if target != nil {
+		if runErr = s.importShortcuts(dst, &report); runErr != nil {
+			return
+		}
 		if colorErr == nil {
 			importTagColors(ctx, dst, colors, &report)
 		}

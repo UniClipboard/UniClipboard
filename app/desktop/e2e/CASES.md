@@ -576,9 +576,9 @@ stop-policy-peer
 
 First-install setup and offline v1 import
 
-Steps: Discover synthetic sources; skip and reopen; import with wrong and correct credentials; cancel and resume; repair and retry; start a real service and read imported history; reject concurrent migration; stop the owned service, reopen a pending later migration, cancel and resume, then restart service.
+Steps: Discover synthetic sources; skip and reopen; import with wrong and correct credentials; cancel and resume; repair and retry; start a real service and read imported history and shortcut preferences; reject concurrent migration; stop the owned service, reopen a pending later migration, cancel and resume, then restart service.
 
-Expected: Established profiles bypass setup; unfinished first and later migrations resume; imported records survive cancellation without duplication; partial counts remain distinct; source data remains unchanged; service exposes stable imported history identities after restart.
+Expected: Established profiles bypass setup; unfinished first and later migrations resume; imported records survive cancellation without duplication; partial counts remain distinct; source data remains unchanged; service exposes stable imported history identities after restart; source shortcut settings remain unchanged and a conflicting new default stays unbound.
 
 Forbidden: Native GUI launch, personal profile or credential access, sync, clipboard capture, duplicate import, or automatic termination of an unrelated service.
 
@@ -994,13 +994,13 @@ acceptance desktopui settings-diagnostics
 
 ## settings-shortcuts
 
-Passive shortcut permission status and explicit System Settings guidance
+Shortcut persistence, sequence dispatch, and explicit System Settings guidance
 
-Steps: Read denied/granted/unsupported/error states; explicitly request settings guidance without granting permission; overlap an outstanding read with opening settings; replace callbacks and cancel a late completion.
+Steps: Save a two-step shortcut and a disabled binding; reopen and dispatch the saved sequence; reject a conflicting prefix; read denied/granted/unsupported/error states; explicitly request settings guidance without granting permission; overlap an outstanding read with opening settings; replace callbacks and cancel a late completion.
 
-Expected: Reads never request permission or open settings; opening settings never grants permission; operations do not block each other; stale or cancelled results do not replace current state.
+Expected: Bindings survive reopening and rejected conflicts preserve the revision; reads never request permission or open settings; opening settings never grants permission; operations do not block each other; stale or cancelled results do not replace current state.
 
-Forbidden: Native permission calls, GUI, renderer, browser, system settings launch, system clipboard, public-contract changes or arbitrary shortcut registration.
+Forbidden: Native permission calls, GUI, renderer, browser, system settings launch, system clipboard, OS shortcut registration.
 
 ```text
 acceptance desktopui settings-shortcuts

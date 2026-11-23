@@ -663,6 +663,10 @@ func renderResultBody(c *ui.Context, k desktopkit.Kit, p setupColors, m Model, t
 		{label: "此前已导入", count: m.Report.Skipped},
 		{label: "已校验", count: m.Report.Verified, ok: m.Stage == "complete" && m.Report.Imported == 0 && m.Report.Verified > 0},
 	}
+	if m.Report.ShortcutsImported > 0 || m.Report.ShortcutsSkipped > 0 {
+		k.Text(c.Key("shortcut-migration"), fmt.Sprintf(tr("已导入 %d 个快捷键，跳过 %d 个不支持的绑定。"), m.Report.ShortcutsImported, m.Report.ShortcutsSkipped), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary})
+	}
+
 	ui.Row(c.Key("primary-stats")).FillWidth().Gap(10).Children(func() {
 		for _, s := range primary {
 			border := p.cardBorder

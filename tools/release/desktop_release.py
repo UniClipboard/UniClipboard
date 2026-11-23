@@ -649,18 +649,33 @@ def promote(args):
     channel_id = "desktop/" + args.channel
     path = "/api/channels/" + quote(channel_id, safe="")
     state = request(admin, path, access=True)["data"]
-    if state["internalRevision"] != args.expected_revision:
-        raise ValueError("channel revision changed before promotion")
+    revision = args.expected_revision
+    selected = False
     release_id = receipt["release"]["id"]
-    result = request(
-        admin,
-        path + "/promote",
-        {
-            "releaseId": release_id,
-            "expectedRevisions": {channel_id: args.expected_revision},
-        },
-        access=True,
-    )
+    if args.forward_only:
+        version = state["currentVersion"]
+        if version:
+            build = state["currentBuildNumber"]
+            current = f"{version}-build.{build}" if build else version
+            target = package.cli.identity(m)
+            if package.cli.channel_downgrade(current, target):
+                raise ValueError("joint release cannot downgrade the Desktop channel")
+            selected = current == target
+        if revision is None:
+            revision = state["internalRevision"]
+    result = {"data": state}
+    if not selected:
+        if state["internalRevision"] != revision:
+            raise ValueError("channel revision changed before promotion")
+        result = request(
+            admin,
+            path + "/promote",
+            {
+                "releaseId": release_id,
+                "expectedRevisions": {channel_id: revision},
+            },
+            access=True,
+        )
     feed = request(public, "/v1/desktop/" + args.channel + ".json")
     if (feed.get("product"), feed.get("version"), feed.get("buildNumber")) != (
         "desktop",
@@ -726,8 +741,16 @@ def main():
             s.add_argument("--cli-manifest")
             s.add_argument("--registry", default="https://registry.npmjs.org")
             s.add_argument("--channel", choices=["alpha", "stable"], required=True)
-            s.add_argument("--expected-revision", type=int, required=True)
+            s.add_argument("--expected-revision", required=True)
+            s.add_argument("--forward-only", action="store_true")
     args = p.parse_args()
+    if args.command == "promote":
+        if args.expected_revision.isdecimal():
+            args.expected_revision = int(args.expected_revision)
+        elif args.expected_revision == "auto" and args.forward_only:
+            args.expected_revision = None
+        else:
+            p.error("expected revision must be a nonnegative integer")
     if getattr(args, "fixture", False):
         for name in ("admin", "public", "endpoint"):
             if (

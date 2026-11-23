@@ -10,6 +10,12 @@ on:
         type: choice
         options: [alpha, stable]
         required: true
+      expected_source:
+        type: string
+        description: Expected source SHA for a joint release
+      candidate_manifest_sha256:
+        type: string
+        description: Exact manifest required by the Desktop CLI lock
 permissions:
   contents: write
   actions: read
@@ -25,6 +31,8 @@ jobs:
     outputs:
       staged: ${{ steps.resume.outputs.staged }}
     steps:
+      - if: inputs.expected_source != '' && inputs.expected_source != github.sha
+        run: exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -57,6 +65,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - if: inputs.expected_source != '' && inputs.expected_source != github.sha
+        run: exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -87,6 +97,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
         run: python3 tools/release/cli_candidate.py --run-id "$CANDIDATE_RUN" --output dist/npm --require-macos-signing
+      - name: Verify the Desktop CLI lock
+        if: inputs.candidate_manifest_sha256 != ''
+        env:
+          EXPECTED_DIGEST: ${{ inputs.candidate_manifest_sha256 }}
+        run: |
+          actual=$(sha256sum dist/npm/release-manifest.json)
+          test "${actual%% *}" = "$EXPECTED_DIGEST"
       - name: Stage durable immutable build record
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

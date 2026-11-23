@@ -85,6 +85,7 @@ try:
                 )
         objects, registrations, writes = {}, [], []
         revision = 0
+        channel_build = None
         contract = "product-version-build-v1"
         inject = None
         npm_tag = "alpha"
@@ -134,7 +135,16 @@ try:
                     "/api/channels/desktop/alpha",
                     "/api/channels/desktop/stable",
                 ):
-                    return self.send(200, {"data": {"internalRevision": revision}})
+                    return self.send(
+                        200,
+                        {
+                            "data": {
+                                "internalRevision": revision,
+                                "currentVersion": "2.0.0" if channel_build else None,
+                                "currentBuildNumber": channel_build,
+                            }
+                        },
+                    )
                 if path in ("/v1/desktop/alpha.json", "/v1/desktop/stable.json"):
                     m = registrations[-1]
                     return self.send(
@@ -417,6 +427,19 @@ try:
         assert revision == 2
         report["checks"].append(
             "stable requires exact receipts for all platforms and latest on all locked CLI packages"
+        )
+        joint = stable + ["--forward-only"]
+        joint[joint.index("--expected-revision") + 1] = "auto"
+        run(joint)
+        assert revision == 3
+        channel_build = "1"
+        run(joint)
+        assert revision == 3
+        channel_build = "2"
+        run(joint, passed=False, error="joint release cannot downgrade")
+        assert revision == 3
+        report["checks"].append(
+            "joint promotion reads the revision, resumes an exact selection and rejects a downgrade"
         )
         objects.clear()
         writes.clear()

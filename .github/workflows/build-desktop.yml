@@ -6,6 +6,9 @@ on:
         type: boolean
         default: false
         description: Sign and notarize macOS candidates without publishing
+      expected_source:
+        type: string
+        description: Expected source SHA for a joint release
   workflow_call:
     secrets:
       UNIC_UPDATE_PRIVATE_KEY:
@@ -38,6 +41,8 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
+      - if: github.event_name == 'workflow_dispatch' && inputs.expected_source != '' && inputs.expected_source != github.sha
+        run: exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.source_sha || github.sha }}

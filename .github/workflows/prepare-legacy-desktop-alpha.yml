@@ -108,3 +108,100 @@ jobs:
           name: legacy-native-${{ matrix.source_version }}-${{ matrix.target }}
           path: dist/legacy-native
           if-no-files-found: error
+  stage-build-4:
+    needs: [sign, native]
+    if: inputs.version == '2.0.0' && inputs.build_number == '4'
+    environment: Production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: tools/release/requirements.txt
+      - run: pip install -r tools/release/requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-legacy-alpha
+          path: dist/legacy-alpha
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: legacy-native-*
+          path: dist/legacy-receipts
+      - name: Verify and stage the immutable legacy Alpha offer
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+          R2_ENDPOINT: ${{ vars.R2_RELEASE_ENDPOINT }}
+          RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
+        run: |
+          PYTHONPATH=tools/release python - <<'PY'
+          import json
+          import os
+          import re
+          from itertools import product
+          from pathlib import Path
+          from urllib.parse import quote
+
+          from botocore.exceptions import ClientError
+          from desktop_release import matches, package, request, safe_base, storage
+          from legacy_desktop_alpha import PUBLIC, SOURCE_COMMITS, TARGETS
+
+          work = Path('dist/legacy-alpha')
+          path = work / 'desktop-legacy-alpha.json'
+          offer = json.loads(path.read_text())
+          manifest_path = work / 'release-manifest.json'
+          manifest = json.loads(manifest_path.read_text())
+          registration = offer['manifestDigest']
+          assert (offer['version'], offer['buildNumber']) == ('2.0.0', '4')
+          assert re.fullmatch('[a-f0-9]{64}', registration)
+          assert set(offer['sourceVersions']) == set(SOURCE_COMMITS)
+          assert set(offer['signatures']) == set(TARGETS)
+          by_name = {item['file']: item['sha256'] for item in manifest['artifacts']}
+          checked = set()
+          for receipt_path in Path('dist/legacy-receipts').glob('*/report.json'):
+              receipt = json.loads(receipt_path.read_text())
+              identity = (receipt['source_version'], receipt['target'])
+              name = 'uniclipboard-2.0.0-build.4-' + TARGETS[identity[1]]
+              assert receipt['status'] == 'passed' and receipt['manifest_digest'] == registration
+              assert receipt['candidate_sha256'] == by_name[name] and identity not in checked
+              checked.add(identity)
+          assert checked == set(product(SOURCE_COMMITS, TARGETS))
+          origin = request(PUBLIC, '/artifacts/desktop/2.0.0/build.4/publication.json?source=origin')
+          assert origin['status'] == 'available' and origin['manifest_sha256'] == package.sha(manifest_path)
+          admin = safe_base(os.environ['RELEASE_ADMIN'])
+          release = request(admin, '/api/releases/' + quote(origin['release']['id'], safe=''), access=True)['data']
+          assert release['contentHash'] == registration and release['status'] == 'ready'
+          state = request(admin, '/api/channels/desktop%2Falpha', access=True)['data']
+          assert (state['currentVersion'], state['currentBuildNumber']) == ('2.0.0', '3')
+
+          client = storage(os.environ['R2_ENDPOINT'], False)
+          bucket = 'uniclipboard-releases'
+          key = '_control/desktop-legacy-alpha/' + registration + '.json'
+          if not matches(client, bucket, key, path):
+              try:
+                  client.put_object(Bucket=bucket, Key=key, Body=path.read_bytes(),
+                                    ContentType='application/json', IfNoneMatch='*')
+              except ClientError as error:
+                  if error.response['Error']['Code'] not in ('PreconditionFailed', '412'):
+                      raise
+          assert matches(client, bucket, key, path)
+          result = {'status': 'staged', 'registration_digest': registration,
+                    'offer_sha256': package.sha(path), 'native_receipts': len(checked),
+                    'expected_revision': state['internalRevision']}
+          (work / 'legacy-staging.json').write_text(json.dumps(result, indent=2) + '\n')
+          print(json.dumps(result))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-legacy-staging
+          path: dist/legacy-alpha/legacy-staging.json
+          if-no-files-found: error

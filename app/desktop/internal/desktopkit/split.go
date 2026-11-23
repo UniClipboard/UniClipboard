@@ -446,20 +446,14 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 				if rad <= 0 {
 					rad = 12
 				}
-				shadowAlpha := float32(.16)
-				if k.Dark {
-					shadowAlpha = .58
-				}
+				shadow := k.Color("drawer-shadow-inset")
 				drawer.Radius(rad).
 					Border(1, k.Color("border-button-default")).
-					Shadow(0, 18, 48, 0, ui.RGBA(0, 0, 0, shadowAlpha*drawerProgress))
+					Shadow(0, 18, 48, 0, shadow.Alpha(drawerProgress))
 			} else {
-				shadowAlpha := float32(.12)
-				if k.Dark {
-					shadowAlpha = .45
-				}
+				shadow := k.Color("drawer-shadow-edge")
 				drawer.InsetShadow(1, 0, 0, 0, t.Border).
-					Shadow(-12, 0, 32, 0, ui.RGBA(0, 0, 0, shadowAlpha*drawerProgress))
+					Shadow(-12, 0, 32, 0, shadow.Alpha(drawerProgress))
 			}
 			// M5 Layered Depth Slide transform: +120px slide + 0.98->1 scale + opacity fade.
 			tx := 120 * (1 - drawerProgress)

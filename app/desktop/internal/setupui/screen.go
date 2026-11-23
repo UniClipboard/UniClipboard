@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/boardui"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/internal/v1migration"
@@ -208,3 +209,7 @@ func (s *Screen) poll() {
 	default:
 	}
 }
+
+// SetColorTheme selects code-defined setup colors on the view thread.
+// Invalidate the host window after changing the theme.
+func (s *Screen) SetColorTheme(theme *boardui.ColorTheme) { s.model.Colors = theme }

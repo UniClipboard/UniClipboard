@@ -78,7 +78,7 @@ func (k Kit) Select(c *ui.Context, p SelectProps) ui.Element {
 			ink = "text-tertiary"
 			*open = false
 		}
-		trigger.Background(Token(k.Dark, fill)).Border(m.BorderWidth, Token(k.Dark, edge)).TextColor(Token(k.Dark, ink)).Invalid(p.Error != "").FocusRingColor(Token(k.Dark, "border-focus-ring")).FocusRingOffset(2)
+		trigger.Background(k.Color(fill)).Border(m.BorderWidth, k.Color(edge)).TextColor(k.Color(ink)).Invalid(p.Error != "").FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
 		if !p.Disabled {
 			k.shadows(trigger, "xs")
 		}
@@ -90,8 +90,8 @@ func (k Kit) Select(c *ui.Context, p SelectProps) ui.Element {
 			}
 		}
 		trigger.Value(text).Children(func() {
-			k.Text(c.Key("value"), text, style).TextColor(Token(k.Dark, ink)).SingleLine().Grow(1).MinWidth(0)
-			chevron := ui.Icon(c.Key("chevron"), IconSVG("chevron-down")).Size(m.IconSize, m.IconSize).Shrink(0).TextColor(Token(k.Dark, "text-secondary")).AccessHidden(true)
+			k.Text(c.Key("value"), text, style).TextColor(k.Color(ink)).SingleLine().Grow(1).MinWidth(0)
+			chevron := ui.Icon(c.Key("chevron"), IconSVG("chevron-down")).Size(m.IconSize, m.IconSize).Shrink(0).TextColor(k.Color("text-secondary")).AccessHidden(true)
 			angle := float32(0)
 			if *open {
 				angle = 180
@@ -99,11 +99,11 @@ func (k Kit) Select(c *ui.Context, p SelectProps) ui.Element {
 			chevron.AnimatePose(ui.Pose{Rotate: angle}, ui.Animation{Duration: time.Duration(Number("select-chevron-ms")) * time.Millisecond, Ease: ui.CubicBezier(Number("select-chevron-ease-x1"), Number("select-chevron-ease-y1"), Number("select-chevron-ease-x2"), Number("select-chevron-ease-y2"))})
 		})
 		if p.Description != "" {
-			description := k.Text(c.Key("description"), p.Description, "caption-1-medium").TextColor(Token(k.Dark, "text-secondary"))
+			description := k.Text(c.Key("description"), p.Description, "caption-1-medium").TextColor(k.Color("text-secondary"))
 			trigger.DescribedBy(description)
 		}
 		if p.Error != "" {
-			err := k.Text(c.Key("error"), p.Error, "caption-1-medium").TextColor(Token(k.Dark, "text-error-primary"))
+			err := k.Text(c.Key("error"), p.Error, "caption-1-medium").TextColor(k.Color("text-error-primary"))
 			trigger.ErrorMessage(err)
 		}
 		trigger.Expanded(*open)
@@ -111,7 +111,7 @@ func (k Kit) Select(c *ui.Context, p SelectProps) ui.Element {
 		var initialFocus ui.Element
 		panel := ui.PopoverBase(c, trigger, open, func(panel ui.Element) {
 			panel.Role(ui.RoleListBox).KeepFocus().Label(p.Label).MinWidth(0).Width(min(Number("select-popup-width"), width-32)).MaxHeight(max(float32(32), height-32)).Padding(Number("select-popup-padding")).Gap(Number("select-popup-gap")).Radius(Number("select-popup-radius")).
-				Margin(Number("select-popup-offset"), 0, 0).Border(1, Token(k.Dark, "border-button-default")).Background(Token(k.Dark, "background-primary-default")).AttachedOrigin()
+				Margin(Number("select-popup-offset"), 0, 0).Border(1, k.Color("border-button-default")).Background(k.Color("background-popover")).AttachedOrigin()
 			k.shadows(panel, "dropdown")
 			panel.Transition(ui.ElementTransition{Duration: time.Duration(Number("popover-ms")) * time.Millisecond, Ease: ui.CubicBezier(Number("popover-ease-x1"), Number("popover-ease-y1"), Number("popover-ease-x2"), Number("popover-ease-y2")), Enter: &ui.Motion{Opacity: 0, Scale: .95, Blur: 2}, Exit: &ui.Motion{Opacity: 0, Scale: .95, Blur: 2}})
 			ui.Scroll(c.Key("options")).MaxHeight(Number("select-popup-max-height")).Children(func() {
@@ -137,10 +137,10 @@ func (k Kit) Select(c *ui.Context, p SelectProps) ui.Element {
 						}
 						pointer.Hovered, pointer.X, pointer.Y = hovered, x, y
 						if row.Focused() || row.Hovered() || it.Value == *p.Value {
-							row.Background(Token(k.Dark, "dropdown-item-hover-background"))
+							row.Background(k.Color("dropdown-item-hover-background"))
 						}
 						row.Children(func() {
-							k.Text(c.Key(it.Value), it.Label, style).SingleLine().TextColor(Token(k.Dark, color)).MinWidth(0)
+							k.Text(c.Key(it.Value), it.Label, style).SingleLine().TextColor(k.Color(color)).MinWidth(0)
 						})
 						if row.Clicked() && !it.Disabled {
 							*p.Value = it.Value

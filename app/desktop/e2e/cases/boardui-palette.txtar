@@ -1,0 +1,8 @@
+# Case: Twelve-color palette authoring and derived mygo states
+# Mode: view
+# Purpose: Verify brand-only and complete light/dark palettes drive real controls without source-blue primary states or lost caller state.
+# Steps: Define one-color and twelve-color palettes, edit an input, toggle a switch, activate buttons, switch themes, inspect rendered backgrounds and native colors, and apply exact token overrides.
+# Expected: Empty palettes preserve defaults, light brands receive readable foregrounds, all primary states derive from the brand, exact overrides remain isolated, and PNG/accessibility checkpoints plus resolved palette JSON are exported.
+# Forbidden: Native-window or contrast-certification claims, global palette mutation, resetting caller data, or missing failure artifacts.
+
+acceptance boardui boardui-palette

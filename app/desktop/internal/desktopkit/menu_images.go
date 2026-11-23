@@ -16,11 +16,10 @@ var menuIcons struct {
 // menuEntryImage supplies SVGs to mygo's maintained in-window menu adapter.
 // Named glyph/palette resources have a fixed upper bound. Custom tag colors are
 // short-lived menu resources owned by mygo and are never retained in this cache.
-func menuEntryImage(e MenuEntry) *mygo.MenuIcon {
+func (k Kit) menuEntryImage(e MenuEntry) *mygo.MenuIcon {
 	if e.Icon == "" && e.Swatch == "" {
 		return nil
 	}
-	k := Kit{}
 	var svg *ui.SVG
 	key := ""
 	if e.Swatch != "" {
@@ -32,7 +31,9 @@ func menuEntryImage(e MenuEntry) *mygo.MenuIcon {
 		}
 		switch e.Swatch {
 		case "orange", "blue", "green", "purple", "gray":
-			key = "swatch/" + string(e.Swatch)
+			if k.Colors == nil {
+				key = fmt.Sprintf("swatch/%t/%s", k.Dark, e.Swatch)
+			}
 		}
 	} else {
 		g, ok := iconGlyph[e.Icon]

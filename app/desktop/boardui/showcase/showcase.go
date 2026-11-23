@@ -13,6 +13,7 @@ import (
 // App owns all domain state. Native controls own only ephemeral focus/editor state.
 type App struct {
 	Dark                                            bool
+	Colors                                          *boardui.ColorTheme
 	Open, RoleOpen                                  bool
 	Name, Password, ReadOnly, Disabled, Role, Error string
 	Saved                                           int
@@ -27,9 +28,9 @@ func New() *App {
 
 // View is shared by the standalone native demo and the complete software E2E.
 func (a *App) View(c *ui.Context) {
-	k := boardui.Kit{Dark: a.Dark}
+	k := boardui.Kit{Dark: a.Dark, Colors: a.Colors}
 	k.Apply(c)
-	ui.Column(c).Fill().Center().Background(boardui.Token(a.Dark, "background-full")).Children(func() {
+	ui.Column(c).Fill().Center().Background(k.Color("background-full")).Children(func() {
 		if k.Button(c, "Open settings", boardui.ButtonProps{}).Clicked() {
 			a.Open = true
 		}

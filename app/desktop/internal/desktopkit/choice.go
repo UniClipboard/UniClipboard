@@ -77,7 +77,7 @@ func (k Kit) ChoiceList(c *ui.Context, p ChoiceListProps) ChoiceListResult {
 							case IconPackage:
 								tile.Background(k.Color("text-tertiary"))
 							default:
-								tile.Background(pal.accent)
+								tile.Background(pal.accent).TextColor(k.Color("text-on-accent"))
 							}
 							tile.Children(func() { k.Icon(c, it.Icon, 18) })
 						}

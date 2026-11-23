@@ -89,13 +89,15 @@ type Desktop struct {
 	TrayIcon      string `toml:"tray_icon" json:"tray_icon"`
 	UpdateChannel string `toml:"update_channel" json:"update_channel"`
 	// TagColors maps SHA-256 tag identifiers to local presentation colors. It stores no tag names.
-	TagColors          map[string]string `toml:"tag_colors,omitempty" json:"tag_colors,omitempty"`
-	Language           string            `toml:"language" json:"language"`
-	QuickPanelShortcut string            `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
-	Mode               string            `toml:"mode" json:"mode"`
-	LaunchAtLogin      bool              `toml:"launch_at_login" json:"launch_at_login"`
-	StartInBackground  bool              `toml:"start_in_background" json:"start_in_background"`
-	SystemWindowFrame  bool              `toml:"system_window_frame" json:"system_window_frame"`
+	TagColors map[string]string `toml:"tag_colors,omitempty" json:"tag_colors,omitempty"`
+	// TagSidebar uses the same hashed identifiers as TagColors.
+	TagSidebar         map[string]bool `toml:"tag_sidebar,omitempty" json:"tag_sidebar,omitempty"`
+	Language           string          `toml:"language" json:"language"`
+	QuickPanelShortcut string          `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
+	Mode               string          `toml:"mode" json:"mode"`
+	LaunchAtLogin      bool            `toml:"launch_at_login" json:"launch_at_login"`
+	StartInBackground  bool            `toml:"start_in_background" json:"start_in_background"`
+	SystemWindowFrame  bool            `toml:"system_window_frame" json:"system_window_frame"`
 }
 
 // History configures live cleanup and the startup storage budget.
@@ -343,6 +345,14 @@ func (c Config) Validate() error {
 			if _, err := hex.DecodeString(color[1:]); err != nil {
 				return errors.New("desktop.tag_colors: invalid color")
 			}
+		}
+	}
+	if len(c.Desktop.TagSidebar) > 4096 {
+		return errors.New("desktop.tag_sidebar: at most 4096 overrides")
+	}
+	for id := range c.Desktop.TagSidebar {
+		if key, err := hex.DecodeString(id); err != nil || len(key) != 32 {
+			return errors.New("desktop.tag_sidebar: invalid tag identifier")
 		}
 	}
 	switch c.Desktop.QuickPanelShortcut {

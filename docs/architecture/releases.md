@@ -164,7 +164,7 @@ The CLI checks known v1 paths only when stderr is a terminal and `--json` is abs
 
 The warning explains v1 incompatibility and points to migration help, preflight and import commands. It does not request acknowledgement or migrate automatically. `unic migrate` and `unic migrate --help` print a read-only guide before opening any profile.
 
-CLI archives and npm platform packages include the migration importer within `unic`. Explicit migration runs in-process without starting the service. The importer keeps source data unchanged, verifies reopened target content and resumes by record identity. Partial migration returns 3. All peers must use v2 and pair again; settings, identities and trust are not imported.
+CLI archives and npm platform packages include the migration importer within `unic`. Explicit migration runs in-process without starting the service. The importer keeps source data unchanged, verifies reopened target content and resumes by record identity. Partial migration returns 3. The importer fills unset display name, theme, anonymous usage-event, and tag presentation settings. All peers must use v2 and pair again with new device identities and trust relationships. See the [preference contract](../contracts/history-contract.md#v1-preference-preservation).
 
 The importer encodes Windows drive paths as absolute SQLite file URIs (`file:///C:/...`), retaining read-only/query-only access. A drive letter must not become the URI authority. The [unsigned Windows receipt](../exec/0018-unsigned-windows-acceptance.md) records the native replacement and frozen-history acceptance boundary.
 

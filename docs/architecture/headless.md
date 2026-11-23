@@ -112,6 +112,10 @@ never grant permission. Explicit Desktop imports share this gate; welcome/skip
 does not initialize the CLI. Source identity prevents another source from completing
 a pending import. See the [CLI initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
 
+Offline import fills unset v2 display name, theme, anonymous usage-event
+preference and tag presentation settings. See the
+[v1 preference contract](../contracts/history-contract.md#v1-preference-preservation).
+
 ## Offline CLI operations
 
 `unic dev logs export [--output FILE]` reads only retained local log segments and writes

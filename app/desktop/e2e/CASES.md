@@ -82,6 +82,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep unified production history controls within the toolbar at 600x480. |
 | [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
+| [wetype-pairing](#wetype-pairing) | view | Join the first shared space with a six-digit code using the installed default plugin instance. |
 | [window-chrome-native-dark](#window-chrome-native-dark) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
 | [window-chrome-native-input](#window-chrome-native-input) | native | Verify physical input on the owned main window without clipboard access. |
 | [window-chrome-native](#window-chrome-native) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
@@ -1922,6 +1923,20 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance desktopui unified-scrollbars
+```
+
+## wetype-pairing
+
+WeType shared-space pairing from Desktop
+
+Steps: Open the production plugin detail with a local service fixture, check the pending-restart and short-code states, reject one code, then accept a new code and show the joined space.
+
+Expected: The request selects the default instance, the user sees useful rejection feedback, and the joined space replaces the form after refresh.
+
+Forbidden: Instance IDs in the first-run form, requests before restart or for incomplete codes, repeated submission while pending, and a native or live WeType acceptance claim.
+
+```text
+acceptance desktopui wetype-pairing
 ```
 
 ## window-chrome-native-dark

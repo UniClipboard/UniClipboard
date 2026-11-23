@@ -1,0 +1,8 @@
+# Case: WeType shared-space pairing from Desktop
+# Mode: view
+# Purpose: Join the first shared space with a six-digit code using the installed default plugin instance.
+# Steps: Open the production plugin detail with a local service fixture, check the pending-restart and short-code states, reject one code, then accept a new code and show the joined space.
+# Expected: The request selects the default instance, the user sees useful rejection feedback, and the joined space replaces the form after refresh.
+# Forbidden: Instance IDs in the first-run form, requests before restart or for incomplete codes, repeated submission while pending, and a native or live WeType acceptance claim.
+
+acceptance desktopui wetype-pairing

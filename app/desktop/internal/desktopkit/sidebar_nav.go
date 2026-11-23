@@ -150,7 +150,7 @@ func (k Kit) SidebarNavEntry(c *ui.Context, st *NavState, item SidebarNavItem) u
 		if k.Dark {
 			row.Border(1, k.Color("text-primary").Alpha(.08))
 		} else {
-			row.Border(1, k.Color("separator-border")).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, .04))
+			row.Border(1, k.Color("separator-border")).Shadow(0, 1, 2, 0, k.Color("sidebar-selection-shadow"))
 		}
 		labelStyle = "body-2-medium"
 		countStyle = "caption-1-medium"

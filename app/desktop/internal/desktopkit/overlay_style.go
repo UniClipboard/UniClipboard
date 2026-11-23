@@ -12,7 +12,7 @@ import (
 
 // Application overlays share the pinned BoardUI surface and motion resources.
 func (k Kit) shadowed(e ui.Element, name string) ui.Element {
-	for _, s := range boardui.Shadows(k.Dark, name) {
+	for _, s := range k.native().Shadows(name) {
 		if s.Inset {
 			e.InsetShadow(s.X, s.Y, s.Blur, s.Spread, s.Color)
 		} else {
@@ -22,7 +22,7 @@ func (k Kit) shadowed(e ui.Element, name string) ui.Element {
 	return e
 }
 func (k Kit) scrim() ui.Color {
-	return ui.RGB(0, 0, 0).Alpha(boardui.Number("dialog-backdrop-opacity"))
+	return k.Color("dialog-backdrop")
 }
 func (k Kit) fgTone() (ui.Color, ui.Color, ui.Color) {
 	return k.Color("text-primary"), k.Color("text-secondary"), k.Color("text-tertiary")
@@ -33,13 +33,13 @@ func (k Kit) dividerColor() ui.Color          { return k.Color("separator-border
 func (k Kit) swatchColor(t TagColor) ui.Color { return k.SwatchColor(t) }
 func (k Kit) popupSurface(panel ui.Element) ui.Element {
 	panel.Padding(boardui.Number("select-popup-padding")).Radius(boardui.Number("select-popup-radius")).
-		Background(k.Color("background-primary-default")).Border(1, k.Color("separator-border")).
+		Background(k.Color("background-popover")).Border(1, k.Color("separator-border")).
 		MinWidth(200).TextColor(k.Color("text-primary"))
 	panel.AttachedOrigin().Transition(ui.ElementTransition{Duration: time.Duration(boardui.Number("popover-ms")) * time.Millisecond, Ease: ui.CubicBezier(0, 0, .2, 1), Colors: true, Enter: &ui.Motion{Scale: .95, Opacity: 0}})
 	return k.shadowed(panel, "dropdown")
 }
 func (k Kit) dialogSurface(panel ui.Element) ui.Element {
-	return k.shadowed(panel.Radius(boardui.Number("dialog-radius")).Background(k.Color("background-primary-default")).TextColor(k.Color("text-primary")), "dropdown")
+	return k.shadowed(panel.Radius(boardui.Number("dialog-radius")).Background(k.Color("background-popover")).TextColor(k.Color("text-primary")), "dropdown")
 }
 func drawCheck(e ui.Element, col ui.Color, w float32) ui.Element {
 	return e.Draw(func(p *ui.Painter, r ui.Rect) {

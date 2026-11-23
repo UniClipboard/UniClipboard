@@ -88,7 +88,7 @@ func (k Kit) compactSlider(c *ui.Context, value *float64, p SliderProps, step fl
 			Size(14, 14).Radius(7).
 			Background(k.Color("control-indicator-background")).
 			Border(1.5, k.Color("accent-500")).
-			Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, .16)).
+			Shadow(0, 1, 3, 0, k.Color("toggle-shadow")).
 			AccessHidden(true)
 		if dragging {
 			thumb.Shadow(0, 2, 6, 0, k.Color("accent-500").Alpha(.32))

@@ -1,0 +1,8 @@
+# Case: Code-defined shared mygo color theme
+# Mode: view
+# Purpose: Resolve custom light/dark tokens through public controls, application composition and native mygo defaults.
+# Steps: Edit a real input, activate a primary button, switch light/dark/light, inspect native colors and gradient resolution, and restore the default theme.
+# Expected: Overrides remain immutable, unknown names fail, native colors and gradients share tokens, caller state survives changes, and PNG/accessibility checkpoints plus resolved token JSON are retained.
+# Forbidden: Native-window or OS integration acceptance claims, global theme mutation, or resetting caller state.
+
+acceptance boardui boardui-theme

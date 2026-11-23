@@ -17,15 +17,15 @@ func (k Kit) DressLinkButton(c *ui.Context, base ui.Element, label string, p But
 		name = p.Label
 	}
 	e := base.Label(name).Disabled(disabled).DimDisabled(false).Busy(p.Busy).Gap(4).Radius(4).Padding(0)
-	ink := Token(k.Dark, "accent-600")
+	ink := k.Color("accent-600")
 	if e.Pressed() {
-		ink = Token(k.Dark, "accent-800")
+		ink = k.Color("accent-800")
 	}
 	if disabled {
-		ink = Token(k.Dark, "text-tertiary")
+		ink = k.Color("text-tertiary")
 	}
 	dressType(e, style)
-	e.TextColor(ink).FocusRingColor(Token(k.Dark, "border-focus-ring")).FocusRingOffset(2)
+	e.TextColor(ink).FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
 	e.Children(func() {
 		if p.Leading != nil {
 			p.Leading(m.IconSize)

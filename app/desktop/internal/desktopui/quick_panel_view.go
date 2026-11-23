@@ -21,7 +21,7 @@ func (p *quickPanelState) palette(c *ui.Context) qpPalette {
 	if p.theme != "system" {
 		dark = p.theme == "dark"
 	}
-	k := desktopkit.For(dark)
+	k := desktopkit.Kit{Dark: dark, Colors: p.colors}
 	a := qpPalette{background: k.Color("background-primary-default"), foreground: k.Color("text-primary"), muted: k.Color("background-tertiary-default"), quiet: k.Color("text-secondary"), border: k.Color("separator-border"), primary: k.Color("accent-500"), white: k.Color("text-white")}
 
 	return a
@@ -45,7 +45,7 @@ func (p *quickPanelState) panel(c *ui.Context) {
 	}
 	p.tick(c)
 	a := p.palette(c)
-	k := desktopkit.For(p.theme == "dark" || (p.theme == "system" && c.Theme().Dark))
+	k := desktopkit.Kit{Dark: p.theme == "dark" || (p.theme == "system" && c.Theme().Dark), Colors: p.colors}
 	k.Apply(c)
 	root := ui.Column(c).Fill().Background(a.background).TextColor(a.foreground).Radius(12).Border(1, a.border).Clip()
 	root.Children(func() {
@@ -429,7 +429,7 @@ func (p *quickPanelState) resultRow(c *ui.Context, a qpPalette, i int, e qpEntry
 			ui.Text(c, p.tr(label)).FontSize(10.5).TextColor(quiet).Background(a.muted).Radius(4).Padding(1, 5)
 		}
 		if e.favorite {
-			ui.Text(c, "★").FontSize(12).TextColor(desktopkit.For(c.Theme().Dark).Color("status-yellow-text"))
+			ui.Text(c, "★").FontSize(12).TextColor(p.colors.Color(c.Theme().Dark, "status-yellow-text"))
 		}
 		if e.source != "本机" && e.source != p.tr("本机") {
 			desktopkit.For(false).Icon(c, desktopkit.IconDownload, 12).TextColor(quiet)
@@ -550,7 +550,7 @@ func (p *quickPanelState) emptyView(c *ui.Context, a qpPalette) {
 func (p *quickPanelState) satellite(c *ui.Context) {
 	p.satelliteInvalidate = c.Invalidate
 	a := p.palette(c)
-	k := desktopkit.For(p.theme == "dark" || (p.theme == "system" && c.Theme().Dark))
+	k := desktopkit.Kit{Dark: p.theme == "dark" || (p.theme == "system" && c.Theme().Dark), Colors: p.colors}
 	k.Apply(c)
 	ui.Column(c).Fill().Radius(12).Border(1, a.border).Background(a.background).TextColor(a.foreground).Clip().Children(func() {
 		e := p.active()

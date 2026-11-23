@@ -6,10 +6,12 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 |---|---|---|
 | [boardui-composition](#boardui-composition) | view | Retain the existing complete input, control, navigation, layout and overlay interaction coverage in one BoardUI design system and both color schemes. |
 | [boardui-menus](#boardui-menus) | view | Retain filter/action menu cancellation, visible choices and selected-value dispatch using real in-window BoardUI popups. |
+| [boardui-palette](#boardui-palette) | view | Verify brand-only and complete light/dark palettes drive real controls without source-blue primary states or lost caller state. |
 | [boardui-production-migration](#boardui-production-migration) | view | Verify complete production history/settings/return and quick-panel compositions use source-bound BoardUI resources with no legacy UI Kit dependency or appearance branch. |
 | [boardui-settings](#boardui-settings) | view | Exercise the independent BoardUI Go package through a complete settings form with real input, selection and dialog scopes. |
 | [boardui-states](#boardui-states) | view | Exercise fixed-source BoardUI component variants and narrow reduced-motion behavior through the public native API. |
 | [boardui-surfaces](#boardui-surfaces) | view | Retain full-view hover feedback, pointer-exit reset, visible actions and send-popup cancellation in the unified BoardUI design system. |
+| [boardui-theme](#boardui-theme) | view | Resolve custom light/dark tokens through public controls, application composition and native mygo defaults. |
 | [builtin-plugin-policy](#builtin-plugin-policy) | native | Save Tailcat content policies and automatic thresholds from the real Plugins page. |
 | [builtin-plugin-processors](#builtin-plugin-processors) | native | Manage classification and text tools from Plugins and verify actual behavior after Desktop restart. |
 | [data-binding](#data-binding) | process | History, tags, restore, pairing and reconnect through real services. |
@@ -115,6 +117,20 @@ Forbidden: Direct command invocation behind the view, lost cancellation or persi
 acceptance desktopui boardui-menus
 ```
 
+## boardui-palette
+
+Twelve-color palette authoring and derived mygo states
+
+Steps: Define one-color and twelve-color palettes, edit an input, toggle a switch, activate buttons, switch themes, inspect rendered backgrounds and native colors, and apply exact token overrides.
+
+Expected: Empty palettes preserve defaults, light brands receive readable foregrounds, all primary states derive from the brand, exact overrides remain isolated, and PNG/accessibility checkpoints plus resolved palette JSON are exported.
+
+Forbidden: Native-window or contrast-certification claims, global palette mutation, resetting caller data, or missing failure artifacts.
+
+```text
+acceptance boardui boardui-palette
+```
+
 ## boardui-production-migration
 
 Production Desktop uses one BoardUI design system
@@ -169,6 +185,20 @@ Forbidden: Requiring removed OS-glass rims, legacy system-menu delegation, dropp
 
 ```text
 acceptance desktopui boardui-surfaces
+```
+
+## boardui-theme
+
+Code-defined shared mygo color theme
+
+Steps: Edit a real input, activate a primary button, switch light/dark/light, inspect native colors and gradient resolution, and restore the default theme.
+
+Expected: Overrides remain immutable, unknown names fail, native colors and gradients share tokens, caller state survives changes, and PNG/accessibility checkpoints plus resolved token JSON are retained.
+
+Forbidden: Native-window or OS integration acceptance claims, global theme mutation, or resetting caller state.
+
+```text
+acceptance boardui boardui-theme
 ```
 
 ## builtin-plugin-policy

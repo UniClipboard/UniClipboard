@@ -30,10 +30,10 @@ func (k Kit) Switch(c *ui.Context, value *bool, p SwitchProps) ui.Element {
 		}
 		track := ui.Box(c.Key("track")).Size(42, 24).Shrink(0).Radius(trackRadius)
 		if *value {
-			track.Gradient(Token(k.Dark, "accent-500"), Token(k.Dark, "accent-600"), 180).
-				InsetShadow(0, 1.5, 0, 0, ui.RGBA(255, 255, 255, .25)).InsetShadow(0, 0, 0, .75, Token(k.Dark, "accent-500"))
+			track.Gradient(k.Color("accent-500"), k.Color("accent-600"), 180).
+				InsetShadow(0, 1.5, 0, 0, k.Color("control-highlight")).InsetShadow(0, 0, 0, .75, k.Color("accent-500"))
 		} else {
-			track.Background(Token(k.Dark, "background-tertiary-default"))
+			track.Background(k.Color("background-tertiary-default"))
 		}
 		if p.Disabled {
 			track.Opacity(.5)
@@ -50,15 +50,15 @@ func (k Kit) Switch(c *ui.Context, value *bool, p SwitchProps) ui.Element {
 		x = track.AnimateTo("thumb-x", x, ui.Animation{Duration: 200 * time.Millisecond, Ease: ui.CubicBezier(.25, .1, .25, 1)})
 		track.Children(func() {
 			thumb := ui.Box(c.Key("thumb")).Absolute().Left(x).Top(3).Size(18, 18).Radius(thumbRadius).Center().
-				LinearGradient(ui.LinearGradient{From: Token(k.Dark, "control-indicator-background"), To: Token(k.Dark, "control-indicator-background-subtle"), Start: .43837, End: 1, Angle: 180, Oklab: true}).
-				Shadow(0, 3, 3, 0, ui.RGBA(0, 0, 0, .03)).Shadow(0, .75, 0, 0, ui.RGBA(0, 0, 0, .05))
+				LinearGradient(ui.LinearGradient{From: k.Color("control-indicator-background"), To: k.Color("control-indicator-background-subtle"), Start: .43837, End: 1, Angle: 180, Oklab: true}).
+				Shadow(0, 3, 3, 0, k.Color("switch-thumb-shadow")).Shadow(0, .75, 0, 0, k.Color("switch-thumb-edge"))
 			thumb.Children(func() {
-				start, end, edge := "switch-off-chip-start", "switch-off-chip-end", Token(k.Dark, "border-button-default").Alpha(.5)
+				start, end, edge := "switch-off-chip-start", "switch-off-chip-end", k.Color("border-button-default").Alpha(.5)
 				if *value {
-					start, end, edge = "switch-on-chip-start", "switch-on-chip-end", Token(k.Dark, "accent-600")
+					start, end, edge = "switch-on-chip-start", "switch-on-chip-end", k.Color("accent-600")
 				}
 				ui.Box(c.Key("chip")).Size(7.5, 7.5).Radius(chipRadius).Border(.375, edge).
-					LinearGradient(ui.LinearGradient{From: Token(k.Dark, start), To: Token(k.Dark, end), Start: .43837, End: 1, Angle: 0, Oklab: true}).Shadow(0, 3, 3, 0, ui.RGBA(0, 0, 0, .03)).AccessHidden(true)
+					LinearGradient(ui.LinearGradient{From: k.Color(start), To: k.Color(end), Start: .43837, End: 1, Angle: 0, Oklab: true}).Shadow(0, 3, 3, 0, k.Color("switch-thumb-shadow")).AccessHidden(true)
 			})
 		})
 		if !p.LabelHidden && p.Label != "" {

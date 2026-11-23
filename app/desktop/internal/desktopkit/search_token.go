@@ -218,7 +218,7 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 				if p.FilterCount > 0 {
 					ui.Box(c.Key("fcnt")).MinWidth(15).Height(15).PaddingX(4).Radius(7.5).Center().
 						Background(k.Color("accent-500")).AccessHidden(true).Children(func() {
-						ui.Text(c, itoaPos(p.FilterCount)).FontSize(9.5).FontWeight(700).TextColor(k.Color("text-white")).SingleLine()
+						ui.Text(c, itoaPos(p.FilterCount)).FontSize(9.5).FontWeight(700).TextColor(k.Color("text-on-accent")).SingleLine()
 					})
 				}
 			})

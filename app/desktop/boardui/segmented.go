@@ -32,7 +32,7 @@ func (k Kit) SegmentedControl(c *ui.Context, p SegmentedProps) ui.Element {
 	plain := p.Variant == "plain"
 	track := ui.Row(c).Label(p.Label).Role(ui.RoleGroup).FocusGroup(ui.Horizontal).AlignItems(ui.Start).Gap(2).Radius(10)
 	if !plain {
-		track.Padding(4).Background(Token(k.Dark, "segmented-control-background"))
+		track.Padding(4).Background(k.Color("segmented-control-background"))
 	}
 	track.Children(func() {
 		rows := make([]ui.Element, len(p.Items))
@@ -64,7 +64,7 @@ func (k Kit) SegmentedControl(c *ui.Context, p SegmentedProps) ui.Element {
 				ink = "text-primary"
 			}
 			dressType(e, style)
-			e.TextColor(Token(k.Dark, ink)).FocusRingColor(Token(k.Dark, "border-focus-ring")).FocusRingOffset(0)
+			e.TextColor(k.Color(ink)).FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(0)
 			if p.Disabled || it.Disabled {
 				e.Opacity(.5)
 			}
@@ -73,7 +73,7 @@ func (k Kit) SegmentedControl(c *ui.Context, p SegmentedProps) ui.Element {
 				if selected && !plain {
 					// Native matched geometry preserves the source's shared sliding
 					// surface across item parents, including different label widths.
-					thumb := ui.Box(c.Key("selection")).Absolute().Left(0).Top(0).Right(0).Bottom(0).Radius(6).Background(Token(k.Dark, "segmented-control-selected-background")).AccessHidden(true)
+					thumb := ui.Box(c.Key("selection")).Absolute().Left(0).Top(0).Right(0).Bottom(0).Radius(6).Background(k.Color("segmented-control-selected-background")).AccessHidden(true)
 					k.shadows(thumb, "2xs")
 					thumb.Transition(ui.ElementTransition{Duration: 200 * time.Millisecond, Ease: ui.CubicBezier(.25, .1, .25, 1), Position: true, Size: true, Match: segmentedSurface{track.ID()}})
 				}
@@ -84,7 +84,7 @@ func (k Kit) SegmentedControl(c *ui.Context, p SegmentedProps) ui.Element {
 						ui.Icon(c.Key("icon"), IconSVG(it.Icon)).Size(16, 16).AccessHidden(true)
 					}
 					if !it.IconOnly {
-						k.Text(c.Key("label"), it.Label, style).TextColor(Token(k.Dark, ink)).SingleLine()
+						k.Text(c.Key("label"), it.Label, style).TextColor(k.Color(ink)).SingleLine()
 					}
 				})
 			})

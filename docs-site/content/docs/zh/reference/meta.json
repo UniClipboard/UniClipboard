@@ -1,0 +1,1 @@
+{ "title": "配置与参考", "icon": "Wrench", "defaultOpen": true, "pages": ["configuration","environment","search-syntax","diagnostics"] }

@@ -1,0 +1,328 @@
+---
+title: Lua 插件开发
+description: 用 Lua 编写 unic 处理器、Action 和观察者插件：清单格式、接口、沙箱限制、设置 Schema、本地调试与发布。
+---
+
+本页自成一体：可以把整页交给 AI agent，作为编写 unic Lua 插件的完整参考。示例均来自仓库 `plugins/examples/lua/`。
+
+## 架构与约束
+
+- Lua 插件是一个目录，包含 `spec.toml` 清单和入口脚本（通常是 `main.lua`）。脚本**返回一张插件表**。
+- 插件运行在 unic 服务（`unicd`）进程内的增强 Lua 5.1 沙箱中（基于 gopher-lua），没有独立进程。
+- 支持三种能力：
+
+| 能力 | 运行时机 | 能做什么 |
+|---|---|---|
+| `processor` | 复制（`clipboard.captured`）或收到（`clipboard.received`）内容时自动运行 | 只能**标注**：加/删标签、设置过期、是否持久保存、是否同步。**不能改正文** |
+| `action` | 只在用户手动触发时运行 | 读取一条文本历史，产出**一条新的**文本历史（来源条目不变） |
+| `observer` | 历史提交、更新、删除、过期等事件后 | 只读通知，只拿到历史 ID，不含正文 |
+
+- Lua 不能做同步后端；Lua Action 只接受文本。
+- 回调串行执行；不能创建后台任务；没有文件、网络、进程、`require` 能力。
+- 标签和过期只保存在本机历史中，不会同步到其他设备。
+
+## 清单 spec.toml
+
+```toml
+manifest_version = 1             # 固定为 1
+kind = "lua"
+entry = "main.lua"               # 相对插件目录
+id = "example.lua-urltag"        # 必须与脚本返回的 id 一致
+version = "1.0.0"                # 语义版本
+api_version = 1                  # 固定为 1
+capabilities = ["processor"]     # processor / action / observer 的子集
+# 可选：
+events = ["clipboard.captured", "clipboard.received"]
+name = "链接标签"                 # 展示名，≤64 字符
+summary = "给单个链接打上 url 和域名标签。"   # 简介，≤200 字符
+settings_schema = "settings.schema.json"     # 设置表单 Schema（相对路径）
+settings_sha256 = "<Schema 文件原始字节的 SHA-256，GitHub 发布时必填>"
+
+[i18n.en]                        # 展示文本翻译，只允许 name、summary
+name = "URL tags"
+summary = "Tag single links with url and their host."
+
+[config]                         # 启用时写入的默认配置
+tag = "url"
+```
+
+规则：
+
+- **插件 ID**：匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节，例如 `yourname.urltag`。`builtin.*` 保留给内置插件。同一 ID 不能同时以 Lua 和 Go 安装。
+- 清单中的 `id`、`version`、`api_version`、`capabilities` 必须与脚本返回的表一致。
+- `name`、`summary`、`[i18n.*]` 是纯文本，不属于插件身份，修改不需要重启。语言键如 `en`、`ja`、`pt-BR`，最多 16 种；非法键、未知字段、超长或含控制字符会使整个清单被拒绝。
+- `events` 省略时：processor 订阅 captured + received；observer 订阅全部事件。
+
+## 插件表接口
+
+```lua
+return {
+  -- 身份（必填，须与 spec.toml 一致）
+  id = "yourname.demo", version = "1.0.0", api_version = 1,
+  capabilities = { "processor", "action", "observer" },
+
+  -- 仅 action 能力：静态声明
+  actions = { {
+    id = "title",                       -- [a-z][a-z0-9_-]*，≤64 字节，插件内唯一
+    title = "Title Case",               -- 1..64 字节纯文本（单语言）
+    accepts = { "text" },               -- Lua 只支持 text
+    placements = { "history.item_menu", "history.toolbar" }, -- 还可用 "quick_panel"
+    post_actions = { "copy", "notify" },-- copy/notify/present/select/none（none 互斥）
+  } },
+
+  -- 生命周期（均可选）
+  init  = function(host, config) end,   -- 严格校验配置；不联网
+  start = function() end,
+  close = function() end,
+
+  process    = function(ctx) end,       -- processor
+  run_action = function(ctx) end,       -- action
+  on_event   = function(ev) end,        -- observer
+}
+```
+
+### init(host, config)
+
+- `config` 是配置表（来自设置或 `[config]` 默认值）。遇到**未知键必须报错**：`error("unknown config key")`。
+- `host:notify(msg)` 给用户显示一条短提示（≤512 字节，宿主会限流）。
+
+### process(ctx)
+
+| 字段/方法 | 说明 |
+|---|---|
+| `ctx.item.id` | 处理对象 ID（不一定等于历史 ID） |
+| `ctx.item.type` | `text`、`image`、`files`、`directory`、`directory_reference` |
+| `ctx.item.text` | 文本内容（只读；非文本为空串） |
+| `ctx.item.formats` | 格式列表 |
+| `ctx.item.files` | `{ {name=, size=}, ... }`，不含路径 |
+| `ctx.item.origin` | `{kind=, device_id=, plugin_id=}`；kind 为 `local_system`、`remote_device`、`explicit`、`action` |
+| `ctx.policy` | `{persist=, sync=, tags={...}, expire_ms=}` 只读快照 |
+| `ctx:add_tag(s)` / `ctx:remove_tag(s)` | 标签最多 32 个，每个 ≤64 UTF-8 字节 |
+| `ctx:set_persist(bool)` | 是否保存到历史 |
+| `ctx:set_sync(bool)` | 是否同步到其他设备 |
+| `ctx:set_expire(ms)` | 整数毫秒（如 `600000` 表示 10 分钟），必须大于 0，不接受 `"30s"` 这类字符串；自提交时起算 |
+| `ctx:notify(msg)` | 短提示 |
+
+任何方法出错或回调抛错，会**回滚本次回调的全部修改**。
+
+### run_action(ctx)
+
+- `ctx.action` 是被触发的 Action ID；`ctx.item` 同上（只读）。
+- 必须**恰好调用一次** `ctx:set_text(s)`；结果作为来源为 `action` 的新历史条目，之后按 `post_actions` 由宿主复制或提示。
+- `ctx:notify(msg)` 可用。
+
+### on_event(ev)
+
+`ev.kind`（如 `clipboard.committed`、`clipboard.updated`、`clipboard.deleted`、`clipboard.expired`、`clipboard.pasted`、`app.started`、`app.shutdown`）、`ev.item_id`（`app.*` 为空）、`ev.at_ms`。只读。
+
+## 沙箱与资源限制
+
+| 项目 | 默认上限 |
+|---|---|
+| 单次执行（顶层求值、init、process 等） | 200ms、1,000,000 条 VM 指令 |
+| 原生函数工作量 | 每回调 8 MiB 扫描/复制字节、1,000,000 次原生迭代 |
+| 源码 | 256 KiB；语法嵌套 ≤128 |
+| 单个字符串 | 1 MiB |
+| 每个状态累计逻辑分配 | 16 MiB（不随 GC 返还） |
+| 调用栈 | 128 层 |
+
+- 可用基础函数：`assert error ipairs pairs next pcall xpcall select tonumber tostring type unpack`；`string`、`table`、`math` 按函数白名单提供有界版本；`utf8` 只有 `utf8.valid(s)`、`utf8.len(s)`、`utf8.sub(s, i, j)`（1 起闭区间）。
+- **不可用**：`os io debug package coroutine require load loadstring dofile print collectgarbage getmetatable setmetatable rawget rawset` 等。
+- 超时或超预算后 `pcall` 无法恢复。**任何执行失败都会销毁该插件的 Lua 状态**并标记为不可用，直到重新加载成功。
+- 模式匹配用 Lua 模式（不是正则）；对大文本先判断长度再匹配，避免超预算。
+
+## 完整示例
+
+### 处理器：链接标签（`plugins/examples/lua/urltag`）
+
+```lua
+-- Tags text that is a single http(s) link, and records its host as a second tag.
+local tag = "url"
+
+return {
+  id = "example.lua-urltag",
+  version = "1.0.0",
+  api_version = 1,
+  capabilities = { "processor" },
+
+  init = function(host, config)
+    for key in pairs(config) do
+      if key ~= "tag" then error("unknown config key") end
+    end
+    if config.tag ~= nil then tag = config.tag end
+  end,
+
+  process = function(ctx)
+    if ctx.item.type ~= "text" then return end
+    local text = ctx.item.text:match("^%s*(.-)%s*$")
+    if text:find("%s") then return end
+    local host = text:match("^https?://([^/%?#:]+)")
+    if host then
+      ctx:add_tag(tag)
+      ctx:add_tag("host:" .. host:lower())
+    end
+  end,
+}
+```
+
+### 处理器：敏感内容不同步、10 分钟后过期（`sensitive`）
+
+```lua
+local ten_minutes = 10 * 60 * 1000
+
+local function looks_secret(text)
+  if #text > 4096 then return false end
+  return text:find("%-%-%-%-%-BEGIN [%u ]*PRIVATE KEY%-%-%-%-%-") ~= nil
+      or text:find("[Pp]assword%s*[:=]") ~= nil
+      or text:find("sk%-[%w]+") ~= nil
+end
+
+return {
+  id = "example.lua-sensitive",
+  version = "1.0.0",
+  api_version = 1,
+  capabilities = { "processor" },
+  process = function(ctx)
+    if ctx.item.type ~= "text" then return end
+    if looks_secret(ctx.item.text) then
+      ctx:add_tag("sensitive")
+      ctx:set_sync(false)
+      ctx:set_expire(ten_minutes)
+    end
+  end,
+}
+```
+
+<Callout type="warn">
+插件出错时默认策略 `continue` 会让这条内容照常同步。如果插件用于阻止敏感内容外发，请把它的出错策略设为 `block_sync`（见 [配置参考](../reference/configuration)）。
+</Callout>
+
+### Action：首字母大写（`textcase`）
+
+```lua
+return {
+  id = "example.lua-textcase",
+  version = "1.0.0",
+  api_version = 1,
+  capabilities = { "action" },
+  actions = { { id = "title", title = "Title Case", accepts = { "text" },
+    placements = { "history.item_menu", "history.toolbar" },
+    post_actions = { "copy", "notify" } } },
+  run_action = function(ctx)
+    local out = ctx.item.text:lower():gsub("(%a)([%w']*)", function(a, b) return a:upper() .. b end)
+    ctx:set_text(out)
+  end,
+}
+```
+
+对应 `spec.toml`：
+
+```toml
+manifest_version = 1
+kind = "lua"
+entry = "main.lua"
+id = "example.lua-textcase"
+version = "1.0.0"
+api_version = 1
+capabilities = ["action"]
+```
+
+## 设置 Schema 与多语言
+
+需要在桌面端生成设置表单时，在插件目录放一个 JSON Schema 文件，并在清单中声明 `settings_schema`（发布到 GitHub 时还要声明 `settings_sha256`，即该文件原始字节的 SHA-256，可用 `shasum -a 256 settings.schema.json` 计算）。
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-unic-settings-version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tag": {
+      "type": "string",
+      "title": "标签名",
+      "default": "url",
+      "minLength": 1,
+      "maxLength": 64,
+      "x-unic-ui": {
+        "widget": "input",
+        "order": 1,
+        "i18n": { "en": { "title": "Tag name" } }
+      }
+    }
+  },
+  "required": ["tag"]
+}
+```
+
+只支持 JSON Schema 的一个子集：`type`（单一类型）、`title`、`description`、`properties`、`required`、`additionalProperties`（每层对象必须为 `false`）、`items`、`minItems`、`maxItems`、`enum`、`default`、`minimum`、`maximum`、`minLength`、`maxLength`、`writeOnly`（秘密字符串）以及 `x-unic-ui`。不支持 `$ref`、`pattern`、`format`、`oneOf` 等。`x-unic-ui` 可用 `widget`（`input`、`inputnumber`、`switch`、`select`、`textarea`、`password`、`group`、`list`）、`order`、`group`、`option_labels`、`i18n`。完整规则与 Go 插件页的 [设置 Schema](./develop-go#设置-schema) 相同。
+
+- 必填字段缺少值时，插件保持未运行，直到你在设置中保存有效值。
+- 运行中的 Lua 插件保存设置后会热替换：新配置先完成 `init`/`start`，成功才切换；失败保留旧实例。
+- 秘密字段（`writeOnly`）请通过设置界面或 `unic plugin settings save` 填写，不要写进 `config.toml`。
+
+## 本地调试
+
+<Steps>
+<Step>
+
+**放置插件目录**。运行 `unic plugin list` 查看插件目录位置；Lua 插件放在 `$UNIC_HOME/plugins/lua/<名称>/`，目录内包含 `spec.toml` 和 `main.lua`。
+
+</Step>
+<Step>
+
+**启用并重启服务**：
+
+```sh
+unic plugin list                    # 应能看到你的插件（未启用）
+unic plugin enable yourname.demo
+# 重启 unicd 后生效
+```
+
+`unic plugin enable` 按插件来源写入 `config.toml` 的不同列表：
+
+| 插件来源 | 写入位置 |
+|---|---|
+| 手动放入 `plugins/lua/` 的本地插件 | `[plugins] lua = ["yourname.demo"]` |
+| 通过 `unic plugin install` 从 GitHub 安装的插件（记录了 Commit） | `[plugins] order = ["yourname.demo"]` |
+
+`unic plugin disable` 会同时从这两个列表中移除该 ID。如果插件声明了设置 Schema，启用前必须先完成必填设置。两种方式都要重启 `unicd` 才生效。
+
+</Step>
+<Step>
+
+**修改即生效**：保存脚本后会原子热替换（ID、版本、API 版本、能力不变的前提下）；修改启用列表需要重启。
+
+</Step>
+<Step>
+
+**验证**：复制一段测试文本，在历史中查看标签；Action 在历史条目菜单或工具栏中触发。插件不可用时 `unic plugin list` 会显示状态。可以用 `UNIC_HOME=/tmp/unicA` 启动一个独立的测试节点，避免影响日常数据。
+
+</Step>
+</Steps>
+
+## 发布与上架
+
+1. 新建独立 GitHub 公共仓库，命名为 `unic-plugin-<slug>`（如 `unic-plugin-urltag`）。仓库名只是分发约定，不替代插件 ID。
+2. 把 `spec.toml`、入口脚本（以及 Schema）放在仓库根目录，或放在子目录并在安装时用 `--path` 指定。一个目录一个插件，不支持依赖其他插件或安装脚本。
+3. 打 tag 发布。用户安装：
+
+   ```sh
+   unic plugin install https://github.com/you/unic-plugin-urltag --ref v1.0.0 --enable
+   ```
+
+   安装器会把 ref 锁定到具体 commit；升级用 `--replace`，回滚用 `unic plugin rollback <id>`。
+4. 上架市场：向 [UniClipboard/unic-plugins](https://github.com/UniClipboard/unic-plugins) 的 `registry.json` 提交条目。必填字段为 `id`、`name`、`author`、`category`（`share`、`text`、`organize`、`sync` 之一）、`version`、`summary`、`repository`；可选 `official`、`description`、`highlights`、`how_to`、`privacy`、`zero_config`、`ref`、`path`、`build_fallback`、`capabilities`。目录整体不超过 512 KiB、256 个条目，ID 必须唯一。
+
+## 常见错误
+
+| 现象 | 原因与处理 |
+|---|---|
+| 插件不出现在列表 | 目录不在 `plugins/lua/` 下，或缺少 `spec.toml` |
+| 启用后不运行 | 尚未重启 `unicd`；或必填设置缺失 |
+| 启动报配置错误 | `init` 遇到未知键，或配置类型不对；清单 `[config]` 与 Schema 不一致 |
+| 清单被拒绝 | `id` 格式错误、与脚本返回值不一致、`name`/`summary` 超长或 i18n 键非法 |
+| 插件变为不可用 | 超时、超指令/内存预算或运行时报错；修复脚本并保存以重新加载 |
+| Action 不显示 | 缺少 `action` 能力或 `actions` 声明；`accepts` 不是 `{"text"}`；`placements`/`post_actions` 为空 |
+| Action 失败 | 没有调用或多次调用 `ctx:set_text` |
+| 使用 `print`、`os.time`、`require` 报错 | 沙箱中不可用，改用 `ctx:notify` 或去掉依赖 |

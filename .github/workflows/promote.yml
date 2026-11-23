@@ -70,3 +70,9 @@ jobs:
           name: cli-promotion-receipt
           path: promotion.json
           if-no-files-found: warn
+  deploy-docs:
+    needs: promote
+    uses: ./.github/workflows/deploy-docs-cloudflare.yml
+    with:
+      environment: stable
+    secrets: inherit

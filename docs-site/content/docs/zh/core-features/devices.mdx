@@ -1,0 +1,102 @@
+---
+title: 设备与配对
+description: 用配对码或票据添加设备、核对指纹批准，以及暂停和移除设备。
+---
+
+unic 的同步只发生在**双方都批准过**的设备之间。每台设备首次启动时生成一把只保存在本机的身份密钥，设备 ID 由公钥导出；配对码只帮助两台设备找到彼此，并不授予信任。
+
+## 配对流程
+
+<Steps>
+<Step>
+### 在设备 A 生成配对码
+
+桌面端选择「加入其他设备」，或在命令行执行：
+
+```bash
+unic device add
+```
+
+会显示一个 `NNN-NNN` 形式的 6 位配对码，最长 5 分钟有效，只能被一台设备使用。再次生成会让上一个配对码失效。
+</Step>
+<Step>
+### 在设备 B 输入配对码
+
+```bash
+unic device add 123456
+```
+
+输出会显示双方的**指纹**（8 组 4 位十六进制）。
+</Step>
+<Step>
+### 两边分别核对指纹并批准
+
+对方会以「待批准」出现在设备列表里。确认两台设备显示的指纹一致后批准：
+
+```bash
+unic device list
+unic device approve <设备ID> '<另一台设备上显示的指纹>'
+```
+
+指纹必须由你手动核对并填写，不会自动填充；不一致时批准会失败。**两台设备都批准后**才会开始同步。
+</Step>
+</Steps>
+
+<Callout type="warn">
+任何通过配对码或票据进来的设备都需要你手动批准，unic 不提供跳过批准的选项。拒绝（`unic device reject <id>`）等同于移除。
+</Callout>
+
+### 不经服务器的完整票据
+
+配对码需要经过配对码服务中转地址。也可以导出一份完整票据直接交给对方（同样一次性、最长 5 分钟有效）：
+
+```bash
+unic device addr              # 在设备 A 导出 unic-pair:… 票据
+unic device add 'unic-pair:…' # 在设备 B 使用
+```
+
+票据和配对码包含连接地址，属于秘密，不要公开分享。
+
+配对码服务地址可通过配置项 `rendezvous_url` 或环境变量 `UNIC_RENDEZVOUS_URL` 指定，见[环境变量](../reference/environment)。
+
+## 设备列表
+
+```bash
+unic device list [--json]
+```
+
+设备状态分为待批准、已信任和已移除。一台设备可以通过多个同步后端相连，每条连接称为一条“路径”，可单独暂停：
+
+```bash
+unic device path pause|resume|remove <路径ID> <修订号>
+unic device backends          # 查看已装配的同步后端
+```
+
+配对时如需指定后端实例，可用 `unic device add … --backend <实例>` 或 `unic device addr --backend <实例>`；所选后端不支持配对时会直接失败，不会回退到默认后端。
+
+你给设备起的名称与对方自报的名称分开保存。修改本机显示给其他设备的名称用配置项 `device_name`（默认为主机名，下次连接时生效）。
+
+## 移除设备
+
+```bash
+unic device remove <设备ID>
+```
+
+移除会立即撤销该设备的全部路径并中断已有连接。被移除的设备如果再次连入，只会以「待批准」状态出现，需要重新核对批准。
+
+## 设备推荐
+
+开启 `sync.introductions`（默认开启）时，已信任的设备会把它信任的其他设备推荐给你。推荐只是建议，不会自动建立信任，推荐里的名称也未经验证；7 天内未再次被推荐会过期。
+
+```bash
+unic device suggestions
+unic device suggest-pair <id> <后端ID>
+unic device suggest-ignore <id>
+unic device suggest-restore <id>
+```
+
+推荐配对后仍需双方核对指纹批准。
+
+## 外部渠道
+
+微信输入法等没有 unic 身份的第三方对端称为“外部渠道”，它们不是设备、没有指纹，详见[外部渠道](../plugins/external-channels)。

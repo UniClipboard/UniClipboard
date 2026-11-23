@@ -1,0 +1,100 @@
+---
+title: 安装 CLI
+description: 获取 unic 与 unicd，了解数据目录与首次初始化。
+---
+
+命令行版本由两个程序组成：
+
+- `unic`：命令行客户端，所有操作都通过它完成。
+- `unicd`：后台服务，持有本机历史、插件与网络连接。
+
+两者都不依赖任何图形界面库，可以在无桌面环境的服务器上运行。发行包中还提供 `uniclip` 作为 `unic` 的别名（macOS/Linux 为相对符号链接，Windows 为 `uniclip.cmd`），用法完全相同。
+
+## 获取方式
+
+<Tabs items={['npm', '压缩包', '从源码构建']}>
+<Tab value="npm">
+
+CLI 通过 npm 包 `@uniclipboard/cli` 分发，按平台自动选择对应的二进制包。`alpha` 标签为预览通道，`latest` 为稳定通道。
+
+```sh
+npm install -g @uniclipboard/cli          # 稳定通道
+npm install -g @uniclipboard/cli@alpha    # 预览通道
+```
+
+安装后可直接使用 `unic`、`uniclip` 与 `unicd`。
+
+</Tab>
+<Tab value="压缩包">
+
+版本化压缩包内含 `unic`、`unicd` 与 `uniclip` 别名。解压到任意目录即可使用；`unic` 与 `unicd` 必须保持在同一目录，因为 `unic` 会从自身所在目录启动 `unicd`。移动解压后的目录不会破坏别名。
+
+</Tab>
+<Tab value="从源码构建">
+
+需要 Go 工具链：
+
+```sh
+go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd
+# 或
+make build-headless
+```
+
+</Tab>
+</Tabs>
+
+<Callout type="info">
+桌面版安装包已自带同一份 `unic` / `unicd`，放在应用私有目录中。如需在终端使用命令行，请单独安装 CLI。
+</Callout>
+
+## 检查版本
+
+以下命令不会启动服务，也不需要初始化：
+
+```sh
+unic --version --json
+unicd --version --json
+```
+
+输出包含产品版本、构建号与源码提交。
+
+## 数据目录
+
+数据目录（数据库、配置、插件、套接字等）按以下顺序确定：
+
+1. 环境变量 `UNIC_HOME`（会被转为绝对路径）。
+2. 可执行文件旁存在普通文件 `portable.dat` 时，使用同级的 `data/` 目录（便携模式）。
+3. 发行版默认使用用户配置目录下的 `unic/`；版本号为 `dev` 的开发构建使用 `unic-development/`。
+
+本地套接字默认位于数据目录内，可用 `UNIC_SOCK` 覆盖。详见[环境变量](../reference/environment)。
+
+v2 的数据目录与 v1 完全独立，替换程序不会自动导入 v1 数据。
+
+## 首次初始化
+
+每个数据目录在第一次使用前都必须显式完成迁移初始化，否则业务命令会以退出码 `6`（原因 `migration_required`）拒绝执行。帮助、版本与 `migrate` 本身不受限制。
+
+<Steps>
+<Step>
+
+阅读迁移说明：
+
+```sh
+unic migrate --help
+```
+
+</Step>
+<Step>
+
+有 v1 历史需要导入时，按说明运行 `unic migrate`（参见 [从 v1 迁移](../migration/v1-to-v2)）。没有 v1 数据时，显式初始化空目录：
+
+```sh
+unic migrate --initialize-empty --json
+```
+
+</Step>
+</Steps>
+
+部分导入、失败、取消或 `--dry-run` 都不会完成初始化；存在未完成的导入时也不能使用 `--initialize-empty`。在桌面版中完成的导入同样满足该要求，但桌面版欢迎页上的“跳过”不会为 CLI 完成初始化。
+
+下一步：[CLI 快速上手](./getting-started)。

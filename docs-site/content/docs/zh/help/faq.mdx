@@ -1,0 +1,51 @@
+---
+title: 常见问题
+description: 关于 UniClipboard v2 同步、数据、隐私与迁移的常见问题。
+---
+
+## v2 能和 v1 设备同步吗？
+
+不能。v2 是全新实现，协议、数据库与设备身份都不兼容 v1。请把所有设备升级到 v2 并重新配对，旧历史可以[迁移](../migration/v1-to-v2)。
+
+## v2 还有“空间”和空间口令吗？
+
+没有。v2 以设备为单位管理信任：通过配对码添加设备，并且每次都需要你在本机批准。详见[设备](../core-features/devices)。
+
+## 数据存在哪里？
+
+全部在本机数据目录中（数据库、配置、日志、接收文件），位置见[环境变量](../reference/environment#默认数据目录)。没有云端存储历史。
+
+## 一台设备复制的内容一定会同步到其它设备吗？
+
+默认会自动同步文本、图片和文件。以下情况不会：
+
+- 关闭了 `sync.enabled` 或 `sync.automatic`；
+- 文件超过 `limits.max_file_bytes`（默认 100 MB）或 `auto_file_max_bytes`；
+- 复制的是文件夹（默认不自动同步，需要手动发送）；
+- 插件设置了 `block_sync` 并失败。
+
+见[配置文件](../reference/configuration#sync)。
+
+## 怎样暂停同步？
+
+```bash
+unic config set sync.enabled false
+```
+
+设备保持连接，但双向停止收发内容。
+
+## 历史会一直保留吗？
+
+默认自动清理 180 天前的条目，历史存储上限 4 GiB。可在 `[history]` 中调整，或用 `excluded_tags` 保护带特定标签的条目。
+
+## 会收集使用数据吗？
+
+客户端遥测默认开启，不包含剪贴板正文、设备地址等秘密，可随时关闭：`unic config set telemetry.enabled false`。详见[诊断与日志](../reference/diagnostics#遥测)。
+
+## 可以在同一台电脑上运行多个实例吗？
+
+可以，用 `UNIC_HOME` 指定不同的数据目录，例如 `UNIC_HOME=/tmp/unicA unicd`。
+
+## 没有图形界面的服务器能用吗？
+
+可以。`unic` 与 `unicd` 不依赖任何图形界面，见[无头部署](../cli/headless-deployment)。

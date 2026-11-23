@@ -1,0 +1,117 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+@source '../../node_modules/fumadocs-ui/dist/**/*.js';
+
+/* Mirror uc-website tokens (Manrope + Linear/Vercel-minimal palette). */
+:root {
+  --radius: 0.625rem;
+  --background: #fafaf8;
+  --bg2: #f2f2f0;
+  --foreground: #0a0a0a;
+  --ink2: #1f1f1f;
+  --muted: #6b6b65;
+  --muted2: #9a9a93;
+  --muted-foreground: #6b6b65;
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+  --primary: #0a0a0a;
+  --primary-foreground: #fafaf8;
+  --secondary: #f2f2f0;
+  --secondary-foreground: #0a0a0a;
+  --accent: #0a0a0a;
+  --accent-foreground: #fafaf8;
+  --border: #e5e5e0;
+  --hair2: #efefec;
+  --input: #e5e5e0;
+  --ring: #0a0a0a;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --bg2: #141414;
+  --foreground: #fafafa;
+  --ink2: #e8e8e3;
+  --muted: rgba(250, 250, 250, 0.62);
+  --muted2: rgba(250, 250, 250, 0.42);
+  --muted-foreground: rgba(250, 250, 250, 0.62);
+  --card: #161616;
+  --card-foreground: #fafafa;
+  --popover: #161616;
+  --popover-foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #0a0a0a;
+  --secondary: #141414;
+  --secondary-foreground: #fafafa;
+  --accent: #fafafa;
+  --accent-foreground: #0a0a0a;
+  --border: rgba(250, 250, 250, 0.12);
+  --hair2: rgba(250, 250, 250, 0.07);
+  --input: rgba(250, 250, 250, 0.12);
+  --ring: #fafafa;
+}
+
+/* Bridge uc-website tokens → fumadocs UI tokens. */
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-bg2: var(--bg2);
+  --color-ink2: var(--ink2);
+  --color-border: var(--border);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --font-sans:
+    var(--font-manrope), 'Manrope Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+}
+
+:root,
+.dark {
+  --color-fd-background: var(--background);
+  --color-fd-foreground: var(--foreground);
+  --color-fd-muted: var(--bg2);
+  --color-fd-muted-foreground: var(--muted-foreground);
+  --color-fd-popover: var(--popover);
+  --color-fd-popover-foreground: var(--popover-foreground);
+  --color-fd-card: var(--card);
+  --color-fd-card-foreground: var(--card-foreground);
+  --color-fd-border: var(--border);
+  --color-fd-primary: var(--primary);
+  --color-fd-primary-foreground: var(--primary-foreground);
+  --color-fd-secondary: var(--secondary);
+  --color-fd-secondary-foreground: var(--secondary-foreground);
+  --color-fd-accent: var(--bg2);
+  --color-fd-accent-foreground: var(--foreground);
+  --color-fd-ring: var(--ring);
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-manrope), 'Manrope Variable', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

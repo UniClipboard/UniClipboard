@@ -1,0 +1,64 @@
+---
+title: 诊断与日志
+description: 查看服务状态、本机日志、临时调高日志等级、导出日志以及遥测设置。
+---
+
+## 服务状态
+
+```bash
+unic status        # 本机设备名与 ID、已连接设备、待处理请求
+unic config        # 当前配置、配置错误、需要重启的键
+```
+
+## 本机日志
+
+- 位置：`$UNIC_HOME/logs/`（目录权限 0700，文件 0600）。
+- 格式：JSON Lines，每段最多 4 MiB，合计最多 20 MiB，保留 7 天。
+- 日志不包含剪贴板正文、设备地址、配对票据等秘密。
+
+默认等级由 `logging.level` 决定（默认 `info`），见[配置文件](./configuration#logging-与-telemetry)。
+
+### 临时调整日志等级
+
+```bash
+unic dev logs level                          # 查看当前本机/远程等级
+unic dev logs level debug --for 15m          # 临时把本机等级调为 debug
+unic dev logs level debug --target remote    # 临时调整远程上传等级
+unic dev logs level reset                    # 恢复为配置值
+```
+
+`--for` 取 1 秒到 1 小时的整秒数，默认 15 分钟；命令在此期间保持运行，到期或退出后自动恢复。本机与远程等级相互独立。
+
+### 导出日志
+
+```bash
+unic dev logs export                       # 在当前目录生成 unic-logs-<时间>.tar.gz
+unic dev logs export --output ./logs.tar.gz
+```
+
+压缩包只包含保留的日志段及其 SHA-256 清单，可直接附在问题反馈中。输出路径不能位于日志目录内。
+
+## 遥测
+
+客户端遥测默认开启，包括远程日志（`warn` 及以上）、指标、产品事件与 1% 采样的链路追踪。产品分析使用独立的随机标识，不附加到日志或指标上。
+
+```bash
+unic dev diagnostics telemetry      # 查看各信号的当前状态
+unic config set telemetry.enabled false   # 关闭所有上传
+```
+
+也可以单独关闭某一类信号，例如 `telemetry.analytics.enabled = false`。开关修改后立即生效。
+
+## 命令退出码
+
+| 退出码 | 含义 |
+|---|---|
+| 0 | 成功 |
+| 1 | 失败 |
+| 2 | 用法错误 |
+| 3 | 迁移部分完成（仅 `unic migrate`） |
+| 4 | 已提交，但发送、审批或等待窗口未完成 |
+| 5 | 命令已完成，但停止临时启动的服务失败 |
+| 6 | 当前数据目录尚未完成迁移初始化（`migration_required`） |
+
+非零退出时，错误会以 JSON 写到标准错误，包含 `error` 与 `reason` 字段，便于脚本处理。

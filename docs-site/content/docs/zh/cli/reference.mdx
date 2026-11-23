@@ -1,0 +1,221 @@
+---
+title: 命令参考
+description: unic 全部子命令、别名、参数、JSON 输出与退出码。
+---
+
+本页依据 `unic` 源码中的命令表整理。运行 `unic help` 查看简要帮助，`unic help --json` 输出机器可读的命令声明。
+
+## 通用约定
+
+- **命令别名**：`s` = `send`，`r` = `recv`，`h` = `history`，`-h` / `--help` = `help`。`history list` 可写作 `history ls`，`history delete` 可写作 `history rm`。旧命令名已移除，没有兼容别名。
+- **`uniclip`**：发行包提供的 `unic` 别名，行为一致。
+- **服务需求**：每条命令声明一种需求：
+
+| 需求 | 含义 |
+|---|---|
+| `local` | 从不连接服务 |
+| `service` | 复用正在运行的 `unicd`，没有则临时启动 |
+| `service+clipboard` | 同上，并需要桌面版提供的剪贴板适配器 |
+| `offline` | 需要目标数据目录没有正在运行的服务 |
+
+- **`--json`**：凡是带 `--json` 的命令都输出 JSON。出错时，若命令行里包含 `--json`，错误会以 `{"error": "...", "reason": "..."}` 的形式写到 stderr。
+- **`ref`**：历史条目引用，可以是条目 ID，或 `@N`（第 N 新，`@1` 为最新）。
+- 终端中的样式与进度输出在 stderr；重定向输出、设置 `NO_COLOR` 或 `TERM=dumb` 时为纯文本。
+
+## 退出码
+
+| 退出码 | 含义 |
+|---|---|
+| `0` | 完成 |
+| `1` | 失败 |
+| `2` | 用法错误 |
+| `3` | 迁移部分完成 |
+| `4` | 已提交但未完成（发送、批准或等待窗口未完成；临时传输被取消或未送达） |
+| `5` | 命令完成，但停止临时 `unicd` 失败 |
+| `6` | 需要先完成迁移初始化（`migration_required`），运行 `unic migrate --help` |
+
+<Callout type="warn">
+目前部分一般语法错误和票据类型错误返回 `1`，而不是 `2`。脚本中不要只依赖 `2` 判断用法错误。
+</Callout>
+
+## send
+
+```sh
+unic send [TEXT...] [--to all|DEVICE] [-f] [--png PATH] [--request-id KEY] [--json]
+```
+
+需求：`service`。发送内容只能三选一：文本参数、`-f` 后跟的文件/目录，或 `--png`。不给文本参数时从 stdin 读取（上限 64 MiB）。
+
+| 参数 | 说明 |
+|---|---|
+| `--to all\|DEVICE` | 发送给全部已配对设备，或按设备 ID / 名称指定一台。省略时进行临时传输 |
+| `-f` | 把位置参数作为文件或目录发送（只接受普通文件和目录） |
+| `--png PATH` | 发送一张 PNG 图片 |
+| `--request-id KEY` | 幂等键，仅与 `--to` 一起使用；省略时自动生成 |
+| `--json` | 输出提交结果与网络结果 |
+
+**发给已配对设备**（`--to`）：stderr 先打印 `request_id=…`，便于中断后用 `unic dev submission` 查询。命令只观察本次发送，结束时报告 `success`、`partial`、`failed`、`superseded`、`timeout`、`interrupted` 或 `none`。文本输出为一行 `request_id=… history_id=… phase=… sync=… send=…`；`--json` 输出 `{"submission": {...}, "send": {"outcome": "...", "operation": {...}}}`。内容已提交但发送未完全成功时退出码为 `4`。
+
+**临时传输**（不带 `--to`）：打印 6 位码和链接，等待一个接收方，直到送达、失败或过期；`Ctrl+C` 取消。`--json` 时第一行 JSON 携带码与链接，结束时再输出一行最终状态。未送达或取消时退出码为 `4`。目录不能用临时传输，必须带 `--to`。
+
+## recv
+
+```sh
+unic recv CODE|LINK [--json]
+unic recv [list]
+unic recv show ID [PART]
+unic recv dismiss ID
+```
+
+需求：`service`。
+
+- `recv CODE|LINK`：从临时传输接收。6 位码中可包含空格或短横线。文本内容输出到 stdout，其他内容在 stderr 报告名称和大小；内容保存到历史。`--json` 输出接收结果。配对码不能用于 `recv`。
+- `recv` / `recv list`：以 JSON 列出最近收到的条目。
+- `recv show ID [PART]`：把收到条目的某个部分（默认 `0`）写到 stdout。
+- `recv dismiss ID`：从收到列表中移除。
+
+## history（h）
+
+需求：`service`；`use` 为 `service+clipboard`，`action --apply` 同样提升为 `service+clipboard`。`unic history help` 为本地命令。
+
+| 子命令 | 用法 | 说明 |
+|---|---|---|
+| `list`（`ls`） | `list [--type text,image,files] [--tag T] [--origin O,...] [-n\|--limit N] [--json]` | 最新在前，不含内容；默认 20 条 |
+| `show` | `show [ref] [--part N] [--json]` | 输出内容，默认最新一条、第一个文本部分；`--json` 输出条目详情 |
+| `send` | `send ref [--to DEVICE\|all] [--request-id KEY] [--json]` | 重新发送源或保留的快照，`--to` 默认 `all`；不写本机剪贴板 |
+| `use` | `use ref [--request-id KEY] [--json]` | 恢复到本机剪贴板；是否同步遵循 `sync.on_restore`；`--json` 分开输出本地与网络结果 |
+| `delete`（`rm`） | `delete ref... [-y\|--yes]` | 删除；在终端中运行时先确认 |
+| `tag` | `tag ref [--add a,b] [--remove c] [--set a,b]` | 增删标签，`--set` 替换全部 |
+| `expire` | `expire ref DURATION\|never` | 如 `24h`、`7d`、`never` |
+| `export` | `export ref --output DIR` | 写出用户拥有的副本，不覆盖已有文件 |
+| `action` | `action ref [KEY] [--apply] [--request-id KEY]` | 运行插件 Action；不给 `KEY` 时列出可用 Action；`--apply` 把结果写入剪贴板 |
+
+`use` 与 `action --apply` 需要桌面版的剪贴板适配器；纯无头环境中会报告不可用。参见 [标签与 Action](../core-features/tags-and-actions) 和 [搜索语法](../reference/search-syntax)。
+
+## device
+
+需求：`service`。
+
+| 子命令 | 用法 | 说明 |
+|---|---|---|
+| `add` | `add [CODE\|ADDRESS] [--backend INSTANCE]` | 不带参数时显示配对码并保持服务一段有限时间；带参数时向对方发起配对并等待批准 |
+| `addr` | `addr [--backend INSTANCE]` | 打印本机地址。**地址是秘密**，不要公开 |
+| `list` | `list [--json]` | 已配对与等待批准的设备；`--json` 包含路径绑定 ID、版本与同步状态 |
+| `approve` | `approve ID FINGERPRINT` | 核对对方设备显示的指纹后批准 |
+| `reject` | `reject ID` | 拒绝等待中的设备 |
+| `remove` | `remove ID` | 忘记设备并撤销其全部路径 |
+| `backends` | `backends` | 列出同步后端实例及其状态 |
+| `path` | `path pause\|resume\|remove BINDING_ID REVISION` | 操作单条设备—后端路径 |
+| `suggestions` | `suggestions` | 由你的其他设备推荐的设备 |
+| `suggest-pair` | `suggest-pair ID BACKEND` | 配对一个推荐设备 |
+| `suggest-ignore` | `suggest-ignore ID` | 忽略推荐 |
+| `suggest-restore` | `suggest-restore ID` | 恢复已忽略的推荐 |
+| `channel-add` | `channel-add INSTANCE NAME` | 授权一个外部后端实例使用命名的本地渠道 |
+| `channel` | `channel pause\|resume\|remove ID REVISION` | 暂停、恢复或移除外部渠道 |
+
+通过配对码进来的设备永远需要批准。更多说明见[设备与配对](../core-features/devices)。
+
+## channel
+
+```sh
+unic channel pair INSTANCE [--resume]
+```
+
+需求：`service`。配对一个外部剪贴板渠道，参见[外部渠道](../plugins/external-channels)。
+
+## status
+
+```sh
+unic status
+```
+
+需求：`service`。显示本机名称与 ID、对端和等待批准的设备。
+
+## config
+
+```sh
+unic config [--json]
+unic config set KEY TOML-VALUE
+unic config apply FILE
+unic config path
+```
+
+- `config`：输出当前生效的设置（TOML）与文件路径；若最近一次编辑无效，会提示错误并显示上一份有效设置；列出需要重启 `unicd` 才生效的项。`--json` 输出完整状态。需求 `service`。
+- `config set`：修改一个键，值按 TOML 语法解析，例如 `unic config set sync.directories.automatic true`。
+- `config apply`：用文件替换整个配置。
+- `config path`：只打印配置文件路径，不连接服务（`local`）。
+
+键与默认值见[配置参考](../reference/configuration)。
+
+## plugin
+
+需求：`local`（直接操作文件，不需要服务），`settings` 子命令除外。
+
+```sh
+unic plugin install URL [--ref REF] [--path DIR] [--build] [--replace] [--enable]
+unic plugin instance add IMPLEMENTATION ID
+unic plugin list            # 别名 ls
+unic plugin enable ID
+unic plugin disable ID
+unic plugin uninstall ID
+unic plugin rollback ID
+unic plugin settings show ID
+unic plugin settings save ID JSON-FILE|-
+```
+
+- `install`：从公开 GitHub 仓库安装并固定到某个提交；优先使用已验证的发行资产，只有加 `--build` 才允许从源码构建。安装超时 5 分钟。
+- `instance add`：为已安装的 Go 同步后端创建一个默认禁用、设置独立的实例。
+- `enable` / `disable`：写入配置，**重启 `unicd` 后生效**。
+- `uninstall`：移除 GitHub 安装；`rollback`：切回上一个已安装的提交。
+- `settings show`：输出 Schema 与脱敏后的设置；`settings save` 从文件或 stdin（`-`）读取 `{"values": {...}}`。这两个命令需要服务。
+
+参见[插件市场](../plugins/marketplace)。
+
+## migrate
+
+```sh
+unic migrate [--source DIR] [--target DIR] [--service NAME] [--dry-run] [--passphrase-stdin] [--json]
+unic migrate --initialize-empty [--target DIR] [--json]
+```
+
+需求：`offline`，在进程内导入，不启动网络或剪贴板。不带参数或 `--help` 时打印完整迁移说明。
+
+| 参数 | 说明 |
+|---|---|
+| `--source DIR` | v1 数据目录，默认为本机桌面版配置；自定义或便携 v1 配置必须指定 |
+| `--target DIR` | v2 数据目录，默认 `UNIC_HOME` 或默认目录 |
+| `--service NAME` | 旧凭据服务名，默认 `UniClipboard`；命名配置为 `UniClipboard-PROFILE` |
+| `--dry-run` | 读取并验证内容，不修改目标 |
+| `--passphrase-stdin` | 从 stdin 读取一行旧口令。不要把口令放在参数或环境变量中 |
+| `--initialize-empty` | 没有 v1 数据时显式初始化；只能与 `--target`、`--json` 同用 |
+| `--json` | 输出 JSON 进度与最终报告 |
+
+退出码：`0` 完成，`3` 部分完成，`1` 失败，`2` 用法错误。重复执行是幂等的，重新运行同一命令即可续跑或修复。详见[从 v1 迁移](../migration/v1-to-v2)。
+
+## dev
+
+开发与诊断命令。直接输入 `unic watch`、`unic copy` 等会提示改用 `unic dev …`。
+
+| 子命令 | 需求 | 说明 |
+|---|---|---|
+| `dev help` | `local` | 打印用法 |
+| `dev submission REQUEST_ID` | `service` | 查询一次提交（JSON） |
+| `dev capabilities` | `service` | 服务能力（JSON） |
+| `dev watch` | `service` | 持续输出事件，直到手动停止 |
+| `dev logs level [debug\|info\|warn\|error\|reset] [--target local\|remote] [--for 15m]` | `service` | 临时调整日志等级，`--target` 默认 `local`，`--for` 默认 15 分钟；期间保持服务运行 |
+| `dev logs export [--output FILE]` | `local` | 导出本地保留日志为 tar.gz（含 SHA-256 清单），不需要服务；不覆盖已有文件 |
+| `dev logs help` | `local` | 打印 logs 用法 |
+| `dev diagnostics telemetry` | `service` | 遥测各信号的实际状态（JSON） |
+| `dev cache [--json]` | `service` | 缓存占用 |
+| `dev copy [TEXT]`、`dev copy -f FILE...` | `service+clipboard` | 写入系统剪贴板 |
+| `dev paste` | `service+clipboard` | 读取系统剪贴板 |
+
+参见[诊断](../reference/diagnostics)。
+
+## 版本
+
+```sh
+unic --version --json
+```
+
+不启动服务、无需初始化。`unic daemon` 不存在：后台服务是独立程序 `unicd`。

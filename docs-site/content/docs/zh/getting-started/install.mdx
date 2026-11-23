@@ -1,0 +1,108 @@
+---
+title: 安装
+description: 下载并安装 UniClipboard 桌面端与命令行工具，支持 Windows、macOS 与 Linux。
+---
+
+## 下载桌面端
+
+前往官网 [uniclipboard.app/download](https://uniclipboard.app/download) 或 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) 下载对应平台的安装包。
+
+<Tabs items={['macOS', 'Windows', 'Linux']}>
+  <Tab value="macOS">
+    下载 `.dmg` 镜像（支持 Apple Silicon 与 Intel），打开后将 **UniClipboard** 拖入「应用程序」文件夹即可。
+
+    如果使用 Homebrew：
+
+    ```sh
+    brew install --cask uniclipboard
+    ```
+  </Tab>
+  <Tab value="Windows">
+    提供两种选择（支持 x64 与 ARM64）：
+
+    - **安装程序（`.exe`）**：双击运行安装向导，支持自动更新。
+    - **便携版（`.zip`）**：解压即用，适合不希望写入系统安装项的场景。
+  </Tab>
+  <Tab value="Linux">
+    按发行版选择对应包格式（支持 x64 与 ARM64）：
+
+    - **Debian / Ubuntu**：下载 `.deb` 包并使用 `apt` 或 `dpkg -i` 安装。
+    - **Fedora / RHEL**：下载 `.rpm` 包并使用 `dnf install` 安装。
+    - **Arch Linux**：下载 pacman 二进制包，或通过 AUR 安装。
+    - **通用**：下载 `.AppImage`，赋予可执行权限后直接运行（需系统提供 GTK3 运行时；AppImage 暂不支持应用内自动更新）。
+  </Tab>
+</Tabs>
+
+<Callout type="info">
+如果目标平台尚未出现正式发布的安装包，可以先使用下方的[从源码运行（开发者）](#从源码运行开发者)体验。
+</Callout>
+
+桌面端安装包内自带私有的 `unic` 与 `unicd`，不会覆盖你单独安装的命令行工具。
+
+## 安装命令行（CLI）
+
+如果你只需要在终端、服务器或 SSH 环境下使用，可以单独安装 `unic` 与后台服务 `unicd`（压缩包内同时提供 `uniclip` 作为 `unic` 的别名）：
+
+- **npm**：
+
+  ```sh
+  npm install -g @uniclipboard/cli          # stable 通道（latest）
+  npm install -g @uniclipboard/cli@alpha    # alpha 通道
+  ```
+
+  主包会自动匹配当前系统的原生二进制包。
+
+- **GitHub Releases / Homebrew**：在 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) 下载对应平台的 headless 压缩包，或通过 Homebrew Tap 安装 `uniclipboard` Formula。
+
+详见[命令行安装](../cli/installation)与[无头部署](../cli/headless-deployment)。
+
+## 发布通道：stable 与 alpha
+
+- **stable**：经过稳定验收的版本；npm 对应 `latest` 标签。
+- **alpha**：预览版本，更早获得新功能；npm 对应 `alpha` 标签，在 GitHub Releases 中标记为预发布（prerelease）。
+
+通道名不出现在版本号中，版本号形如 `2.0.0-build.N`。同一通道内，v2 桌面端会替换已安装的 v1 并保留用户数据；`alpha` 与 `stable` 共用同一安装身份。
+
+## 查看版本
+
+```sh
+unic --version --json
+unicd --version --json
+```
+
+无需启动服务即可读取产品版本、构建号和源码提交。
+
+## 从源码运行（开发者）
+
+如果你希望从源码构建或参与开发，只需安装 [Go](https://go.dev/dl/)：
+
+<Steps>
+<Step>
+### 获取源码
+
+```sh
+git clone https://github.com/UniClipboard/UniClipboard.git
+cd UniClipboard
+```
+</Step>
+<Step>
+### 运行桌面端
+
+```sh
+make run-desktop
+```
+
+该命令会构建 `unic`、`unicd`、`unic-desktop` 到 `dist/`，并以仓库内 `.cache/desktop-dev` 作为独立数据目录启动桌面端。
+</Step>
+</Steps>
+
+仅构建无界面命令行与服务：
+
+```sh
+make build-headless
+```
+
+## 下一步
+
+- [快速上手](./quick-start)
+- 已在用 v1？先看[从 v1 迁移](../migration/v1-to-v2)

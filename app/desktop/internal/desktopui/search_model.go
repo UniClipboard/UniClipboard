@@ -463,7 +463,10 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 		if d.filterOpen && len(prospective) == 0 {
 			prospective = d.filterPopoverProspectiveQueries()
 		}
-		d.live.requestCounts(append([]engine.HistorySearchQuery{favoriteHistoryQuery()}, prospective...))
+		if len(d.entries) == 0 && d.hasActiveSearchOrFilter() && !d.unsupportedSearch() && d.live.readError == "" {
+			prospective = append(prospective, d.searchRelaxationQueries()...)
+		}
+		d.live.requestCounts(append([]engine.HistorySearchQuery{allHistoryQuery(), favoriteHistoryQuery()}, prospective...))
 	}
 	feedback := ""
 	if w, ok := s.active(); ok {

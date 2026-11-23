@@ -7,6 +7,7 @@ param(
   [Parameter(Mandatory=$true)][string]$Root,
   [Parameter(Mandatory=$true)][string]$Receipt,
   [string]$Target = 'windows-arm64',
+  [ValidateSet('1.6.2', '1.6.2-alpha.2')][string]$LegacySourceVersion = '1.6.2-alpha.2',
   [switch]$LegacyUpdater
 )
 $ErrorActionPreference = 'Stop'
@@ -68,7 +69,7 @@ try {
   Copy-Item $Fixture $legacy -Recurse
   $before = Snapshot $legacy
   if ($LegacyUpdater) {
-    if ($v1Version -ne '1.6.2-alpha.2') { throw 'The legacy updater origin must be 1.6.2-alpha.2.' }
+    if ($v1Version -ne $LegacySourceVersion) { throw "Expected the legacy updater origin $LegacySourceVersion." }
     $env:UNIC_HOME = Join-Path $Root 'restart-profile'
     try {
       $p = Start-Process -FilePath $Installer -ArgumentList '/P /R /UPDATE /ARGS --resident-restart' -PassThru

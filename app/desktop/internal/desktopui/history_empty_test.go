@@ -215,3 +215,22 @@ func TestHistoryEmptyStatesAndToolbar(t *testing.T) {
 		}
 	})
 }
+
+func TestHistoryPaneOmitsWarningBanner(t *testing.T) {
+	d := newDemo("history", "light")
+	l := newStaticLiveState()
+	l.loaded = true
+	l.key = d.liveQueryKey()
+	l.displayedKey = l.key
+	l.message = "操作未能确认完成。请刷新数据后检查结果。"
+	l.readError = "无法完成搜索。请稍后重试。"
+	d.live = l
+
+	tt := ui.NewTesterWith(d.view, 1120, 688, ui.TesterOptions{Dark: false})
+	if tt.HasText(l.message) {
+		t.Fatalf("unexpected warning banner for live.message in history pane: %v", tt.Texts())
+	}
+	if tt.HasText(l.readError) {
+		t.Fatalf("unexpected warning banner for live.readError in history pane: %v", tt.Texts())
+	}
+}

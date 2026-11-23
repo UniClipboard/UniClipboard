@@ -58,6 +58,7 @@ report["source_files"] = {
     f.relative_to(ROOT).as_posix(): hashlib.sha256(f.read_bytes()).hexdigest()
     for d in [
         "app/desktop/internal/appupdates",
+        "internal/desktopupdate",
         "app/desktop/e2e/updateprobe",
         "tools/release/update-sign",
     ]

@@ -5,6 +5,9 @@ import { appName, gitConfig } from './shared'
 
 export const i18nUI = defineI18nUI(i18n, {
   translations: {
+    en: {
+      displayName: 'English',
+    },
     zh: {
       displayName: '简体中文',
       search: '搜索文档',

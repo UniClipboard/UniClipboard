@@ -1,0 +1,89 @@
+---
+title: History & Search
+description: Saving, browsing, restoring, searching, and automatically cleaning up local clipboard history.
+---
+
+All copied, received, and Action-generated items are stored in **local history**. History lives only on the current device; tags, favorites, and expiration times are never synced to other devices.
+
+## Browse & Restore
+
+The desktop main window displays history in reverse chronological order, supporting both list and grid views, and loads more automatically as you scroll to the bottom. Select an item to preview text, images, files, and folders, and restore it to the system clipboard.
+
+CLI:
+
+```bash
+unic history list                 # Latest 20 items (without body)
+unic history list --type image -n 50
+unic history list --tag work --json
+unic history show @1              # Print the text of the latest item
+unic history use @2               # Restore to the local clipboard
+unic history delete @3            # Prompts in a terminal; -y to skip
+unic history export @1 --output ./out   # Export a copy of a file or folder snapshot
+```
+
+`@N` refers to the Nth newest item (`@1` is the latest); you can also use an item ID. `unic h` is an alias for `unic history`.
+
+- Restoring does not create a new history item. When `sync.on_restore = true`, restored content is sent to other devices again.
+- Saved content cannot be edited, while tags and expiration times can be modified.
+- `export` does not overwrite existing files; folder snapshots are exported as `rN/<original-folder-name>` and each file hash is verified.
+
+## Search
+
+Both the desktop main window and [Quick Panel](./quick-panel) search local history directly on the service side without loading all items.
+
+Searchable fields:
+
+- Text body; for HTML-only rich text, its visible text is searched.
+- **Filenames** of files and folders (file contents are not read).
+
+Search rules:
+
+- Case-insensitive **substring matching**, including single- and two-character CJK matches.
+- In the main window, multiple terms must all appear in the same item; the Quick Panel treats the entire input as a single phrase.
+- `%`, `_`, quotes, and punctuation match literally; there are no wildcards or boolean operators.
+- No pinyin, OCR, accent folding, or web fetching is performed.
+
+You can filter by type (text, rich text, image, file, folder), tag, source (local, a specific device, external, migrated), file extension, and time range. See [Search Syntax](../reference/search-syntax) for the exact input syntax.
+
+<Callout>
+The CLI does not currently have a full-text search command; `unic history list` only supports filtering by type, tag, and source.
+</Callout>
+
+## Favorites
+
+You can mark items as favorites in History or the Quick Panel. Favorites use the reserved `favorite` tag, appear together under **Favorites** in the sidebar, and can be searched with `#favorite` in the main window. Favoriting does not change sort order and **does not** prevent automatic cleanup by default; to keep favorites long-term, add `favorite` to the cleanup exclusion tags (see below).
+
+## Auto-cleanup
+
+| Config Key | Default | Description |
+|---|---|---|
+| `history.auto_cleanup` | `true` | Master switch for automatic cleanup |
+| `history.retention_days` | `180` | Days to keep; `0` disables age-based cleanup |
+| `history.max_items` | `0` | Maximum items to keep; `0` means unlimited |
+| `history.excluded_tags` | `[]` | Items with any of these tags are never auto-cleaned |
+| `history.max_bytes` | `4GiB` | Total storage budget for history (requires restart) |
+| `file_cache.max_bytes` | `500MiB` | Default cache quota for received files |
+
+```bash
+unic config set history.retention_days 30
+unic config set history.excluded_tags '["favorite", "work"]'
+```
+
+- Cleanup starts from the oldest items and runs at startup, after settings changes, after every commit, and every 30 seconds while running.
+- Policy changes apply immediately to existing history; reading or restoring an item does not reset its age.
+- Excluded items do not count toward `max_items`.
+- Deleting history also frees files cached by unic itself, but **never deletes** your source files or files in a custom inbox directory you specified.
+- Manually set expiration times work independently of auto-cleanup:
+
+```bash
+unic history expire @1 24h
+unic history expire @1 never
+```
+
+If cleanup is off or protected items fill the storage budget, new items are rejected due to insufficient storage rather than force-deleting protected items.
+
+## Related Pages
+
+- [Tags & Actions](./tags-and-actions)
+- [Quick Panel](./quick-panel)
+- [Search Syntax](../reference/search-syntax)

@@ -17,7 +17,7 @@ import GithubSlugger from 'github-slugger'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const DOCS_ROOT = resolve(__dirname, '..', 'content', 'docs')
-const LANGS = ['zh']
+const LANGS = ['en', 'zh']
 
 const errors = []
 const warnings = []

@@ -1,0 +1,487 @@
+---
+title: Go Plugin Development
+description: Write standalone-process unic plugins with the Go SDK—interfaces, manifests and prebuilt artifacts, settings schema, local debugging, and publishing.
+---
+
+This page is self-contained: you can hand the entire page to an AI agent as a complete reference for writing unic Go plugins. Examples are taken from `plugins/examples/emailtag`, `plugins/examples/settingsdemo`, and the official standalone plugin `unic-plugin-wenshushu`.
+
+## Architecture and Constraints
+
+- A Go plugin is a **standalone executable**. `unicd` launches it and communicates over binary-framed RPC on stdin/stdout; it is not compiled into the host, does not use Go shared libraries, and does not listen on any port.
+- The SDK package is `github.com/uniclipboard/unic/plugin` (settings helpers in `github.com/uniclipboard/unic/plugin/settings`), with entry point `plugin.Serve(p)`.
+- Each enabled plugin runs as one long-lived process reused across calls.
+- Process isolation is **not** a permission sandbox: plugins are trusted native code.
+- Capabilities:
+
+| Capability | Interface | When it runs | What it can do |
+|---|---|---|---|
+| `processor` | `plugin.Processor` | Automatically when content is copied/received | Annotate only: tags, expiration, persistence, sync; **cannot modify content** |
+| `action` | `plugin.Actor` | Only when triggered by the user | Read source content (text/image/files) and produce a new **text** history item |
+| `observer` | `plugin.Observer` | After history change events | Read-only notifications, history ID only |
+| `sync_backend` | `plugin.SyncBackend` | Sync | Sync backend (including [External Channels](./external-channels)), interface still evolving |
+
+### Runtime Rules
+
+- **`Init` validates config strictly**, returning `plugin.ErrInvalidConfig` on unknown keys; `Init` does not access the network, and background tasks start in `Start`.
+- **Callbacks must respect `ctx`**: processors default to a 200ms timeout; on timeout `ctx` is cancelled first, and after a 1s grace period the host terminates the process. Actions default to 10s and can declare up to 300000ms in `TimeoutMS`.
+- Callbacks for the same instance run serially; panics are caught by the SDK and converted to stable error codes.
+- **Error text does not cross process boundaries**—the host only sees stable error codes; **stderr is discarded**. Never log clipboard content anywhere.
+- `Host.Notify` is limited to 5 calls/second and 1024 bytes per message, for short user-facing notices only.
+- Crashed plugins restart automatically with 1s/2s/4s backoff, up to 3 times within 60 seconds, after which they are marked unavailable.
+- When the parent process closes the pipe, the SDK cancels background tasks and exits.
+
+## Interface Signatures
+
+```go
+package plugin
+
+const (
+	CapProcessor   = "processor"
+	CapAction      = "action"
+	CapObserver    = "observer"
+	CapSyncBackend = "sync_backend"
+)
+
+type Spec struct {
+	ID             string // e.g. "yourname.emailtag"
+	Version        string // Semantic version
+	APIVersion     int    // 1
+	SettingsSHA256 string // SHA-256 of published static settings schema (empty if none)
+	Capabilities   []string
+	TransportKind  string       // sync_backend only
+	Actions        []ActionSpec // action capability only
+	ExternalChannels bool       // sync_backend only
+	RemoteRevocation bool       // external channel backend only
+}
+
+type ActionSpec struct {
+	ID          string   // [a-z][a-z0-9_-]*, ≤64 bytes, unique within plugin
+	Title       string   // 1..64 bytes plain text
+	Accepts     []string // Non-empty subset of text, image, files
+	Placements  []string // Non-empty subset of history.item_menu, history.toolbar, quick_panel
+	PostActions []string // Non-empty subset of copy, notify, present, select, none (none is mutually exclusive)
+	TimeoutMS   int64    // 0 means 10s; max 300000
+}
+
+type Config map[string]any // JSON values only
+
+type Host interface {
+	Notify(ctx context.Context, message string)
+}
+
+type Plugin interface {
+	Spec() Spec
+	Init(context.Context, Host, Config) error
+	Start(context.Context) error
+	Close(context.Context) error
+}
+
+type Processor interface {
+	Plugin
+	Process(context.Context, ProcessContext) error
+}
+type Observer interface {
+	Plugin
+	OnEvent(context.Context, Event) error
+}
+type Actor interface {
+	Plugin
+	Run(context.Context, ActionContext) error
+}
+
+type Item struct {
+	SourceApplication *sourceapp.Application // Nullable
+	ID      string   // Processing item ID, not necessarily the history ID
+	Type    string   // text, image, files, directory, directory_reference
+	Text    string   // Read-only
+	Formats []string
+	Files   []File   // {Name, Size}, without paths
+	Origin  Origin   // {Kind: local_system|remote_device|explicit|action, DeviceID, PluginID}
+}
+
+type Policy struct {
+	Persist     bool
+	Sync        bool
+	Tags        []string
+	ExpireAfter time.Duration // 0 means no expiration
+}
+
+type ProcessContext interface {
+	Event() string // clipboard.captured or clipboard.received
+	Item() Item
+	Policy() Policy
+	AddTag(string) error          // ≤32 tags, each ≤64 UTF-8 bytes
+	RemoveTag(string) error
+	SetPersist(bool) error
+	SetSync(bool) error
+	SetExpire(time.Duration) error // Positive whole milliseconds
+}
+
+type ActionContext interface {
+	Action() string // Triggered ActionSpec.ID
+	Item() Item
+	SetText(string) error // Must be called exactly once
+}
+
+// For Go Actions reading source bytes: type-assert ActionContext.
+type ActionPart struct{ MIME string; File bool; Name string; Size int64 }
+type ActionSource interface {
+	Parts() []ActionPart
+	OpenPart(context.Context, int) (io.ReadCloser, error) // Each part opened at most once, max 4 concurrent
+}
+
+type Event struct{ Kind, ItemID string; AtMs int64 }
+```
+
+Event constants: `EventCaptured`, `EventReceived` (processor); `EventCommitted`, `EventUpdated`, `EventDeleted`, `EventExpired`, `EventPasted`, `EventAppStarted`, `EventAppShutdown` (observer). `clipboard.pasted` only indicates history applied through the host UI, not all system pastes; `ItemID` is empty for `app.*`.
+
+`Spec().Capabilities` must match the implemented interfaces, and `Actions` must accompany the `action` capability; otherwise startup is rejected.
+
+## Minimal Example: Processor (`emailtag`)
+
+```go
+// Command emailtag tags text containing an email address.
+package main
+
+import (
+	"context"
+	"log"
+	"regexp"
+
+	"github.com/uniclipboard/unic/plugin"
+)
+
+type emailtag struct{ tag string }
+
+func main() {
+	if err := plugin.Serve(&emailtag{}); err != nil {
+		log.Fatal(err) // never log clipboard content
+	}
+}
+
+func (*emailtag) Spec() plugin.Spec {
+	return plugin.Spec{ID: "example.emailtag", Version: "1.0.0", APIVersion: 1,
+		Capabilities: []string{plugin.CapProcessor}}
+}
+
+func (p *emailtag) Init(_ context.Context, _ plugin.Host, cfg plugin.Config) error {
+	for key := range cfg {
+		if key != "tag" {
+			return plugin.ErrInvalidConfig
+		}
+	}
+	p.tag = "email"
+	if v, ok := cfg["tag"]; ok {
+		s, valid := v.(string)
+		if !valid || s == "" {
+			return plugin.ErrInvalidConfig
+		}
+		p.tag = s
+	}
+	return nil
+}
+
+func (*emailtag) Start(context.Context) error { return nil }
+func (*emailtag) Close(context.Context) error { return nil }
+
+var email = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+
+func (p *emailtag) Process(ctx context.Context, c plugin.ProcessContext) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if item := c.Item(); item.Type == "text" && email.MatchString(item.Text) {
+		return c.AddTag(p.tag) // annotate only
+	}
+	return nil
+}
+```
+
+Build inside the repository: `go build -o emailtag ./plugins/examples/emailtag`.
+
+## Action Example
+
+```go
+package main
+
+import (
+	"context"
+	"strings"
+
+	"github.com/uniclipboard/unic/plugin"
+)
+
+type upper struct{}
+
+func main() { _ = plugin.Serve(&upper{}) }
+
+func (*upper) Spec() plugin.Spec {
+	return plugin.Spec{ID: "yourname.upper", Version: "1.0.0", APIVersion: 1,
+		Capabilities: []string{plugin.CapAction},
+		Actions: []plugin.ActionSpec{{
+			ID: "upper", Title: "Uppercase", Accepts: []string{"text"},
+			Placements:  []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar},
+			PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify},
+		}}}
+}
+
+func (*upper) Init(_ context.Context, _ plugin.Host, cfg plugin.Config) error {
+	if len(cfg) != 0 {
+		return plugin.ErrInvalidConfig
+	}
+	return nil
+}
+func (*upper) Start(context.Context) error { return nil }
+func (*upper) Close(context.Context) error { return nil }
+
+func (*upper) Run(ctx context.Context, ac plugin.ActionContext) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return ac.SetText(strings.ToUpper(ac.Item().Text))
+}
+```
+
+Actions that accept images or files read source bytes via `ac.(plugin.ActionSource)`: iterate `Parts()`, open with `OpenPart(ctx, i)`, and `Close` when done. Readers are valid only for the current call and are invalidated when the call ends or is cancelled; local file paths are never exposed. The output must still be text (for example, the Wenshushu plugin returns a download link).
+
+## Manifest spec.toml
+
+GitHub installation requires `spec.toml` in the repo root (or `--path` subdirectory), along with `go.mod`/`go.sum` matching `module`:
+
+```toml
+manifest_version = 1
+id = "yourname.emailtag"
+version = "1.0.0"
+api_version = 1
+kind = "go"
+module = "github.com/you/unic-plugin-emailtag"
+package = "./cmd/emailtag"          # Standalone main package
+capabilities = ["processor"]
+events = ["clipboard.captured", "clipboard.received"]
+name = "Email tags"
+summary = "Tag text that contains an email address."
+# settings_schema = "settings.schema.json"
+# settings_sha256 = "<SHA-256 of raw schema file bytes>"
+
+[i18n.en]
+name = "Email tags"
+summary = "Tag text that contains an email address."
+
+[[artifacts]]
+goos = "darwin"
+goarch = "arm64"
+release = "v1.0.0"                       # Release tag in the same repo
+asset = "emailtag_darwin_arm64.tar.gz"   # gzip tar archive
+executable = "emailtag"                  # Executable inside the archive
+sha256 = "<64-char hex SHA-256 of asset>"
+# minimum_os = "13.0"                    # Checked on macOS only
+
+[config]
+tag = "email"
+```
+
+Action plugins declare `[[actions]]` in the manifest, which must match `Spec().Actions` exactly:
+
+```toml
+capabilities = ["action"]
+
+[[actions]]
+id = "upper"
+title = "Uppercase"
+accepts = ["text"]
+placements = ["history.item_menu", "history.toolbar"]
+post_actions = ["copy", "notify"]
+# timeout_ms = 60000
+```
+
+Rules:
+
+- **Manifest and handshake Spec must match** (ID, version, API, capabilities, Actions, `SettingsSHA256`, etc.), otherwise startup fails.
+- At most one `[[artifacts]]` per GOOS/GOARCH pair; the installer never guesses filenames.
+- `name`, `summary`, and `[i18n.*]` are for display only and are not part of the handshake; up to 16 languages, `name` ≤64 chars, `summary` ≤200 chars.
+- Plugin ID matches `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`, ≤128 bytes; `builtin.*` is reserved.
+
+## Settings Schema
+
+Use `plugin/settings` to generate a static JSON Schema from a config struct. The host uses it to render native settings forms, and `Init` uses the same schema to validate and apply defaults. The host **never runs the plugin to obtain the schema**.
+
+### 1. Define Config (`settingsdemo/config.go` excerpt)
+
+```go
+package settingsdemo
+
+//go:generate go run ./cmd/schema settings.schema.json
+
+type Config struct {
+	Prefix  string   `json:"prefix" title:"Label prefix" required:"true" default:"\"clip\"" minLength:"1" maxLength:"32" order:"1" group:"Labels"`
+	Limit   int      `json:"max_length" title:"Maximum length" required:"true" default:"500" minimum:"1" maximum:"10000" order:"2" group:"Labels"`
+	Mode    string   `json:"mode" title:"Text mode" required:"true" default:"\"plain\"" enum:"[\"plain\",\"markdown\"]" optionLabels:"[\"Plain text\",\"Markdown\"]" order:"3" group:"Labels"`
+	Enabled bool     `json:"enabled" title:"Add labels" required:"true" default:"true" order:"4" group:"Labels"`
+	Notes   string   `json:"notes,omitempty" title:"Notes" default:"\"\"" widget:"textarea" maxLength:"2000" order:"5" group:"Advanced"`
+	Token   string   `json:"token,omitempty" title:"Access token" secret:"true" widget:"password" minLength:"1" order:"6" group:"Advanced"`
+	Tags    []string `json:"tags" title:"Extra labels" required:"true" default:"[]" maxItems:"8" order:"7" group:"Advanced"`
+	Retry   Retry    `json:"retry" title:"Retry policy" required:"true" default:"{}" order:"8"`
+}
+
+type Retry struct {
+	Count int     `json:"count" title:"Attempts" required:"true" default:"3" minimum:"0" maximum:"10" order:"1"`
+	Delay float64 `json:"delay" title:"Delay (seconds)" required:"true" default:"0.5" minimum:"0" maximum:"60" order:"2"`
+}
+```
+
+Supported tags: `json`, `required`, `secret` (maps to `writeOnly`), `title`, `description`, `widget`, `group`, `default` (JSON literal; strings must be quoted), `enum`, `optionLabels` (JSON array), `minimum`, `maximum`, `minLength`, `maxLength`, `minItems`, `maxItems`, `order`, `i18n`. Supports primitive types, structs, and slices of primitives; anonymous embedding, pointers, maps, interfaces, `[]byte`, `float32`, and custom marshalers are not supported.
+
+### 2. Generate Schema (`cmd/schema/main.go`)
+
+```go
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/uniclipboard/unic/plugin/settings"
+	"github.com/you/unic-plugin-demo/config" // your config package
+)
+
+func main() {
+	data, err := settings.Generate[config.Config]()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(os.Args[1], append(data, '\n'), 0o644); err != nil {
+		os.Exit(1)
+	}
+}
+```
+
+Run `go generate ./...` to update `settings.schema.json`, commit it to the repo, and set `settings_schema` and `settings_sha256` in the manifest.
+
+### 3. Embed and Validate in the Plugin (`settingsdemo/plugin.go` excerpt)
+
+```go
+//go:embed settings.schema.json
+var schemaJSON []byte
+
+func (*Plugin) Spec() plugin.Spec {
+	digest := sha256.Sum256(schemaJSON)
+	return plugin.Spec{
+		ID: "example.settingsdemo", Version: "1.0.0", APIVersion: 1,
+		Capabilities: []string{plugin.CapProcessor}, SettingsSHA256: hex.EncodeToString(digest[:]),
+	}
+}
+
+func (p *Plugin) Init(_ context.Context, _ plugin.Host, cfg plugin.Config) error {
+	d, err := settings.Parse(schemaJSON)
+	if err != nil {
+		return plugin.ErrInvalidConfig
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return plugin.ErrInvalidConfig
+	}
+	if cfg == nil {
+		raw = []byte("{}")
+	}
+	normalized, err := d.Normalize(raw) // Fills defaults, validates, rejects unknown keys
+	if err != nil {
+		return plugin.ErrInvalidConfig
+	}
+	var next Config
+	if err := json.Unmarshal(normalized, &next); err != nil {
+		return plugin.ErrInvalidConfig
+	}
+	p.config = next // Additional business validation stricter than schema can go here
+	return nil
+}
+```
+
+### Schema Rules Summary
+
+- Root must include `"x-unic-settings-version": 1` and `"type": "object"`, and every object level must set `"additionalProperties": false`.
+- Supported keywords only: `type`, `title`, `description`, `properties`, `required`, `additionalProperties`, `items` (primitives only), `minItems`, `maxItems`, `enum` (≤128 items), `default`, `minimum`, `maximum`, `minLength`, `maxLength` (counted in Unicode characters), `writeOnly` (strings only; `default` and `enum` forbidden), `x-unic-ui`.
+- `x-unic-ui` supports only `widget`, `order`, `group`, `option_labels`, and `i18n`.
+- Limits: schema ≤256 KiB, depth ≤16, nodes ≤512; config ≤64 KiB; numeric magnitude ≤9007199254740991 with no precision loss.
+- Secret fields are omitted from read responses and only report whether they are set; on write, omitting preserves the value and sending `null` clears it.
+
+### Settings Localization
+
+The untagged `title`, `description`, `group`, and `option_labels` are the default text; `x-unic-ui.i18n` overrides them per language:
+
+```go
+Mode string `json:"mode" title:"Mode" required:"true" default:"\"plain\"" enum:"[\"plain\",\"markdown\"]" optionLabels:"[\"Plain text\",\"Markdown\"]" i18n:"{\"zh-CN\":{\"title\":\"处理模式\",\"option_labels\":[\"纯文本\",\"Markdown\"]}}"`
+```
+
+Lookup order: full language tag → primary language (e.g., `pt-BR` → `pt`, case-insensitive) → default text, per field. `option_labels` length must match `enum`. Plugin name and summary translations go in `[i18n.<lang>]` in the manifest; Action titles are currently single-language only.
+
+## Local Debugging
+
+<Steps>
+<Step>
+
+**Unit tests**: Test plugin methods directly, e.g., with a mock `ProcessContext` (see `plugins/examples/emailtag/main_test.go`).
+
+```sh
+go test -race ./...
+```
+
+</Step>
+<Step>
+
+**Install on an isolated node**: After pushing to GitHub, install into a test `UNIC_HOME` without affecting daily data:
+
+```sh
+export UNIC_HOME=/tmp/unic-plugin-dev
+unic plugin install https://github.com/you/unic-plugin-demo --ref main --build --enable
+unic plugin list
+```
+
+`--build` is required when no prebuilt archive exists, and a compatible Go toolchain must be installed locally; the installer only runs `go build -mod=readonly` and never executes repo scripts or `go generate`.
+
+</Step>
+<Step>
+
+**Start the service and verify**: Start or restart `unicd`, copy test content, or trigger an Action. Update settings:
+
+```sh
+unic plugin settings show yourname.demo
+echo '{"values":{"prefix":"clip"}}' | unic plugin settings save yourname.demo -
+```
+
+Saving settings for a running Go plugin requires restarting the service to pick up the new configuration.
+
+</Step>
+<Step>
+
+**Iterate**: Push a new commit, reinstall with `--replace`, and restart the service. Use `unic plugin rollback <id>` to revert to the previous version.
+
+</Step>
+</Steps>
+
+<Callout type="info">
+stderr is discarded and error text does not cross process boundaries, so debugging relies primarily on unit tests and the runtime status in `unic plugin list`. Never log clipboard content for debugging.
+</Callout>
+
+## Publishing and Listing
+
+1. **Standalone repository**: Name it `unic-plugin-<slug>` (like the official `unic-plugin-wenshushu`) and make it public. Keep the implementation, manifest, dependency lockfiles, and release artifacts in this repo.
+2. **Build prebuilt archives**: Run `GOOS=<os> GOARCH=<arch> go build` for each target platform, package into `.tar.gz` (containing the file specified by `executable`), compute SHA-256 (`shasum -a 256 <asset>`), and upload to a GitHub Release.
+3. **Update the manifest**: Add each platform's `[[artifacts]]` (`release`, `asset`, `executable`, `sha256`) to `spec.toml` and commit. The manifest is read from the pinned commit, so the commit corresponding to the Release must contain the updated manifest.
+4. **Verify installation**: Install without `--build` in a clean `UNIC_HOME` to confirm the prebuilt archive is used directly.
+5. **Submit to the marketplace**: Open a PR adding an entry to `registry.json` in [UniClipboard/unic-plugins](https://github.com/UniClipboard/unic-plugins): required `id`, `name`, `author`, `category` (`share`, `text`, `organize`, `sync`), `version`, `summary`, `repository`; optional `official`, `description`, `highlights`, `how_to`, `privacy`, `zero_config`, `ref`, `path`, `build_fallback`, `capabilities`. Marketplace entries do not grant source-build or execution permissions; installation still goes through full verification.
+
+## Common Errors
+
+| Symptom | Cause and Fix |
+|---|---|
+| Install asks for `--build` | No `[[artifacts]]` matches the current GOOS/GOARCH, or the Release asset is missing |
+| Install reports checksum mismatch | `sha256` does not match the asset; recompute and commit the manifest (never falls back to source build) |
+| Handshake fails on startup | `Spec()` does not match `spec.toml` (version, capabilities, Actions, `SettingsSHA256`) |
+| Startup reports `invalid_config` | `Init` rejected the config: unknown key, wrong type, or `[config]` defaults do not match schema |
+| Plugin enabled but not running | `unicd` not restarted; or required settings missing (list shows settings required) |
+| Capability rejected | Declared capabilities do not match implemented interfaces; Actions declared without `action` capability |
+| Processor always times out | Callback does not check `ctx` or makes network requests; processors default to 200ms |
+| Action fails | `SetText` not called or called multiple times; exceeded `TimeoutMS` |
+| Plugin repeatedly becomes unavailable | Crashed more than 3 times in 60s; fix and manually restart the plugin or service |
+| Cannot install same ID | Same ID already installed from another repo; never silently replaced—uninstall first |

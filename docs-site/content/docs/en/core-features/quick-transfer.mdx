@@ -1,0 +1,61 @@
+---
+title: Quick Transfer
+description: Send content once to another device or browser using a 6-digit code or link, without pairing.
+---
+
+Quick Transfer is for exchanging content once with an **unpaired** target, such as someone else's computer or the `try.uniclipboard.app` web page. It creates no device record and establishes no trust relationship.
+
+<Callout>
+Quick Transfer is currently available only in the CLI; there is no desktop UI entry point.
+</Callout>
+
+## Send
+
+Running `unic send` without `--to` starts a Quick Transfer:
+
+```bash
+unic send "hello"
+unic send -f ./photo.jpg
+echo hello | unic send
+```
+
+The command prints a 6-digit **transfer code** and a **link**, then waits for one receiver:
+
+```text
+Code: 482 913
+Link: https://...
+On the other device run: unic recv <code or link>
+```
+
+- The transfer code is valid for up to 5 minutes and serves a single receiver. If the code service is unavailable, only the link is printed, which works the same way.
+- Press `Ctrl+C` to cancel; nothing is delivered.
+- With `--json`, the first line of output contains the link and transfer code.
+
+## Receive
+
+On another device with unic installed:
+
+```bash
+unic recv 482913          # Spaces and hyphens can be omitted
+unic recv 'https://...'   # Or paste the link
+```
+
+Text is printed directly, and files are written to the local inbox directory. Received items enter local history (with origin `"external"`) and can be viewed with `unic history list` or `unic recv list`, but are **not automatically written to the system clipboard**.
+
+The recipient can also open the link directly in a browser to receive.
+
+## Limits
+
+| Item | Limit |
+|---|---|
+| Max transfer size | 20 MiB |
+| Max items per transfer | 50 items |
+| Content types | Text, images, regular files; **folders are not supported** |
+| Direction | One-way from unic to receiver; web push-back is not supported |
+
+- Transfer codes and pairing codes cannot be mixed: `unic recv` rejects pairing codes, and `unic device add` rejects transfer codes.
+- The receiver is still subject to its own local sync master switch, receive policy, and storage limits.
+- "Delivered" means the receiver verified the content hash and acknowledged receipt; it does not guarantee the receiver wrote it to history or the clipboard.
+- Transfer codes, links, and addresses are never written to logs.
+
+For ongoing, two-way sync, use [Devices & Pairing](./devices) instead.

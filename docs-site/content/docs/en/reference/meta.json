@@ -1,0 +1,1 @@
+{ "title": "Configuration & Reference", "icon": "Wrench", "defaultOpen": true, "pages": ["configuration","environment","search-syntax","diagnostics"] }

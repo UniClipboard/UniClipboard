@@ -1,0 +1,328 @@
+---
+title: Lua Plugin Development
+description: Write unic processor, Action, and observer plugins in Lua—manifest format, interfaces, sandbox limits, settings schema, local debugging, and publishing.
+---
+
+This page is self-contained: you can hand the entire page to an AI agent as a complete reference for writing unic Lua plugins. Examples are taken from `plugins/examples/lua/` in the repository.
+
+## Architecture and Constraints
+
+- A Lua plugin is a directory containing a `spec.toml` manifest and an entry script (usually `main.lua`). The script **returns a plugin table**.
+- Plugins run inside an enhanced Lua 5.1 sandbox (based on gopher-lua) within the `unicd` service process, with no separate process.
+- Three capabilities are supported:
+
+| Capability | When it runs | What it can do |
+|---|---|---|
+| `processor` | Automatically when content is copied (`clipboard.captured`) or received (`clipboard.received`) | **Annotate only**: add/remove tags, set expiration, control persistence and sync. **Cannot modify content** |
+| `action` | Only when manually triggered by the user | Read a text history item and produce **a new** text history item (the source item is unchanged) |
+| `observer` | After history commit, update, delete, expire, and similar events | Read-only notifications; receives only the history ID, without content |
+
+- Lua cannot implement sync backends; Lua Actions accept text only.
+- Callbacks run serially; background tasks cannot be created; there is no file, network, process, or `require` access.
+- Tags and expiration are stored in local history only and are not synced to other devices.
+
+## Manifest spec.toml
+
+```toml
+manifest_version = 1             # Fixed at 1
+kind = "lua"
+entry = "main.lua"               # Relative to the plugin directory
+id = "example.lua-urltag"        # Must match the id returned by the script
+version = "1.0.0"                # Semantic version
+api_version = 1                  # Fixed at 1
+capabilities = ["processor"]     # Subset of processor / action / observer
+# Optional:
+events = ["clipboard.captured", "clipboard.received"]
+name = "URL tags"                # Display name, ≤64 chars
+summary = "Tag single links with url and their host."   # Summary, ≤200 chars
+settings_schema = "settings.schema.json"     # Settings form schema (relative path)
+settings_sha256 = "<SHA-256 of raw schema file bytes, required for GitHub release>"
+
+[i18n.en]                        # Display text translations; only name and summary allowed
+name = "URL tags"
+summary = "Tag single links with url and their host."
+
+[config]                         # Default config written when enabled
+tag = "url"
+```
+
+Rules:
+
+- **Plugin ID**: Matches `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`, at most 128 bytes, e.g., `yourname.urltag`. `builtin.*` is reserved for built-in plugins. The same ID cannot be installed as both Lua and Go.
+- `id`, `version`, `api_version`, and `capabilities` in the manifest must match the table returned by the script.
+- `name`, `summary`, and `[i18n.*]` are plain text, not part of plugin identity, and do not require a restart when changed. Language keys such as `en`, `ja`, `pt-BR` (up to 16 languages); invalid keys, unknown fields, excessive length, or control characters cause the entire manifest to be rejected.
+- When `events` is omitted: `processor` subscribes to captured + received; `observer` subscribes to all events.
+
+## Plugin Table Interface
+
+```lua
+return {
+  -- Identity (required, must match spec.toml)
+  id = "yourname.demo", version = "1.0.0", api_version = 1,
+  capabilities = { "processor", "action", "observer" },
+
+  -- action capability only: static declaration
+  actions = { {
+    id = "title",                       -- [a-z][a-z0-9_-]*, ≤64 bytes, unique within plugin
+    title = "Title Case",               -- 1..64 bytes plain text (single language)
+    accepts = { "text" },               -- Lua supports text only
+    placements = { "history.item_menu", "history.toolbar" }, -- "quick_panel" also available
+    post_actions = { "copy", "notify" },-- copy/notify/present/select/none (none is mutually exclusive)
+  } },
+
+  -- Lifecycle (all optional)
+  init  = function(host, config) end,   -- Strictly validate config; no network
+  start = function() end,
+  close = function() end,
+
+  process    = function(ctx) end,       -- processor
+  run_action = function(ctx) end,       -- action
+  on_event   = function(ev) end,        -- observer
+}
+```
+
+### init(host, config)
+
+- `config` is the configuration table (from settings or `[config]` defaults). **Unknown keys must raise an error**: `error("unknown config key")`.
+- `host:notify(msg)` shows a short notification to the user (≤512 bytes, rate-limited by the host).
+
+### process(ctx)
+
+| Field / Method | Description |
+|---|---|
+| `ctx.item.id` | Processing item ID (not necessarily the history ID) |
+| `ctx.item.type` | `text`, `image`, `files`, `directory`, `directory_reference` |
+| `ctx.item.text` | Text content (read-only; empty string for non-text) |
+| `ctx.item.formats` | List of formats |
+| `ctx.item.files` | `{ {name=, size=}, ... }`, without paths |
+| `ctx.item.origin` | `{kind=, device_id=, plugin_id=}`; kind is `local_system`, `remote_device`, `explicit`, or `action` |
+| `ctx.policy` | `{persist=, sync=, tags={...}, expire_ms=}` read-only snapshot |
+| `ctx:add_tag(s)` / `ctx:remove_tag(s)` | Up to 32 tags, each ≤64 UTF-8 bytes |
+| `ctx:set_persist(bool)` | Whether to save to history |
+| `ctx:set_sync(bool)` | Whether to sync to other devices |
+| `ctx:set_expire(ms)` | Integer milliseconds (e.g., `600000` for 10 minutes), must be > 0, strings like `"30s"` are not accepted; measured from commit time |
+| `ctx:notify(msg)` | Short notification |
+
+If any method fails or the callback throws an error, **all changes from that callback are rolled back**.
+
+### run_action(ctx)
+
+- `ctx.action` is the triggered Action ID; `ctx.item` is as above (read-only).
+- Must call `ctx:set_text(s)` **exactly once**; the result becomes a new history item with `origin=action`, and the host then copies or notifies according to `post_actions`.
+- `ctx:notify(msg)` is available.
+
+### on_event(ev)
+
+`ev.kind` (such as `clipboard.committed`, `clipboard.updated`, `clipboard.deleted`, `clipboard.expired`, `clipboard.pasted`, `app.started`, `app.shutdown`), `ev.item_id` (empty for `app.*`), `ev.at_ms`. Read-only.
+
+## Sandbox and Resource Limits
+
+| Item | Default Limit |
+|---|---|
+| Single execution (top-level eval, init, process, etc.) | 200ms, 1,000,000 VM instructions |
+| Native function work | 8 MiB scanned/copied bytes per callback, 1,000,000 native iterations |
+| Source code | 256 KiB; syntax nesting ≤128 |
+| Single string | 1 MiB |
+| Cumulative logical allocation per state | 16 MiB (not reclaimed on GC) |
+| Call stack | 128 frames |
+
+- Available globals: `assert error ipairs pairs next pcall xpcall select tonumber tostring type unpack`; `string`, `table`, and `math` provide bounded allowlisted functions; `utf8` has only `utf8.valid(s)`, `utf8.len(s)`, and `utf8.sub(s, i, j)` (1-based inclusive).
+- **Unavailable**: `os io debug package coroutine require load loadstring dofile print collectgarbage getmetatable setmetatable rawget rawset`, etc.
+- Timeouts or budget exhaustion cannot be caught by `pcall`. **Any execution failure destroys the plugin's Lua state** and marks it unavailable until reloaded successfully.
+- Pattern matching uses Lua patterns (not regex); check string length before matching on large text to avoid exceeding the budget.
+
+## Complete Examples
+
+### Processor: URL Tags (`plugins/examples/lua/urltag`)
+
+```lua
+-- Tags text that is a single http(s) link, and records its host as a second tag.
+local tag = "url"
+
+return {
+  id = "example.lua-urltag",
+  version = "1.0.0",
+  api_version = 1,
+  capabilities = { "processor" },
+
+  init = function(host, config)
+    for key in pairs(config) do
+      if key ~= "tag" then error("unknown config key") end
+    end
+    if config.tag ~= nil then tag = config.tag end
+  end,
+
+  process = function(ctx)
+    if ctx.item.type ~= "text" then return end
+    local text = ctx.item.text:match("^%s*(.-)%s*$")
+    if text:find("%s") then return end
+    local host = text:match("^https?://([^/%?#:]+)")
+    if host then
+      ctx:add_tag(tag)
+      ctx:add_tag("host:" .. host:lower())
+    end
+  end,
+}
+```
+
+### Processor: Do Not Sync Sensitive Content, Expire in 10 Minutes (`sensitive`)
+
+```lua
+local ten_minutes = 10 * 60 * 1000
+
+local function looks_secret(text)
+  if #text > 4096 then return false end
+  return text:find("%-%-%-%-%-BEGIN [%u ]*PRIVATE KEY%-%-%-%-%-") ~= nil
+      or text:find("[Pp]assword%s*[:=]") ~= nil
+      or text:find("sk%-[%w]+") ~= nil
+end
+
+return {
+  id = "example.lua-sensitive",
+  version = "1.0.0",
+  api_version = 1,
+  capabilities = { "processor" },
+  process = function(ctx)
+    if ctx.item.type ~= "text" then return end
+    if looks_secret(ctx.item.text) then
+      ctx:add_tag("sensitive")
+      ctx:set_sync(false)
+      ctx:set_expire(ten_minutes)
+    end
+  end,
+}
+```
+
+<Callout type="warn">
+The default error policy `continue` allows the item to sync if the plugin errors. If a plugin is used to prevent sensitive content from leaving the device, set its error policy to `block_sync` (see [Configuration Reference](../reference/configuration)).
+</Callout>
+
+### Action: Title Case (`textcase`)
+
+```lua
+return {
+  id = "example.lua-textcase",
+  version = "1.0.0",
+  api_version = 1,
+  capabilities = { "action" },
+  actions = { { id = "title", title = "Title Case", accepts = { "text" },
+    placements = { "history.item_menu", "history.toolbar" },
+    post_actions = { "copy", "notify" } } },
+  run_action = function(ctx)
+    local out = ctx.item.text:lower():gsub("(%a)([%w']*)", function(a, b) return a:upper() .. b end)
+    ctx:set_text(out)
+  end,
+}
+```
+
+Corresponding `spec.toml`:
+
+```toml
+manifest_version = 1
+kind = "lua"
+entry = "main.lua"
+id = "example.lua-textcase"
+version = "1.0.0"
+api_version = 1
+capabilities = ["action"]
+```
+
+## Settings Schema and Localization
+
+To generate a settings form on desktop, place a JSON Schema file in the plugin directory and declare `settings_schema` in the manifest (for GitHub releases, also declare `settings_sha256`, the SHA-256 of the raw schema file bytes, e.g., via `shasum -a 256 settings.schema.json`).
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-unic-settings-version": 1,
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "tag": {
+      "type": "string",
+      "title": "Tag name",
+      "default": "url",
+      "minLength": 1,
+      "maxLength": 64,
+      "x-unic-ui": {
+        "widget": "input",
+        "order": 1,
+        "i18n": { "zh-CN": { "title": "标签名" } }
+      }
+    }
+  },
+  "required": ["tag"]
+}
+```
+
+Only a subset of JSON Schema is supported: `type` (single type), `title`, `description`, `properties`, `required`, `additionalProperties` (must be `false` at every object level), `items`, `minItems`, `maxItems`, `enum`, `default`, `minimum`, `maximum`, `minLength`, `maxLength`, `writeOnly` (secret strings), and `x-unic-ui`. `$ref`, `pattern`, `format`, `oneOf`, etc. are not supported. `x-unic-ui` supports `widget` (`input`, `inputnumber`, `switch`, `select`, `textarea`, `password`, `group`, `list`), `order`, `group`, `option_labels`, and `i18n`. The full rules are the same as [Settings Schema](./develop-go#settings-schema) on the Go plugin page.
+
+- When a required field has no value, the plugin stays stopped until valid values are saved in settings.
+- Saving settings on a running Lua plugin hot-reloads it: the new config runs `init`/`start` first and switches over only if it succeeds; otherwise the old instance is kept.
+- Enter secret fields (`writeOnly`) through the settings UI or `unic plugin settings save`; do not put them in `config.toml`.
+
+## Local Debugging
+
+<Steps>
+<Step>
+
+**Place the plugin directory**. Run `unic plugin list` to see the plugin directory location; place Lua plugins under `$UNIC_HOME/plugins/lua/<name>/`, containing `spec.toml` and `main.lua`.
+
+</Step>
+<Step>
+
+**Enable and restart the service**:
+
+```sh
+unic plugin list                    # Your plugin should appear (disabled)
+unic plugin enable yourname.demo
+# Restart unicd to take effect
+```
+
+`unic plugin enable` writes to different lists in `config.toml` depending on the plugin source:
+
+| Plugin Source | Written To |
+|---|---|
+| Local plugin placed manually in `plugins/lua/` | `[plugins] lua = ["yourname.demo"]` |
+| Plugin installed from GitHub via `unic plugin install` (commit recorded) | `[plugins] order = ["yourname.demo"]` |
+
+`unic plugin disable` removes the ID from both lists. If the plugin declares a settings schema, required settings must be filled in before enabling. Both methods require restarting `unicd` to take effect.
+
+</Step>
+<Step>
+
+**Edit and reload**: Saving the script triggers an atomic hot-reload (provided ID, version, API version, and capabilities are unchanged); changing the enabled list requires a restart.
+
+</Step>
+<Step>
+
+**Verify**: Copy some test text and check tags in history; trigger Actions from the history item menu or toolbar. When a plugin is unavailable, `unic plugin list` shows its status. You can start an isolated test node with `UNIC_HOME=/tmp/unicA` to avoid affecting daily data.
+
+</Step>
+</Steps>
+
+## Publishing and Listing
+
+1. Create a separate public GitHub repository named `unic-plugin-<slug>` (e.g., `unic-plugin-urltag`). The repo name is a distribution convention and does not replace the plugin ID.
+2. Put `spec.toml`, the entry script (and schema) at the repo root, or in a subdirectory and pass `--path` during installation. One directory per plugin; dependencies on other plugins or install scripts are not supported.
+3. Tag a release. Users install with:
+
+   ```sh
+   unic plugin install https://github.com/you/unic-plugin-urltag --ref v1.0.0 --enable
+   ```
+
+   The installer pins the ref to a specific commit; use `--replace` to upgrade, and `unic plugin rollback <id>` to roll back.
+4. Submit to the marketplace: open a PR adding an entry to `registry.json` in [UniClipboard/unic-plugins](https://github.com/UniClipboard/unic-plugins). Required fields: `id`, `name`, `author`, `category` (one of `share`, `text`, `organize`, `sync`), `version`, `summary`, `repository`; optional: `official`, `description`, `highlights`, `how_to`, `privacy`, `zero_config`, `ref`, `path`, `build_fallback`, `capabilities`. The entire registry must be ≤512 KiB and ≤256 entries, with unique IDs.
+
+## Common Errors
+
+| Symptom | Cause and Fix |
+|---|---|
+| Plugin not listed | Directory is not under `plugins/lua/`, or `spec.toml` is missing |
+| Enabled but not running | `unicd` has not been restarted; or required settings are missing |
+| Config error on startup | `init` encountered an unknown key or wrong type; manifest `[config]` does not match schema |
+| Manifest rejected | Invalid `id` format, mismatch with script return value, `name`/`summary` too long, or invalid i18n key |
+| Plugin becomes unavailable | Timeout, instruction/memory budget exceeded, or runtime error; fix the script and save to reload |
+| Action not shown | Missing `action` capability or `actions` declaration; `accepts` is not `{"text"}`; `placements`/`post_actions` is empty |
+| Action fails | `ctx:set_text` not called or called more than once |
+| Error using `print`, `os.time`, `require` | Unavailable in sandbox; use `ctx:notify` or remove the dependency |

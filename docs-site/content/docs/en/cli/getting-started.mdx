@@ -1,0 +1,93 @@
+---
+title: CLI Quickstart
+description: Send and receive content, pair devices, and browse history with unic.
+---
+
+Before you begin, complete [installation and initial setup](./installation#initial-setup).
+
+## On-Demand Service
+
+Most commands require the background service `unicd`. If no service is running, `unic` temporarily starts one from the same directory and stops it automatically after the last command using it finishes. A `unicd` you started yourself or the Desktop app's service is never stopped by `unic`.
+
+The temporary service only exists while commands are running, so **content cannot be received between commands**. To stay online continuously, run `unicd` as a daemon or keep the Desktop app running; see [Headless Deployment](./headless-deployment).
+
+## One-Off Transfer Without Pairing
+
+```sh
+unic send "hello"      # prints a 6-digit code and link, waits for one receiver
+```
+
+On another device:
+
+```sh
+unic recv 482913       # you can also paste the link
+```
+
+The receiver can also be `try.uniclipboard.app` in a browser. One-off transfers do not establish a device or trust relationship; each transfer is limited to 20 MiB and 50 items, and the 6-digit code is valid for up to 5 minutes. One-off transfers only support text, images, and regular files, not directories.
+
+## Pair Devices
+
+<Steps>
+<Step>
+
+Display a pairing code on device A (the command keeps the service running for a limited window and prints hints to stderr):
+
+```sh
+unic device add
+```
+
+</Step>
+<Step>
+
+Enter that code (or device address) on device B:
+
+```sh
+unic device add 123456
+```
+
+</Step>
+<Step>
+
+Devices joining via a pairing code always require user approval. List pending devices, verify the fingerprint shown on the peer device, and approve:
+
+```sh
+unic device list
+unic device approve <id> '<fingerprint-shown-on-peer>'
+```
+
+</Step>
+</Steps>
+
+## Send to Paired Devices
+
+```sh
+unic send --to all "hello"            # all paired devices
+unic send --to laptop "hello"         # by device name or ID
+echo hello | unic send --to all       # read from stdin
+unic send --to all -f report.pdf      # file or directory
+unic send --to all --png shot.png     # PNG image
+```
+
+`send --to` waits for the send operation to finish; if the content is committed to history but sending did not fully complete, the exit code is `4`.
+
+## Browse History
+
+```sh
+unic h list                 # newest first, 20 items by default
+unic h show                 # print content of the newest item
+unic h show @2              # 2nd newest item
+unic h tag @1 --add work
+unic h delete @3
+```
+
+`@N` refers to the Nth newest item; you can also use an item ID directly.
+
+## Check Status and Settings
+
+```sh
+unic status                 # local device and peers
+unic config                 # current settings
+unic config set sync.directories.automatic true
+```
+
+See the full command list in [Command Reference](./reference).

@@ -28,6 +28,7 @@ func helperSpec() plugin.Spec {
 			{ID: "upper", Title: "Upper", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}},
 			{ID: "big", Title: "Big", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify}},
 			{ID: "none", Title: "None", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostNone}},
+			{ID: "probe-env", Title: "Probe Env", Accepts: []string{"text"}, Placements: []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar}, PostActions: []string{plugin.ActionPostNone}},
 		}}
 }
 
@@ -78,6 +79,19 @@ func (h *helperPlugin) Run(_ context.Context, ac plugin.ActionContext) error {
 		return ac.SetText(strings.ToUpper(ac.Item().Text))
 	case "big":
 		return ac.SetText(strings.Repeat("0123456789abcdef", 3<<16))
+	case "probe-env":
+		spool, err := os.CreateTemp("", "unic-plugin-probe-*")
+		if err != nil {
+			return err
+		}
+		name := spool.Name()
+		_ = spool.Close()
+		_ = os.Remove(name)
+		return ac.SetText(strings.Join([]string{
+			"temp=" + filepath.Dir(name),
+			"https_proxy=" + os.Getenv("HTTPS_PROXY"),
+			"secret=" + os.Getenv("UNIC_TEST_UNRELATED_SECRET"),
+		}, "\n"))
 	}
 	return nil // "none": forgets to set a result
 }

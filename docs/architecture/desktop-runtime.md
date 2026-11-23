@@ -45,7 +45,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: bf3fcd923e9d665320f62fb4f918c638d157c85d
+verified: bca07b39ac69c121d38bdb15426b498999e4e459
 ---
 # Desktop configuration and received files
 

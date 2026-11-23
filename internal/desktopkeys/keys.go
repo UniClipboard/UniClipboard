@@ -102,13 +102,8 @@ var punctuationNames = map[string]string{
 }
 
 func Accelerator(stroke string) string {
-	mods, key, ok := strings.Cut(stroke, "+")
-	if ok {
-		last := strings.LastIndexByte(stroke, '+')
-		mods, key = stroke[:last+1], stroke[last+1:]
-	} else {
-		mods, key = "", stroke
-	}
+	keyStart := strings.LastIndexByte(stroke, '+') + 1
+	mods, key := stroke[:keyStart], stroke[keyStart:]
 	for symbol, name := range punctuationNames {
 		if key == name {
 			key = symbol
@@ -129,7 +124,7 @@ func Normalize(binding string) (string, error) {
 		if name, ok := punctuationNames[key]; ok {
 			key = name
 		}
-		if !(len(key) == 1 && strings.Contains("abcdefghijklmnopqrstuvwxyz0123456789", key)) && !slices.Contains(NamedKeys, key) {
+		if (len(key) != 1 || !strings.Contains("abcdefghijklmnopqrstuvwxyz0123456789", key)) && !slices.Contains(NamedKeys, key) {
 			return "", fmt.Errorf("unsupported shortcut key %q", key)
 		}
 		seen := map[string]bool{}

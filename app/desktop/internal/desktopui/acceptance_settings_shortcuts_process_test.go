@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/desktopkeys"
 	api "github.com/uniclipboard/unic/internal/localapi"

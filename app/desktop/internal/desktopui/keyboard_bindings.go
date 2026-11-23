@@ -200,32 +200,30 @@ func (d *viewState) bindKeyboardCommands(c *ui.Context) {
 	}
 	bindings := shortcutCommands(overrides, commands)
 	if d.page == "history" {
-		for _, cmd := range []shortcutCommand{
-			{first: shortcutStroke{ui.Cmd, ui.KeyP}, run: d.togglePin},
-			{first: shortcutStroke{key: ui.KeyC}, run: func() {
+		bindings = append(bindings,
+			shortcutCommand{first: shortcutStroke{ui.Cmd, ui.KeyP}, run: d.togglePin},
+			shortcutCommand{first: shortcutStroke{key: ui.KeyC}, run: func() {
 				if id := d.list.Hovered(d.layout == "grid"); id != "" {
 					d.selectEntry(id)
 					d.useEntry()
 				}
 			}},
-			{first: shortcutStroke{key: ui.KeyD}, run: func() {
+			shortcutCommand{first: shortcutStroke{key: ui.KeyD}, run: func() {
 				if id := d.list.Hovered(d.layout == "grid"); id != "" {
 					d.requestDelete([]string{id})
 				}
 			}},
-			{first: shortcutStroke{key: ui.KeySpace}, run: func() {
+			shortcutCommand{first: shortcutStroke{key: ui.KeySpace}, run: func() {
 				if item := d.current(); item != nil && (item.kind == desktopkit.KindImage || item.image != nil) {
 					d.quickLook = true
 				}
 			}},
-			{first: shortcutStroke{ui.Cmd | ui.Alt, ui.KeyI}, run: func() {
+			shortcutCommand{first: shortcutStroke{ui.Cmd | ui.Alt, ui.KeyI}, run: func() {
 				if d.layout == "grid" && d.current() != nil {
 					d.inspector = !d.inspector
 				}
 			}},
-		} {
-			bindings = append(bindings, cmd)
-		}
+		)
 	}
 	seen := map[shortcutStroke]bool{}
 	for _, command := range bindings {

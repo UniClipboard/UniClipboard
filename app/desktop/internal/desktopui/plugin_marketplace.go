@@ -364,7 +364,7 @@ func (d *viewState) pluginsMarketplaceWorkspace(c *ui.Context, k desktopkit.Kit)
 			// Left Column: L1 neutral canvas with plugin cards + sticky bottom developer footer.
 			ui.Column(c.Key("market-left")).Grow(1).MinWidth(0).MinHeight(0).Background(deviceCanvasBg(k)).Children(func() {
 				k.Scroll(c.Key("market-cards-scroll")).Role(ui.RoleRegion).Label(d.tr("插件市场")).Grow(1).MinHeight(0).Children(func() {
-					ui.Column(c.Key("market-cards-pad")).Padding(16, 18, 20, 18).Gap(12).MinWidth(0).Children(func() {
+					ui.Column(c.Key("market-cards-pad")).Padding(16, 18, 20, 18).Gap(10).MinWidth(0).Children(func() {
 						if len(filtered) == 0 {
 							ui.Column(c.Key("market-empty")).Padding(32, 20).Radius(13).Background(deviceCardBg(k)).Border(1, deviceCardBorder(k)).AlignItems(ui.Center).Gap(6).Children(func() {
 								k.Text(c.Key("t"), d.tr("无匹配插件"), desktopkit.TextProps{Emphasized: true})
@@ -372,18 +372,9 @@ func (d *viewState) pluginsMarketplaceWorkspace(c *ui.Context, k desktopkit.Kit)
 							})
 							return
 						}
-						// 2-column card rows matching Obsidian / prototype/plugins.html.
-						for i := 0; i < len(filtered); i += 2 {
-							ui.Row(c.Key(fmt.Sprintf("crow-%d", i))).Gap(12).AlignItems(ui.Stretch).MinWidth(0).Children(func() {
-								for j := i; j < i+2; j++ {
-									if j >= len(filtered) {
-										ui.Box(c.Key("spacer")).Grow(1).Basis(0)
-										continue
-									}
-									entry := filtered[j]
-									d.marketplaceCard(c.Key("card-"+entry.ID), k, entry, selected != nil && selected.ID == entry.ID)
-								}
-							})
+						// Single-column rectangular card list (one plugin per row).
+						for _, entry := range filtered {
+							d.marketplaceCard(c.Key("card-"+entry.ID), k, entry, selected != nil && selected.ID == entry.ID)
 						}
 					})
 				})
@@ -418,6 +409,10 @@ func (d *viewState) marketplaceCard(c *ui.Context, k desktopkit.Kit, entry api.M
 	canUpdate := isInstalled && entry.Version != "" && entry.Version != inst.Version
 	icon, tone := pluginIconForCategory(entry.Category, entry.Capabilities)
 
+	card := ui.ButtonBase(c).Label(entry.Name).FillWidth().MinWidth(0).Radius(12).Padding(13, 15).
+		FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
+	card.AccessSelected(isSelected)
+
 	bg := deviceCardBg(k)
 	border := deviceCardBorder(k)
 	borderW := float32(1)
@@ -425,39 +420,48 @@ func (d *viewState) marketplaceCard(c *ui.Context, k desktopkit.Kit, entry api.M
 		bg, _ = deviceAccentSurface(k)
 		border = k.Color("accent-500")
 		borderW = 1.5
+	} else if card.Hovered() {
+		border = deviceCardBorderHover(k)
 	}
+	card.Background(bg).Border(borderW, border)
 
-	card := ui.ButtonBase(c).Label(entry.Name).Grow(1).Basis(0).MinWidth(0).Radius(13).Background(bg).Border(borderW, border).Padding(13, 14).Children(func() {
-		ui.Column(c.Key("body")).FillWidth().Gap(9).MinWidth(0).Children(func() {
-			ui.Row(c.Key("top")).Gap(10).AlignItems(ui.Start).Children(func() {
-				pluginIconTile(c.Key("ico"), k, icon, tone, 36)
-				ui.Column(c.Key("title-col")).Grow(1).MinWidth(0).Gap(2).Children(func() {
-					ui.Row(c.Key("title-row")).Gap(5).AlignItems(ui.Center).Wrap().Children(func() {
+	card.Children(func() {
+		ui.Row(c.Key("row")).FillWidth().Gap(12).AlignItems(ui.Start).MinWidth(0).Children(func() {
+			pluginIconTile(c.Key("ico"), k, icon, tone, 40)
+			ui.Column(c.Key("body")).Grow(1).MinWidth(0).Gap(5).Children(func() {
+				ui.Row(c.Key("top")).FillWidth().Gap(8).AlignItems(ui.Center).MinWidth(0).Children(func() {
+					ui.Row(c.Key("title-row")).Grow(1).MinWidth(0).Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
 						k.Text(c.Key("name"), entry.Name, desktopkit.TextProps{Emphasized: true})
 						if entry.Official {
 							k.Tag(c.Key("off"), d.tr("官方"), desktopkit.TagProps{Color: "blue"})
 						}
 					})
-					k.Text(c.Key("author"), entry.Author, footnote)
-				})
-			})
-			k.Text(c.Key("summary"), entry.Summary, secondary).Grow(1)
-			ui.Box(c.Key("div")).Height(1).FillWidth().Background(k.Color("separator-border"))
-			ui.Row(c.Key("foot")).Justify(ui.SpaceBetween).AlignItems(ui.Center).Children(func() {
-				k.Text(c.Key("ver"), "v"+entry.Version, footnote)
-				if canUpdate {
-					k.Tag(c.Key("st"), d.tr("可更新"), desktopkit.TagProps{Color: "green"})
-				} else if isInstalled {
-					lbl := d.tr("已安装")
-					if inst.Configured {
-						lbl = d.tr("已启用")
+					if canUpdate {
+						k.Tag(c.Key("st"), d.tr("可更新"), desktopkit.TagProps{Color: "green"}).Shrink(0)
+					} else if isInstalled {
+						lbl := d.tr("已安装")
+						if inst.Configured {
+							lbl = d.tr("已启用")
+						}
+						k.Tag(c.Key("st"), lbl, desktopkit.TagProps{Color: "green"}).Shrink(0)
+					} else if entry.ZeroConfig {
+						k.Tag(c.Key("zc"), d.tr("免配置"), desktopkit.TagProps{Color: "gray"}).Shrink(0)
 					}
-					k.Tag(c.Key("st"), lbl, desktopkit.TagProps{Color: "green"})
-				} else if entry.ZeroConfig {
-					k.Text(c.Key("zc"), d.tr("免配置"), footnote)
-				} else {
-					k.Text(c.Key("cat"), d.categoryLabel(entry.Category), footnote)
-				}
+				})
+				k.Text(c.Key("summary"), entry.Summary, secondary)
+				ui.Row(c.Key("foot")).FillWidth().Gap(8).Justify(ui.SpaceBetween).AlignItems(ui.Center).MinWidth(0).Children(func() {
+					meta := entry.Author
+					if entry.Version != "" {
+						if meta != "" {
+							meta += " · "
+						}
+						meta += "v" + entry.Version
+					}
+					k.Text(c.Key("meta"), meta, footnote).Grow(1).MinWidth(0)
+					if catLabel := d.categoryLabel(entry.Category); catLabel != "" {
+						k.Text(c.Key("cat"), catLabel, footnote).Shrink(0)
+					}
+				})
 			})
 		})
 	})

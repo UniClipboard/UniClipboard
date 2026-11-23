@@ -19,7 +19,19 @@ func (k Kit) Button(c *ui.Context, label string, p ButtonProps) ui.Element {
 }
 
 // dressButton retains toggle/menu behavior while reusing the public Button paint.
+// Subtle buttons use the shared quiet neutral presentation (transparent at rest) rather
+// than BoardUI's accent-tinted ghost variant.
 func (k Kit) dressButton(c *ui.Context, e ui.Element, label string, p ButtonProps, on bool) ui.Element {
+	if p.Variant == Subtle && !on {
+		return k.dressQuietButton(c, e, label, quietButtonProps{
+			Size:     p.Size,
+			Icon:     p.Icon,
+			Label:    p.Label,
+			Tooltip:  p.Tooltip,
+			Disabled: p.Disabled,
+			Busy:     p.Busy,
+		})
+	}
 	size := "medium"
 	if p.Size == SizeSmall {
 		size = "small"
@@ -30,8 +42,6 @@ func (k Kit) dressButton(c *ui.Context, e ui.Element, label string, p ButtonProp
 		variant = "primary"
 	case Destructive:
 		variant = "danger"
-	case Subtle:
-		variant = "ghost"
 	}
 	if on {
 		variant = "primary"

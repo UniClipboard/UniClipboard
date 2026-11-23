@@ -282,7 +282,7 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 		bar.DragWindow()
 		bar.Children(func() {
 			if detail {
-				back := k.Button(c.Key("split-back"), p.BackLabel, ButtonProps{Variant: Subtle, Icon: IconBack})
+				back := k.Button(c.Key("split-back"), p.BackLabel, ButtonProps{Variant: Subtle, Size: SizeSmall, Icon: IconBack})
 				if back.Clicked() {
 					*p.DetailOpen = false
 				}

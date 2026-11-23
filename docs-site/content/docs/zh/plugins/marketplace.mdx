@@ -1,0 +1,104 @@
+---
+title: 插件市场
+description: 在桌面端浏览、安装、启用、更新和卸载 unic 插件，以及对应的命令行操作。
+---
+
+unic 的插件分三类：
+
+- **处理器**（processor）：在复制或收到内容时自动打标签、设置过期、决定是否同步。它不会改动你复制的内容。
+- **Action**：只有你手动点击时才运行，把一条历史转换成一条新的文本历史（例如“转成大写”“生成临时分享链接”）。
+- **同步后端**（sync_backend）：把内容同步到 unic 设备之外的地方，例如[外部渠道](./external-channels)。
+
+插件可以用 Lua（轻量脚本，运行在沙箱里）或 Go（独立程序）编写。开发方法见 [Lua 插件开发](./develop-lua) 和 [Go 插件开发](./develop-go)。
+
+<Callout type="warn">
+Go 插件以独立进程运行在你的电脑上，进程隔离**不等于**系统权限沙箱。只安装你信任的来源。
+</Callout>
+
+## 桌面端插件市场
+
+打开桌面端 **设置 → 插件**：
+
+- 顶部是 **插件市场** 入口，可按名称搜索，或按场景分类浏览（全部、官方推荐、分享与导出、文本效率、智能整理、同步扩展）。
+- 下方分为 **已安装插件** 和 **内置功能** 两个列表。
+- 点击插件可查看简介、使用步骤和隐私说明，并进行安装、启用、设置、更新、卸载。
+- 不需要配置的插件（例如文叔叔临时分享）不会显示空的设置表单。
+- 执行顺序、出错处理策略、来源信息、回滚和“从链接手动安装（开发者）”收在右上角的更多菜单和详情折叠区里。
+
+插件名和简介会按界面语言显示（插件提供了对应翻译时）；找不到翻译时依次回退到市场条目名称和插件 ID。
+
+<Callout type="info">
+插件市场目前只在桌面端提供，移动端暂不支持。
+</Callout>
+
+### 市场目录从哪里来
+
+市场读取一个静态目录文件：
+
+```text
+https://raw.githubusercontent.com/UniClipboard/unic-plugins/main/registry.json
+```
+
+- 获取成功并校验通过后缓存到 `$UNIC_HOME/plugins/marketplace-cache.json`，有效期 15 分钟；手动刷新会忽略缓存时间。
+- 网络不可用或目录无效时，先使用本地缓存（即使已过期），再回退到应用内置的官方目录。界面会标明当前来源（远端、缓存或内置）。
+- 环境变量 `UNIC_PLUGIN_REGISTRY_URL` 可以替换目录地址；设为空、`off` 或 `none` 时不联网，只用内置目录。远端地址必须是 HTTPS（仅本机回环测试服务器允许 HTTP）。
+
+市场条目只是推荐信息，**不会**绕过安装器的任何校验。
+
+## 安装与生效规则
+
+无论从市场还是命令行安装，都走同一套安装器：
+
+1. 安装时把仓库的分支或 tag 锁定到一个具体 commit，并读取该 commit 中的 `spec.toml` 清单。
+2. Lua 插件直接下载脚本并检查语法。
+3. Go 插件优先下载当前系统和架构对应的预编译包，并校验 SHA-256。没有匹配的预编译包时默认失败；只有显式选择“从源码构建”（命令行 `--build`）才会用本机 Go 工具链构建。摘要不符或包损坏时直接失败，不会改用源码构建掩盖问题。
+4. 所有下载和构建都在临时目录完成，校验全部通过后才原子替换；失败时保留当前版本和配置。
+5. **首次安装默认不启用**。启用、停用、卸载、回滚都在 `unicd` 服务重启后生效。
+
+桌面端对只提供 Action 或外部渠道后端的 Go 插件提供 **启动** 操作，可以不重启服务直接运行；缺少必填设置时，首次保存设置后自动启动。
+
+安装、卸载和回滚都不会删除你的剪贴板历史和插件设置。
+
+## 命令行操作
+
+不使用桌面端时，用 `unic plugin` 管理插件（完整参数见 [CLI 命令参考](../cli/reference)）：
+
+```sh
+# 从 GitHub 安装（默认分支 HEAD）
+unic plugin install https://github.com/owner/unic-plugin-demo
+# 指定分支、tag 或 commit，以及仓库内子目录
+unic plugin install https://github.com/owner/repo --ref v1.2.0 --path plugins/demo
+# 没有预编译包时允许源码构建；安装后立即启用；替换已安装的版本
+unic plugin install https://github.com/owner/repo --build --enable --replace
+
+unic plugin list                 # 已安装/已配置的插件及运行状态
+unic plugin enable  <id>         # 下次重启服务时启用
+unic plugin disable <id>         # 下次重启服务时停用
+unic plugin uninstall <id>       # 移除 GitHub 安装
+unic plugin rollback  <id>       # 切回上一个已安装的 commit
+
+unic plugin settings show <id>               # 查看设置 Schema 和当前值（秘密字段已隐藏）
+unic plugin settings save <id> values.json   # 保存设置，文件内容为 {"values":{...}}
+```
+
+`unic plugin list` 会区分磁盘上的版本和实际运行的版本，并提示是否需要重启。
+
+安装地址只接受 GitHub HTTPS 仓库地址（可带 `.git`），不要粘贴 `tree/...` 或 `blob/...` 网页地址；子目录用 `--path`。目前只支持公共仓库。
+
+## 示例：文叔叔临时分享
+
+官方插件 `unic.wenshushu` 提供“通过文叔叔临时分享”Action：把选中的文本、图片或文件上传到文叔叔，生成一个临时下载链接作为新的文本历史。只有你主动点击时才上传，不支持文件夹。
+
+在桌面端插件市场中直接安装并启用即可；命令行方式：
+
+```sh
+unic plugin install https://github.com/UniClipboard/unic-plugin-wenshushu
+unic plugin enable unic.wenshushu
+# 然后重启 unicd
+```
+
+## 出错时会怎样
+
+- 插件崩溃后按 1、2、4 秒退避自动重启，60 秒内最多 3 次；超过后标记为不可用，需要手动重新启动。
+- 处理器出错或超时时，默认（`continue`）丢弃这个插件对这条内容的标签和设置，内容照常保存和同步。如果插件的作用是阻止敏感内容同步，可以把出错策略改为 `block_sync`，见 [配置参考](../reference/configuration)。
+- 插件不会收到你的设备地址或配对信息；它的错误文本和输出也不会写进日志。

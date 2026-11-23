@@ -1,0 +1,77 @@
+---
+title: 标签与 Action
+description: 自动分类标签、自定义标签，以及由你主动触发的内容变换 Action。
+---
+
+unic 在保存内容时自动打标签，你也可以手动管理标签。需要改写内容时，使用由你主动触发的 **Action**，结果保存为一条新历史，原条目保持不变。
+
+## 自动标签
+
+内置分类器会在复制、显式发送、Action 结果和接收内容上添加标签：
+
+| 标签 | 条件 |
+|---|---|
+| `builtin:text` / `builtin:image` / `builtin:files` / `builtin:folder` | 按内容类型 |
+| `builtin:link` | 文本前 64 KiB 中包含 HTTP(S) 链接 |
+| `builtin:email` | 包含电子邮件地址（由 `builtin.text` 插件添加） |
+| 颜色、版本号、UUID、IPv4 | 整段文本（去掉首尾空白）匹配对应格式，每条规则可单独开关 |
+
+- 你可以在桌面端设置中添加**自定义正则规则**，把匹配的文本打上指定标签。分类规则的修改在**服务重启后**生效，已有历史保留原有标签。
+- 分类器不联网、不读取文件内容。
+- 标签属于本机历史，不会同步；每台设备按自己的规则打标签。
+- 本地 Lua 插件也可以添加标签，见 [Lua 插件开发](../plugins/develop-lua)。
+
+## 手动标签
+
+```bash
+unic history tag @1 --add work,todo
+unic history tag @1 --remove todo
+unic history tag @1 --set work
+```
+
+桌面端可在条目上编辑标签、在侧栏按标签筛选，并为标签设置颜色。内置标签显示为本地化名称，且不可删除或重命名。
+
+标签可用于：
+
+- [搜索与筛选](./history-and-search#搜索)
+- [自动清理排除](./history-and-search#自动清理)（`history.excluded_tags`）
+- [收藏](./history-and-search#收藏)（保留标签 `favorite`）
+
+## Action
+
+Action 是插件提供的内容变换，例如"转大写""去除格式"。它只在你主动触发时运行，从不自动改写剪贴板。
+
+### 内置 Action
+
+`builtin.text` 插件提供以下文本 Action：
+
+| Action | 作用 |
+|---|---|
+| 转大写 / 转小写 | 大小写转换 |
+| 去除首尾空白 | trim |
+| 纯文本 | 去除格式 |
+
+### 在桌面端使用
+
+在历史条目的右键菜单「动作」子菜单，或历史工具栏的「动作」菜单中选择。插件声明的 Action 还可能出现在[快捷面板](./quick-panel)中。完成后，根据插件声明，桌面端可能自动复制结果、显示提示、弹出结果窗口或选中新条目。
+
+### 在命令行使用
+
+```bash
+unic history action @1                     # 列出可用于该条目的 Action
+unic history action @1 builtin.text/upper  # 运行
+unic history action @1 builtin.text/upper --apply   # 运行并把结果写入剪贴板
+```
+
+Action 以 `插件ID/动作ID` 标识；命令行可运行所有已启用的 Action，不受桌面端显示位置限制。
+
+### 行为说明
+
+- 结果总是保存为来源为 `action` 的**新历史条目**，原条目（包括其标签和过期时间）不变。
+- 新条目和普通复制一样会被自动打标签，并按同步设置发送；同步失败不影响 Action 本身成功。
+- 插件失败、超时或返回非法结果时，不会创建任何条目。默认超时 10 秒，Go 插件最多可声明 5 分钟。
+- 外部 Go 插件的 Action 可以处理文本、图片和文件，结果始终是文本（例如上传后返回分享链接）；Lua 插件的 Action 只处理文本。
+- Action 不接受参数。
+- 对外部服务产生的副作用（如上传）无法撤销。
+
+插件安装与开发见[插件市场](../plugins/marketplace)、[Go 插件开发](../plugins/develop-go)。

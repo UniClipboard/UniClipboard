@@ -1,0 +1,156 @@
+---
+title: 配置文件
+description: config.toml 的位置、热加载规则以及全部配置键与默认值。
+---
+
+unic 的设置保存在数据目录下的 `config.toml`（默认数据目录见[环境变量](./environment)）。文件不存在时会写入一份全部注释掉的模板，内容等同于默认值。
+
+## 查看与修改
+
+```bash
+unic config path            # 打印配置文件路径
+unic config                 # 打印当前生效的配置（TOML）
+unic config --json          # 以 JSON 输出，含错误与需重启的键
+unic config set sync.files false      # 修改单个键，值按 TOML 语法书写
+unic config apply ./my-config.toml    # 用整个文件替换配置
+```
+
+也可以直接用编辑器修改文件，**保存即生效**。
+
+<Callout type="warn">
+文件有语法错误、未知键或非法值时，整份修改会被忽略，继续沿用上一份有效配置，直到你修正为止。`unic config` 会在输出顶部显示错误，以及哪些键需要重启 `unicd` 才能生效。
+</Callout>
+
+大小类的值可以写字节数，也可以写 `"512MB"`、`"2GiB"` 这样的字符串（单位均按 1024 进制）。
+
+## 顶层键
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `device_name` | 本机主机名 | 其它设备看到的名称；对每台设备的下一次连接生效 |
+| `rendezvous_url` | `$UNIC_RENDEZVOUS_URL`，否则内置服务 | 配对码服务地址 |
+| `inbox` | 数据目录下的 `inbox` | 接收文件的存放位置，必须是绝对路径；需重启 `unicd` |
+
+## `[desktop]`
+
+桌面端设置，命令行服务只负责保存。
+
+| 键 | 默认值 | 取值 |
+|---|---|---|
+| `color_mode` | `"system"` | `system`、`light`、`dark` |
+| `language` | `"zh-CN"` | `zh-CN`、`en`、`ja`、`pt-BR`、`ru`；立即生效 |
+| `mode` | `"normal"` | `normal`、`lightweight`；下次启动生效 |
+| `launch_at_login` | `false` | 登录时启动 |
+| `start_in_background` | `false` | 启动时不显示主窗口；下次启动生效 |
+| `system_window_frame` | `false` | 使用系统原生标题栏；关闭并重新打开窗口后生效 |
+| `tray_icon` | `"glyph"` | `glyph`、`cat`；立即生效 |
+| `update_channel` | `"stable"` | `stable`、`alpha`；下次检查更新时生效 |
+| `quick_panel_shortcut` | macOS `"Cmd+Ctrl+V"`，其它 `"Ctrl+Alt+V"` | 也可为 ``"Ctrl+`"``、`"CmdOrCtrl+Shift+Space"` 或空字符串 |
+| `quick_panel_double_tap` | `""`（关闭） | `alt`、`control`、`meta`：双击该修饰键打开快捷面板 |
+| `[desktop.shortcuts]` | 内置快捷键 | 动作名到按键列表的映射，例如 `"clipboard.search" = ["mod+f"]`；写 `[]` 表示禁用 |
+
+`tag_colors`、`tag_sidebar` 由桌面端自动维护（以标签名的哈希为键，不保存标签名），一般无需手动编辑。
+
+## `[logging]` 与 `[telemetry]`
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `logging.level` | `"info"` | 本机日志等级：`debug`、`info`、`warn`、`error` |
+| `telemetry.enabled` | `true` | 总开关；设为 `false` 停止所有上传 |
+| `telemetry.endpoint` | 发行版内置地址 | 必须是不含凭据、查询串的 HTTPS 地址；修改需重启 |
+| `telemetry.logs.enabled` | `true` | 远程日志 |
+| `telemetry.logs.level` | `"warn"` | 远程日志等级 |
+| `telemetry.metrics.enabled` | `true` | 指标 |
+| `telemetry.analytics.enabled` | `true` | 产品事件 |
+| `telemetry.traces.enabled` | `true` | 链路追踪（固定 1% 采样） |
+
+各信号开关支持热加载。详情见[诊断与日志](./diagnostics)。
+
+## `[limits]`
+
+对修改后开始的传输生效。
+
+| 键 | 默认值 | 上限 |
+|---|---|---|
+| `max_file_bytes` | `"100MB"` | 单个文件 2 GiB |
+| `max_total_bytes` | `"4GiB"` | 单次剪贴板 4 GiB |
+
+## `[sync]`
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `enabled` | `true` | 全局同步开关；`false` 时双向暂停，设备保持连接 |
+| `automatic` | `true` | 自动发送新的复制；本机历史不受影响 |
+| `on_restore` | `false` | 从历史恢复到剪贴板时是否也发送 |
+| `files` | `true` | 全局允许收发文件 |
+| `introductions` | `true` | 设备间互相引荐已信任的设备，结果只作为候选，仍需你确认 |
+| `directories.automatic` | `false` | 复制文件夹时是否自动同步；关闭时复制只记录引用，手动发送时才打包 |
+
+## `[history]`
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `auto_cleanup` | `true` | 自动清理，最旧的条目先删 |
+| `retention_days` | `180` | 保留天数，`0` 表示不按时间清理；范围 0–36500 |
+| `max_items` | `0` | 最多条数，`0` 表示不限；范围 0–1000000 |
+| `excluded_tags` | `[]` | 带有其中任一标签（精确匹配）的条目不会被自动删除 |
+| `max_bytes` | `"4GiB"` | 历史存储上限，最大 8 GiB；**需重启** |
+
+从磁盘复制的文件只按路径记录、不另存副本，不计入 `max_bytes`；原文件被移动后将无法读取。
+
+## `[file_cache]`
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `max_bytes` | `"500MB"` | 默认接收目录的容量上限，最大 8 GiB |
+
+只作用于默认的受管接收目录；自定义 `inbox` 中的文件由你自己管理，清理永远不会删除它们。空间不足时会按历史清理规则释放（`excluded_tags` 仍受保护）；清理关闭或无法腾出足够空间时，新文件会被拒收。
+
+## `[plugins]`
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `lua` | `[]` | 启用的 Lua 插件 ID 列表，按顺序执行；插件位于 `$UNIC_HOME/plugins/lua/<ID>/`；修改列表需重启 |
+| `order` | `[]` | 从 GitHub 安装的插件与处理顺序，如 `["owner.plugin"]`；需重启 |
+| `on_error` | `"continue"` | 插件失败时的处理：`continue` 丢弃该插件的结果后照常同步；`block_sync` 让这条内容只留在本机 |
+
+<Callout type="warn">
+如果你依赖某个插件阻止敏感内容外发，请为它设置 `on_error = "block_sync"`，否则插件出错时内容仍会照常同步。
+</Callout>
+
+### `[plugins.instances."<ID>"]`
+
+每个插件实例的设置：
+
+| 键 | 说明 |
+|---|---|
+| `enabled` | 是否启用，省略即启用（Lua 插件由 `lua` 列表控制，不能写此键） |
+| `on_error` | 覆盖全局 `on_error`；只适用于处理器插件 |
+| `config` | 插件自己的设置表；保存在这里，安装或升级插件不会覆盖；需重启 |
+| `implementation` | 外部同步后端实例对应的插件程序 |
+
+内置插件的专有设置：
+
+```toml
+# 内置点对点同步（builtin.tailcat）发送和接收什么；省略即为 true
+[plugins.instances."builtin.tailcat".sync]
+text = true      # 文本、HTML 等非图片格式
+images = true
+files = true
+auto_file_max_bytes = "100MB"  # 自动同步时超过此大小的文件不发送（整次复制都不发送）；手动发送不受限；0 = 不额外限制
+
+# 内置分类器：给新内容添加 builtin:text/image/files/folder/link 等标签
+[plugins.instances."builtin.classify"]
+enabled = true
+disabled_default_tags = ["builtin:color"]   # 关闭个别默认标签
+
+[[plugins.instances."builtin.classify".rules]]   # 自定义规则，需重启
+pattern = '\bUNI-[0-9]+\b'
+tag = "Issue"
+
+# builtin.text：标注含邮箱的文本，并在历史窗口提供文本动作；需重启
+[plugins.instances."builtin.text"]
+enabled = true
+```
+
+插件开发相关内容见 [Lua 插件开发](../plugins/develop-lua) 与 [Go 插件开发](../plugins/develop-go)。

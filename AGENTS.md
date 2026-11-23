@@ -16,6 +16,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | 第二个本地节点 | `UNIC_HOME=/tmp/unicA ./unicd` |
 | 文档检查（链接、归档引用、架构页校验与过期） | `go run ./tools/docscheck`（`make docs-check`） |
 | CLI 服务生命周期（临时 unicd 自动启停，真实多进程） | `make service-lifecycle-e2e`；回执见 [0021 计划](docs/exec/0021-cli-on-demand-service-lifecycle.md) |
+| 用户文档站（`docs-site/`，Fumadocs，中文先行） | `cd docs-site && bun install && bun run check:docs && bun run build` |
 | CLI 端到端（真实 unic/unicd 多进程） | `UNIC_E2E=1 go test ./e2e/cli -v`；用例清单见 [e2e/cli/CASES.md](e2e/cli/CASES.md) |
 
 ## 文档目录

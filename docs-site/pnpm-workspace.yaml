@@ -1,0 +1,6 @@
+# Marker file: tells Next.js / Turbopack that docs-site is its own workspace
+# root so the monorepo root's package-lock.json doesn't hijack module
+# resolution. See `find-root.js` in next/dist/lib/find-root.js — when this
+# file is present, find-up stops here and uses dirname() as the root.
+packages:
+  - .

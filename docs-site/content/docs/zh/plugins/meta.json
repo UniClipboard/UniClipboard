@@ -1,0 +1,1 @@
+{ "title": "插件与扩展", "icon": "Puzzle", "defaultOpen": true, "pages": ["marketplace","external-channels","develop-lua","develop-go"] }

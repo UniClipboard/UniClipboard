@@ -1,0 +1,93 @@
+---
+title: CLI 快速上手
+description: 用 unic 发送、接收内容，配对设备并浏览历史。
+---
+
+开始前请先完成[安装与首次初始化](./installation#首次初始化)。
+
+## 服务会按需启动
+
+大多数命令需要后台服务 `unicd`。如果当前没有服务在运行，`unic` 会从同一目录临时启动一个，并在最后一个使用它的命令结束后自动停止。你自己启动的 `unicd` 和桌面版的服务永远不会被 `unic` 停止。
+
+临时服务只在命令运行期间存在，**命令之间无法持续接收内容**。需要一直在线时，请常驻运行 `unicd` 或桌面版，参见[无头部署](./headless-deployment)。
+
+## 不配对，临时传一次
+
+```sh
+unic send "hello"      # 打印 6 位码和链接，等待一个接收方
+```
+
+在另一台设备上：
+
+```sh
+unic recv 482913       # 也可以粘贴链接
+```
+
+接收方也可以是浏览器中的 `try.uniclipboard.app` 页面。临时传输不会建立设备或信任关系；单次最多 20 MiB、50 项，6 位码最长有效 5 分钟。临时传输只支持文本、图片和普通文件，不支持目录。
+
+## 配对设备
+
+<Steps>
+<Step>
+
+在设备 A 上显示配对码（命令会在一段有限时间内保持服务运行，并在 stderr 提示）：
+
+```sh
+unic device add
+```
+
+</Step>
+<Step>
+
+在设备 B 上输入该码（或设备地址）：
+
+```sh
+unic device add 123456
+```
+
+</Step>
+<Step>
+
+通过配对码进来的设备总是需要用户批准。查看待批准设备，并核对对方显示的指纹后批准：
+
+```sh
+unic device list
+unic device approve <id> '<对方设备上显示的指纹>'
+```
+
+</Step>
+</Steps>
+
+## 发送给已配对设备
+
+```sh
+unic send --to all "hello"            # 所有已配对设备
+unic send --to laptop "hello"         # 按设备名或 ID
+echo hello | unic send --to all       # 从 stdin 读取
+unic send --to all -f report.pdf      # 文件或目录
+unic send --to all --png shot.png     # PNG 图片
+```
+
+`send --to` 会等待本次发送结束；内容已写入历史但发送未完全完成时退出码为 `4`。
+
+## 浏览历史
+
+```sh
+unic h list                 # 最新在前，默认 20 条
+unic h show                 # 输出最新一条的内容
+unic h show @2              # 第 2 新的一条
+unic h tag @1 --add work
+unic h delete @3
+```
+
+`@N` 表示第 N 新的条目，也可以直接使用条目 ID。
+
+## 查看状态与设置
+
+```sh
+unic status                 # 本机与对端
+unic config                 # 当前设置
+unic config set sync.directories.automatic true
+```
+
+完整命令见 [命令参考](./reference)。

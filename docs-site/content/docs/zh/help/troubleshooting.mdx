@@ -1,0 +1,59 @@
+---
+title: 故障排查
+description: 常见错误的原因与处理方法。
+---
+
+遇到问题时，先运行 `unic status` 与 `unic config` 了解当前状态；需要反馈时附上 `unic dev logs export` 生成的日志包，见[诊断与日志](../reference/diagnostics)。
+
+## 命令提示 migration_required（退出码 6）
+
+当前数据目录还没有完成迁移初始化。
+
+- 有 v1 数据：执行 `unic migrate --dry-run --json` 预检，再执行 `unic migrate --json`。
+- 没有 v1 数据：执行 `unic migrate --initialize-empty --json`。
+
+预检、部分完成或失败都不会解除锁定，详见 [v1 迁移](../migration/v1-to-v2#结果与重试)。
+
+## 修改配置后没有生效
+
+1. 运行 `unic config`，查看顶部是否有 `ERROR` 提示。有错误时整份修改都会被忽略，沿用上一份有效配置。
+2. 常见错误：未知键、拼写错误、`inbox` 不是绝对路径、取值不在允许范围内。
+3. 输出中的 `restart unicd to apply` 列出了需要重启才能生效的键，例如 `inbox`、`history.max_bytes`、插件列表与插件设置。
+
+## 内容没有同步到其它设备
+
+- 确认双方都在 `unic status` 的设备列表中并处于连接状态。
+- 检查 `sync.enabled`、`sync.automatic`、`sync.files`。
+- 检查内置同步的类型开关 `[plugins.instances."builtin.tailcat".sync]`。
+- 文件是否超过 `limits.max_file_bytes`（默认 100 MB）或 `auto_file_max_bytes`；超限时自动同步会跳过整次复制，可以手动发送。
+- 文件夹默认不自动同步，请手动发送。
+- 若使用了插件，检查其 `on_error` 是否为 `block_sync`。
+
+## 新设备一直没有出现
+
+通过配对码添加的设备必须在本机批准后才会加入。用 `unic device list` 查看待处理请求，并用 `unic device approve` 批准。配对需要能访问配对码服务（`rendezvous_url`）。
+
+## 接收文件被拒绝
+
+默认接收目录达到 `file_cache.max_bytes`（默认 500 MB）且清理无法腾出空间时，新文件会被拒收。可以：
+
+- 提高 `file_cache.max_bytes`；
+- 删除不需要的历史；
+- 检查 `history.excluded_tags` 是否保护了太多条目；
+- 改用自定义 `inbox`（其中的文件由你自己管理）。
+
+## 历史中的文件打不开
+
+从磁盘复制的文件只按路径记录。原文件被移动或删除后，历史条目将无法读取。
+
+## 使用 UNIC_HOME 时无法连接服务
+
+Unix 套接字路径过长（macOS 约 104 字节）会导致连接失败。请缩短 `UNIC_HOME`，或用 `UNIC_SOCK` 指定短路径，见[环境变量](../reference/environment)。
+
+## 搜索提示不可用
+
+部分历史未能建立搜索索引时，文本与扩展名搜索会提示不可用，以免返回不完整的结果。按类型、标签、时间浏览仍可使用。见[搜索语法](../reference/search-syntax#限制)。
+
+## 迁移报告为 partial
+
+部分内容在 v1 中已缺失或损坏，或 v1 仍在运行时清理了文件。退出 v1 后用相同命令重跑即可，已成功的条目不会重复导入。

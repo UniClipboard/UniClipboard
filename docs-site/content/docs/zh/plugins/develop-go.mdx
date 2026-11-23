@@ -1,0 +1,487 @@
+---
+title: Go 插件开发
+description: 用 Go SDK 编写独立进程的 unic 插件：接口签名、清单与预编译产物、设置 Schema、本地调试、发布与上架。
+---
+
+本页自成一体：可以把整页交给 AI agent，作为编写 unic Go 插件的完整参考。示例来自仓库 `plugins/examples/emailtag`、`plugins/examples/settingsdemo` 和官方独立插件 `unic-plugin-wenshushu`。
+
+## 架构与约束
+
+- Go 插件是**独立可执行程序**。`unicd` 启动它，通过标准输入/输出上的二进制帧 RPC 通信；不编译进宿主，不使用 Go 动态库，不监听任何端口。
+- SDK 包为 `github.com/uniclipboard/unic/plugin`（设置工具在 `github.com/uniclipboard/unic/plugin/settings`），入口是 `plugin.Serve(p)`。
+- 每个启用的插件一个常驻进程，在多次处理之间复用。
+- 进程隔离**不是**权限沙箱：插件是受信任的本机代码。
+- 能力：
+
+| 能力 | 接口 | 运行时机 | 能做什么 |
+|---|---|---|---|
+| `processor` | `plugin.Processor` | 复制/收到内容时自动 | 只能标注：标签、过期、持久、同步；**不能改正文** |
+| `action` | `plugin.Actor` | 只在用户触发时 | 读取来源内容（文本/图片/文件），产出一条新的**文本**历史 |
+| `observer` | `plugin.Observer` | 历史变化事件后 | 只读通知，只含历史 ID |
+| `sync_backend` | `plugin.SyncBackend` | 同步 | 同步后端（含[外部渠道](./external-channels)），接口仍在演进 |
+
+### 运行规则
+
+- **`Init` 严格校验配置**，未知键返回 `plugin.ErrInvalidConfig`；`Init` 不联网，后台任务从 `Start` 开始。
+- **回调必须尊重 `ctx`**：处理默认 200ms 超时；超时先取消，1 秒宽限后宿主终止进程。Action 默认 10 秒，可在 `TimeoutMS` 中声明最多 300000ms。
+- 同一实例的回调串行执行；panic 被 SDK 捕获并转为稳定错误码。
+- **错误文本不会跨进程**，宿主只看到稳定错误码；**stderr 被丢弃**。不要在任何地方记录剪贴板正文。
+- `Host.Notify` 每秒最多 5 次、每条最多 1024 字节，只用于给用户的短提示。
+- 崩溃后按 1/2/4 秒退避自动重启，60 秒内最多 3 次，之后标记为不可用。
+- 父进程关闭管道时 SDK 会取消后台任务并退出。
+
+## 接口签名
+
+```go
+package plugin
+
+const (
+	CapProcessor   = "processor"
+	CapAction      = "action"
+	CapObserver    = "observer"
+	CapSyncBackend = "sync_backend"
+)
+
+type Spec struct {
+	ID             string // 如 "yourname.emailtag"
+	Version        string // 语义版本
+	APIVersion     int    // 1
+	SettingsSHA256 string // 已发布静态设置 Schema 的 SHA-256（无 Schema 留空）
+	Capabilities   []string
+	TransportKind  string       // 仅同步后端
+	Actions        []ActionSpec // 仅 action 能力
+	ExternalChannels bool       // 仅同步后端
+	RemoteRevocation bool       // 仅外部渠道后端
+}
+
+type ActionSpec struct {
+	ID          string   // [a-z][a-z0-9_-]*，≤64 字节，插件内唯一
+	Title       string   // 1..64 字节纯文本
+	Accepts     []string // text、image、files 的非空子集
+	Placements  []string // history.item_menu、history.toolbar、quick_panel 的非空子集
+	PostActions []string // copy、notify、present、select、none（none 互斥）的非空子集
+	TimeoutMS   int64    // 0 表示 10 秒；最大 300000
+}
+
+type Config map[string]any // 只含 JSON 值
+
+type Host interface {
+	Notify(ctx context.Context, message string)
+}
+
+type Plugin interface {
+	Spec() Spec
+	Init(context.Context, Host, Config) error
+	Start(context.Context) error
+	Close(context.Context) error
+}
+
+type Processor interface {
+	Plugin
+	Process(context.Context, ProcessContext) error
+}
+type Observer interface {
+	Plugin
+	OnEvent(context.Context, Event) error
+}
+type Actor interface {
+	Plugin
+	Run(context.Context, ActionContext) error
+}
+
+type Item struct {
+	SourceApplication *sourceapp.Application // 可为空
+	ID      string   // 处理对象 ID，不一定等于历史 ID
+	Type    string   // text、image、files、directory、directory_reference
+	Text    string   // 只读
+	Formats []string
+	Files   []File   // {Name, Size}，不含路径
+	Origin  Origin   // {Kind: local_system|remote_device|explicit|action, DeviceID, PluginID}
+}
+
+type Policy struct {
+	Persist     bool
+	Sync        bool
+	Tags        []string
+	ExpireAfter time.Duration // 0 表示不过期
+}
+
+type ProcessContext interface {
+	Event() string // clipboard.captured 或 clipboard.received
+	Item() Item
+	Policy() Policy
+	AddTag(string) error          // ≤32 个，每个 ≤64 UTF-8 字节
+	RemoveTag(string) error
+	SetPersist(bool) error
+	SetSync(bool) error
+	SetExpire(time.Duration) error // 正的整毫秒
+}
+
+type ActionContext interface {
+	Action() string // 被触发的 ActionSpec.ID
+	Item() Item
+	SetText(string) error // 必须恰好调用一次
+}
+
+// Go Action 读取来源字节：对 ActionContext 做类型断言。
+type ActionPart struct{ MIME string; File bool; Name string; Size int64 }
+type ActionSource interface {
+	Parts() []ActionPart
+	OpenPart(context.Context, int) (io.ReadCloser, error) // 每部分最多打开一次，同时最多 4 个
+}
+
+type Event struct{ Kind, ItemID string; AtMs int64 }
+```
+
+事件常量：`EventCaptured`、`EventReceived`（processor）；`EventCommitted`、`EventUpdated`、`EventDeleted`、`EventExpired`、`EventPasted`、`EventAppStarted`、`EventAppShutdown`（observer）。`clipboard.pasted` 只表示通过宿主界面应用了历史，不代表所有系统粘贴；`app.*` 的 ItemID 为空。
+
+`Spec().Capabilities` 必须与实际实现的接口一致，`Actions` 与 `action` 能力必须同时存在，否则启动时被拒绝。
+
+## 最小示例：处理器（emailtag）
+
+```go
+// Command emailtag tags text containing an email address.
+package main
+
+import (
+	"context"
+	"log"
+	"regexp"
+
+	"github.com/uniclipboard/unic/plugin"
+)
+
+type emailtag struct{ tag string }
+
+func main() {
+	if err := plugin.Serve(&emailtag{}); err != nil {
+		log.Fatal(err) // never log clipboard content
+	}
+}
+
+func (*emailtag) Spec() plugin.Spec {
+	return plugin.Spec{ID: "example.emailtag", Version: "1.0.0", APIVersion: 1,
+		Capabilities: []string{plugin.CapProcessor}}
+}
+
+func (p *emailtag) Init(_ context.Context, _ plugin.Host, cfg plugin.Config) error {
+	for key := range cfg {
+		if key != "tag" {
+			return plugin.ErrInvalidConfig
+		}
+	}
+	p.tag = "email"
+	if v, ok := cfg["tag"]; ok {
+		s, valid := v.(string)
+		if !valid || s == "" {
+			return plugin.ErrInvalidConfig
+		}
+		p.tag = s
+	}
+	return nil
+}
+
+func (*emailtag) Start(context.Context) error { return nil }
+func (*emailtag) Close(context.Context) error { return nil }
+
+var email = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+
+func (p *emailtag) Process(ctx context.Context, c plugin.ProcessContext) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if item := c.Item(); item.Type == "text" && email.MatchString(item.Text) {
+		return c.AddTag(p.tag) // annotate only
+	}
+	return nil
+}
+```
+
+在仓库内构建：`go build -o emailtag ./plugins/examples/emailtag`。
+
+## Action 示例
+
+```go
+package main
+
+import (
+	"context"
+	"strings"
+
+	"github.com/uniclipboard/unic/plugin"
+)
+
+type upper struct{}
+
+func main() { _ = plugin.Serve(&upper{}) }
+
+func (*upper) Spec() plugin.Spec {
+	return plugin.Spec{ID: "yourname.upper", Version: "1.0.0", APIVersion: 1,
+		Capabilities: []string{plugin.CapAction},
+		Actions: []plugin.ActionSpec{{
+			ID: "upper", Title: "转成大写", Accepts: []string{"text"},
+			Placements:  []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar},
+			PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostNotify},
+		}}}
+}
+
+func (*upper) Init(_ context.Context, _ plugin.Host, cfg plugin.Config) error {
+	if len(cfg) != 0 {
+		return plugin.ErrInvalidConfig
+	}
+	return nil
+}
+func (*upper) Start(context.Context) error { return nil }
+func (*upper) Close(context.Context) error { return nil }
+
+func (*upper) Run(ctx context.Context, ac plugin.ActionContext) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return ac.SetText(strings.ToUpper(ac.Item().Text))
+}
+```
+
+接受图片或文件的 Action 用 `ac.(plugin.ActionSource)` 读取来源字节：遍历 `Parts()`，用 `OpenPart(ctx, i)` 打开并在用完后 `Close`。读取器只在本次调用内有效，调用结束或取消即失效；不会暴露本机文件路径。结果仍然只能是文本（例如文叔叔插件返回下载链接）。
+
+## 清单 spec.toml
+
+GitHub 安装需要仓库根目录（或 `--path` 子目录）有 `spec.toml`，并提供与 `module` 匹配的 `go.mod`/`go.sum`：
+
+```toml
+manifest_version = 1
+id = "yourname.emailtag"
+version = "1.0.0"
+api_version = 1
+kind = "go"
+module = "github.com/you/unic-plugin-emailtag"
+package = "./cmd/emailtag"          # 独立 main 包
+capabilities = ["processor"]
+events = ["clipboard.captured", "clipboard.received"]
+name = "邮箱标签"
+summary = "给包含邮箱地址的文本打标签。"
+# settings_schema = "settings.schema.json"
+# settings_sha256 = "<Schema 文件原始字节的 SHA-256>"
+
+[i18n.en]
+name = "Email tags"
+summary = "Tag text that contains an email address."
+
+[[artifacts]]
+goos = "darwin"
+goarch = "arm64"
+release = "v1.0.0"                       # 同仓库的 Release tag
+asset = "emailtag_darwin_arm64.tar.gz"   # gzip tar 包
+executable = "emailtag"                  # 包内可执行文件
+sha256 = "<资产文件的 64 位十六进制 SHA-256>"
+# minimum_os = "13.0"                    # 仅 macOS 会校验
+
+[config]
+tag = "email"
+```
+
+Action 插件在清单中用 `[[actions]]` 声明，内容须与 `Spec().Actions` 完全一致：
+
+```toml
+capabilities = ["action"]
+
+[[actions]]
+id = "upper"
+title = "转成大写"
+accepts = ["text"]
+placements = ["history.item_menu", "history.toolbar"]
+post_actions = ["copy", "notify"]
+# timeout_ms = 60000
+```
+
+规则：
+
+- **清单与握手 Spec 必须一致**（ID、版本、API、能力、Actions、`SettingsSHA256` 等），否则启动失败。
+- 每个 GOOS/GOARCH 组合最多一个 `[[artifacts]]`；安装器不会猜测文件名。
+- `name`/`summary`/`[i18n.*]` 只用于展示，不进入握手；最多 16 种语言，`name` ≤64、`summary` ≤200 字符。
+- 插件 ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，≤128 字节；`builtin.*` 保留。
+
+## 设置 Schema
+
+用 `plugin/settings` 从配置 struct 生成静态 JSON Schema，宿主据此生成原生设置表单，插件 `Init` 用同一份 Schema 校验并填默认值。宿主**不会运行插件来获取 Schema**。
+
+### 1. 定义配置（`settingsdemo/config.go` 节选）
+
+```go
+package settingsdemo
+
+//go:generate go run ./cmd/schema settings.schema.json
+
+type Config struct {
+	Prefix  string   `json:"prefix" title:"Label prefix" required:"true" default:"\"clip\"" minLength:"1" maxLength:"32" order:"1" group:"Labels"`
+	Limit   int      `json:"max_length" title:"Maximum length" required:"true" default:"500" minimum:"1" maximum:"10000" order:"2" group:"Labels"`
+	Mode    string   `json:"mode" title:"Text mode" required:"true" default:"\"plain\"" enum:"[\"plain\",\"markdown\"]" optionLabels:"[\"Plain text\",\"Markdown\"]" order:"3" group:"Labels"`
+	Enabled bool     `json:"enabled" title:"Add labels" required:"true" default:"true" order:"4" group:"Labels"`
+	Notes   string   `json:"notes,omitempty" title:"Notes" default:"\"\"" widget:"textarea" maxLength:"2000" order:"5" group:"Advanced"`
+	Token   string   `json:"token,omitempty" title:"Access token" secret:"true" widget:"password" minLength:"1" order:"6" group:"Advanced"`
+	Tags    []string `json:"tags" title:"Extra labels" required:"true" default:"[]" maxItems:"8" order:"7" group:"Advanced"`
+	Retry   Retry    `json:"retry" title:"Retry policy" required:"true" default:"{}" order:"8"`
+}
+
+type Retry struct {
+	Count int     `json:"count" title:"Attempts" required:"true" default:"3" minimum:"0" maximum:"10" order:"1"`
+	Delay float64 `json:"delay" title:"Delay (seconds)" required:"true" default:"0.5" minimum:"0" maximum:"60" order:"2"`
+}
+```
+
+支持的标签：`json`、`required`、`secret`（映射为 `writeOnly`）、`title`、`description`、`widget`、`group`、`default`（JSON 字面量，字符串须带引号）、`enum`、`optionLabels`（JSON 数组）、`minimum`、`maximum`、`minLength`、`maxLength`、`minItems`、`maxItems`、`order`、`i18n`。支持基础类型、struct、基础类型 slice；不支持匿名嵌入、指针、map、interface、`[]byte`、`float32` 和自定义 marshaler。
+
+### 2. 生成 Schema（`cmd/schema/main.go`）
+
+```go
+package main
+
+import (
+	"fmt"
+	"os"
+
+	"github.com/uniclipboard/unic/plugin/settings"
+	"github.com/you/unic-plugin-demo/config" // 你的配置包
+)
+
+func main() {
+	data, err := settings.Generate[config.Config]()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := os.WriteFile(os.Args[1], append(data, '\n'), 0o644); err != nil {
+		os.Exit(1)
+	}
+}
+```
+
+运行 `go generate ./...` 更新 `settings.schema.json`，提交到仓库，并在清单写入 `settings_schema` 与 `settings_sha256`。
+
+### 3. 在插件中嵌入并校验（`settingsdemo/plugin.go` 节选）
+
+```go
+//go:embed settings.schema.json
+var schemaJSON []byte
+
+func (*Plugin) Spec() plugin.Spec {
+	digest := sha256.Sum256(schemaJSON)
+	return plugin.Spec{
+		ID: "example.settingsdemo", Version: "1.0.0", APIVersion: 1,
+		Capabilities: []string{plugin.CapProcessor}, SettingsSHA256: hex.EncodeToString(digest[:]),
+	}
+}
+
+func (p *Plugin) Init(_ context.Context, _ plugin.Host, cfg plugin.Config) error {
+	d, err := settings.Parse(schemaJSON)
+	if err != nil {
+		return plugin.ErrInvalidConfig
+	}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return plugin.ErrInvalidConfig
+	}
+	if cfg == nil {
+		raw = []byte("{}")
+	}
+	normalized, err := d.Normalize(raw) // 补默认值并校验，拒绝未知键
+	if err != nil {
+		return plugin.ErrInvalidConfig
+	}
+	var next Config
+	if err := json.Unmarshal(normalized, &next); err != nil {
+		return plugin.ErrInvalidConfig
+	}
+	p.config = next // 还可在此追加比 Schema 更严格的业务校验
+	return nil
+}
+```
+
+### Schema 规则摘要
+
+- 根必须含 `"x-unic-settings-version": 1`、`"type": "object"`，每层对象 `"additionalProperties": false`。
+- 只支持关键字：`type`、`title`、`description`、`properties`、`required`、`additionalProperties`、`items`（仅基础类型）、`minItems`、`maxItems`、`enum`（≤128 项）、`default`、`minimum`、`maximum`、`minLength`、`maxLength`（按 Unicode 字符计）、`writeOnly`（仅字符串，禁止 default/enum）、`x-unic-ui`。
+- `x-unic-ui` 只有 `widget`、`order`、`group`、`option_labels`、`i18n`。
+- 限制：Schema ≤256 KiB、深度 ≤16、节点 ≤512；配置 ≤64 KiB；数值绝对值 ≤9007199254740991 且不能有精度损失。
+- 秘密字段不会出现在读取结果中，只报告是否已设置；写入时省略表示保留，发送 `null` 表示清除。
+
+### 设置的多语言
+
+无标签的 `title`、`description`、`group`、`option_labels` 是默认文本；`x-unic-ui.i18n` 按语言覆盖：
+
+```go
+Mode string `json:"mode" title:"处理模式" required:"true" default:"\"plain\"" enum:"[\"plain\",\"markdown\"]" optionLabels:"[\"纯文本\",\"Markdown\"]" i18n:"{\"en\":{\"title\":\"Mode\",\"option_labels\":[\"Plain text\",\"Markdown\"]}}"`
+```
+
+查找顺序：完整语言标签 → 主语言（如 `pt-BR` → `pt`，忽略大小写）→ 默认文本，逐字段回退。`option_labels` 数量须与 `enum` 一致。插件名和简介的翻译写在清单的 `[i18n.<语言>]` 中；Action 标题目前只支持单语言。
+
+## 本地调试
+
+<Steps>
+<Step>
+
+**单元测试**：直接调用插件方法测试，例如构造假的 `ProcessContext`（参考 `plugins/examples/emailtag/main_test.go`）。
+
+```sh
+go test -race ./...
+```
+
+</Step>
+<Step>
+
+**用独立节点安装**：推送到 GitHub 后，在测试用的 `UNIC_HOME` 中安装，不影响日常数据：
+
+```sh
+export UNIC_HOME=/tmp/unic-plugin-dev
+unic plugin install https://github.com/you/unic-plugin-demo --ref main --build --enable
+unic plugin list
+```
+
+没有预编译包时必须加 `--build`，本机需安装兼容的 Go 工具链；安装器只执行 `go build -mod=readonly`，不会运行仓库脚本或 `go generate`。
+
+</Step>
+<Step>
+
+**启动服务并验证**：启动或重启 `unicd`，复制测试内容或触发 Action。修改设置：
+
+```sh
+unic plugin settings show yourname.demo
+echo '{"values":{"prefix":"clip"}}' | unic plugin settings save yourname.demo -
+```
+
+运行中的 Go 插件保存设置后需要重启服务才会使用新配置。
+
+</Step>
+<Step>
+
+**迭代**：提交新 commit 后用 `--replace` 重新安装，再重启服务。用 `unic plugin rollback <id>` 回到上一版本。
+
+</Step>
+</Steps>
+
+<Callout type="info">
+stderr 会被丢弃、错误文本不跨进程，所以排查问题主要依靠单元测试和 `unic plugin list` 中的运行状态。不要为了调试而记录剪贴板内容。
+</Callout>
+
+## 发布与上架
+
+1. **独立仓库**：命名为 `unic-plugin-<slug>`（如官方的 `unic-plugin-wenshushu`），公开。实现、清单、依赖锁、发布产物都在这个仓库里维护。
+2. **构建预编译包**：为每个目标平台 `GOOS=<os> GOARCH=<arch> go build`，打成 `.tar.gz`（包内含 `executable` 指定的文件），计算 SHA-256（`shasum -a 256 <asset>`），上传到 GitHub Release。
+3. **更新清单**：把每个平台的 `[[artifacts]]`（`release`、`asset`、`executable`、`sha256`）写入 `spec.toml` 并提交。清单是从被锁定的 commit 中读取的，所以 Release 对应的 commit 必须包含正确的清单。
+4. **验证安装**：在干净的 `UNIC_HOME` 中执行不带 `--build` 的安装，确认能直接使用预编译包。
+5. **上架市场**：向 [UniClipboard/unic-plugins](https://github.com/UniClipboard/unic-plugins) 的 `registry.json` 提交条目：必填 `id`、`name`、`author`、`category`（`share`、`text`、`organize`、`sync`）、`version`、`summary`、`repository`；可选 `official`、`description`、`highlights`、`how_to`、`privacy`、`zero_config`、`ref`、`path`、`build_fallback`、`capabilities`。市场条目不会授予源码构建或执行权限，安装仍走完整校验。
+
+## 常见错误
+
+| 现象 | 原因与处理 |
+|---|---|
+| 安装提示需要 `--build` | 没有匹配当前 GOOS/GOARCH 的 `[[artifacts]]`，或 Release 资产不存在 |
+| 安装报摘要错误 | `sha256` 与资产不符；重新计算并提交清单（不会自动改用源码构建） |
+| 启动时握手失败 | `Spec()` 与 `spec.toml` 不一致（版本、能力、Actions、`SettingsSHA256`） |
+| 启动报 invalid_config | `Init` 拒绝了配置：未知键、类型不对；或 `[config]` 默认值与 Schema 不符 |
+| 插件已启用但未运行 | 未重启 `unicd`；或必填设置缺失（列表显示需要设置） |
+| 能力被拒绝 | 声明的能力与实现的接口不一致；声明了 Actions 却没有 `action` 能力 |
+| 处理总是超时 | 回调没有检查 `ctx`，或做了网络请求；处理器默认只有 200ms |
+| Action 失败 | 未调用或多次调用 `SetText`；超过 `TimeoutMS` |
+| 插件反复变为不可用 | 60 秒内崩溃超过 3 次；修复后需手动重启插件或服务 |
+| 同一 ID 无法安装 | 已从其他仓库安装了相同 ID；不会静默替换，先卸载 |

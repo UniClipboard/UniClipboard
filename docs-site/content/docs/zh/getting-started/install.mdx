@@ -1,0 +1,85 @@
+---
+title: 安装
+description: 获取 UniClipboard 桌面端与命令行，了解安装包和发布通道的当前状态。
+---
+
+<Callout type="warn">
+v2 正式安装包**即将推出**。打包、签名与渠道发布流程已在仓库中实现，但尚未完成面向公众的发布与验收。目前推荐从源码运行。
+</Callout>
+
+## 从源码运行（推荐）
+
+只需安装 [Go](https://go.dev/dl/)。
+
+<Steps>
+<Step>
+### 获取源码
+
+```sh
+git clone https://github.com/UniClipboard/UniClipboard.git
+cd UniClipboard
+```
+</Step>
+<Step>
+### 运行桌面端
+
+```sh
+make run-desktop
+```
+
+该命令构建 `unic`、`unicd`、`unic-desktop` 到 `dist/`，并以仓库内 `.cache/desktop-dev` 作为独立的开发数据目录启动桌面端。
+</Step>
+</Steps>
+
+### 只构建命令行（无界面）
+
+```sh
+make build-headless
+# 等价于：
+go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd
+```
+
+`unic` 是命令行，`unicd` 是后台同步服务；两者都不依赖任何图形界面，适合服务器与 SSH 环境。详见[命令行安装](../cli/installation)与[无头部署](../cli/headless-deployment)。
+
+## 安装包与渠道（规划中）
+
+以下渠道已有构建流程，公开可用性以正式发布公告为准：
+
+| 产品 | 形式 |
+|---|---|
+| 桌面端 | Windows NSIS 安装程序与便携 ZIP、macOS DMG、Linux DEB / RPM / pacman / AppImage |
+| 命令行 | 各平台压缩包、npm 包 `@uniclipboard/cli`、Homebrew Tap（`uniclipboard` Formula 与桌面端 Cask）、AUR |
+
+桌面端安装包内自带私有的 `unic` 与 `unicd`，不会覆盖你单独安装的命令行。命令行压缩包同时提供 `uniclip` 作为 `unic` 的别名。
+
+### npm 安装命令行
+
+npm 包发布后，可这样安装：
+
+```sh
+npm install -g @uniclipboard/cli          # stable，对应 latest 标签
+npm install -g @uniclipboard/cli@alpha    # alpha 通道
+```
+
+主包会按平台自动选择对应的原生二进制包，并同时提供 `unic` 与 `unicd`。
+
+### stable 与 alpha 通道
+
+- **stable**：经过稳定验收的版本；npm 对应 `latest` 标签。
+- **alpha**：预览版本，更早获得新功能；npm 对应 `alpha` 标签，GitHub 上以预发布（prerelease）形式出现。
+
+通道名不出现在版本号中，版本号形如 `2.0.0-build.N`。同一通道内，v2 桌面端会替换已安装的 v1；alpha 与 stable 共用同一安装身份。
+
+## 查看版本
+
+```sh
+unic --version --json
+unicd --version --json
+```
+
+无需启动服务即可读取产品版本、构建号和源码提交。
+
+## 下一步
+
+- [快速上手](./quick-start)
+- 已在用 v1？先看[从 v1 迁移](../migration/v1-to-v2)

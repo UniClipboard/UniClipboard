@@ -78,3 +78,104 @@ python3 app/desktop/e2e/replay_boardui_migration.py --out .build/boardui-product
 The artifact directory must be new. Native windows, OS input methods and
 platform accessibility require separate platform evidence. Windows/Linux cross
 compilation is separate from execution on those operating systems.
+
+## Code-defined color themes
+
+The [color catalogue](COLOR-TOKENS.md) extracts the complete current palette for
+both schemes. Generated source resources remain unchanged. `Token`, `Gradient`
+and `Shadows` are source-only lookups. Use `Kit.Color`, `Kit.Gradient` and
+`Kit.Shadows` when rendering a theme.
+
+Define up to **12 base colors per scheme** with `Palette`. For a brand-only
+change, supply only `Accent`. The constructor derives the accent ramp, primary
+button gradients, focus rings, selected controls, switch chips, selection,
+information notices and accent shadows. No token names are required.
+
+```go
+colors := boardui.NewPaletteTheme(
+    boardui.Palette{Accent: ui.RGB(168, 85, 247)},
+    boardui.Palette{Accent: ui.RGB(192, 132, 252)},
+)
+// On the view thread, select the host's resolved light/dark scheme.
+kit := boardui.Kit{Dark: dark, Colors: colors}
+kit.Apply(c)
+kit.Button(c, "Save", boardui.ButtonProps{})
+// Raw mygo controls read the same ui.Theme from c.
+ui.Button(c, "Native action")
+```
+
+| Base field | Meaning |
+|---|---|
+| `Background` | Page background |
+| `Surface` | Control background |
+| `Elevated` | Raised surface background |
+| `Text` | Primary text |
+| `TextMuted` | Secondary text |
+| `Border` | Default border |
+| `Accent` | Brand and selection color |
+| `AccentText` | Text on the accent; automatic black/white choice when omitted for a new accent |
+| `Success` | Success state |
+| `Warning` | Warning state |
+| `Danger` | Error and destructive state |
+| `Overlay` | Dialog mask and shadow hue |
+
+Construct once outside the view. `ui.Color{}` means inherit that scheme's base
+value. Empty light/dark palettes preserve every source token exactly. Light and
+dark are independent; a light-only change never modifies dark. `DefaultPalette`
+returns a value copy for inspection or editing. A nil theme and a zero-value
+`ColorTheme` retain the source presentation. There is no mutable global theme.
+
+Neutral hover, pressed, disabled, border and placeholder states mix the base
+colors through mygo's existing Oklab API. Success, warning and error tints use the
+surface and their state color. Shadow geometry and per-layer opacity stay fixed;
+`Overlay` supplies their hue. Named categorical tag hues retain their meaning;
+their background tint adapts to the new surface. They do not become brand hues.
+Literal `text-white` remains white. `text-on-accent` and `text-on-danger` carry
+foreground roles separately. Automatic black/white selection uses sRGB relative
+luminance on the base fill; it is not full-theme contrast certification.
+
+Use exact final token overrides only for special adjustments:
+
+```go
+colors, err := colors.WithOverrides(
+    map[string]ui.Color{
+        "border-focus-ring": ui.RGB(0, 180, 150),
+        "dialog-backdrop": {}, // Exactly transparent, not an omitted base.
+    },
+    nil,
+)
+if err != nil {
+    return err
+}
+```
+
+`WithOverrides` validates names and copies the resolved palette. Overrides take
+precedence and do not re-derive other colors. Input maps and `Tokens(dark)`
+snapshots never alias theme state. Unknown names return an error.
+`NewColorTheme(lightTokens, darkTokens)` remains the lower-level token constructor.
+Its primary gradients, selected-checkbox shadow and native accent/selection/
+scrollbar defaults follow the corresponding token overrides. Other semantic
+tokens remain independent at that level. Set base colors through `Palette` to
+obtain complete state derivation. Gradient endpoints use
+`gradient-<name>-from` / `gradient-<name>-to`; shadow colors use
+`shadow-<name>-<zero-based-layer>`.
+
+Application compositions accept `desktopkit.Kit{Dark: dark, Colors: colors}`.
+The main Desktop exposes `SetColorTheme(colors)`. QuickPreview exposes the same
+setter for its panel and satellite. Setup accepts `Model.Colors` or
+`Screen.SetColorTheme(colors)`. Independent GUI, Quick Panel and setup hosts must
+supply the same theme in each process. Setters run on the view thread; invalidate
+the host window after changing the main/setup theme. These operations retain
+caller-owned editors, selections and pending work. They do not persist theme
+preferences or replace native OS decoration and menus.
+
+Run the shared color-theme operation chain with:
+
+```sh
+make desktop-e2e CASE=boardui-palette
+make desktop-e2e CASE=boardui-theme
+```
+
+The software-view report retains PNGs, accessibility checkpoints, resolved
+`palette-tokens.json` / `theme-tokens.json`, source hashes and assertion results. Native windows,
+compositor output and user visual approval require separate evidence.

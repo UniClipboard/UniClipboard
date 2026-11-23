@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
 
+	"github.com/uniclipboard/unic/app/desktop/boardui"
 	"github.com/uniclipboard/unic/engine"
 )
 
@@ -36,6 +37,7 @@ type qpEffect struct {
 	KeepOpen bool   `json:",omitempty"`
 }
 type quickPanelState struct {
+	colors       *boardui.ColorTheme
 	previewImage ui.ImageSource
 	language     string
 	live         *quickLive

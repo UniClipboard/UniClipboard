@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
 
+	"github.com/uniclipboard/unic/app/desktop/boardui"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -154,6 +155,7 @@ type deviceCandidate struct {
 }
 
 type viewState struct {
+	colors          *boardui.ColorTheme
 	toolbarTrailing func(*ui.Context)
 	windowFrame     *bool
 	pluginSettings  builtinPluginSettings
@@ -212,7 +214,7 @@ func (d *viewState) view(c *ui.Context) {
 	if d.theme != "system" {
 		dark = d.theme == "dark"
 	}
-	k := desktopkit.For(dark)
+	k := desktopkit.Kit{Dark: dark, Colors: d.colors}
 	k.Apply(c)
 	k.UiRoot(c, func() {
 		w, _ := c.Size()
@@ -433,5 +435,6 @@ func (d *viewState) quickPanel(c *ui.Context, _ desktopkit.Kit) {
 	if d.quick == nil {
 		return
 	}
+	d.quick.colors = d.colors
 	d.quick.panel(c)
 }

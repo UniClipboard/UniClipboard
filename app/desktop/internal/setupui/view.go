@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/boardui"
 	"github.com/uniclipboard/unic/app/desktop/internal/appicons"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
@@ -14,6 +15,7 @@ import (
 )
 
 type Model struct {
+	Colors                                                  *boardui.ColorTheme
 	Stage, Source, Error, Language                          string
 	Detecting, Found, PendingStart, Entering, MigrationOnly bool
 	Progress                                                v1migration.Progress
@@ -42,7 +44,7 @@ func macCaptionBand(c *ui.Context) float32 {
 
 // Render is shared by the live Desktop setup flow and software-view acceptance.
 func Render(c *ui.Context, m Model, fields *Fields, a Actions) {
-	k := desktopkit.For(c.Theme().Dark)
+	k := desktopkit.Kit{Dark: c.Theme().Dark, Colors: m.Colors}
 	tr := func(s string) string { return i18n.Translate(m.Language, s) }
 	w, _ := c.Size()
 	compact := w > 0 && w < compactBreakpoint

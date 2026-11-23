@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="380" viewBox="0 0 600 380">
+  <defs>
+    <radialGradient id="ambient" cx="50%" cy="18%" r="68%">
+      <stop offset="0%" stop-color="#2b7fff" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#2b7fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="accentPill" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2b7fff"/>
+      <stop offset="100%" stop-color="#155dfc"/>
+    </linearGradient>
+    <filter id="cardShadow" x="-8%" y="-8%" width="116%" height="124%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#0a0a0a" flood-opacity="0.06"/>
+      <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#0a0a0a" flood-opacity="0.04"/>
+    </filter>
+    <filter id="pillShadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#155dfc" flood-opacity="0.24"/>
+    </filter>
+  </defs>
+
+  <!-- BoardUI light secondary canvas (#f7f7f7) -->
+  <rect width="600" height="380" fill="#f7f7f7"/>
+  <rect width="600" height="380" fill="url(#ambient)"/>
+
+  <!-- Elevated BoardUI dialog card (dialog-radius: 24) -->
+  <rect x="28" y="28" width="544" height="324" rx="24" fill="#ffffff" stroke="#ebebeb" stroke-width="1" filter="url(#cardShadow)"/>
+
+  <!-- Left source slot (frames UniClipboard.app + label) -->
+  <rect x="78" y="92" width="172" height="196" rx="20" fill="#fafafa" stroke="#ebebeb" stroke-width="1"/>
+
+  <!-- Right drop-target slot (frames Applications + label) -->
+  <rect x="350" y="92" width="172" height="196" rx="20" fill="#f4f8ff" stroke="#8ec5ff" stroke-width="1.5" stroke-dasharray="6 5"/>
+
+  <!-- Center directional guidance (BoardUI primary accent, zero text) -->
+  <line x1="258" y1="176" x2="342" y2="176" stroke="#bedbff" stroke-width="1.5" stroke-dasharray="4 4" stroke-linecap="round"/>
+  <circle cx="300" cy="176" r="26" fill="#eff6ff"/>
+  <circle cx="300" cy="176" r="20" fill="url(#accentPill)" filter="url(#pillShadow)"/>
+  <circle cx="300" cy="176" r="19.5" fill="none" stroke="#ffffff" stroke-opacity="0.26" stroke-width="1"/>
+  <path d="M293 176 H307 M301.5 170.5 L307 176 L301.5 181.5" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

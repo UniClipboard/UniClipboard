@@ -65,10 +65,13 @@ func (k Kit) DressButton(c *ui.Context, base ui.Element, label string, p ButtonP
 	if disabled {
 		state = "disabled"
 	}
-	ink := Token(k.Dark, "text-white")
+	ink := k.Color("text-on-accent")
+	if variant == "danger" {
+		ink = k.Color("text-on-danger")
+	}
 	switch variant {
 	case "primary", "danger":
-		from, to := Gradient(k.Dark, "button-"+variant+"-"+state)
+		from, to := k.Gradient("button-" + variant + "-" + state)
 		if state != "active" && !disabled && !c.Preferences().ReduceMotion {
 			a := ui.Animation{Duration: time.Duration(Number("color-ms")) * time.Millisecond, Ease: ui.CubicBezier(.25, .1, .25, 1)}
 			from = e.AnimateColor("gradient-start", from, a)
@@ -77,9 +80,9 @@ func (k Kit) DressButton(c *ui.Context, base ui.Element, label string, p ButtonP
 		e.Gradient(from, to, 180)
 		if disabled {
 			if variant == "primary" {
-				ink = Token(k.Dark, "button-primary-disabled-foreground")
+				ink = k.Color("button-primary-disabled-foreground")
 			} else {
-				ink = Token(k.Dark, "foreground-disabled-danger")
+				ink = k.Color("foreground-disabled-danger")
 			}
 		}
 	case "secondary":
@@ -96,14 +99,14 @@ func (k Kit) DressButton(c *ui.Context, base ui.Element, label string, p ButtonP
 		if disabled {
 			fill = "background-primary-disabled"
 		}
-		e.Background(Token(k.Dark, fill)).Border(Number("button-secondary-border"), Token(k.Dark, edge))
-		ink = Token(k.Dark, "text-primary")
+		e.Background(k.Color(fill)).Border(Number("button-secondary-border"), k.Color(edge))
+		ink = k.Color("text-primary")
 		if disabled {
-			ink = Token(k.Dark, "text-tertiary")
+			ink = k.Color("text-tertiary")
 		}
 	case "ghost":
 		fill := "button-ghost-background"
-		ink = Token(k.Dark, "button-ghost-foreground")
+		ink = k.Color("button-ghost-foreground")
 		if state == "hover" {
 			fill = "button-ghost-hover"
 		}
@@ -112,12 +115,12 @@ func (k Kit) DressButton(c *ui.Context, base ui.Element, label string, p ButtonP
 		}
 		if disabled {
 			fill = "button-ghost-disabled"
-			ink = Token(k.Dark, "button-ghost-disabled-foreground")
+			ink = k.Color("button-ghost-disabled-foreground")
 		}
-		e.Background(Token(k.Dark, fill))
+		e.Background(k.Color(fill))
 	}
 	if p.Busy {
-		ink = Token(k.Dark, "text-primary")
+		ink = k.Color("text-primary")
 	}
 	e.TextColor(ink)
 	colorDuration := time.Duration(Number("color-ms")) * time.Millisecond
@@ -128,7 +131,7 @@ func (k Kit) DressButton(c *ui.Context, base ui.Element, label string, p ButtonP
 	if !disabled && variant != "ghost" {
 		k.shadows(e, "xs")
 	}
-	e.FocusRingColor(Token(k.Dark, "border-focus-ring")).FocusRingOffset(2)
+	e.FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
 	e.Children(func() {
 		if p.Busy {
 			ui.Spinner(c.Key("busy")).Size(m.IconSize, m.IconSize).TextColor(ink).AccessHidden(true)

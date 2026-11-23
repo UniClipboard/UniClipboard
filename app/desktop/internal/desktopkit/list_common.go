@@ -495,7 +495,7 @@ func (k Kit) l1ListRow(c *ui.Context, r ui.ListRow, it ItemListItem) ui.Element 
 			ink := k.Color("text-secondary")
 			if btn.Hovered() {
 				btn.Background(k.Color("accent-500")).Border(1, k.Color("accent-500"))
-				ink = k.Color("text-white")
+				ink = k.Color("text-on-accent")
 			}
 			btn.Children(func() {
 				k.Icon(c, IconCopy, 10.5).TextColor(ink)
@@ -565,7 +565,7 @@ func (k Kit) rowCheck(c *ui.Context, on, selected, active bool) {
 		fill := k.Color("accent-500")
 
 		b.Background(fill)
-		fg := k.Color("text-white")
+		fg := k.Color("text-on-accent")
 		b.Draw(func(p *ui.Painter, r ui.Rect) {
 			path := (&ui.Path{}).MoveTo(r.X+5, r.Y+10.5).LineTo(r.X+8.5, r.Y+14).LineTo(r.X+15, r.Y+6.5)
 			p.StrokePath(path, 1.8, fg)
@@ -576,17 +576,17 @@ func (k Kit) rowCheck(c *ui.Context, on, selected, active bool) {
 }
 
 // menuFromEntries 把 MenuEntry 填进 mygo 菜单；选中的条目 id 写入 *chosen。
-func menuFromEntries(m *ui.Menu, items []MenuEntry, chosen *string) {
+func (k Kit) menuFromEntries(m *ui.Menu, items []MenuEntry, chosen *string) {
 	for _, e := range items {
 		if e.Separator {
 			m.Separator()
 			continue
 		}
 		if len(e.Children) > 0 {
-			m.Submenu(e.Label, func(sub *ui.Menu) { menuFromEntries(sub, e.Children, chosen) }).Disabled(e.Disabled).Icon(menuEntryImage(e))
+			m.Submenu(e.Label, func(sub *ui.Menu) { k.menuFromEntries(sub, e.Children, chosen) }).Disabled(e.Disabled).Icon(k.menuEntryImage(e))
 			continue
 		}
-		it := m.Item(e.Label).ID(e.ID).Disabled(e.Disabled).Icon(menuEntryImage(e))
+		it := m.Item(e.Label).ID(e.ID).Disabled(e.Disabled).Icon(k.menuEntryImage(e))
 		if e.Destructive {
 			it.Danger()
 		}
@@ -609,7 +609,7 @@ func (k Kit) AttachContextMenu(e ui.Element, items func() []MenuEntry, onChosen 
 	}
 	e.ContextMenu(func(m *ui.Menu) {
 		var chosen string
-		menuFromEntries(m, items(), &chosen)
+		k.menuFromEntries(m, items(), &chosen)
 		if chosen != "" {
 			onChosen(chosen)
 		}

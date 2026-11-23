@@ -77,7 +77,11 @@ jobs:
         with:
           node-version: '22.23.4'
       - name: Real native packaging processes without a GUI
+        if: "!startsWith(matrix.target, 'darwin-')"
         run: python e2e/packaging/run.py
+      - name: Real native packaging processes and customized ULFO DMG without a GUI
+        if: startsWith(matrix.target, 'darwin-')
+        run: python e2e/packaging/run.py --format dmg
       - name: Single-target test-package controller and native archive
         if: matrix.target == 'darwin-arm64'
         run: python e2e/packaging/test_package.py

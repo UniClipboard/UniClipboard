@@ -11,4 +11,6 @@ func TestDesktopAcceptance(t *testing.T) {
 	}
 	t.Run("boardui-settings", scenarioSettingsEndToEnd)
 	t.Run("boardui-states", scenarioStatesEndToEnd)
+	t.Run("boardui-theme", scenarioThemeEndToEnd)
+	t.Run("boardui-palette", scenarioPaletteEndToEnd)
 }

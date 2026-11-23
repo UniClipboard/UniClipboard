@@ -21,3 +21,6 @@ behavior implementation.
 component scenarios and emits PNG evidence. The production migration replay
 also drives the full history/settings/Quick Panel compositions. See the
 [native presentation contract](../../../../docs/contracts/boardui-native-contract.md).
+
+Code-defined colors use `Kit{Dark: dark, Colors: colors}` with an immutable
+`boardui.ColorTheme`. See the [theme guide](../../boardui/README.md#code-defined-color-themes). Public controls, application paint and native primitive defaults use that same theme.

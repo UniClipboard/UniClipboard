@@ -44,6 +44,7 @@ type PluginInfo struct {
 	Configured       bool                  `json:"configured_enabled"`
 	RunningVersion   string                `json:"running_version,omitempty"`
 	HasSettings      bool                  `json:"has_settings"`
+	NeedsSettings    bool                  `json:"needs_settings,omitempty"`
 	Restart          bool                  `json:"restart_required"`
 }
 

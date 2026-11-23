@@ -4007,6 +4007,12 @@
     "pt-BR": "Salvar",
     "ru": "Сохранить"
   },
+  "需要配置": {
+    "en": "Setup required",
+    "ja": "設定が必要",
+    "pt-BR": "Configuração necessária",
+    "ru": "Требуется настройка"
+  },
   "未设置": {
     "en": "Not set",
     "ja": "未設定",

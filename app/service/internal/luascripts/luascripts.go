@@ -273,6 +273,9 @@ func Specs(root string, enabled []string, settings func(id string) (onError stri
 			continue
 		}
 		cfg, err := s.RuntimeConfig(root, c)
+		if MissingRequiredSettings(err) {
+			continue
+		}
 		if err != nil {
 			return nil, nil, err
 		}

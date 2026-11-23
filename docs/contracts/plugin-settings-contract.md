@@ -122,6 +122,8 @@ Public fields use their Schema types. A missing public field takes its Schema de
 
 The service atomically saves each configuration under `$UNIC_HOME/plugins/settings/` in a private local file. The random revision is independent of the secret value. Schema changes carry forward compatible fields. Former secrets cannot become readable through a new Schema. Legacy TOML plugin configuration remains available for Schema-less Lua plugins. Use the settings API for secrets.
 
+At startup, the service leaves an enabled external Go or Lua plugin inactive when its Schema reports a missing required value. Other plugins and the desktop service can start. The host preserves the installed version, enablement intent, and saved settings. `GET /v1/plugins` returns `needs_settings: true` for an enabled inactive plugin with missing required settings. Its running version is absent and restart is not requested for that plugin. Users can open and save its settings while it is inactive. After a successful save, it is pending activation until the next service start.
+
 For a running Lua instance, the service validates the candidate and completes its Init and Start at a callback boundary. It persists the settings, switches the instance and closes the old Lua state. Failed preparation or persistence preserves the old state and settings. Go settings are validated by Schema before saving and by the plugin at the next service start. Enabling a plugin and changing its manifest or installed commit require a service restart.
 
 ## 5. 验收与边界

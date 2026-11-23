@@ -149,7 +149,9 @@ func (d *viewState) installMarketplacePlugin(req api.PluginInstallRequest, displ
 			if name == "" {
 				name = info.ID
 			}
-			if req.Replace {
+			if info.NeedsSettings {
+				p.installNotice = name + " · " + d.tr("需要配置")
+			} else if req.Replace {
 				p.installNotice = fmt.Sprintf(d.tr("已更新「%s」，请重启桌面端生效。"), name)
 			} else if req.Enable {
 				p.installNotice = fmt.Sprintf(d.tr("已安装并启用「%s」，请重启桌面端生效。"), name)

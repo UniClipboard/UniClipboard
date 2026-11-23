@@ -66,6 +66,10 @@ Plugin SDK 的 Main 函数服务 RPC，Engine 使用代理；Lua 实现相同业
 
 Go：spawn → handshake → Init → Start → callbacks → Close → wait。Lua：load → Init → Start → callbacks → Close。Init 校验配置并准备资源，不联网；Start 后可以运行后台任务。启动任一步失败，Engine 逆序清理所有部分初始化实例，并报告启动失败。
 
+The service checks required Schema values before handing an external plugin to
+Engine. An incomplete instance stays inactive and editable while the service
+starts. See the [settings contract](plugin-settings-contract.md#4-runtime-configuration).
+
 同一实例的 Process/OnEvent 串行，不同内容也遵守；Sync Send 允许跨目标并发。RPC 读写不能被回调阻塞，Engine 不持业务锁调用插件。处理超时默认 200ms，Go 先发取消，再给 1 秒宽限，仍不响应则终止子进程并回收；Lua 终止该次调用并丢弃失败状态，等待显式重载；后续调用仍遵循错误策略。SDK 恢复 Go 回调 panic，返回稳定错误码。迟到响应不得提交。
 
 Stop 先取消新工作与在途请求，再 Close；默认 5 秒退出窗口，超时结束插件进程树并 wait，释放流、预留配额和句柄。Close 幂等，可清理部分初始化实例，使用独立清理 context。未完成回收不能报告资源已释放。父进程管道 EOF 时 SDK 取消后台任务并退出，避免孤儿进程继续持有网络连接。

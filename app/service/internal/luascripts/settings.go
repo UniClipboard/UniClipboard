@@ -82,6 +82,12 @@ func (s Script) RuntimeConfig(root string, fallback map[string]any) (plugin.Conf
 	return cfg, err
 }
 
+// MissingRequiredSettings identifies a configuration that the user can complete.
+func MissingRequiredSettings(err error) bool {
+	var issue *settings.Error
+	return errors.As(err, &issue) && issue.Code == "required"
+}
+
 func (s Script) SettingsView(revision string, data []byte) (api.PluginSettings, error) {
 	schema := s.Schema.JSON()
 	var tree settings.Schema

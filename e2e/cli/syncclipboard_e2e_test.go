@@ -106,7 +106,7 @@ func TestSyncClipboardExternalProcess(t *testing.T) {
 	if err := initializeFixtureProfile(filepath.Join(binDir, "unic"), n.home, n.env()); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(filepath.Join(n.home, "config.toml"), []byte("[telemetry]\nenabled=false\n[plugins.instances.\"builtin.tailcat\"]\nenabled=false\n"))
+	writeFile(filepath.Join(n.home, "config.toml"), []byte("[telemetry]\nenabled=false\n[plugins]\norder=[\"unic.syncclipboard\"]\n[plugins.instances.\"builtin.tailcat\"]\nenabled=false\n"))
 	run := func(args ...string) string {
 		t.Helper()
 		out, stderr, err := n.unic(args...)
@@ -116,6 +116,62 @@ func TestSyncClipboardExternalProcess(t *testing.T) {
 		return out
 	}
 	run("plugin", "install", "https://github.com/uniclipboard/unic-plugin-syncclipboard")
+	wait := func(label string, ready func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(30 * time.Millisecond) {
+			if ready() {
+				return
+			}
+		}
+		t.Fatalf("%s did not become ready", label)
+	}
+	startDesktopService := func() (io.WriteCloser, <-chan struct{}) {
+		t.Helper()
+		cmd := exec.CommandContext(ctx, filepath.Join(binDir, "unicd"), "--desktop-owned")
+		cmd.Env, cmd.Stderr = n.env(), os.Stderr
+		owner, err := cmd.StdinPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Start(); err != nil {
+			_ = owner.Close()
+			t.Fatal(err)
+		}
+		done := make(chan struct{})
+		go func() { _ = cmd.Wait(); close(done) }()
+		t.Cleanup(func() {
+			_ = owner.Close()
+			_ = cmd.Process.Kill()
+			<-done
+		})
+		n.cmd, n.done = cmd, done
+		wait("desktop-owned service", n.listening)
+		return owner, done
+	}
+	owner, done := startDesktopService()
+	pluginClient := api.NewClient(n.sock)
+	pluginInfo := func() api.PluginInfo {
+		t.Helper()
+		plugins, err := pluginClient.Plugins(ctx)
+		if err != nil || len(plugins) != 1 || plugins[0].ID != "unic.syncclipboard" {
+			t.Fatalf("expected installed SyncClipboard plugin: %v", err)
+		}
+		return plugins[0]
+	}
+	const historyBeforeSetup = "history while the enabled plugin needs configuration"
+	if got := pluginInfo(); !got.Configured || !got.NeedsSettings || got.Restart || got.RunningVersion != "" {
+		t.Fatal("the incomplete plugin must remain configured and inactive until its settings are complete")
+	}
+	run("send", "--to", "all", historyBeforeSetup)
+	if got := strings.TrimSpace(run("history", "show", "@1")); got != historyBeforeSetup {
+		t.Fatalf("history while plugin needs configuration: %q", got)
+	}
+	var unconfigured api.PluginSettings
+	if err := json.Unmarshal([]byte(run("plugin", "settings", "show", "unic.syncclipboard")), &unconfigured); err != nil ||
+		unconfigured.Secrets["/credential_key"] || unconfigured.Restart {
+		t.Fatalf("expected editable settings with no credential or pending restart: %v", err)
+	}
+	t.Log("Service, history and plugin settings are available without the required credential")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -126,28 +182,22 @@ func TestSyncClipboardExternalProcess(t *testing.T) {
 	settings := filepath.Join(work, "settings.json")
 	writeFile(settings, fmt.Appendf(nil, `{"values":{"listen":%q,"credential_key":"%x"}}`, address, key))
 	run("plugin", "settings", "save", "unic.syncclipboard", settings)
-	run("plugin", "enable", "unic.syncclipboard")
-	n.cmd = exec.CommandContext(ctx, filepath.Join(binDir, "unicd"))
-	n.cmd.Env = n.env()
-	if err := n.cmd.Start(); err != nil {
+	if got := pluginInfo(); got.NeedsSettings || !got.Restart || got.RunningVersion != "" {
+		t.Fatal("saving settings must make the plugin pending activation")
+	}
+	if err := owner.Close(); err != nil {
 		t.Fatal(err)
 	}
-	n.done = make(chan struct{})
-	go func() { _ = n.cmd.Wait(); close(n.done) }()
-	t.Cleanup(func() {
-		n.kill(syscall.SIGKILL)
-		<-n.done
-	})
-	wait := func(label string, ready func() bool) {
-		t.Helper()
-		for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(30 * time.Millisecond) {
-			if ready() {
-				return
-			}
-		}
-		t.Fatalf("%s did not become ready", label)
+	select {
+	case <-done:
+	case <-time.After(8 * time.Second):
+		t.Fatal("desktop-owned service did not stop after its owner closed the pipe")
 	}
-	wait("service", n.listening)
+	startDesktopService()
+	if got := pluginInfo(); got.NeedsSettings || got.Restart || got.RunningVersion == "" {
+		t.Fatal("the configured plugin must activate after restart")
+	}
+	t.Log("The configured plugin activated after a desktop-owned service restart")
 	parseChannel := func(s string) (c api.PeerStatus) {
 		t.Helper()
 		if err := json.Unmarshal([]byte(s), &c); err != nil || c.ID == "" || c.Revision <= 0 {
@@ -267,7 +317,7 @@ func TestSyncClipboardExternalProcess(t *testing.T) {
 		receipt, err := json.MarshalIndent(map[string]any{
 			"passed": true, "goos": runtime.GOOS, "goarch": runtime.GOARCH,
 			"program_sha256": map[string]string{"plugin": hash(binary), "unic": hash(readFile(filepath.Join(binDir, "unic"))), "unicd": hash(readFile(filepath.Join(binDir, "unicd")))},
-			"assertions":     []string{"installation", "credentials", "outbound text", "inbound history", "image stage and download SHA-256", "invalid and unsupported documents", "channel isolation", "pause", "removal", "global disable", "shutdown"},
+			"assertions":     []string{"installation", "desktop-owned service and history without required credentials", "editable plugin settings", "activation after settings save and restart", "credentials", "outbound text", "inbound history", "image stage and download SHA-256", "invalid and unsupported documents", "channel isolation", "pause", "removal", "global disable", "shutdown"},
 		}, "", "  ")
 		if err != nil {
 			t.Fatal(err)

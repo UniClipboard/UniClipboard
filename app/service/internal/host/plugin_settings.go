@@ -46,7 +46,12 @@ func (n *Node) pluginsLocked() []api.PluginInfo {
 	for id, s := range found {
 		running, active := n.runningPlugins[id]
 		wanted := slices.Contains(enabled, id)
-		restart := wanted != active || active && !running.Same(s)
+		needsSettings := false
+		if wanted && !active && s.Schema != nil {
+			_, err := s.RuntimeConfig(n.luaDir, nil)
+			needsSettings = luascripts.MissingRequiredSettings(err)
+		}
+		restart := !needsSettings && (wanted != active || active && !running.Same(s))
 		if !restart && active && s.Manifest.Kind == "go" && s.Schema != nil {
 			revision, _, err := s.ReadSettings(n.luaDir)
 			restart = err != nil || revision != n.pluginRevisions[id]
@@ -88,6 +93,7 @@ func (n *Node) pluginsLocked() []api.PluginInfo {
 			Configured:       wanted,
 			RunningVersion:   running.Manifest.Version,
 			HasSettings:      s.Schema != nil,
+			NeedsSettings:    needsSettings,
 			Restart:          restart,
 		})
 	}
@@ -267,8 +273,11 @@ func (n *Node) pluginSettings(ctx context.Context, id string, edit *api.PluginSe
 		n.hub.emit(api.Event{Kind: "config"})
 	}
 	out, err = s.SettingsView(revision, values)
-	out.Restart = active && !canReload && (!running.Same(s) || revision != n.pluginRevisions[id]) ||
-		!active && slices.Contains(n.cfg.Current().ExternalPlugins(), id)
+	out.Restart = active && !canReload && (!running.Same(s) || revision != n.pluginRevisions[id])
+	if !active && slices.Contains(n.cfg.Current().ExternalPlugins(), id) {
+		_, validationErr := s.Schema.Normalize(values)
+		out.Restart = !luascripts.MissingRequiredSettings(validationErr)
+	}
 	return out, err
 }
 

@@ -184,6 +184,7 @@ func (d *viewState) liveSearchValues() []searchCandidate {
 	}
 	return out
 }
+
 const foregroundLoadingIndicatorDelay = 120 * time.Millisecond
 
 func (l *liveState) startForegroundLoading() {

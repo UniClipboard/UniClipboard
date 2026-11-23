@@ -74,20 +74,6 @@ func (l *liveState) dropDetail(d *viewState, id string) {
 	l.contentSerial++
 }
 
-func (l *liveState) resetDetails(d *viewState) {
-	l.detailEpoch++
-	l.detailWindow = nil
-	for _, read := range l.detailReads {
-		read.obsolete = true
-		read.cancel()
-	}
-	for id := range l.details {
-		l.dropDetail(d, id)
-	}
-	l.detailKey, l.detailBusy = "", false
-	l.detailLoadingSince = time.Time{}
-}
-
 // All cache and scheduler changes run on the view thread. Canceled reads keep
 // their slot until completion, bounding work even during rapid scrolling.
 func (l *liveState) loadDetail(d *viewState) {

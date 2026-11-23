@@ -30,9 +30,9 @@ type ItemListItem struct {
 	Image         ui.ImageSource
 	// ImageLoading reserves the 34x34 thumbnail slot with a shimmer placeholder while
 	// an image thumbnail is still decoding.
-	ImageLoading  bool
-	OnCopy        func()
-	CopyLabel     string
+	ImageLoading bool
+	OnCopy       func()
+	CopyLabel    string
 }
 
 type ItemListProps struct {

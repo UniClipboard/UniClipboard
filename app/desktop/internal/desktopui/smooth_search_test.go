@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -258,13 +259,13 @@ func TestSelectionContinuityVsScopeSwitch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	sock := filepath.Join(dir, "s.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	makeHit := func(id, text string, pinned bool) api.HistorySearchHit {
 		tags := []string{}
@@ -333,7 +334,7 @@ func TestSelectionContinuityVsScopeSwitch(t *testing.T) {
 
 	srv := &http.Server{Handler: mux}
 	go func() { _ = srv.Serve(ln) }()
-	defer srv.Close()
+	defer func() { _ = srv.Close() }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -468,7 +469,7 @@ func makeEvidenceEntries(fullImg, thumbImg *ui.Bitmap) []entry {
 			id: "e2", kind: desktopkit.KindCode, title: "docker compose up -d --build && go test -race ./app/desktop/...",
 			preview: "docker compose up -d --build && go test -race ./app/desktop/... -run Release",
 			text:    "# Verify release build & desktop smoothness tests\ndocker compose up -d --build\ngo test -race ./app/desktop/internal/desktopui -run TestSelectionContinuity",
-			date: "今天 18:10", source: "local", sourceAppName: "WezTerm", tags: []string{"work"}, size: "152 字符",
+			date:    "今天 18:10", source: "local", sourceAppName: "WezTerm", tags: []string{"work"}, size: "152 字符",
 			highlights: []engine.HistorySearchRange{{Start: 69, End: 76}},
 		},
 		{
@@ -481,7 +482,7 @@ func makeEvidenceEntries(fullImg, thumbImg *ui.Bitmap) []entry {
 			id: "e4", kind: desktopkit.KindLink, title: "UniClipboard · History Search Contract Release Spec",
 			preview: "https://github.com/UniClipboard/uniclipboard/blob/main/docs/contracts/history-search-contract.md",
 			text:    "https://github.com/UniClipboard/uniclipboard/blob/main/docs/contracts/history-search-contract.md",
-			date: "今天 17:15", source: "local", sourceAppName: "Safari", size: "96 字符",
+			date:    "今天 17:15", source: "local", sourceAppName: "Safari", size: "96 字符",
 		},
 		{
 			id: "e5", kind: desktopkit.KindImage, title: "QuickPanel_Release_Capture.png",

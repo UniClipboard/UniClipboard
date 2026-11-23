@@ -118,38 +118,38 @@ type liveState struct {
 	searchSlots                                  chan struct{}
 	connected, loaded, loading, busy, detailBusy bool
 	// loading serializes all history reads; foregroundLoading controls visible loading.
-	foregroundLoading                                                                bool
-	loadingSince, detailLoadingSince                                                 time.Time
+	foregroundLoading                                                                        bool
+	loadingSince, detailLoadingSince                                                         time.Time
 	message, readError, cursor, key, displayedKey, displayedScope, lastResultKind, detailKey string
-	nextRefresh                                time.Time
-	pageRetry                                  time.Time
-	historyRevision                            uint64
-	historyInvalid                             bool
-	serviceID                                  string
-	windowOffset                               int
-	previousPage                               bool
-	checkpoints                                []historyCheckpoint
-	retained                                   *entry
-	items                                      map[string]api.HistoryItem
-	details                                    map[string]entry
-	config                                     config.State
-	actions                                    []api.Action
-	syncBackends                               []api.SyncBackendInfo
-	pairingBackend                             string
-	externalPlugins                            []api.PluginInfo
-	marketplace                                api.PluginMarketplace
-	marketplaceLoaded                          bool
-	marketplaceLoading                         bool
-	marketplaceError                           string
-	peers                                      map[string]api.PeerStatus
-	pending                                    map[string]api.PendingPeer
-	taskKnownPending                           map[string]int64
-	join                                       *api.PairResult
-	codeAttempted, ticketAttempted             bool
-	code                                       api.Code
-	ticket                                     string
-	loginStatus                                func() (bool, string)
-	retryLogin                                 func()
+	nextRefresh                                                                              time.Time
+	pageRetry                                                                                time.Time
+	historyRevision                                                                          uint64
+	historyInvalid                                                                           bool
+	serviceID                                                                                string
+	windowOffset                                                                             int
+	previousPage                                                                             bool
+	checkpoints                                                                              []historyCheckpoint
+	retained                                                                                 *entry
+	items                                                                                    map[string]api.HistoryItem
+	details                                                                                  map[string]entry
+	config                                                                                   config.State
+	actions                                                                                  []api.Action
+	syncBackends                                                                             []api.SyncBackendInfo
+	pairingBackend                                                                           string
+	externalPlugins                                                                          []api.PluginInfo
+	marketplace                                                                              api.PluginMarketplace
+	marketplaceLoaded                                                                        bool
+	marketplaceLoading                                                                       bool
+	marketplaceError                                                                         string
+	peers                                                                                    map[string]api.PeerStatus
+	pending                                                                                  map[string]api.PendingPeer
+	taskKnownPending                                                                         map[string]int64
+	join                                                                                     *api.PairResult
+	codeAttempted, ticketAttempted                                                           bool
+	code                                                                                     api.Code
+	ticket                                                                                   string
+	loginStatus                                                                              func() (bool, string)
+	retryLogin                                                                               func()
 }
 
 func (l *liveState) work() {

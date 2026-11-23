@@ -1,4 +1,4 @@
 {
-  "en": "UniClipboard 2.0.0 introduces the v2 Engine, independent CLI and Desktop packages, and numbered immutable builds. All paired devices must use v2. Import v1 history explicitly with unic migrate.",
-  "zh": "UniClipboard 2.0.0 引入 v2 Engine、独立的 CLI 与桌面安装包，以及不可变的构建编号。所有配对设备必须使用 v2。请使用 unic migrate 显式导入 v1 历史。"
+  "en": "Build 4 adds configurable Desktop shortcuts, preserves more preferences and shortcuts when importing from v1, updates the history interface and macOS disk image, and keeps Desktop available when enabled plugins need settings. It also adds external clipboard channel pairing. All paired devices must use v2.",
+  "zh": "Build 4 支持自定义桌面快捷键，并在迁移 v1 数据时保留更多偏好设置和快捷键。此版本更新历史界面和 macOS 安装镜像，支持外部剪贴板渠道配对，并在已启用的插件缺少必填设置时保持桌面端可用。所有配对设备必须使用 v2。"
 }

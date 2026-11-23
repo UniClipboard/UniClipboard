@@ -2,12 +2,12 @@ schema = 1
 
 [products.cli]
 version = "2.0.0"
-build_number = 2
+build_number = 3
 targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64", "windows-amd64", "windows-arm64"]
 
 [products.desktop]
 version = "2.0.0"
-build_number = 3
+build_number = 4
 targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64", "windows-amd64", "windows-arm64"]
 cli_version = "2.0.0"
 cli_build_number = 2

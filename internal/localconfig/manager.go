@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"maps"
 
 	"os"
 	"path/filepath"
@@ -123,6 +124,28 @@ func (m *Manager) State() State {
 	}
 	slices.Sort(s.RestartRequired)
 	return s
+}
+
+// RecordPluginStart accounts for one live enablement in restart reporting.
+// Unrelated plugin ordering, other settings and pending disables stay intact.
+func (m *Manager) RecordPluginStart(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !slices.Contains(m.cur.Plugins.Order, id) {
+		return
+	}
+	if !slices.Contains(m.started.Plugins.Order, id) {
+		m.started.Plugins.Order = append(slices.Clone(m.started.Plugins.Order), id)
+	}
+	m.started.Plugins.Instances = maps.Clone(m.started.Plugins.Instances)
+	if in, ok := m.cur.Plugins.Instances[id]; ok {
+		if m.started.Plugins.Instances == nil {
+			m.started.Plugins.Instances = make(map[string]Instance)
+		}
+		m.started.Plugins.Instances[id] = in
+	} else {
+		delete(m.started.Plugins.Instances, id)
+	}
 }
 
 // MarkRestart records that a change the host cannot apply live is waiting

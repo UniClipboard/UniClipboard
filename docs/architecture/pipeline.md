@@ -70,6 +70,11 @@ The stage chain is Capture/Receive → Processing → Commit → Sync → Use �
 - **History**: SQLite records and private blobs belong to Engine. Host-managed files remain external references. Stable IDs, pagination, edits, leases, expiry and apply follow the [history contract](../contracts/history-contract.md). Cleanup defaults to enabled, 180 days, unlimited eligible records and no excluded tags. The startup history byte budget is 4 GiB. Live history settings affect existing records. Tag exclusions protect records and managed files. Explicit item expiry is independent. The service exposes `/v1/history*` and `unic history`.
 - **Notifications**: Observers receive content-free events and cannot mutate content. Each observer has a 64-entry queue that drops the newest event when full and a 200 ms callback budget. Delivery is lossy. Successful capacity eviction emits `clipboard.deleted` once per deleted history ID.
 
+The service can activate an installed Go Action-only plugin or external-channel
+backend at runtime. Engine assembles the verified child process before
+registering its Actions or publishing the backend and its policy. An inactive,
+enabled instance can activate when the user saves its required settings.
+
 ## Built-in content tags
 
 The service assembles `builtin.classify` before `builtin.text` by default.

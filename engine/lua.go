@@ -67,13 +67,16 @@ func (e *Engine) reloadLua(ctx context.Context, id PluginID, source string, cfg 
 		return gerr
 	}
 	defer release()
+	e.mu.Lock()
 	i := slices.IndexFunc(e.plugins, func(p plugin.Plugin) bool { return p.Spec().ID == string(id) })
 	if i < 0 {
+		e.mu.Unlock()
 		return newErr(CodeNotFound, "no such plugin")
 	}
 	r, ok := e.plugins[i].(interface {
 		Reload(context.Context, string, plugin.Config, func() error) error
 	})
+	e.mu.Unlock()
 	if !ok {
 		return newErr(CodeUnsupported, "this plugin is not a Lua plugin")
 	}

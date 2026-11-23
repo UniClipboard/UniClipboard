@@ -70,11 +70,13 @@ type Node struct {
 	logf          func(string, ...any)
 	customReceive bool
 
-	luaDir          string
-	pluginMu        sync.Mutex
-	runningPlugins  map[string]luascripts.Script
-	pluginRevisions map[string]string
-	lua             map[string]luascripts.Script // as running, by plugin ID
+	dataDir          string
+	luaDir           string
+	pluginMu         sync.Mutex
+	runningPluginsMu sync.RWMutex // configuration callbacks also read runningPlugins
+	runningPlugins   map[string]luascripts.Script
+	pluginRevisions  map[string]string
+	lua              map[string]luascripts.Script // as running, by plugin ID
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -101,7 +103,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}
 	// Install the notification after Node exists. Its hub is allocated before
 	// Engine.New, so diagnostics may report initialization without a GUI.
-	n := &Node{peer: peer}
+	n := &Node{peer: peer, dataDir: o.Dir}
 	obsOpts.Changed = func() { n.hub.emit(api.Event{Kind: "diagnostics"}) }
 	diagnostics := observability.New(obsOpts)
 	n.diagnostics = diagnostics
@@ -312,10 +314,8 @@ func (n *Node) pushSettings(ctx context.Context) error {
 		for id := range st.Settings.Value.BackendPolicies {
 			policies[id] = configured.BackendPolicy(string(id))
 		}
-		for id := range configured.Settings().BackendPolicies {
-			if s, ok := n.runningPlugins[string(id)]; ok && !slices.Contains(s.Manifest.Capabilities, plugin.CapSyncBackend) {
-				return errors.New("standard sync settings require a sync backend")
-			}
+		if !n.validBackendPolicies(configured.Settings().BackendPolicies) {
+			return errors.New("standard sync settings require a sync backend")
 		}
 		want.BackendPolicies = policies
 		if reflect.DeepEqual(st.Settings.Value, want) {
@@ -328,6 +328,17 @@ func (n *Node) pushSettings(ctx context.Context) error {
 		}
 	}
 	return errors.New("settings keep changing")
+}
+
+func (n *Node) validBackendPolicies(policies map[engine.PluginID]engine.BackendSyncPolicy) bool {
+	n.runningPluginsMu.RLock()
+	defer n.runningPluginsMu.RUnlock()
+	for id := range policies {
+		if s, ok := n.runningPlugins[string(id)]; ok && !slices.Contains(s.Manifest.Capabilities, plugin.CapSyncBackend) {
+			return false
+		}
+	}
+	return true
 }
 
 // ---- helpers ----

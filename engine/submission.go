@@ -398,6 +398,8 @@ func (e *Engine) normalizeDeviceIDs(ids []DeviceID) ([]DeviceID, *Error) {
 	}
 	out := append([]DeviceID(nil), ids...)
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	for i, id := range out {
 		if i > 0 && out[i-1] == id {
 			return nil, newErr(CodeInvalidArgument, "DeviceIDs has a repeated ID")

@@ -443,7 +443,7 @@ func (d *viewState) pluginsMarketplaceWorkspace(c *ui.Context, k desktopkit.Kit)
 func (d *viewState) marketplaceCard(c *ui.Context, k desktopkit.Kit, entry api.MarketplaceEntry, isSelected bool) {
 	inst, isInstalled := d.installedExternalPlugin(entry.ID)
 	canUpdate := isInstalled && entry.Version != "" && entry.Version != inst.Version
-	icon, tone := pluginIconForCategory(entry.Category, entry.Capabilities)
+	icon, tone := pluginPresentationIcon(entry.Category, entry.Capabilities, entry.Icon)
 
 	card := ui.ButtonBase(c).Label(entry.Name).FillWidth().MinWidth(0).Radius(12).Padding(13, 15).
 		FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
@@ -513,7 +513,7 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 	inst, isInstalled := d.installedExternalPlugin(entry.ID)
 	canUpdate := isInstalled && entry.Version != "" && entry.Version != inst.Version
 	installing := p.installingID == entry.ID
-	icon, tone := pluginIconForCategory(entry.Category, entry.Capabilities)
+	icon, tone := pluginPresentationIcon(entry.Category, entry.Capabilities, entry.Icon)
 
 	k.Scroll(c.Key("scroll")).Role(ui.RoleRegion).Label(entry.Name).Grow(1).MinHeight(0).Children(func() {
 		ui.Column(c.Key("body")).Padding(18, 20, 24, 20).Gap(15).MinWidth(0).Children(func() {

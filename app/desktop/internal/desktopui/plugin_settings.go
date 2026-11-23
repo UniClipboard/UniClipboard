@@ -133,6 +133,21 @@ func pluginIconForCategory(category string, caps []string) (desktopkit.IconName,
 	return desktopkit.IconPackage, "accent"
 }
 
+func pluginPresentationIcon(category string, caps []string, declared ...string) (desktopkit.IconName, string) {
+	fallback, tone := pluginIconForCategory(category, caps)
+	for _, name := range declared {
+		icon := desktopkit.IconName(name)
+		switch icon {
+		case desktopkit.IconChat, desktopkit.IconCode, desktopkit.IconDevices, desktopkit.IconEdit,
+			desktopkit.IconFile, desktopkit.IconFilter, desktopkit.IconFolder, desktopkit.IconGlobe,
+			desktopkit.IconImage, desktopkit.IconLink, desktopkit.IconLock, desktopkit.IconPackage,
+			desktopkit.IconSend, desktopkit.IconShield, desktopkit.IconTag, desktopkit.IconText:
+			return icon, tone
+		}
+	}
+	return fallback, tone
+}
+
 func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	l := d.live
 	d.ensureMarketplaceLoaded(false)
@@ -351,7 +366,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 			if len(l.marketplace.Plugins) > 0 {
 				pick := l.marketplace.Plugins[0]
 				accentBg, accentEdge := deviceAccentSurface(k)
-				icon, tone := pluginIconForCategory(pick.Category, pick.Capabilities)
+				icon, tone := pluginPresentationIcon(pick.Category, pick.Capabilities, pick.Icon)
 				ui.Column(c.Key("pick-card-"+pick.ID)).Padding(14, 16).Radius(13).Background(accentBg).Border(1, accentEdge).Gap(10).Children(func() {
 					ui.Row(c.Key("top")).Gap(12).AlignItems(ui.Center).Children(func() {
 						pluginIconTile(c.Key("ico"), k, icon, tone, 36)
@@ -410,13 +425,12 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 					displayName, catSummary := d.pluginDisplay(item)
 					summary := pluginSubtitle(item, catSummary)
 					meta := "v" + item.Version
-					icon, tone := pluginIconForCategory("", item.Capabilities)
+					icon, tone := pluginPresentationIcon(cat.Category, item.Capabilities, item.Icon, cat.Icon)
 					if hasCat {
 						meta = "v" + item.Version + " · " + cat.Author
 						if cat.ZeroConfig {
 							meta += " · " + d.tr("免配置")
 						}
-						icon, tone = pluginIconForCategory(cat.Category, item.Capabilities)
 					}
 					if query != "" && !strings.Contains(strings.ToLower(displayName+" "+item.ID+" "+summary), query) {
 						continue

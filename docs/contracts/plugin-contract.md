@@ -308,6 +308,11 @@ bypasses the cache age. Fetch or validation failure uses a valid cache,
 including an expired cache, then the bundled official catalog. The response
 identifies its source and provides a warning when fallback follows failure.
 
+Each catalog entry may declare an `icon` string using the [plugin icon names](#display-icon).
+Desktop uses the catalog value when browsing the marketplace, including before
+installation. An omitted, empty or unrecognized icon uses the existing
+category or capability icon.
+
 Marketplace installation reuses the installer below. Catalog recommendations,
 including `build_fallback`, do not grant execution or source-build permission.
 The caller supplies the installation options explicitly. The
@@ -383,6 +388,21 @@ summary = "把剪贴板内容发送到微信输入法。"
 name = "WeChat IME"
 summary = "Send clipboard content to WeChat IME."
 ```
+
+### Display icon
+
+A Go or Lua `spec.toml` may declare a top-level `icon`, for example
+`icon = "shield"`. The same field is available on each marketplace JSON entry.
+A nonempty name starts with a lowercase ASCII letter and contains at most 32
+ASCII letters, digits or hyphens, using lowercase letters only. The manifest
+and marketplace validate this syntax.
+
+Desktop recognizes `chat`, `code`, `devices`, `edit`, `file`, `filter`,
+`folder`, `globe`, `image`, `link`, `lock`, `package`, `send`, `shield`,
+`tag` and `text`. These names select bundled glyphs. Installed plugin views
+prefer a recognized manifest icon, then a recognized catalog icon, then the
+category or capability icon. The field is independent of language, plugin
+identity and the RPC handshake.
 
 ### 安装选择与 --build
 

@@ -548,8 +548,11 @@ Actions. The Wormhole link contains the decryption key and follows normal
 Action result history and sync policy.
 
 The marketplace lists one plugin per row beside a detail pane. Each card shows
-the available author, version, category and install status. Selecting a card
-updates the detail pane and exposes the selected state to accessibility. The
+the available author, version, category and install status. Cards, the detail
+pane and the featured plugin use the catalog's declared
+[icon](../contracts/plugin-contract.md#display-icon) with a category or capability
+fallback. Installed plugin views prefer the icon declared in the manifest.
+Selecting a card updates the detail pane and exposes the selected state to accessibility. The
 marketplace and plugin list use quiet 28-DIP toolbar controls for navigation,
 catalog refresh, update checks and the overflow menu.
 

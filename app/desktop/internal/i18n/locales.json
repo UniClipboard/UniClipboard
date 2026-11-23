@@ -1595,6 +1595,12 @@
     "pt-BR": "Escolher o proxy para conexões de saída",
     "ru": "Выбрать прокси для исходящих соединений"
   },
+  "6 位配对码": {
+    "en": "6-digit pairing code",
+    "ja": "6桁のペアリングコード",
+    "pt-BR": "Código de pareamento de 6 dígitos",
+    "ru": "6-значный код сопряжения"
+  },
   "支持 6 位配对码或完整票据。": {
     "en": "Accepts a six-digit pairing code or full ticket.",
     "ja": "6桁のペアリングコードまたは完全なチケットを使用できます。",

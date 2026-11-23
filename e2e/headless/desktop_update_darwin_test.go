@@ -135,7 +135,7 @@ func TestMacOSDaemonUpdate(t *testing.T) {
 	corrupt.Store(false)
 	download, err := source.Open(ctx, feed.URL+"/archive")
 	need(t, err)
-	defer download.Close()
+	defer func() { _ = download.Close() }()
 	proc.stop()
 	actual, err := io.ReadAll(download)
 	need(t, err)

@@ -72,7 +72,7 @@ func registerDesktopUpdate(mux *http.ServeMux, settings *config.Manager, lifecyc
 			http.Error(w, "desktop update check failed", http.StatusBadGateway)
 			return
 		}
-		defer body.Close()
+		defer func() { _ = body.Close() }()
 		manifest, err := io.ReadAll(body)
 		var artifact struct {
 			URL  string `json:"url"`
@@ -102,7 +102,7 @@ func registerDesktopUpdate(mux *http.ServeMux, settings *config.Manager, lifecyc
 			http.Error(w, "desktop update verification failed", http.StatusBadGateway)
 			return
 		}
-		defer archive.Close()
+		defer func() { _ = archive.Close() }()
 		w.Header().Set("Content-Type", "application/gzip")
 		w.Header().Set("Content-Length", strconv.FormatInt(current.size, 10))
 		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(2 * time.Minute))

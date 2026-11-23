@@ -56,7 +56,7 @@ func (s *DaemonSource) Open(ctx context.Context, address string) (io.ReadCloser,
 	if err != nil {
 		return nil, err
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 	// Complete and verify the handoff before the installer retires unicd.
 	return copyVerified(body, artifact, s.Key)
 }

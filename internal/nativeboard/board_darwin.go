@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/ebitengine/purego/objc"
+
 	"github.com/uniclipboard/unic/internal/clip"
 )
 

@@ -4,12 +4,13 @@ package board
 
 import (
 	"bytes"
-	"github.com/uniclipboard/unic/internal/nativeboard"
 	"image"
 	"image/color"
 	"image/png"
 	"os"
 	"strings"
+
+	"github.com/uniclipboard/unic/internal/nativeboard"
 
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"

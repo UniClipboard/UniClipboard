@@ -4,12 +4,13 @@ package board
 
 import (
 	"bytes"
-	"github.com/uniclipboard/unic/internal/nativeboard"
 	"image"
 	"image/png"
 	"path/filepath"
 	"strings"
 	"unsafe"
+
+	"github.com/uniclipboard/unic/internal/nativeboard"
 
 	"golang.org/x/sys/windows"
 

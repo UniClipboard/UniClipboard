@@ -5,8 +5,9 @@ package quickpanel
 import (
 	"context"
 	"errors"
-	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	"time"
+
+	"github.com/uniclipboard/unic/internal/clipboardintegration"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
 )

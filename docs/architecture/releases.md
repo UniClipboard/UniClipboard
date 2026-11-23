@@ -53,6 +53,8 @@ immutable assets. Draft recovery still requires the original source and
 metadata. CLI publication and signed Desktop construction run in parallel
 after CLI candidate acceptance. Desktop construction verifies the selected
 CLI manifest, package integrity and shared source compatibility on each target.
+The Windows installer lifecycle fixture uses the same lock as the production
+installer and changes only the fixture build number.
 Once both succeed, the workflow publishes the Desktop candidate, stages the
 legacy upgrade after all twelve native receipts pass, and promotes Desktop
 using the channel revision from the staging receipt.

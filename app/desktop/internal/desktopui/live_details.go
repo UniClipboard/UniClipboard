@@ -85,12 +85,13 @@ func (l *liveState) resetDetails(d *viewState) {
 		l.dropDetail(d, id)
 	}
 	l.detailKey, l.detailBusy = "", false
+	l.detailLoadingSince = time.Time{}
 }
 
 // All cache and scheduler changes run on the view thread. Canceled reads keep
 // their slot until completion, bounding work even during rapid scrolling.
 func (l *liveState) loadDetail(d *viewState) {
-	if l.key != d.liveQueryKey() || l.ctx.Err() != nil {
+	if l.key != d.liveQueryKey() || l.ctx.Err() != nil || (l.foregroundLoading && l.key != l.displayedKey) {
 		return
 	}
 	edge := thumbnailEdge(len(l.detailWindow) + 1)
@@ -113,6 +114,7 @@ func (l *liveState) loadDetail(d *viewState) {
 			l.dropDetail(d, id)
 		}
 	}
+	prevDetailKey := l.detailKey
 	l.detailKey = d.selected
 	selectedDetail, cached := l.details[d.selected]
 	_, exists := l.items[d.selected]
@@ -124,6 +126,13 @@ func (l *liveState) loadDetail(d *viewState) {
 	// four neighbors waiting for the process-wide request slot. Cancelled jobs
 	// keep their slot until completion, so the four-job bound remains intact.
 	selectionNeedsRead := exists && (!cached || (selectedDetail.picture != nil && !selectedDetail.picture.matches(0)))
+	if selectionNeedsRead {
+		if l.detailLoadingSince.IsZero() || prevDetailKey != d.selected {
+			l.detailLoadingSince = time.Now()
+		}
+	} else {
+		l.detailLoadingSince = time.Time{}
+	}
 	if selectionNeedsRead && l.detailReads[d.selected] == nil && len(l.detailReads) >= detailReadLimit {
 		cancelling := false
 		for _, read := range l.detailReads {

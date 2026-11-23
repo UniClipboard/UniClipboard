@@ -94,14 +94,17 @@ type liveState struct {
 	sendStage                                  string
 	queryOverride                              func() engine.HistorySearchQuery
 	appliedSerial, contentSerial               uint64
+	resultEpoch                                uint64
 	searchCancel, catalogueCancel, countCancel context.CancelFunc
+	sidebarCountCancel                         context.CancelFunc
 	detailEpoch                                uint64
 	detailWindow                               []string
 	detailReads                                map[string]*detailRead
 	loadGeneration                             uint64
-	catalogueKey, countKey                     string
+	catalogueKey, countKey, sidebarCountKey    string
 	catalogue                                  map[string][]engine.HistorySearchCandidate
 	counts                                     map[string]uint64
+	sidebarCounts                              map[string]uint64
 
 	ctx                                          context.Context
 	cancel                                       context.CancelFunc
@@ -115,8 +118,9 @@ type liveState struct {
 	searchSlots                                  chan struct{}
 	connected, loaded, loading, busy, detailBusy bool
 	// loading serializes all history reads; foregroundLoading controls visible loading.
-	foregroundLoading                          bool
-	message, readError, cursor, key, detailKey string
+	foregroundLoading                                                                bool
+	loadingSince, detailLoadingSince                                                 time.Time
+	message, readError, cursor, key, displayedKey, displayedScope, lastResultKind, detailKey string
 	nextRefresh                                time.Time
 	pageRetry                                  time.Time
 	historyRevision                            uint64
@@ -237,12 +241,13 @@ drained:
 		l.nextRefresh = time.Time{}
 	}
 	l.loadCatalogue(d)
+	l.loadSidebarCounts(d)
 	key := d.liveQueryKey()
 	if l.loading && key != l.key {
 		l.invalidateSearch()
 	}
 	if key != l.key {
-		l.foregroundLoading = true
+		l.startForegroundLoading()
 	}
 	if !l.loading && !l.busy && (key != l.key || (time.Now().After(l.nextRefresh) && !time.Now().Before(l.pageRetry))) {
 		l.loadHistory(d, false)
@@ -347,6 +352,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 		}
 	}
 	selected := d.selected
+	prevSelected := d.selected
 	selectedItem := l.items[selected]
 	var selectedEntry *entry
 	if v := d.current(); v != nil {
@@ -357,7 +363,10 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 	invalid := l.historyInvalid
 	selectedRevision := selectedItem.Revision
 	key := d.liveQueryKey()
-	foreground := !l.loaded || key != l.key
+	scope := d.liveScopeKey()
+	wasLoaded := l.loaded
+	queryChanged := !l.loaded || key != l.displayedKey
+	foreground := queryChanged
 	expired := false
 	for _, it := range l.items {
 		if it.ExpiresAt > 0 && it.ExpiresAt <= time.Now().UnixMilli() {
@@ -365,33 +374,27 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 			break
 		}
 	}
-	if key != l.key {
+	if queryChanged {
 		previous = false
-		l.resetDetails(d)
 		target = 50
 		offset = 0
 		points = nil
 		anchors = nil
 		selected = ""
 		selectedEntry = nil
-		l.retained = nil
-		l.windowOffset = 0
-		l.cursor = ""
-		l.pageRetry = time.Time{}
-		d.entries = nil
-		l.items = map[string]api.HistoryItem{}
-		d.selected = ""
-		l.detailKey = ""
-		d.quickLook = false
 	}
 	if more {
-		if l.cursor == "" || key != l.key {
+		if l.cursor == "" || key != l.key || queryChanged {
 			return
 		}
 		q.Cursor = l.cursor
 		points = rememberHistoryCheckpoint(points, historyCheckpoint{offset + len(d.entries), q.Cursor})
 	}
-	l.foregroundLoading = !l.loaded || key != l.key
+	if foreground {
+		l.startForegroundLoading()
+	} else {
+		l.stopForegroundLoading()
+	}
 	l.loading = true
 	l.loadGeneration++
 	generation := l.loadGeneration
@@ -470,7 +473,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 					return
 				}
 				l.loading = false
-				l.foregroundLoading = false
+				l.stopForegroundLoading()
 				if key != d.liveQueryKey() {
 					l.nextRefresh = time.Time{}
 					return
@@ -497,6 +500,17 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 					l.readError = ""
 					if page.IndexIncomplete {
 						l.readError = "部分内容的搜索索引不可用。元数据仍可浏览。"
+					}
+					if queryChanged {
+						l.detailEpoch++
+						l.detailWindow = nil
+						for _, read := range l.detailReads {
+							read.obsolete = true
+							read.cancel()
+						}
+						l.detailKey, l.detailBusy = "", false
+						l.retained = nil
+						d.quickLook = false
 					}
 					if !more {
 						fresh := make(map[string]api.HistoryItem, len(page.Hits))
@@ -564,13 +578,43 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 						}
 					}
 					l.cursor = page.NextCursor
+					selectedPending := false
 					if l.pendingSelectID != "" {
 						if slices.ContainsFunc(d.entries, func(e entry) bool { return e.id == l.pendingSelectID }) {
 							d.selectEntry(l.pendingSelectID)
 							d.detailOpen, d.inspector = true, true
 							d.list.ScrollTo(l.pendingSelectID)
+							selectedPending = true
 						}
 						l.pendingSelectID = ""
+					}
+					if queryChanged {
+						sameScope := wasLoaded && l.displayedScope == scope
+						if !wasLoaded {
+							l.lastResultKind = "cold"
+						} else if !sameScope {
+							l.lastResultKind = "scope"
+						} else {
+							l.lastResultKind = "refine"
+						}
+						l.displayedKey = key
+						l.displayedScope = scope
+						l.resultEpoch++
+						if !selectedPending {
+							if len(d.entries) > 0 {
+								if sameScope && prevSelected != "" && slices.ContainsFunc(d.entries, func(e entry) bool { return e.id == prevSelected }) {
+									d.selectEntry(prevSelected)
+								} else {
+									d.selectEntry(d.entries[0].id)
+									d.list.ScrollTo(d.entries[0].id)
+								}
+							} else {
+								d.selectEntry("")
+								l.detailKey = ""
+								l.detailLoadingSince = time.Time{}
+								d.quickLook, d.detailOpen, d.inspector = false, false, false
+							}
+						}
 					}
 				}
 				l.connected = true

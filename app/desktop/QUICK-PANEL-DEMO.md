@@ -77,7 +77,7 @@ They are not native window-manager, OS focus, screenshot-comparison or automatic
 The fake backend implements local substring matching, fixed relative-time fixtures and fixture-catalog suggestions.
 It does not port the daemon's search index, arbitrary natural-language date grammar, arbitrary pinyin transliteration, live reconnection or service timing.
 The rich-text fixture uses mygo's existing HTML parser and read-only rich-text editor. It does not test GPUI's full HTML compatibility.
-The unified application composition uses source-bound BoardUI colors/type and the finite 49-glyph Remix set. It does not retain platform icon strokes or a separate GPUI palette. The historical GPUI images are not the current pixel baseline. Native font rasterization, window shadows and display behavior still require platform evidence.
+The unified application composition uses source-bound BoardUI colors/type and the finite 51-glyph Remix set. It does not retain platform icon strokes or a separate GPUI palette. The historical GPUI images are not the current pixel baseline. Native font rasterization, window shadows and display behavior still require platform evidence.
 The satellite uses mygo's maintained nonfocusable Flyout for parent ownership, edge flipping and placement.
 It does not use GPUI's native window implementation. Multi-monitor placement and native focus require the manual checks above.
 Global hotkeys, modifier double taps, real target capture, clipboard restore, OS paste, automatic reopening and persisted settings are outside this fixture.

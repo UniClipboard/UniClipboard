@@ -1,0 +1,51 @@
+---
+title: FAQ
+description: Frequently asked questions about UniClipboard v2 sync, data, privacy, and migration.
+---
+
+## Can v2 sync with v1 devices?
+
+No. v2 is a brand-new implementation whose protocol, database, and device identity are incompatible with v1. Upgrade all devices to v2 and pair them again; old history can be [migrated](../migration/v1-to-v2).
+
+## Does v2 still have "Spaces" and space passphrases?
+
+No. v2 manages trust per device: devices are added via pairing codes and each one requires your local approval. See [Devices](../core-features/devices).
+
+## Where is data stored?
+
+Everything is stored in the local data directory (database, config, logs, received files); see [Environment Variables](../reference/environment#default-data-directory) for locations. No history is stored in the cloud.
+
+## Does everything copied on one device sync to other devices?
+
+Text, images, and files sync automatically by default. They will not sync when:
+
+- `sync.enabled` or `sync.automatic` is disabled;
+- A file exceeds `limits.max_file_bytes` (default 100 MB) or `auto_file_max_bytes`;
+- A folder is copied (not auto-synced by default; must be sent manually);
+- A plugin with `block_sync` fails.
+
+See [Configuration File](../reference/configuration#sync).
+
+## How do I pause sync?
+
+```bash
+unic config set sync.enabled false
+```
+
+Devices stay connected, but sending and receiving pause in both directions.
+
+## Is history kept forever?
+
+By default, entries older than 180 days are cleaned up automatically, with a 4 GiB history storage limit. You can adjust this under `[history]`, or use `excluded_tags` to protect entries with specific tags.
+
+## Is usage data collected?
+
+Client telemetry is enabled by default, never includes clipboard payloads, device addresses, or other secrets, and can be turned off at any time: `unic config set telemetry.enabled false`. See [Diagnostics and Logs](../reference/diagnostics#telemetry).
+
+## Can I run multiple instances on the same machine?
+
+Yes. Use `UNIC_HOME` to specify different data directories, e.g., `UNIC_HOME=/tmp/unicA unicd`.
+
+## Does it work on a headless server without a GUI?
+
+Yes. `unic` and `unicd` have no GUI dependencies. See [Headless Deployment](../cli/headless-deployment).

@@ -1,0 +1,221 @@
+---
+title: Command Reference
+description: All unic subcommands, aliases, flags, JSON output, and exit codes.
+---
+
+This page is compiled from the command table in the `unic` source. Run `unic help` for brief help, or `unic help --json` for machine-readable command declarations.
+
+## Conventions
+
+- **Command aliases**: `s` = `send`, `r` = `recv`, `h` = `history`, `-h` / `--help` = `help`. `history list` can be written `history ls`, and `history delete` can be written `history rm`. Legacy command names have been removed with no compatibility aliases.
+- **`uniclip`**: alias for `unic` included in release packages, with identical behavior.
+- **Service requirement**: each command declares one requirement:
+
+| Requirement | Meaning |
+|---|---|
+| `local` | Never connects to the service |
+| `service` | Reuses a running `unicd`, or starts one temporarily |
+| `service+clipboard` | Same as above, and requires the clipboard adapter provided by Desktop |
+| `offline` | Requires no running service for the target data directory |
+
+- **`--json`**: commands supporting `--json` output JSON. On error, if `--json` is present on the command line, the error is written to stderr as `{"error": "...", "reason": "..."}`.
+- **`ref`**: a history item reference, either an item ID or `@N` (Nth newest, `@1` is the latest).
+- Styled output and progress in a terminal go to stderr; when output is redirected, or `NO_COLOR` or `TERM=dumb` is set, plain text is used.
+
+## Exit Codes
+
+| Exit Code | Meaning |
+|---|---|
+| `0` | Completed |
+| `1` | Failed |
+| `2` | Usage error |
+| `3` | Migration partially completed |
+| `4` | Committed but incomplete (send, approval, or wait window did not complete; one-off transfer cancelled or undelivered) |
+| `5` | Command completed, but stopping the temporary `unicd` failed |
+| `6` | Migration initialization required (`migration_required`); run `unic migrate --help` |
+
+<Callout type="warn">
+Currently some general syntax errors and ticket type errors return `1` instead of `2`. Do not rely solely on `2` in scripts to detect usage errors.
+</Callout>
+
+## send
+
+```sh
+unic send [TEXT...] [--to all|DEVICE] [-f] [--png PATH] [--request-id KEY] [--json]
+```
+
+Requirement: `service`. Provide content using exactly one of: text arguments, `-f` followed by files/directories, or `--png`. Without text arguments, content is read from stdin (up to 64 MiB).
+
+| Flag | Description |
+|---|---|
+| `--to all\|DEVICE` | Send to all paired devices, or a specific device by ID or name. Omit for a one-off transfer |
+| `-f` | Treat positional arguments as files or directories (only regular files and directories are accepted) |
+| `--png PATH` | Send a PNG image |
+| `--request-id KEY` | Idempotency key, only used with `--to`; auto-generated if omitted |
+| `--json` | Output submission and network results |
+
+**Sending to paired devices** (`--to`): stderr prints `request_id=…` first so you can query it later with `unic dev submission` if interrupted. The command only observes the current send and reports `success`, `partial`, `failed`, `superseded`, `timeout`, `interrupted`, or `none` on completion. Text output is a single line `request_id=… history_id=… phase=… sync=… send=…`; `--json` outputs `{"submission": {...}, "send": {"outcome": "...", "operation": {...}}}`. Exit code is `4` if content was committed but sending did not fully succeed.
+
+**One-off transfer** (without `--to`): prints a 6-digit code and link, waiting for a single receiver until delivered, failed, or expired; `Ctrl+C` cancels. With `--json`, the first JSON line carries the code and link, and a final status line is printed on completion. Exit code is `4` if undelivered or cancelled. Directories cannot be sent via one-off transfer; `--to` is required.
+
+## recv
+
+```sh
+unic recv CODE|LINK [--json]
+unic recv [list]
+unic recv show ID [PART]
+unic recv dismiss ID
+```
+
+Requirement: `service`.
+
+- `recv CODE|LINK`: receive from a one-off transfer. Spaces or hyphens are allowed in the 6-digit code. Text content is written to stdout; other content reports name and size to stderr; content is saved to history. `--json` outputs the receive result. Pairing codes cannot be used with `recv`.
+- `recv` / `recv list`: list recently received items as JSON.
+- `recv show ID [PART]`: write a part (default `0`) of a received item to stdout.
+- `recv dismiss ID`: remove an item from the received list.
+
+## history (h)
+
+Requirement: `service`; `use` requires `service+clipboard`, and `action --apply` also elevates to `service+clipboard`. `unic history help` is `local`.
+
+| Subcommand | Usage | Description |
+|---|---|---|
+| `list` (`ls`) | `list [--type text,image,files] [--tag T] [--origin O,...] [-n\|--limit N] [--json]` | Newest first, without content; 20 items by default |
+| `show` | `show [ref] [--part N] [--json]` | Print content, defaulting to the newest item and first text part; `--json` outputs item details |
+| `send` | `send ref [--to DEVICE\|all] [--request-id KEY] [--json]` | Resend source or retained snapshot; `--to` defaults to `all`; does not write to local clipboard |
+| `use` | `use ref [--request-id KEY] [--json]` | Restore to local clipboard; whether it syncs follows `sync.on_restore`; `--json` separates local and network results |
+| `delete` (`rm`) | `delete ref... [-y\|--yes]` | Delete items; prompts for confirmation when run in a terminal |
+| `tag` | `tag ref [--add a,b] [--remove c] [--set a,b]` | Add or remove tags; `--set` replaces all |
+| `expire` | `expire ref DURATION\|never` | e.g. `24h`, `7d`, `never` |
+| `export` | `export ref --output DIR` | Write user-owned copies without overwriting existing files |
+| `action` | `action ref [KEY] [--apply] [--request-id KEY]` | Run a plugin Action; omit `KEY` to list available Actions; `--apply` writes the result to the clipboard |
+
+`use` and `action --apply` require the Desktop clipboard adapter and report unavailable in a pure headless environment. See [Tags and Actions](../core-features/tags-and-actions) and [Search Syntax](../reference/search-syntax).
+
+## device
+
+Requirement: `service`.
+
+| Subcommand | Usage | Description |
+|---|---|---|
+| `add` | `add [CODE\|ADDRESS] [--backend INSTANCE]` | Without arguments, displays a pairing code and keeps the service running for a limited window; with an argument, initiates pairing and waits for approval |
+| `addr` | `addr [--backend INSTANCE]` | Print this device's address. **Addresses are secret**; do not share publicly |
+| `list` | `list [--json]` | Paired and pending devices; `--json` includes path binding IDs, versions, and sync status |
+| `approve` | `approve ID FINGERPRINT` | Approve after verifying the fingerprint shown on the peer device |
+| `reject` | `reject ID` | Reject a pending device |
+| `remove` | `remove ID` | Forget a device and revoke all its paths |
+| `backends` | `backends` | List sync backend instances and their status |
+| `path` | `path pause\|resume\|remove BINDING_ID REVISION` | Manage an individual device–backend path |
+| `suggestions` | `suggestions` | Devices suggested by your other devices |
+| `suggest-pair` | `suggest-pair ID BACKEND` | Pair a suggested device |
+| `suggest-ignore` | `suggest-ignore ID` | Ignore a suggestion |
+| `suggest-restore` | `suggest-restore ID` | Restore an ignored suggestion |
+| `channel-add` | `channel-add INSTANCE NAME` | Authorize an external backend instance to use a named local channel |
+| `channel` | `channel pause\|resume\|remove ID REVISION` | Pause, resume, or remove an external channel |
+
+Devices joining via a pairing code always require approval. See [Devices and Pairing](../core-features/devices).
+
+## channel
+
+```sh
+unic channel pair INSTANCE [--resume]
+```
+
+Requirement: `service`. Pair an external clipboard channel; see [External Channels](../plugins/external-channels).
+
+## status
+
+```sh
+unic status
+```
+
+Requirement: `service`. Show local device name and ID, peers, and pending devices.
+
+## config
+
+```sh
+unic config [--json]
+unic config set KEY TOML-VALUE
+unic config apply FILE
+unic config path
+```
+
+- `config`: print the active settings (TOML) and file path; if the last edit was invalid, reports the error and shows the last valid settings; lists keys that require restarting `unicd`. `--json` outputs full status. Requirement: `service`.
+- `config set`: update a single key; value is parsed as TOML, e.g. `unic config set sync.directories.automatic true`.
+- `config apply`: replace the entire configuration from a file.
+- `config path`: print the config file path only, without connecting to the service (`local`).
+
+See [Configuration Reference](../reference/configuration) for keys and defaults.
+
+## plugin
+
+Requirement: `local` (operates directly on files without the service), except `settings` subcommands.
+
+```sh
+unic plugin install URL [--ref REF] [--path DIR] [--build] [--replace] [--enable]
+unic plugin instance add IMPLEMENTATION ID
+unic plugin list            # alias ls
+unic plugin enable ID
+unic plugin disable ID
+unic plugin uninstall ID
+unic plugin rollback ID
+unic plugin settings show ID
+unic plugin settings save ID JSON-FILE|-
+```
+
+- `install`: install from a public GitHub repository and pin to a commit; prefers verified release assets and only builds from source when `--build` is passed. Install timeout is 5 minutes.
+- `instance add`: create a disabled-by-default instance with independent settings for an installed Go sync backend.
+- `enable` / `disable`: writes to config; **takes effect after restarting `unicd`**.
+- `uninstall`: remove a GitHub installation; `rollback`: switch back to the previous installed commit.
+- `settings show`: output Schema and redacted settings; `settings save` reads `{"values": {...}}` from a file or stdin (`-`). Both commands require the service.
+
+See [Plugin Marketplace](../plugins/marketplace).
+
+## migrate
+
+```sh
+unic migrate [--source DIR] [--target DIR] [--service NAME] [--dry-run] [--passphrase-stdin] [--json]
+unic migrate --initialize-empty [--target DIR] [--json]
+```
+
+Requirement: `offline`. Imports in-process without starting networking or clipboard. Prints full migration instructions when run without arguments or with `--help`.
+
+| Flag | Description |
+|---|---|
+| `--source DIR` | v1 data directory, defaulting to the local Desktop config; required for custom or portable v1 configs |
+| `--target DIR` | v2 data directory, defaulting to `UNIC_HOME` or the default directory |
+| `--service NAME` | Legacy credential service name, defaulting to `UniClipboard`; named profiles use `UniClipboard-PROFILE` |
+| `--dry-run` | Read and validate content without modifying the target |
+| `--passphrase-stdin` | Read a single line of the legacy passphrase from stdin. Do not pass passphrases in arguments or environment variables |
+| `--initialize-empty` | Explicitly initialize when there is no v1 data; can only be combined with `--target` and `--json` |
+| `--json` | Output JSON progress and final report |
+
+Exit codes: `0` completed, `3` partially completed, `1` failed, `2` usage error. Re-running the same command is idempotent to resume or repair. See [Migrate from v1](../migration/v1-to-v2).
+
+## dev
+
+Development and diagnostic commands. Running `unic watch`, `unic copy`, etc. directly prompts you to use `unic dev …`.
+
+| Subcommand | Requirement | Description |
+|---|---|---|
+| `dev help` | `local` | Print usage |
+| `dev submission REQUEST_ID` | `service` | Query a submission (JSON) |
+| `dev capabilities` | `service` | Service capabilities (JSON) |
+| `dev watch` | `service` | Stream events until stopped |
+| `dev logs level [debug\|info\|warn\|error\|reset] [--target local\|remote] [--for 15m]` | `service` | Temporarily adjust log level; `--target` defaults to `local`, `--for` defaults to 15m; keeps the service running during the window |
+| `dev logs export [--output FILE]` | `local` | Export local retained logs as tar.gz (with SHA-256 manifest) without the service; does not overwrite existing files |
+| `dev logs help` | `local` | Print logs usage |
+| `dev diagnostics telemetry` | `service` | Effective state of each telemetry signal (JSON) |
+| `dev cache [--json]` | `service` | Cache usage |
+| `dev copy [TEXT]`, `dev copy -f FILE...` | `service+clipboard` | Write to system clipboard |
+| `dev paste` | `service+clipboard` | Read from system clipboard |
+
+See [Diagnostics](../reference/diagnostics).
+
+## Version
+
+```sh
+unic --version --json
+```
+
+Does not start the service and requires no initialization. `unic daemon` does not exist: the background service is the standalone `unicd` binary.

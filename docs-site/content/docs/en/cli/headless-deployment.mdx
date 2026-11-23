@@ -1,0 +1,87 @@
+---
+title: Headless Deployment
+description: Run unicd continuously on a server or in a desktop-free environment.
+---
+
+The temporary service started on demand by `unic` only exists while a command is running, so nothing is received between commands. To keep a machine online continuously for sending and receiving, run `unicd` as a persistent service.
+
+## Running unicd
+
+```sh
+UNIC_HOME=/absolute/private/state unicd
+```
+
+- Each data directory holds one service, one device identity, and one history database.
+- A `unicd` you started yourself is never stopped by any `unic` command; `unic` reuses it directly.
+- `unicd` loads no GUI libraries and starts headless by default.
+- Headless environments have no system clipboard adapter: `history use`, `history action --apply`, `dev copy`, and `dev paste` are unavailable; receiving content is unaffected and received items can be read with `unic history` and `unic recv list`.
+
+<Callout type="warn">
+You must complete [initial setup](./installation#initial-setup) on the data directory before use, e.g. `UNIC_HOME=/absolute/private/state unic migrate --initialize-empty --json`.
+</Callout>
+
+## Managing with a Service Manager
+
+Release packages do not ship service manager unit files; configure them yourself. Example systemd user service (adjust paths for your installation):
+
+```ini
+# ~/.config/systemd/user/unicd.service
+[Unit]
+Description=unic clipboard service
+
+[Service]
+Environment=UNIC_HOME=%h/.local/share/unic
+ExecStart=/usr/local/bin/unicd
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now unicd
+```
+
+When running `unic` as the same user, be sure to use the same `UNIC_HOME` (or `UNIC_SOCK`) to connect to this service.
+
+## Pairing and Sending
+
+```sh
+export UNIC_HOME=/absolute/private/state
+unic device add                       # display pairing code
+unic device list
+unic device approve <id> '<fingerprint>'
+echo hello | unic send --to all --json
+```
+
+## Multiple Local Nodes
+
+Use distinct `UNIC_HOME` directories to run independent nodes on the same machine for testing:
+
+```sh
+UNIC_HOME=/tmp/unicA unicd &
+UNIC_HOME=/tmp/unicB unicd &
+```
+
+## Coexisting with Desktop
+
+When the Desktop tray app starts, if a standalone `unicd` is already running, it adopts that service without stopping it; quitting Desktop also leaves that service running. If a temporary `unic`-managed service is currently running, Desktop refuses to start—retry after the command finishes.
+
+## Configuration and Logs
+
+- The configuration file is `config.toml` in the data directory and reloads on save; a few keys require restarting `unicd` and are listed by `unic config`. See [Configuration Reference](../reference/configuration).
+- Remote logs, metrics, and events are enabled by default and can be disabled in `config.toml`:
+
+```toml
+[telemetry]
+enabled = false
+```
+
+- Exporting local logs does not require the service to be running: `unic dev logs export --output ./unic-logs.tar.gz`. See [Diagnostics](../reference/diagnostics).
+
+## Known Limitations
+
+- Release packages do not include signed installers or service manager registration.
+- Whether the service continues running after logging out depends on your service manager.
+- Process-level acceptance runs on the host platform only; native clipboard acceptance on macOS, Windows, and Linux is tracked separately.

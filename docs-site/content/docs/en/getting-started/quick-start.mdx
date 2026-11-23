@@ -1,0 +1,43 @@
+---
+title: Quick Start
+description: Connect a second device and start copying and pasting across devices in three steps.
+---
+
+<Steps>
+<Step>
+### Run UniClipboard
+
+Follow [Installation](./install) to run the desktop app on both devices. On first launch, initial setup is shown; if v1 data is detected, you can choose to import history offline.
+</Step>
+<Step>
+### Connect a second device
+
+On the first device, open **Devices → Add Device**, note the 6-digit pairing code, and enter it on the second device. Once both sides show the same fingerprint, click **Accept** on each.
+
+<Callout>
+Devices added via a pairing code always require your manual approval.
+</Callout>
+</Step>
+<Step>
+### Copy
+
+Press `Ctrl+C` (`⌘C` on macOS) on one device and `Ctrl+V` (`⌘V`) on the other.
+</Step>
+</Steps>
+
+## Common Actions
+
+- **Quick Panel**: Press `⌘ ⌃ V` (`Ctrl Alt V` on Windows / Linux) in any app, select an item, and press Enter to paste. See [Quick Panel](../core-features/quick-panel).
+- **Search History**: Enter keywords, or filter with `#tag`, `@device`, or `/type`. See [History & Search](../core-features/history-and-search).
+
+## Using the CLI
+
+```sh
+unic send --to all "Hello"        # Send to all paired devices
+unic send --to all -f ./photos    # Send a file or folder
+unic send "temporary"             # Unpaired: print a 6-digit transfer code
+unic recv 482913                  # Receive using the transfer code
+unic history list                 # Browse history
+```
+
+`unic` automatically starts a temporary `unicd` from the same directory when needed and stops it afterward. Before using the CLI in a new data directory for the first time, run `unic migrate` (to import v1 history, or pass `--initialize-empty` to initialize an empty directory). See [CLI Getting Started](../cli/getting-started) for details.

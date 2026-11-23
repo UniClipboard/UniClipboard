@@ -4,6 +4,7 @@ import { source } from '@/lib/source'
 
 export const docsSearchServer = createFromSource(source, {
   localeMap: {
+    en: { language: 'english' },
     zh: {
       components: {
         tokenizer: createTokenizer(),

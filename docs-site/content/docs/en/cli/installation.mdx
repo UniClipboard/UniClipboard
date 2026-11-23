@@ -1,0 +1,100 @@
+---
+title: Install CLI
+description: Get unic and unicd, and understand the data directory and initial setup.
+---
+
+The CLI distribution consists of two programs:
+
+- `unic`: the command-line client through which all operations are performed.
+- `unicd`: the background service that holds local history, plugins, and network connections.
+
+Neither depends on any GUI library, so both can run on headless servers. Release packages also provide `uniclip` as an alias for `unic` (a relative symlink on macOS/Linux, `uniclip.cmd` on Windows) with identical behavior.
+
+## Installation
+
+<Tabs items={['npm', 'Archive', 'Build from source']}>
+<Tab value="npm">
+
+The CLI is distributed via the npm package `@uniclipboard/cli`, which automatically selects the binary package for your platform. The `alpha` tag is the preview channel and `latest` is the stable channel.
+
+```sh
+npm install -g @uniclipboard/cli          # stable channel
+npm install -g @uniclipboard/cli@alpha    # preview channel
+```
+
+Once installed, `unic`, `uniclip`, and `unicd` are available directly.
+
+</Tab>
+<Tab value="Archive">
+
+Versioned archives contain `unic`, `unicd`, and the `uniclip` alias. Extract to any directory to use; `unic` and `unicd` must remain in the same directory because `unic` launches `unicd` from its own directory. Moving the extracted directory does not break the alias.
+
+</Tab>
+<Tab value="Build from source">
+
+Requires the Go toolchain:
+
+```sh
+go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd
+# or
+make build-headless
+```
+
+</Tab>
+</Tabs>
+
+<Callout type="info">
+The Desktop installer bundles its own `unic` / `unicd` inside the application's private directory. If you want to use the CLI in a terminal, install the CLI separately.
+</Callout>
+
+## Check Version
+
+The following commands do not start the service and do not require initialization:
+
+```sh
+unic --version --json
+unicd --version --json
+```
+
+The output includes the product version, build number, and source commit.
+
+## Data Directory
+
+The data directory (database, config, plugins, socket, etc.) is resolved in the following order:
+
+1. The `UNIC_HOME` environment variable (converted to an absolute path).
+2. If a regular file named `portable.dat` exists next to the executable, the `data/` directory alongside it (portable mode).
+3. Release builds default to `unic/` under the user config directory; development builds with version `dev` use `unic-development/`.
+
+The local socket defaults to inside the data directory and can be overridden with `UNIC_SOCK`. See [Environment Variables](../reference/environment).
+
+The v2 data directory is completely separate from v1; replacing the binary does not automatically import v1 data.
+
+## Initial Setup
+
+Each data directory must be explicitly initialized before first use, otherwise operational commands will refuse to run with exit code `6` (reason `migration_required`). Help, version, and `migrate` itself are exempt.
+
+<Steps>
+<Step>
+
+Read the migration instructions:
+
+```sh
+unic migrate --help
+```
+
+</Step>
+<Step>
+
+If you have v1 history to import, run `unic migrate` as instructed (see [Migrate from v1](../migration/v1-to-v2)). If you have no v1 data, explicitly initialize an empty directory:
+
+```sh
+unic migrate --initialize-empty --json
+```
+
+</Step>
+</Steps>
+
+Partial imports, failures, cancellations, or `--dry-run` do not complete initialization; `--initialize-empty` cannot be used while an incomplete import exists. An import completed in the Desktop app satisfies this requirement, but clicking "Skip" on the Desktop welcome screen does not initialize the directory for the CLI.
+
+Next: [CLI Quickstart](./getting-started).

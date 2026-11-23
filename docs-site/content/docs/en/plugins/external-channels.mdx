@@ -1,0 +1,56 @@
+---
+title: External Channels
+description: Sync clipboard content with third-party services that do not have a unic identity via sync backend plugins.
+---
+
+**External channels** are a special kind of sync target: the other side is not a device running unic, but a third-party service or app (such as a clipboard sync group in an input method). Because they have no unic device keys and cannot verify fingerprints, unic does not treat them as devices and instead manages them separately as "channels".
+
+<Callout type="warn">
+External channels are currently in an early stage: the data model, receive pipeline, local service API, and plugin protocol are implemented, but no official channel backend has been released yet, and the desktop UI does not yet have a full channel management page. The behavior described below reflects what is currently implemented.
+</Callout>
+
+## How They Differ from Devices
+
+| | unic Device | External Channel |
+|---|---|---|
+| Identity | Device key and fingerprint | None; no fingerprint verification |
+| Authorization | Pairing code + your approval | Pair in the third-party service, then enable in unic |
+| Send target | Single device | A group; group members are shown for display only and cannot be authorized individually |
+| Removal | Revokes trust and disconnects the peer | Local-only effect (depends on backend capability) |
+
+In the peer list, channels and devices are displayed together, with details indicating the backend and target type.
+
+## Pairing and Enabling
+
+External channels are provided by installed **sync backend plugins** (see [Plugin Marketplace](./marketplace)). After installing and configuring the plugin, pair using the pairing code provided by the third-party service:
+
+```sh
+unic channel pair <backend-instance-id>            # Enter the service's pairing code when prompted
+unic channel pair <backend-instance-id> --resume   # Resume an incomplete pairing
+```
+
+Enabling a channel authorizes syncing with it; remote approval has already been completed during the third-party service's pairing flow.
+
+<Callout type="info">
+Before enabling, note that content sent to an external channel leaves unic's device-to-device link and enters a third-party service. Only text is synced by default; images and files must be enabled separately.
+</Callout>
+
+## Received Content
+
+- Channels have an "Auto-write to clipboard" toggle, enabled by default. When disabled, received items are saved to history only and not written to the clipboard.
+- Received items go through processor plugins and enter history as usual, with their origin marked as `external:<backend-instance>`, not attributed to any device.
+- If the same content arrives via both tailcat and an external channel, it is saved only once.
+- The meaning of delivery receipts depends on the backend. For example, some services' receipts only mean "delivered to server", not that the peer has written it to their clipboard.
+
+## Disabling and Removing
+
+- **Disable**: Immediately stops sending and receiving on the channel and drops in-flight tasks.
+- **Remove**: Disables the channel and clears locally stored credentials and state.
+
+A backend plugin declares whether it supports remote exit (`remote_revocation`). When unsupported, removal **takes effect locally only**—this device remains in the third-party group, and you must remove it in the third-party app. Content already sent cannot be recalled.
+
+Credentials and server addresses are stored in the backend instance's private directory and never appear in logs, events, or error messages.
+
+## Developing a Channel Backend
+
+A channel backend is a Go sync backend plugin that declares `external_channels` and communicates with unic via plugin RPC. See [Go Plugin Development](./develop-go) for plugin basics; the sync backend interface is still evolving, so read `docs/contracts/sync-backend-contract.md` and `docs/contracts/plugin-contract.md` in the repository before developing.

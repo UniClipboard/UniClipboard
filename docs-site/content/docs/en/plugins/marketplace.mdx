@@ -1,0 +1,104 @@
+---
+title: Plugin Marketplace
+description: Browse, install, enable, update, and uninstall unic plugins on desktop, along with the corresponding CLI commands.
+---
+
+unic supports three types of plugins:
+
+- **Processor** (`processor`): Automatically adds tags, sets expiration, or decides whether to sync when content is copied or received. It does not modify the copied content.
+- **Action**: Runs only when you manually click it, transforming a history item into a new text history item (for example, "Uppercase" or "Create temporary share link").
+- **Sync Backend** (`sync_backend`): Syncs content to destinations outside unic devices, such as [External Channels](./external-channels).
+
+Plugins can be written in Lua (lightweight scripts running in a sandbox) or Go (standalone executables). See [Lua Plugin Development](./develop-lua) and [Go Plugin Development](./develop-go).
+
+<Callout type="warn">
+Go plugins run as standalone processes on your computer. Process isolation is **not** a system permission sandbox. Only install plugins from sources you trust.
+</Callout>
+
+## Desktop Plugin Marketplace
+
+Open **Settings → Plugins** in the desktop app:
+
+- At the top is the **Plugin Marketplace** entry, where you can search by name or browse by category (All, Official Picks, Share & Export, Text Productivity, Smart Organization, Sync Extensions).
+- Below are two lists: **Installed Plugins** and **Built-in Features**.
+- Click a plugin to view its summary, usage steps, and privacy notes, and to install, enable, configure, update, or uninstall it.
+- Plugins that require no configuration (such as Wenshushu temporary share) do not show an empty settings form.
+- Execution order, error handling policy, source info, rollback, and "Manual install from URL (Developer)" are tucked into the top-right more menu and collapsible details section.
+
+Plugin names and summaries are displayed in your UI language when translations are provided; otherwise they fall back to the marketplace entry name and then the plugin ID.
+
+<Callout type="info">
+The Plugin Marketplace is currently available only on desktop; mobile is not supported yet.
+</Callout>
+
+### Where the Marketplace Registry Comes From
+
+The marketplace reads a static registry file:
+
+```text
+https://raw.githubusercontent.com/UniClipboard/unic-plugins/main/registry.json
+```
+
+- Once fetched and validated, it is cached at `$UNIC_HOME/plugins/marketplace-cache.json` for 15 minutes; manual refresh bypasses the cache TTL.
+- When the network is unavailable or the registry is invalid, unic uses the local cache first (even if expired), then falls back to the built-in official registry. The UI indicates the current source (Remote, Cached, or Built-in).
+- The `UNIC_PLUGIN_REGISTRY_URL` environment variable overrides the registry URL; setting it to empty, `off`, or `none` disables network requests and uses only the built-in registry. Remote URLs must use HTTPS (HTTP is allowed only for local loopback test servers).
+
+Marketplace entries are recommendations only and **never** bypass any installer verification.
+
+## Installation and Activation Rules
+
+Both the marketplace and the CLI use the same installer:
+
+1. During installation, the repository branch or tag is pinned to a specific commit, and `spec.toml` is read from that commit.
+2. Lua plugins download the script directly and check its syntax.
+3. Go plugins prefer downloading the prebuilt archive for the current OS and architecture and verifying its SHA-256 checksum. If no matching prebuilt archive exists, installation fails by default; only when you explicitly choose "Build from source" (`--build` on the CLI) will it build using the local Go toolchain. Checksum mismatches or corrupted archives fail immediately and never fall back to source builds.
+4. All downloads and builds happen in a temporary directory and are swapped in atomically only after all checks pass; on failure, the existing version and configuration are preserved.
+5. **Newly installed plugins are disabled by default**. Enabling, disabling, uninstalling, and rolling back take effect after restarting the `unicd` service.
+
+For Go plugins that provide only Actions or external channel backends, the desktop app offers a **Start** action to run them without restarting the service; if required settings are missing, saving the settings for the first time starts them automatically.
+
+Installing, uninstalling, or rolling back never deletes your clipboard history or plugin settings.
+
+## CLI Operations
+
+Without the desktop app, manage plugins with `unic plugin` (see [CLI Reference](../cli/reference) for all options):
+
+```sh
+# Install from GitHub (default branch HEAD)
+unic plugin install https://github.com/owner/unic-plugin-demo
+# Specify branch, tag, or commit, and a subdirectory in the repo
+unic plugin install https://github.com/owner/repo --ref v1.2.0 --path plugins/demo
+# Allow building from source if no prebuilt archive exists; enable after install; replace existing
+unic plugin install https://github.com/owner/repo --build --enable --replace
+
+unic plugin list                 # Installed/configured plugins and runtime status
+unic plugin enable  <id>         # Enable on next service restart
+unic plugin disable <id>         # Disable on next service restart
+unic plugin uninstall <id>       # Remove GitHub installation
+unic plugin rollback  <id>       # Switch back to the previous installed commit
+
+unic plugin settings show <id>               # Show settings schema and current values (secrets masked)
+unic plugin settings save <id> values.json   # Save settings; file format is {"values":{...}}
+```
+
+`unic plugin list` distinguishes between the version on disk and the version actually running, and indicates whether a restart is required.
+
+The install URL only accepts GitHub HTTPS repository URLs (`.git` optional). Do not paste `tree/...` or `blob/...` web URLs; use `--path` for subdirectories. Only public repositories are supported.
+
+## Example: Wenshushu Temporary Share
+
+The official `unic.wenshushu` plugin provides the "Share via Wenshushu" Action: it uploads the selected text, image, or file to Wenshushu and generates a temporary download link as a new text history item. Uploads happen only when you explicitly click it; directories are not supported.
+
+Install and enable it directly from the desktop Plugin Marketplace, or via CLI:
+
+```sh
+unic plugin install https://github.com/UniClipboard/unic-plugin-wenshushu
+unic plugin enable unic.wenshushu
+# Then restart unicd
+```
+
+## What Happens on Errors
+
+- If a plugin crashes, it restarts automatically with 1s, 2s, and 4s backoff, up to 3 times within 60 seconds; after that, it is marked unavailable and must be restarted manually.
+- When a processor errors or times out, the default policy (`continue`) discards that plugin's tags and settings for the item, and the item is saved and synced as usual. If a plugin is meant to block sensitive content from syncing, set its error policy to `block_sync` (see [Configuration Reference](../reference/configuration)).
+- Plugins never receive your device addresses or pairing information, and their error text or output is never written to logs.

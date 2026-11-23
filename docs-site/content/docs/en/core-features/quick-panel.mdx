@@ -1,0 +1,74 @@
+---
+title: Quick Panel
+description: Summon your history in any app with a global shortcut, select an item, and press Enter to paste.
+---
+
+The Quick Panel is a lightweight history window in the desktop app: press a shortcut in any app, search or pick an item, and press Enter to paste it back into that app. It is available only in the desktop app (`unic-desktop`); pure CLI / headless deployments do not have a Quick Panel.
+
+## Opening the Panel
+
+| Platform | Default Shortcut |
+|---|---|
+| macOS | `⌘ ⌃ V` (Command+Control+V) |
+| Windows / Linux | `Ctrl Alt V` |
+
+You can also open it from the tray menu or the button in **Settings > Quick Panel**. Pressing the same shortcut while the panel is visible closes it.
+
+<Callout>
+Shortcuts are registered by the tray process. In normal mode, shortcuts remain active after closing the main window; in lightweight mode, closing it leaves only the background service `unicd`, releasing all desktop shortcuts until you reopen the desktop app.
+</Callout>
+
+## Panel Controls
+
+| Key | Action |
+|---|---|
+| `Enter` | Write the selected item to the clipboard, return to the previous app, and paste |
+| `Shift+Enter` | Paste as plain text (strips rich-text formatting); not supported for images, files, or HTML-only items |
+| `Cmd+Enter` / `Ctrl+Enter` | Paste and reopen the panel for pasting multiple items in a row |
+| Copy | Write to the clipboard only, without simulating keystrokes |
+| `Esc` | Close the panel and return focus to the previous app if unic is still in the foreground |
+
+The panel uses the same service-side search as the main window; see [Search Syntax](../reference/search-syntax).
+
+Before pasting, the panel verifies that the target app is still in the foreground and the clipboard has not been replaced. If any step fails (target exited, focus stolen, missing permissions, window switched, etc.), it does not retry pasting automatically; the content may already be on the clipboard for manual pasting. When opened from unic's own window, there is no paste target, so only copying is available.
+
+## Custom Shortcuts
+
+In **Settings > Shortcuts**, you can record one or two key combinations for each action (a two-step chord is valid within 1 second of the first step). In addition to opening the panel, you can bind **Show Main Window** and **Open Favorites in Quick Panel**, both unbound by default. Settings rejects bindings that conflict or share a prefix.
+
+If the OS rejects registering a new shortcut, unic keeps the previously active binding, displays the registration result in **Settings > Quick Panel**, and lets you click Retry.
+
+Corresponding options in `config.toml`:
+
+```toml
+[desktop]
+quick_panel_shortcut = "Ctrl+Alt+V"   # Default "Cmd+Ctrl+V" on macOS
+quick_panel_double_tap = ""           # off, alt, control, or meta
+
+[desktop.shortcuts]
+"clipboard.search" = ["mod+f"]        # Empty array [] disables the binding
+```
+
+`quick_panel_double_tap` enables opening the panel by double-tapping a modifier key (off by default; requires Accessibility permission on macOS and is not supported on Wayland). See [Configuration](../reference/configuration) for full details.
+
+## Platform Differences & Permissions
+
+<Tabs items={['macOS', 'Windows', 'Linux']}>
+<Tab value="macOS">
+Auto-paste requires granting unic **Accessibility** permission. **Settings > Quick Panel** shows the current permission status with buttons to refresh or open System Settings; checking status does not trigger a permission prompt.
+</Tab>
+<Tab value="Windows">
+No extra permissions required.
+</Tab>
+<Tab value="Linux">
+X11 supports auto-paste. Under Wayland, shortcuts are registered through the system portal, but capturing the target window or simulating keystrokes is not possible—**copy only**, auto-paste is unavailable.
+</Tab>
+</Tabs>
+
+<Callout type="warn">
+Process integration for the Quick Panel is implemented, but real-world pasting across apps, permission flows, and different keyboard layouts have not yet completed full native acceptance on all platforms.
+</Callout>
+
+## Privacy
+
+The target app's name, window identifier, and clipboard fingerprint are kept only in memory—never written to logs or included in telemetry; paste success is not tracked.

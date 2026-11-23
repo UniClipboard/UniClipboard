@@ -1,0 +1,53 @@
+---
+title: Environment Variables
+description: Environment variables read by unic, unicd, and the desktop app, plus default data directory locations.
+---
+
+## User Environment Variables
+
+| Variable | Purpose |
+|---|---|
+| `UNIC_HOME` | Data directory (database, config, logs, received files, plugins). Used to run a second instance or an isolated profile |
+| `UNIC_SOCK` | Control socket path; defaults to `$UNIC_HOME/unic.sock` |
+| `UNIC_RENDEZVOUS_URL` | Pairing code service URL; `rendezvous_url` in the config file takes precedence |
+| `UNIC_PLUGIN_REGISTRY_URL` | Registry URL for the desktop plugin marketplace; set to an empty string to disable network fetches |
+
+For example, to start a second local node on the same machine:
+
+```bash
+UNIC_HOME=/tmp/unicA unicd
+UNIC_HOME=/tmp/unicA unic status
+```
+
+<Callout type="warn">
+Unix socket paths have a length limit (around 104 bytes on macOS). Keep `UNIC_HOME` short, or set `UNIC_SOCK` to a shorter path.
+</Callout>
+
+When `UNIC_HOME` or `UNIC_SOCK` is set, the desktop app runs in custom-profile mode.
+
+## Default Data Directory
+
+When `UNIC_HOME` is not set, the location is resolved in this order:
+
+1. If a regular file named `portable.dat` exists next to the executable, `data/` in the same directory is used (portable mode).
+2. Otherwise, `unic` inside the system configuration directory is used (`unic-development` for development builds):
+
+| OS | Path |
+|---|---|
+| macOS | `~/Library/Application Support/unic` |
+| Windows | `%AppData%\unic` |
+| Linux | `$XDG_CONFIG_HOME/unic`, defaulting to `~/.config/unic` |
+
+Run `unic config path` to see the exact configuration file path in use.
+
+## Variables Passed to Plugin Processes
+
+External Go plugin processes receive `UNIC_PLUGIN_DIR` on startup, pointing to the plugin's own directory. See [Go Plugin Development](../plugins/develop-go).
+
+<Callout>
+Other `UNIC_` variables in the repository (such as `UNIC_E2E*` and `UNIC_DESKTOP_E2E*`) are for testing and builds only, not for end users.
+</Callout>
+
+<Callout type="warn">
+Do not pass a v1 passphrase via environment variables; use `--passphrase-stdin` when migrating. See [v1 Migration](../migration/v1-to-v2).
+</Callout>

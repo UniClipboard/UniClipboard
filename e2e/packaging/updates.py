@@ -41,7 +41,7 @@ def run(args, env=None, passed=True):
         list(map(str, args)),
         cwd=ROOT,
         env=env,
-        text=True,
+        encoding="utf-8",
         capture_output=True,
         timeout=180,
     )

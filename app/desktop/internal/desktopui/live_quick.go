@@ -101,11 +101,6 @@ func (q *quickLive) poll(p *quickPanelState) {
 		}
 		p.update()
 	}
-	if l.readError != "" {
-		p.message = l.readError
-	} else if l.message != "" {
-		p.message = l.message
-	}
 
 	if p.queryDue.IsZero() && !l.loading && !time.Now().Before(l.pageRetry) && l.cursor != "" && (p.selected >= len(p.rows)-8 || p.hovered >= len(p.rows)-8) {
 		l.loadHistory(d, true)
@@ -190,8 +185,6 @@ func (p *quickPanelState) liveAction(id string) {
 		d.deleteLiveEntries([]string{e.id})
 	case "favorite":
 		d.toggleFavorites([]string{e.id})
-	default:
-		p.message = "此操作暂不可用。"
 	}
 	p.menu = ""
 	p.update()

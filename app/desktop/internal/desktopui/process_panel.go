@@ -63,7 +63,7 @@ func (p *ProcessPanel) Open(target quickpanel.Target, captureError string, favor
 			}
 			q.update()
 		}
-		q.live.system = quickpanel.New(quickpanel.Options{Context: p.ctx, Client: p.client, Clipboard: p.clipboard, Platform: p.native, Dispatch: mygo.RunOnMain, Visible: show, Changed: func() { q.message = q.live.system.Message; q.update() }})
+		q.live.system = quickpanel.New(quickpanel.Options{Context: p.ctx, Client: p.client, Clipboard: p.clipboard, Platform: p.native, Dispatch: mygo.RunOnMain, Visible: show, Changed: q.update})
 		q.live.system.Open()
 		p.window = openQuickWindow(q, func() { q.live.system.Dismiss(false); q.live.d.live.cancel(); p.state = nil; p.window = nil })
 		// A windowless panel process must explicitly display its first window.

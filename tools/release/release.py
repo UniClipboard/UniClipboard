@@ -3,6 +3,7 @@
 
 import argparse
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
 import os
@@ -402,6 +403,41 @@ def channel_downgrade(current, candidate):
         raise
 
 
+def distribute_package(package, exists, manifest_path, registry, tag, fixture):
+    name, version = package["name"], package["version"]
+    if not exists:
+        command = [
+            "npm",
+            "publish",
+            str(manifest_path.parent / package["file"]),
+            "--registry",
+            registry,
+            "--access",
+            "public",
+            "--ignore-scripts",
+            "--tag",
+            tag,
+        ]
+        if not fixture:
+            command.append("--provenance")
+        run(command)
+    remote = registry_get(registry, name)
+    published = remote.get("versions", {}).get(version)
+    if (
+        not published
+        or published.get("dist", {}).get("integrity") != package["integrity"]
+    ):
+        raise ValueError("package read-back failed: " + name)
+    selected = remote.get("dist-tags", {}).get(tag)
+    if selected == version:
+        return
+    if selected and channel_downgrade(selected, version):
+        raise ValueError("refusing channel downgrade: " + name)
+    run(["npm", "dist-tag", "add", name + "@" + version, tag, "--registry", registry])
+    if registry_get(registry, name).get("dist-tags", {}).get(tag) != version:
+        raise ValueError("channel read-back failed: " + name)
+
+
 def distribute(args):
     registry, fixture = registry_url(args.registry)
     manifest = validate_manifest(args.manifest)
@@ -477,60 +513,57 @@ def distribute(args):
                     if payload.get("optionalDependencies") != expected:
                         raise ValueError("packed platform dependency set mismatch")
             existing[package["name"]] = remote
-        # Complete preflight for the entire set before any mutation.
-        for package in manifest["packages"]:
-            item = {
+        manifest_path = Path(args.manifest).resolve()
+        receipt["packages"] = [
+            {
                 "name": package["name"],
                 "version": package["version"],
                 "integrity": package["integrity"],
                 "status": "pending",
             }
-            receipt["packages"].append(item)
-            save(args.receipt, receipt)
-            if not existing[package["name"]]:
-                command = [
-                    "npm",
-                    "publish",
-                    str(Path(args.manifest).resolve().parent / package["file"]),
-                    "--registry",
-                    registry,
-                    "--access",
-                    "public",
-                    "--ignore-scripts",
-                    "--tag",
-                    tag,
-                ]
-                if not fixture:
-                    command.append("--provenance")
-                run(command)
-            remote = (
-                registry_get(registry, package["name"])
-                .get("versions", {})
-                .get(package["version"])
+            for package in manifest["packages"]
+        ]
+        save(args.receipt, receipt)
+
+        def publish(package):
+            distribute_package(
+                package,
+                existing[package["name"]],
+                manifest_path,
+                registry,
+                tag,
+                fixture,
             )
-            if (
-                not remote
-                or remote.get("dist", {}).get("integrity") != package["integrity"]
-            ):
-                raise ValueError("package read-back failed: " + package["name"])
-            run(
-                [
-                    "npm",
-                    "dist-tag",
-                    "add",
-                    package["name"] + "@" + package["version"],
-                    tag,
-                    "--registry",
-                    registry,
-                ]
-            )
-            if (
-                registry_get(registry, package["name"]).get("dist-tags", {}).get(tag)
-                != package["version"]
-            ):
-                raise ValueError("channel read-back failed: " + package["name"])
-            item["status"] = "available"
-            save(args.receipt, receipt)
+
+        # Complete preflight before mutating. Wait for all platform read-backs before the main package.
+        failure = None
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            platforms = {
+                executor.submit(publish, package): item
+                for package, item in zip(
+                    manifest["packages"][:-1], receipt["packages"][:-1], strict=True
+                )
+            }
+            for future in as_completed(platforms):
+                item = platforms[future]
+                try:
+                    future.result()
+                except Exception as error:
+                    item["status"] = "failed"
+                    item["error"] = str(error)
+                    if failure is None:
+                        failure = error
+                else:
+                    item["status"] = "available"
+                save(args.receipt, receipt)
+        if failure is not None:
+            raise failure
+        try:
+            publish(manifest["packages"][-1])
+        except Exception:
+            receipt["packages"][-1]["status"] = "failed"
+            raise
+        receipt["packages"][-1]["status"] = "available"
         receipt["status"] = "available"
     except Exception as error:
         receipt["status"] = "failed"

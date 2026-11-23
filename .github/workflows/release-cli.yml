@@ -19,6 +19,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   resolve:
+    if: inputs.candidate_run_id == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -32,14 +33,7 @@ jobs:
         id: resume
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
-        run: |
-          if [ -n "$CANDIDATE_RUN" ]; then
-            python3 tools/release/cli_candidate.py --run-id "$CANDIDATE_RUN" --output dist/npm --require-macos-signing
-            echo "staged=true" >> "$GITHUB_OUTPUT"
-          else
-            python3 tools/release/release.py resume --output dist/npm --github-output "$GITHUB_OUTPUT"
-          fi
+        run: python3 tools/release/release.py resume --output dist/npm --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         if: steps.resume.outputs.staged == 'true'
         with:
@@ -59,7 +53,7 @@ jobs:
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
   publish:
     needs: [resolve, build]
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true') }}
+    if: ${{ !cancelled() && (inputs.candidate_run_id != '' || (needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true'))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -70,6 +64,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22.23.4'
+          package-manager-cache: false
+      - name: Restore pinned npm downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm/_cacache
+          key: release-npm-v1-${{ runner.os }}-${{ runner.arch }}-11.21.2
       - run: npm install --global npm@11.21.2
       - name: Isolate npm configuration for OIDC
         run: |
@@ -77,9 +77,16 @@ jobs:
           echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/unic-npmrc" >> "$GITHUB_ENV"
           echo "NODE_AUTH_TOKEN=" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
+        if: inputs.candidate_run_id == ''
         with:
           name: ${{ needs.resolve.outputs.staged == 'true' && 'cli-npm-resumed' || 'cli-npm-candidate' }}
           path: dist/npm
+      - name: Acquire the selected immutable CLI candidate
+        if: inputs.candidate_run_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+        run: python3 tools/release/cli_candidate.py --run-id "$CANDIDATE_RUN" --output dist/npm --require-macos-signing
       - name: Stage durable immutable build record
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -67,6 +67,8 @@ jobs:
   targets:
     needs: prepare
     timeout-minutes: 40
+    env:
+      DESKTOP_METADATA: ${{ inputs.joint && 'dist/cli-input/products.toml' || 'release/products.toml' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
@@ -102,9 +104,7 @@ jobs:
       - name: Stage and inspect native Desktop
         shell: bash
         run: |
-          metadata=release/products.toml
-          if [[ -f dist/cli-input/products.toml ]]; then metadata=dist/cli-input/products.toml; fi
-          go run ./tools/package -metadata "$metadata" -product desktop -target '${{ matrix.target }}' -cli-manifest dist/cli-input/release-manifest.json -output dist/stage
+          go run ./tools/package -metadata "$DESKTOP_METADATA" -product desktop -target '${{ matrix.target }}' -cli-manifest dist/cli-input/release-manifest.json -output dist/stage
           python tools/package/desktop.py smoke --stage dist/stage
       - name: Sign Desktop payload
         if: matrix.goos == 'darwin' && inputs.distribution
@@ -178,7 +178,7 @@ jobs:
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           $identity = Get-Content dist/stage/manifest.json -Raw | ConvertFrom-Json
-          python e2e/packaging/windows-upgrade-fixture.py --target "$env:TARGET" --build-number $identity.build_number
+          python e2e/packaging/windows-upgrade-fixture.py --metadata "$env:DESKTOP_METADATA" --target "$env:TARGET" --build-number $identity.build_number
           $first = (Get-ChildItem dist/packages/setup/*.exe).FullName
           $newer = (Get-ChildItem dist/windows-upgrade-fixture/packages/*.exe).FullName
           ./e2e/packaging/windows-lifecycle.ps1 -Installer $first -Newer $newer -Receipt dist/lifecycle -Target "$env:TARGET" -Version $identity.version -BuildNumber $identity.build_number

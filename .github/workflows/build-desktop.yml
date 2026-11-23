@@ -128,12 +128,14 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
         run: |
           package_stage=dist/stage
+          dmg_extra=()
           if [ "$DISTRIBUTION" = true ]; then
             python3 tools/package/desktop.py notarize-stage --stage dist/stage --output dist/notarized
             package_stage=dist/notarized
+            dmg_extra=(--notarize-container)
           fi
           python3 tools/package/desktop.py smoke --stage "$package_stage"
-          python3 tools/package/desktop.py package --stage "$package_stage" --format dmg --output dist/packages/dmg
+          python3 tools/package/desktop.py package --stage "$package_stage" --format dmg "${dmg_extra[@]}" --output dist/packages/dmg
           python3 tools/package/desktop.py package --stage "$package_stage" --format app.tar.gz --output dist/packages/app-archive
       - name: Install NSIS
         if: matrix.goos == 'windows'

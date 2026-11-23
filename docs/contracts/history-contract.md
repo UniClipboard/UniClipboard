@@ -283,12 +283,11 @@ IDs without a surviving definition are ignored. Conflicting colors from custom
 IDs that collapse to one v2 name fail color import. An absent file uses v1
 built-in defaults: Link blue, Code purple, Image green and Folder gray.
 
-Colors remain host presentation settings. They are not Engine metadata or
-synchronized tag edits. The importer writes only `desktop.tag_colors` through
-the existing configuration manager while holding the offline target lock.
-Keys remain SHA256 of the v2 canonical identifier or custom name. Existing
-target overrides, including explicit gray, always win. Other configuration
-values remain unchanged. The usual configuration CAS rejects concurrent edits.
+Colors remain host presentation settings. The importer writes them under
+`desktop.tag_colors` through the existing configuration manager while holding
+the offline target lock. Keys are SHA-256 of the v2 canonical identifier or
+custom name. Existing target overrides, including explicit gray, take precedence.
+The configuration compare-and-swap rejects concurrent edits.
 Every real migration fills missing colors, including mapped sources and earlier
 imports that lack a target config file. This is the same default in CLI and
 Desktop setup. Existing overrides remain untouched. Repeated migration makes
@@ -301,6 +300,29 @@ layouts and invalid target config do not overwrite existing settings or block
 recoverable history import. Dry runs validate the source layout and never
 create target configuration. Desktop projects saved overrides for both built-in
 and custom tags. Code's default is purple even without an override.
+
+### v1 preference preservation
+
+The shared Desktop and CLI importer fills unset v2 fields for the display name,
+system/light/dark theme, anonymous usage events, and visibility of v1 tags in
+the Desktop sidebar. For theme and usage events, fields present in
+`desktop-settings.json` take precedence over fields in `settings.json`. The
+display name comes from `settings.json`. The usage preference applies only to
+`telemetry.analytics.enabled`.
+
+Sidebar visibility comes from `history-tags/layout.v1.json`. An existing layout
+sets visibility for mapped built-in tags and authenticated custom tags. Missing
+layouts use the v2 sidebar defaults. Stale source IDs are ignored. For custom
+tags collapsed to one name, the tag is visible when any source ID was visible.
+Desktop stores both visible and hidden choices in `desktop.tag_sidebar`, keyed
+by the same hashes as the color overrides. Tags added in v2 use their normal
+defaults until the user changes their visibility.
+
+Explicit v2 values take precedence, including false booleans and values equal
+to v2 defaults. Repeating migration fills missing fields and preserves saved
+edits. Dry runs only read and validate the source. Reports expose
+`preferences_imported` and `preference_failures`. A preference failure yields a
+partial result while recoverable history can still be imported.
 
 CLI directory snapshot export follows the [directory export contract](directory-contract.md#cli-snapshot-export). Indexed root containers preserve equal root names, empty directories and independent user-owned copies. Export does not apply a system clipboard ticket. Existing Received/history/content holders remain independent; release each holder before asserting that a temporary materialized view has no owner.
 

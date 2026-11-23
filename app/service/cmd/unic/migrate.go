@@ -246,8 +246,8 @@ func runMigration(args []string, in *os.File, out, errOut io.Writer) int {
 	if *jsonMode {
 		_ = json.NewEncoder(out).Encode(report)
 	} else {
-		_, _ = fmt.Fprintf(out, "%s: total=%d recoverable=%d imported=%d skipped=%d failed=%d missing_parts=%d verified=%d verification_failed=%d tags=%d tag_failures=%d unsupported_tags=%d tag_mismatches=%d tags_repaired=%d tag_repairs_skipped=%d colors_imported=%d colors_preserved=%d colors_missing=%d colors_verified=%d color_failures=%d\n",
-			report.Status, report.Total, report.Recoverable, report.Imported, report.Skipped, report.Failed, report.MissingParts, report.Verified, report.VerificationFailed, report.Tags, report.TagFailures, report.UnsupportedTags, report.TagMismatches, report.TagsRepaired, report.TagRepairsSkipped, report.ColorsImported, report.ColorsPreserved, report.ColorsMissing, report.ColorsVerified, report.ColorFailures)
+		_, _ = fmt.Fprintf(out, "%s: total=%d recoverable=%d imported=%d skipped=%d failed=%d missing_parts=%d verified=%d verification_failed=%d tags=%d tag_failures=%d unsupported_tags=%d tag_mismatches=%d tags_repaired=%d tag_repairs_skipped=%d colors_imported=%d colors_preserved=%d colors_missing=%d colors_verified=%d color_failures=%d preferences_imported=%d preference_failures=%d\n",
+			report.Status, report.Total, report.Recoverable, report.Imported, report.Skipped, report.Failed, report.MissingParts, report.Verified, report.VerificationFailed, report.Tags, report.TagFailures, report.UnsupportedTags, report.TagMismatches, report.TagsRepaired, report.TagRepairsSkipped, report.ColorsImported, report.ColorsPreserved, report.ColorsMissing, report.ColorsVerified, report.ColorFailures, report.PreferencesImported, report.PreferenceFailures)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintln(errOut, err)

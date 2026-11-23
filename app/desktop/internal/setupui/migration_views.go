@@ -685,13 +685,14 @@ func renderResultBody(c *ui.Context, k desktopkit.Kit, p setupColors, m Model, t
 		count    int
 		critical bool
 	}
-	issues := make([]issueItem, 0, 5)
+	issues := make([]issueItem, 0, 6)
 	for _, candidate := range []issueItem{
 		{label: "失败记录", count: m.Report.Failed, critical: true},
 		{label: "缺失内容", count: m.Report.MissingParts, critical: false},
 		{label: "校验失败", count: m.Report.VerificationFailed, critical: true},
 		{label: "颜色导入失败", count: m.Report.ColorFailures, critical: true},
 		{label: "待补回颜色", count: m.Report.ColorsMissing, critical: false},
+		{label: "偏好设置导入失败", count: m.Report.PreferenceFailures, critical: true},
 	} {
 		if candidate.count > 0 {
 			issues = append(issues, candidate)

@@ -30,7 +30,7 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 6c1bf9cc02c264fcdb317c5a72c25f51eb1955f8
+verified: 1c948499796e61d99b07158848b71edd126f785a
 ---
 # Product builds and CLI releases
 
@@ -71,6 +71,7 @@ Desktop packaging uses the platform assets in `app/desktop/internal/appicons`. m
 Every Desktop stage also retains the root AGPL license and `licenses/BOARDUI-MIT.txt`, `licenses/Inter-OFL.txt` and `licenses/REMIX-LICENSE.txt`. macOS stores them in the application Resources directory; Linux and Windows store them with the private payload. The normal immutable stage file manifest hashes these notice bytes, and the format constructors preserve them. A local unsigned macOS application-archive replay verifies the actual archive and native identity/private-service smoke. It does not install or open a GUI.
 
 The format constructor supplies DEB, RPM, pacman packages, NSIS setup EXE, portable ZIP, macOS DMG/application archive and AppImage/update archive entrypoints.
+macOS DMG construction (`tools/package/macos_dmg.py`) emits a `ULFO` (LZFSE) disk image with `UniClipboard.app` copied via `ditto`, an `Applications` symlink, a volume icon (`app/desktop/internal/appicons/icon.icns`), the checked-in text-free BoardUI Retina background (`packaging/macos/dmg-background.tiff`, regenerated via `tools/package/macos-dmg-assets.py`), and a programmatically generated `.DS_Store` without Finder GUI/AppleScript automation.
 Only tested construction/lifecycle states count as acceptance; see the [package delivery receipt](../exec/0018-v2-package-channel-receipt.md).
 Linux uses the pinned mygo GTK3 native-view path and a tray indicator library. These recipes do not inherit v1's GTK4/Wails/WebKitGTK dependency set.
 AppImage currently uses host GTK3 libraries; self-contained runtime delivery remains open.
@@ -90,7 +91,7 @@ The lifecycle attachment entrypoint verifies the package digest and required obs
 `UNIC_MACOS_SIGNING_IDENTITY` and `UNIC_WINDOWS_CERT_SHA1` let the CLI builder sign executable files before archive hashing and native acceptance.
 Desktop signing first verifies distribution signatures on the locked CLI files and signs only Desktop-owned bytes. Real certificate signing is unverified on this host.
 The Desktop lock selects CLI `2.0.0 (2)` from canonical distribution run [45030337326](https://github.com/UniClipboard/UniClipboard/actions/runs/45030337326) by manifest SHA-256 `19a091d691c8d1ad5ea7bdfb12be39a2e6a2235756a919b7c9f415c4719dd8ec`. Both macOS targets have distribution signatures. All six targets passed the shared configuration, API and service-lifecycle source checks against Desktop. The [previous lock rejection receipt](../exec/baselines/desktop-cli-lock-20261120/receipt.json) records why the earlier candidate was replaced. `fetch-cli --allow-ci` verifies the canonical workflow, clean source, complete target matrix, package digests and macOS signing before acquiring the candidate. The default fetch path requires public immutable release assets.
-`build-desktop.yml` constructs six native targets from that exact lock. Explicit distribution mode imports an ephemeral Apple keychain, signs the Desktop payload, submits a copied bundle to Apple notarization and staples the accepted ticket before final archive hashing. Credentials stay in the ephemeral keychain. Cleanup runs after failure as well as success.
+`build-desktop.yml` constructs six native targets from that exact lock. Explicit distribution mode imports an ephemeral Apple keychain, signs the Desktop payload, submits a copied bundle to Apple notarization and staples the accepted ticket before final archive hashing, and signs, notarizes and staples the `ULFO` DMG container (`--notarize-container`). Credentials stay in the ephemeral keychain. Cleanup runs after failure as well as success.
 Native package smoke keeps version inspection state-free, then explicitly initializes its isolated CLI profile with `unic migrate --initialize-empty --json` before shared-configuration IPC. Discovery HOME, XDG and Windows profile paths remain private. Portable and explicit data directories initialize independently; there is no gate bypass or direct receipt write. Disposable DEB lifecycle acceptance initializes before its first business command and verifies that the receipt survives upgrade and removal.
 
 The primary PR Desktop suite uses the same Ubuntu 24.04 and native GTK 3/indicator runtime baseline as the native Linux acceptance workflow. It installs display/recording tools without the webview-only WebKitGTK stack. The complete canonical suite is partitioned into three disjoint round-robin shards on independent hosted runners. All shards must pass, fail-fast is disabled, and each keeps the thirty-minute job budget. The canonical runner records a separate evidence artifact for each shard; unselected cases remain NOT_RUN in that shard.
@@ -164,7 +165,7 @@ The CLI checks known v1 paths only when stderr is a terminal and `--json` is abs
 
 The warning explains v1 incompatibility and points to migration help, preflight and import commands. It does not request acknowledgement or migrate automatically. `unic migrate` and `unic migrate --help` print a read-only guide before opening any profile.
 
-CLI archives and npm platform packages include the migration importer within `unic`. Explicit migration runs in-process without starting the service. The importer keeps source data unchanged, verifies reopened target content and resumes by record identity. Partial migration returns 3. All peers must use v2 and pair again; settings, identities and trust are not imported.
+CLI archives and npm platform packages include the migration importer within `unic`. Explicit migration runs in-process without starting the service. The importer keeps source data unchanged, verifies reopened target content and resumes by record identity. Partial migration returns 3. The importer fills unset display name, theme, anonymous usage-event, and tag presentation settings. All peers must use v2 and pair again with new device identities and trust relationships. See the [preference contract](../contracts/history-contract.md#v1-preference-preservation).
 
 The importer encodes Windows drive paths as absolute SQLite file URIs (`file:///C:/...`), retaining read-only/query-only access. A drive letter must not become the URI authority. The [unsigned Windows receipt](../exec/0018-unsigned-windows-acceptance.md) records the native replacement and frozen-history acceptance boundary.
 

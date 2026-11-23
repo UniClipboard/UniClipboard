@@ -104,13 +104,6 @@ func (p *quickPanelState) panel(c *ui.Context) {
 		if p.live != nil && p.queryDue.IsZero() {
 			p.live.d.live.prefetchDetails(p.live.d, p.live.d.entries, first, last)
 		}
-		if p.message != "" {
-			tone := k.Color("text-error-primary")
-			if p.message == "已复制" || p.message == "已发送粘贴指令" {
-				tone = a.quiet
-			}
-			ui.Text(c, p.tr(p.message)).Role(ui.RoleAlert).FontSize(11*zoomScale(p.textZoom)).TextColor(tone).Padding(8, 12)
-		}
 		ui.Row(c).Height(34).Shrink(0).Padding(0, 10, 0, 12).BorderWidth(1, 0, 0, 0).BorderColor(a.border).AlignItems(ui.Center).Gap(7).Children(func() {
 			ui.Row(c).Size(16, 16).Radius(4).Background(a.foreground).AlignItems(ui.Center).Justify(ui.Center).Children(func() { ui.Text(c, "T").FontSize(9 * zoomScale(p.textZoom)).TextColor(a.background) })
 			ui.Text(c, p.pasteTargetLabel()).FontSize(12 * zoomScale(p.textZoom))

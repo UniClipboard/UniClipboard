@@ -4,7 +4,7 @@
 
 `unic-desktop-demo` uses the same native BoardUI-backed application composition as the production GUI. `internal/desktopdemo` owns fixture startup/data. `internal/desktopui` owns the renderer and production binding. `internal/desktopkit` contains application-only compositions. The reusable public controls and source-generated resources live in `boardui`.
 
-The visual source is official MIT BoardUI export `ec5c5eb3e29c2441be63b9422cd54f411ef23466`. The [source lock](boardui/assets/source-lock.json) binds reference CSS/TS files, compiler dependencies, Inter and the public helper glyphs. The [application icon lock](internal/desktopkit/icons-source.json) binds 49 functional Remix glyphs. The old three-skin package, platform token snapshots and skin selector are removed.
+The visual source is official MIT BoardUI export `ec5c5eb3e29c2441be63b9422cd54f411ef23466`. The [source lock](boardui/assets/source-lock.json) binds reference CSS/TS files, compiler dependencies, Inter and the public helper glyphs. The [application icon lock](internal/desktopkit/icons-source.json) binds 51 functional Remix glyphs. The old three-skin package, platform token snapshots and skin selector are removed.
 
 The page composition has historical lineage in local `main` commit `8dd3796f8bbb6b1e1e07ee352a4e65e4341f56e7`; the Quick Panel interaction model has a separate GPUI lineage documented in its [guide](QUICK-PANEL-DEMO.md). Those references explain product structure. They do not select the current visual skin or establish BoardUI pixel parity.
 

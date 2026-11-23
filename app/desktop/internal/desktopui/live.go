@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
 	"io"
 	"mime"
 	"path/filepath"
@@ -1423,6 +1424,8 @@ func (d *viewState) runHistoryAction(id, key string) {
 
 		result, err := client.ExecuteAction(callCtx, id, key, request)
 		var resultText string
+		var resultURL string
+		var qrImg *image.NRGBA
 		var truncated bool
 		if err == nil && wantPresent && result.Item.ID != "" {
 			if rc, cerr := client.HistoryContent(callCtx, result.Item.ID, 0); cerr == nil {
@@ -1434,6 +1437,8 @@ func (d *viewState) runHistoryAction(id, key string) {
 						truncated = true
 					}
 					resultText = strings.ToValidUTF8(string(raw), "")
+					resultURL = validHTTPURL(resultText)
+					qrImg = encodeActionQRImage(resultURL)
 				}
 			}
 		}
@@ -1497,7 +1502,8 @@ func (d *viewState) runHistoryAction(id, key string) {
 					plugin:      pluginLabel,
 					historyID:   result.Item.ID,
 					text:        resultText,
-					url:         validHTTPURL(resultText),
+					url:         resultURL,
+					qr:          newActionResultQR(qrImg),
 					copied:      wantCopy && result.Applied,
 					applyFailed: applyFailed,
 					truncated:   truncated,

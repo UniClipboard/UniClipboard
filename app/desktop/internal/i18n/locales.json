@@ -5231,6 +5231,18 @@
     "pt-BR": "Não foi possível abrir o link.",
     "ru": "Не удалось открыть ссылку."
   },
+  "链接二维码": {
+    "en": "Link QR code",
+    "ja": "リンクの QR コード",
+    "pt-BR": "Código QR do link",
+    "ru": "QR-код ссылки"
+  },
+  "使用手机扫码打开链接": {
+    "en": "Scan with your phone to open this link",
+    "ja": "スマートフォンでスキャンしてリンクを開く",
+    "pt-BR": "Escaneie com o celular para abrir o link",
+    "ru": "Отсканируйте телефоном, чтобы открыть ссылку"
+  },
   "关闭提示": {
     "en": "Dismiss notification",
     "ja": "通知を閉じる",

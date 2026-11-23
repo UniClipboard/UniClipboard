@@ -17,8 +17,8 @@ var settingsSections = []settingsSectionSpec{
 		items: []desktopkit.SidebarNavItem{
 			{ID: "general", Label: "通用", Icon: desktopkit.IconSettings},
 			{ID: "appearance", Label: "外观", Icon: desktopkit.IconSun},
-			{ID: "shortcuts", Label: "快捷键", Icon: desktopkit.IconList},
-			{ID: "quickPanel", Label: "快捷面板", Icon: desktopkit.IconList},
+			{ID: "shortcuts", Label: "快捷键", Icon: desktopkit.IconKeyboard},
+			{ID: "quickPanel", Label: "快捷面板", Icon: desktopkit.IconQuickPanel},
 		},
 	},
 	{

@@ -89,7 +89,7 @@ func DialEphemeral(ctx context.Context, addr string, port uint16, logf func(stri
 	for {
 		c, err := cl.DialTCPPort(ctx, port)
 		if err == nil {
-			return &clientConn{Conn: c, cl: cl}, nil
+			return &clientConn{Conn: c, release: func() { _ = cl.Close() }}, nil
 		}
 		if ctx.Err() != nil {
 			_ = cl.Close()
@@ -106,7 +106,8 @@ func DialEphemeral(ctx context.Context, addr string, port uint16, logf func(stri
 
 type clientConn struct {
 	net.Conn
-	cl *tailcat.Client
+	release func()
+	once    sync.Once
 }
 
 func (c *clientConn) CloseWrite() error {
@@ -118,6 +119,6 @@ func (c *clientConn) CloseWrite() error {
 
 func (c *clientConn) Close() error {
 	err := c.Conn.Close()
-	_ = c.cl.Close()
+	c.once.Do(c.release)
 	return err
 }

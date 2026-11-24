@@ -11,6 +11,7 @@ paths:
   - internal/localcontent/
   - internal/localapi/api.go
   - internal/session/
+  - internal/tcnet/
   - internal/wire/wire.go
   - plugin/rpc/
   - plugin/serve.go
@@ -48,7 +49,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: 9e95b04d3cfd51e9cf3f2a25fd9ffe548bf63758
+verified: 5a337903dc5a9073674d495ce1da6a4d5a13610c
 ---
 # Clipboard pipeline and local history
 
@@ -75,6 +76,7 @@ converts the file to PNG. History stores the original file selection. The
 [external-channel contract](../contracts/sync-backend-contract.md#6a-外部渠道-profile0009进程外-rpc-子集已实现)
 defines the size and format bounds.
 - **Built-in session publication**: The session backend serializes session election, the Engine `connected` callback and local session registration with send-session lookup. A send dispatched while the callback returns waits for registration instead of failing because its newly published session is not yet in the backend map. The publication lock is released before send authorization and body I/O; the backend state mutex is never held across the authority callback. This adds no retry or replay. See the [readiness-race receipt](../exec/tailcat-connected-publication.md).
+- **Tailcat reconnect**: Concurrent dials and open connections to the same address share a tailcat client. When the last dial fails or the last connection closes, the transport closes that client. The next dial uses the saved client key and a fresh tunnel, so it registers again with a restarted listener.
 - **Receive**: Admission checks part sizes, policy, deduplication and storage before body delivery. Processing sees only accepted parts. An empty filtered result is dropped without successful deduplication. Received content is never forwarded. Reserve a Received slot before writing history and successful deduplication. The final publication rechecks lifecycle, sync policy and source authorization. Failure removes the new history and deduplication record.
 - **Temporary receive**: `AdmitTransfer` reserves the shared receive path under backend `unic.transfer` and pseudo-channel `transfer`. It creates no stored device or channel. Ephemeral receipts bypass device/channel authorization, but still require active lifecycle, enabled sync, receive policy and storage admission. They use origin `external`, run received processors and do not request automatic clipboard application.
 - **Use**: `BeginApply` and `BeginApplyHistory` apply content without a new commit. History tickets freeze the stored origin classification for `history_applied`; the event requires successful application with `UserRestore=true`. Desktop can call `SyncRestoredHistory` after explicit restore when `sync.on_restore` is enabled. Action-result application remains local. See [desktop runtime](desktop-runtime.md).

@@ -167,7 +167,7 @@ func runPath(t *testing.T, bin, mode, cloudVersion string) {
 		}
 		must(t, os.WriteFile(filepath.Join(home, "config.toml"), []byte(cfg), 0600))
 		cmd := exec.Command(filepath.Join(bin, "unicd"))
-		cmd.Env = append(os.Environ(), "UNIC_HOME="+home, "UNIC_SOCK="+sock, "IN_TS_TEST=true", "TS_DEBUG_ALWAYS_USE_DERP="+fmt.Sprint(mode == "derp"), "GORACE=atexit_sleep_ms=0")
+		cmd.Env = append(os.Environ(), "UNIC_HOME="+home, "UNIC_SOCK="+sock, "IN_TS_TEST=true", "TS_DEBUG_NEVER_DIRECT_UDP="+fmt.Sprint(mode == "derp"), "GORACE=atexit_sleep_ms=0")
 		if cloudVersion == "" {
 			cmd.Env = append(cmd.Env, "SSL_CERT_FILE="+cert)
 		}
@@ -288,7 +288,7 @@ func runPath(t *testing.T, bin, mode, cloudVersion string) {
 	}
 	// For direct mode, removing the only relay independently proves a later
 	// delivered payload can use the remaining direct UDP path.
-	independent := "forced UDP disable through maintained magicsock knob"
+	independent := "direct UDP disabled through maintained magicsock knob"
 	if mode == "direct" {
 		must(t, derp.Close())
 		relay.Close()
@@ -306,7 +306,7 @@ func runPath(t *testing.T, bin, mode, cloudVersion string) {
 			unknown++
 		}
 		if mode == "derp" && p["path"] == "direct" {
-			t.Error("direct reported with UDP disabled")
+			t.Error("direct reported with direct UDP disabled")
 		}
 	}
 	if known == 0 || unknown == 0 {
@@ -343,7 +343,7 @@ func runPath(t *testing.T, bin, mode, cloudVersion string) {
 	if !sameSource(source, sourceTree(t)) {
 		t.Error("source changed during acceptance")
 	}
-	write("commands.json", map[string]any{"build": "go build -race -tags ts_omit_captiveportal,ts_omit_portmapper -o .cache/0020/real-bin/unicd ./app/service/cmd/unicd", "test": "make sync-path-e2e", "environment_keys": []string{"UNIC_HOME", "UNIC_SOCK", "SSL_CERT_FILE", "IN_TS_TEST", "TS_DEBUG_ALWAYS_USE_DERP"}, "exit_code": 0})
+	write("commands.json", map[string]any{"build": "go build -race -tags ts_omit_captiveportal,ts_omit_portmapper -o .cache/0020/real-bin/unicd ./app/service/cmd/unicd", "test": "make sync-path-e2e", "environment_keys": []string{"UNIC_HOME", "UNIC_SOCK", "SSL_CERT_FILE", "IN_TS_TEST", "TS_DEBUG_NEVER_DIRECT_UDP"}, "exit_code": 0})
 	replay := `#!/bin/sh
 set -eu
 cd "$(git rev-parse --show-toplevel)"

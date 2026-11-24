@@ -38,6 +38,12 @@ func qpKeycap(c *ui.Context, text string, a qpPalette) {
 }
 func (p *quickPanelState) panel(c *ui.Context) {
 	p.panelInvalidate = c.Invalidate
+	a := p.palette(c)
+	k := desktopkit.Kit{Dark: p.theme == "dark" || (p.theme == "system" && c.Theme().Dark), Colors: p.colors}
+	k.Apply(c)
+	prevMeasure := p.measureText
+	p.measureText = c.MeasureText
+	defer func() { p.measureText = prevMeasure }()
 	if p.now.IsZero() {
 		p.now = c.Now()
 		p.previewDue = time.Time{}
@@ -45,9 +51,11 @@ func (p *quickPanelState) panel(c *ui.Context) {
 		p.schedulePreview()
 	}
 	p.tick(c)
-	a := p.palette(c)
-	k := desktopkit.Kit{Dark: p.theme == "dark" || (p.theme == "system" && c.Theme().Dark), Colors: p.colors}
-	k.Apply(c)
+	if p.visible && (p.menu != "" || p.previewEntry() != nil) && p.onUpdate != nil {
+		if w, h := p.satelliteSize(); w != p.satelliteWidth || h != p.satelliteHeight {
+			p.onUpdate()
+		}
+	}
 	root := ui.Column(c).Fill().Background(a.background).TextColor(a.foreground).Radius(12).Border(1, a.border).Clip()
 	root.Children(func() {
 		if !p.visible {
@@ -641,17 +649,11 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 	a := p.palette(c)
 	k := desktopkit.Kit{Dark: p.theme == "dark" || (p.theme == "system" && c.Theme().Dark), Colors: p.colors}
 	k.Apply(c)
-	ui.Column(c).Fill().Radius(12).Border(1, a.border).Background(a.background).TextColor(a.foreground).Clip().Children(func() {
-		e := p.active()
-		if p.menu == "" {
-			e = nil
-			for i := range p.entries {
-				if p.entries[i].id == p.previewID {
-					e = &p.entries[i]
-					break
-				}
-			}
-		}
+	prevMeasure := p.measureText
+	p.measureText = c.MeasureText
+	defer func() { p.measureText = prevMeasure }()
+	ui.Column(c).Fill().Radius(12).Border(qpSatelliteBorder, a.border).Background(a.background).TextColor(a.foreground).Clip().Children(func() {
+		e := p.previewEntry()
 		if e == nil {
 			return
 		}
@@ -666,13 +668,18 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 				title = p.tr("发送到")
 			}
 		}
-		ui.Text(c, title).FontSize(11 * zoomScale(p.textZoom)).TextColor(a.quiet).Padding(12).Shrink(0)
-		scroll := k.Scroll(c.Key("satellite-scroll")).Grow(1).MinHeight(0)
+		header := ui.Text(c, title).FontSize(11 * zoomScale(p.textZoom)).TextColor(a.quiet).Shrink(0)
+		if p.menu != "" {
+			header.Padding(qpSatelliteMenuPad)
+		} else {
+			header.Padding(qpSatelliteHeaderPadTop, qpSatelliteHeaderPadSide, qpSatelliteHeaderPadBot, qpSatelliteHeaderPadSide)
+		}
+		scroll := k.Scroll(c.Key("satellite-scroll-" + p.menu + "-" + e.id)).Grow(1).MinHeight(0)
 		scroll.Children(func() {
 			if p.menu != "" {
-				ui.Column(c).FillWidth().Padding(6).Gap(2).Children(func() {
+				ui.Column(c).FillWidth().Padding(qpSatelliteMenuListPad).Gap(qpSatelliteMenuRowGap).Children(func() {
 					for i, row := range p.actions() {
-						b := ui.ButtonBase(c.Key(row.id)).Label(p.actionLabel(row)).Disabled(!row.enabled).FillWidth().Height(30).PaddingX(10).Radius(7).Row().Gap(8).AlignItems(ui.Center)
+						b := ui.ButtonBase(c.Key(row.id)).Label(p.actionLabel(row)).Disabled(!row.enabled).FillWidth().Height(qpSatelliteMenuRowHeight).PaddingX(10).Radius(7).Row().Gap(8).AlignItems(ui.Center)
 						if i == p.cursor {
 							b.Background(a.primary).TextColor(a.white)
 						}
@@ -690,7 +697,7 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 				})
 				return
 			}
-			ui.Column(c).FillWidth().Padding(16).Gap(8).Children(func() {
+			ui.Column(c).FillWidth().Padding(qpSatelliteBodyPadTop, qpSatelliteBodyPadSide, qpSatelliteBodyPadBot, qpSatelliteBodyPadSide).Gap(qpSatelliteBodyGap).Children(func() {
 				switch e.kind {
 				case "图片":
 					ui.Image(c, p.quickImage(c, *e)).FillWidth().Height(230).Fit(ui.Contain).Label(e.title)
@@ -704,11 +711,14 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 					}
 					richtext.EditorBase(c, p.richPreview, richtext.EditorOptions{Label: p.tr("富文本预览"), ReadOnly: true}).FillWidth().Height(200)
 				case "链接":
-					ui.Text(c, e.title).FontSize(14 * zoomScale(p.textZoom)).Bold().Selectable()
-					ui.Text(c, e.text).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet).Selectable()
+					ui.Text(c, e.title).FontSize(14 * zoomScale(p.textZoom)).Bold().FillWidth().Selectable()
+					ui.Text(c, e.text).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet).FillWidth().Selectable()
 				case "文件":
 					for _, file := range strings.Split(e.text, "\n") {
-						ui.Row(c).Gap(8).Children(func() { k.Icon(c, desktopkit.IconFile, 24); ui.Text(c, file).FontSize(13 * zoomScale(p.textZoom)) })
+						ui.Row(c).FillWidth().Gap(qpSatelliteFileRowGap).AlignItems(ui.Center).Children(func() {
+							k.Icon(c, desktopkit.IconFile, qpSatelliteFileIconSize).Shrink(0)
+							ui.Text(c, file).FontSize(13 * zoomScale(p.textZoom)).Grow(1).MinWidth(0)
+						})
 					}
 				default:
 					text := ui.Text(c, e.text).FontSize(14 * zoomScale(p.textZoom)).FillWidth().Selectable()
@@ -722,6 +732,11 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 			ui.Text(c, p.tr("↑↓ 选择 · ⏎ 执行 · esc 返回")).FontSize(11*zoomScale(p.textZoom)).TextColor(a.quiet).Padding(10, 12).Shrink(0)
 		}
 	})
+	if p.visible && (p.menu != "" || p.previewEntry() != nil) && p.onUpdate != nil {
+		if w, h := p.satelliteSize(); w != p.satelliteWidth || h != p.satelliteHeight {
+			p.onUpdate()
+		}
+	}
 }
 
 func (p *quickPanelState) pasteTargetLabel() string {

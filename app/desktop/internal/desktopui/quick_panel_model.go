@@ -78,6 +78,8 @@ type quickPanelState struct {
 	pointerKnown                                   bool
 	onUpdate                                       func()
 	panelInvalidate, satelliteInvalidate           func()
+	measureText                                    func(float32, ...ui.Span) (float32, float32)
+	satelliteWidth, satelliteHeight                int
 }
 
 func (p *quickPanelState) update() {
@@ -248,6 +250,20 @@ func (p *quickPanelState) active() *qpEntry {
 		return nil
 	}
 	return &p.rows[at]
+}
+func (p *quickPanelState) previewEntry() *qpEntry {
+	if p.menu != "" {
+		return p.active()
+	}
+	if p.previewID == "" {
+		return nil
+	}
+	for i := range p.entries {
+		if p.entries[i].id == p.previewID {
+			return &p.entries[i]
+		}
+	}
+	return nil
 }
 func (p *quickPanelState) schedulePreview() {
 	e := p.active()

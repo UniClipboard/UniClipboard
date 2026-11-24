@@ -48,7 +48,7 @@ func openQuickWindow(p *quickPanelState, closed func()) *mygo.Window {
 			height = 44 + len(p.actions())*32 + 34
 		} else if e := p.active(); e != nil {
 			height = 80 + (strings.Count(e.text, "\n")+1)*22
-			if e.kind == "图片" {
+			if p.quickHasImagePreview(*e) {
 				height = 310
 			}
 		}

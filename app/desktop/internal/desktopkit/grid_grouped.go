@@ -299,7 +299,7 @@ func (k Kit) gridCard(c *ui.Context, st *ListState, it GridItem, i int, cardH fl
 
 	actionConsumed := false
 	card.Children(func() {
-		if it.Kind == KindImage {
+		if it.Kind == KindImage || it.Media != nil || it.ImageLoading {
 			k.gridImageBody(c, it)
 		} else {
 			k.gridA1Header(c, it, hovered && (it.OnCopy != nil || it.OnPin != nil))

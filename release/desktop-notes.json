@@ -1,4 +1,4 @@
 {
-  "en": "Build 6 applies eligible marketplace plugin updates without restarting the service and adds plugin icons to the marketplace. WeType can sync a single image file as an image. The Quick Panel previews single image files and adjusts its preview height for wrapped text. History uses file extensions for file badges and keeps the view steady when you copy, favorite, or tag an item. This build fixes the macOS Dock icon lifecycle and improves Windows setup with a prompt to close running UniClipboard processes and an option to launch the app after installation. File transfers now report timeout errors more accurately. All paired devices must use v2.",
-  "zh": "Build 6 支持在服务运行时应用符合条件的插件市场更新，并在插件市场显示插件图标。微信输入法可将单个图片文件作为图片同步。快捷面板可预览单个图片文件，并按换行后的文字调整预览高度。历史记录按扩展名显示文件标记，并在复制、收藏或修改标签时保持界面稳定。本版本修复了 macOS 程序坞图标的显示问题。Windows 安装程序新增关闭运行中的 UniClipboard 进程的提示，并提供安装后启动应用的选项。文件传输现在可以更准确地报告超时错误。所有配对设备必须使用 v2。"
+  "en": "Build 7 fixes device reconnection after a paired device restarts by rebuilding the Tailcat tunnel automatically after disconnect. All paired devices must use v2.",
+  "zh": "Build 7 修复了配对设备重启后无法自动重连的问题，断开连接后会自动重建 Tailcat 传输隧道。所有配对设备必须使用 v2。"
 }

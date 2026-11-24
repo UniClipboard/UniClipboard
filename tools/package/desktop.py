@@ -766,15 +766,15 @@ def package(args):
             file = output / (base + "-setup.exe")
             script = (
                 (ROOT / "packaging/windows/installer.nsi")
-                .read_text()
+                .read_text(encoding="utf-8")
                 .replace("@PAYLOAD@/", str(payload) + os.sep)
                 .replace("@OUTPUT@", str(file))
                 .replace("@VERSION@", m["version"])
                 .replace("@BUILD@", str(m["build_number"]))
             )
             config = output / "installer.nsi"
-            config.write_text(script)
-            run(["makensis", config])
+            config.write_text(script, encoding="utf-8")
+            run(["makensis", "-INPUTCHARSET", "UTF8", config])
             config.unlink()
         elif kind in ["dmg", "app.tar.gz"]:
             if platform.system() != "Darwin":

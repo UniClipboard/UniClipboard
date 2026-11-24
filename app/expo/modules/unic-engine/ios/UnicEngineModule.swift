@@ -177,9 +177,154 @@ public final class UnicEngineModule: Module {
   private var activePickerCoordinator: DocumentPickerCoordinator?
   private var securityScopedSetupURL: URL?
 
-  private var lastObservedEpoch: String = "ios-pb-1"
-  private var lastObservedChangeCount: Int = 0
-  private var lastAppliedSequence: Int = -1
+  private var observationEpoch: String = ""
+  private var observationSequence: UInt64 = 0
+  private var lastProbedChangeCount: Int = -1
+  private var lastAppliedChangeCount: Int = -1
+  private var isForeground: Bool = true
+  private var pasteboardObserver: NSObjectProtocol?
+
+  private func updateHostCapabilities(_ eng: MobileEngine, foreground: Bool) {
+    let caps: [String: Any] = [
+      "read_formats": ["text/plain", "text/html", "image/png"],
+      "write_formats": ["text/plain", "text/html", "image/png"],
+      "read_files": true,
+      "write_files": true,
+      "observe": foreground ? "permission_required" : "unavailable",
+      "apply": foreground ? "available" : "unavailable",
+    ]
+    if let data = try? JSONSerialization.data(withJSONObject: caps),
+       let json = String(data: data, encoding: .utf8) {
+      try? eng.updateHostCapabilities(json)
+    }
+  }
+
+  private func isAutoSyncEnabled(_ eng: MobileEngine) -> Bool {
+    guard let stateJSON = try? callGoString({ eng.getState($0) }),
+          let data = stateJSON.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let settings = obj["settings"] as? [String: Any],
+          let value = settings["value"] as? [String: Any],
+          let sync = value["sync"] as? [String: Any] else {
+      return false
+    }
+    let enabled = sync["enabled"] as? Bool ?? false
+    let automatic = sync["automatic"] as? Bool ?? false
+    return enabled && automatic
+  }
+
+  private func ensureEmptyObservationBaseline(_ eng: MobileEngine) throws {
+    if !self.observationEpoch.isEmpty {
+      return
+    }
+    let newEpoch = "ios-\(UUID().uuidString.prefix(12))"
+    let req: [String: Any] = [
+      "epoch": newEpoch,
+      "sequence": "1",
+      "mode": "baseline",
+    ]
+    let data = try JSONSerialization.data(withJSONObject: req)
+    let json = String(data: data, encoding: .utf8) ?? "{}"
+    _ = try callGoString { eng.observeClipboard(json, error: $0) }
+    self.observationEpoch = newEpoch
+    self.observationSequence = 1
+  }
+
+  private func observeCurrentPasteboardChange(_ eng: MobileEngine) throws -> String {
+    let pbResult: (Int, String?, UIImage?) = DispatchQueue.main.sync {
+      let pb = UIPasteboard.general
+      return (pb.changeCount, pb.string, pb.image)
+    }
+    let changeCount = pbResult.0
+    self.lastProbedChangeCount = changeCount
+    if changeCount == self.lastAppliedChangeCount && self.lastAppliedChangeCount >= 0 {
+      return "{\"skipped\":true,\"reason\":\"self_applied\"}"
+    }
+    var leaseID: String?
+    if let text = pbResult.1, !text.isEmpty {
+      let hJSON = try callGoString { eng.importText(text, html: "", obsKey: "ios-pb:\(changeCount)", error: $0) }
+      if let d = hJSON.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+        leaseID = obj["lease_id"] as? String
+      }
+    } else if let img = pbResult.2, let png = img.pngData() {
+      let hJSON = try callGoString { eng.importBytes("image/png", fileName: "", data: png, error: $0) }
+      if let d = hJSON.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+        leaseID = obj["lease_id"] as? String
+      }
+    } else {
+      return "{\"skipped\":true,\"reason\":\"empty_or_unsupported\"}"
+    }
+    guard let lid = leaseID else {
+      throw UnicModuleException("[unic:internal] {\"code\":\"internal\",\"message\":\"failed to stage clipboard lease\"}")
+    }
+    defer { try? eng.releaseContent(lid) }
+    try self.ensureEmptyObservationBaseline(eng)
+    let nextSeq = self.observationSequence + 1
+    let obsReq: [String: Any] = [
+      "epoch": self.observationEpoch,
+      "sequence": String(nextSeq),
+      "mode": "change",
+      "lease_id": lid,
+    ]
+    let obsData = try JSONSerialization.data(withJSONObject: obsReq)
+    let obsJSON = String(data: obsData, encoding: .utf8) ?? "{}"
+    let res = try callGoString { eng.observeClipboard(obsJSON, error: $0) }
+    self.observationSequence = nextSeq
+    return res
+  }
+
+  private func startPasteboardObserver() {
+    guard pasteboardObserver == nil else { return }
+    pasteboardObserver = NotificationCenter.default.addObserver(
+      forName: UIPasteboard.changedNotification,
+      object: nil,
+      queue: nil
+    ) { [weak self] _ in
+      guard let self = self else { return }
+      self.engineQueue.async {
+        guard self.isForeground, let eng = self.engine else { return }
+        let probe: (Int, Bool, Bool) = DispatchQueue.main.sync {
+          let pb = UIPasteboard.general
+          return (pb.changeCount, pb.hasStrings, pb.hasImages)
+        }
+        let changeCount = probe.0
+        if changeCount == self.lastAppliedChangeCount || changeCount == self.lastProbedChangeCount {
+          return
+        }
+        self.lastProbedChangeCount = changeCount
+        guard probe.1 || probe.2 else { return }
+        // UIPasteboard.changedNotification fires for in-app writes, which do not trigger iOS 16+ cross-app paste prompts.
+        if self.isAutoSyncEnabled(eng) {
+          _ = try? self.observeCurrentPasteboardChange(eng)
+        } else {
+          self.sendEvent("onClipboardChanged", [
+            "changeCount": changeCount,
+            "hasStrings": probe.1,
+            "hasImages": probe.2,
+          ])
+        }
+      }
+    }
+  }
+
+  private func stopPasteboardObserver() {
+    if let obs = pasteboardObserver {
+      NotificationCenter.default.removeObserver(obs)
+      pasteboardObserver = nil
+    }
+  }
+
+  private func reportApplyFailure(_ eng: MobileEngine, token: String, errorCode: String) {
+    let payload: [String: Any] = [
+      "token": token,
+      "outcome": "failed",
+      "error_code": errorCode,
+    ]
+    if let data = try? JSONSerialization.data(withJSONObject: payload),
+       let json = String(data: data, encoding: .utf8) {
+      try? eng.reportApplyResult(json)
+    }
+  }
 
   private func launchOverride(_ key: String) -> String? {
     let args = ProcessInfo.processInfo.arguments
@@ -338,25 +483,49 @@ public final class UnicEngineModule: Module {
   public func definition() -> ModuleDefinition {
     Name("UnicEngine")
 
-    Events("onEngineEvent", "onEngineResync", "onMigrationProgress")
+    Events("onEngineEvent", "onEngineResync", "onMigrationProgress", "onClipboardChanged")
 
     OnAppBecomesActive { [weak self] in
       guard let self = self else { return }
       self.engineQueue.async {
-        try? self.engine?.setRuntimeState("active")
+        self.isForeground = true
+        guard let eng = self.engine else { return }
+        self.updateHostCapabilities(eng, foreground: true)
+        try? eng.setRuntimeState("active")
+        let probe: (Int, Bool, Bool) = DispatchQueue.main.sync {
+          let pb = UIPasteboard.general
+          return (pb.changeCount, pb.hasStrings, pb.hasImages)
+        }
+        let changeCount = probe.0
+        if changeCount != self.lastProbedChangeCount &&
+           changeCount != self.lastAppliedChangeCount &&
+           (probe.1 || probe.2) {
+          self.lastProbedChangeCount = changeCount
+          self.sendEvent("onClipboardChanged", [
+            "changeCount": changeCount,
+            "hasStrings": probe.1,
+            "hasImages": probe.2,
+          ])
+        }
       }
     }
 
     OnAppEntersBackground { [weak self] in
       guard let self = self else { return }
       self.engineQueue.async {
-        try? self.engine?.setRuntimeState("suspended")
+        self.isForeground = false
+        self.observationEpoch = ""
+        self.observationSequence = 0
+        guard let eng = self.engine else { return }
+        self.updateHostCapabilities(eng, foreground: false)
+        try? eng.setRuntimeState("suspended")
       }
     }
 
     OnDestroy { [weak self] in
       guard let self = self else { return }
       self.activeMigrationCancel?.cancel()
+      self.stopPasteboardObserver()
       self.stopNetworkMonitor()
       self.stopSecurityScopedSetupURL()
       self.setIdleTimerDisabled(false)
@@ -488,12 +657,12 @@ public final class UnicEngineModule: Module {
         "cache_dir": cacheDir,
         "device_name": resolvedName,
         "host_capabilities": [
-          "read_formats": ["text/plain", "text/html", "image/png", "image/jpeg"],
-          "write_formats": ["text/plain", "text/html", "image/png", "image/jpeg"],
+          "read_formats": ["text/plain", "text/html", "image/png"],
+          "write_formats": ["text/plain", "text/html", "image/png"],
           "read_files": true,
           "write_files": true,
-          "observe": "available",
-          "apply": "available",
+          "observe": self.isForeground ? "permission_required" : "unavailable",
+          "apply": self.isForeground ? "available" : "unavailable",
         ],
       ]
       let cfgData = try JSONSerialization.data(withJSONObject: cfg)
@@ -515,10 +684,14 @@ public final class UnicEngineModule: Module {
       )
       do {
         let snapshotJSON = try callGoString { eng.subscribe(sink, error: $0) }
-        try eng.setRuntimeState("active")
+        try eng.setRuntimeState(self.isForeground ? "active" : "suspended")
         try eng.start(nil)
         self.engine = eng
+        self.observationEpoch = ""
+        self.observationSequence = 0
+        self.lastProbedChangeCount = DispatchQueue.main.sync { UIPasteboard.general.changeCount }
         self.startNetworkMonitor()
+        self.startPasteboardObserver()
         let latest = try callGoString { eng.getState($0) }
         return latest.isEmpty ? snapshotJSON : latest
       } catch let err as UnicModuleException {
@@ -531,7 +704,10 @@ public final class UnicEngineModule: Module {
     }.runOnQueue(engineQueue)
 
     AsyncFunction("shutdownEngine") { () in
+      self.stopPasteboardObserver()
       self.stopNetworkMonitor()
+      self.observationEpoch = ""
+      self.observationSequence = 0
       self.shutdownEngineInternal()
     }.runOnQueue(engineQueue)
 
@@ -565,6 +741,11 @@ public final class UnicEngineModule: Module {
     AsyncFunction("readHistoryTextPreview") { (historyID: String, maxBytes: Int) -> String in
       let eng = try self.requireEngine()
       return try callGoString { eng.readHistoryTextPreview(historyID, maxBytes: maxBytes, error: $0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("readHistoryFullText") { (historyID: String, maxBytes: Int) -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.readHistoryFullText(historyID, maxBytes: maxBytes, error: $0) }
     }.runOnQueue(engineQueue)
 
     AsyncFunction("exportHistoryImagePreview") { (historyID: String) -> String in
@@ -704,18 +885,152 @@ public final class UnicEngineModule: Module {
       }
     }
 
+    AsyncFunction("resendHistoryItem") { (reqJSON: String) -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.resendHistoryItem(nil, reqJSON: reqJSON, error: $0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("listReceived") { () -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.listReceived($0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("dismissReceived") { (receiptID: String) in
+      do {
+        try self.requireEngine().dismissReceived(receiptID)
+      } catch let err as UnicModuleException {
+        throw err
+      } catch {
+        throw UnicModuleException(formatGoError(error))
+      }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("applyReceivedToClipboard") { (receiptID: String) -> String in
+      do {
+        let eng = try self.requireEngine()
+        let recvJSON = try callGoString { eng.listReceived($0) }
+        guard let recvData = recvJSON.data(using: .utf8),
+              let list = try? JSONSerialization.jsonObject(with: recvData) as? [[String: Any]],
+              let entry = list.first(where: { ($0["receipt_id"] as? String) == receiptID }),
+              let content = entry["content"] as? [String: Any],
+              let parts = content["parts"] as? [[String: Any]] else {
+          throw UnicModuleException("[unic:not_found] {\"code\":\"not_found\",\"message\":\"received item not found\"}")
+        }
+
+        let expectedEpoch = self.observationEpoch
+        let expectedSeq = String(self.observationSequence)
+        let beginPayload: [String: Any] = [
+          "receipt_id": receiptID,
+          "expected_epoch": expectedEpoch,
+          "expected_sequence": expectedSeq,
+        ]
+        let beginData = try JSONSerialization.data(withJSONObject: beginPayload)
+        let beginJSON = String(data: beginData, encoding: .utf8) ?? "{}"
+        let ticketJSON = try callGoString { eng.beginApply(beginJSON, error: $0) }
+        guard let tData = ticketJSON.data(using: .utf8),
+              let ticket = try JSONSerialization.jsonObject(with: tData) as? [String: Any],
+              let token = ticket["token"] as? String,
+              let leaseID = ticket["lease_id"] as? String else {
+          throw UnicModuleException("[unic:internal] {\"code\":\"internal\",\"message\":\"invalid apply ticket\"}")
+        }
+
+        var reported = false
+        defer {
+          if !reported {
+            self.reportApplyFailure(eng, token: token, errorCode: "internal")
+          }
+          try? eng.releaseContent(leaseID)
+        }
+
+        var applied = false
+        if let imgPart = parts.first(where: { ($0["kind"] as? String) == "representation" && (($0["mime"] as? String)?.hasPrefix("image/") == true) }),
+           let partID = imgPart["id"] as? String {
+          let cacheDir = try self.cacheDirectoryPath()
+          let dest = URL(fileURLWithPath: cacheDir, isDirectory: true).appendingPathComponent("apply-recv-\(UUID().uuidString).img")
+          var written: Int64 = 0
+          try eng.exportPart(toFile: leaseID, partID: partID, destPath: dest.path, ret0_: &written)
+          defer { try? FileManager.default.removeItem(at: dest) }
+          if let imgData = try? Data(contentsOf: dest), let image = UIImage(data: imgData) {
+            DispatchQueue.main.sync {
+              UIPasteboard.general.image = image
+            }
+            applied = true
+          }
+        } else if let txtPart = parts.first(where: { ($0["kind"] as? String) == "representation" && (($0["mime"] as? String) == "text/plain" || ($0["mime"] as? String) == "text/html") }),
+                  let partID = txtPart["id"] as? String {
+          let textJSON = try callGoString { eng.readLeasedText(leaseID, partID: partID, maxBytes: 4_194_304, error: $0) }
+          if let pData = textJSON.data(using: .utf8),
+             let pObj = try? JSONSerialization.jsonObject(with: pData) as? [String: Any],
+             let text = pObj["text"] as? String,
+             !text.isEmpty {
+            DispatchQueue.main.sync {
+              UIPasteboard.general.string = text
+            }
+            applied = true
+          }
+        }
+
+        let afterChangeCount: Int = DispatchQueue.main.sync { UIPasteboard.general.changeCount }
+        if !applied {
+          self.reportApplyFailure(eng, token: token, errorCode: "unsupported")
+          reported = true
+          throw UnicModuleException("[unic:unsupported] {\"code\":\"unsupported\",\"message\":\"received content cannot be applied to clipboard\"}")
+        }
+
+        self.lastAppliedChangeCount = afterChangeCount
+        self.lastProbedChangeCount = afterChangeCount
+
+        let reportPayload: [String: Any]
+        if expectedEpoch.isEmpty {
+          reportPayload = [
+            "token": token,
+            "outcome": "applied",
+            "epoch": "",
+            "sequence": "0",
+          ]
+        } else {
+          let nextSeq = self.observationSequence + 1
+          reportPayload = [
+            "token": token,
+            "outcome": "applied",
+            "baseline_lease_id": leaseID,
+            "epoch": expectedEpoch,
+            "sequence": String(nextSeq),
+          ]
+          self.observationSequence = nextSeq
+        }
+        let reportData = try JSONSerialization.data(withJSONObject: reportPayload)
+        try eng.reportApplyResult(String(data: reportData, encoding: .utf8) ?? "{}")
+        reported = true
+        return "{\"applied\":true}"
+      } catch let err as UnicModuleException {
+        throw err
+      } catch {
+        throw UnicModuleException(formatGoError(error))
+      }
+    }.runOnQueue(engineQueue)
+
     AsyncFunction("applyHistoryToClipboard") { (historyID: String) -> String in
       do {
         let eng = try self.requireEngine()
-        let beforeSeq: Int = DispatchQueue.main.sync { UIPasteboard.general.changeCount }
+        let expectedEpoch = self.observationEpoch
+        let expectedSeq = String(self.observationSequence)
         let ticketJSON = try callGoString {
-          eng.beginApplyHistory(historyID, expectedEpoch: self.lastObservedEpoch, expectedSequence: String(beforeSeq), userRestore: true, error: $0)
+          eng.beginApplyHistory(historyID, expectedEpoch: expectedEpoch, expectedSequence: expectedSeq, userRestore: true, error: $0)
         }
         guard let tData = ticketJSON.data(using: .utf8),
               let ticket = try JSONSerialization.jsonObject(with: tData) as? [String: Any],
               let token = ticket["token"] as? String,
               let leaseID = ticket["lease_id"] as? String else {
           throw UnicModuleException("[unic:internal] {\"code\":\"internal\",\"message\":\"invalid apply ticket\"}")
+        }
+
+        var reported = false
+        defer {
+          if !reported {
+            self.reportApplyFailure(eng, token: token, errorCode: "internal")
+          }
+          try? eng.releaseContent(leaseID)
         }
 
         let itemJSON = try callGoString { eng.getHistoryItem(historyID, error: $0) }
@@ -737,10 +1052,11 @@ public final class UnicEngineModule: Module {
             applied = true
           }
         } else {
-          let previewJSON = try callGoString { eng.readHistoryTextPreview(historyID, maxBytes: 1_048_576, error: $0) }
+          let previewJSON = try callGoString { eng.readHistoryFullText(historyID, maxBytes: 4_194_304, error: $0) }
           if let pData = previewJSON.data(using: .utf8),
              let pObj = try? JSONSerialization.jsonObject(with: pData) as? [String: Any],
-             let text = pObj["text"] as? String {
+             let text = pObj["text"] as? String,
+             !text.isEmpty {
             DispatchQueue.main.sync {
               UIPasteboard.general.string = text
             }
@@ -748,30 +1064,38 @@ public final class UnicEngineModule: Module {
           }
         }
 
-        let afterSeq: Int = DispatchQueue.main.sync { UIPasteboard.general.changeCount }
-        self.lastObservedChangeCount = afterSeq
-        if applied {
-          self.lastAppliedSequence = afterSeq
+        let afterChangeCount: Int = DispatchQueue.main.sync { UIPasteboard.general.changeCount }
+        if !applied {
+          self.reportApplyFailure(eng, token: token, errorCode: "unsupported")
+          reported = true
+          throw UnicModuleException("[unic:unsupported] {\"code\":\"unsupported\",\"message\":\"clipboard content could not be applied\"}")
         }
 
-        let reportPayload: [String: Any] = applied
-          ? [
-              "token": token,
-              "outcome": "applied",
-              "baseline_lease_id": leaseID,
-              "epoch": self.lastObservedEpoch,
-              "sequence": String(afterSeq),
-            ]
-          : [
-              "token": token,
-              "outcome": "failed",
-              "error_code": "unavailable",
-            ]
+        self.lastAppliedChangeCount = afterChangeCount
+        self.lastProbedChangeCount = afterChangeCount
+
+        let reportPayload: [String: Any]
+        if expectedEpoch.isEmpty {
+          reportPayload = [
+            "token": token,
+            "outcome": "applied",
+            "epoch": "",
+            "sequence": "0",
+          ]
+        } else {
+          let nextSeq = self.observationSequence + 1
+          reportPayload = [
+            "token": token,
+            "outcome": "applied",
+            "baseline_lease_id": leaseID,
+            "epoch": expectedEpoch,
+            "sequence": String(nextSeq),
+          ]
+          self.observationSequence = nextSeq
+        }
         let reportData = try JSONSerialization.data(withJSONObject: reportPayload)
         try eng.reportApplyResult(String(data: reportData, encoding: .utf8) ?? "{}")
-        if !applied {
-          throw UnicModuleException("[unic:unavailable] {\"code\":\"unavailable\",\"message\":\"clipboard content could not be applied\"}")
-        }
+        reported = true
         return "{\"applied\":true}"
       } catch let err as UnicModuleException {
         throw err
@@ -782,42 +1106,7 @@ public final class UnicEngineModule: Module {
 
     AsyncFunction("readSystemClipboardAndCommit") { () -> String in
       let eng = try self.requireEngine()
-      let pbResult: (Int, String?, UIImage?) = DispatchQueue.main.sync {
-        let pb = UIPasteboard.general
-        return (pb.changeCount, pb.string, pb.image)
-      }
-      let seq = pbResult.0
-      if seq == self.lastAppliedSequence && self.lastAppliedSequence >= 0 {
-        return "{\"skipped\":true,\"reason\":\"self_applied\"}"
-      }
-      var leaseID: String?
-      if let text = pbResult.1, !text.isEmpty {
-        let hJSON = try callGoString { eng.importText(text, html: "", obsKey: "ios-pb:\(seq)", error: $0) }
-        if let d = hJSON.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
-          leaseID = obj["lease_id"] as? String
-        }
-      } else if let img = pbResult.2, let png = img.pngData() {
-        let hJSON = try callGoString { eng.importBytes("image/png", fileName: "", data: png, error: $0) }
-        if let d = hJSON.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
-          leaseID = obj["lease_id"] as? String
-        }
-      } else {
-        return "{\"skipped\":true,\"reason\":\"empty_or_unsupported\"}"
-      }
-      guard let lid = leaseID else {
-        throw UnicModuleException("[unic:internal] {\"code\":\"internal\",\"message\":\"failed to stage clipboard lease\"}")
-      }
-      defer { try? eng.releaseContent(lid) }
-      self.lastObservedChangeCount = seq
-      let obsReq: [String: Any] = [
-        "epoch": self.lastObservedEpoch,
-        "sequence": String(seq),
-        "mode": "change",
-        "lease_id": lid,
-      ]
-      let obsData = try JSONSerialization.data(withJSONObject: obsReq)
-      let obsJSON = String(data: obsData, encoding: .utf8) ?? "{}"
-      return try callGoString { eng.observeClipboard(obsJSON, error: $0) }
+      return try self.observeCurrentPasteboardChange(eng)
     }.runOnQueue(engineQueue)
 
     // ---- Actions ----

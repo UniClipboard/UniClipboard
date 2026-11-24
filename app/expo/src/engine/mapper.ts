@@ -32,6 +32,7 @@ export function mapEngineHistoryItem(
   const fileParts = item.parts.filter((p) => p.kind === "file");
   const primaryName =
     imagePreview?.name ||
+    imagePreview?.part?.name ||
     (type === "Image"
       ? "Image"
       : fileParts.length > 1
@@ -41,10 +42,10 @@ export function mapEngineHistoryItem(
           : undefined);
 
   const displayText =
-    preview?.text && preview.text.length > 0
-      ? preview.text
-      : fallbackSearchText && fallbackSearchText.length > 0
-        ? fallbackSearchText
+    fallbackSearchText && fallbackSearchText.length > 0
+      ? fallbackSearchText
+      : preview?.text && preview.text.length > 0
+        ? preview.text
         : primaryName ?? (type === "Text" ? "" : `[${type}]`);
 
   const tags = item.tags ?? [];
@@ -75,13 +76,16 @@ export function mapEngineHistoryItem(
     isDeleted: false,
     isLocalFileReady: item.parts.some((p) => p.available),
     syncStatus:
-      item.sync_state === "synced"
+      item.sync_state === "sent" || item.sync_state === "synced"
         ? HistorySyncStatus.Synced
         : item.sync_state === "pending"
           ? HistorySyncStatus.NeedSync
           : HistorySyncStatus.LocalOnly,
     fileUri: imagePreview?.uri,
-    from: item.origin.kind === "remote_device" ? "remote" : undefined,
+    from:
+      item.origin.kind === "remote_device" || item.origin.kind === "external"
+        ? "server"
+        : undefined,
   };
 }
 

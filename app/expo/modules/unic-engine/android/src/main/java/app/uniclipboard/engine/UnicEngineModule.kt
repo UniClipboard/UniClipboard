@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
@@ -16,6 +18,7 @@ import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.system.Os
 import android.view.WindowManager
+import androidx.core.content.FileProvider
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
@@ -36,14 +39,15 @@ import mobile.Mobile
 import mobile.SecretProvider
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.net.NetworkInterface
 import java.net.SocketException
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicInteger
 
 private const val REQ_PICK_SETUP_FOLDER = 0x5501
 private const val REQ_PICK_UPLOAD_FILE = 0x5502
@@ -90,9 +94,348 @@ class UnicEngineModule : Module() {
   private var networkCallback: ConnectivityManager.NetworkCallback? = null
   private var connectivityManager: ConnectivityManager? = null
 
-  private val clipboardEpoch = "android-cb-1"
-  private val clipboardSeq = AtomicInteger(0)
-  @Volatile private var lastAppliedSequence = -1
+  private var observationEpoch: String = ""
+  private var observationSequence: Long = 0L
+  private var lastObservedFingerprint: String? = null
+  private var lastAppliedFingerprint: String? = null
+  @Volatile private var isForeground: Boolean = true
+  private var clipListener: ClipboardManager.OnPrimaryClipChangedListener? = null
+  private var clipboardManager: ClipboardManager? = null
+
+  private sealed class AndroidClipSnapshot {
+    object Empty : AndroidClipSnapshot()
+    data class Text(val text: String, val html: String) : AndroidClipSnapshot()
+    data class ImageUri(val uri: Uri, val mime: String) : AndroidClipSnapshot()
+  }
+
+  private fun sha256Hex(bytes: ByteArray): String {
+    val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+    val sb = StringBuilder(digest.size * 2)
+    for (b in digest) {
+      sb.append(String.format("%02x", b))
+    }
+    return sb.toString()
+  }
+
+  private fun imageExtensionForMime(mime: String?): String {
+    return when (mime?.lowercase()) {
+      "image/jpeg", "image/jpg" -> "jpg"
+      "image/webp" -> "webp"
+      "image/gif" -> "gif"
+      else -> "png"
+    }
+  }
+
+  private fun updateHostCapabilities(eng: Engine, observe: String, apply: String) {
+    val caps = JSONObject()
+      .put("read_formats", JSONArray(listOf("text/plain", "text/html", "image/png")))
+      .put("write_formats", JSONArray(listOf("text/plain", "text/html", "image/png")))
+      .put("read_files", true)
+      .put("write_files", true)
+      .put("observe", observe)
+      .put("apply", apply)
+    try {
+      eng.updateHostCapabilities(caps.toString())
+    } catch (_: Exception) {
+    }
+  }
+
+  private fun isAutoSyncEnabled(eng: Engine): Boolean {
+    return try {
+      val state = JSONObject(eng.state)
+      val sync = state.optJSONObject("settings")?.optJSONObject("value")?.optJSONObject("sync")
+      sync != null && sync.optBoolean("enabled", false) && sync.optBoolean("automatic", false)
+    } catch (_: Exception) {
+      false
+    }
+  }
+
+  private fun reportApplyFailure(eng: Engine, token: String, errorCode: String) {
+    try {
+      val payload = JSONObject()
+        .put("token", token)
+        .put("outcome", "failed")
+        .put("error_code", errorCode)
+      eng.reportApplyResult(payload.toString())
+    } catch (_: Exception) {
+    }
+  }
+
+  private fun ensureEmptyObservationBaseline(eng: Engine) {
+    if (observationEpoch.isNotEmpty()) return
+    val newEpoch = "android-${UUID.randomUUID().toString().take(12)}"
+    val req = JSONObject()
+      .put("epoch", newEpoch)
+      .put("sequence", "1")
+      .put("mode", "baseline")
+    eng.observeClipboard(req.toString())
+    observationEpoch = newEpoch
+    observationSequence = 1L
+  }
+
+  private fun readAndroidClipboardSnapshot(ctx: Context): AndroidClipSnapshot {
+    return onMainSync {
+      val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        ?: return@onMainSync AndroidClipSnapshot.Empty
+      val clip = try {
+        cm.primaryClip
+      } catch (_: Exception) {
+        null
+      } ?: return@onMainSync AndroidClipSnapshot.Empty
+      if (clip.itemCount <= 0) return@onMainSync AndroidClipSnapshot.Empty
+      val item = clip.getItemAt(0)
+      val uri = item.uri
+      if (uri != null) {
+        val resolvedMime = ctx.contentResolver.getType(uri)
+          ?: (if (clip.description.mimeTypeCount > 0) clip.description.getMimeType(0) else null)
+        if (resolvedMime != null && resolvedMime.startsWith("image/", ignoreCase = true)) {
+          return@onMainSync AndroidClipSnapshot.ImageUri(uri, resolvedMime.lowercase())
+        }
+      }
+      val text = item.coerceToText(ctx)?.toString()
+      if (!text.isNullOrEmpty()) {
+        return@onMainSync AndroidClipSnapshot.Text(text, item.htmlText ?: "")
+      }
+      AndroidClipSnapshot.Empty
+    }
+  }
+
+  private fun stageAndroidClipboardSnapshot(eng: Engine, ctx: Context, snap: AndroidClipSnapshot): Pair<String, String>? {
+    return when (snap) {
+      is AndroidClipSnapshot.Empty -> null
+      is AndroidClipSnapshot.Text -> {
+        val fp = "text:${sha256Hex(snap.text.toByteArray(Charsets.UTF_8))}"
+        val handleJSON = eng.importText(snap.text, snap.html, "android-cb:$fp")
+        val leaseID = JSONObject(handleJSON).optString("lease_id", "")
+        if (leaseID.isEmpty()) null else Pair(fp, leaseID)
+      }
+      is AndroidClipSnapshot.ImageUri -> {
+        val maxRepBytes = 32 * 1024 * 1024
+        val rawBytes = ctx.contentResolver.openInputStream(snap.uri)?.use { input ->
+          val out = ByteArrayOutputStream()
+          val buf = ByteArray(16384)
+          var total = 0
+          var exceeded = false
+          while (true) {
+            val n = input.read(buf)
+            if (n <= 0) break
+            total += n
+            if (total > maxRepBytes) {
+              exceeded = true
+              break
+            }
+            out.write(buf, 0, n)
+          }
+          if (exceeded) null else out.toByteArray()
+        }
+        if (rawBytes == null || rawBytes.isEmpty()) {
+          // Stream larger image via FileOpener as file attachment.
+          var displayName = snap.uri.lastPathSegment ?: "clipboard-image.${imageExtensionForMime(snap.mime)}"
+          var fileSize = 0L
+          ctx.contentResolver.query(snap.uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+              val nIdx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+              if (nIdx >= 0 && !c.isNull(nIdx)) displayName = c.getString(nIdx)
+              val sIdx = c.getColumnIndex(OpenableColumns.SIZE)
+              if (sIdx >= 0 && !c.isNull(sIdx)) fileSize = c.getLong(sIdx)
+            }
+          }
+          if (fileSize <= 0L) return null
+          val fp = "img-uri:${sha256Hex("${snap.uri}:$fileSize".toByteArray(Charsets.UTF_8))}"
+          val opener = AndroidFileOpener(ctx, snap.uri, fileSize, "size:$fileSize;uri:${snap.uri.hashCode()}")
+          val handleJSON = eng.importFileSource(displayName, snap.mime, true, opener)
+          val leaseID = JSONObject(handleJSON).optString("lease_id", "")
+          return if (leaseID.isEmpty()) null else Pair(fp, leaseID)
+        }
+        val fp = "img:${sha256Hex(rawBytes)}"
+        val leaseID = if (snap.mime == "image/png") {
+          try {
+            JSONObject(eng.importBytes("image/png", "", rawBytes)).optString("lease_id", "")
+          } catch (_: Exception) {
+            ""
+          }
+        } else {
+          ""
+        }
+        val finalLease = if (leaseID.isNotEmpty()) {
+          leaseID
+        } else {
+          val bmp = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size)
+          if (bmp != null) {
+            val pngOut = ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.PNG, 100, pngOut)
+            bmp.recycle()
+            val pngBytes = pngOut.toByteArray()
+            JSONObject(eng.importBytes("image/png", "", pngBytes)).optString("lease_id", "")
+          } else {
+            val fileName = "clipboard-image.${imageExtensionForMime(snap.mime)}"
+            JSONObject(eng.importBytes(snap.mime, fileName, rawBytes)).optString("lease_id", "")
+          }
+        }
+        if (finalLease.isEmpty()) null else Pair(fp, finalLease)
+      }
+    }
+  }
+
+  private fun observeCurrentAndroidClipboard(eng: Engine, ctx: Context, explicit: Boolean): String {
+    val snap = readAndroidClipboardSnapshot(ctx)
+    if (snap is AndroidClipSnapshot.Empty) {
+      return "{\"skipped\":true,\"reason\":\"empty_or_unsupported\"}"
+    }
+    val staged = stageAndroidClipboardSnapshot(eng, ctx, snap)
+      ?: return "{\"skipped\":true,\"reason\":\"empty_or_unsupported\"}"
+    val (fp, leaseID) = staged
+    try {
+      if (fp == lastAppliedFingerprint) {
+        return "{\"skipped\":true,\"reason\":\"self_applied\"}"
+      }
+      if (!explicit && fp == lastObservedFingerprint) {
+        return "{\"skipped\":true,\"reason\":\"unchanged\"}"
+      }
+      ensureEmptyObservationBaseline(eng)
+      val nextSeq = observationSequence + 1L
+      val obsReq = JSONObject()
+        .put("epoch", observationEpoch)
+        .put("sequence", nextSeq.toString())
+        .put("mode", "change")
+        .put("lease_id", leaseID)
+      val res = eng.observeClipboard(obsReq.toString())
+      observationSequence = nextSeq
+      lastObservedFingerprint = fp
+      return res
+    } finally {
+      try { eng.releaseContent(leaseID) } catch (_: Exception) {}
+    }
+  }
+
+  private fun syncAndroidForegroundClipboard(eng: Engine, isResume: Boolean) {
+    val ctx = appContext.reactContext ?: return
+    val hasFocus = onMainSync { appContext.currentActivity?.hasWindowFocus() ?: false }
+    if (!hasFocus) {
+      updateHostCapabilities(eng, "unavailable", if (isForeground) "available" else "unavailable")
+      return
+    }
+    updateHostCapabilities(eng, "available", "available")
+    val snap = readAndroidClipboardSnapshot(ctx)
+    if (snap is AndroidClipSnapshot.Empty) {
+      if (observationEpoch.isEmpty()) {
+        try { ensureEmptyObservationBaseline(eng) } catch (_: Exception) {}
+      }
+      return
+    }
+    val staged = try {
+      stageAndroidClipboardSnapshot(eng, ctx, snap)
+    } catch (_: Exception) {
+      null
+    } ?: return
+    val (fp, leaseID) = staged
+    try {
+      val changedWhileAway = isResume &&
+        lastObservedFingerprint != null &&
+        fp != lastObservedFingerprint &&
+        fp != lastAppliedFingerprint
+      if (changedWhileAway && isAutoSyncEnabled(eng)) {
+        ensureEmptyObservationBaseline(eng)
+        val nextSeq = observationSequence + 1L
+        val obsReq = JSONObject()
+          .put("epoch", observationEpoch)
+          .put("sequence", nextSeq.toString())
+          .put("mode", "change")
+          .put("lease_id", leaseID)
+        eng.observeClipboard(obsReq.toString())
+        observationSequence = nextSeq
+      } else if (observationEpoch.isEmpty()) {
+        val newEpoch = "android-${UUID.randomUUID().toString().take(12)}"
+        val baseReq = JSONObject()
+          .put("epoch", newEpoch)
+          .put("sequence", "1")
+          .put("mode", "baseline")
+          .put("lease_id", leaseID)
+        eng.observeClipboard(baseReq.toString())
+        observationEpoch = newEpoch
+        observationSequence = 1L
+      }
+      lastObservedFingerprint = fp
+    } catch (_: Exception) {
+    } finally {
+      try { eng.releaseContent(leaseID) } catch (_: Exception) {}
+    }
+  }
+
+  private fun scheduleForegroundClipboardSync(isResume: Boolean) {
+    val activity = appContext.currentActivity
+    if (activity != null) {
+      mainHandler.postDelayed({
+        engineScope.launch {
+          val eng = engine ?: return@launch
+          if (!isForeground) return@launch
+          syncAndroidForegroundClipboard(eng, isResume)
+        }
+      }, 150L)
+    } else {
+      engineScope.launch {
+        val eng = engine ?: return@launch
+        if (!isForeground) return@launch
+        updateHostCapabilities(eng, "unavailable", "available")
+      }
+    }
+  }
+
+  private fun startClipboardListener() {
+    if (clipListener != null) return
+    val ctx = appContext.reactContext ?: return
+    mainHandler.post {
+      val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return@post
+      val listener = ClipboardManager.OnPrimaryClipChangedListener {
+        if (!isForeground) return@OnPrimaryClipChangedListener
+        engineScope.launch {
+          val eng = engine ?: return@launch
+          if (!isForeground) return@launch
+          if (isAutoSyncEnabled(eng)) {
+            try {
+              observeCurrentAndroidClipboard(eng, ctx, explicit = false)
+            } catch (_: Exception) {
+            }
+          } else {
+            sendEvent("onClipboardChanged", mapOf("hasStrings" to true))
+          }
+        }
+      }
+      cm.addPrimaryClipChangedListener(listener)
+      clipboardManager = cm
+      clipListener = listener
+    }
+  }
+
+  private fun stopClipboardListener() {
+    val listener = clipListener ?: return
+    val cm = clipboardManager
+    clipListener = null
+    clipboardManager = null
+    mainHandler.post {
+      try {
+        cm?.removePrimaryClipChangedListener(listener)
+      } catch (_: Exception) {
+      }
+    }
+  }
+
+  private fun cleanupOldClipboardFiles(dir: File) {
+    val files = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: return
+    if (files.size <= 5) return
+    for (f in files.drop(5)) {
+      try { f.delete() } catch (_: Exception) {}
+    }
+  }
+
+  private fun writeImageFileToClipboard(ctx: Context, destFile: File) {
+    val contentUri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.unic.fileprovider", destFile)
+    onMainSync {
+      val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        ?: throw rawCodeException("unavailable", "clipboard service unavailable")
+      cm.setPrimaryClip(ClipData.newUri(ctx.contentResolver, "UniClipboard", contentUri))
+    }
+  }
 
   private fun formatGoError(err: Throwable): String {
     val raw = err.message ?: ""
@@ -315,22 +658,31 @@ class UnicEngineModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("UnicEngine")
 
-    Events("onEngineEvent", "onEngineResync", "onMigrationProgress")
+    Events("onEngineEvent", "onEngineResync", "onMigrationProgress", "onClipboardChanged")
 
     OnActivityEntersForeground {
+      isForeground = true
       engineScope.launch {
-        try { engine?.setRuntimeState("active") } catch (_: Exception) {}
+        val eng = engine ?: return@launch
+        try { eng.setRuntimeState("active") } catch (_: Exception) {}
+        scheduleForegroundClipboardSync(isResume = true)
       }
     }
 
     OnActivityEntersBackground {
+      isForeground = false
       engineScope.launch {
-        try { engine?.setRuntimeState("suspended") } catch (_: Exception) {}
+        observationEpoch = ""
+        observationSequence = 0L
+        val eng = engine ?: return@launch
+        updateHostCapabilities(eng, "unavailable", "unavailable")
+        try { eng.setRuntimeState("suspended") } catch (_: Exception) {}
       }
     }
 
     OnDestroy {
       activeMigrationCancel?.cancel()
+      stopClipboardListener()
       stopNetworkMonitor()
       setKeepScreenOn(false)
       shutdownEngineInternal()
@@ -541,12 +893,12 @@ class UnicEngineModule : Module() {
           .put(
             "host_capabilities",
             JSONObject()
-              .put("read_formats", JSONArray(listOf("text/plain", "text/html", "image/png", "image/jpeg")))
-              .put("write_formats", JSONArray(listOf("text/plain", "text/html", "image/png", "image/jpeg")))
+              .put("read_formats", JSONArray(listOf("text/plain", "text/html", "image/png")))
+              .put("write_formats", JSONArray(listOf("text/plain", "text/html", "image/png")))
               .put("read_files", true)
               .put("write_files", true)
-              .put("observe", "available")
-              .put("apply", "available"),
+              .put("observe", if (isForeground) "available" else "unavailable")
+              .put("apply", if (isForeground) "available" else "unavailable"),
           )
         Mobile.registerAndroidNetworkInterfaces(androidNetworkInterfaces)
         val eng = Mobile.newEngine(cfg.toString())
@@ -562,10 +914,16 @@ class UnicEngineModule : Module() {
           }
         }
         val snapshot = eng.subscribe(sink)
-        eng.setRuntimeState("active")
+        eng.setRuntimeState(if (isForeground) "active" else "suspended")
         eng.start(null)
         engine = eng
+        observationEpoch = ""
+        observationSequence = 0L
         startNetworkMonitor()
+        startClipboardListener()
+        if (isForeground) {
+          scheduleForegroundClipboardSync(isResume = false)
+        }
         eng.state.ifEmpty { snapshot }
       } catch (ce: CodedException) {
         throw ce
@@ -575,7 +933,10 @@ class UnicEngineModule : Module() {
     }.runOnQueue(engineScope)
 
     AsyncFunction("shutdownEngine") { ->
+      stopClipboardListener()
       stopNetworkMonitor()
+      observationEpoch = ""
+      observationSequence = 0L
       shutdownEngineInternal()
     }.runOnQueue(engineScope)
 
@@ -634,6 +995,16 @@ class UnicEngineModule : Module() {
     AsyncFunction("readHistoryTextPreview") { historyID: String, maxBytes: Int ->
       try {
         requireEngine().readHistoryTextPreview(historyID, maxBytes.toLong())
+      } catch (ce: CodedException) {
+        throw ce
+      } catch (t: Throwable) {
+        throw moduleException(t)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("readHistoryFullText") { historyID: String, maxBytes: Int ->
+      try {
+        requireEngine().readHistoryFullText(historyID, maxBytes.toLong())
       } catch (ce: CodedException) {
         throw ce
       } catch (t: Throwable) {
@@ -750,50 +1121,233 @@ class UnicEngineModule : Module() {
       activity.startActivityForResult(intent, REQ_PICK_UPLOAD_FILE)
     }
 
+    AsyncFunction("resendHistoryItem") { reqJSON: String ->
+      try {
+        requireEngine().resendHistoryItem(null, reqJSON)
+      } catch (ce: CodedException) {
+        throw ce
+      } catch (t: Throwable) {
+        throw moduleException(t)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("listReceived") { ->
+      try {
+        requireEngine().listReceived()
+      } catch (ce: CodedException) {
+        throw ce
+      } catch (t: Throwable) {
+        throw moduleException(t)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("dismissReceived") { receiptID: String ->
+      try {
+        requireEngine().dismissReceived(receiptID)
+      } catch (ce: CodedException) {
+        throw ce
+      } catch (t: Throwable) {
+        throw moduleException(t)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("applyReceivedToClipboard") { receiptID: String ->
+      try {
+        val eng = requireEngine()
+        val ctx = appContextOrThrow()
+        val list = JSONArray(eng.listReceived())
+        var entry: JSONObject? = null
+        for (i in 0 until list.length()) {
+          val cand = list.optJSONObject(i)
+          if (cand != null && cand.optString("receipt_id") == receiptID) {
+            entry = cand
+            break
+          }
+        }
+        val parts = entry?.optJSONObject("content")?.optJSONArray("parts")
+          ?: throw rawCodeException("not_found", "received item not found")
+
+        val expectedEpoch = observationEpoch
+        val expectedSeq = observationSequence.toString()
+        val beginReq = JSONObject()
+          .put("receipt_id", receiptID)
+          .put("expected_epoch", expectedEpoch)
+          .put("expected_sequence", expectedSeq)
+        val ticket = JSONObject(eng.beginApply(beginReq.toString()))
+        val token = ticket.getString("token")
+        val leaseID = ticket.getString("lease_id")
+
+        var reported = false
+        try {
+          var applied = false
+          var appliedFp: String? = null
+
+          var imgPart: JSONObject? = null
+          var txtPart: JSONObject? = null
+          for (i in 0 until parts.length()) {
+            val p = parts.optJSONObject(i) ?: continue
+            if (p.optString("kind") != "representation") continue
+            val mime = p.optString("mime", "").lowercase()
+            if (imgPart == null && mime.startsWith("image/")) {
+              imgPart = p
+            } else if (txtPart == null && (mime == "text/plain" || mime == "text/html")) {
+              txtPart = p
+            }
+          }
+
+          if (imgPart != null) {
+            val partID = imgPart.optString("id", "")
+            val mime = imgPart.optString("mime", "image/png")
+            val ext = imageExtensionForMime(mime)
+            val clipDir = File(cacheDirectoryPath(), "clipboard")
+            if (!clipDir.exists()) clipDir.mkdirs()
+            val destFile = File(clipDir, "clip-recv-${UUID.randomUUID()}.$ext")
+            eng.exportPartToFile(leaseID, partID, destFile.canonicalPath)
+            val imgBytes = destFile.readBytes()
+            appliedFp = "img:${sha256Hex(imgBytes)}"
+            lastAppliedFingerprint = appliedFp
+            lastObservedFingerprint = appliedFp
+            writeImageFileToClipboard(ctx, destFile)
+            cleanupOldClipboardFiles(clipDir)
+            applied = true
+          } else if (txtPart != null) {
+            val partID = txtPart.optString("id", "")
+            val previewJSON = eng.readLeasedText(leaseID, partID, 4194304L)
+            val text = JSONObject(previewJSON).optString("text", "")
+            if (text.isNotEmpty()) {
+              appliedFp = "text:${sha256Hex(text.toByteArray(Charsets.UTF_8))}"
+              lastAppliedFingerprint = appliedFp
+              lastObservedFingerprint = appliedFp
+              onMainSync {
+                val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                  ?: throw rawCodeException("unavailable", "clipboard service unavailable")
+                cm.setPrimaryClip(ClipData.newPlainText("UniClipboard", text))
+              }
+              applied = true
+            }
+          }
+
+          if (!applied) {
+            reportApplyFailure(eng, token, "unsupported")
+            reported = true
+            throw rawCodeException("unsupported", "received content cannot be applied to clipboard")
+          }
+
+          val reportPayload = if (expectedEpoch.isEmpty()) {
+            JSONObject()
+              .put("token", token)
+              .put("outcome", "applied")
+              .put("epoch", "")
+              .put("sequence", "0")
+          } else {
+            val nextSeq = observationSequence + 1L
+            observationSequence = nextSeq
+            JSONObject()
+              .put("token", token)
+              .put("outcome", "applied")
+              .put("baseline_lease_id", leaseID)
+              .put("epoch", expectedEpoch)
+              .put("sequence", nextSeq.toString())
+          }
+          eng.reportApplyResult(reportPayload.toString())
+          reported = true
+          "{\"applied\":true}"
+        } finally {
+          if (!reported) {
+            reportApplyFailure(eng, token, "internal")
+          }
+          try { eng.releaseContent(leaseID) } catch (_: Exception) {}
+        }
+      } catch (ce: CodedException) {
+        throw ce
+      } catch (t: Throwable) {
+        throw moduleException(t)
+      }
+    }.runOnQueue(engineScope)
+
     AsyncFunction("applyHistoryToClipboard") { historyID: String ->
       try {
         val eng = requireEngine()
         val ctx = appContextOrThrow()
-        val beforeSeq = clipboardSeq.get()
-        val ticketJSON = eng.beginApplyHistory(historyID, clipboardEpoch, beforeSeq.toString(), true)
+        val expectedEpoch = observationEpoch
+        val expectedSeq = observationSequence.toString()
+        val ticketJSON = eng.beginApplyHistory(historyID, expectedEpoch, expectedSeq, true)
         val ticket = JSONObject(ticketJSON)
         val token = ticket.getString("token")
         val leaseID = ticket.getString("lease_id")
 
-        var applied = false
-        val previewJSON = eng.readHistoryTextPreview(historyID, 1048576L)
-        val text = JSONObject(previewJSON).optString("text", "")
-        if (text.isNotEmpty()) {
-          onMainSync {
-            val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            cm?.setPrimaryClip(ClipData.newPlainText("UniClipboard", text))
+        var reported = false
+        try {
+          var applied = false
+          val itemObj = JSONObject(eng.getHistoryItem(historyID))
+          val kind = itemObj.optString("kind", "")
+          if (kind == "image") {
+            val clipDir = File(cacheDirectoryPath(), "clipboard")
+            if (!clipDir.exists()) clipDir.mkdirs()
+            val tmpFile = File(clipDir, "clip-${UUID.randomUUID()}.png")
+            val expObj = JSONObject(eng.exportHistoryPartToFile(historyID, "image/", tmpFile.canonicalPath))
+            val mime = expObj.optJSONObject("part")?.optString("mime", "image/png") ?: "image/png"
+            val ext = imageExtensionForMime(mime)
+            val finalFile = if (ext != "png") {
+              val renamed = File(clipDir, "clip-${UUID.randomUUID()}.$ext")
+              if (tmpFile.renameTo(renamed)) renamed else tmpFile
+            } else {
+              tmpFile
+            }
+            val imgBytes = finalFile.readBytes()
+            val fp = "img:${sha256Hex(imgBytes)}"
+            lastAppliedFingerprint = fp
+            lastObservedFingerprint = fp
+            writeImageFileToClipboard(ctx, finalFile)
+            cleanupOldClipboardFiles(clipDir)
+            applied = true
+          } else {
+            val previewJSON = eng.readHistoryFullText(historyID, 4194304L)
+            val text = JSONObject(previewJSON).optString("text", "")
+            if (text.isNotEmpty()) {
+              val fp = "text:${sha256Hex(text.toByteArray(Charsets.UTF_8))}"
+              lastAppliedFingerprint = fp
+              lastObservedFingerprint = fp
+              onMainSync {
+                val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                  ?: throw rawCodeException("unavailable", "clipboard service unavailable")
+                cm.setPrimaryClip(ClipData.newPlainText("UniClipboard", text))
+              }
+              applied = true
+            }
           }
-          applied = true
-        }
 
-        val afterSeq = if (applied) clipboardSeq.incrementAndGet() else beforeSeq
-        if (applied) {
-          lastAppliedSequence = afterSeq
-        }
+          if (!applied) {
+            reportApplyFailure(eng, token, "unsupported")
+            reported = true
+            throw rawCodeException("unsupported", "clipboard content could not be applied")
+          }
 
-        val reportPayload = if (applied) {
-          JSONObject()
-            .put("token", token)
-            .put("outcome", "applied")
-            .put("baseline_lease_id", leaseID)
-            .put("epoch", clipboardEpoch)
-            .put("sequence", afterSeq.toString())
-        } else {
-          JSONObject()
-            .put("token", token)
-            .put("outcome", "failed")
-            .put("error_code", "unavailable")
+          val reportPayload = if (expectedEpoch.isEmpty()) {
+            JSONObject()
+              .put("token", token)
+              .put("outcome", "applied")
+              .put("epoch", "")
+              .put("sequence", "0")
+          } else {
+            val nextSeq = observationSequence + 1L
+            observationSequence = nextSeq
+            JSONObject()
+              .put("token", token)
+              .put("outcome", "applied")
+              .put("baseline_lease_id", leaseID)
+              .put("epoch", expectedEpoch)
+              .put("sequence", nextSeq.toString())
+          }
+          eng.reportApplyResult(reportPayload.toString())
+          reported = true
+          "{\"applied\":true}"
+        } finally {
+          if (!reported) {
+            reportApplyFailure(eng, token, "internal")
+          }
+          try { eng.releaseContent(leaseID) } catch (_: Exception) {}
         }
-        eng.reportApplyResult(reportPayload.toString())
-        if (!applied) {
-          throw rawCodeException("unavailable", "clipboard content could not be applied")
-        }
-        "{\"applied\":true}"
       } catch (ce: CodedException) {
         throw ce
       } catch (t: Throwable) {
@@ -805,30 +1359,7 @@ class UnicEngineModule : Module() {
       try {
         val eng = requireEngine()
         val ctx = appContextOrThrow()
-        val seq = clipboardSeq.incrementAndGet()
-        val text = onMainSync {
-          val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-          val clip = cm?.primaryClip
-          if (clip != null && clip.itemCount > 0) clip.getItemAt(0).coerceToText(ctx)?.toString() else null
-        }
-        if (text.isNullOrEmpty()) {
-          return@AsyncFunction "{\"skipped\":true,\"reason\":\"empty_or_unsupported\"}"
-        }
-        val handleJSON = eng.importText(text, "", "android-cb:$seq")
-        val leaseID = JSONObject(handleJSON).optString("lease_id", "")
-        if (leaseID.isEmpty()) {
-          throw rawCodeException("internal", "failed to stage clipboard lease")
-        }
-        try {
-          val obsReq = JSONObject()
-            .put("epoch", clipboardEpoch)
-            .put("sequence", seq.toString())
-            .put("mode", "change")
-            .put("lease_id", leaseID)
-          eng.observeClipboard(obsReq.toString())
-        } finally {
-          try { eng.releaseContent(leaseID) } catch (_: Exception) {}
-        }
+        observeCurrentAndroidClipboard(eng, ctx, explicit = true)
       } catch (ce: CodedException) {
         throw ce
       } catch (t: Throwable) {

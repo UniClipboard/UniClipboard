@@ -487,6 +487,15 @@ func (m *Engine) RetainHistoryContent(historyID string) (string, error) {
 	return marshalJSON(h)
 }
 
+// RetainHistoryForSend opens a persisted history item for explicit resending while enforcing processor sync policies.
+func (m *Engine) RetainHistoryForSend(historyID string) (string, error) {
+	h, err := m.e.RetainHistoryForSend(context.Background(), engine.HistoryID(historyID))
+	if err != nil {
+		return "", wrapErr(err)
+	}
+	return marshalJSON(h)
+}
+
 // OpenPart opens a leased part for chunked streaming.
 func (m *Engine) OpenPart(leaseID string, partID string) (*ContentStream, error) {
 	r, err := m.e.ReadContent(context.Background(), engine.LeaseID(leaseID), engine.PartID(partID))
@@ -503,6 +512,29 @@ func (m *Engine) ExportPartToFile(leaseID string, partID string, destPath string
 		return 0, err
 	}
 	return st.WriteToFile(destPath)
+}
+
+// ReadLeasedText reads bounded UTF-8 text from an already-leased part without releasing the caller's lease.
+func (m *Engine) ReadLeasedText(leaseID string, partID string, maxBytes int) (string, error) {
+	if maxBytes <= 0 {
+		maxBytes = 2 << 20
+	}
+	if maxBytes > 16<<20 {
+		maxBytes = 16 << 20
+	}
+	rd, err := m.e.ReadContent(context.Background(), engine.LeaseID(leaseID), engine.PartID(partID))
+	if err != nil {
+		return "", wrapErr(err)
+	}
+	text, trunc, readErr := readBoundedUTF8(rd, maxBytes)
+	_ = rd.Close()
+	if readErr != nil {
+		return "", wrapErr(readErr)
+	}
+	return marshalJSON(textPreviewDTO{
+		Text:      text,
+		Truncated: trunc,
+	})
 }
 
 type textPreviewDTO struct {
@@ -562,6 +594,17 @@ func (m *Engine) ReadHistoryTextPreview(historyID string, maxBytes int) (string,
 		}
 	}
 	return marshalJSON(out)
+}
+
+// ReadHistoryFullText reads on-demand full UTF-8 text (bounded by maxBytes, default 2 MiB, max 16 MiB) and immediately releases its lease.
+func (m *Engine) ReadHistoryFullText(historyID string, maxBytes int) (string, error) {
+	if maxBytes <= 0 {
+		maxBytes = 2 << 20
+	}
+	if maxBytes > 16<<20 {
+		maxBytes = 16 << 20
+	}
+	return m.ReadHistoryTextPreview(historyID, maxBytes)
 }
 
 // ExportHistoryPartToFile exports the first matching part of a history record (by MIME prefix or exact MIME) to destPath and releases its lease.
@@ -626,6 +669,40 @@ func (m *Engine) CommitContent(token *CancelToken, reqJSON string) (string, erro
 		CancelOnContext: dto.CancelOnContext,
 		RequestID:       dto.RequestID,
 		LeaseID:         dto.LeaseID,
+		BackendIDs:      dto.BackendIDs,
+		DeviceIDs:       dto.DeviceIDs,
+	})
+	if err != nil {
+		return "", wrapErr(err)
+	}
+	return marshalJSON(res)
+}
+
+type resendHistoryReqDTO struct {
+	CancelOnContext bool              `json:"cancel_on_context"`
+	RequestID       engine.RequestID  `json:"request_id"`
+	HistoryID       engine.HistoryID  `json:"history_id"`
+	BackendIDs      []engine.PluginID `json:"backend_ids,omitempty"`
+	DeviceIDs       []engine.DeviceID `json:"device_ids,omitempty"`
+}
+
+// ResendHistoryItem retains a stored history item for explicit sending, commits it to the selected targets, and unconditionally releases its lease.
+func (m *Engine) ResendHistoryItem(token *CancelToken, reqJSON string) (string, error) {
+	var dto resendHistoryReqDTO
+	if err := json.Unmarshal([]byte(reqJSON), &dto); err != nil {
+		return "", wrapErr(errors.New("invalid resend history request json"))
+	}
+	ctx, cancel := withToken(token)
+	defer cancel()
+	h, err := m.e.RetainHistoryForSend(ctx, dto.HistoryID)
+	if err != nil {
+		return "", wrapErr(err)
+	}
+	defer func() { _ = m.e.ReleaseContent(context.Background(), h.LeaseID) }()
+	res, err := m.e.CommitContent(ctx, engine.CommitRequest{
+		CancelOnContext: dto.CancelOnContext,
+		RequestID:       dto.RequestID,
+		LeaseID:         h.LeaseID,
 		BackendIDs:      dto.BackendIDs,
 		DeviceIDs:       dto.DeviceIDs,
 	})
@@ -795,6 +872,9 @@ func (m *Engine) ListActions() (string, error) {
 	if err != nil {
 		return "", wrapErr(err)
 	}
+	if acts == nil {
+		acts = []engine.ActionInfo{}
+	}
 	return marshalJSON(acts)
 }
 
@@ -953,6 +1033,9 @@ func (m *Engine) ListReceived() (string, error) {
 	if err != nil {
 		return "", wrapErr(err)
 	}
+	if rs == nil {
+		rs = []engine.ReceivedContent{}
+	}
 	return marshalJSON(rs)
 }
 
@@ -1068,6 +1151,9 @@ func (m *Engine) ListDevices() (string, error) {
 	if err != nil {
 		return "", wrapErr(err)
 	}
+	if ds == nil {
+		ds = []engine.Device{}
+	}
 	return marshalJSON(ds)
 }
 
@@ -1164,6 +1250,9 @@ func (m *Engine) ListCandidates() (string, error) {
 	cs, err := m.e.ListCandidates(context.Background())
 	if err != nil {
 		return "", wrapErr(err)
+	}
+	if cs == nil {
+		cs = []engine.Candidate{}
 	}
 	return marshalJSON(cs)
 }

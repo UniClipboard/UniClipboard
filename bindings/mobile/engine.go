@@ -208,6 +208,11 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		peer = tailcat.New()
 	}
 
+	classifier, err := builtinclassify.New(nil, nil)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
+
 	opts := engine.Options{
 		DataDir:          dataDir,
 		CacheDir:         cacheDir,
@@ -215,7 +220,7 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		HostCapabilities: caps,
 		Plugins: []engine.PluginInstance{
 			{Plugin: peer, Builtin: true},
-			{Plugin: builtinclassify.New()},
+			{Plugin: classifier},
 			{Plugin: builtintext.New()},
 		},
 	}

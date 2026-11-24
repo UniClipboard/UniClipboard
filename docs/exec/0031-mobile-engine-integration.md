@@ -1,7 +1,7 @@
 # 0031 Execution Receipt · Mobile Engine Integration (`bindings/mobile` + `app/expo`)
 
 - Decision: [0031 Mobile Engine integration](../decisions/proposed/0031-mobile-engine-integration.md)
-- Head baseline before changes: `c307f39f2`
+- Head baseline before changes: `c307f39f2` (merged `origin/main` at `78fde27dc`)
 - Prototypes: [`prototype/setup-ios.html`](../../prototype/setup-ios.html), [`prototype/setup-android.html`](../../prototype/setup-android.html)
 
 ## Implemented Architecture
@@ -31,10 +31,10 @@
 
 | Command | Result | Notes |
 |---|---|---|
-| `TMPDIR=/private/tmp go test -count=1 -v ./engine -run TestPublicEngineHasNoDesktopDependencies` | PASS (`0.526s`) | `engine/` has no desktop/UI dependencies |
-| `TMPDIR=/private/tmp go test -count=1 ./internal/v1migration/...` | PASS (`0.683s`) | Cross-build tags verified (`darwin && !ios`, `linux && !android`, `ios \|\| android`) |
-| `cd bindings && TMPDIR=/private/tmp go test -race -v ./...` | PASS (`7.235s`–`7.736s`) | `TestEngineLifecycleCommitHistorySearchAndAntiLoopback`, `TestSetupFlowDetectionConflictCancelResumeAndBypass`, `TestTwoEnginesPairApproveAndSync` all passed |
-| `TMPDIR=/private/tmp go build ./app/service/cmd/... ./app/desktop/cmd/...` | PASS | Headless CLI/daemon (`unic`, `unicd`) and `unic-desktop` built cleanly |
+| `TMPDIR=/private/tmp go test -count=1 ./engine -run TestPublicEngineHasNoDesktopDependencies` | PASS (`0.291s`) | Post-merge `engine/` has no desktop/UI dependencies |
+| `TMPDIR=/private/tmp go test -count=1 ./internal/v1migration/...` | PASS (`0.474s`) | Post-merge cross-build tags verified (`darwin && !ios`, `linux && !android`, `ios \|\| android`) |
+| `cd bindings && TMPDIR=/private/tmp go test -race -count=1 ./...` | PASS (`7.495s`) | Post-merge `builtinclassify.New(nil, nil)` adaptation; all 3 binding suites passed |
+| `TMPDIR=/private/tmp go build ./app/service/cmd/... ./app/desktop/cmd/...` | PASS | Post-merge `unic`, `unicd`, and `unic-desktop` built cleanly |
 | `TMPDIR=/private/tmp go test ./engine/...` (pre-existing HEAD check) | Partial FAIL (pre-existing) | All cases passed except `TestTailcatConnectedPublicationDeliversEverything`, which fails on baseline `c307f39f2` with `unavailable: the transfer failed` |
 
 ### Mobile Native Bindings & Binary Builds

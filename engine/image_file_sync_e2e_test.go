@@ -169,3 +169,42 @@ func TestExternalImageFileProcessE2E(t *testing.T) {
 		}
 	}
 }
+
+func TestExternalChannelWithoutImageFileOptInFiltersFiles(t *testing.T) {
+	n := newContentNode(t, func(o *Options) {
+		o.Plugins = []PluginInstance{chanInstanceID("example.no-image-files")}
+	})
+	start(t, n)
+	addCh(t, n, "example.no-image-files")
+	if wanted, err := n.e.WantsClipboardFileImage(bg); err != nil || wanted {
+		t.Fatalf("capture requested without image_files_as_images opt-in: %v %v", wanted, err)
+	}
+	var img bytes.Buffer
+	if err := png.Encode(&img, image.NewRGBA(image.Rect(0, 0, 4, 4))); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		id   string
+		name string
+		data []byte
+	}{
+		{"image-file", "PixPin_shot.png", img.Bytes()},
+		{"plain-file", "notes.txt", []byte("plain file body")},
+	} {
+		h, err := n.e.ImportContent(bg, ContentInput{
+			Files: []FileInput{{Name: tc.name, Size: int64(len(tc.data)), Reader: bytes.NewReader(tc.data)}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := n.e.CommitContent(bg, CommitRequest{RequestID: RequestID(tc.id), LeaseID: h.LeaseID})
+		_ = n.e.ReleaseContent(bg, h.LeaseID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := resultOf(res, "example.no-image-files")
+		if got.Disposition != BackendPolicyFiltered || got.Error != nil {
+			t.Fatalf("%s: expected policy_filtered without error, got %+v (overall %+v)", tc.id, got, res)
+		}
+	}
+}

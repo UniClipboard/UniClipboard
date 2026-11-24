@@ -216,6 +216,10 @@ The [M3 receipt](0031-mobile-m3-receipt.md) records implementation, contract cha
 
 ### M4 · P2 包体瘦身、内存压测与真机跨端验收
 
+The [M04 simulator receipt](0031-mobile-m4-simulator-receipt.md) records the
+binding size comparison and simulator preflight. The physical-device gate
+remains open.
+
 目标：将移动产物优化到可接受体积与内存水位，并产出完整的双端真机验收回执。
 
 #### M4.1 产物瘦身与性能基线（覆盖 G12）

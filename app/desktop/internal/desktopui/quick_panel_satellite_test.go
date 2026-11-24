@@ -147,6 +147,9 @@ func TestQuickPanelSatelliteSizeFitsWrappedContent(t *testing.T) {
 			if gotW <= 0 || gotH <= 0 {
 				t.Fatalf("unexpected satellite size %dx%d", gotW, gotH)
 			}
+			if tc.windowZoom == 0 && gotH < 100 {
+				t.Fatalf("satellite height %d at default zoom is below minimum native frame floor 100", gotH)
+			}
 
 			sat := ui.NewTesterWith(p.satellite, gotW, gotH, ui.TesterOptions{Dark: false})
 			sat.Frame()

@@ -17,7 +17,7 @@ const (
 	qpSatelliteMenuWidth     = 380
 	qpSatelliteImageHeight   = 310
 	qpSatelliteDefaultHeight = 240
-	qpSatelliteMinHeight     = 96
+	qpSatelliteMinHeight     = 104
 	qpSatelliteMaxHeight     = 480
 	qpSatelliteBorder        = 1
 	qpSatelliteMenuPad       = 12

@@ -31,7 +31,7 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 97858b303cbdff6fa58307ec92d144e6dca00fb5
+verified: 486da0cf54248815883a0946f35ea92e58d59ad8
 ---
 # Product builds and CLI releases
 
@@ -109,6 +109,7 @@ Every Desktop stage also retains the root AGPL license and `licenses/BOARDUI-MIT
 
 The format constructor supplies DEB, RPM, pacman packages, NSIS setup EXE, portable ZIP, macOS DMG/application archive and AppImage/update archive entrypoints.
 macOS DMG construction (`tools/package/macos_dmg.py`) emits a `ULFO` (LZFSE) disk image with `UniClipboard.app` copied via `ditto`, an `Applications` symlink, a volume icon (`app/desktop/internal/appicons/icon.icns`), the checked-in text-free BoardUI Retina background (`packaging/macos/dmg-background.tiff`, regenerated via `tools/package/macos-dmg-assets.py`), and a programmatically generated `.DS_Store` without Finder GUI/AppleScript automation.
+The writable staging image is hidden from Finder browsing. The constructor detaches it by the device identifier returned at attachment and reports the native error if detachment fails.
 Only tested construction/lifecycle states count as acceptance; see the [package delivery receipt](../exec/0018-v2-package-channel-receipt.md).
 Linux uses the pinned mygo GTK3 native-view path and a tray indicator library. These recipes do not inherit v1's GTK4/Wails/WebKitGTK dependency set.
 AppImage currently uses host GTK3 libraries; self-contained runtime delivery remains open.

@@ -423,25 +423,26 @@ def parse_ds_store(raw: bytes) -> dict[tuple[str, bytes], tuple[bytes, object]]:
     return result
 
 
-def _detach(mountpoint: Path):
-    last_error = None
+def _detach(device: str | Path):
     for _ in range(12):
         res = subprocess.run(
-            ["hdiutil", "detach", "-quiet", str(mountpoint)],
+            ["hdiutil", "detach", str(device)],
             capture_output=True,
             text=True,
         )
         if res.returncode == 0:
             return
-        last_error = res.stderr or res.stdout
         time.sleep(0.5)
     res = subprocess.run(
-        ["hdiutil", "detach", "-force", "-quiet", str(mountpoint)],
+        ["hdiutil", "detach", "-force", str(device)],
         capture_output=True,
         text=True,
     )
     if res.returncode != 0:
-        raise RuntimeError(f"failed to detach DMG: {last_error or res.stderr}")
+        detail = res.stderr.strip() or res.stdout.strip()
+        raise RuntimeError(
+            f"failed to detach DMG device {device} (exit {res.returncode}): {detail}"
+        )
 
 
 def _set_file_attr(attr: str, path: Path):
@@ -513,12 +514,13 @@ def build_dmg(
 
         mountpoint = work / "mnt"
         mountpoint.mkdir()
-        _run(
+        attachment = _run(
             [
                 "hdiutil",
                 "attach",
-                "-quiet",
+                "-plist",
                 "-readwrite",
+                "-nobrowse",
                 "-noverify",
                 "-noautoopen",
                 "-mountpoint",
@@ -526,7 +528,13 @@ def build_dmg(
                 rw_dmg,
             ]
         )
+        device = mountpoint
         try:
+            entities = plistlib.loads(attachment.stdout.encode())["system-entities"]
+            device = next(
+                entry["dev-entry"] for entry in entities if "mount-point" in entry
+            )
+
             fsevents = mountpoint / ".fseventsd"
             fsevents.mkdir(exist_ok=True)
             (fsevents / "no_log").write_bytes(b"")
@@ -600,7 +608,7 @@ def build_dmg(
             (mountpoint / ".DS_Store").write_bytes(ds_bytes)
             os.sync()
         finally:
-            _detach(mountpoint)
+            _detach(device)
 
         _run(
             [

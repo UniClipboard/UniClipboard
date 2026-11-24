@@ -59,7 +59,39 @@ ten passing check names and hashes for the exported fixture bytes.
 - The v1 migration race suite passed with a canonical temporary directory.
   The first run used the macOS temporary-directory alias and failed at the
   existing Engine cache path check.
-- Simulator and physical-device interaction acceptance is pending. To close M2,
-  verify setting persistence after force-stop and relaunch, HTTP(S) opening,
-  photo saving, document export, native sharing, photo selection, camera
-  capture, selective copy and directory browsing on the target platforms.
+## Simulator acceptance
+
+The native app came from source commit
+`b1e52bc6811501bb7ff1aac4047b4966fe3ca763`. The test used Maestro 2.10.0
+and disposable simulators. It verified both app IDs and Release hashes.
+
+| Platform | Tested Release SHA-256 |
+| --- | --- |
+| iPhone 17 Pro, iOS 26.3 Simulator executable | `61d6167c4df28a6a03eb7f6a15d6b2173301a397def590e76d88e0bd8182ae09` |
+| Pixel 8, Android API 36 arm64 Release APK | `e0be3c3e91bca0839e5ce4adf3b648a40f30ba33b08a2a967203873a601c348d` |
+
+| Scenario | iOS | Android |
+| --- | --- | --- |
+| Edited Engine settings and host switches after process termination and relaunch | Passed | Passed |
+| Clipboard capabilities, file-cache usage and preview removal | Passed | Passed |
+| File metadata and directory contents | Passed | Passed |
+| HTTP(S) handoff to the system browser | Passed | Passed |
+| Selected-word copy and system clipboard readback | Passed | Passed |
+| Native share sheet with the fixture document | Passed | Passed |
+| Document export and photo save with original bytes | Passed | Passed |
+| Photo Picker import with matching fixture pixels and dimensions | Passed | Passed |
+| Camera capture and history commit | Simulator reported the camera as unavailable | Passed with the emulator virtual scene |
+
+The first runs retained JUnit reports, screenshots and command traces.
+Android staging failed when `adb push` widened the fixture's private
+permissions. Preserving modes and applying the app sandbox ownership and
+label resolved fixture startup. Other retries adjusted localized selectors,
+waited for the iOS detail transition and kept iOS photo selection in the
+same flow as picker presentation. The Android exact-value readback caught a
+URL suffix left by the test cursor. A focused retry verified the exact URL
+after relaunch. Production app source stayed at the same revision.
+
+The simulator evidence includes fixture generation and staging instructions,
+Maestro flows, JUnit reports, original failures, screenshots and byte-level
+readback. Physical-device acceptance and iOS hardware camera capture remain
+pending.

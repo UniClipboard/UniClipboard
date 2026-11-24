@@ -49,7 +49,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: 5a337903dc5a9073674d495ce1da6a4d5a13610c
+verified: 3380264590399f38f68a9ac9790902d7ad3babf7
 ---
 # Clipboard pipeline and local history
 
@@ -69,7 +69,9 @@ A live external backend update terminates unfinished targets owned by the old
 process with a failed status. The replacement handles subsequent submissions.
 
 An external Go backend can opt into single image file projection under the
-image sync policy. The macOS adapter asks Engine for current demand before
+image sync policy. External-channel backends that do not opt in filter file
+submissions cleanly (`policy_filtered`) instead of sending skipped file parts
+over RPC. The macOS adapter asks Engine for current demand before
 reading the optional image from the same clipboard item. It transfers that
 data through private clipboard import. The send view uses that PNG or
 converts the file to PNG. History stores the original file selection. The

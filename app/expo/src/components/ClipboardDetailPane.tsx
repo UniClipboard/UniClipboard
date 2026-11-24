@@ -1,3 +1,4 @@
+import { useHistoryImagePreview } from '@/hooks/useHistoryImagePreview';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -18,6 +19,7 @@ import type { HomeController } from '@/screens/useHomeController';
 import type { ClipboardItem } from '@/types/clipboard';
 import { ClipboardDetailActionBar } from './ClipboardDetailActionBar';
 import { usePopoverTransition } from './usePopoverTransition';
+import { HistoryFolderEntries } from './HistoryFolderEntries';
 import { useHistoryItemText } from '@/hooks/useHistoryItemText';
 
 function PaneText({ item, color }: { item: ClipboardItem; color: ColorValue }) {
@@ -56,6 +58,7 @@ export function ClipboardDetailPane({
   onClose?: () => void;
   active?: boolean;
 }) {
+  const preview = useHistoryImagePreview(active ? item : null, true);
   const { theme } = c;
   const { colors } = theme;
   const [overflowOpen, setOverflowOpen] = useState(false);
@@ -133,9 +136,9 @@ export function ClipboardDetailPane({
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {displayKind === 'image' && item.fileUri && item.isLocalFileReady ? (
+        {item.isFolder ? <HistoryFolderEntries item={item} /> : displayKind === 'image' && preview.uri ? (
           <View style={[styles.preview, { backgroundColor: colors.surface }]}>
-            <Image source={{ uri: item.fileUri }} style={styles.image} resizeMode="contain" />
+            <Image key={preview.retry} source={{ uri: preview.uri }} onError={preview.onError} style={styles.image} resizeMode="contain" />
           </View>
         ) : displayKind === 'file' || displayKind === 'group' ? (
           <View style={[styles.preview, styles.filePreview, { backgroundColor: colors.surface }]}>

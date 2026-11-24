@@ -385,6 +385,16 @@ export interface SettingsState {
   value: EngineSettings;
 }
 
+export interface FileCacheState {
+  stored_bytes: number;
+  reserved_bytes: number;
+}
+
+export interface HistoryFolder {
+  entries: Array<{ path: string; directory: boolean; size: number }>;
+  truncated: boolean;
+}
+
 export interface EngineStateSnapshot {
   instance_id: string;
   revision: string;

@@ -104,6 +104,8 @@ try {
         );
       if (
         ts.isCallExpression(node) &&
+        !(file === join(root, "src", "engine", "historyActions.ts") &&
+          node.expression.getText(source) === "Linking.openURL") &&
         /^(fetch|.*\.openURL|.*\.share|.*\.setStringAsync)$/.test(
           node.expression.getText(source),
         )

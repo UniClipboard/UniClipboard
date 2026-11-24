@@ -12,6 +12,8 @@
       "bundleIdentifier": "app.uniclipboard.shell",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "Take a photo to add to clipboard history.",
+        "NSPhotoLibraryAddUsageDescription": "Save an image from clipboard history to Photos.",
         "UIApplicationSceneManifest": {
           "UIApplicationSupportsMultipleScenes": false,
           "UISceneConfigurations": {

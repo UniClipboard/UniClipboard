@@ -228,6 +228,25 @@ actions and streaming file commits. When the native `UnicEngine` module is not
 loaded (JS-only/shell runs), `useEngineStore` explicitly enters `mode: "unavailable"`
 and retains the in-memory `src/shell` presentation with explicit unavailable notices.
 
+Live settings use the Engine's revision-checked settings API. The mobile
+binding saves the effective Engine settings in the profile. The host stores
+automatic clipboard detection and automatic application separately. Android
+observes clipboard changes only while the app can read the clipboard. iOS
+offers an explicit read after detecting a change. Storage settings report
+Engine file-cache usage and clear only the host's image previews.
+
+The history views obtain file names through short-lived content leases. The
+native hosts import camera and photo selections as PNG representations. The
+photo and document exporters stream the saved parts with their original bytes.
+System sharing uses native share sheets. Directory details show up to 200
+entries from the stored snapshot or the direct children of a live reference.
+
+The client coalesces Engine events by kind. History, device and status reads
+run independently. Startup, foreground reconciliation and resync refresh all
+collections. Image previews use a private cache limited to 120 files and
+100 MiB. Reconciliation removes previews for deleted or expired history.
+See the [mobile settings and media receipt](../exec/0031-mobile-m2-receipt.md).
+
 Generated native directories belong under `app/expo/ios` and `app/expo/android`
 and are ignored. `app/ios` and `app/android` are not build inputs. `npm run verify`
 checks source boundaries, TypeScript, pinned navigation patches, Expo prebuild

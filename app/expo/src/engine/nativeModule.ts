@@ -12,6 +12,9 @@ import {
   type EngineErrorPayload,
   type EngineOperation,
   type EngineSettings,
+  type FileCacheState,
+  type HistoryFolder,
+  type PartDescriptor,
   type EngineStateSnapshot,
   type HistoryItem,
   type HistoryPage,
@@ -54,6 +57,16 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   getState(): Promise<string>;
   getCapabilities(): Promise<string>;
   updateSettings(reqJSON: string): Promise<string>;
+  getFileCacheState(): Promise<string>;
+  setAutomaticCapture(enabled: boolean): Promise<void>;
+  clearHistoryPreviews(): Promise<void>;
+  reconcileHistoryPreviews(): Promise<void>;
+  historyFileMetadata(historyID: string): Promise<string>;
+  listHistoryFolder(historyID: string, limit: number): Promise<string>;
+  copyPlainText(text: string): Promise<void>;
+  pickAndCommitImage(camera: boolean): Promise<string>;
+  exportHistoryMedia(historyID: string, action: string): Promise<boolean>;
+  shareHistoryMedia(idsJSON: string, text: string | null): Promise<void>;
 
   listHistory(reqJSON: string): Promise<string>;
   getHistoryItem(historyID: string): Promise<string>;
@@ -210,6 +223,27 @@ export const unicEngineNative = {
   getCapabilities: () => callJSON<Capabilities>(() => requireMod().getCapabilities()),
   updateSettings: (req: { expected_revision: string; value: EngineSettings }) =>
     callJSON<SettingsState>(() => requireMod().updateSettings(JSON.stringify(req))),
+
+  getFileCacheState: () => callJSON<FileCacheState>(() => requireMod().getFileCacheState()),
+  setAutomaticCapture: (enabled: boolean) => callVoid(() => requireMod().setAutomaticCapture(enabled)),
+  clearHistoryPreviews: () => callVoid(() => requireMod().clearHistoryPreviews()),
+  reconcileHistoryPreviews: () => callVoid(() => requireMod().reconcileHistoryPreviews()),
+  historyFileMetadata: (id: string) =>
+    callJSON<PartDescriptor[] | null>(() => requireMod().historyFileMetadata(id)),
+  listHistoryFolder: (id: string) =>
+    callJSON<HistoryFolder>(() => requireMod().listHistoryFolder(id, 200)),
+  copyPlainText: (text: string) => callVoid(() => requireMod().copyPlainText(text)),
+  pickAndCommitImage: (camera: boolean) =>
+    callJSON<PickAndCommitFileResult>(() => requireMod().pickAndCommitImage(camera)),
+  exportHistoryMedia: async (id: string, action: "photos" | "files") => {
+    try {
+      return await requireMod().exportHistoryMedia(id, action);
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  shareHistoryMedia: (ids: string[], text?: string) =>
+    callVoid(() => requireMod().shareHistoryMedia(JSON.stringify(ids), text ?? null)),
 
   listHistory: (req: { limit?: number; cursor?: string; filter?: Record<string, unknown> } = {}) =>
     callJSON<HistoryPage>(() => requireMod().listHistory(JSON.stringify(req))),

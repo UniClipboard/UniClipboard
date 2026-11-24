@@ -52,6 +52,20 @@ mandatory. `npm ci` applies them and fails on a dependency mismatch. The two
 Xcode 27 plugins retain the source's Scene lifecycle and Pod deployment-target
 adaptation. `expo-system-ui` enables Android theme handling.
 
+## Live settings and media
+
+Settings read the active Engine revision and persist changes to the current
+profile. Storage shows managed file-cache usage, clears local image previews
+and opens v1 migration. Clipboard access shows the host's effective abilities
+and the restrictions reported by the Engine.
+
+History details can export images and files, open HTTP(S) links and invoke the
+system share sheet. The plus menu opens the platform camera, photo picker or
+document picker. The directory viewer lists up to 200 entries.
+
+Run the [settings and media process E2E](../../docs/exec/0031-mobile-m2-receipt.md)
+against a disposable profile before native interaction acceptance.
+
 ## Bundle acceptance
 
 ```sh

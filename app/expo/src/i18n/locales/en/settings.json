@@ -42,6 +42,7 @@
     "updateFailed": "Failed to change sync method"
   },
   "category": {
+    "network": "Advanced network",
     "sync": "Sync",
     "about": "About",
     "other": "Other",
@@ -122,5 +123,45 @@
     "resetConfirm": "Reset identity",
     "resetDone": "Statistics identity reset",
     "error": "Could not update statistics settings"
+  },
+  "live": {
+    "deviceName": "Device name",
+    "syncEnabled": "Enable sync",
+    "syncAutomatic": "Sync new clipboard content automatically",
+    "syncRestore": "Sync restored history",
+    "syncFiles": "Sync files",
+    "syncIntroductions": "Recommend devices",
+    "capture": "Detect clipboard changes",
+    "captureHint": "On iOS, confirm before reading a detected clipboard change.",
+    "cleanup": "Clean up history automatically",
+    "retention": "Retention in days",
+    "excludedTags": "Tags excluded from cleanup",
+    "excludedHint": "Use 0 for no age or item-count limit. Separate custom tags with commas.",
+    "starred": "Favorites",
+    "pinned": "Pinned",
+    "max_file_bytes": "Single-file limit (bytes)",
+    "max_total_bytes": "Total content limit (bytes)",
+    "cacheLimit": "File cache quota (bytes)",
+    "clearPreviews": "Clear local previews",
+    "rendezvous": "Rendezvous URL",
+    "default": "Default",
+    "resetRendezvous": "Use default rendezvous",
+    "runtime": "Network activity",
+    "tailcat": "Tailcat connections",
+    "connected": "{{connected}} of {{total}} connected",
+    "observe": "Read clipboard",
+    "apply": "Write clipboard",
+    "integer": "Enter a nonnegative whole number.",
+    "loading": "Loading Engine settings…",
+    "status": {
+      "available": "Available",
+      "permission_required": "Permission required",
+      "unavailable": "Unavailable",
+      "unsupported": "Unsupported",
+      "active": "Active",
+      "suspended": "Suspended",
+      "sync_disabled": "Sync is off",
+      "not_running": "Engine is stopped"
+    }
   }
 }

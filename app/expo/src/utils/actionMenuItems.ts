@@ -51,7 +51,7 @@ export function getClipboardCardActionDescriptors(
 ): CardActionDescriptor[] {
   const descriptors: CardActionDescriptor[] = [];
 
-  descriptors.push({
+  if (!item.isFolder) descriptors.push({
     key: 'copy',
     label: i18n.t('common:action.copy'),
     androidIcon: 'copy-outline',
@@ -82,7 +82,7 @@ export function getClipboardCardActionDescriptors(
     });
   }
 
-  if (displayKind === 'image' && item.isLocalFileReady && item.fileUri) {
+  if (displayKind === 'image' && item.isLocalFileReady) {
     descriptors.push({
       key: 'saveImage',
       label: i18n.t('history:menu.saveImage'),
@@ -94,7 +94,7 @@ export function getClipboardCardActionDescriptors(
   if (
     (displayKind === 'file' || displayKind === 'group') &&
     item.isLocalFileReady &&
-    item.fileUri
+    !item.isFolder
   ) {
     descriptors.push({
       key: 'saveFile',
@@ -113,7 +113,7 @@ export function getClipboardCardActionDescriptors(
     });
   }
 
-  descriptors.push({
+  if (!item.isFolder) descriptors.push({
     key: 'share',
     label: i18n.t('common:action.share'),
     androidIcon: 'share-outline',

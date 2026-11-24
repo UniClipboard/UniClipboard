@@ -3,4 +3,5 @@
   <cache-path name="unic_clipboard" path="unic-cache/clipboard/" />
   <cache-path name="unic_previews" path="unic-cache/previews/" />
   <cache-path name="unic_exports" path="unic-cache/exports/" />
+  <cache-path name="unic_camera" path="unic-cache/camera/" />
 </paths>

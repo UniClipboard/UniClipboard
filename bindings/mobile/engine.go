@@ -30,6 +30,9 @@ type Engine struct {
 	e            *engine.Engine
 	dataDir      string
 	settingsPath string
+	cacheDir     string
+	settingsMu   sync.Mutex
+	previewMu    sync.Mutex
 
 	subMu     sync.Mutex
 	sub       *engine.Subscription
@@ -79,16 +82,13 @@ func loadSettingsOrDefault(path string, cfg engineConfigDTO) (engine.Settings, e
 	def := engine.DefaultSettings()
 	raw, err := os.ReadFile(path)
 	if err == nil {
-		var saved engine.Settings
+		saved := def
 		if uerr := json.Unmarshal(raw, &saved); uerr == nil {
 			if saved.Limits.MaxFileBytes == 0 {
 				saved.Limits.MaxFileBytes = def.Limits.MaxFileBytes
 			}
 			if saved.Limits.MaxTotalBytes == 0 {
 				saved.Limits.MaxTotalBytes = def.Limits.MaxTotalBytes
-			}
-			if saved.FileCache.MaxBytes == 0 {
-				saved.FileCache.MaxBytes = def.FileCache.MaxBytes
 			}
 			if saved.DeviceName == "" && strings.TrimSpace(cfg.DeviceName) != "" {
 				saved.DeviceName = strings.TrimSpace(cfg.DeviceName)
@@ -187,6 +187,9 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 	dataDir, _ = resolveDirPath(dataDir)
 
 	cacheDir := cfg.CacheDir
+	if strings.TrimSpace(cacheDir) == "" {
+		cacheDir = filepath.Join(dataDir, "inbox", "file-cache")
+	}
 	if strings.TrimSpace(cacheDir) != "" {
 		if resolved, rerr := resolveDirPath(cacheDir); rerr == nil {
 			cacheDir = resolved
@@ -194,7 +197,10 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 	}
 
 	settingsPath := filepath.Join(dataDir, "mobile-settings.json")
-	settings, _ := loadSettingsOrDefault(settingsPath, cfg)
+	settings, err := loadSettingsOrDefault(settingsPath, cfg)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
 
 	caps := engine.HostCapabilities{
 		Observe: engine.AbilityUnavailable,
@@ -233,6 +239,7 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		e:            eng,
 		dataDir:      dataDir,
 		settingsPath: settingsPath,
+		cacheDir:     cacheDir,
 	}, nil
 }
 
@@ -318,6 +325,8 @@ type updateSettingsDTO struct {
 
 // UpdateSettings validates, updates, and persists Engine settings.
 func (m *Engine) UpdateSettings(reqJSON string) (string, error) {
+	m.settingsMu.Lock()
+	defer m.settingsMu.Unlock()
 	var req updateSettingsDTO
 	if err := json.Unmarshal([]byte(reqJSON), &req); err != nil {
 		return "", wrapErr(errors.New("invalid update settings json"))

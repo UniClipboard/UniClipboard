@@ -1,3 +1,5 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState } from "react-native";
 import { create } from "zustand";
 import type { ClipboardItem } from "@/types/clipboard";
 import type { DisplayKind } from "@/utils/displayKind";
@@ -17,6 +19,9 @@ import type {
   EngineDevice,
   EngineError,
   EngineEvent,
+  EngineSettings,
+  FileCacheState,
+  PartDescriptor,
   EngineStateSnapshot,
   HistoryItem,
   ImagePreviewResult,
@@ -71,6 +76,8 @@ interface EngineStoreState {
   candidates: EngineCandidate[];
   received: ReceivedContent[];
   autoApplyReceived: boolean;
+  automaticCapture: boolean;
+  fileCache: FileCacheState | null;
   pendingClipboardHint: ClipboardChangedEvent | null;
   pairingCode: PairingCode | null;
   exportedTicket: SensitiveTicket | null;
@@ -106,7 +113,12 @@ interface EngineStoreState {
   refreshDevicesAndCandidates: () => Promise<void>;
   refreshAll: () => Promise<void>;
   clearError: () => void;
-  setAutoApplyReceived: (enabled: boolean) => void;
+  setAutoApplyReceived: (enabled: boolean) => Promise<void>;
+  setAutomaticCapture: (enabled: boolean) => Promise<void>;
+  updateSettings: (mutator: (settings: EngineSettings) => EngineSettings) => Promise<void>;
+  refreshSnapshot: () => Promise<void>;
+  refreshFileCache: () => Promise<void>;
+  clearPreviews: () => Promise<void>;
   dismissClipboardHint: () => void;
 
   readHistoryFullText: (historyID: string) => Promise<string>;
@@ -135,9 +147,39 @@ interface EngineStoreState {
   ignoreCandidate: (deviceId: string, ignored: boolean) => Promise<void>;
 }
 
-const textPreviewCache = new Map<string, TextPreview>();
-const imagePreviewCache = new Map<string, ImagePreviewResult>();
+class PreviewCache<T> {
+  private readonly entries = new Map<string, T>();
+
+  constructor(private readonly capacity: number) {}
+
+  get(key: string) {
+    const value = this.entries.get(key);
+    if (value !== undefined) this.set(key, value);
+    return value;
+  }
+
+  set(key: string, value: T) {
+    this.entries.delete(key);
+    this.entries.set(key, value);
+    if (this.entries.size > this.capacity) {
+      const oldest = this.entries.keys().next();
+      if (!oldest.done) this.entries.delete(oldest.value);
+    }
+  }
+
+  clear() {
+    this.entries.clear();
+  }
+}
+
+const textPreviewCache = new PreviewCache<TextPreview>(200);
+const imagePreviewCache = new PreviewCache<ImagePreviewResult>(60);
+const fileMetadataCache = new PreviewCache<PartDescriptor[]>(200);
 const autoAppliedReceiptIds = new Set<string>();
+const autoApplyKey = "unic.auto-apply-received";
+const captureKey = "unic.automatic-capture";
+const pendingEvents = new Set<string>();
+let settingsQueue = Promise.resolve();
 
 let unsubscribeFns: Array<() => void> = [];
 let coalesceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -156,6 +198,12 @@ function clearNativeListeners() {
     }
   }
   unsubscribeFns = [];
+  pendingEvents.clear();
+  historyRequestSeq++;
+  textPreviewCache.clear();
+  imagePreviewCache.clear();
+  fileMetadataCache.clear();
+  autoAppliedReceiptIds.clear();
 }
 
 function detectionToWelcomeView(det: SourceDetectionResult): SetupScreenViewState {
@@ -298,6 +346,7 @@ async function hydrateHistoryItems(
       const cacheKey = `${item.id}@${item.revision}`;
       let preview = textPreviewCache.get(cacheKey);
       let imagePreview = imagePreviewCache.get(cacheKey);
+      let files = fileMetadataCache.get(item.id);
 
       if (!preview && (item.kind === "text" || item.kind === "html" || item.kind === "mixed")) {
         try {
@@ -316,12 +365,22 @@ async function hydrateHistoryItems(
         }
       }
 
+      if (!files && item.parts.some((part) => part.kind === "file")) {
+        try {
+          files = (await unicEngineNative.historyFileMetadata(item.id)) ?? [];
+          fileMetadataCache.set(item.id, files);
+        } catch {
+          // The content can expire between listing and retention.
+        }
+      }
+
       out[idx] = mapEngineHistoryItem(
         item,
         deviceNames,
         preview,
         imagePreview,
         searchTexts?.get(item.id),
+        files,
       );
     }
   };
@@ -336,49 +395,68 @@ async function startLiveEngineAndSubscribe(
 ) {
   clearNativeListeners();
 
+  const preferences = new Map(await AsyncStorage.multiGet([autoApplyKey, captureKey]));
+  const automaticCapture = preferences.get(captureKey) !== "false";
+  await unicEngineNative.setAutomaticCapture(automaticCapture);
   const snapshot = await unicEngineNative.initializeEngine();
-  let capabilities: Capabilities | null = null;
-  try {
-    capabilities = await unicEngineNative.getCapabilities();
-  } catch {
-    capabilities = snapshot.capabilities ?? null;
-  }
 
   const subEvt = unicEngineNative.addEventListener((eventJSON) => {
-    let parsed: EngineEvent | null = null;
+    let event: EngineEvent;
     try {
-      parsed = JSON.parse(eventJSON) as EngineEvent;
+      event = JSON.parse(eventJSON) as EngineEvent;
     } catch {
-      parsed = null;
+      return;
     }
-
-    if (parsed?.kind === "received") {
-      void get().refreshReceived();
-    }
-
+    if (event.instance_id !== snapshot.instance_id) return;
+    pendingEvents.add(event.kind);
     if (coalesceTimer !== null) return;
     coalesceTimer = setTimeout(() => {
       coalesceTimer = null;
-      void get().refreshAll();
+      const kinds = new Set(pendingEvents);
+      pendingEvents.clear();
+      const state = get();
+      const received = kinds.has("received") || kinds.has("apply");
+      const status = received || ["settings", "capabilities", "runtime", "lifecycle"].some(
+        (kind) => kinds.has(kind),
+      );
+      if (kinds.has("devices") || kinds.has("pairing_code")) {
+        void state.refreshDevicesAndCandidates();
+      }
+      if (kinds.has("history")) {
+        void unicEngineNative.reconcileHistoryPreviews().catch(() => {});
+        void state.refreshHistory();
+        if (state.fileCache) void state.refreshFileCache();
+      }
+      if (status) {
+        void state.refreshSnapshot().then(() => {
+          if (received || kinds.has("capabilities")) void get().refreshReceived();
+        });
+      }
     }, 120);
   });
   const subResync = unicEngineNative.addResyncListener(() => {
     void get().refreshAll();
   });
+  const subAppState = AppState.addEventListener("change", (state) => {
+    if (state === "active") void get().refreshAll();
+  });
   const subClipboard = unicEngineNative.addClipboardChangedListener((payload) => {
-    set({ pendingClipboardHint: payload });
+    if (get().automaticCapture) set({ pendingClipboardHint: payload });
   });
   unsubscribeFns.push(
     () => subEvt.remove(),
     () => subResync.remove(),
     () => subClipboard.remove(),
+    () => subAppState.remove(),
   );
 
   set({
     mode: "live",
     bootStage: "main",
     snapshot,
-    capabilities,
+    capabilities: snapshot.capabilities,
+    automaticCapture,
+    autoApplyReceived: preferences.get(autoApplyKey) === "true",
     devices: snapshot.devices ?? [],
     received: snapshot.received ?? [],
     lastError: null,
@@ -411,6 +489,8 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
   candidates: [],
   received: [],
   autoApplyReceived: false,
+  automaticCapture: true,
+  fileCache: null,
   pendingClipboardHint: null,
   pairingCode: null,
   exportedTicket: null,
@@ -803,13 +883,17 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
     if (get().mode !== "live" || get().bootStage !== "main") return;
     try {
       const received = await unicEngineNative.listReceived();
-      set({ received });
+      set({ received: received ?? [] });
+      const activeIds = new Set((received ?? []).map((item) => item.receipt_id));
+      for (const id of autoAppliedReceiptIds) {
+        if (!activeIds.has(id)) autoAppliedReceiptIds.delete(id);
+      }
 
       const { autoApplyReceived, capabilities } = get();
       if (
         autoApplyReceived &&
         capabilities?.effective?.apply === "available" &&
-        received.length > 0
+        received?.length > 0
       ) {
         const newest = received[0];
         if (
@@ -834,17 +918,27 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
   refreshDevicesAndCandidates: async () => {
     if (get().mode !== "live" || get().bootStage !== "main") return;
     try {
-      const [snapshot, capabilities, devices, candidates, pairingCode, actions, received] =
-        await Promise.all([
-          unicEngineNative.getState(),
-          unicEngineNative.getCapabilities(),
-          unicEngineNative.listDevices(),
-          unicEngineNative.listCandidates(),
-          unicEngineNative.getPairingCode().catch(() => null),
-          unicEngineNative.listActions().catch(() => []),
-          unicEngineNative.listReceived().catch(() => []),
-        ]);
-      set({ snapshot, capabilities, devices, candidates, pairingCode, actions, received });
+      const [devices, candidates, pairingCode] = await Promise.all([
+        unicEngineNative.listDevices(),
+        unicEngineNative.listCandidates(),
+        unicEngineNative.getPairingCode(),
+      ]);
+      set({ devices: devices ?? [], candidates: candidates ?? [], pairingCode });
+    } catch (err) {
+      set({ lastError: parseEngineError(err) });
+    }
+  },
+
+  refreshSnapshot: async () => {
+    if (get().mode !== "live" || get().bootStage !== "main") return;
+    try {
+      const snapshot = await unicEngineNative.getState();
+      set((state) => {
+        if (state.snapshot?.instance_id !== snapshot.instance_id ||
+            BigInt(state.snapshot.revision) > BigInt(snapshot.revision)) return state;
+        if (BigInt(state.snapshot.settings.revision) > BigInt(snapshot.settings.revision)) return state;
+        return { snapshot, capabilities: snapshot.capabilities };
+      });
     } catch (err) {
       set({ lastError: parseEngineError(err) });
     }
@@ -852,13 +946,72 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
 
   refreshAll: async () => {
     if (get().mode !== "live" || get().bootStage !== "main") return;
-    await get().refreshDevicesAndCandidates();
-    await get().refreshHistory();
+    await Promise.all([
+      get().refreshSnapshot(),
+      get().refreshDevicesAndCandidates(),
+      unicEngineNative.listActions().then((actions) => set({ actions: actions ?? [] }))
+        .catch((err) => set({ lastError: parseEngineError(err) })),
+      unicEngineNative.reconcileHistoryPreviews().catch(() => {}),
+    ]);
+    await Promise.all([get().refreshHistory(), get().refreshReceived()]);
+  },
+
+  refreshFileCache: async () => {
+    try {
+      set({ fileCache: await unicEngineNative.getFileCacheState() });
+    } catch (err) {
+      set({ lastError: parseEngineError(err), fileCache: null });
+    }
+  },
+
+  clearPreviews: async () => {
+    ++historyRequestSeq;
+    await unicEngineNative.clearHistoryPreviews();
+    imagePreviewCache.clear();
+    textPreviewCache.clear();
+    // Recreated only when the history UI requests previews again.
+    set((state) => ({
+      loadingMore: false,
+      records: state.records.map((item) => item.fileUri ? { ...item, fileUri: undefined } : item),
+    }));
+  },
+
+  updateSettings: (mutator) => {
+    const update = settingsQueue.then(async () => {
+      const snapshot = get().snapshot;
+      if (!snapshot) return;
+      try {
+        const settings = await unicEngineNative.updateSettings({
+          expected_revision: snapshot.settings.revision,
+          value: mutator(snapshot.settings.value),
+        });
+        set((state) => state.snapshot?.instance_id === snapshot.instance_id &&
+          BigInt(state.snapshot.settings.revision) <= BigInt(settings.revision)
+          ? { snapshot: { ...state.snapshot, settings } }
+          : state);
+        await get().refreshSnapshot();
+      } catch (error) {
+        await get().refreshSnapshot();
+        throw error;
+      }
+    });
+    settingsQueue = update.catch(() => {});
+    return update;
   },
 
   clearError: () => set({ lastError: null }),
 
-  setAutoApplyReceived: (enabled) => set({ autoApplyReceived: enabled }),
+  setAutoApplyReceived: async (enabled) => {
+    await AsyncStorage.setItem(autoApplyKey, String(enabled));
+    set({ autoApplyReceived: enabled });
+    if (enabled) await get().refreshReceived();
+  },
+
+  setAutomaticCapture: async (enabled) => {
+    await AsyncStorage.setItem(captureKey, String(enabled));
+    await unicEngineNative.setAutomaticCapture(enabled);
+    set({ automaticCapture: enabled, pendingClipboardHint: null });
+  },
 
   dismissClipboardHint: () => set({ pendingClipboardHint: null }),
 
@@ -942,9 +1095,7 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
     const rawMap = new Map(get().rawHistory.map((it) => [it.id, it.revision]));
     for (const id of ids) {
       const rev = rawMap.get(id);
-      if (rev) {
-        await unicEngineNative.deleteHistoryItem(id, rev);
-      }
+      if (rev) await unicEngineNative.deleteHistoryItem(id, rev);
     }
     await get().refreshHistory();
   },

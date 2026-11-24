@@ -1,3 +1,4 @@
+import { useHistoryImagePreview } from '@/hooks/useHistoryImagePreview';
 import React, { useRef, useState } from 'react';
 import {
   View,
@@ -410,17 +411,17 @@ function FileCardBody({
 }
 
 function ImageCardBody({ item, kindColor, kindLabel, relativeTime, isLatest }: CardBodyProps) {
-  const [loadFailed, setLoadFailed] = useState(false);
-  const hasImage = item.isLocalFileReady && item.fileUri && !loadFailed;
+  const preview = useHistoryImagePreview(item);
   return (
     <View style={styles.imageBody}>
       <CheckerboardBackground />
-      {hasImage ? (
+      {preview.uri ? (
         <Image
-          source={{ uri: item.fileUri }}
+          key={preview.retry}
+          source={{ uri: preview.uri }}
           style={styles.thumbnailImage}
           resizeMode="contain"
-          onError={() => setLoadFailed(true)}
+          onError={preview.onError}
         />
       ) : (
         <View style={[styles.imagePlaceholder, { backgroundColor: hexToRgba(kindColor, 0.12) }]}>

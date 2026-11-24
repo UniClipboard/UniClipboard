@@ -1,25 +1,39 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { AppBottomSheet, AppButton, AppHost } from "@/components/ui";
 import { useEngineStore } from "@/engine/store";
 import { useTheme } from "@/hooks/useTheme";
+import type { ClipboardItem } from "@/types/clipboard";
+import { formatFileSize } from "@/utils";
 import { showUnavailable } from "./notice";
 
 export function DemoSendSheet({
   visible,
   onClose,
+  targetItem,
+  initialDraftText,
 }: {
   visible: boolean;
   onClose: () => void;
+  targetItem?: ClipboardItem | null;
+  initialDraftText?: string | null;
 }) {
   const { t } = useTranslation();
   const { theme } = useTheme();
   const mode = useEngineStore((s) => s.mode);
   const devices = useEngineStore((s) => s.devices);
   const [draftText, setDraftText] = useState("");
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setDraftText(initialDraftText ?? "");
+    } else {
+      setSelectedDeviceIds([]);
+    }
+  }, [visible, initialDraftText, targetItem?.profileHash]);
 
   if (mode !== "live") {
     return (
@@ -70,7 +84,31 @@ export function DemoSendSheet({
   }
 
   const trustedDevices = devices.filter((d) => d.trust === "trusted");
-  const targetIds = selectedDeviceId ? [selectedDeviceId] : undefined;
+  const targetIds = selectedDeviceIds.length > 0 ? selectedDeviceIds : undefined;
+
+  const toggleDeviceSelection = (id: string) => {
+    setSelectedDeviceIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
+    );
+  };
+
+  const handleResendTargetItem = async () => {
+    if (!targetItem || submitting) return;
+    setSubmitting(true);
+    try {
+      await useEngineStore
+        .getState()
+        .resendHistoryItem(targetItem.profileHash, targetIds);
+      onClose();
+    } catch (err) {
+      Alert.alert(
+        t("home:detail.sendTo"),
+        err instanceof Error ? err.message : t("shell:unavailable"),
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleCommitText = async () => {
     const trimmed = draftText.trim();
@@ -139,38 +177,60 @@ export function DemoSendSheet({
             fontWeight: "700",
           }}
         >
-          发送到本机 / 对端设备
+          {targetItem ? "转发历史条目到设备" : "发送到本机 / 对端设备"}
         </Text>
 
-        <TextInput
-          testID="send-compose-input"
-          value={draftText}
-          onChangeText={setDraftText}
-          placeholder="输入要保存或发送的文本内容…"
-          placeholderTextColor={theme.colors.textSecondary}
-          multiline
-          style={{
-            minHeight: 84,
-            borderRadius: 14,
-            padding: 12,
-            backgroundColor: theme.colors.surface,
-            color: theme.colors.textPrimary,
-            textAlignVertical: "top",
-          }}
-        />
+        {targetItem ? (
+          <View
+            style={{
+              padding: 12,
+              borderRadius: 14,
+              backgroundColor: theme.colors.surface,
+              gap: 4,
+            }}
+          >
+            <Text
+              style={{ color: theme.colors.textPrimary, fontWeight: "600", fontSize: 14 }}
+              numberOfLines={3}
+            >
+              {targetItem.dataName || targetItem.text || `[${targetItem.type}]`}
+            </Text>
+            <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
+              {targetItem.type}
+              {targetItem.size ? ` · ${formatFileSize(targetItem.size)}` : ""}
+            </Text>
+          </View>
+        ) : (
+          <TextInput
+            testID="send-compose-input"
+            value={draftText}
+            onChangeText={setDraftText}
+            placeholder="输入要保存或发送的文本内容…"
+            placeholderTextColor={theme.colors.textSecondary}
+            multiline
+            style={{
+              minHeight: 84,
+              borderRadius: 14,
+              padding: 12,
+              backgroundColor: theme.colors.surface,
+              color: theme.colors.textPrimary,
+              textAlignVertical: "top",
+            }}
+          />
+        )}
 
         {trustedDevices.length > 0 ? (
           <View style={{ gap: 8 }}>
             <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
-              目标设备（不选则保存到历史并按同步规则分发）
+              目标设备（可多选；不选则按同步规则发送至全部在线设备）
             </Text>
             {trustedDevices.map((dev) => {
-              const selected = selectedDeviceId === dev.id;
+              const selected = selectedDeviceIds.includes(dev.id);
               const connected = dev.bindings?.some((b) => b.connection === "connected");
               return (
                 <Pressable
                   key={dev.id}
-                  onPress={() => setSelectedDeviceId(selected ? null : dev.id)}
+                  onPress={() => toggleDeviceSelection(dev.id)}
                   style={{
                     padding: 14,
                     borderRadius: 14,
@@ -181,6 +241,7 @@ export function DemoSendSheet({
                 >
                   <Text style={{ color: theme.colors.textPrimary, fontWeight: "600" }}>
                     {dev.name || dev.reported_name || dev.id.slice(0, 8)}
+                    {selected ? " ✓" : ""}
                   </Text>
                   <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
                     {connected ? "已连接" : "离线 / 待连接"}
@@ -195,36 +256,56 @@ export function DemoSendSheet({
           </Text>
         )}
 
-        <AppHost matchContents={{ vertical: true }}>
-          <AppButton
-            testID="send-commit-text"
-            title="保存并发送文本"
-            variant="filled"
-            fullWidth
-            disabled={submitting || !draftText.trim()}
-            onPress={() => void handleCommitText()}
-          />
-        </AppHost>
-        <AppHost matchContents={{ vertical: true }}>
-          <AppButton
-            testID="send-read-clipboard"
-            title="读取系统剪贴板"
-            variant="tonal"
-            fullWidth
-            disabled={submitting}
-            onPress={() => void handleReadClipboard()}
-          />
-        </AppHost>
-        <AppHost matchContents={{ vertical: true }}>
-          <AppButton
-            testID="send-pick-file"
-            title="选择文件发送"
-            variant="outlined"
-            fullWidth
-            disabled={submitting}
-            onPress={() => void handlePickFile()}
-          />
-        </AppHost>
+        {targetItem ? (
+          <AppHost matchContents={{ vertical: true }}>
+            <AppButton
+              testID="send-resend-item"
+              title={
+                selectedDeviceIds.length > 0
+                  ? `发送给所选 ${selectedDeviceIds.length} 台设备`
+                  : "发送给所有在线设备"
+              }
+              variant="filled"
+              fullWidth
+              disabled={submitting}
+              onPress={() => void handleResendTargetItem()}
+            />
+          </AppHost>
+        ) : (
+          <>
+            <AppHost matchContents={{ vertical: true }}>
+              <AppButton
+                testID="send-commit-text"
+                title="保存并发送文本"
+                variant="filled"
+                fullWidth
+                disabled={submitting || !draftText.trim()}
+                onPress={() => void handleCommitText()}
+              />
+            </AppHost>
+            <AppHost matchContents={{ vertical: true }}>
+              <AppButton
+                testID="send-read-clipboard"
+                title="读取系统剪贴板"
+                variant="tonal"
+                fullWidth
+                disabled={submitting}
+                onPress={() => void handleReadClipboard()}
+              />
+            </AppHost>
+            <AppHost matchContents={{ vertical: true }}>
+              <AppButton
+                testID="send-pick-file"
+                title="选择文件发送"
+                variant="outlined"
+                fullWidth
+                disabled={submitting}
+                onPress={() => void handlePickFile()}
+              />
+            </AppHost>
+          </>
+        )}
+
         <AppHost matchContents={{ vertical: true }}>
           <AppButton
             testID="send-close"

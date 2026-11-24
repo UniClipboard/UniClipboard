@@ -1,0 +1,131 @@
+name: iOS Store candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload the IPA to App Store Connect
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-store-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: xcode-27
+    environment: mobile-ios
+    timeout-minutes: 45
+    env:
+      EXPO_NO_TELEMETRY: '1'
+      UNIC_MOBILE_VARIANT: production
+      UNIC_MOBILE_RELEASE_PLATFORM: ios
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bindings/go.mod
+          cache-dependency-path: |
+            go.sum
+            bindings/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/expo/.nvmrc
+          cache: npm
+          cache-dependency-path: app/expo/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build iOS bindings
+        env:
+          UNIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+          UNIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_KEY }}
+        run: ./bindings/scripts/build-mobile.sh
+      - working-directory: app/expo
+        run: |
+          npm ci --no-audit --no-fund
+          npx expo prebuild --platform ios --no-install
+          (cd ios && pod install)
+      - name: Archive and export signed IPA
+        env:
+          IOS_DISTRIBUTION_P12: ${{ secrets.IOS_DISTRIBUTION_P12 }}
+          IOS_DISTRIBUTION_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_PASSWORD }}
+          IOS_APP_PROFILE: ${{ secrets.IOS_APP_PROFILE }}
+          IOS_SHARE_PROFILE: ${{ secrets.IOS_SHARE_PROFILE }}
+        shell: bash
+        run: |
+          : "${IOS_DISTRIBUTION_P12:?}" "${IOS_DISTRIBUTION_PASSWORD:?}" "${IOS_APP_PROFILE:?}" "${IOS_SHARE_PROFILE:?}"
+          umask 077
+          signing=$(mktemp -d)
+          keychain="$signing/unic.keychain-db"
+          password=$(openssl rand -hex 24)
+          trap 'security delete-keychain "$keychain" || true; unlink "$signing/distribution.p12"; unlink "$signing/app.mobileprovision"; unlink "$signing/share.mobileprovision"' EXIT
+          printf '%s' "$IOS_DISTRIBUTION_P12" | base64 -D > "$signing/distribution.p12"
+          printf '%s' "$IOS_APP_PROFILE" | base64 -D > "$signing/app.mobileprovision"
+          printf '%s' "$IOS_SHARE_PROFILE" | base64 -D > "$signing/share.mobileprovision"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$signing/distribution.p12" -k "$keychain" -P "$IOS_DISTRIBUTION_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain"
+          python3 -B tools/release/ios_profiles.py "$signing/app.mobileprovision" "$signing/share.mobileprovision" > "$signing/profiles.json"
+          gem install xcodeproj -v 1.27.0 --no-document
+          ruby -rjson -rxcodeproj - "$signing/profiles.json" "$signing/export.plist" <<'RUBY'
+          data = JSON.parse(File.read(ARGV[0]))
+          project = Xcodeproj::Project.open('app/expo/ios/UniClipboard.xcodeproj')
+          seen = []
+          project.targets.each do |target|
+            target.build_configurations.select { |c| c.name == 'Release' }.each do |configuration|
+              settings = configuration.build_settings
+              id = settings['PRODUCT_BUNDLE_IDENTIFIER']
+              next unless data.fetch('profiles').key?(id)
+              settings['CODE_SIGN_STYLE'] = 'Manual'
+              settings['DEVELOPMENT_TEAM'] = data.fetch('team')
+              settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution'
+              settings['PROVISIONING_PROFILE_SPECIFIER'] = data.fetch('profiles').fetch(id)
+              seen << id
+            end
+          end
+          abort 'Expected both production signing targets' unless seen.sort == data.fetch('profiles').keys.sort
+          project.save
+          Xcodeproj::Plist.write_to_path({
+            'method' => 'app-store-connect', 'signingStyle' => 'manual',
+            'teamID' => data.fetch('team'), 'provisioningProfiles' => data.fetch('profiles'),
+            'manageAppVersionAndBuildNumber' => false
+          }, ARGV[1])
+          RUBY
+          archive="$RUNNER_TEMP/UniClipboard.xcarchive"
+          xcodebuild -workspace app/expo/ios/UniClipboard.xcworkspace -scheme UniClipboard \
+            -configuration Release -destination 'generic/platform=iOS' -archivePath "$archive" archive
+          xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$signing/export.plist" -exportPath "$signing/export"
+          mkdir -p dist/mobile-ios
+          cp "$signing/export/UniClipboard.ipa" dist/mobile-ios/UniClipboard.ipa
+          ditto -c -k --keepParent "$archive/dSYMs" dist/mobile-ios/dSYMs.zip
+          python3 -B tools/release/mobile.py record-candidate ios dist/mobile-ios/UniClipboard.ipa dist/mobile-ios/candidate.json
+          (cd dist/mobile-ios && shasum -a 256 UniClipboard.ipa dSYMs.zip candidate.json > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-ios-candidate
+          path: dist/mobile-ios/
+          if-no-files-found: error
+      - name: Upload to App Store Connect
+        if: inputs.publish
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          : "${ASC_KEY_ID:?}" "${ASC_ISSUER_ID:?}" "${ASC_PRIVATE_KEY:?}"
+          umask 077
+          export API_PRIVATE_KEYS_DIR="$RUNNER_TEMP/unic-app-store-connect"
+          mkdir -p "$API_PRIVATE_KEYS_DIR"
+          key="$API_PRIVATE_KEYS_DIR/AuthKey_$ASC_KEY_ID.p8"
+          trap 'unlink "$key"' EXIT
+          printf '%s' "$ASC_PRIVATE_KEY" > "$key"
+          xcrun altool --upload-app -f dist/mobile-ios/UniClipboard.ipa --type ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"

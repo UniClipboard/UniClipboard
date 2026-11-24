@@ -1,0 +1,27 @@
+appId: app.uniclipboard.shell
+name: Live Engine first install
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: setup-start-clean
+    timeout: 85000
+- tapOn:
+    id: setup-start-clean
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: home-add-menu
+          timeout: 85000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: main-tab-Preferences
+          timeout: 85000

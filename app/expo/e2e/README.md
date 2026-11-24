@@ -1,4 +1,4 @@
-# Native shell E2E
+# Native mobile E2E
 
 These Maestro flows run the actual shell app. They cover navigation and detail
 return, unavailable device actions, local settings, search/empty states, selection
@@ -39,6 +39,11 @@ node e2e/run.mjs --platform ios --device <simulator-uuid> \
 node e2e/run.mjs --platform android --device emulator-5554 \
   --app android/app/build/outputs/apk/release/app-release.apk
 ```
+
+Use `--suite live` with an Engine-enabled Release build to exercise fresh
+Setup, history intake and search, the device page, and diagnostics settings.
+This suite seeds synthetic text through the iOS Simulator pasteboard or a
+targeted Android share intent. Its first flow clears the test app data.
 
 The runner writes `e2e/results/<run>/receipt.json` on success and failure. It
 records artifact/lockfile/flow hashes, device ID, tool version and every stage's

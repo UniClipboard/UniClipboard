@@ -838,6 +838,20 @@ public final class UnicEngineModule: Module {
       return try callGoString { eng.getState($0) }
     }.runOnQueue(engineQueue)
 
+    AsyncFunction("getTelemetryState") { () -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.getTelemetryState($0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("setTelemetryEnabled") { (enabled: Bool) -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.setTelemetryEnabled(enabled, error: $0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("exportRecentDiagnosticLogs") { () -> String in
+      try self.requireEngine().exportRecentDiagnosticLogs()
+    }.runOnQueue(engineQueue)
+
     AsyncFunction("getCapabilities") { () -> String in
       let eng = try self.requireEngine()
       return try callGoString { eng.getCapabilities($0) }

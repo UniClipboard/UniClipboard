@@ -254,6 +254,9 @@ remains open.
 
 ### M5 · P2 去壳、可观测性、CI 与商店发布（衔接 0018）
 
+The [M05 preparation receipt](0031-mobile-m5-receipt.md) records production
+configuration, diagnostics, candidate workflows, and remaining activation checks.
+
 目标：完成产品正式化配置、自动化构建验收与商店分发闭环，并将 0031 落地归档。
 
 #### M5.1 正式产品标识与权限配置（覆盖 G14）

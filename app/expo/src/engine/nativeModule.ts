@@ -43,6 +43,8 @@ type NativeEvents = {
   onClipboardChanged: (payload: ClipboardChangedEvent) => void;
 };
 
+export type TelemetryState = { configured_enabled: boolean; effective_enabled: boolean };
+
 declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   openSetupFlow(): Promise<string>;
   getSetupState(): Promise<string>;
@@ -56,6 +58,9 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   initializeEngine(deviceName: string | null): Promise<string>;
   shutdownEngine(): Promise<void>;
   getState(): Promise<string>;
+  getTelemetryState(): Promise<string>;
+  setTelemetryEnabled(enabled: boolean): Promise<string>;
+  exportRecentDiagnosticLogs(): Promise<string>;
   getCapabilities(): Promise<string>;
   updateSettings(reqJSON: string): Promise<string>;
   getFileCacheState(): Promise<string>;
@@ -241,6 +246,9 @@ export const unicEngineNative = {
     callJSON<EngineStateSnapshot>(() => requireMod().initializeEngine(deviceName ?? null)),
   shutdownEngine: () => callVoid(() => requireMod().shutdownEngine()),
   getState: () => callJSON<EngineStateSnapshot>(() => requireMod().getState()),
+  getTelemetryState: () => callJSON<TelemetryState>(() => requireMod().getTelemetryState()),
+  setTelemetryEnabled: (enabled: boolean) => callJSON<TelemetryState>(() => requireMod().setTelemetryEnabled(enabled)),
+  exportRecentDiagnosticLogs: () => callString(() => requireMod().exportRecentDiagnosticLogs()),
   getCapabilities: () => callJSON<Capabilities>(() => requireMod().getCapabilities()),
   updateSettings: (req: { expected_revision: string; value: EngineSettings }) =>
     callJSON<SettingsState>(() => requireMod().updateSettings(JSON.stringify(req))),

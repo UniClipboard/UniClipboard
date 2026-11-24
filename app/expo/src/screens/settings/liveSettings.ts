@@ -89,6 +89,7 @@ export function useLiveSettingGroups(
       nav("network"),
       ...(supportsBackgroundSync ? [nav("background")] : []),
       nav("clipboard", t("settings:ios.extensions.clipboardAccess")),
+      nav("diagnostics"),
     ] },
     { title: t("settings:general.sectionTitle"), rows: [
       {

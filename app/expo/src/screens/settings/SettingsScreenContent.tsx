@@ -8,6 +8,7 @@ import { useTheme } from "@/hooks/useTheme";
 import type { RootStackParamList, SettingsSubSection } from "@/navigation/AppNavigator.types";
 import { useShellSettingGroups, type ShellSettingPage } from "@/shell/settings";
 import { SettingsPage } from "./SettingsPage";
+import { DiagnosticsSettings } from "./DiagnosticsSettings";
 import { useLiveSettingGroups, type SettingEdit } from "./liveSettings";
 
 type Page = SettingsSubSection | "root";
@@ -23,6 +24,7 @@ export function SettingsScreenContent({ page, onBack }: { page: Page; onBack?: (
   if (mode === "unavailable") {
     return <DemoSettings page={page} title={title} onBack={onBack} />;
   }
+  if (page === "diagnostics") return <DiagnosticsSettings title={title} onBack={onBack} />;
   return <LiveSettings page={page} title={title} onBack={onBack} />;
 }
 

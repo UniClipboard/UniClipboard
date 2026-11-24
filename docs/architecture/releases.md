@@ -32,13 +32,40 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
+  - .github/workflows/check-expo.yml
+  - .github/workflows/release-android.yml
+  - .github/workflows/release-ios.yml
+  - app/expo/app.config.js
+  - app/expo/plugins/withUnsignedAndroidRelease.js
 verified: fba9253c8446ba090ee04002942e923151734116
 ---
 # Product builds and CLI releases
 
 ## Current implementation
 
-`release/products.toml` owns the standalone product metadata and declares the joint build targets and Desktop update key. CLI and Desktop have separate build and delivery controllers. A joint workflow coordinates both products. Android and iOS records reserve independent metadata. These records do not establish release support.
+`release/products.toml` owns the standalone product metadata and declares the joint build targets and Desktop update key. CLI and Desktop have separate build and delivery controllers. A joint workflow coordinates both products. Android and iOS have independent candidate workflows and metadata.
+
+### Mobile candidates
+
+**Mobile build and acceptance** runs the mobile binding and Engine boundary
+checks, transitively native Release builds, and the live Engine Maestro suite.
+It saves native receipts separately from the Expo bundle verification.
+
+The **Android Store candidate** workflow generates a production AAB, signs
+it with the Play upload key, validates application metadata with bundletool,
+and retains the SHA-256 receipt. A manual upload selects the internal or
+production track. A successful production upload enables the separate GitHub
+checksum-receipt job. The **iOS Store candidate** workflow validates the app
+and Share Extension App Store profiles, archives and exports the IPA, and
+retains both artifact hashes and dSYMs. Its optional upload transfers the
+candidate to App Store Connect. TestFlight availability, submission for
+review and Store publication have their own acceptance states.
+
+The production variant retains `app.uniclipboard.android` and
+`app.uniclipboard.UniClipboard` from the preceding mobile product. The
+initial candidate is `2.5.0 (205)`. The maintained legacy history format,
+device update behavior, Android upload certificate lineage, and iOS
+production provisioning require verification before rollout.
 
 ### Joint CLI and Desktop delivery
 
@@ -305,7 +332,7 @@ The report records source hashes, process observations and assertions. Acceptanc
 
 The selected next CLI version is `2.0.0 (2)`, encoded as `2.0.0-build.2` on npm. Alpha selects the `alpha` dist-tag. Desktop selects `2.0.0 (3)`; Android and iOS retain independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Historical remote five-target build and package assembly acceptance passed. The six-target CLI matrix has native hosted acceptance. CLI build 2 is selected to include the current shared configuration/API; the execution receipt records its final accepted lock. Workflow authorization remains a publication prerequisite. Public OIDC/provenance and real GitHub release publication remain unverified.
 
-Desktop staging checks the locked private service configuration/API in addition to executable hashes. macOS signing/notarization, native Windows installer lifecycle, and two-architecture Nix/Flatpak/strict Snap process/IPC acceptance have passed as recorded in the execution receipt. Production delivery requires the durable raw updater key and the numbered public routes. R2/FlareRelease transport and the locked CLI npm availability gate are implemented but have not performed production delivery. Native sandbox GUI, package refresh and real-OS clipboard/file/network acceptance remain open. Android and iOS share an Expo UI shell under `app/expo`; it has no Engine integration and does not establish native release support. Their workflows, signing, Store acceptance and promotion are not implemented. GitCode is deferred. Do not archive decision 0018 while these phases remain open.
+Desktop staging checks the locked private service configuration/API in addition to executable hashes. macOS signing/notarization, native Windows installer lifecycle, and two-architecture Nix/Flatpak/strict Snap process/IPC acceptance have passed as recorded in the execution receipt. Production delivery requires the durable raw updater key and the numbered public routes. R2/FlareRelease transport and the locked CLI npm availability gate are implemented but have not performed production delivery. Native sandbox GUI, package refresh and real-OS clipboard/file/network acceptance remain open. Android and iOS use the shared Expo UI and embedded Engine under `app/expo`. Production signing, hosted acceptance, Store upload and rollout remain unverified. GitCode is deferred. Decision 0018 remains open while these phases are pending.
 
 Exact interface requirements are in the [release contract](../contracts/release-contract.md). Process ownership remains in the [headless architecture](headless.md).
 

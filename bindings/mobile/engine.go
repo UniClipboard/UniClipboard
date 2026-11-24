@@ -35,6 +35,7 @@ type Engine struct {
 	cacheDir     string
 	settingsMu   sync.Mutex
 	previewMu    sync.Mutex
+	diagnostics  *mobileDiagnostics
 
 	subMu     sync.Mutex
 	sub       *engine.Subscription
@@ -112,7 +113,7 @@ func loadSettingsOrDefault(path string, cfg engineConfigDTO) (engine.Settings, e
 	return def, nil
 }
 
-func saveSettingsAtomic(path string, s engine.Settings) error {
+func saveSettingsAtomic(path string, s any) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -221,11 +222,16 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		return nil, wrapErr(err)
 	}
 
+	diagnostics := newMobileDiagnostics(dataDir)
+	peer.Observe(diagnostics.controller)
 	opts := engine.Options{
 		DataDir:          dataDir,
 		CacheDir:         cacheDir,
 		Settings:         settings,
 		HostCapabilities: caps,
+		Logger:           diagnostics.controller.Logger(),
+		Diagnostics:      diagnostics.controller.Record,
+		ProductEvents:    diagnostics.controller.ProductEvent,
 		Plugins: []engine.PluginInstance{
 			{Plugin: peer, Builtin: true},
 			{Plugin: classifier},
@@ -235,13 +241,16 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 
 	eng, err := engine.New(context.Background(), opts)
 	if err != nil {
+		diagnostics.close(context.Background())
 		return nil, wrapErr(err)
 	}
+	diagnostics.controller.SetSyncCollector(peer.Collect)
 	return &Engine{
 		e:            eng,
 		dataDir:      dataDir,
 		settingsPath: settingsPath,
 		cacheDir:     cacheDir,
+		diagnostics:  diagnostics,
 	}, nil
 }
 
@@ -280,7 +289,9 @@ func (m *Engine) Close(token *CancelToken) error {
 	m.stopSubscription()
 	ctx, cancel := withToken(token)
 	defer cancel()
-	return wrapErr(m.e.Close(ctx))
+	err := m.e.Close(ctx)
+	m.diagnostics.close(ctx)
+	return wrapErr(err)
 }
 
 // SetRuntimeState sets Engine runtime networking permission ("active" or "suspended").

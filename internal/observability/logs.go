@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -198,9 +199,11 @@ func (c *Controller) localWorker() {
 		c.drainLocal(nil)
 		return
 	}
-	if err := base.Chmod("logs", 0700); err != nil {
-		c.drainLocal(nil)
-		return
+	if runtime.GOOS != "android" {
+		if err := base.Chmod("logs", 0700); err != nil {
+			c.drainLocal(nil)
+			return
+		}
 	}
 	root, err := base.OpenRoot("logs")
 	if err != nil {
@@ -208,6 +211,12 @@ func (c *Controller) localWorker() {
 		return
 	}
 	defer func() { _ = root.Close() }()
+	if runtime.GOOS == "android" {
+		if err := chmodAndroidLogDirectory(root, st); err != nil {
+			c.drainLocal(nil)
+			return
+		}
+	}
 	// OpenRoot confines operations, including symlink resolution, to UNIC_HOME.
 	var f *os.File
 	var size int64
@@ -263,6 +272,24 @@ func (c *Controller) localWorker() {
 		}
 	}
 }
+
+func chmodAndroidLogDirectory(root *os.Root, expected fs.FileInfo) error {
+	// Android blocks the fchmodat2 syscall used by Root.Chmod.
+	dir, err := root.Open(".")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dir.Close() }()
+	current, err := dir.Stat()
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(expected, current) {
+		return os.ErrInvalid
+	}
+	return dir.Chmod(0700)
+}
+
 func (c *Controller) mirrorLocal(b []byte) {
 	if c.opts.LocalOutput != nil {
 		func() { defer func() { _ = recover() }(); c.opts.LocalOutput(b) }()

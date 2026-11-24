@@ -51,7 +51,7 @@ var errUnrepresentable = errors.New("clipboard content cannot be synced")
 // contentInput converts a clipboard snapshot. Only the formats that travel
 // between devices are kept; files are referenced, not copied.
 func Input(s clip.Snapshot) (engine.ContentInput, error) {
-	in := engine.ContentInput{ObservationKey: s.CopyID, SourceApplication: s.SourceApplication.Clone()}
+	in := engine.ContentInput{ObservationKey: s.CopyID, SourceApplication: s.SourceApplication.Clone(), FileImagePNG: s.FileImagePNG}
 	if len(s.Files) > directory.MaxRoots {
 		return in, &engine.Error{Code: engine.CodeLimitExceeded, Message: "too many selected roots"}
 	}

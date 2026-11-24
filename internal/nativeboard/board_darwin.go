@@ -2,11 +2,13 @@ package nativeboard
 
 import (
 	"errors"
+	"mime"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -121,12 +123,28 @@ func (b *Board) Read() (snapshot clip.Snapshot, err error) {
 			}
 			snapshot.Files = append(snapshot.Files, file)
 		}
-		if len(snapshot.Files) == 0 {
+		owner := board
+		fileImage := false
+		if len(snapshot.Files) == 1 && !snapshot.Files[0].Directory &&
+			strings.HasPrefix(mime.TypeByExtension(strings.ToLower(filepath.Ext(snapshot.Files[0].Name))), "image/") {
+			items := send(board, "pasteboardItems")
+			if objc.Send[uint64](items, objc.RegisterName("count")) == 1 {
+				owner = send(items, "objectAtIndex:", uint64(0))
+				fileImage = true
+			}
+		}
+		if len(snapshot.Files) == 0 || fileImage {
 			for _, format := range contentTypes {
+				if fileImage && format.format != clip.PNG {
+					continue
+				}
 				for _, name := range format.types {
 					typ := nsString(name)
-					data := send(board, "dataForType:", typ)
+					data := send(owner, "dataForType:", typ)
 					if data == 0 {
+						continue
+					}
+					if fileImage && objc.Send[uint64](data, objc.RegisterName("length")) > maxRepresentation {
 						continue
 					}
 					if format.format == clip.Text && name != format.types[0] {
@@ -137,12 +155,19 @@ func (b *Board) Read() (snapshot clip.Snapshot, err error) {
 						rep := send(objc.ID(objc.GetClass("NSBitmapImageRep")), "imageRepWithData:", data)
 						data = send(rep, "representationUsingType:properties:", uint64(4), send(objc.ID(objc.GetClass("NSDictionary")), "dictionary"))
 					}
+					if fileImage && objc.Send[uint64](data, objc.RegisterName("length")) > clip.MaxFileImageBytes {
+						continue
+					}
 					bytes, e := nsBytes(data)
 					if e != nil {
 						return e
 					}
 					if len(bytes) > 0 {
-						snapshot.Parts = append(snapshot.Parts, clip.Part{Format: format.format, Data: bytes})
+						if fileImage {
+							snapshot.FileImagePNG = bytes
+						} else {
+							snapshot.Parts = append(snapshot.Parts, clip.Part{Format: format.format, Data: bytes})
+						}
 						break
 					}
 				}

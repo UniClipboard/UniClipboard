@@ -34,6 +34,12 @@ backend. A confirmed provider group is passed to `AddChannel`. An empty code
 explicitly resumes the group's existing provider pairing. The result omits
 the code and private group context. Existing channels preserve their settings.
 
+`ContentInput.FileImagePNG` optionally carries the clipboard-supplied image
+alternative of a single selected file. Engine copies the bytes under its
+content quota and uses them for the WeType send projection. The alternative
+does not appear as a content part or in history. See the
+[external-channel contract](sync-backend-contract.md#6a-外部渠道-profile0009进程外-rpc-子集已实现).
+
 `ReplaceExternalPlugins` replaces active external Go Action-only plugins or
 external-channel object-store backends of one implementation. The replacement
 keeps the same capability class. The Engine closes each old process before

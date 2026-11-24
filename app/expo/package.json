@@ -12,6 +12,7 @@
     "android": "expo run:android",
     "prebuild": "expo prebuild",
     "type-check": "tsc --noEmit",
+    "build:engine": "../../bindings/scripts/build-mobile.sh",
     "verify": "node scripts/verify-shell.mjs",
     "postinstall": "node scripts/patch-react-native-screens-search-tab.cjs && node scripts/patch-react-native-screens-tab-bar-animation.cjs"
   },

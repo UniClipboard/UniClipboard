@@ -61,6 +61,8 @@ export interface AppTextFieldProps {
   fullWidth?: boolean;
   colors?: TextFieldColors;
   testID?: string;
+  returnKeyType?: 'done' | 'go' | 'next' | 'search' | 'send' | 'default';
+  onSubmitEditing?: () => void;
 }
 
 export function AppTextField({
@@ -77,6 +79,8 @@ export function AppTextField({
   fullWidth,
   colors: fieldColors,
   testID,
+  returnKeyType,
+  onSubmitEditing,
 }: AppTextFieldProps) {
   const colors = useMaterialColors();
   const nativeValue = useNativeState(value);
@@ -106,7 +110,11 @@ export function AppTextField({
       enabled={disabled !== undefined ? !disabled : undefined}
       singleLine
       visualTransformation={secure && !secureVisible ? 'password' : undefined}
-      keyboardOptions={{ keyboardType: secure ? 'password' : keyboardType }}
+      keyboardOptions={{
+        keyboardType: secure ? 'password' : keyboardType,
+        ...(returnKeyType && returnKeyType !== 'default' ? { imeAction: returnKeyType } : {}),
+      }}
+      keyboardActions={onSubmitEditing ? { onDone: onSubmitEditing } : undefined}
       {...(filled ? { shape: filledStyle.shape } : {})}
       colors={fieldColors ?? (filled ? filledStyle.colors : undefined)}
       modifiers={[

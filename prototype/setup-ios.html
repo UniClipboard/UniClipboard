@@ -1,0 +1,1468 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>unic · iOS 首次安装与 v1 迁移引导原型</title>
+<!--
+  Interactive iOS mobile prototype for first-install setup and v1 migration.
+  Follows the live iOS presentation language in app/expo/src/ (iOS 26 Liquid Glass,
+  monochrome ink accent #15171C/#F4F2EE, systemGroupedBackground, 24pt grouped cards,
+  28pt SettingsIconTile, SetupStepRow checklist, and full-width 50pt capsule CTAs).
+  Open directly in a browser.
+-->
+<style>
+  /* ---------- 外部工作台变量 ---------- */
+  :root{
+    --stage-bg:#e8eaef; --bar-bg:rgba(255,255,255,.86); --bar-border:#dce0e8;
+    --bar-text:#1b1d22; --bar-muted:#667080; --bar-faint:#949ca8;
+    --bar-surface:#f2f4f8; --bar-accent:#15171c; --bar-on-accent:#ffffff;
+    --spec-bg:#ffffff; --spec-shadow:0 18px 44px -14px rgba(15,23,42,.18),0 0 0 .5px rgba(0,0,0,.08);
+
+    /* ---------- iOS 原生语义色 (colors.ios.ts + iosDesignTokens.ts) ---------- */
+    --ios-bg:#ffffff;
+    --ios-grouped-bg:#f2f2f7;
+    --ios-card:#ffffff;
+    --ios-card-elevated:#ffffff;
+    --ios-fill-primary:rgba(120,120,128,.20);
+    --ios-fill-secondary:rgba(120,120,128,.16);
+    --ios-fill-tertiary:rgba(118,118,128,.12);
+    --ios-fill-quaternary:rgba(116,116,128,.08);
+    --ios-label:#000000;
+    --ios-secondary-label:rgba(60,60,67,.60);
+    --ios-tertiary-label:rgba(60,60,67,.30);
+    --ios-separator:rgba(60,60,67,.22);
+    --ios-opaque-separator:#c6c6c8;
+
+    /* 单色墨 accent */
+    --ios-accent:#15171c;
+    --ios-on-accent:#ffffff;
+
+    /* 系统状态色 + DynamicColorIOS container */
+    --ios-blue:#007aff;
+    --ios-active-blue:#0063cc;
+    --ios-active-fill:#e5f1ff;
+    --ios-pending-ring:#c7c7cc;
+    --ios-green:#34c759;
+    --ios-status-green:#248a3d;
+    --ios-green-bg:#e6f4ea;
+    --ios-green-text:#1b5e20;
+    --ios-green-border:#c8e6c9;
+    --ios-orange:#ff9500;
+    --ios-status-orange:#c93400;
+    --ios-orange-bg:#fff4e5;
+    --ios-orange-text:#8c5400;
+    --ios-orange-border:#ffe0b2;
+    --ios-red:#ff3b30;
+    --ios-red-bg:#f9dedc;
+    --ios-red-text:#410e0b;
+    --ios-red-border:#f2b8b5;
+    --ios-info-bg:#e3f2fd;
+    --ios-info-text:#0d47a1;
+    --ios-info-border:#bbdefb;
+
+    /* Liquid Glass 材质 */
+    --ios-glass-bg:rgba(255,255,255,.72);
+    --ios-glass-border:rgba(0,0,0,.07);
+    --ios-glass-shadow:0 8px 24px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.85);
+    --ios-alert-bg:rgba(248,248,250,.92);
+    --ios-sheet-bg:#f2f2f7;
+    --ios-backdrop:rgba(0,0,0,.38);
+  }
+  [data-theme=dark]{
+    --stage-bg:#0d0e11; --bar-bg:rgba(24,25,29,.88); --bar-border:#2b2e36;
+    --bar-text:#eceef2; --bar-muted:#9aa1ad; --bar-faint:#68707d;
+    --bar-surface:#23262d; --bar-accent:#f4f2ee; --bar-on-accent:#15171c;
+    --spec-bg:#191b20; --spec-shadow:0 20px 50px -12px rgba(0,0,0,.65),0 0 0 .5px rgba(255,255,255,.08);
+
+    --ios-bg:#000000;
+    --ios-grouped-bg:#000000;
+    --ios-card:#1c1c1e;
+    --ios-card-elevated:#2c2c2e;
+    --ios-fill-primary:rgba(120,120,128,.36);
+    --ios-fill-secondary:rgba(120,120,128,.32);
+    --ios-fill-tertiary:rgba(118,118,128,.24);
+    --ios-fill-quaternary:rgba(118,118,128,.18);
+    --ios-label:#ffffff;
+    --ios-secondary-label:rgba(235,235,245,.60);
+    --ios-tertiary-label:rgba(235,235,245,.30);
+    --ios-separator:rgba(84,84,88,.65);
+    --ios-opaque-separator:#38383a;
+
+    --ios-accent:#f4f2ee;
+    --ios-on-accent:#15171c;
+
+    --ios-blue:#0a84ff;
+    --ios-active-blue:#409cff;
+    --ios-active-fill:#0b2a4a;
+    --ios-pending-ring:#545458;
+    --ios-green:#30d158;
+    --ios-status-green:#30d158;
+    --ios-green-bg:#14331d;
+    --ios-green-text:#a5d6a7;
+    --ios-green-border:rgba(48,209,88,.35);
+    --ios-orange:#ff9f0a;
+    --ios-status-orange:#ff9f0a;
+    --ios-orange-bg:#3b2a0f;
+    --ios-orange-text:#ffd58a;
+    --ios-orange-border:rgba(255,159,10,.35);
+    --ios-red:#ff453a;
+    --ios-red-bg:#4a1513;
+    --ios-red-text:#f9dedc;
+    --ios-red-border:rgba(242,184,181,.35);
+    --ios-info-bg:#0f2a3b;
+    --ios-info-text:#90caf9;
+    --ios-info-border:rgba(100,210,255,.35);
+
+    --ios-glass-bg:rgba(44,44,46,.72);
+    --ios-glass-border:rgba(255,255,255,.12);
+    --ios-glass-shadow:0 10px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.12);
+    --ios-alert-bg:rgba(44,44,46,.92);
+    --ios-sheet-bg:#1c1c1e;
+    --ios-backdrop:rgba(0,0,0,.62);
+  }
+
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;background:var(--stage-bg);color:var(--bar-text);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased;transition:background .2s;
+  }
+  button{font:inherit;color:inherit;cursor:pointer}
+  svg{display:block}
+  a{color:inherit;text-decoration:none}
+
+  /* ---------- 顶部控制条 ---------- */
+  .toolbar{
+    position:sticky;top:0;z-index:30;display:flex;flex-direction:column;gap:8px;
+    padding:10px 24px;background:var(--bar-bg);backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--bar-border);
+  }
+  .toolbar .line{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .toolbar b{font-size:14px;letter-spacing:-.01em}
+  .platform-badge{
+    display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;
+    background:var(--bar-accent);color:var(--bar-on-accent);font-size:11px;font-weight:600;
+  }
+  .grp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+  .lbl{color:var(--bar-muted);font-size:12px;margin-right:4px}
+  .chip{
+    border:1px solid var(--bar-border);background:var(--spec-bg);color:var(--bar-text);
+    padding:3px 10px;border-radius:999px;font-size:11.5px;transition:all .15s;
+  }
+  .chip:hover{background:var(--bar-surface)}
+  .chip.on{background:var(--bar-accent);border-color:var(--bar-accent);color:var(--bar-on-accent);font-weight:500}
+  .sel{
+    border:1px solid var(--bar-border);background:var(--spec-bg);color:var(--bar-text);
+    border-radius:7px;padding:3px 7px;font:inherit;font-size:12px;
+  }
+  .stage{
+    display:flex;gap:36px;justify-content:center;align-items:flex-start;
+    padding:28px 24px 64px;flex-wrap:wrap;
+  }
+
+  /* ---------- iPhone 16 Pro 外框 (393 × 852 逻辑点，等比呈现) ---------- */
+  .bezel{
+    width:417px;padding:12px;border-radius:56px;flex:none;
+    background:linear-gradient(155deg,#2a2c31 0%,#141518 55%,#22242a 100%);
+    box-shadow:0 32px 72px -18px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.14) inset,0 0 0 1px rgba(0,0,0,.35);
+    position:relative;
+  }
+  .phone{
+    width:393px;height:820px;border-radius:45px;overflow:hidden;position:relative;
+    background:var(--ios-grouped-bg);color:var(--ios-label);
+    display:flex;flex-direction:column;
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC",sans-serif;
+    transition:background .2s,color .2s;
+  }
+  .phone.bg-plain{background:var(--ios-bg)}
+
+  /* 状态栏 + 灵动岛 */
+  .ios-status{
+    height:54px;padding:16px 28px 0;display:flex;align-items:center;justify-content:space-between;
+    flex:none;position:relative;z-index:5;user-select:none;
+  }
+  .ios-time{font-size:15px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .island{
+    position:absolute;left:50%;top:11px;transform:translateX(-50%);
+    width:120px;height:34px;border-radius:20px;background:#000;
+    display:flex;align-items:center;justify-content:flex-end;padding-right:10px;
+  }
+  .island .cam{width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#273c68,#0c101d 65%)}
+  .ios-indicators{display:flex;align-items:center;gap:6px}
+  .ios-indicators svg{height:12px;width:auto}
+
+  /* iOS 导航栏 */
+  .ios-nav{
+    height:48px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;
+    flex:none;position:relative;z-index:4;
+  }
+  .ios-nav .nav-title{
+    position:absolute;left:50%;transform:translateX(-50%);
+    font-size:17px;font-weight:600;letter-spacing:-.43px;color:var(--ios-label);
+    white-space:nowrap;
+  }
+  .glass-btn{
+    width:38px;height:38px;border-radius:50%;border:1px solid var(--ios-glass-border);
+    background:var(--ios-glass-bg);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    box-shadow:var(--ios-glass-shadow);display:grid;place-items:center;
+    color:var(--ios-label);padding:0;transition:transform .12s,opacity .15s;
+  }
+  .glass-btn:active{transform:scale(.93)}
+  .glass-btn:disabled{opacity:.35;cursor:default;transform:none}
+  .glass-btn svg{width:18px;height:18px}
+  .nav-text-btn{
+    border:0;background:transparent;color:var(--ios-accent);
+    font-size:16px;font-weight:500;padding:6px 4px;letter-spacing:-.32px;
+  }
+  .nav-text-btn:disabled{opacity:.35;cursor:default}
+
+  /* 页面主体与底部安全区 */
+  .ios-screen{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
+  .ios-scroll{
+    flex:1;overflow-y:auto;padding:4px 16px 20px;
+    scrollbar-width:none;
+  }
+  .ios-scroll::-webkit-scrollbar{display:none}
+  .ios-footer{
+    flex:none;padding:12px 20px 6px;display:flex;flex-direction:column;gap:10px;
+    background:linear-gradient(to top,var(--ios-grouped-bg) 78%,transparent);
+  }
+  .phone.bg-plain .ios-footer{
+    background:linear-gradient(to top,var(--ios-bg) 78%,transparent);
+  }
+  .home-indicator{
+    height:24px;flex:none;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;
+  }
+  .home-indicator i{width:136px;height:5px;border-radius:999px;background:var(--ios-label);opacity:.85;display:block}
+
+  /* ---------- iOS 按钮 (AppButton.ios.tsx: 50pt Capsule) ---------- */
+  .ios-btn{
+    width:100%;min-height:50px;border-radius:999px;border:0;padding:0 20px;
+    font-size:17px;font-weight:600;letter-spacing:-.35px;
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    transition:transform .12s,opacity .15s,background .15s;
+  }
+  .ios-btn:active:not(:disabled){transform:scale(.98)}
+  .ios-btn:disabled{opacity:.38;cursor:default}
+  .ios-btn.primary{background:var(--ios-accent);color:var(--ios-on-accent)}
+  .ios-btn.secondary{background:var(--ios-fill-tertiary);color:var(--ios-label)}
+  .ios-btn.plain{background:transparent;color:var(--ios-accent);min-height:44px;font-size:16px;font-weight:500}
+  .ios-btn.destructive{background:var(--ios-red-bg);color:var(--ios-red)}
+  .ios-btn svg{width:16px;height:16px;flex:none}
+  .ios-btn-row{display:flex;gap:10px}
+  .ios-btn-row .ios-btn{flex:1}
+  .ios-foot-hint{
+    font-size:12px;line-height:16px;color:var(--ios-secondary-label);
+    text-align:center;padding:0 8px;
+  }
+
+  /* Spinner (iOS ActivityIndicator) */
+  .ios-spin{
+    width:16px;height:16px;border:2px solid var(--ios-fill-primary);
+    border-top-color:currentColor;border-radius:50%;animation:sp .75s linear infinite;flex:none;
+  }
+  .ios-btn.primary .ios-spin{border-color:color-mix(in srgb,var(--ios-on-accent) 30%,transparent);border-top-color:var(--ios-on-accent)}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---------- Stage 1: 欢迎页 (Welcome) ---------- */
+  .ios-welcome{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:12px 28px 24px;text-align:center;
+  }
+  .ios-app-icon{
+    width:88px;height:88px;border-radius:22px;
+    background:#000;overflow:hidden;border:1px solid rgba(0,0,0,.10);
+    display:grid;place-items:center;
+    box-shadow:0 16px 32px -12px rgba(0,0,0,.28);
+    position:relative;
+  }
+  [data-theme=dark] .ios-app-icon{border-color:rgba(255,255,255,.16);box-shadow:0 16px 34px -12px rgba(0,0,0,.85)}
+  .ios-app-icon svg{width:100%;height:100%}
+  .ios-welcome h1{
+    margin:26px 0 8px;font-size:28px;line-height:34px;font-weight:700;
+    letter-spacing:.36px;color:var(--ios-label);
+  }
+  .ios-welcome .slogan{
+    margin:0;font-size:17px;line-height:22px;letter-spacing:-.43px;
+    color:var(--ios-secondary-label);
+  }
+  /* 欢迎页底部检测胶囊（不触发凭据，不自动迁移） */
+  .ios-detect-pill{
+    margin-top:28px;min-height:36px;padding:7px 14px;border-radius:999px;
+    background:var(--ios-fill-quaternary);
+    display:inline-flex;align-items:center;justify-content:center;gap:7px;
+    font-size:13px;line-height:18px;color:var(--ios-secondary-label);
+    max-width:100%;
+  }
+  .ios-detect-pill.found{background:var(--ios-green-bg);color:var(--ios-green-text)}
+  .ios-detect-pill.err{
+    background:var(--ios-red-bg);color:var(--ios-red-text);
+    border-radius:16px;padding:10px 14px;flex-direction:column;gap:6px;text-align:center;
+  }
+  .ios-detect-pill svg{width:15px;height:15px;flex:none}
+  .ios-detect-actions{display:flex;gap:14px;margin-top:2px}
+  .ios-inline-link{
+    border:0;background:transparent;padding:0;color:var(--ios-blue);
+    font-size:13px;font-weight:600;
+  }
+
+  /* ---------- iOS 26 Inset Grouped List & Cards ---------- */
+  .ios-page-header{padding:4px 4px 16px}
+  .ios-page-header h2{
+    margin:0;font-size:28px;line-height:34px;font-weight:700;letter-spacing:.36px;
+    color:var(--ios-label);
+  }
+  .ios-page-header p{
+    margin:6px 0 0;font-size:15px;line-height:20px;letter-spacing:-.24px;
+    color:var(--ios-secondary-label);
+  }
+  .ios-sec-label{
+    font-size:13px;line-height:18px;font-weight:600;letter-spacing:.2px;
+    color:var(--ios-secondary-label);padding:0 16px;margin:16px 0 7px;
+  }
+  .ios-sec-label:first-child{margin-top:4px}
+  .ios-sec-footer{
+    font-size:12.5px;line-height:17px;color:var(--ios-secondary-label);
+    padding:7px 16px 0;
+  }
+  .ios-group{
+    background:var(--ios-card);border-radius:20px;overflow:hidden;
+    box-shadow:0 1px 2px rgba(0,0,0,.03);
+  }
+  .ios-row{
+    display:flex;align-items:center;gap:12px;padding:12px 16px;min-height:48px;
+    position:relative;width:100%;border:0;background:transparent;text-align:left;
+  }
+  .ios-row + .ios-row::before{
+    content:"";position:absolute;top:0;left:56px;right:0;height:.5px;
+    background:var(--ios-separator);
+  }
+  .ios-row.no-icon + .ios-row.no-icon::before{left:16px}
+  .ios-row.tap:active{background:var(--ios-fill-tertiary)}
+  .ios-tile{
+    width:28px;height:28px;border-radius:7px;display:grid;place-items:center;
+    color:#fff;flex:none;
+  }
+  .ios-tile svg{width:16px;height:16px}
+  .ios-row-body{flex:1;min-width:0}
+  .ios-row-title{font-size:16px;line-height:21px;letter-spacing:-.32px;color:var(--ios-label)}
+  .ios-row-sub{
+    font-size:13px;line-height:17px;color:var(--ios-secondary-label);margin-top:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .ios-row-sub.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .ios-row-val{font-size:15px;color:var(--ios-secondary-label);flex:none}
+  .ios-chev{width:14px;height:14px;color:#8e8e93;flex:none}
+
+  /* 导入范围两列概览 (移动端在分组卡片内紧凑展示) */
+  .ios-scope-grid{display:grid;grid-template-columns:1fr 1fr;position:relative}
+  .ios-scope-grid::after{
+    content:"";position:absolute;top:12px;bottom:12px;left:50%;width:.5px;
+    background:var(--ios-separator);
+  }
+  .ios-scope-col{padding:13px 14px}
+  .ios-scope-col h4{
+    margin:0 0 8px;font-size:12px;font-weight:600;color:var(--ios-secondary-label);
+  }
+  .ios-scope-col ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+  .ios-scope-col li{
+    display:flex;align-items:center;gap:6px;font-size:13.5px;line-height:18px;
+  }
+  .ios-scope-col li svg{width:14px;height:14px;flex:none}
+  .ios-scope-col.yes li svg{color:var(--ios-status-green)}
+  .ios-scope-col.no li{color:var(--ios-secondary-label)}
+  .ios-scope-col.no li svg{color:var(--ios-tertiary-label)}
+
+  /* 提示卡片 (info / warn / err) */
+  .ios-banner{
+    margin-top:12px;padding:12px 14px;border-radius:16px;
+    display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:18px;
+    border:1px solid transparent;
+  }
+  .ios-banner svg{width:17px;height:17px;flex:none;margin-top:1px}
+  .ios-banner.warn{background:var(--ios-orange-bg);color:var(--ios-orange-text);border-color:var(--ios-orange-border)}
+  .ios-banner.err{background:var(--ios-red-bg);color:var(--ios-red-text);border-color:var(--ios-red-border)}
+  .ios-banner.info{background:var(--ios-card);color:var(--ios-secondary-label);border-color:var(--ios-separator)}
+  .ios-banner b{font-weight:600;color:inherit}
+
+  /* ---------- SetupStepRow (严格复刻 app/expo/src/screens/settings/ios/common.tsx) ---------- */
+  .ios-step-list{background:var(--ios-card);border-radius:20px;padding:6px 16px}
+  .ios-step-row{
+    display:flex;align-items:flex-start;gap:14px;padding:12px 0;position:relative;
+  }
+  .ios-step-row + .ios-step-row::before{
+    content:"";position:absolute;top:0;left:42px;right:0;height:.5px;background:var(--ios-separator);
+  }
+  .ios-step-badge{
+    width:28px;height:28px;border-radius:50%;display:grid;place-items:center;
+    flex:none;font-size:14px;font-weight:600;
+  }
+  .ios-step-badge.done{background:var(--ios-status-green);color:#fff}
+  .ios-step-badge.done svg{width:14px;height:14px}
+  .ios-step-badge.active{
+    background:var(--ios-active-fill);color:var(--ios-active-blue);
+    border:2px solid var(--ios-active-blue);font-weight:700;
+  }
+  .ios-step-badge.pending{
+    color:var(--ios-secondary-label);border:1.5px solid var(--ios-pending-ring);
+  }
+  .ios-step-content{flex:1;min-width:0;padding-top:2px}
+  .ios-step-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .ios-step-title{font-size:16px;line-height:21px;letter-spacing:-.32px}
+  .ios-step-row.active .ios-step-title{font-weight:600;color:var(--ios-label)}
+  .ios-step-row.pending .ios-step-title{color:var(--ios-secondary-label)}
+  .ios-step-status{font-size:14px;font-variant-numeric:tabular-nums;flex:none}
+  .ios-step-status.ok{color:var(--ios-status-green);font-weight:500}
+  .ios-step-status.active{color:var(--ios-active-blue);font-weight:500}
+  .ios-step-status.warn{color:var(--ios-status-orange);font-weight:500}
+  .ios-step-status.muted{color:var(--ios-secondary-label)}
+  .ios-step-sub{font-size:13px;line-height:18px;color:var(--ios-secondary-label);margin-top:3px}
+
+  /* 进度条 (iOS ProgressView linear) */
+  .ios-prog-wrap{margin-top:12px}
+  .ios-prog-track{
+    height:5px;border-radius:999px;background:var(--ios-fill-tertiary);overflow:hidden;
+  }
+  .ios-prog-fill{
+    height:100%;border-radius:999px;background:var(--ios-accent);
+    transition:width .18s linear;
+  }
+  .ios-prog-fill.verify{background:var(--ios-status-green)}
+  .ios-prog-fill.stop{background:var(--ios-tertiary-label)}
+  .ios-prog-meta{
+    display:flex;justify-content:space-between;align-items:center;
+    margin-top:8px;font-size:12.5px;color:var(--ios-secondary-label);
+    font-variant-numeric:tabular-nums;
+  }
+  .ios-prog-meta b{color:var(--ios-label);font-weight:600}
+
+  /* iOS 口令输入 */
+  .ios-field-group{margin-top:12px}
+  .ios-input-wrap{
+    display:flex;align-items:center;background:var(--ios-fill-quaternary);
+    border:1px solid var(--ios-separator);border-radius:12px;padding:0 12px;
+    height:46px;transition:border-color .15s,box-shadow .15s;
+  }
+  .ios-input-wrap:focus-within{
+    border-color:var(--ios-accent);
+    box-shadow:0 0 0 3px var(--ios-fill-tertiary);
+  }
+  .ios-input-wrap.bad{border-color:var(--ios-red)}
+  .ios-input{
+    flex:1;border:0;background:transparent;color:var(--ios-label);outline:none;
+    font-size:16px;min-width:0;
+  }
+  .ios-input::placeholder{color:var(--ios-tertiary-label)}
+  .ios-eye-btn{
+    border:0;background:transparent;color:var(--ios-secondary-label);
+    padding:4px;display:grid;place-items:center;
+  }
+  .ios-eye-btn svg{width:18px;height:18px}
+  .ios-field-err{
+    margin-top:6px;display:flex;align-items:center;gap:5px;
+    font-size:12.5px;color:var(--ios-red);
+  }
+  .ios-field-err svg{width:14px;height:14px;flex:none}
+
+  /* ---------- Stage 3: 结果页 ---------- */
+  .ios-result{
+    display:flex;flex-direction:column;align-items:center;text-align:center;
+    padding:26px 8px 10px;
+  }
+  .ios-ring{
+    width:72px;height:72px;border-radius:50%;display:grid;place-items:center;flex:none;
+  }
+  .ios-ring svg{width:34px;height:34px}
+  .ios-ring.ok{background:var(--ios-green-bg);color:var(--ios-status-green)}
+  .ios-ring.warn{background:var(--ios-orange-bg);color:var(--ios-status-orange)}
+  .ios-ring.stop{background:var(--ios-fill-tertiary);color:var(--ios-secondary-label)}
+  .ios-ring.err{background:var(--ios-red-bg);color:var(--ios-red)}
+  .ios-result h2{
+    margin:18px 0 6px;font-size:24px;line-height:30px;font-weight:700;letter-spacing:.2px;
+  }
+  .ios-result .lead{
+    margin:0;font-size:15px;line-height:21px;color:var(--ios-secondary-label);max-width:310px;
+  }
+  .ios-stats{
+    display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;margin-top:22px;
+  }
+  .ios-stat{
+    background:var(--ios-card);border-radius:16px;padding:14px 12px;text-align:left;
+  }
+  .ios-stat b{
+    display:block;font-size:24px;line-height:28px;font-weight:700;
+    font-variant-numeric:tabular-nums;color:var(--ios-label);
+  }
+  .ios-stat span{display:block;margin-top:4px;font-size:12.5px;color:var(--ios-secondary-label)}
+  .ios-stat.ok b{color:var(--ios-status-green)}
+  .ios-stat.warn b{color:var(--ios-status-orange)}
+  .ios-stat.bad b{color:var(--ios-red)}
+
+  /* ---------- iOS 历史页预览 (HomeLargeTitle + iOS 26 24pt 分组行 + Glass Dock) ---------- */
+  .ios-large-title{
+    padding:6px 20px 10px;font-size:34px;line-height:41px;font-weight:700;letter-spacing:.37px;
+  }
+  .ios-hist-group{
+    background:var(--ios-card);border-radius:24px;overflow:hidden;margin-bottom:14px;
+  }
+  .ios-hist-row{
+    display:flex;align-items:center;gap:14px;padding:12px 16px;min-height:70px;position:relative;
+  }
+  .ios-hist-row + .ios-hist-row::before{
+    content:"";position:absolute;top:0;left:66px;right:0;height:.5px;background:var(--ios-separator);
+  }
+  .ios-kind-tile{
+    width:36px;height:36px;border-radius:9px;display:grid;place-items:center;flex:none;
+  }
+  .ios-kind-tile svg{width:19px;height:19px}
+  .ios-hist-text{flex:1;min-width:0}
+  .ios-hist-primary{
+    font-size:15.5px;line-height:20px;color:var(--ios-label);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .ios-hist-meta{
+    font-size:12px;line-height:16px;color:var(--ios-secondary-label);margin-top:3px;
+    display:flex;align-items:center;gap:6px;
+  }
+  .ios-v1-pill{
+    font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:999px;
+    background:var(--ios-fill-tertiary);color:var(--ios-secondary-label);
+  }
+  .ios-glass-dock{
+    position:absolute;left:16px;right:16px;bottom:30px;height:54px;
+    display:flex;align-items:center;gap:10px;z-index:4;
+  }
+  .ios-dock-search{
+    flex:1;height:48px;border-radius:999px;border:1px solid var(--ios-glass-border);
+    background:var(--ios-glass-bg);backdrop-filter:blur(22px);-webkit-backdrop-filter:blur(22px);
+    box-shadow:var(--ios-glass-shadow);display:flex;align-items:center;gap:8px;
+    padding:0 16px;color:var(--ios-secondary-label);font-size:15px;
+  }
+  .ios-dock-search svg{width:17px;height:17px}
+  .ios-dock-fab{
+    width:48px;height:48px;border-radius:50%;border:1px solid var(--ios-glass-border);
+    background:var(--ios-accent);color:var(--ios-on-accent);
+    display:grid;place-items:center;box-shadow:0 8px 20px rgba(0,0,0,.22);
+  }
+  .ios-dock-fab svg{width:22px;height:22px}
+  .ios-empty-hist{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:40px 28px 90px;color:var(--ios-secondary-label);
+  }
+  .ios-empty-hist .ic{
+    width:56px;height:56px;border-radius:16px;background:var(--ios-fill-tertiary);
+    display:grid;place-items:center;margin-bottom:14px;color:var(--ios-secondary-label);
+  }
+  .ios-empty-hist h3{margin:0 0 6px;font-size:18px;color:var(--ios-label)}
+  .ios-empty-hist p{margin:0;font-size:14px;line-height:20px}
+
+  /* ---------- iOS 系统弹层 (Face ID / Files Sheet / Alert) ---------- */
+  .ios-overlay{
+    position:absolute;inset:0;background:var(--ios-backdrop);z-index:20;
+    display:flex;align-items:center;justify-content:center;padding:24px;
+    animation:fadeIn .16s ease;
+  }
+  .ios-overlay.bottom{align-items:flex-end;padding:0}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes slideUp{from{transform:translateY(28px);opacity:.6}to{transform:none;opacity:1}}
+
+  /* iOS 原生 Alert */
+  .ios-alert{
+    width:272px;border-radius:14px;overflow:hidden;text-align:center;
+    background:var(--ios-alert-bg);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);
+    box-shadow:0 18px 40px rgba(0,0,0,.28);
+  }
+  .ios-alert-body{padding:20px 18px 18px}
+  .ios-alert h3{margin:0 0 6px;font-size:17px;font-weight:600;line-height:22px}
+  .ios-alert p{margin:0;font-size:13px;line-height:18px;color:var(--ios-secondary-label)}
+  .ios-alert-acts{display:flex;border-top:.5px solid var(--ios-separator)}
+  .ios-alert-acts button{
+    flex:1;height:44px;border:0;background:transparent;font-size:17px;color:var(--ios-blue);
+  }
+  .ios-alert-acts button + button{border-left:.5px solid var(--ios-separator)}
+  .ios-alert-acts button.strong{font-weight:600}
+  .ios-alert-acts button.danger{color:var(--ios-red);font-weight:600}
+
+  /* iOS 底部 Sheet (Files.app 源选择器 / Face ID) */
+  .ios-sheet{
+    width:100%;background:var(--ios-sheet-bg);border-radius:26px 26px 0 0;
+    padding:8px 16px 32px;animation:slideUp .2s cubic-bezier(.2,.9,.2,1);
+    box-shadow:0 -12px 36px rgba(0,0,0,.25);
+  }
+  .ios-grabber{
+    width:36px;height:5px;border-radius:999px;background:var(--ios-fill-primary);
+    margin:2px auto 12px;
+  }
+  .ios-sheet-head{
+    display:flex;align-items:center;justify-content:space-between;padding:4px 4px 14px;
+  }
+  .ios-sheet-head h3{margin:0;font-size:17px;font-weight:600}
+  .ios-faceid-card{
+    background:var(--ios-card);border-radius:22px;padding:24px 20px;text-align:center;
+    display:flex;flex-direction:column;align-items:center;gap:10px;
+  }
+  .ios-faceid-glyph{
+    width:54px;height:54px;border-radius:16px;background:var(--ios-active-fill);
+    color:var(--ios-active-blue);display:grid;place-items:center;
+    animation:pulse 1.2s ease-in-out infinite;
+  }
+  .ios-faceid-glyph svg{width:30px;height:30px}
+  @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.94);opacity:.72}}
+
+  /* ---------- 右侧规格说明面板 ---------- */
+  .spec{
+    width:370px;flex:none;background:var(--spec-bg);border-radius:16px;
+    box-shadow:var(--spec-shadow);padding:20px 22px;font-size:13px;
+  }
+  .spec-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
+  .spec h3{margin:0;font-size:15px;font-weight:650}
+  .spec .key{font:11.5px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--bar-faint)}
+  .spec ul{margin:12px 0 0;padding-left:18px;color:var(--bar-muted)}
+  .spec li{margin:6px 0}
+  .spec li b{color:var(--bar-text);font-weight:600}
+  .spec-block{
+    margin-top:16px;padding-top:14px;border-top:1px solid var(--bar-border);
+    color:var(--bar-muted);font-size:12px;line-height:1.6;
+  }
+  .spec-block h4{margin:0 0 6px;font-size:12px;color:var(--bar-text);font-weight:600}
+  .spec-block code{
+    font:11px ui-monospace,SFMono-Regular,Menlo,monospace;
+    background:var(--bar-surface);padding:1px 5px;border-radius:4px;color:var(--bar-text);
+  }
+  .demo-reset-bar{
+    margin:12px 16px 86px;padding:10px 12px;border-radius:14px;
+    background:var(--ios-card);display:flex;align-items:center;justify-content:space-between;gap:8px;
+    font-size:12px;color:var(--ios-secondary-label);
+  }
+  .demo-reset-bar button{
+    border:0;background:var(--ios-fill-tertiary);color:var(--ios-label);
+    padding:5px 11px;border-radius:999px;font-size:12px;font-weight:600;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="line">
+    <span class="platform-badge">iOS · Liquid Glass</span>
+    <b>移动端首次安装与 v1 迁移原型</b>
+    <div class="grp"><span class="lbl">外观</span>
+      <button class="chip on" data-theme-btn="light">浅色</button>
+      <button class="chip" data-theme-btn="dark">深色</button>
+    </div>
+    <div class="grp"><span class="lbl">模拟 · 检测</span>
+      <select class="sel" id="simDetect">
+        <option value="found">发现本机 v1 数据</option>
+        <option value="none">未发现</option>
+        <option value="error">检测出错</option>
+      </select>
+    </div>
+    <div class="grp"><span class="lbl">凭据</span>
+      <select class="sel" id="simCred">
+        <option value="ok">钥匙串 + 面容 ID 解锁</option>
+        <option value="pass">需输入口令（v1pass）</option>
+        <option value="deny">面容 ID / 钥匙串被拒</option>
+      </select>
+    </div>
+    <div class="grp"><span class="lbl">结果</span>
+      <select class="sel" id="simResult">
+        <option value="complete">完整</option>
+        <option value="partial">部分</option>
+        <option value="failed">失败</option>
+        <option value="conflict">数据目录被占用</option>
+      </select>
+    </div>
+    <button class="chip" id="restart">从头演示</button>
+    <a class="chip" href="setup-android.html" title="切换到 Android Material 3 Expressive 原型">切换至 Android 原型 →</a>
+  </div>
+  <div class="line">
+    <div class="grp" id="jumps"><span class="lbl">跳转</span></div>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="bezel">
+    <div class="phone" id="phone">
+      <!-- iOS 状态栏 -->
+      <div class="ios-status">
+        <span class="ios-time">9:41</span>
+        <div class="island"><span class="cam"></span></div>
+        <div class="ios-indicators" aria-hidden="true">
+          <svg viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 4.2a9.5 9.5 0 0 1 13 0M4.2 7a5.8 5.8 0 0 1 7.6 0"/><circle cx="8" cy="10.2" r="1.2" fill="currentColor" stroke="none"/></svg>
+          <svg viewBox="0 0 26 12" fill="none"><rect x=".75" y=".75" width="21.5" height="10.5" rx="3" stroke="currentColor" stroke-opacity=".4" stroke-width="1.2"/><rect x="2.4" y="2.4" width="17" height="7.2" rx="1.6" fill="currentColor"/><path d="M23.5 4.2v3.6a1.4 1.4 0 0 0 0-3.6z" fill="currentColor" fill-opacity=".45"/></svg>
+        </div>
+      </div>
+
+      <!-- 页面容器 -->
+      <div class="ios-screen" id="screen"></div>
+
+      <!-- Home Indicator -->
+      <div class="home-indicator"><i></i></div>
+    </div>
+  </div>
+
+  <aside class="spec" id="spec"></aside>
+</div>
+
+<script>
+const I = {
+  brand:'<svg viewBox="0 0 1254 1254" aria-label="UniClipboard"><rect width="1254" height="1254" fill="#000"/><path fill="#fff" fill-rule="evenodd" d="M313 274H425V336H482V397H537V460H717V397H772V336H829V274H941V590H1006V663H941V725H1067V785H941V843H1006V909H941V874H878V952H376V874H313V909H247V843H313V785H186V725H313V663H247V590H313ZM392 460H457V523H392ZM797 460H862V523H797ZM454 634H521V742H454ZM733 634H801V742H733ZM565 779H689V829H653V875H601V829H565Z"/></svg>',
+  clip:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2.5" width="8" height="4" rx="1.2"/><path d="M16 4.5h2a2 2 0 0 1 2 2V19a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 19V6.5a2 2 0 0 1 2-2h2"/><path d="m9 13.5 2.2 2.2 4.3-4.7"/></svg>',
+  folder:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4.2l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  cloud:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 11a4 4 0 0 1-.5 8z"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+  minus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 12h12"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  chevL:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
+  chevR:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
+  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 19.5h19z"/><path d="M12 10v4.2M12 17h.01"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v6c0 4.8 3.2 7.8 7.5 9 4.3-1.2 7.5-4.2 7.5-9V6z"/><path d="m9 12 2 2 4-4"/></svg>',
+  devices:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="10" rx="1.5"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="11" rx="1.2"/></svg>',
+  faceid:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3H5a2 2 0 0 0-2 2v2M17 3h2a2 2 0 0 1 2 2v2M7 21H5a2 2 0 0 1-2-2v-2M17 21h2a2 2 0 0 0 2-2v-2"/><path d="M9 9v1.5M15 9v1.5M12 9v3.5h-1M9 15.2a4.2 4.2 0 0 0 6 0"/></svg>',
+  key:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></svg>',
+  eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>',
+  eyeOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 10.6a2.6 2.6 0 0 0 3.6 3.6M9.9 5.6A10.7 10.7 0 0 1 12 5.5c6.2 0 10 6.5 10 6.5a17 17 0 0 1-3.3 4M6.6 6.7A16.7 16.7 0 0 0 2 12s3.8 6.5 10 6.5a10 10 0 0 0 4.3-.9"/></svg>',
+  stop:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2.2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  type:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></svg>',
+  link:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.1 0l2.8-2.8a5 5 0 0 0-7.1-7.1L11.2 4.7M14 11a5 5 0 0 0-7.1 0l-2.8 2.8a5 5 0 0 0 7.1 7.1l1.6-1.6"/></svg>',
+  image:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.5"/><path d="m21 16-5-5L6 20"/></svg>',
+  file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+};
+
+const TOTAL = 1204;
+const SOURCES = [
+  { id: 0, ok: true, icon: 'folder', color: '#007AFF', title: '本机 v1 应用数据', sub: 'App Group · group.app.uniclipboard', badge: '默认检测' },
+  { id: 1, ok: true, icon: 'cloud',  color: '#32ADE6', title: 'iCloud 云盘 · UniClipboard 备份', sub: '文件 App · UniClipboard-v1.unicbackup', badge: '文件导入' },
+  { id: 2, ok: false, icon: 'folder', color: '#8E8E93', title: '我的 iPhone · 下载', sub: '文件 App · 未找到受支持的 v1 清单', badge: '无效目录' },
+];
+
+const S = {
+  key: 'w-detecting',
+  src: SOURCES[0],
+  sheet: false,        // Files.app 源选择 Sheet
+  pendingStart: false,
+  committed: 0,
+  runPrior: 0,
+  processed: 0,
+  verified: 0,
+  passErr: false,
+  pass: '',
+  showPass: false,
+  closing: false,
+  closeAsk: false,
+  timer: null,
+};
+
+const $ = s => document.querySelector(s);
+const sim = id => $('#' + id).value;
+const fmt = n => n.toLocaleString('zh-CN');
+
+function clearTimer(){ if(S.timer){ clearInterval(S.timer); clearTimeout(S.timer); S.timer = null; } }
+function go(key){ clearTimer(); S.key = key; S.sheet = false; render(); enter(key); }
+
+function enter(key){
+  if(key === 'w-detecting'){
+    S.timer = setTimeout(() => {
+      const d = sim('simDetect');
+      const next = d === 'found' ? 'w-found' : d === 'none' ? 'w-none' : 'w-error';
+      if(S.pendingStart){ S.pendingStart = false; return startFrom(next); }
+      go(next);
+    }, 1350);
+  }
+  if(key === 'm-cred-system'){
+    S.timer = setTimeout(() => {
+      const c = sim('simCred');
+      if(c === 'ok') return beginImport();
+      S.passErr = false; S.pass = ''; S.showPass = false;
+      go(c === 'pass' ? 'm-cred-pass' : 'm-cred-denied');
+    }, 1700);
+  }
+  if(key === 'm-import'){
+    const failAt = Math.round(TOTAL * .41);
+    S.timer = setInterval(() => {
+      S.processed = Math.min(TOTAL, S.processed + 24);
+      if(sim('simResult') === 'failed' && S.processed >= failAt){
+        S.processed = failAt; S.committed = Math.max(S.committed, failAt); return go('r-failed');
+      }
+      S.committed = Math.max(S.committed, S.processed);
+      if(S.processed >= TOTAL){ S.verified = 0; return go('m-verify'); }
+      updateProgress();
+    }, 60);
+  }
+  if(key === 'm-verify'){
+    S.timer = setInterval(() => {
+      S.verified = Math.min(TOTAL, S.verified + 42);
+      if(S.verified >= TOTAL){
+        const r = sim('simResult');
+        if(r === 'partial') return go('r-partial');
+        return go(S.runPrior >= TOTAL ? 'r-complete-retry' : 'r-complete');
+      }
+      updateProgress();
+    }, 60);
+  }
+  if(key === 'm-stopping'){
+    S.timer = setTimeout(() => go(S.closing ? 'closed' : 'r-cancelled'), 1400);
+  }
+}
+
+function startFrom(k){
+  if(k === 'w-found') return go('m-confirm');
+  go('history-empty');
+}
+function startMigration(){
+  if(sim('simResult') === 'conflict') return go('m-conflict');
+  go('m-cred-system');
+}
+function beginImport(){
+  S.runPrior = S.committed;
+  S.processed = S.committed;
+  go('m-import');
+}
+
+/* ---------- 通用片段 ---------- */
+function navBar({ title='', left=null, right=null }){
+  return `<div class="ios-nav">
+    <div>${left || ''}</div>
+    ${title ? `<div class="nav-title">${title}</div>` : ''}
+    <div>${right || ''}</div>
+  </div>`;
+}
+function closeBtn(disabled=false){
+  return `<button class="glass-btn" data-act="try-close" ${disabled?'disabled':''} aria-label="关闭">${I.x}</button>`;
+}
+function backBtn(act='back-welcome', disabled=false){
+  return `<button class="glass-btn" data-act="${act}" ${disabled?'disabled':''} aria-label="返回">${I.chevL}</button>`;
+}
+
+function stepBadge(idx, state){
+  if(state === 'done') return `<div class="ios-step-badge done">${I.check}</div>`;
+  return `<div class="ios-step-badge ${state}">${idx}</div>`;
+}
+
+function stepChecklist(cur, activeContent, statusMap = {}){
+  const defs = [
+    { idx: 1, title: '解锁旧数据', sub: '只读读取 iOS 钥匙串或输入 v1 口令' },
+    { idx: 2, title: '导入历史记录', sub: '按条提交，中断后保留已提交内容' },
+    { idx: 3, title: '重新打开并校验', sub: '逐条比对导入内容的完整性' },
+  ];
+  return `<div class="ios-step-list">
+    ${defs.map((d, i) => {
+      const state = i < cur ? 'done' : i === cur ? 'active' : 'pending';
+      const st = statusMap[i] || (state === 'done' ? { text: '已完成', cls: 'ok' } : state === 'pending' ? { text: '等待中', cls: 'muted' } : null);
+      return `<div class="ios-step-row ${state}">
+        ${stepBadge(d.idx, state)}
+        <div class="ios-step-content">
+          <div class="ios-step-head">
+            <span class="ios-step-title">${d.title}</span>
+            ${st ? `<span class="ios-step-status ${st.cls}" id="${st.id||''}">${st.text}</span>` : ''}
+          </div>
+          ${state !== 'active' ? `<div class="ios-step-sub">${d.sub}</div>` : activeContent}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function sourceRow(){
+  const bad = !S.src.ok;
+  return `<div class="ios-sec-label">数据来源</div>
+  <div class="ios-group">
+    <button class="ios-row tap" data-act="open-sheet">
+      <div class="ios-tile" style="background:${bad ? '#FF3B30' : S.src.color}">${I[S.src.icon]}</div>
+      <div class="ios-row-body">
+        <div class="ios-row-title">${S.src.title}</div>
+        <div class="ios-row-sub mono">${S.src.sub}</div>
+      </div>
+      <span class="ios-row-val">更改</span>
+      <span class="ios-chev">${I.chevR}</span>
+    </button>
+  </div>`;
+}
+
+function confirmContent(invalidBanner=''){
+  return `<div class="ios-page-header">
+    <h2>从 v1 导入历史</h2>
+    <p>在这台 iPhone 上发现了 v1 数据。导入后可在历史中直接使用。</p>
+  </div>
+  ${sourceRow()}
+  ${invalidBanner}
+  <div class="ios-sec-label">迁移范围</div>
+  <div class="ios-group">
+    <div class="ios-scope-grid">
+      <div class="ios-scope-col yes">
+        <h4>会导入</h4>
+        <ul>
+          <li>${I.check}文本与 HTML</li>
+          <li>${I.check}图片</li>
+          <li>${I.check}文件</li>
+          <li>${I.check}标签及关联</li>
+        </ul>
+      </div>
+      <div class="ios-scope-col no">
+        <h4>不会导入</h4>
+        <ul>
+          <li>${I.minus}设置</li>
+          <li>${I.minus}收藏</li>
+          <li>${I.minus}设备身份</li>
+          <li>${I.minus}信任关系</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="ios-sec-label">开始前须知</div>
+  <div class="ios-group">
+    <div class="ios-row">
+      <div class="ios-tile" style="background:#007AFF">${I.devices}</div>
+      <div class="ios-row-body">
+        <div class="ios-row-title">其他设备需重新配对</div>
+        <div class="ios-row-sub">其他设备升级至 v2 后，再扫码或配对连接。</div>
+      </div>
+    </div>
+    <div class="ios-row">
+      <div class="ios-tile" style="background:#34C759">${I.shield}</div>
+      <div class="ios-row-body">
+        <div class="ios-row-title">只读迁移，保留旧数据</div>
+        <div class="ios-row-sub">仅读取 v1 数据，不修改也不删除原文件。</div>
+      </div>
+    </div>
+  </div>
+  <div class="ios-banner warn">
+    ${I.warn}
+    <span><b>请确认旧版扩展未在使用中。</b>如系统分享菜单或键盘扩展正访问旧数据，请先关闭再开始迁移；应用不会自动终止它们。</span>
+  </div>`;
+}
+
+function progressBlock(mode){
+  const verify = mode === 'verify' || (mode === 'stop' && S.verified > 0);
+  const done = verify ? S.verified : S.processed;
+  const pct = Math.round(done / TOTAL * 100);
+  const sub = mode === 'stop'
+    ? '正在等待当前记录写完并安全释放锁，已提交记录会保留。'
+    : verify
+      ? '重新打开目标历史库，逐条校验内容摘要。'
+      : (S.runPrior ? `跳过此前已导入的 ${fmt(S.runPrior)} 条记录，继续写入剩余内容。` : '按条写入历史库；已提交的记录在中断后保留。');
+  return `<div class="ios-step-sub">${sub}</div>
+    <div class="ios-prog-wrap">
+      <div class="ios-prog-track"><div class="ios-prog-fill ${mode==='stop'?'stop':verify?'verify':''}" id="bar" style="width:${pct}%"></div></div>
+      <div class="ios-prog-meta">
+        <span id="cnt">${verify?'已校验':'已处理'} <b>${fmt(done)}</b> / ${fmt(TOTAL)} 条</span>
+        <span id="pct">${pct}%</span>
+      </div>
+    </div>`;
+}
+
+/* ---------- 各状态页面 ---------- */
+const PAGES = {
+  'w-detecting': () => welcomePage(`<span class="ios-spin"></span><span>正在检查这台 iPhone 上的 v1 数据…</span>`, '', S.pendingStart),
+  'w-found':     () => welcomePage(`${I.check}<span>发现 UniClipboard v1 的数据</span>`, 'found', false),
+  'w-none':      () => welcomePage('', '', false),
+  'w-error':     () => welcomePage(
+    `<div style="display:flex;align-items:center;gap:6px">${I.warn}<span>无法检查本机 v1 数据</span></div>
+     <div class="ios-detect-actions">
+       <button class="ios-inline-link" data-act="redetect">重试</button>
+       <button class="ios-inline-link" data-act="manual">从“文件”选择备份</button>
+     </div>`, 'err', false),
+
+  'm-confirm': () => `
+    ${navBar({ title: '从 v1 迁移', left: backBtn('back-welcome') })}
+    <div class="ios-scroll">${confirmContent()}</div>
+    <div class="ios-footer">
+      <button class="ios-btn primary" data-act="start">开始迁移</button>
+      <button class="ios-btn plain" data-act="skip">暂不迁移</button>
+      <div class="ios-foot-hint">之后可在 设置 › 存储 › 从 v1 迁移 中导入</div>
+    </div>`,
+
+  'm-invalid': () => `
+    ${navBar({ title: '从 v1 迁移', left: backBtn('back-welcome') })}
+    <div class="ios-scroll">${confirmContent(`
+      <div class="ios-banner err">
+        ${I.warn}
+        <span>所选位置不是受支持的 v1 数据目录或备份包。请重新选择其他来源。</span>
+      </div>`)}</div>
+    <div class="ios-footer">
+      <button class="ios-btn primary" disabled>开始迁移</button>
+      <button class="ios-btn plain" data-act="skip">暂不迁移</button>
+      <div class="ios-foot-hint">之后可在 设置 › 存储 › 从 v1 迁移 中导入</div>
+    </div>`,
+
+  'm-cred-system': () => `
+    ${navBar({ title: '从 v1 迁移', left: closeBtn() })}
+    <div class="ios-scroll">
+      <div class="ios-page-header">
+        <h2>正在准备迁移</h2>
+        <p>请响应系统的面容 ID 或设备密码验证以读取钥匙串。</p>
+      </div>
+      ${stepChecklist(0, `<div class="ios-step-sub">正在通过 iOS 钥匙串读取 v1 解密凭据…</div>`, { 0: { text: '验证中', cls: 'active' } })}
+    </div>
+    <div class="ios-footer">
+      <button class="ios-btn secondary" data-act="stop">停止迁移</button>
+    </div>
+    <div class="ios-overlay bottom">
+      <div class="ios-sheet">
+        <div class="ios-grabber"></div>
+        <div class="ios-faceid-card">
+          <div class="ios-faceid-glyph">${I.faceid}</div>
+          <div style="font-size:17px;font-weight:600">面容 ID</div>
+          <div style="font-size:13px;color:var(--ios-secondary-label);max-width:260px">
+            验证身份以访问钥匙串中的“UniClipboard v1”项目
+          </div>
+        </div>
+      </div>
+    </div>`,
+
+  'm-cred-pass':   () => passPage(false),
+  'm-cred-denied': () => passPage(true),
+
+  'm-conflict': () => `
+    ${navBar({ title: '从 v1 迁移', left: backBtn('back-confirm') })}
+    <div class="ios-scroll">
+      <div class="ios-page-header">
+        <h2>无法开始迁移</h2>
+        <p>迁移需要独占数据目录。</p>
+      </div>
+      <div class="ios-banner err" style="margin-top:0">
+        ${I.lock}
+        <span><b>数据目录正被其他扩展或后台任务占用。</b>请先关闭分享扩展或等待同步任务结束，然后重试。应用不会强制终止正在运行的任务。</span>
+      </div>
+      <div class="ios-banner info">
+        ${I.shield}
+        <span>尚未读取系统凭据，也未向目标历史库写入任何数据。</span>
+      </div>
+    </div>
+    <div class="ios-footer">
+      <button class="ios-btn primary" data-act="start">重试</button>
+      <button class="ios-btn plain" data-act="skip">暂不迁移</button>
+    </div>`,
+
+  'm-import': () => `
+    ${navBar({ title: '从 v1 迁移', left: closeBtn() })}
+    <div class="ios-scroll">
+      <div class="ios-page-header">
+        <h2>正在导入历史</h2>
+        <p>请保持屏幕常亮并停留在当前页面。</p>
+      </div>
+      ${stepChecklist(1, progressBlock('import'), { 1: { text: Math.round(S.processed/TOTAL*100)+'%', cls: 'active', id: 'stepPct' } })}
+      <div class="ios-banner info">
+        ${I.info}
+        <span>导入期间不会读取系统剪贴板，也不会启动跨设备同步。</span>
+      </div>
+    </div>
+    <div class="ios-footer">
+      <button class="ios-btn secondary" data-act="stop">${I.stop}停止迁移</button>
+    </div>`,
+
+  'm-verify': () => `
+    ${navBar({ title: '从 v1 迁移', left: closeBtn() })}
+    <div class="ios-scroll">
+      <div class="ios-page-header">
+        <h2>正在校验内容</h2>
+        <p>请保持屏幕常亮，即将完成。</p>
+      </div>
+      ${stepChecklist(2, progressBlock('verify'), { 2: { text: Math.round(S.verified/TOTAL*100)+'%', cls: 'ok', id: 'stepPct' } })}
+      <div class="ios-banner info">
+        ${I.info}
+        <span>导入 100% 后需重新打开数据库逐条校验，确认无损坏才标记完成。</span>
+      </div>
+    </div>
+    <div class="ios-footer">
+      <button class="ios-btn secondary" data-act="stop">${I.stop}停止迁移</button>
+    </div>`,
+
+  'm-stopping': () => `
+    ${navBar({ title: '从 v1 迁移', left: closeBtn(true) })}
+    <div class="ios-scroll">
+      <div class="ios-page-header">
+        <h2>正在安全停止</h2>
+        <p>正在等待当前记录提交完成。</p>
+      </div>
+      ${stepChecklist(S.verified ? 2 : 1, progressBlock('stop'), { [S.verified?2:1]: { text: '停止中', cls: 'warn' } })}
+    </div>
+    <div class="ios-footer">
+      <button class="ios-btn secondary" disabled><span class="ios-spin"></span>正在停止…</button>
+    </div>`,
+
+  'r-complete': () => resultPage('ok', I.check, '迁移完成', '所有记录都已导入并通过校验，现可在历史中直接使用。',
+      [['ok', S.committed - S.runPrior, '本次新导入'], ['', TOTAL, '已校验']].concat(S.runPrior ? [['', S.runPrior, '此前已导入']] : []),
+      '',
+      `<button class="ios-btn primary" data-act="enter">开始使用</button>`),
+
+  'r-complete-retry': () => resultPage('ok', I.check, '迁移完成', '没有新的记录需要导入，此前导入的记录仍在历史中。',
+      [['', 0, '本次新导入'], ['', S.runPrior, '此前已导入'], ['ok', TOTAL, '已校验']],
+      '',
+      `<button class="ios-btn primary" data-act="enter">开始使用</button>`),
+
+  'r-partial': () => resultPage('warn', I.warn, '部分数据未能导入', '已导入的记录可以正常使用，问题记录可在重试时再次处理。',
+      [['', TOTAL - 18, '已导入记录'], ['bad', 18, '失败记录'], ['warn', 9, '缺失内容'], ['bad', 6, '校验失败']],
+      `<div class="ios-banner info" style="text-align:left;width:100%">
+        ${I.info}
+        <span><b>缺失内容</b>指记录中丢失的图片或文件附件，不计为失败记录，其余可用内容已保留。</span>
+      </div>`,
+      `<button class="ios-btn primary" data-act="enter">进入应用</button>
+       <button class="ios-btn secondary" data-act="retry">重试迁移</button>`),
+
+  'r-cancelled': () => resultPage('stop', I.stop, '迁移已停止', `已提交的 ${fmt(S.committed)} 条记录已保留，可在历史中使用。继续迁移时会自动跳过它们。`,
+      [['', S.committed - S.runPrior, '本次已提交'], ['', TOTAL - S.committed, '尚未导入']],
+      '',
+      `<button class="ios-btn primary" data-act="retry">继续迁移</button>
+       <button class="ios-btn plain" data-act="enter">进入应用</button>`),
+
+  'r-failed': () => resultPage('err', I.x, '迁移未完成', '读取 v1 数据时出错：部分数据文件已损坏，或格式不受支持。',
+      [['', S.committed, '已提交并保留'], ['', TOTAL - S.committed, '尚未导入']],
+      `<div class="ios-banner info" style="text-align:left;width:100%">
+        ${I.info}
+        <span>已提交的记录<b>不会回滚</b>，仍可在历史中使用。重试会跳过已成功记录；若持续失败，可从“文件”选择其他备份。</span>
+      </div>`,
+      `<button class="ios-btn primary" data-act="retry">重试</button>
+       <button class="ios-btn plain" data-act="enter">不再迁移，进入应用</button>`),
+
+  'history-empty': () => historyPage(0),
+  'history':       () => historyPage(S.committed),
+
+  'closed': () => `
+    <div class="ios-welcome">
+      <div class="ios-ring stop">${I.check}</div>
+      <h1 style="font-size:22px;line-height:28px;margin-top:20px">应用已安全停止并退出</h1>
+      <p class="slogan" style="font-size:14.5px;line-height:21px;margin-top:8px">
+        原型模拟：上滑退出或关闭页面走同一安全取消路径。<br>已提交 ${fmt(S.committed)} 条。setup 未标记完成，下次打开回到迁移确认页（不自动恢复导入）。
+      </p>
+    </div>
+    <div class="ios-footer">
+      <button class="ios-btn primary" data-act="relaunch">模拟重新打开 App</button>
+    </div>`,
+};
+
+function welcomePage(detectHtml, pillCls, waiting){
+  return `
+    <div class="ios-welcome">
+      <div class="ios-app-icon">${I.brand}</div>
+      <h1>欢迎使用 UniClipboard</h1>
+      <p class="slogan">让每一次复制更有用</p>
+      ${detectHtml ? `<div class="ios-detect-pill ${pillCls}">${detectHtml}</div>` : '<div style="height:64px"></div>'}
+    </div>
+    <div class="ios-footer">
+      ${waiting
+        ? `<button class="ios-btn primary" disabled><span class="ios-spin"></span>正在检查数据…</button>`
+        : `<button class="ios-btn primary" data-act="begin">开始使用</button>`}
+    </div>`;
+}
+
+function passPage(denied){
+  const lead = denied ? '面容 ID 或系统钥匙串访问被拒绝。' : '钥匙串凭据无法解锁这份 v1 数据。';
+  return `
+    ${navBar({ title: '从 v1 迁移', left: backBtn('back-confirm') })}
+    <div class="ios-scroll">
+      <div class="ios-page-header">
+        <h2>输入 v1 口令</h2>
+        <p>${lead}请输入在 v1 中设置的口令以继续解锁。</p>
+      </div>
+      ${stepChecklist(0, `
+        <div class="ios-step-sub">口令仅用于本次只读解锁，不会保存、缓存或写入日志。</div>
+        <div class="ios-field-group">
+          <div class="ios-input-wrap ${S.passErr?'bad':''}">
+            <input id="pw" class="ios-input" type="${S.showPass?'text':'password'}" autocomplete="off"
+              placeholder="原型口令：v1pass" value="${S.pass.replace(/"/g,'&quot;')}">
+            <button class="ios-eye-btn" data-act="toggle-pw" aria-label="显示口令">${S.showPass ? I.eyeOff : I.eye}</button>
+          </div>
+          ${S.passErr ? `<div class="ios-field-err">${I.warn}<span>口令不正确，请重试。</span></div>` : ''}
+        </div>
+      `, { 0: { text: '需要口令', cls: 'warn' } })}
+    </div>
+    <div class="ios-footer">
+      <button class="ios-btn primary" data-act="unlock" ${S.pass?'':'disabled'} id="unlockBtn">解锁并继续</button>
+      <button class="ios-btn plain" data-act="skip">暂不迁移</button>
+      <div class="ios-foot-hint">之后可在 设置 › 存储 › 从 v1 迁移 中导入</div>
+    </div>`;
+}
+
+function resultPage(tone, icon, title, lead, stats, note, actions){
+  return `
+    ${navBar({ title: '迁移结果' })}
+    <div class="ios-scroll">
+      <div class="ios-result">
+        <div class="ios-ring ${tone}">${icon}</div>
+        <h2>${title}</h2>
+        <p class="lead">${lead}</p>
+        <div class="ios-stats">
+          ${stats.map(([c,n,l]) => `<div class="ios-stat ${c}"><b>${fmt(n)}</b><span>${l}</span></div>`).join('')}
+        </div>
+        ${note}
+      </div>
+    </div>
+    <div class="ios-footer">${actions}</div>`;
+}
+
+function historyPage(n){
+  const items = [
+    { kind: 'text',  tint: '#007AFF', ic: I.type,  t: 'git rebase -i origin/main --autosquash', meta: 'iPhone · 昨天 21:40' },
+    { kind: 'url',   tint: '#32ADE6', ic: I.link,  t: 'developer.apple.com/design/human-interface-guidelines', meta: 'MacBook Pro · 昨天 18:12' },
+    { kind: 'image', tint: '#34C759', ic: I.image, t: 'IMG_4029.PNG · 1.8 MB', meta: 'iPhone · 11月19日' },
+    { kind: 'file',  tint: '#FF9500', ic: I.file,  t: 'Q4-产品评审纪要.pdf · 420 KB', meta: 'MacBook Pro · 11月18日' },
+    { kind: 'text',  tint: '#007AFF', ic: I.type,  t: '会议要点：周三 10:00 对齐移动端迁移视觉稿', meta: 'iPhone · 11月15日' },
+  ];
+  return `
+    <div class="ios-large-title">历史</div>
+    ${n ? `<div class="ios-scroll" style="padding-bottom:92px">
+      <div class="ios-sec-label" style="margin-top:2px">已导入自 v1 · ${fmt(n)} 条</div>
+      <div class="ios-hist-group">
+        ${items.map(it => `<div class="ios-hist-row">
+          <div class="ios-kind-tile" style="background:${it.tint}22;color:${it.tint}">${it.ic}</div>
+          <div class="ios-hist-text">
+            <div class="ios-hist-primary">${it.t}</div>
+            <div class="ios-hist-meta"><span>${it.meta}</span><span class="ios-v1-pill">v1</span></div>
+          </div>
+        </div>`).join('')}
+      </div>
+      <div class="demo-reset-bar">
+        <span>原型：setup 已标记完成</span>
+        <button data-act="reset">重置原型</button>
+      </div>
+    </div>` : `<div class="ios-empty-hist">
+      <div class="ic">${I.clip}</div>
+      <h3>还没有历史记录</h3>
+      <p>复制文字、链接、图片或通过系统分享发送后，会出现在这里。</p>
+      <div style="margin-top:20px"><button class="ios-btn secondary" style="width:auto;min-height:40px;font-size:14px;padding:0 18px" data-act="reset">重置原型</button></div>
+    </div>`}
+    <div class="ios-glass-dock">
+      <div class="ios-dock-search">${I.search}<span>搜索历史</span></div>
+      <div class="ios-dock-fab">${I.plus}</div>
+    </div>`;
+}
+
+function filesSheet(){
+  return `<div class="ios-overlay bottom" data-act="close-sheet">
+    <div class="ios-sheet" onclick="event.stopPropagation()">
+      <div class="ios-grabber"></div>
+      <div class="ios-sheet-head">
+        <h3>选择 v1 数据来源</h3>
+        <button class="nav-text-btn" data-act="close-sheet">完成</button>
+      </div>
+      <div class="ios-group">
+        ${SOURCES.map((s,i) => `<button class="ios-row tap" data-src="${i}">
+          <div class="ios-tile" style="background:${s.ok ? s.color : '#8E8E93'}">${I[s.icon]}</div>
+          <div class="ios-row-body">
+            <div class="ios-row-title">${s.title}</div>
+            <div class="ios-row-sub mono">${s.sub}</div>
+          </div>
+          ${S.src.id === s.id ? `<span style="color:var(--ios-status-green);width:18px;height:18px">${I.check}</span>` : ''}
+        </button>`).join('')}
+      </div>
+      <div class="ios-sec-footer">模拟调用 iOS 原生 UIDocumentPickerViewController（文件 App）选择 v1 备份目录。</div>
+    </div>
+  </div>`;
+}
+
+function closeAlert(){
+  return `<div class="ios-overlay">
+    <div class="ios-alert">
+      <div class="ios-alert-body">
+        <h3>迁移正在进行</h3>
+        <p>关闭会先安全停止迁移并释放数据锁。已提交的记录会保留，下次打开可继续导入。</p>
+      </div>
+      <div class="ios-alert-acts">
+        <button data-act="close-cancel">继续迁移</button>
+        <button class="danger" data-act="close-confirm">停止并退出</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- 规格说明 ---------- */
+const SPEC = {
+  'w-detecting': ['欢迎 · 检测中', [
+    '后台检查本机 App Group / v1 沙盒数据。<b>不读取剪贴板，不触发面容 ID / 钥匙串，不自动迁移。</b>',
+    '使用 <code>systemBackground</code> 简洁欢迎页与 50pt 单色墨胶囊主按钮（<code>iosAccent</code>）。',
+    '检测未结束前点“开始使用”，按钮进入等待态并在检测结束后自动分流。']],
+  'w-found': ['欢迎 · 发现本机 v1', [
+    '仅以温和的语义胶囊提示发现 v1 数据，<b>不直接展示导入动作</b>。',
+    '点击“开始使用”进入迁移确认页；发现源不等于用户授权。']],
+  'w-none': ['欢迎 · 未发现', [
+    '点击“开始使用”直接进入历史页，<b>没有多余完成页</b>。',
+    '同步持久化 setup 完成标记，后续启动直接进入历史。']],
+  'w-error': ['欢迎 · 检测出错', [
+    '与“未发现”明确区分：红色提示胶囊提供“重试”或调用 iOS“文件”App 手动导入备份。',
+    '用户仍可直接点“开始使用”跳过迁移进入历史。']],
+  'm-confirm': ['迁移 · 确认', [
+    '使用 iOS 26 <code>systemGroupedBackground</code> + 20pt 圆角 Inset Grouped 卡片与 28pt 彩色圆角图标块（<code>SettingsIconTile</code>）。',
+    '在触达钥匙串或写入前明确说明会导入 / 不会导入项，以及设备需升级并重新配对。',
+    '数据来源支持切换本机覆盖升级数据或通过 iOS“文件”App 选取备份包。',
+    '底部单色墨主按钮“开始迁移”+ 文本按钮“暂不迁移”，并注明后续入口：<code>设置 › 存储 › 从 v1 迁移</code>。']],
+  'm-invalid': ['迁移 · 无效来源', [
+    '选择非 v1 目录或损坏备份时明确报错，“开始迁移”保持禁用。',
+    '不会产生误导性的成功状态，可重选或暂不迁移。']],
+  'm-cred-system': ['迁移 · 钥匙串 / 面容 ID', [
+    '仅在点击“开始迁移”后请求 iOS 钥匙串与面容 ID / 触控 ID 验证。',
+    '纵向 3 步清单复用 <code>SetupStepRow</code> / <code>SetupStepBadge</code>（活跃蓝圈、完成绿勾、待办灰环），适配手机窄屏。',
+    '此阶段同样支持停止迁移。']],
+  'm-cred-pass': ['迁移 · 输入口令', [
+    '钥匙串无法解锁时在当前流程内请求旧口令，不跳出独立弹窗打断上下文。',
+    '口令不落盘、不写日志，输入错误可重试或暂不迁移。']],
+  'm-cred-denied': ['迁移 · 钥匙串被拒', [
+    '用户取消面容 ID 或拒绝钥匙串访问时自动回落至口令输入。',
+    '仍保留“暂不迁移”出口。']],
+  'm-conflict': ['迁移 · 目录被占用', [
+    '提示分享扩展或后台任务正占用数据目录，<b>不强制终止</b>运行中任务。',
+    '明确告知尚未读取凭据且未写入任何数据。']],
+  'm-import': ['迁移 · 导入中', [
+    '使用纵向 <code>SetupStepRow</code> 展示阶段进度与 <code>已处理 / 总数</code>，<b>不虚构剩余时间（ETA）</b>。',
+    '提示保持屏幕常亮并停留在当前页面（防止 iOS 后台挂起），期间不捕获剪贴板、不启动同步。',
+    '点击左上角 Liquid Glass 关闭按钮触发原生 iOS Alert，走同一安全停止路径。']],
+  'm-verify': ['迁移 · 校验中', [
+    '导入 100% 后自动进入第 3 步校验，进度条切换为 <code>setupStatusGreen</code>，计数切换为“已校验”。',
+    '校验完成前不显示“迁移完成”。']],
+  'm-stopping': ['迁移 · 正在停止', [
+    '等待当前记录安全提交并释放锁后才展示终态，期间禁用所有操作按钮。']],
+  'r-complete': ['结果 · 完成', [
+    '“迁移完成”仅用于完整且通过校验的终态。',
+    '卡片网格展示“本次新导入”与“已校验”；“开始使用”直接进入历史页，不自动写入剪贴板。']],
+  'r-complete-retry': ['结果 · 重试无新增', [
+    '明确区分“本次新导入（0）”与“此前已导入”，避免将幂等重试误报为空历史。']],
+  'r-partial': ['结果 · 部分导入', [
+    '分别展示已导入、失败记录、缺失内容与校验失败（为 0 不显示）；解释缺失内容为附件丢失而非整条失败。',
+    '主按钮“进入应用”，次按钮“重试迁移”。']],
+  'r-cancelled': ['结果 · 已停止', [
+    '告知已提交记录保留且继续迁移时自动跳过。',
+    '主按钮“继续迁移”，次按钮“进入应用”。']],
+  'r-failed': ['结果 · 失败', [
+    '展示安全可操作原因，不含路径/正文/秘密；<b>明确说明已提交记录不会回滚</b>。',
+    '主按钮“重试”，次按钮“不再迁移，进入应用”。']],
+  'history-empty': ['历史（无迁移）', [
+    '跳过或无 v1 数据时进入历史页，持久化 setup 完成标记。']],
+  'history': ['历史（迁移后）', [
+    '复刻 <code>HomeLargeTitle</code>（34pt Bold）+ iOS 26 24pt 分组行 + <code>iosKindTints</code> 图标块 + Liquid Glass 底部悬浮搜索栏。']],
+  'closed': ['关闭 / 退出模拟', [
+    '模拟中途关闭或退出：走同一安全停止路径，保留已提交记录，<b>不标记 setup 完成</b>，重开回到迁移确认页且不自动恢复导入。']],
+};
+
+const JUMPS = [
+  ['w-detecting','欢迎·检测中'],['w-found','欢迎·发现'],['w-none','欢迎·未发现'],['w-error','欢迎·出错'],
+  ['m-confirm','确认'],['m-invalid','无效来源'],['m-cred-system','面容ID/钥匙串'],['m-cred-pass','输入口令'],['m-cred-denied','凭据被拒'],
+  ['m-conflict','目录被占用'],['m-import','导入中'],['m-verify','校验中'],['m-stopping','停止中'],
+  ['r-complete','完成'],['r-complete-retry','重试无新增'],['r-partial','部分'],['r-cancelled','已停止'],['r-failed','失败'],
+  ['history','历史'],['closed','安全退出'],
+];
+
+function render(){
+  const k = S.key;
+  const plain = k.startsWith('w-') || k === 'closed';
+  $('#phone').classList.toggle('bg-plain', plain);
+  $('#screen').innerHTML = PAGES[k]() + (S.sheet ? filesSheet() : '') + (S.closeAsk ? closeAlert() : '');
+
+  const [t, items] = SPEC[k];
+  $('#spec').innerHTML = `
+    <div class="spec-top"><h3>${t}</h3><span class="key">${k}</span></div>
+    <ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>
+    <div class="spec-block">
+      <h4>iOS 前端设计语言映射（app/expo）</h4>
+      色板：<code>colors.ios.ts</code> 单色墨 <code>#15171C / #F4F2EE</code> + <code>systemGroupedBackground</code><br>
+      组件：<code>AppButton.ios</code>（50pt 胶囊）、<code>SettingsIconTile</code>（28pt 彩底圆角）、<code>SetupStepRow</code>（步骤清单）、<code>HeaderCircleButton</code>（Liquid Glass 圆钮）、<code>HistoryListRow</code>（24pt 分组行）
+    </div>`;
+
+  document.querySelectorAll('#jumps .chip').forEach(c => c.classList.toggle('on', c.dataset.jump === k));
+  const pw = $('#pw');
+  if(pw){
+    pw.focus();
+    pw.oninput = e => {
+      S.pass = e.target.value;
+      const b = $('#unlockBtn'); if(b) b.disabled = !S.pass;
+    };
+    pw.onkeydown = e => { if(e.key === 'Enter' && S.pass) act('unlock'); };
+  }
+}
+
+function updateProgress(){
+  const verify = S.key === 'm-verify';
+  const done = verify ? S.verified : S.processed;
+  const pct = Math.round(done / TOTAL * 100);
+  const bar = $('#bar'); if(!bar) return;
+  bar.style.width = pct + '%';
+  $('#cnt').innerHTML = `${verify?'已校验':'已处理'} <b>${fmt(done)}</b> / ${fmt(TOTAL)} 条`;
+  $('#pct').textContent = pct + '%';
+  const sp = $('#stepPct'); if(sp) sp.textContent = pct + '%';
+}
+
+function act(a){
+  switch(a){
+    case 'begin':
+      if(S.key === 'w-detecting'){ S.pendingStart = true; return render(); }
+      return startFrom(S.key);
+    case 'redetect': return go('w-detecting');
+    case 'manual': S.src = SOURCES[1]; return go('m-confirm');
+    case 'back-welcome': return go('w-found');
+    case 'back-confirm': return go('m-confirm');
+    case 'open-sheet': S.sheet = true; return render();
+    case 'close-sheet': S.sheet = false; return render();
+    case 'skip': return go('history-empty');
+    case 'start': return startMigration();
+    case 'stop': return go('m-stopping');
+    case 'toggle-pw': S.showPass = !S.showPass; return render();
+    case 'unlock':
+      if(!S.pass) return;
+      if(S.pass !== 'v1pass'){ S.passErr = true; S.pass = ''; return render(); }
+      S.passErr = false; S.pass = ''; return beginImport();
+    case 'retry': return startMigration();
+    case 'enter': return go(S.committed ? 'history' : 'history-empty');
+    case 'reset':
+      S.committed = 0; S.runPrior = 0; S.processed = 0; S.verified = 0;
+      S.src = SOURCES[0]; S.closing = false; S.closeAsk = false;
+      return go('w-detecting');
+    case 'relaunch': S.closing = false; S.processed = S.committed; return go('m-confirm');
+    case 'try-close':
+      if(['m-import','m-verify','m-cred-system'].includes(S.key)){ S.closeAsk = true; return render(); }
+      return go('m-confirm');
+    case 'close-cancel': S.closeAsk = false; return render();
+    case 'close-confirm': S.closeAsk = false; S.closing = true; return go('m-stopping');
+  }
+}
+
+document.addEventListener('click', e => {
+  const s = e.target.closest('[data-src]');
+  if(s){ S.src = SOURCES[+s.dataset.src]; S.sheet = false; return go(S.src.ok ? 'm-confirm' : 'm-invalid'); }
+  const b = e.target.closest('[data-act]');
+  if(b && !b.disabled) return act(b.dataset.act);
+});
+document.querySelectorAll('[data-theme-btn]').forEach(b => b.onclick = () => {
+  document.documentElement.dataset.theme = b.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach(x => x.classList.toggle('on', x === b));
+});
+$('#restart').onclick = () => act('reset');
+
+const PRESET = {
+  'm-import':         () => { S.runPrior = 0; S.processed = 390; S.committed = 390; S.verified = 0; },
+  'm-verify':         () => { S.runPrior = 0; S.processed = TOTAL; S.committed = TOTAL; S.verified = 540; },
+  'm-stopping':       () => { S.runPrior = 0; S.processed = 312; S.committed = 312; S.verified = 0; S.closing = false; },
+  'r-complete':       () => { S.runPrior = 0; S.committed = TOTAL; },
+  'r-complete-retry': () => { S.runPrior = TOTAL; S.committed = TOTAL; },
+  'r-partial':        () => { S.runPrior = 0; S.committed = TOTAL - 18; },
+  'r-cancelled':      () => { S.runPrior = 0; S.committed = 312; },
+  'r-failed':         () => { S.runPrior = 0; S.committed = 494; },
+  'history':          () => { if(!S.committed) S.committed = TOTAL; },
+  'closed':           () => { S.committed = 312; },
+  'm-invalid':        () => { S.src = SOURCES[2]; },
+  'm-confirm':        () => { S.src = SOURCES[0]; },
+  'm-cred-pass':      () => { S.passErr = false; S.pass = ''; },
+  'm-cred-denied':    () => { S.passErr = false; S.pass = ''; },
+};
+
+const jumps = $('#jumps');
+JUMPS.forEach(([k, l]) => {
+  const c = document.createElement('button');
+  c.className = 'chip'; c.dataset.jump = k; c.textContent = l;
+  c.onclick = () => {
+    clearTimer(); S.pendingStart = false; S.closeAsk = false; S.sheet = false;
+    (PRESET[k] || (() => {}))();
+    S.key = k; render();
+    if(['w-detecting','m-cred-system','m-import','m-verify','m-stopping'].includes(k)) enter(k);
+  };
+  jumps.appendChild(c);
+});
+
+go('w-detecting');
+</script>
+</body>
+</html>

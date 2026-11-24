@@ -6,6 +6,7 @@ import {
   PlatformColor,
   DynamicColorIOS,
   type KeyboardTypeOptions,
+  type ReturnKeyTypeOptions,
 } from 'react-native';
 
 export interface AppTextFieldProps {
@@ -18,6 +19,9 @@ export interface AppTextFieldProps {
   keyboardType?: string;
   fullWidth?: boolean;
   colors?: unknown;
+  testID?: string;
+  returnKeyType?: ReturnKeyTypeOptions;
+  onSubmitEditing?: () => void;
 }
 
 const KEYBOARD_MAP: Record<string, KeyboardTypeOptions> = {
@@ -39,17 +43,24 @@ export function AppTextField({
   secure,
   keyboardType,
   fullWidth,
+  testID,
+  returnKeyType,
+  onSubmitEditing,
 }: AppTextFieldProps) {
   return (
     <View style={fullWidth ? styles.fullWidth : undefined}>
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <TextInput
+        testID={testID}
+        accessibilityLabel={label ?? placeholder}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         editable={disabled === undefined ? true : !disabled}
         secureTextEntry={secure}
         keyboardType={keyboardType ? KEYBOARD_MAP[keyboardType] ?? 'default' : 'default'}
+        returnKeyType={returnKeyType}
+        onSubmitEditing={onSubmitEditing}
         style={styles.input}
       />
     </View>

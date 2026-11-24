@@ -13,22 +13,15 @@ which files were adapted during migration.
 - Original history cards, list/compact layouts, search, filters, multi-selection,
   context menus, word selection, phone detail pages and tablet workspace.
 - Original theme, translations, onboarding artwork and platform UI components.
-- Settings and device composition reuse the original native rows and groups.
-  History preferences, demo reset, appearance and language are interactive.
-  System-dependent settings have explicit unavailable pages. Device names are
-  fixtures. The connection sheet is a shell-only presentation.
-
-All history is generated in memory. Deletion and favorites affect demo records
-only. Demo preferences reset with the process, except appearance, history layout
-and word-picker UI preferences, which use this app's own AsyncStorage sandbox.
-The main screen opens directly. Onboarding remains available from About and
-Developer settings. Every main screen displays the demo banner.
-
-The shell does not start an Engine, open the old database, perform network
-requests, access the system clipboard, pair devices, transfer content, register
-background services or emit analytics. Those actions show an unavailable notice.
-No Engine binding or future integration interface is defined here. Existing
-clipboard DTOs are local presentation types, not the new Engine contract.
+- In-process Go Engine integration via `modules/unic-engine` (wrapping
+  `bindings/mobile` as `UnicCore.xcframework` on iOS and `unic-engine.aar` on
+  Android) and `src/engine/`, including native iOS/Android first-install and
+  offline v1 migration setup (`src/screens/setup/`), SQLite-backed history,
+  pairing with mandatory fingerprint approval, text/file commits and Settings >
+  Storage v1 migration.
+- When `UnicEngine` is absent in JS-only runs, `useEngineStore` explicitly enters
+  `mode: "unavailable"` and renders the `src/shell` demo presentation with explicit
+  unavailable notices rather than faking native behavior.
 
 ## Development
 
@@ -40,9 +33,10 @@ npm ci
 npm start
 ```
 
-Build and run on an explicitly selected development device:
+Build native Go bindings (`UnicCore.xcframework` + `unic-engine.aar`) and run on a device/simulator:
 
 ```sh
+npm run build:engine
 npm run ios -- --device <device-id>
 npm run android -- --device <device-id>
 ```
@@ -79,5 +73,6 @@ The [E2E guide](e2e/README.md) describes the native Maestro flows and artifact
 receipt. Native builds and native UI execution are separate from bundle
 acceptance. Do not count an unexecuted flow as passing.
 
-See the [migration receipt](../../docs/exec/expo-ui-shell.md) and
+See the [migration receipt](../../docs/exec/expo-ui-shell.md),
+[mobile Engine integration receipt](../../docs/exec/0031-mobile-engine-integration.md) and
 [repository architecture](../../docs/architecture/overview.md).

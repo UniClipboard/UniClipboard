@@ -1,0 +1,49 @@
+apply plugin: 'com.android.library'
+apply plugin: 'expo-module-gradle-plugin'
+
+group = 'app.uniclipboard.engine'
+version = '0.1.0'
+
+expoModule {
+  canBePublished false
+}
+
+def unpackedAarDir = layout.buildDirectory.dir("unpacked-go-aar").get().asFile
+def aarFile = file("libs/unic-engine.aar")
+def markerFile = new File(unpackedAarDir, "classes.jar")
+
+if (aarFile.exists() && (!markerFile.exists() || aarFile.lastModified() > markerFile.lastModified())) {
+  copy {
+    from(zipTree(aarFile))
+    into(unpackedAarDir)
+  }
+}
+
+def unpackGoAar = tasks.register("unpackGoAar", Sync) {
+  from(zipTree(aarFile))
+  into(unpackedAarDir)
+}
+
+preBuild.dependsOn(unpackGoAar)
+
+android {
+  namespace "app.uniclipboard.engine"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+    consumerProguardFiles "${unpackedAarDir}/proguard.txt"
+  }
+  sourceSets {
+    main {
+      jniLibs.srcDirs += "${unpackedAarDir}/jni"
+    }
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+  implementation files(new File(unpackedAarDir, "classes.jar"))
+}

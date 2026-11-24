@@ -1,0 +1,1526 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>unic · Android 首次安装与 v1 迁移引导原型</title>
+<!--
+  Interactive Android mobile prototype for first-install setup and v1 migration.
+  Follows the live Android presentation language in app/expo/src/ (Material 3 Expressive,
+  colors.android.ts baseline + Material You dynamic seeds, 20dp/4dp segmented grouped lists
+  with 2dp gaps, 40dp SettingsLeadingIcon circles, 16dp tonal filled TextField without
+  indicator line, 56dp M3 pill buttons, FloatingNavigationBar + FAB).
+  Open directly in a browser.
+-->
+<style>
+  /* ---------- 外部工作台变量 ---------- */
+  :root{
+    --stage-bg:#eceaf2; --bar-bg:rgba(254,247,255,.88); --bar-border:#ddd6e6;
+    --bar-text:#1d1b20; --bar-muted:#5f5a67; --bar-faint:#8e8896;
+    --bar-surface:#f3edf7; --bar-accent:#6750a4; --bar-on-accent:#ffffff;
+    --spec-bg:#ffffff; --spec-shadow:0 18px 44px -14px rgba(29,27,32,.18),0 0 0 .5px rgba(0,0,0,.08);
+
+    /* ---------- Android M3 Expressive Baseline Light (colors.android.ts) ---------- */
+    --m3-primary:#6750a4;
+    --m3-on-primary:#ffffff;
+    --m3-primary-container:#eaddff;
+    --m3-on-primary-container:#21005d;
+    --m3-bg:#fef7ff;
+    --m3-surface:#fef7ff;
+    --m3-surface-lowest:#ffffff;
+    --m3-surface-low:#f7f2fa;
+    --m3-surface-mid:#f3edf7;
+    --m3-surface-high:#ece6f0;
+    --m3-surface-highest:#e6e0e9;
+    --m3-on-surface:#1d1b20;
+    --m3-on-surface-variant:#49454f;
+    --m3-outline:#79747e;
+    --m3-outline-variant:#cac4d0;
+    --m3-disabled:#cac4d0;
+    --m3-ripple:rgba(29,27,32,.10);
+    --m3-scrim:rgba(0,0,0,.36);
+
+    /* M3 语义状态色 (FIXED_LIGHT) */
+    --m3-error:#b3261e;
+    --m3-on-error:#ffffff;
+    --m3-error-container:#f9dedc;
+    --m3-on-error-container:#410e0b;
+    --m3-warning:#8b5000;
+    --m3-on-warning:#ffffff;
+    --m3-warning-container:#ffdcbe;
+    --m3-on-warning-container:#2c1600;
+    --m3-success:#146c2e;
+    --m3-on-success:#ffffff;
+    --m3-success-container:#c4efc6;
+    --m3-on-success-container:#002107;
+    --m3-info:#0b57d0;
+    --m3-on-info:#ffffff;
+    --m3-info-container:#d3e3fd;
+    --m3-on-info-container:#041e49;
+  }
+
+  /* Material You 动态取色预设 (浅色) */
+  [data-seed=ocean]{
+    --bar-accent:#1c5fa8;
+    --m3-primary:#1c5fa8; --m3-on-primary:#ffffff;
+    --m3-primary-container:#d4e3ff; --m3-on-primary-container:#001c3a;
+    --m3-bg:#f8f9ff; --m3-surface:#f8f9ff;
+    --m3-surface-low:#f2f4fa; --m3-surface-mid:#eceef5;
+    --m3-surface-high:#e6e8ef; --m3-surface-highest:#e0e3ea;
+    --m3-on-surface:#191c20; --m3-on-surface-variant:#43474e;
+    --m3-outline:#74777f; --m3-outline-variant:#c3c6cf;
+  }
+  [data-seed=sage]{
+    --bar-accent:#35693e;
+    --m3-primary:#35693e; --m3-on-primary:#ffffff;
+    --m3-primary-container:#b7f1ba; --m3-on-primary-container:#002109;
+    --m3-bg:#f7fbf2; --m3-surface:#f7fbf2;
+    --m3-surface-low:#f1f5ec; --m3-surface-mid:#ebefe6;
+    --m3-surface-high:#e5eae1; --m3-surface-highest:#e0e4db;
+    --m3-on-surface:#181d17; --m3-on-surface-variant:#424940;
+    --m3-outline:#72796f; --m3-outline-variant:#c2c9bd;
+  }
+
+  /* ---------- Android M3 Expressive Baseline Dark (colors.android.ts) ---------- */
+  [data-theme=dark]{
+    --stage-bg:#0d0c10; --bar-bg:rgba(24,22,29,.90); --bar-border:#2d2a34;
+    --bar-text:#e6e0e9; --bar-muted:#a9a2b2; --bar-faint:#756f7e;
+    --bar-surface:#211f26; --bar-accent:#d0bcff; --bar-on-accent:#381e72;
+    --spec-bg:#1b1920; --spec-shadow:0 20px 50px -12px rgba(0,0,0,.68),0 0 0 .5px rgba(255,255,255,.08);
+
+    --m3-primary:#d0bcff;
+    --m3-on-primary:#381e72;
+    --m3-primary-container:#4f378b;
+    --m3-on-primary-container:#eaddff;
+    --m3-bg:#141218;
+    --m3-surface:#141218;
+    --m3-surface-lowest:#0f0d13;
+    --m3-surface-low:#1d1b20;
+    --m3-surface-mid:#211f26;
+    --m3-surface-high:#2b2930;
+    --m3-surface-highest:#36343b;
+    --m3-on-surface:#e6e0e9;
+    --m3-on-surface-variant:#cac4d0;
+    --m3-outline:#938f99;
+    --m3-outline-variant:#49454f;
+    --m3-disabled:#49454f;
+    --m3-ripple:rgba(230,224,233,.12);
+    --m3-scrim:rgba(0,0,0,.58);
+
+    /* M3 语义状态色 (FIXED_DARK) */
+    --m3-error:#f2b8b5;
+    --m3-on-error:#601410;
+    --m3-error-container:#8c1d18;
+    --m3-on-error-container:#f9dedc;
+    --m3-warning:#ffb870;
+    --m3-on-warning:#4a2800;
+    --m3-warning-container:#693c00;
+    --m3-on-warning-container:#ffdcbe;
+    --m3-success:#88d98e;
+    --m3-on-success:#00390f;
+    --m3-success-container:#00531d;
+    --m3-on-success-container:#c4efc6;
+    --m3-info:#a8c7fa;
+    --m3-on-info:#062e6f;
+    --m3-info-container:#0842a0;
+    --m3-on-info-container:#d3e3fd;
+  }
+  [data-theme=dark][data-seed=ocean]{
+    --bar-accent:#a5c8ff; --bar-on-accent:#00315f;
+    --m3-primary:#a5c8ff; --m3-on-primary:#00315f;
+    --m3-primary-container:#004786; --m3-on-primary-container:#d4e3ff;
+    --m3-bg:#111318; --m3-surface:#111318;
+    --m3-surface-low:#191c20; --m3-surface-mid:#1d2024;
+    --m3-surface-high:#282a2f; --m3-surface-highest:#33353a;
+    --m3-on-surface:#e2e2e9; --m3-on-surface-variant:#c3c6cf;
+    --m3-outline:#8d9199; --m3-outline-variant:#43474e;
+  }
+  [data-theme=dark][data-seed=sage]{
+    --bar-accent:#9cd49f; --bar-on-accent:#003914;
+    --m3-primary:#9cd49f; --m3-on-primary:#003914;
+    --m3-primary-container:#1c5128; --m3-on-primary-container:#b7f1ba;
+    --m3-bg:#101510; --m3-surface:#101510;
+    --m3-surface-low:#181d17; --m3-surface-mid:#1c211b;
+    --m3-surface-high:#262b25; --m3-surface-highest:#313630;
+    --m3-on-surface:#e0e4db; --m3-on-surface-variant:#c2c9bd;
+    --m3-outline:#8c9388; --m3-outline-variant:#424940;
+  }
+
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;background:var(--stage-bg);color:var(--bar-text);
+    font:13px/1.5 "Roboto","Noto Sans SC","PingFang SC",system-ui,-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased;transition:background .2s;
+  }
+  button{font:inherit;color:inherit;cursor:pointer}
+  svg{display:block}
+  a{color:inherit;text-decoration:none}
+
+  /* ---------- 顶部控制条 ---------- */
+  .toolbar{
+    position:sticky;top:0;z-index:30;display:flex;flex-direction:column;gap:8px;
+    padding:10px 24px;background:var(--bar-bg);backdrop-filter:blur(14px);
+    border-bottom:1px solid var(--bar-border);
+  }
+  .toolbar .line{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  .toolbar b{font-size:14px}
+  .platform-badge{
+    display:inline-flex;align-items:center;gap:5px;padding:2px 10px;border-radius:999px;
+    background:var(--bar-accent);color:var(--bar-on-accent);font-size:11px;font-weight:600;
+  }
+  .grp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+  .lbl{color:var(--bar-muted);font-size:12px;margin-right:4px}
+  .chip{
+    border:1px solid var(--bar-border);background:var(--spec-bg);color:var(--bar-text);
+    padding:3px 10px;border-radius:999px;font-size:11.5px;transition:all .15s;
+  }
+  .chip:hover{background:var(--bar-surface)}
+  .chip.on{background:var(--bar-accent);border-color:var(--bar-accent);color:var(--bar-on-accent);font-weight:500}
+  .sel{
+    border:1px solid var(--bar-border);background:var(--spec-bg);color:var(--bar-text);
+    border-radius:8px;padding:3px 7px;font:inherit;font-size:12px;
+  }
+  .stage{
+    display:flex;gap:36px;justify-content:center;align-items:flex-start;
+    padding:28px 24px 64px;flex-wrap:wrap;
+  }
+
+  /* ---------- Pixel 9 外框 (400 × 840 dp 呈现) ---------- */
+  .bezel{
+    width:424px;padding:12px;border-radius:46px;flex:none;
+    background:linear-gradient(155deg,#2e2e32 0%,#151518 55%,#252529 100%);
+    box-shadow:0 32px 72px -18px rgba(0,0,0,.42),0 0 0 1px rgba(255,255,255,.12) inset;
+  }
+  .phone{
+    width:400px;height:836px;border-radius:35px;overflow:hidden;position:relative;
+    background:var(--m3-bg);color:var(--m3-on-surface);
+    display:flex;flex-direction:column;
+    font-family:"Roboto","Noto Sans SC","PingFang SC",system-ui,sans-serif;
+    transition:background .2s,color .2s;
+  }
+
+  /* Android 状态栏 + 居中挖孔 */
+  .and-status{
+    height:40px;padding:8px 22px 0;display:flex;align-items:center;justify-content:space-between;
+    flex:none;position:relative;z-index:5;user-select:none;font-size:13px;font-weight:500;
+  }
+  .punch{
+    position:absolute;left:50%;top:12px;transform:translateX(-50%);
+    width:18px;height:18px;border-radius:50%;background:#09090b;
+    box-shadow:inset 0 0 0 2px #1c1d22;
+  }
+  .and-indicators{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600}
+  .and-indicators svg{height:12px;width:auto}
+
+  /* M3 Top App Bar */
+  .m3-topbar{
+    min-height:56px;padding:4px 8px 4px 12px;display:flex;align-items:center;gap:4px;
+    flex:none;z-index:4;
+  }
+  .m3-icon-btn{
+    width:48px;height:48px;border-radius:24px;border:0;background:transparent;
+    color:var(--m3-on-surface);display:grid;place-items:center;flex:none;
+    transition:background .15s;
+  }
+  .m3-icon-btn:hover:not(:disabled){background:var(--m3-ripple)}
+  .m3-icon-btn:disabled{opacity:.38;cursor:default}
+  .m3-icon-btn svg{width:24px;height:24px}
+  .m3-topbar-title{
+    font-size:22px;line-height:28px;font-weight:400;color:var(--m3-on-surface);
+    flex:1;min-width:0;padding-left:4px;
+  }
+
+  /* 页面容器与底部操作区 */
+  .and-screen{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
+  .m3-scroll{
+    flex:1;overflow-y:auto;padding:4px 16px 20px;scrollbar-width:none;
+  }
+  .m3-scroll::-webkit-scrollbar{display:none}
+  .m3-footer{
+    flex:none;padding:12px 16px 8px;display:flex;flex-direction:column;gap:8px;
+    background:linear-gradient(to top,var(--m3-bg) 82%,transparent);
+  }
+  .gesture-bar{
+    height:22px;flex:none;display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+  }
+  .gesture-bar i{
+    width:108px;height:4px;border-radius:999px;background:var(--m3-on-surface);opacity:.38;display:block;
+  }
+
+  /* ---------- M3 Expressive 按钮 (AppButton.android.tsx: 56dp Pill) ---------- */
+  .m3-btn{
+    width:100%;min-height:56px;border-radius:999px;border:0;padding:0 24px;
+    font-size:16px;line-height:22px;font-weight:500;letter-spacing:.1px;
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    transition:filter .15s,background .15s,transform .1s;
+  }
+  .m3-btn:active:not(:disabled){transform:scale(.985)}
+  .m3-btn:disabled{
+    background:color-mix(in srgb,var(--m3-on-surface) 12%,transparent);
+    color:color-mix(in srgb,var(--m3-on-surface) 38%,transparent);
+    border-color:transparent;cursor:default;
+  }
+  .m3-btn.filled{background:var(--m3-primary);color:var(--m3-on-primary)}
+  .m3-btn.filled:hover:not(:disabled){filter:brightness(1.06)}
+  .m3-btn.tonal{background:var(--m3-primary-container);color:var(--m3-on-primary-container)}
+  .m3-btn.outlined{
+    background:transparent;color:var(--m3-primary);
+    border:1px solid var(--m3-outline);
+  }
+  .m3-btn.text{
+    background:transparent;color:var(--m3-primary);
+    min-height:48px;font-size:14px;font-weight:500;
+  }
+  .m3-btn.text:hover:not(:disabled){background:var(--m3-ripple)}
+  .m3-btn svg{width:18px;height:18px;flex:none}
+  .m3-foot-hint{
+    font-size:12px;line-height:16px;letter-spacing:.4px;color:var(--m3-on-surface-variant);
+    text-align:center;padding:0 8px 2px;
+  }
+
+  /* M3 CircularProgressIndicator */
+  .m3-spin{
+    width:18px;height:18px;border:2.5px solid color-mix(in srgb,currentColor 22%,transparent);
+    border-top-color:currentColor;border-radius:50%;animation:sp .8s linear infinite;flex:none;
+  }
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---------- Stage 1: 欢迎页 ---------- */
+  .m3-welcome{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:16px 28px 24px;text-align:center;
+  }
+  /* M3 Expressive Squircle / Soft-Rounded Emblem */
+  .m3-emblem{
+    width:92px;height:92px;border-radius:28px;
+    background:#000;overflow:hidden;border:1px solid rgba(0,0,0,.10);
+    display:grid;place-items:center;
+  }
+  [data-theme=dark] .m3-emblem{border-color:rgba(255,255,255,.16)}
+  .m3-emblem svg{width:100%;height:100%}
+  .m3-welcome h1{
+    margin:28px 0 8px;font-size:28px;line-height:36px;font-weight:700;
+    color:var(--m3-on-surface);
+  }
+  .m3-welcome .slogan{
+    margin:0;font-size:16px;line-height:24px;letter-spacing:.25px;
+    color:var(--m3-on-surface-variant);
+  }
+  .m3-detect-chip{
+    margin-top:28px;min-height:40px;padding:8px 16px;border-radius:16px;
+    background:var(--m3-surface-mid);color:var(--m3-on-surface-variant);
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    font-size:13px;line-height:18px;max-width:100%;
+  }
+  .m3-detect-chip.found{background:var(--m3-success-container);color:var(--m3-on-success-container)}
+  .m3-detect-chip.err{
+    background:var(--m3-error-container);color:var(--m3-on-error-container);
+    flex-direction:column;padding:12px 16px;gap:8px;width:100%;
+  }
+  .m3-detect-chip svg{width:17px;height:17px;flex:none}
+  .m3-chip-acts{display:flex;gap:8px}
+  .m3-mini-btn{
+    border:0;border-radius:999px;padding:6px 14px;font-size:12.5px;font-weight:500;
+    background:color-mix(in srgb,currentColor 12%,transparent);color:inherit;
+  }
+
+  /* ---------- M3 Expressive 页面标题与分段列表 (SettingsSectionItem.tsx) ---------- */
+  .m3-page-head{padding:2px 4px 16px}
+  .m3-page-head h2{margin:0;font-size:26px;line-height:34px;font-weight:700;color:var(--m3-on-surface)}
+  .m3-page-head p{margin:6px 0 0;font-size:14px;line-height:20px;letter-spacing:.25px;color:var(--m3-on-surface-variant)}
+
+  .m3-sec-title{
+    font-size:14px;line-height:20px;font-weight:500;letter-spacing:.1px;
+    color:var(--m3-primary);padding:0 4px;margin:18px 0 8px;
+  }
+  .m3-sec-title:first-child{margin-top:2px}
+  .m3-sec-foot{
+    font-size:12px;line-height:16px;letter-spacing:.4px;
+    color:var(--m3-on-surface-variant);padding:8px 16px 0;
+  }
+
+  /* M3 Expressive Segmented List: 20dp outer, 4dp inner, 2dp gap, surfaceContainer */
+  .m3-seg-list{display:flex;flex-direction:column;gap:2px}
+  .m3-seg-row{
+    display:flex;align-items:center;gap:14px;padding:14px 16px;min-height:64px;
+    width:100%;border:0;text-align:left;
+    background:var(--m3-surface-mid);color:var(--m3-on-surface);
+    border-radius:4px;transition:background .12s;
+  }
+  .m3-seg-row:first-child{border-top-left-radius:20px;border-top-right-radius:20px}
+  .m3-seg-row:last-child{border-bottom-left-radius:20px;border-bottom-right-radius:20px}
+  .m3-seg-row.tap:hover{background:var(--m3-surface-high)}
+  .m3-seg-row.warn{
+    background:var(--m3-warning-container);color:var(--m3-on-warning-container);
+  }
+  .m3-seg-row.err{
+    background:var(--m3-error-container);color:var(--m3-on-error-container);
+  }
+  .m3-seg-row.info{
+    background:var(--m3-info-container);color:var(--m3-on-info-container);
+  }
+  .m3-seg-row.warn .m3-row-sub,.m3-seg-row.err .m3-row-sub,.m3-seg-row.info .m3-row-sub{
+    color:inherit;opacity:.88;
+  }
+
+  /* 40dp 圆形前导图标 (SettingsLeadingIcon.tsx) */
+  .m3-avatar{
+    width:40px;height:40px;border-radius:20px;display:grid;place-items:center;flex:none;
+    background:var(--m3-primary-container);color:var(--m3-on-primary-container);
+  }
+  .m3-avatar.muted{background:var(--m3-surface-highest);color:var(--m3-on-surface-variant)}
+  .m3-avatar.err{background:var(--m3-error-container);color:var(--m3-error)}
+  .m3-avatar.ok{background:var(--m3-success-container);color:var(--m3-success)}
+  .m3-avatar.warn{background:transparent;color:var(--m3-on-warning-container);width:28px;height:28px}
+  .m3-avatar svg{width:22px;height:22px}
+
+  .m3-row-body{flex:1;min-width:0}
+  .m3-row-title{font-size:16px;line-height:22px;font-weight:400}
+  .m3-row-title b{font-weight:600}
+  .m3-row-sub{
+    font-size:13px;line-height:18px;letter-spacing:.2px;
+    color:var(--m3-on-surface-variant);margin-top:2px;
+  }
+  .m3-row-sub.mono{
+    font-family:"Roboto Mono",ui-monospace,Menlo,monospace;font-size:11.5px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .m3-trailing-act{
+    font-size:14px;font-weight:500;color:var(--m3-primary);
+    display:inline-flex;align-items:center;gap:2px;flex:none;
+  }
+  .m3-trailing-act svg{width:18px;height:18px;color:var(--m3-on-surface-variant)}
+
+  /* 迁移范围双栏卡片 (M3 Surface Container) */
+  .m3-scope-pair{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+  .m3-scope-card{
+    background:var(--m3-surface-mid);padding:14px;
+    border-radius:6px;
+  }
+  .m3-scope-card:first-child{border-radius:20px 6px 6px 20px}
+  .m3-scope-card:last-child{border-radius:6px 20px 20px 6px}
+  .m3-scope-card h4{
+    margin:0 0 8px;font-size:12px;line-height:16px;font-weight:600;letter-spacing:.4px;
+    color:var(--m3-on-surface-variant);
+  }
+  .m3-scope-card ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+  .m3-scope-card li{display:flex;align-items:center;gap:6px;font-size:13.5px;line-height:18px}
+  .m3-scope-card li svg{width:15px;height:15px;flex:none}
+  .m3-scope-card.yes li svg{color:var(--m3-success)}
+  .m3-scope-card.no li{color:var(--m3-on-surface-variant)}
+  .m3-scope-card.no li svg{color:var(--m3-outline)}
+
+  /* ---------- M3 Expressive 步骤分段卡片 ---------- */
+  .m3-step-card{
+    background:var(--m3-surface-mid);padding:14px 16px;border-radius:4px;
+    transition:background .15s;
+  }
+  .m3-step-card:first-child{border-top-left-radius:20px;border-top-right-radius:20px}
+  .m3-step-card:last-child{border-bottom-left-radius:20px;border-bottom-right-radius:20px}
+  .m3-step-card.active{background:var(--m3-surface-high)}
+  .m3-step-head{display:flex;align-items:center;gap:12px}
+  .m3-step-num{
+    width:32px;height:32px;border-radius:16px;display:grid;place-items:center;flex:none;
+    font-size:14px;font-weight:600;
+  }
+  .m3-step-num.done{background:var(--m3-success-container);color:var(--m3-success)}
+  .m3-step-num.done svg{width:16px;height:16px}
+  .m3-step-num.active{background:var(--m3-primary);color:var(--m3-on-primary)}
+  .m3-step-num.pending{background:var(--m3-surface-highest);color:var(--m3-on-surface-variant)}
+  .m3-step-meta{flex:1;min-width:0}
+  .m3-step-title{font-size:15.5px;line-height:22px;font-weight:500}
+  .m3-step-card.pending .m3-step-title{color:var(--m3-on-surface-variant);font-weight:400}
+  .m3-step-pill{
+    font-size:12px;font-weight:500;padding:3px 10px;border-radius:999px;
+    font-variant-numeric:tabular-nums;flex:none;
+  }
+  .m3-step-pill.ok{background:var(--m3-success-container);color:var(--m3-on-success-container)}
+  .m3-step-pill.active{background:var(--m3-primary-container);color:var(--m3-on-primary-container)}
+  .m3-step-pill.warn{background:var(--m3-warning-container);color:var(--m3-on-warning-container)}
+  .m3-step-pill.muted{color:var(--m3-on-surface-variant)}
+  .m3-step-body{margin-left:44px;margin-top:6px}
+  .m3-step-sub{font-size:13px;line-height:18px;color:var(--m3-on-surface-variant)}
+
+  /* M3 Expressive LinearProgressIndicator (8dp 厚圆头轨道 + 末端停点) */
+  .m3-linear-wrap{margin-top:14px}
+  .m3-linear-track{
+    height:8px;border-radius:999px;background:var(--m3-surface-highest);
+    position:relative;overflow:hidden;
+  }
+  .m3-linear-track::after{
+    content:"";position:absolute;right:2px;top:2px;width:4px;height:4px;border-radius:50%;
+    background:var(--m3-primary);opacity:.55;
+  }
+  .m3-linear-fill{
+    height:100%;border-radius:999px;background:var(--m3-primary);
+    transition:width .18s linear;
+  }
+  .m3-linear-fill.verify{background:var(--m3-success)}
+  .m3-linear-fill.stop{background:var(--m3-outline)}
+  .m3-linear-meta{
+    display:flex;justify-content:space-between;align-items:center;margin-top:8px;
+    font-size:12.5px;color:var(--m3-on-surface-variant);font-variant-numeric:tabular-nums;
+  }
+  .m3-linear-meta b{color:var(--m3-on-surface);font-weight:600}
+
+  /* M3 Tonal Filled TextField (严格复刻 AppTextField.android.tsx: 16dp 圆角, 无底线) */
+  .m3-field-wrap{margin-top:12px}
+  .m3-field{
+    display:flex;align-items:center;min-height:56px;padding:6px 6px 6px 16px;
+    background:var(--m3-surface-lowest);border-radius:16px;
+    border:1.5px solid transparent;transition:border-color .15s;
+  }
+  [data-theme=dark] .m3-field{background:var(--m3-surface-mid)}
+  .m3-field:focus-within{border-color:var(--m3-primary)}
+  .m3-field.bad{border-color:var(--m3-error)}
+  .m3-field-inner{flex:1;min-width:0;display:flex;flex-direction:column}
+  .m3-field-label{
+    font-size:12px;line-height:16px;font-weight:500;color:var(--m3-primary);
+  }
+  .m3-field.bad .m3-field-label{color:var(--m3-error)}
+  .m3-field input{
+    border:0;background:transparent;outline:none;color:var(--m3-on-surface);
+    font-size:16px;line-height:22px;padding:2px 0 0;width:100%;
+  }
+  .m3-field input::placeholder{color:var(--m3-on-surface-variant);opacity:.65}
+  .m3-field-err{
+    margin-top:6px;padding-left:12px;font-size:12px;line-height:16px;
+    color:var(--m3-error);display:flex;align-items:center;gap:5px;
+  }
+  .m3-field-err svg{width:14px;height:14px;flex:none}
+
+  /* ---------- Stage 3: 结果页 ---------- */
+  .m3-result{
+    display:flex;flex-direction:column;align-items:center;text-align:center;
+    padding:20px 4px 8px;
+  }
+  .m3-badge-ring{
+    width:76px;height:76px;border-radius:26px;display:grid;place-items:center;flex:none;
+  }
+  .m3-badge-ring svg{width:36px;height:36px}
+  .m3-badge-ring.ok{background:var(--m3-success-container);color:var(--m3-success)}
+  .m3-badge-ring.warn{background:var(--m3-warning-container);color:var(--m3-warning)}
+  .m3-badge-ring.stop{background:var(--m3-surface-highest);color:var(--m3-on-surface-variant)}
+  .m3-badge-ring.err{background:var(--m3-error-container);color:var(--m3-error)}
+  .m3-result h2{margin:18px 0 6px;font-size:24px;line-height:32px;font-weight:500}
+  .m3-result .lead{
+    margin:0;font-size:14px;line-height:20px;letter-spacing:.25px;
+    color:var(--m3-on-surface-variant);max-width:320px;
+  }
+  .m3-stat-grid{
+    display:grid;grid-template-columns:1fr 1fr;gap:4px;width:100%;margin-top:22px;
+  }
+  .m3-stat{
+    background:var(--m3-surface-mid);border-radius:16px;padding:16px 14px;text-align:left;
+  }
+  .m3-stat b{
+    display:block;font-size:24px;line-height:30px;font-weight:600;
+    font-variant-numeric:tabular-nums;color:var(--m3-on-surface);
+  }
+  .m3-stat span{display:block;margin-top:4px;font-size:12px;color:var(--m3-on-surface-variant)}
+  .m3-stat.ok{background:var(--m3-success-container)}
+  .m3-stat.ok b,.m3-stat.ok span{color:var(--m3-on-success-container)}
+  .m3-stat.warn{background:var(--m3-warning-container)}
+  .m3-stat.warn b,.m3-stat.warn span{color:var(--m3-on-warning-container)}
+  .m3-stat.bad{background:var(--m3-error-container)}
+  .m3-stat.bad b,.m3-stat.bad span{color:var(--m3-on-error-container)}
+
+  /* ---------- Android 历史页预览 (M3 Expressive Segmented Rows + FloatingNavigationBar + FAB) ---------- */
+  .m3-hist-top{
+    padding:6px 16px 10px;display:flex;align-items:center;justify-content:space-between;
+  }
+  .m3-hist-top h2{margin:0;font-size:26px;line-height:34px;font-weight:700}
+  .m3-search-pill{
+    margin:0 16px 12px;height:48px;border-radius:999px;background:var(--m3-surface-high);
+    display:flex;align-items:center;gap:12px;padding:0 16px;
+    color:var(--m3-on-surface-variant);font-size:15px;
+  }
+  .m3-search-pill svg{width:20px;height:20px}
+  .m3-hist-row{
+    display:flex;align-items:center;gap:14px;padding:12px 16px;min-height:74px;
+    background:var(--m3-surface-low);border-radius:4px;
+  }
+  .m3-hist-row:first-child{border-top-left-radius:20px;border-top-right-radius:20px}
+  .m3-hist-row:last-child{border-bottom-left-radius:20px;border-bottom-right-radius:20px}
+  .m3-kind-box{
+    width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;
+    background:var(--m3-primary-container);color:var(--m3-on-primary-container);
+  }
+  .m3-kind-box svg{width:20px;height:20px}
+  .m3-hist-text{flex:1;min-width:0}
+  .m3-hist-primary{
+    font-size:15px;line-height:21px;color:var(--m3-on-surface);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .m3-hist-meta{
+    font-size:12px;line-height:16px;color:var(--m3-on-surface-variant);margin-top:2px;
+    display:flex;align-items:center;gap:6px;
+  }
+  .m3-v1-tag{
+    font-size:10.5px;font-weight:500;padding:1px 7px;border-radius:999px;
+    background:var(--m3-primary-container);color:var(--m3-on-primary-container);
+  }
+
+  /* M3 Expressive FloatingNavigationBar + FAB (复刻 FloatingNavigationBar.tsx) */
+  .m3-floating-bar{
+    position:absolute;left:16px;right:16px;bottom:28px;
+    display:flex;align-items:center;justify-content:space-between;z-index:4;
+  }
+  .m3-nav-pill{
+    height:64px;padding:8px;border-radius:32px;background:var(--m3-surface-high);
+    display:flex;align-items:center;gap:4px;
+    box-shadow:0 6px 18px rgba(0,0,0,.16);
+  }
+  .m3-nav-item{
+    height:48px;min-width:48px;border-radius:24px;display:inline-flex;align-items:center;
+    justify-content:center;gap:8px;color:var(--m3-on-surface-variant);
+    font-size:14px;font-weight:500;
+  }
+  .m3-nav-item.on{
+    padding:0 20px 0 16px;background:var(--m3-primary-container);
+    color:var(--m3-on-primary-container);
+  }
+  .m3-nav-item svg{width:22px;height:22px}
+  .m3-fab{
+    width:56px;height:56px;border-radius:16px;border:0;
+    background:var(--m3-primary);color:var(--m3-on-primary);
+    display:grid;place-items:center;box-shadow:0 6px 16px rgba(0,0,0,.22);
+  }
+  .m3-fab svg{width:24px;height:24px}
+
+  .m3-empty-hist{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:36px 28px 100px;color:var(--m3-on-surface-variant);
+  }
+  .m3-empty-hist .ic{
+    width:64px;height:64px;border-radius:20px;background:var(--m3-surface-mid);
+    display:grid;place-items:center;margin-bottom:14px;color:var(--m3-primary);
+  }
+  .m3-empty-hist h3{margin:0 0 6px;font-size:18px;font-weight:500;color:var(--m3-on-surface)}
+  .m3-empty-hist p{margin:0;font-size:14px;line-height:20px}
+
+  /* ---------- Android 系统弹层 (BiometricPrompt / SAF BottomSheet / M3 AlertDialog) ---------- */
+  .m3-scrim{
+    position:absolute;inset:0;background:var(--m3-scrim);z-index:20;
+    display:flex;align-items:center;justify-content:center;padding:24px;
+    animation:fadeIn .15s ease;
+  }
+  .m3-scrim.bottom{align-items:flex-end;padding:0}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes sheetIn{from{transform:translateY(28px);opacity:.65}to{transform:none;opacity:1}}
+
+  /* M3 AlertDialog (28dp 圆角) */
+  .m3-dialog{
+    width:100%;max-width:320px;border-radius:28px;background:var(--m3-surface-high);
+    padding:24px;box-shadow:0 16px 36px rgba(0,0,0,.32);
+  }
+  .m3-dialog h3{margin:0 0 12px;font-size:22px;line-height:28px;font-weight:400;color:var(--m3-on-surface)}
+  .m3-dialog p{margin:0;font-size:14px;line-height:20px;letter-spacing:.25px;color:var(--m3-on-surface-variant)}
+  .m3-dialog-acts{display:flex;justify-content:flex-end;gap:8px;margin-top:22px}
+  .m3-dialog-acts button{
+    border:0;background:transparent;padding:10px 14px;border-radius:999px;
+    font-size:14px;font-weight:500;color:var(--m3-primary);
+  }
+  .m3-dialog-acts button:hover{background:var(--m3-ripple)}
+  .m3-dialog-acts button.danger{color:var(--m3-error)}
+
+  /* M3 ModalBottomSheet (SAF 选择器 / BiometricPrompt) */
+  .m3-sheet{
+    width:100%;background:var(--m3-surface-low);border-radius:28px 28px 0 0;
+    padding:12px 16px 28px;animation:sheetIn .2s cubic-bezier(.2,.9,.2,1);
+    box-shadow:0 -10px 32px rgba(0,0,0,.28);
+  }
+  .m3-drag-handle{
+    width:32px;height:4px;border-radius:999px;background:var(--m3-outline);
+    opacity:.45;margin:0 auto 14px;
+  }
+  .m3-sheet-title{
+    font-size:18px;line-height:24px;font-weight:500;padding:0 4px 14px;
+    color:var(--m3-on-surface);
+  }
+  .m3-bio-box{
+    display:flex;flex-direction:column;align-items:center;text-align:center;
+    padding:8px 12px 6px;gap:10px;
+  }
+  .m3-bio-ring{
+    width:64px;height:64px;border-radius:32px;
+    background:var(--m3-primary-container);color:var(--m3-primary);
+    display:grid;place-items:center;margin:6px 0;
+    animation:bioPulse 1.2s ease-in-out infinite;
+  }
+  .m3-bio-ring svg{width:34px;height:34px}
+  @keyframes bioPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.94);opacity:.74}}
+
+  .demo-reset-bar{
+    margin:14px 0 96px;padding:10px 14px;border-radius:16px;
+    background:var(--m3-surface-mid);display:flex;align-items:center;justify-content:space-between;gap:8px;
+    font-size:12px;color:var(--m3-on-surface-variant);
+  }
+  .demo-reset-bar button{
+    border:0;background:var(--m3-primary-container);color:var(--m3-on-primary-container);
+    padding:6px 14px;border-radius:999px;font-size:12px;font-weight:500;
+  }
+
+  /* ---------- 右侧规格说明面板 ---------- */
+  .spec{
+    width:370px;flex:none;background:var(--spec-bg);border-radius:20px;
+    box-shadow:var(--spec-shadow);padding:20px 22px;font-size:13px;
+  }
+  .spec-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:2px}
+  .spec h3{margin:0;font-size:15px;font-weight:600}
+  .spec .key{font:11.5px "Roboto Mono",ui-monospace,Menlo,monospace;color:var(--bar-faint)}
+  .spec ul{margin:12px 0 0;padding-left:18px;color:var(--bar-muted)}
+  .spec li{margin:6px 0}
+  .spec li b{color:var(--bar-text);font-weight:600}
+  .spec-block{
+    margin-top:16px;padding-top:14px;border-top:1px solid var(--bar-border);
+    color:var(--bar-muted);font-size:12px;line-height:1.6;
+  }
+  .spec-block h4{margin:0 0 6px;font-size:12px;color:var(--bar-text);font-weight:600}
+  .spec-block code{
+    font:11px "Roboto Mono",ui-monospace,Menlo,monospace;
+    background:var(--bar-surface);padding:1px 5px;border-radius:4px;color:var(--bar-text);
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="line">
+    <span class="platform-badge">Android · Material 3 Expressive</span>
+    <b>移动端首次安装与 v1 迁移原型</b>
+    <div class="grp"><span class="lbl">主题</span>
+      <button class="chip on" data-theme-btn="light">浅色</button>
+      <button class="chip" data-theme-btn="dark">深色</button>
+    </div>
+    <div class="grp"><span class="lbl">Material You</span>
+      <button class="chip on" data-seed-btn="baseline">品牌紫</button>
+      <button class="chip" data-seed-btn="ocean">海湾蓝</button>
+      <button class="chip" data-seed-btn="sage">青苔绿</button>
+    </div>
+    <div class="grp"><span class="lbl">模拟 · 检测</span>
+      <select class="sel" id="simDetect">
+        <option value="found">发现本机 v1 数据</option>
+        <option value="none">未发现</option>
+        <option value="error">检测出错</option>
+      </select>
+    </div>
+    <div class="grp"><span class="lbl">凭据</span>
+      <select class="sel" id="simCred">
+        <option value="ok">Keystore + 指纹解锁</option>
+        <option value="pass">需输入口令（v1pass）</option>
+        <option value="deny">生物识别被拒绝</option>
+      </select>
+    </div>
+    <div class="grp"><span class="lbl">结果</span>
+      <select class="sel" id="simResult">
+        <option value="complete">完整</option>
+        <option value="partial">部分</option>
+        <option value="failed">失败</option>
+        <option value="conflict">后台服务占用</option>
+      </select>
+    </div>
+    <button class="chip" id="restart">从头演示</button>
+    <a class="chip" href="setup-ios.html" title="切换到 iOS Liquid Glass 原型">← 切换至 iOS 原型</a>
+  </div>
+  <div class="line">
+    <div class="grp" id="jumps"><span class="lbl">跳转</span></div>
+  </div>
+</div>
+
+<div class="stage">
+  <div class="bezel">
+    <div class="phone" id="phone">
+      <!-- Android 状态栏 -->
+      <div class="and-status">
+        <span>9:41</span>
+        <div class="punch" aria-hidden="true"></div>
+        <div class="and-indicators" aria-hidden="true">
+          <span>5G</span>
+          <svg viewBox="0 0 16 12" fill="currentColor"><path d="M1 11h14V1z" fill-opacity=".28"/><path d="M1 11h10V3.8z"/></svg>
+          <svg viewBox="0 0 14 12" fill="currentColor"><path d="M4.5 1h5v1H11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h1.5z"/></svg>
+        </div>
+      </div>
+
+      <!-- 页面容器 -->
+      <div class="and-screen" id="screen"></div>
+
+      <!-- 系统手势条（点击模拟系统返回手势） -->
+      <div class="gesture-bar" id="sysBack" title="点击模拟 Android 系统返回手势"><i></i></div>
+    </div>
+  </div>
+
+  <aside class="spec" id="spec"></aside>
+</div>
+
+<script>
+const I = {
+  brand:'<svg viewBox="0 0 1254 1254" aria-label="UniClipboard"><rect width="1254" height="1254" fill="#000"/><path fill="#fff" fill-rule="evenodd" d="M313 274H425V336H482V397H537V460H717V397H772V336H829V274H941V590H1006V663H941V725H1067V785H941V843H1006V909H941V874H878V952H376V874H313V909H247V843H313V785H186V725H313V663H247V590H313ZM392 460H457V523H392ZM797 460H862V523H797ZM454 634H521V742H454ZM733 634H801V742H733ZM565 779H689V829H653V875H601V829H565Z"/></svg>',
+  clip:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2.5" width="8" height="4" rx="1.2"/><path d="M16 4.5h2a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2h2"/><path d="m9 13.5 2.2 2.2 4.3-4.7"/></svg>',
+  folder:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4.2l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  sd:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M9 7v3M12 7v3M15 7v3"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+  minus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 12h12"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  arrowL:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
+  chevR:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
+  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 19.5h19z"/><path d="M12 10v4.2M12 17h.01"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v6c0 4.8 3.2 7.8 7.5 9 4.3-1.2 7.5-4.2 7.5-9V6z"/><path d="m9 12 2 2 4-4"/></svg>',
+  devices:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="10" rx="1.5"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="11" rx="1.2"/></svg>',
+  fp:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 11v4"/><path d="M8.5 11.5a3.5 3.5 0 0 1 7 0v2.5a6 6 0 0 1-.8 3"/><path d="M5.8 11.2a6.2 6.2 0 0 1 12.4 0v1.8a9 9 0 0 1-1.3 4.6"/><path d="M3.6 10.5a8.8 8.8 0 0 1 16.8 0"/><path d="M8.5 15.5c0 1.8-.6 3.5-1.6 4.8"/></svg>',
+  eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>',
+  eyeOff:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 10.6a2.6 2.6 0 0 0 3.6 3.6M9.9 5.6A10.7 10.7 0 0 1 12 5.5c6.2 0 10 6.5 10 6.5a17 17 0 0 1-3.3 4M6.6 6.7A16.7 16.7 0 0 0 2 12s3.8 6.5 10 6.5a10 10 0 0 0 4.3-.9"/></svg>',
+  stop:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></svg>',
+  server:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="7" rx="1.8"/><rect x="3" y="13" width="18" height="7" rx="1.8"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v.1a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  type:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></svg>',
+  link:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.1 0l2.8-2.8a5 5 0 0 0-7.1-7.1L11.2 4.7M14 11a5 5 0 0 0-7.1 0l-2.8 2.8a5 5 0 0 0 7.1 7.1l1.6-1.6"/></svg>',
+  image:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.5"/><path d="m21 16-5-5L6 20"/></svg>',
+  file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+};
+
+const TOTAL = 1204;
+const SOURCES = [
+  { id: 0, ok: true, icon: 'folder', title: '应用内部存储 · 默认位置', path: '/data/user/0/app.uniclipboard/files/v1' },
+  { id: 1, ok: true, icon: 'sd',     title: '系统文件选择器 (SAF) · 文档备份', path: '内部存储 / Documents / UniClipboard-v1' },
+  { id: 2, ok: false, icon: 'folder', title: '系统文件选择器 (SAF) · Download', path: '内部存储 / Download（非 v1 目录）' },
+];
+
+const S = {
+  key: 'w-detecting',
+  src: SOURCES[0],
+  sheet: false,
+  pendingStart: false,
+  committed: 0,
+  runPrior: 0,
+  processed: 0,
+  verified: 0,
+  passErr: false,
+  pass: '',
+  showPass: false,
+  closing: false,
+  closeAsk: false,
+  timer: null,
+};
+
+const $ = s => document.querySelector(s);
+const sim = id => $('#' + id).value;
+const fmt = n => n.toLocaleString('zh-CN');
+
+function clearTimer(){ if(S.timer){ clearInterval(S.timer); clearTimeout(S.timer); S.timer = null; } }
+function go(key){ clearTimer(); S.key = key; S.sheet = false; render(); enter(key); }
+
+function enter(key){
+  if(key === 'w-detecting'){
+    S.timer = setTimeout(() => {
+      const d = sim('simDetect');
+      const next = d === 'found' ? 'w-found' : d === 'none' ? 'w-none' : 'w-error';
+      if(S.pendingStart){ S.pendingStart = false; return startFrom(next); }
+      go(next);
+    }, 1350);
+  }
+  if(key === 'm-cred-system'){
+    S.timer = setTimeout(() => {
+      const c = sim('simCred');
+      if(c === 'ok') return beginImport();
+      S.passErr = false; S.pass = ''; S.showPass = false;
+      go(c === 'pass' ? 'm-cred-pass' : 'm-cred-denied');
+    }, 1700);
+  }
+  if(key === 'm-import'){
+    const failAt = Math.round(TOTAL * .41);
+    S.timer = setInterval(() => {
+      S.processed = Math.min(TOTAL, S.processed + 24);
+      if(sim('simResult') === 'failed' && S.processed >= failAt){
+        S.processed = failAt; S.committed = Math.max(S.committed, failAt); return go('r-failed');
+      }
+      S.committed = Math.max(S.committed, S.processed);
+      if(S.processed >= TOTAL){ S.verified = 0; return go('m-verify'); }
+      updateProgress();
+    }, 60);
+  }
+  if(key === 'm-verify'){
+    S.timer = setInterval(() => {
+      S.verified = Math.min(TOTAL, S.verified + 42);
+      if(S.verified >= TOTAL){
+        const r = sim('simResult');
+        if(r === 'partial') return go('r-partial');
+        return go(S.runPrior >= TOTAL ? 'r-complete-retry' : 'r-complete');
+      }
+      updateProgress();
+    }, 60);
+  }
+  if(key === 'm-stopping'){
+    S.timer = setTimeout(() => go(S.closing ? 'closed' : 'r-cancelled'), 1400);
+  }
+}
+
+function startFrom(k){
+  if(k === 'w-found') return go('m-confirm');
+  go('history-empty');
+}
+function startMigration(){
+  if(sim('simResult') === 'conflict') return go('m-conflict');
+  go('m-cred-system');
+}
+function beginImport(){
+  S.runPrior = S.committed;
+  S.processed = S.committed;
+  go('m-import');
+}
+
+/* ---------- 通用片段 ---------- */
+function topBar({ title='', backAct='back-welcome', icon='arrowL', disabled=false }){
+  return `<div class="m3-topbar">
+    ${backAct ? `<button class="m3-icon-btn" data-act="${backAct}" ${disabled?'disabled':''} aria-label="返回">${I[icon]}</button>` : '<div style="width:12px"></div>'}
+    <div class="m3-topbar-title">${title}</div>
+  </div>`;
+}
+
+function stepCards(cur, activeBody, pills = {}){
+  const defs = [
+    { idx: 1, title: '解锁旧数据', sub: '通过 Android Keystore 或输入 v1 口令只读解锁' },
+    { idx: 2, title: '导入历史记录', sub: '按条提交，中断后保留已写入记录' },
+    { idx: 3, title: '重新打开并校验', sub: '逐条验证目标历史库内容摘要' },
+  ];
+  return `<div class="m3-seg-list">
+    ${defs.map((d, i) => {
+      const state = i < cur ? 'done' : i === cur ? 'active' : 'pending';
+      const p = pills[i] || (state === 'done' ? { text: '已完成', cls: 'ok' } : state === 'pending' ? { text: '待进行', cls: 'muted' } : null);
+      return `<div class="m3-step-card ${state}">
+        <div class="m3-step-head">
+          <div class="m3-step-num ${state}">${state === 'done' ? I.check : d.idx}</div>
+          <div class="m3-step-meta"><div class="m3-step-title">${d.title}</div></div>
+          ${p ? `<span class="m3-step-pill ${p.cls}" id="${p.id||''}">${p.text}</span>` : ''}
+        </div>
+        <div class="m3-step-body">
+          ${state === 'active' ? activeBody : `<div class="m3-step-sub">${d.sub}</div>`}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function confirmContent(invalidRow=''){
+  const bad = !S.src.ok;
+  return `<div class="m3-page-head">
+    <h2>从 v1 导入历史</h2>
+    <p>在这台设备上发现了 v1 数据。导入后可在历史中直接使用。</p>
+  </div>
+
+  <div class="m3-sec-title">数据目录</div>
+  <div class="m3-seg-list">
+    <button class="m3-seg-row tap ${bad?'err':''}" data-act="open-sheet">
+      <div class="m3-avatar ${bad?'err':''}">${I[S.src.icon]}</div>
+      <div class="m3-row-body">
+        <div class="m3-row-title">${S.src.title}</div>
+        <div class="m3-row-sub mono">${S.src.path}</div>
+      </div>
+      <span class="m3-trailing-act">选择${I.chevR}</span>
+    </button>
+    ${invalidRow}
+  </div>
+
+  <div class="m3-sec-title">迁移范围</div>
+  <div class="m3-scope-pair">
+    <div class="m3-scope-card yes">
+      <h4>会导入</h4>
+      <ul>
+        <li>${I.check}文本与 HTML</li>
+        <li>${I.check}图片</li>
+        <li>${I.check}文件</li>
+        <li>${I.check}标签及关联</li>
+      </ul>
+    </div>
+    <div class="m3-scope-card no">
+      <h4>不会导入</h4>
+      <ul>
+        <li>${I.minus}设置</li>
+        <li>${I.minus}收藏</li>
+        <li>${I.minus}设备身份</li>
+        <li>${I.minus}信任关系</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="m3-sec-title">开始前须知</div>
+  <div class="m3-seg-list">
+    <div class="m3-seg-row">
+      <div class="m3-avatar">${I.devices}</div>
+      <div class="m3-row-body">
+        <div class="m3-row-title">其他设备需升级并重新配对</div>
+        <div class="m3-row-sub">旧版设备身份与信任关系不会沿用。</div>
+      </div>
+    </div>
+    <div class="m3-seg-row">
+      <div class="m3-avatar ok">${I.shield}</div>
+      <div class="m3-row-body">
+        <div class="m3-row-title">只读读取，保留旧数据</div>
+        <div class="m3-row-sub">迁移不修改也不删除原有 v1 数据文件。</div>
+      </div>
+    </div>
+    <div class="m3-seg-row warn">
+      <div class="m3-avatar warn">${I.warn}</div>
+      <div class="m3-row-body">
+        <div class="m3-row-title"><b>开始前，请先退出 UniClipboard v1</b></div>
+        <div class="m3-row-sub">请先停止旧版后台监听服务或常驻通知。应用不会自动停止旧版。</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function progressBlock(mode){
+  const verify = mode === 'verify' || (mode === 'stop' && S.verified > 0);
+  const done = verify ? S.verified : S.processed;
+  const pct = Math.round(done / TOTAL * 100);
+  const sub = mode === 'stop'
+    ? '正在等待当前记录写完并安全释放独占锁，已提交记录会保留。'
+    : verify
+      ? '重新打开目标历史库，逐条校验内容完整性。'
+      : (S.runPrior ? `已跳过此前导入的 ${fmt(S.runPrior)} 条记录，继续写入剩余内容。` : '按条写入历史库；已提交的记录在中断后保留。');
+  return `<div class="m3-step-sub">${sub}</div>
+    <div class="m3-linear-wrap">
+      <div class="m3-linear-track"><div class="m3-linear-fill ${mode==='stop'?'stop':verify?'verify':''}" id="bar" style="width:${pct}%"></div></div>
+      <div class="m3-linear-meta">
+        <span id="cnt">${verify?'已校验':'已处理'} <b>${fmt(done)}</b> / ${fmt(TOTAL)} 条</span>
+        <span id="pct">${pct}%</span>
+      </div>
+    </div>`;
+}
+
+/* ---------- 各状态页面 ---------- */
+const PAGES = {
+  'w-detecting': () => welcomePage(`<span class="m3-spin"></span><span>正在检查这台设备上的 v1 数据…</span>`, '', S.pendingStart),
+  'w-found':     () => welcomePage(`${I.check}<span>发现 UniClipboard v1 的数据</span>`, 'found', false),
+  'w-none':      () => welcomePage('', '', false),
+  'w-error':     () => welcomePage(
+    `<div style="display:flex;align-items:center;gap:6px">${I.warn}<span>无法检查本机 v1 数据</span></div>
+     <div class="m3-chip-acts">
+       <button class="m3-mini-btn" data-act="redetect">重试</button>
+       <button class="m3-mini-btn" data-act="manual">手动选择目录</button>
+     </div>`, 'err', false),
+
+  'm-confirm': () => `
+    ${topBar({ title: '从 v1 迁移', backAct: 'back-welcome' })}
+    <div class="m3-scroll">${confirmContent()}</div>
+    <div class="m3-footer">
+      <button class="m3-btn filled" data-act="start">开始迁移</button>
+      <button class="m3-btn text" data-act="skip">暂不迁移</button>
+      <div class="m3-foot-hint">之后可在 设置 › 存储 › 从 v1 迁移 中导入</div>
+    </div>`,
+
+  'm-invalid': () => `
+    ${topBar({ title: '从 v1 迁移', backAct: 'back-welcome' })}
+    <div class="m3-scroll">${confirmContent(`
+      <div class="m3-seg-row err">
+        <div class="m3-avatar err">${I.warn}</div>
+        <div class="m3-row-body">
+          <div class="m3-row-title"><b>不受支持的目录</b></div>
+          <div class="m3-row-sub">所选目录不是有效的 v1 数据目录，请重新选择其他目录。</div>
+        </div>
+      </div>`)}</div>
+    <div class="m3-footer">
+      <button class="m3-btn filled" disabled>开始迁移</button>
+      <button class="m3-btn text" data-act="skip">暂不迁移</button>
+      <div class="m3-foot-hint">之后可在 设置 › 存储 › 从 v1 迁移 中导入</div>
+    </div>`,
+
+  'm-cred-system': () => `
+    ${topBar({ title: '从 v1 迁移', backAct: 'try-close', icon: 'x' })}
+    <div class="m3-scroll">
+      <div class="m3-page-head">
+        <h2>正在准备迁移</h2>
+        <p>请完成系统的生物识别或锁屏验证以读取 Keystore 凭据。</p>
+      </div>
+      ${stepCards(0, `<div class="m3-step-sub">正在等待 Android 密钥库返回 v1 解密凭据…</div>`, { 0: { text: '验证中', cls: 'active' } })}
+    </div>
+    <div class="m3-footer">
+      <button class="m3-btn outlined" data-act="stop">停止迁移</button>
+    </div>
+    <div class="m3-scrim bottom">
+      <div class="m3-sheet">
+        <div class="m3-drag-handle"></div>
+        <div class="m3-bio-box">
+          <div style="font-size:18px;font-weight:500">验证身份</div>
+          <div style="font-size:13.5px;color:var(--m3-on-surface-variant);max-width:280px">
+            使用指纹或锁屏凭据解锁 Android Keystore 中的 UniClipboard v1 密钥
+          </div>
+          <div class="m3-bio-ring">${I.fp}</div>
+          <div style="font-size:12.5px;color:var(--m3-on-surface-variant)">请轻触指纹传感器</div>
+        </div>
+      </div>
+    </div>`,
+
+  'm-cred-pass':   () => passPage(false),
+  'm-cred-denied': () => passPage(true),
+
+  'm-conflict': () => `
+    ${topBar({ title: '从 v1 迁移', backAct: 'back-confirm' })}
+    <div class="m3-scroll">
+      <div class="m3-page-head">
+        <h2>无法开始迁移</h2>
+        <p>迁移需要独占目标数据目录。</p>
+      </div>
+      <div class="m3-seg-list">
+        <div class="m3-seg-row err">
+          <div class="m3-avatar err">${I.server}</div>
+          <div class="m3-row-body">
+            <div class="m3-row-title"><b>另一个后台服务正在使用数据目录</b></div>
+            <div class="m3-row-sub">请先在系统通知栏或“应用信息”中停止旧版同步/监听服务，然后重试。应用不会自动终止它。</div>
+          </div>
+        </div>
+        <div class="m3-seg-row">
+          <div class="m3-avatar ok">${I.shield}</div>
+          <div class="m3-row-body">
+            <div class="m3-row-title">未读取凭据，未写入数据</div>
+            <div class="m3-row-sub">数据目录和旧版内容均保持原样。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="m3-footer">
+      <button class="m3-btn filled" data-act="start">重试</button>
+      <button class="m3-btn text" data-act="skip">暂不迁移</button>
+    </div>`,
+
+  'm-import': () => `
+    ${topBar({ title: '从 v1 迁移', backAct: 'try-close', icon: 'x' })}
+    <div class="m3-scroll">
+      <div class="m3-page-head">
+        <h2>正在导入历史</h2>
+        <p>请保持应用在前台运行。</p>
+      </div>
+      ${stepCards(1, progressBlock('import'), { 1: { text: Math.round(S.processed/TOTAL*100)+'%', cls: 'active', id: 'stepPct' } })}
+      <div class="m3-sec-foot">导入期间不会捕获系统剪贴板，也不会启动后台同步服务。</div>
+    </div>
+    <div class="m3-footer">
+      <button class="m3-btn tonal" data-act="stop">${I.stop}停止迁移</button>
+    </div>`,
+
+  'm-verify': () => `
+    ${topBar({ title: '从 v1 迁移', backAct: 'try-close', icon: 'x' })}
+    <div class="m3-scroll">
+      <div class="m3-page-head">
+        <h2>正在校验内容</h2>
+        <p>请保持应用在前台，即将完成。</p>
+      </div>
+      ${stepCards(2, progressBlock('verify'), { 2: { text: Math.round(S.verified/TOTAL*100)+'%', cls: 'ok', id: 'stepPct' } })}
+      <div class="m3-sec-foot">导入达到 100% 后需重开历史库逐条校验，确认一致才标记完成。</div>
+    </div>
+    <div class="m3-footer">
+      <button class="m3-btn tonal" data-act="stop">${I.stop}停止迁移</button>
+    </div>`,
+
+  'm-stopping': () => `
+    ${topBar({ title: '从 v1 迁移', backAct: 'try-close', icon: 'x', disabled: true })}
+    <div class="m3-scroll">
+      <div class="m3-page-head">
+        <h2>正在安全停止</h2>
+        <p>正在等待当前记录提交完成。</p>
+      </div>
+      ${stepCards(S.verified ? 2 : 1, progressBlock('stop'), { [S.verified?2:1]: { text: '停止中', cls: 'warn' } })}
+    </div>
+    <div class="m3-footer">
+      <button class="m3-btn tonal" disabled><span class="m3-spin"></span>正在停止…</button>
+    </div>`,
+
+  'r-complete': () => resultPage('ok', I.check, '迁移完成', '所有记录都已导入并通过校验，现可在历史中直接使用。',
+      [['ok', S.committed - S.runPrior, '本次新导入'], ['', TOTAL, '已校验']].concat(S.runPrior ? [['', S.runPrior, '此前已导入']] : []),
+      '',
+      `<button class="m3-btn filled" data-act="enter">开始使用</button>`),
+
+  'r-complete-retry': () => resultPage('ok', I.check, '迁移完成', '没有新的记录需要导入，此前导入的记录仍在历史中。',
+      [['', 0, '本次新导入'], ['', S.runPrior, '此前已导入'], ['ok', TOTAL, '已校验']],
+      '',
+      `<button class="m3-btn filled" data-act="enter">开始使用</button>`),
+
+  'r-partial': () => resultPage('warn', I.warn, '部分数据未能导入', '已导入的记录可以正常使用，问题记录可在重试时再次处理。',
+      [['', TOTAL - 18, '已导入记录'], ['bad', 18, '失败记录'], ['warn', 9, '缺失内容'], ['bad', 6, '校验失败']],
+      `<div class="m3-seg-list" style="width:100%;margin-top:14px;text-align:left">
+        <div class="m3-seg-row info">
+          <div class="m3-avatar" style="background:transparent;color:var(--m3-on-info-container);width:26px;height:26px">${I.info}</div>
+          <div class="m3-row-body">
+            <div class="m3-row-title"><b>关于缺失内容</b></div>
+            <div class="m3-row-sub">缺失内容指记录中丢失的图片或文件附件，不计为失败记录，其余可用内容已保留。</div>
+          </div>
+        </div>
+      </div>`,
+      `<button class="m3-btn filled" data-act="enter">进入应用</button>
+       <button class="m3-btn tonal" data-act="retry">重试迁移</button>`),
+
+  'r-cancelled': () => resultPage('stop', I.stop, '迁移已停止', `已提交的 ${fmt(S.committed)} 条记录已保留，可在历史中使用。继续迁移时会自动跳过它们。`,
+      [['', S.committed - S.runPrior, '本次已提交'], ['', TOTAL - S.committed, '尚未导入']],
+      '',
+      `<button class="m3-btn filled" data-act="retry">继续迁移</button>
+       <button class="m3-btn text" data-act="enter">进入应用</button>`),
+
+  'r-failed': () => resultPage('err', I.x, '迁移未完成', '读取 v1 数据时出错：部分数据文件已损坏，或格式不受支持。',
+      [['', S.committed, '已提交并保留'], ['', TOTAL - S.committed, '尚未导入']],
+      `<div class="m3-seg-list" style="width:100%;margin-top:14px;text-align:left">
+        <div class="m3-seg-row">
+          <div class="m3-avatar muted" style="width:32px;height:32px">${I.info}</div>
+          <div class="m3-row-body">
+            <div class="m3-row-sub">已提交的记录<b>不会回滚</b>，仍可在历史中使用。重试会跳过它们；若持续失败，请确认旧版已停止或通过 SAF 选择其他目录。</div>
+          </div>
+        </div>
+      </div>`,
+      `<button class="m3-btn filled" data-act="retry">重试</button>
+       <button class="m3-btn text" data-act="enter">不再迁移，进入应用</button>`),
+
+  'history-empty': () => historyPage(0),
+  'history':       () => historyPage(S.committed),
+
+  'closed': () => `
+    <div class="m3-welcome">
+      <div class="m3-badge-ring stop">${I.check}</div>
+      <h1 style="font-size:22px;line-height:28px;margin-top:20px">任务已安全停止并退出</h1>
+      <p class="slogan" style="font-size:14px;line-height:21px;margin-top:8px">
+        原型模拟：系统返回退出或划掉任务走同一安全取消路径。<br>已提交 ${fmt(S.committed)} 条。setup 未标记完成，下次打开回到迁移确认页（不自动继续导入）。
+      </p>
+    </div>
+    <div class="m3-footer">
+      <button class="m3-btn filled" data-act="relaunch">模拟重新启动 App</button>
+    </div>`,
+};
+
+function welcomePage(detectHtml, chipCls, waiting){
+  return `
+    <div class="m3-welcome">
+      <div class="m3-emblem">${I.brand}</div>
+      <h1>欢迎使用 UniClipboard</h1>
+      <p class="slogan">让每一次复制更有用</p>
+      ${detectHtml ? `<div class="m3-detect-chip ${chipCls}">${detectHtml}</div>` : '<div style="height:68px"></div>'}
+    </div>
+    <div class="m3-footer">
+      ${waiting
+        ? `<button class="m3-btn filled" disabled><span class="m3-spin"></span>正在检查数据…</button>`
+        : `<button class="m3-btn filled" data-act="begin">开始使用</button>`}
+    </div>`;
+}
+
+function passPage(denied){
+  const lead = denied ? '系统生物识别或锁屏验证被拒绝。' : 'Android Keystore 凭据无法解锁这份 v1 数据。';
+  return `
+    ${topBar({ title: '从 v1 迁移', backAct: 'back-confirm' })}
+    <div class="m3-scroll">
+      <div class="m3-page-head">
+        <h2>输入 v1 口令</h2>
+        <p>${lead}请输入在 v1 中设置的口令以解锁。</p>
+      </div>
+      ${stepCards(0, `
+        <div class="m3-step-sub">口令仅用于本次只读解锁，不会保存、缓存或写入日志。</div>
+        <div class="m3-field-wrap">
+          <div class="m3-field ${S.passErr?'bad':''}">
+            <div class="m3-field-inner">
+              <label class="m3-field-label" for="pw">v1 口令</label>
+              <input id="pw" type="${S.showPass?'text':'password'}" autocomplete="off"
+                placeholder="原型口令：v1pass" value="${S.pass.replace(/"/g,'&quot;')}">
+            </div>
+            <button class="m3-icon-btn" style="width:40px;height:40px" data-act="toggle-pw" aria-label="切换密码可见">${S.showPass ? I.eyeOff : I.eye}</button>
+          </div>
+          ${S.passErr ? `<div class="m3-field-err">${I.warn}<span>口令不正确，请重试。</span></div>` : ''}
+        </div>
+      `, { 0: { text: '需输入口令', cls: 'warn' } })}
+    </div>
+    <div class="m3-footer">
+      <button class="m3-btn filled" data-act="unlock" ${S.pass?'':'disabled'} id="unlockBtn">解锁并继续</button>
+      <button class="m3-btn text" data-act="skip">暂不迁移</button>
+      <div class="m3-foot-hint">之后可在 设置 › 存储 › 从 v1 迁移 中导入</div>
+    </div>`;
+}
+
+function resultPage(tone, icon, title, lead, stats, note, actions){
+  return `
+    ${topBar({ title: '迁移结果', backAct: null })}
+    <div class="m3-scroll">
+      <div class="m3-result">
+        <div class="m3-badge-ring ${tone}">${icon}</div>
+        <h2>${title}</h2>
+        <p class="lead">${lead}</p>
+        <div class="m3-stat-grid">
+          ${stats.map(([c,n,l]) => `<div class="m3-stat ${c}"><b>${fmt(n)}</b><span>${l}</span></div>`).join('')}
+        </div>
+        ${note}
+      </div>
+    </div>
+    <div class="m3-footer">${actions}</div>`;
+}
+
+function historyPage(n){
+  const items = [
+    { ic: I.type,  t: 'adb shell appops set app.uniclipboard READ_CLIPBOARD allow', meta: 'Pixel 9 · 昨天 21:40' },
+    { ic: I.link,  t: 'm3.material.io/styles/typography/type-scale-tokens', meta: 'Linux 桌面 · 昨天 18:12' },
+    { ic: I.image, t: 'Screenshot_20261119.png · 1.4 MB', meta: 'Pixel 9 · 11月19日' },
+    { ic: I.file,  t: 'Q4-产品评审纪要.pdf · 420 KB', meta: 'Linux 桌面 · 11月18日' },
+    { ic: I.type,  t: '会议要点：周三 10:00 对齐移动端迁移视觉稿', meta: 'Pixel 9 · 11月15日' },
+  ];
+  return `
+    <div class="m3-hist-top"><h2>剪贴板</h2></div>
+    <div class="m3-search-pill">${I.search}<span>搜索历史记录</span></div>
+    ${n ? `<div class="m3-scroll" style="padding-bottom:100px">
+      <div class="m3-sec-title" style="margin-top:2px">已导入自 v1 · ${fmt(n)} 条</div>
+      <div class="m3-seg-list">
+        ${items.map(it => `<div class="m3-hist-row">
+          <div class="m3-kind-box">${it.ic}</div>
+          <div class="m3-hist-text">
+            <div class="m3-hist-primary">${it.t}</div>
+            <div class="m3-hist-meta"><span>${it.meta}</span><span class="m3-v1-tag">v1</span></div>
+          </div>
+        </div>`).join('')}
+      </div>
+      <div class="demo-reset-bar">
+        <span>原型：setup 已标记完成</span>
+        <button data-act="reset">重置原型</button>
+      </div>
+    </div>` : `<div class="m3-empty-hist">
+      <div class="ic">${I.clip}</div>
+      <h3>还没有历史记录</h3>
+      <p>复制文字、链接、图片或通过系统分享发送后，会出现在这里。</p>
+      <div style="margin-top:20px"><button class="m3-btn tonal" style="width:auto;min-height:42px;font-size:14px;padding:0 20px" data-act="reset">重置原型</button></div>
+    </div>`}
+    <div class="m3-floating-bar">
+      <div class="m3-nav-pill">
+        <div class="m3-nav-item on">${I.clip}<span>历史</span></div>
+        <div class="m3-nav-item">${I.devices}</div>
+        <div class="m3-nav-item">${I.settings}</div>
+      </div>
+      <button class="m3-fab" aria-label="添加">${I.plus}</button>
+    </div>`;
+}
+
+function safSheet(){
+  return `<div class="m3-scrim bottom" data-act="close-sheet">
+    <div class="m3-sheet" onclick="event.stopPropagation()">
+      <div class="m3-drag-handle"></div>
+      <div class="m3-sheet-title">选择 v1 数据目录（SAF）</div>
+      <div class="m3-seg-list">
+        ${SOURCES.map((s,i) => `<button class="m3-seg-row tap" data-src="${i}">
+          <div class="m3-avatar ${s.ok?'':'muted'}">${I[s.icon]}</div>
+          <div class="m3-row-body">
+            <div class="m3-row-title">${s.title}</div>
+            <div class="m3-row-sub mono">${s.path}</div>
+          </div>
+          ${S.src.id === s.id ? `<span style="color:var(--m3-primary);width:20px;height:20px">${I.check}</span>` : ''}
+        </button>`).join('')}
+      </div>
+      <div class="m3-sec-foot">模拟调用 Android Storage Access Framework (ACTION_OPEN_DOCUMENT_TREE) 选取自定义或外部存储目录。</div>
+    </div>
+  </div>`;
+}
+
+function closeDialog(){
+  return `<div class="m3-scrim">
+    <div class="m3-dialog">
+      <h3>迁移正在进行</h3>
+      <p>退出会先安全停止迁移并释放目标锁。已提交的记录会保留，下次启动可以继续导入。</p>
+      <div class="m3-dialog-acts">
+        <button data-act="close-cancel">继续迁移</button>
+        <button class="danger" data-act="close-confirm">停止并退出</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---------- 规格说明 ---------- */
+const SPEC = {
+  'w-detecting': ['欢迎 · 检测中', [
+    '后台检查本机应用内部存储中的 v1 数据。<b>不读取剪贴板，不触发 BiometricPrompt / Keystore，不自动迁移。</b>',
+    '使用 M3 <code>surface</code> 画布、<code>primaryContainer</code> 圆方徽章与 56dp <code>FilledButton</code>（<code>AppButton.android</code>）。',
+    '检测期间点“开始使用”进入等待态，检测完成后自动分流。']],
+  'w-found': ['欢迎 · 发现本机 v1', [
+    '以 M3 <code>successContainer</code> 状态胶囊温和提示发现 v1 数据，<b>不提前展示导入动作</b>。',
+    '点击“开始使用”进入迁移确认页。']],
+  'w-none': ['欢迎 · 未发现', [
+    '点击“开始使用”直接进入剪贴板历史页，<b>没有多余完成页</b>，并持久化 setup 完成标记。']],
+  'w-error': ['欢迎 · 检测出错', [
+    '与“未发现”明确区分：<code>errorContainer</code> 提示卡提供“重试”与 SAF“手动选择目录”快捷按钮。',
+    '用户仍可直接点击“开始使用”跳过迁移进入历史。']],
+  'm-confirm': ['迁移 · 确认', [
+    '使用 M3 Expressive <b>分段列表</b>（<code>SettingsSectionItem variant="grouped"</code>：首尾 20dp、组内 4dp、2dp 缝隙、无分隔线）与 40dp 圆形图标（<code>SettingsLeadingIcon</code>）。',
+    '支持通过 Android SAF 切换自定义或外部存储目录；警告行使用 <code>SettingsListRow tone="warning"</code>（<code>warningContainer</code> 整行着色）。',
+    '在触达 Keystore 或写入前清楚列出“会导入 / 不会导入”及“退出旧版 / 停止后台监听服务”提醒。']],
+  'm-invalid': ['迁移 · 无效目录', [
+    '通过 SAF 选到无效目录时使用 <code>errorContainer</code> 分段行明确报错，“开始迁移”保持禁用。',
+    '支持重新选择目录或点击“暂不迁移”。']],
+  'm-cred-system': ['迁移 · Keystore / BiometricPrompt', [
+    '仅在用户点击“开始迁移”后拉起 Android 系统 <code>BiometricPrompt</code> 底部抽屉验证指纹或锁屏凭据。',
+    '3 步进度卡片纵向排布，活跃步骤采用 <code>surfaceContainerHigh</code> 阶梯提亮。']],
+  'm-cred-pass': ['迁移 · 输入口令', [
+    'Keystore 无法解锁时在当前步骤卡片内嵌 M3 <code>AppTextField</code>（<code>filled</code> 变体：16dp 全圆角、无底线、浮动标签、右侧明密切换图标）。',
+    '口令不保存、不写日志，错误时高亮 <code>error</code> 边框并允许重试或暂不迁移。']],
+  'm-cred-denied': ['迁移 · 生物识别被拒', [
+    '用户取消指纹/锁屏验证时直接回落到内嵌口令输入，保留“暂不迁移”出口。']],
+  'm-conflict': ['迁移 · 后台服务占用', [
+    '独占锁冲突时使用 <code>errorContainer</code> 分段卡明确告知用户先停止旧版后台监听/同步服务，<b>不自动强杀</b>。',
+    '说明未读取凭据且未写入任何数据。']],
+  'm-import': ['迁移 · 导入中', [
+    '展示 M3 Expressive 8dp 粗圆头 <code>LinearProgressIndicator</code> 与 <code>已处理 / 总数</code>，<b>不显示剩余时间估计</b>。',
+    '提示保持应用在前台，期间不捕获剪贴板、不启动后台同步。',
+    '点左上角关闭或底部系统手势条（模拟返回手势）弹出 M3 <code>AlertDialog</code>，走同一安全停止路径。']],
+  'm-verify': ['迁移 · 校验中', [
+    '导入 100% 后自动切入第 3 步校验，进度条换为 <code>success</code> 色、计数改为“已校验”。',
+    '校验未完成前绝不提前显示“迁移完成”。']],
+  'm-stopping': ['迁移 · 正在停止', [
+    '等待安全取消完成后再进入终态；操作按钮全部禁用避免重复触发。']],
+  'r-complete': ['结果 · 完成', [
+    '“迁移完成”只用于完整且通过校验的结果；2×2 Tonal 指标卡片展示本次新导入与已校验数量。',
+    '点击“开始使用”直接打开历史页，不自动写入剪贴板。']],
+  'r-complete-retry': ['结果 · 重试无新增', [
+    '区分“本次新导入（0）”与“此前已导入”，0 条新增不表现为空历史。']],
+  'r-partial': ['结果 · 部分导入', [
+    '使用 M3 语义色容器分别呈现已导入、失败记录、缺失内容与校验失败（为 0 不展示），附 <code>infoContainer</code> 说明缺失内容不含在失败数中。',
+    '主按钮 <code>FilledButton</code>“进入应用”，次按钮 <code>FilledTonalButton</code>“重试迁移”。']],
+  'r-cancelled': ['结果 · 已停止', [
+    '说明已提交记录保留且继续迁移自动跳过；主按钮“继续迁移”，次按钮“进入应用”。']],
+  'r-failed': ['结果 · 失败', [
+    '展示安全可操作原因，不含路径/正文/秘密；<b>明确说明已提交记录不会回滚</b>。',
+    '主按钮“重试”，次按钮“不再迁移，进入应用”。']],
+  'history-empty': ['历史（无迁移）', [
+    '跳过或无 v1 数据进入空历史，setup 标记为完成。']],
+  'history': ['历史（迁移后）', [
+    '复刻 Android <code>HistoryListRow</code>（20dp/4dp 分段列表、40dp 图标块）+ <code>FloatingNavigationBar</code>（左下悬浮展开胶囊）+ 右下 56dp 圆方 FAB。']],
+  'closed': ['安全退出模拟', [
+    '模拟返回退出或划掉任务：走同一安全取消路径并释放锁，保留已提交记录，<b>不标记 setup 完成</b>，重启回到迁移确认页且不自动恢复导入。']],
+};
+
+const JUMPS = [
+  ['w-detecting','欢迎·检测中'],['w-found','欢迎·发现'],['w-none','欢迎·未发现'],['w-error','欢迎·出错'],
+  ['m-confirm','确认'],['m-invalid','无效目录'],['m-cred-system','生物识别/Keystore'],['m-cred-pass','输入口令'],['m-cred-denied','验证被拒'],
+  ['m-conflict','后台占用'],['m-import','导入中'],['m-verify','校验中'],['m-stopping','停止中'],
+  ['r-complete','完成'],['r-complete-retry','重试无新增'],['r-partial','部分'],['r-cancelled','已停止'],['r-failed','失败'],
+  ['history','历史'],['closed','安全退出'],
+];
+
+function render(){
+  const k = S.key;
+  $('#screen').innerHTML = PAGES[k]() + (S.sheet ? safSheet() : '') + (S.closeAsk ? closeDialog() : '');
+
+  const [t, items] = SPEC[k];
+  $('#spec').innerHTML = `
+    <div class="spec-top"><h3>${t}</h3><span class="key">${k}</span></div>
+    <ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>
+    <div class="spec-block">
+      <h4>Android 前端设计语言映射（app/expo）</h4>
+      色板：<code>colors.android.ts</code> M3 Baseline + Material You 动态色阶<br>
+      组件：<code>SettingsSectionItem</code>（20dp/4dp 分段列表）、<code>SettingsLeadingIcon</code>（40dp 圆形图标）、<code>AppTextField.android</code>（16dp 无底线填充框）、<code>AppButton.android</code>（56dp 胶囊按钮）、<code>FloatingNavigationBar</code>（悬浮导航胶囊 + FAB）
+    </div>`;
+
+  document.querySelectorAll('#jumps .chip').forEach(c => c.classList.toggle('on', c.dataset.jump === k));
+  const pw = $('#pw');
+  if(pw){
+    pw.focus();
+    pw.oninput = e => {
+      S.pass = e.target.value;
+      const b = $('#unlockBtn'); if(b) b.disabled = !S.pass;
+    };
+    pw.onkeydown = e => { if(e.key === 'Enter' && S.pass) act('unlock'); };
+  }
+}
+
+function updateProgress(){
+  const verify = S.key === 'm-verify';
+  const done = verify ? S.verified : S.processed;
+  const pct = Math.round(done / TOTAL * 100);
+  const bar = $('#bar'); if(!bar) return;
+  bar.style.width = pct + '%';
+  $('#cnt').innerHTML = `${verify?'已校验':'已处理'} <b>${fmt(done)}</b> / ${fmt(TOTAL)} 条`;
+  $('#pct').textContent = pct + '%';
+  const sp = $('#stepPct'); if(sp) sp.textContent = pct + '%';
+}
+
+function act(a){
+  switch(a){
+    case 'begin':
+      if(S.key === 'w-detecting'){ S.pendingStart = true; return render(); }
+      return startFrom(S.key);
+    case 'redetect': return go('w-detecting');
+    case 'manual': S.src = SOURCES[1]; return go('m-confirm');
+    case 'back-welcome': return go('w-found');
+    case 'back-confirm': return go('m-confirm');
+    case 'open-sheet': S.sheet = true; return render();
+    case 'close-sheet': S.sheet = false; return render();
+    case 'skip': return go('history-empty');
+    case 'start': return startMigration();
+    case 'stop': return go('m-stopping');
+    case 'toggle-pw': S.showPass = !S.showPass; return render();
+    case 'unlock':
+      if(!S.pass) return;
+      if(S.pass !== 'v1pass'){ S.passErr = true; S.pass = ''; return render(); }
+      S.passErr = false; S.pass = ''; return beginImport();
+    case 'retry': return startMigration();
+    case 'enter': return go(S.committed ? 'history' : 'history-empty');
+    case 'reset':
+      S.committed = 0; S.runPrior = 0; S.processed = 0; S.verified = 0;
+      S.src = SOURCES[0]; S.closing = false; S.closeAsk = false;
+      return go('w-detecting');
+    case 'relaunch': S.closing = false; S.processed = S.committed; return go('m-confirm');
+    case 'try-close':
+      if(['m-import','m-verify','m-cred-system'].includes(S.key)){ S.closeAsk = true; return render(); }
+      return go('m-confirm');
+    case 'close-cancel': S.closeAsk = false; return render();
+    case 'close-confirm': S.closeAsk = false; S.closing = true; return go('m-stopping');
+  }
+}
+
+document.addEventListener('click', e => {
+  const s = e.target.closest('[data-src]');
+  if(s){ S.src = SOURCES[+s.dataset.src]; S.sheet = false; return go(S.src.ok ? 'm-confirm' : 'm-invalid'); }
+  const b = e.target.closest('[data-act]');
+  if(b && !b.disabled) return act(b.dataset.act);
+});
+$('#sysBack').onclick = () => {
+  if(['m-import','m-verify','m-cred-system'].includes(S.key)){ S.closeAsk = true; return render(); }
+  if(S.sheet){ S.sheet = false; return render(); }
+  if(['m-cred-pass','m-cred-denied','m-conflict'].includes(S.key)) return go('m-confirm');
+  if(['m-confirm','m-invalid'].includes(S.key)) return go('w-found');
+};
+document.querySelectorAll('[data-theme-btn]').forEach(b => b.onclick = () => {
+  document.documentElement.dataset.theme = b.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach(x => x.classList.toggle('on', x === b));
+});
+document.querySelectorAll('[data-seed-btn]').forEach(b => b.onclick = () => {
+  const v = b.dataset.seedBtn;
+  if(v === 'baseline') delete document.documentElement.dataset.seed;
+  else document.documentElement.dataset.seed = v;
+  document.querySelectorAll('[data-seed-btn]').forEach(x => x.classList.toggle('on', x === b));
+});
+$('#restart').onclick = () => act('reset');
+
+const PRESET = {
+  'm-import':         () => { S.runPrior = 0; S.processed = 390; S.committed = 390; S.verified = 0; },
+  'm-verify':         () => { S.runPrior = 0; S.processed = TOTAL; S.committed = TOTAL; S.verified = 540; },
+  'm-stopping':       () => { S.runPrior = 0; S.processed = 312; S.committed = 312; S.verified = 0; S.closing = false; },
+  'r-complete':       () => { S.runPrior = 0; S.committed = TOTAL; },
+  'r-complete-retry': () => { S.runPrior = TOTAL; S.committed = TOTAL; },
+  'r-partial':        () => { S.runPrior = 0; S.committed = TOTAL - 18; },
+  'r-cancelled':      () => { S.runPrior = 0; S.committed = 312; },
+  'r-failed':         () => { S.runPrior = 0; S.committed = 494; },
+  'history':          () => { if(!S.committed) S.committed = TOTAL; },
+  'closed':           () => { S.committed = 312; },
+  'm-invalid':        () => { S.src = SOURCES[2]; },
+  'm-confirm':        () => { S.src = SOURCES[0]; },
+  'm-cred-pass':      () => { S.passErr = false; S.pass = ''; },
+  'm-cred-denied':    () => { S.passErr = false; S.pass = ''; },
+};
+
+const jumps = $('#jumps');
+JUMPS.forEach(([k, l]) => {
+  const c = document.createElement('button');
+  c.className = 'chip'; c.dataset.jump = k; c.textContent = l;
+  c.onclick = () => {
+    clearTimer(); S.pendingStart = false; S.closeAsk = false; S.sheet = false;
+    (PRESET[k] || (() => {}))();
+    S.key = k; render();
+    if(['w-detecting','m-cred-system','m-import','m-verify','m-stopping'].includes(k)) enter(k);
+  };
+  jumps.appendChild(c);
+});
+
+go('w-detecting');
+</script>
+</body>
+</html>

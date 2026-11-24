@@ -49,5 +49,9 @@
     "history": "Histórico",
     "cache": "Cache",
     "logs": "Logs"
+  },
+  "migration": {
+    "title": "Migrar histórico da v1",
+    "description": "Importação offline de histórico, arquivos e tags da versão antiga"
   }
 }

@@ -1,12 +1,15 @@
+import { useEffect } from "react";
 import {
   NavigationContainer,
   DefaultTheme,
   DarkTheme,
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { useEngineStore } from "@/engine/store";
 import { useTheme } from "@/hooks/useTheme";
+import { MigrationSetupScreen } from "@/screens/setup/MigrationSetupScreen";
 import { OnboardingPreviewScreen } from "@/screens/OnboardingPreviewScreen";
 import { SettingsScreen } from "@/screens/SettingsScreen";
 import { SettingsSubScreen } from "@/screens/settings/SettingsSubScreen";
@@ -28,6 +31,33 @@ export function AppNavigator() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const base = theme.isDark ? DarkTheme : DefaultTheme;
+  const mode = useEngineStore((s) => s.mode);
+  const bootStage = useEngineStore((s) => s.bootStage);
+  const bootstrap = useEngineStore((s) => s.bootstrap);
+
+  useEffect(() => {
+    void bootstrap();
+  }, [bootstrap]);
+
+  if (bootStage === "loading") {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: theme.colors.background,
+        }}
+      >
+        <ActivityIndicator size="large" color={theme.colors.accent} />
+      </View>
+    );
+  }
+
+  if (mode === "live" && bootStage === "setup") {
+    return <MigrationSetupScreen />;
+  }
+
   return (
     <View
       style={{
@@ -36,16 +66,18 @@ export function AppNavigator() {
         backgroundColor: theme.colors.background,
       }}
     >
-      <View
-        style={{ padding: 8, backgroundColor: theme.colors.accentContainer }}
-      >
-        <Text
-          testID="shell-banner"
-          style={{ color: theme.colors.onAccentContainer, textAlign: "center" }}
+      {mode !== "live" ? (
+        <View
+          style={{ padding: 8, backgroundColor: theme.colors.accentContainer }}
         >
-          {t("shell:banner")}
-        </Text>
-      </View>
+          <Text
+            testID="shell-banner"
+            style={{ color: theme.colors.onAccentContainer, textAlign: "center" }}
+          >
+            {t("shell:banner")}
+          </Text>
+        </View>
+      ) : null}
       <SafeAreaInsetsContext.Provider value={{ ...insets, top: 0 }}>
         <NavigationContainer
           theme={{

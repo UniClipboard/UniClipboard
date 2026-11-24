@@ -5,10 +5,12 @@ Read [README.md](README.md) and the
 
 - This is one Expo application for Android and iOS. Do not place its generated
   native projects in the sibling `app/ios` or `app/android` directories.
-- The accepted scope is presentation only. Do not restore the old Engine,
-  database, background runtime, native extensions or telemetry.
-- Keep demo operations explicit. Never report a real pair, transfer, copy or sync
-  success. Use the unavailable notice for operations without integration.
+- Native builds integrate the Go Engine in-process via `modules/unic-engine`
+  (`bindings/mobile`). When `UnicEngine` is absent in JS-only runs, keep demo
+  operations explicit via `mode: "unavailable"` and never report a real pair,
+  transfer, copy or sync success.
+- Keep `app/expo/package.json` `dependencies` and `devDependencies` pinned to the
+  accepted Expo 57 versions and retain the mandatory navigation patches.
 - Reuse existing components in `src/components/ui` and platform settings rows.
   Shared UI must not branch on `Platform.OS`. Use platform-resolved files for
   substantial differences. Keep identical screen composition shared.

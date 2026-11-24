@@ -1,0 +1,9 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "modules": ["UnicEngineModule"]
+  },
+  "android": {
+    "modules": ["app.uniclipboard.engine.UnicEngineModule"]
+  }
+}

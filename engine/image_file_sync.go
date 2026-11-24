@@ -81,7 +81,7 @@ func (e *Engine) imageFileSendSet(ctx context.Context, c *contentObj) (sendSet, 
 		if err != nil {
 			return sendSet{}, err
 		}
-		defer r.Close()
+		defer func() { _ = r.Close() }()
 		data, readErr := io.ReadAll(io.LimitReader(ctxReader{ctx, r}, file.desc.Size+1))
 		if readErr != nil {
 			return sendSet{}, sourceErr(ctx, readErr)

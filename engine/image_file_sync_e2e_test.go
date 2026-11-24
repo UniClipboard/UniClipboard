@@ -44,7 +44,7 @@ func TestExternalImageFileProcessE2E(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer n.e.ReleaseContent(bg, h.LeaseID)
+		defer func() { _ = n.e.ReleaseContent(bg, h.LeaseID) }()
 		result, err := n.e.CommitContent(bg, CommitRequest{RequestID: RequestID(id), LeaseID: h.LeaseID})
 		if err != nil {
 			t.Fatal(err)
@@ -73,7 +73,7 @@ func TestExternalImageFileProcessE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer n.e.ReleaseContent(bg, h.LeaseID)
+	defer func() { _ = n.e.ReleaseContent(bg, h.LeaseID) }()
 	if len(h.Content.Parts) != 1 || h.Content.Parts[0].MIME != MimePNG || h.Content.Parts[0].Kind != PartRepresentation {
 		t.Fatalf("expected one PNG representation: %+v", h.Content)
 	}
@@ -118,7 +118,7 @@ func TestExternalImageFileProcessE2E(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer n.e.ReleaseContent(bg, alternativeLease.LeaseID)
+	defer func() { _ = n.e.ReleaseContent(bg, alternativeLease.LeaseID) }()
 	body, err = n.e.ReadContent(bg, alternativeLease.LeaseID, alternativeLease.Content.Parts[0].ID)
 	if err != nil {
 		t.Fatal(err)

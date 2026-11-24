@@ -2,11 +2,11 @@ package engine
 
 import (
 	"context"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/uniclipboard/unic/internal/directory"
@@ -87,16 +87,9 @@ func allowsAny(parts []receivePart, pol BackendSyncPolicy) bool {
 	return false
 }
 
-// admitReceive decides whether an incoming clip is wanted before any byte of
-// it is read: the engine must be running, sync on, the sender the clip's own
-// origin, the backend's policy must allow some part, the same view must not
-// have arrived (or be arriving) through another backend, and room must be
-// found. Declining makes the backend read and drop the clip. Making room
-// drops the oldest received entries that nobody is using.
-func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admission, accepted bool) {
-	started := time.Now()
+func receivePartsKind(parts []receivePart) DiagnosticContentKind {
 	kind := DiagnosticContentKind("unknown")
-	for _, p := range req.parts {
+	for _, p := range parts {
 		k := DiagnosticContentKind("text")
 		if p.file {
 			k = "files"
@@ -109,10 +102,26 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 			kind = "mixed"
 		}
 	}
+	return kind
+}
+
+// admitReceive decides whether an incoming clip is wanted before any byte of
+// it is read: the engine must be running, sync on, the sender the clip's own
+// origin, the backend's policy must allow some part, the same view must not
+// have arrived (or be arriving) through another backend, and room must be
+// found. Declining makes the backend read and drop the clip. Making room
+// drops the oldest received entries that nobody is using.
+func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admission, accepted bool) {
+	started := time.Now()
+	kind := receivePartsKind(req.parts)
 	outcome, code := DiagnosticResult("rejected"), CodeInvalidArgument
 	defer func() {
 		if !accepted {
-			e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: diagnosticBackend(req.backend), ContentKind: kind, Duration: time.Since(started)})
+			backend := diagnosticBackend(req.backend)
+			e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: backend, ContentKind: kind, Duration: time.Since(started)})
+			if outcome == "failed" || outcome == "rejected" {
+				e.logPipelineFailure(context.Background(), "receive", outcome, backend, kind, code)
+			}
 		}
 	}()
 	if req.sourceApplication.Validate() != nil {
@@ -199,15 +208,23 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 		}
 		release()
 		e.commit(EventResourceWarning)
-		e.logf(slog.LevelWarn, "dropped incoming content", "reason", "storage_full")
 		return peerbackend.Admission{}, false
 	}
 	t := receiveTicket{sourceApplication: req.sourceApplication.Clone(), started: started, kind: kind, backend: req.backend, source: req.source, channel: req.channel, ephemeral: req.ephemeral, key: key, reserved: reservation, cacheReserved: cacheBytes}
+	var once sync.Once
+	finish := func(snap clip.Snapshot, dir string, ok bool, cause error) {
+		once.Do(func() {
+			defer release() // the committed record, if any, replaces the placeholder
+			e.delivered(t, snap, dir, ok, cause)
+		})
+	}
 	return peerbackend.Admission{
 		Inbox: e.recvDir(),
 		Done: func(snap clip.Snapshot, dir string, ok bool) {
-			defer release() // the committed record, if any, replaces the placeholder
-			e.delivered(t, snap, dir, ok)
+			finish(snap, dir, ok, nil)
+		},
+		Fail: func(cause error) {
+			finish(clip.Snapshot{}, "", false, cause)
 		},
 	}, true
 }
@@ -247,10 +264,14 @@ func (e *Engine) evictOldest(needSpace bool) bool {
 
 // delivered turns a fully received clip into content and lists it. reserved is
 // what Admit set aside.
-func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok bool) {
+func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok bool, cause error) {
 	outcome, code := DiagnosticResult("failed"), CodeInternal
 	defer func() {
-		e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: diagnosticBackend(t.backend), ContentKind: t.kind, Duration: time.Since(t.started)})
+		backend := diagnosticBackend(t.backend)
+		e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: backend, ContentKind: t.kind, Duration: time.Since(t.started)})
+		if outcome == "failed" || outcome == "rejected" {
+			e.logPipelineFailure(context.Background(), "receive", outcome, backend, t.kind, code)
+		}
 	}()
 	peer, reserved := t.source, t.reserved
 	cacheRemaining := t.cacheReserved
@@ -277,7 +298,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 		} else if !enabled {
 			outcome, code = "policy_filtered", ""
 		} else {
-			code = CodeUnavailable
+			outcome, code = receiveFailureOutcome(cause)
 		}
 		giveBack(reserved)
 		if dir != "" {
@@ -309,6 +330,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	}
 	c.owned = c.total + int64(len(c.source.Encode()))
 	if err := e.verifyDirectory(receiveCtx, c); err != nil {
+		outcome, code = diagnosticOutcome(err)
 		giveBack(reserved)
 		if dir != "" {
 			_ = os.RemoveAll(dir)

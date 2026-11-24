@@ -354,6 +354,24 @@ func TestReceiveLimitDropsClipButKeepsStreamInSync(t *testing.T) {
 	if !connected(a, b) {
 		t.Fatal("the connection was lost")
 	}
+	eventually(t, "pipeline.failed logged for rejected receive", func() bool {
+		matches, _ := filepath.Glob(filepath.Join(b.n.dataDir, "logs", "segment-*.jsonl"))
+		for _, m := range matches {
+			data, err := os.ReadFile(m)
+			if err != nil {
+				continue
+			}
+			s := string(data)
+			if strings.Contains(s, `"msg":"pipeline.failed"`) &&
+				strings.Contains(s, `"stage":"receive"`) &&
+				strings.Contains(s, `"result":"rejected"`) &&
+				strings.Contains(s, `"backend":"tailcat"`) &&
+				strings.Contains(s, `"code":"limit_exceeded"`) {
+				return true
+			}
+		}
+		return false
+	})
 }
 
 func TestSendLimit(t *testing.T) {

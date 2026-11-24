@@ -841,14 +841,25 @@ func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) (
 		sess.bodyConn.writingBody = true
 		defer func() { sess.bodyConn.writingBody = false; _ = sess.conn.SetWriteDeadline(time.Time{}) }()
 	}
-	stop := context.AfterFunc(ctx, sess.close) // a cancelled send leaves the stream out of step
+	stop := context.AfterFunc(ctx, func() { sess.closeWith("cancellation") }) // a cancelled send leaves the stream out of step
 	defer stop()
 	if err := sess.w.SendApplicationStream(m.Clip.WireID, m.Clip.Origin, int64(m.Clip.AtMs), m.Clip.Hash, out, m.Clip.SourceApplication, &body); err != nil {
-		sess.close() // the stream may be out of step: start over
 		if srcErr != nil {
-			return srcErr // the content failed, not the network
+			sess.closeWith("io_failure") // the stream may be out of step: start over
+			return srcErr                // the content failed, not the network
 		}
-		return rpc.NewError(rpc.CodeUnavailable)
+		var ne net.Error
+		switch {
+		case ctx.Err() != nil:
+			sess.closeWith("cancellation")
+			return rpc.NewError(rpc.CodeCancelled)
+		case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
+			sess.closeWith("timeout")
+			return rpc.NewError(rpc.CodeTimeout)
+		default:
+			sess.closeWith(reason(err))
+			return rpc.NewError(rpc.CodeUnavailable)
+		}
 	}
 	return nil
 }
@@ -943,9 +954,11 @@ func (b *Backend) receive(s *session, m *wire.Clip) error {
 	parts := &recvParts{w: s.w, m: m, observation: body}
 	result, recvErr := rcv.Receive(ctx, *g.ReceiveID, parts)
 	var drainErr error
-	if recvErr != nil || result != rpc.OutcomeCommit {
+	if recvErr != nil {
 		// An aborted batch must not wait for a peer to finish the rejected body.
 		// Returning an error closes the session and releases its readers.
+		drainErr = recvErr
+	} else if result != rpc.OutcomeCommit {
 		drainErr = rpc.NewError(rpc.CodeUnavailable)
 	} else {
 		drainErr = parts.drain()

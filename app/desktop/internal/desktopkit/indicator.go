@@ -43,7 +43,7 @@ func (k Kit) Badge(c *ui.Context, p BadgeProps) ui.Element {
 	{
 
 		h, padX, size = 20, 6, 12
-		bg, fg = k.Color("accent-500"), k.Color("text-white")
+		bg, fg = k.Color("accent-500"), k.Color("text-on-accent")
 	}
 
 	return ui.Row(c).Height(h).MinWidth(h).PaddingX(padX).Radius(h / 2).Center().Background(bg).

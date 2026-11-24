@@ -45,7 +45,7 @@ func scenarioSearchDisclosure(t *testing.T) {
 	if initialW < 180 || initialW > 460 {
 		t.Errorf("initial unified omnibar width=%v, want within [180, 460]", initialW)
 	}
-	pin, _ := tt.AccessByRole(ui.RoleButton, "切换置顶")
+	pin, _ := tt.AccessByRole(ui.RoleButton, "切换收藏")
 	if err := tt.Click("搜索历史"); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func scenarioSearchDisclosure(t *testing.T) {
 	if w := read(); w != initialW {
 		t.Errorf("focusing unified omnibar shifted width: got %v want %v", w, initialW)
 	}
-	after, _ := tt.AccessByRole(ui.RoleButton, "切换置顶")
+	after, _ := tt.AccessByRole(ui.RoleButton, "切换收藏")
 	if after.Bounds != pin.Bounds {
 		t.Error("search moved the command group")
 	}

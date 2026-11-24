@@ -41,6 +41,78 @@ func TestValidHTTPURL(t *testing.T) {
 	}
 }
 
+func TestQRScannableURL(t *testing.T) {
+	exactMax := "https://example.com/" + strings.Repeat("a", maxActionQRURLBytes-len("https://example.com/"))
+	for _, good := range []string{
+		"https://wss.ink/f/demo2026share",
+		"https://wormhole.app/demo123#k9vX_secretKeyFragment",
+		"  http://192.168.1.20:8080/dl/file.zip  ",
+		exactMax,
+	} {
+		if got := qrScannableURL(good); got == "" {
+			t.Errorf("qrScannableURL(%q) = empty, want scannable", good)
+		}
+	}
+	tooLong := exactMax + "x"
+	for _, bad := range []string{
+		"",
+		"not a url",
+		"javascript:alert(1)",
+		"file:///etc/passwd",
+		"http://localhost:8080/share",
+		"https://app.localhost/share",
+		"http://127.0.0.1:8080/share",
+		"http://[::1]:8080/share",
+		"http://0.0.0.0:8080/share",
+		tooLong,
+	} {
+		if got := qrScannableURL(bad); got != "" {
+			t.Errorf("qrScannableURL(%q) = %q, want empty", bad, got)
+		}
+	}
+}
+
+func TestEncodeActionQRImage(t *testing.T) {
+	longScannable := "https://example.com/dl/" + strings.Repeat("k", 650) + "#frag"
+	for _, raw := range []string{
+		"https://wss.ink/f/demo2026share",
+		"https://wormhole.app/demo123#secretKeyFragment",
+		longScannable,
+	} {
+		img := encodeActionQRImage(raw)
+		if img == nil {
+			t.Fatalf("encodeActionQRImage(%q) = nil, want QR image", raw)
+		}
+		b := img.Bounds()
+		if b.Dx() != b.Dy() || b.Dx() < actionQRMinPixels {
+			t.Fatalf("encodeActionQRImage(%q) bounds = %v, want square >= %d", raw, b, actionQRMinPixels)
+		}
+		// Standard four-module quiet zone keeps all four corners pure white.
+		for _, pt := range [][2]int{{0, 0}, {b.Dx() - 1, 0}, {0, b.Dy() - 1}, {b.Dx() - 1, b.Dy() - 1}} {
+			c := img.NRGBAAt(pt[0], pt[1])
+			if c.R != 255 || c.G != 255 || c.B != 255 || c.A != 255 {
+				t.Fatalf("quiet zone corner %v = %+v, want pure white", pt, c)
+			}
+		}
+		hasBlack := false
+		for i := 0; i < len(img.Pix); i += 4 {
+			if img.Pix[i] == 0 && img.Pix[i+1] == 0 && img.Pix[i+2] == 0 && img.Pix[i+3] == 255 {
+				hasBlack = true
+				break
+			}
+		}
+		if !hasBlack {
+			t.Fatalf("encodeActionQRImage(%q) has no dark modules", raw)
+		}
+	}
+	if img := encodeActionQRImage("http://127.0.0.1:8080/local"); img != nil {
+		t.Fatal("loopback URL unexpectedly produced a QR image")
+	}
+	if img := encodeActionQRImage("plain text result"); img != nil {
+		t.Fatal("non-URL text unexpectedly produced a QR image")
+	}
+}
+
 func TestHistoryActionPostActionsDesktop(t *testing.T) {
 	dir, err := os.MkdirTemp("", "unic-post-action-")
 	if err != nil {
@@ -68,10 +140,15 @@ func TestHistoryActionPostActionsDesktop(t *testing.T) {
 			reqs <- actionReq{path: r.URL.Path, in: in}
 			w.Header().Set("Content-Type", "application/json")
 			itemID := "new-share"
-			if strings.HasSuffix(r.URL.Path, "/none") {
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/none"):
 				itemID = "new-none"
-			} else if strings.HasSuffix(r.URL.Path, "/zh") {
+			case strings.HasSuffix(r.URL.Path, "/zh"):
 				itemID = "new-present"
+			case strings.Contains(r.URL.Path, "unic.wormhole"):
+				itemID = "new-wormhole"
+			case strings.HasSuffix(r.URL.Path, "/local"):
+				itemID = "new-local"
 			}
 			_ = json.NewEncoder(w).Encode(api.ActionOutput{
 				Item:    api.HistoryItem{ID: itemID, Kind: "text"},
@@ -79,9 +156,14 @@ func TestHistoryActionPostActionsDesktop(t *testing.T) {
 			})
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/history/") && strings.HasSuffix(r.URL.Path, "/content"):
 			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			if strings.Contains(r.URL.Path, "new-share") {
+			switch {
+			case strings.Contains(r.URL.Path, "new-share"):
 				_, _ = w.Write([]byte("https://wss.ink/f/demo2026share"))
-			} else {
+			case strings.Contains(r.URL.Path, "new-wormhole"):
+				_, _ = w.Write([]byte("https://wormhole.app/demo123#secretKeyFragment"))
+			case strings.Contains(r.URL.Path, "new-local"):
+				_, _ = w.Write([]byte("http://127.0.0.1:8080/preview"))
+			default:
 				_, _ = w.Write([]byte("翻译结果：剪贴板跨设备同步"))
 			}
 		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/history/") && strings.HasSuffix(r.URL.Path, "/use"):
@@ -115,6 +197,22 @@ func TestHistoryActionPostActionsDesktop(t *testing.T) {
 				Accepts:     []string{"text", "image", "files"},
 				Placements:  []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar},
 				PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostPresent},
+			},
+			{
+				Key:         "unic.wormhole/share",
+				PluginID:    "unic.wormhole",
+				Title:       "通过 Wormhole 临时分享",
+				Accepts:     []string{"text", "image", "files"},
+				Placements:  []string{plugin.ActionPlacementHistoryItemMenu, plugin.ActionPlacementHistoryToolbar},
+				PostActions: []string{plugin.ActionPostCopy, plugin.ActionPostPresent},
+			},
+			{
+				Key:         "example.preview/local",
+				PluginID:    "example.preview",
+				Title:       "本地预览链接",
+				Accepts:     []string{"text"},
+				Placements:  []string{plugin.ActionPlacementHistoryItemMenu},
+				PostActions: []string{plugin.ActionPostPresent},
 			},
 			{
 				Key:         "example.translate/zh",
@@ -167,7 +265,7 @@ func TestHistoryActionPostActionsDesktop(t *testing.T) {
 		t.Fatalf("share action request = %+v, want Apply=true CancelOnContext=true", req.in)
 	}
 	drain(t, d)
-	if !d.actionResult.open || !d.actionResult.copied || d.actionResult.url != "https://wss.ink/f/demo2026share" {
+	if !d.actionResult.open || !d.actionResult.copied || d.actionResult.url != "https://wss.ink/f/demo2026share" || d.actionResult.qr == nil {
 		t.Fatalf("unexpected share actionResult: %+v", d.actionResult)
 	}
 	live.nextRefresh = time.Now().Add(time.Hour)
@@ -187,10 +285,13 @@ func TestHistoryActionPostActionsDesktop(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"通过文叔叔临时分享", "unic.wenshushu", "已自动复制到剪贴板", "https://wss.ink/f/demo2026share", "打开链接", "再次复制"} {
+	for _, want := range []string{"通过文叔叔临时分享", "unic.wenshushu", "已自动复制到剪贴板", "https://wss.ink/f/demo2026share", "使用手机扫码打开链接", "打开链接", "再次复制"} {
 		if !tt.HasText(want) {
 			t.Fatalf("present dialog missing %q: %v", want, tt.Texts())
 		}
+	}
+	if qrNode, ok := tt.AccessByRole(ui.RoleImage, "链接二维码"); !ok || qrNode.Bounds.W < 150 || qrNode.Bounds.H < 150 {
+		t.Fatalf("present dialog missing QR image: ok=%v node=%+v", ok, qrNode)
 	}
 	if err := tt.Click("打开链接"); err != nil {
 		t.Fatalf("click open link: %v", err)
@@ -213,18 +314,78 @@ func TestHistoryActionPostActionsDesktop(t *testing.T) {
 	if err := tt.Click("关闭"); err != nil {
 		t.Fatalf("click close: %v", err)
 	}
-	if d.actionResult.open {
-		t.Fatal("present dialog stayed open after close")
+	if d.actionResult.open || d.actionResult.qr != nil {
+		t.Fatal("present dialog stayed open or retained QR bitmap after close")
 	}
 
-	// 2. present-only (no copy): passes Apply=false, opens modal without copied badge and without Open Link for non-URL text.
+	// 1b. Wormhole URL with #fragment keeps the full link and shows QR code by default.
+	d.runHistoryAction("code", "unic.wormhole/share")
+	req = <-reqs
+	if !req.in.Apply || !req.in.CancelOnContext {
+		t.Fatalf("wormhole action request = %+v, want Apply=true CancelOnContext=true", req.in)
+	}
+	drain(t, d)
+	if !d.actionResult.open || d.actionResult.url != "https://wormhole.app/demo123#secretKeyFragment" || d.actionResult.qr == nil {
+		t.Fatalf("unexpected wormhole actionResult: %+v", d.actionResult)
+	}
+	live.nextRefresh = time.Now().Add(time.Hour)
+	live.message = ""
+	live.readError = ""
+	d.theme = "light"
+	ttLight := ui.NewTesterWith(d.view, 1180, 760, ui.TesterOptions{Dark: false})
+	ttLight.SetTitleBar(ui.TitleBar{Height: 52, Left: 80})
+	ttLight.Advance(300 * time.Millisecond)
+	if _, ok := ttLight.AccessByRole(ui.RoleImage, "链接二维码"); !ok {
+		t.Fatal("wormhole present dialog missing QR image")
+	}
+	if !ttLight.HasText("https://wormhole.app/demo123#secretKeyFragment") {
+		t.Fatalf("wormhole present dialog missing fragment URL: %v", ttLight.Texts())
+	}
+	if snapDir := os.Getenv("UNIC_GRID_SNAP_DIR"); snapDir != "" {
+		ttLight.SetScale(2)
+		ttLight.Advance(50 * time.Millisecond)
+		if err := os.MkdirAll(snapDir, 0755); err == nil {
+			if f, err := os.Create(filepath.Join(snapDir, "action-result-present-light.png")); err == nil {
+				_ = png.Encode(f, ttLight.Image())
+				_ = f.Close()
+			}
+		}
+	}
+	d.theme = "dark"
+	d.actionResult = actionResultState{}
+
+	// 1c. Loopback URL keeps Open Link button but omits the phone QR code.
+	d.runHistoryAction("code", "example.preview/local")
+	<-reqs
+	drain(t, d)
+	if !d.actionResult.open || d.actionResult.url != "http://127.0.0.1:8080/preview" || d.actionResult.qr != nil {
+		t.Fatalf("unexpected loopback actionResult: %+v", d.actionResult)
+	}
+	live.nextRefresh = time.Now().Add(time.Hour)
+	live.message = ""
+	live.readError = ""
+	ttLocal := ui.NewTesterWith(d.view, 1180, 760, ui.TesterOptions{Dark: true})
+	ttLocal.SetTitleBar(ui.TitleBar{Height: 52, Left: 80})
+	ttLocal.Advance(300 * time.Millisecond)
+	if ttLocal.HasText("使用手机扫码打开链接") {
+		t.Fatal("loopback URL unexpectedly rendered QR caption")
+	}
+	if _, ok := ttLocal.AccessByRole(ui.RoleImage, "链接二维码"); ok {
+		t.Fatal("loopback URL unexpectedly rendered QR image")
+	}
+	if !ttLocal.HasText("打开链接") {
+		t.Fatalf("loopback URL missing Open Link button: %v", ttLocal.Texts())
+	}
+	d.actionResult = actionResultState{}
+
+	// 2. present-only (no copy): passes Apply=false, opens modal without copied badge, QR code, or Open Link for non-URL text.
 	d.runHistoryAction("code", "example.translate/zh")
 	req = <-reqs
 	if req.in.Apply {
 		t.Fatalf("present-only action unexpectedly set Apply=true")
 	}
 	drain(t, d)
-	if !d.actionResult.open || d.actionResult.copied || d.actionResult.url != "" || d.actionResult.text != "翻译结果：剪贴板跨设备同步" {
+	if !d.actionResult.open || d.actionResult.copied || d.actionResult.url != "" || d.actionResult.qr != nil || d.actionResult.text != "翻译结果：剪贴板跨设备同步" {
 		t.Fatalf("unexpected present-only state: %+v", d.actionResult)
 	}
 	d.actionResult = actionResultState{}

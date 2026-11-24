@@ -28,6 +28,12 @@ func scenarioCompositionTagNoticeDisclosure(t *testing.T) {
 						dismissed++
 					}
 				}
+				if k.InlineNotice(c.Key("title-only"), NoticeProps{Tone: ToneWarning, Title: "Restart needed", ActionLabel: "Restart now", ActionIcon: IconRetry}).Acted {
+					notAct++
+				}
+				if k.InlineNotice(c.Key("busy-action"), NoticeProps{Tone: ToneWarning, Title: "Restarting", ActionLabel: "Busy restart", ActionBusy: true, ActionDisabled: true}).Acted {
+					notAct++
+				}
 				k.Disclosure(c.Key("d"), "More", &open, func() { ui.Text(c, "Hidden body") })
 			})
 		}
@@ -50,6 +56,14 @@ func scenarioCompositionTagNoticeDisclosure(t *testing.T) {
 		}
 		_ = tt.Click("Act")
 		_ = tt.Click("Close")
+		beforeTitleOnly := notAct
+		if err := tt.Click("Restart now"); err != nil || notAct != beforeTitleOnly+1 {
+			t.Fatalf("title-only notice action: %v %d", err, notAct)
+		}
+		_ = tt.Click("Busy restart")
+		if notAct != beforeTitleOnly+1 {
+			t.Fatalf("disabled/busy notice action fired: %d", notAct)
+		}
 		if notAct == 0 || dismissed == 0 {
 			t.Fatalf("notice buttons: %d %d", notAct, dismissed)
 		}

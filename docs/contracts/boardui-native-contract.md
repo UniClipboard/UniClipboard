@@ -14,13 +14,13 @@ Core Engine and UI-free CLI/service programs must not acquire either UI dependen
 
 The sole BoardUI source reference is official MIT export `ec5c5eb3e29c2441be63b9422cd54f411ef23466`. Actual source takes precedence over stale comments or newer skill recipes. Source-derived code/resources retain the BoardUI MIT notice. Embedded Inter 4.1 retains OFL 1.1. Functional Remix assets retain their independent license.
 
-The [public source lock](../../app/desktop/boardui/assets/source-lock.json) binds source files, exact reference compiler dependencies, font, generated resource counts and helper glyph hashes. The current generated resource set contains 111 semantic/accent colors per scheme, 52 complete typography styles and source geometry/motion. The [application icon lock](../../app/desktop/internal/desktopkit/icons-source.json) separately binds its finite 49-glyph Remix 4.9.0 vocabulary. The public helper-glyph set remains separate. Neither cache uses transient widget/row IDs.
+The [public source lock](../../app/desktop/boardui/assets/source-lock.json) binds source files, exact reference compiler dependencies, font, generated resource counts and helper glyph hashes. The current generated resource set contains 111 semantic/accent colors per scheme, 52 complete typography styles and source geometry/motion. The [application icon lock](../../app/desktop/internal/desktopkit/icons-source.json) separately binds its finite 51-glyph Remix 4.9.0 vocabulary. The public helper-glyph set remains separate. Neither cache uses transient widget/row IDs.
 
 The repository root license remains AGPL-3.0. Upstream MIT, OFL and Remix notices retain their independent scope; this work does not relicense existing repository code. No Pro implementation or source-unverified newer component is implied by catalogue metadata. Required new resources must be inspected/generated from lawful fixed source rather than silently approximated or fetched from restricted endpoints.
 
 ## State and lifecycle
 
-`Kit{Dark}` is a value selecting immutable source resources, not a widget or domain-state owner. `LoadFonts` registers one embedded font family once per process. `Theme` returns canonical defaults for mature native primitives. `Apply` installs the resolved scheme and in-content popover-menu policy on the view context. There is no runtime web or Node dependency.
+`Kit{Dark, Colors}` selects immutable theme resources and does not own widget or domain state. A nil `Colors` preserves the source presentation. `NewPaletteTheme(light, dark)` accepts up to twelve base colors per scheme and derives component states with mygo Oklab mixing. Zero base colors inherit the scheme defaults; empty palettes preserve source tokens exactly. Omitted accent foreground chooses black/white for a changed accent. Literal white and text-on-accent/danger are separate roles. `WithOverrides` copies the resolved palette and applies exact final token replacements without further derivation. The lower-level `NewColorTheme(light, dark)` validates and copies token overrides. The [theme guide](../../app/desktop/boardui/README.md#code-defined-color-themes) defines token lookup, derived accent colors, independent scheme defaults and host injection. The [color catalogue](../../app/desktop/boardui/COLOR-TOKENS.md) lists all current values. Both public controls and native primitive defaults resolve through the selected theme. Source-only resource functions remain independent of overrides. `LoadFonts` registers one embedded font family once per process. `Theme` returns canonical defaults for mature native primitives. `Apply` installs the resolved scheme and in-content popover-menu policy on the view context. There is no runtime web or Node dependency.
 
 Controls return their actual native interactive elements. Callers read native interaction results or bound values. Required state pointers must be nonnil. Repeated/reordered controls and collection items require stable IDs/keys. A scheme change must not reset editor values, selected data, scroll state or caller-owned async work.
 
@@ -28,7 +28,7 @@ The caller owns validation, persistence, requests, cancellation and stale-result
 
 ## Implemented control interfaces and limits
 
-- Button preserves the source's four named variants, three named sizes, leading/trailing glyphs, icon-only accessible names, disabled activation and 0.98 press motion. `DressButton` applies that presentation to an existing native action base. Busy is a host extension that exposes busy and blocks activation; it is not an additional official source visual variant.
+- Button preserves the source's four named variants, three named sizes, leading/trailing glyphs, icon-only accessible names, disabled activation and 0.98 press motion. `DressButton` applies that presentation to an existing native action base. The host's busy state displays the native spinner in the leading slot, exposes busy to accessibility and blocks activation.
 - `DressLinkButton` styles an existing native button action. It does not create an anchor, URL navigation or browser behavior.
 - Input accepts caller-owned text and preserves label/description/error association, placeholder, password, read-only and disabled behavior in two sizes. Error replaces the visible description. Required paints the source marker and adds an accessible description; the fixed mygo bridge exposes no separate required state. Hidden visual labels retain the accessible name.
 - Select accepts a selected-value pointer, stable item IDs and an optional open pointer. It uses a real nonmodal in-window listbox on every OS. PopoverBase, FocusGroup and ButtonBase own outside dismissal, keyboard navigation and activation. The component retains initial selected focus, disabled choices, top-scope Escape, selection and trigger focus restoration. Typeahead, rich option renderers, sections and async option loading remain outside this API. Selection is read from the bound value; no trigger Changed() notification is promised.
@@ -39,11 +39,13 @@ The caller owns validation, persistence, requests, cancellation and stale-result
 
 New control implementation is not automatic visual acceptance. Each added state set requires its own actual-React/native comparison and behavior evidence. Application search, code/combobox fields, lists/tables, settings/status/tag views, menus, sheets and previews are explicit `desktopkit`/`desktopui` compositions, not claims that all similarly named official catalogue APIs have been ported.
 
+Informational inline notices pair the active scheme's notification information background and icon tokens with primary text for the title and body.
+
 Unknown variants/resource names and nil mandatory pointers are programmer errors. Fail visibly rather than selecting an approximate fallback skin or missing token. Icon-only actions require a nonempty accessible name. Glyphs are decorative; the action or field supplies its semantic name.
 
 ## Native host boundary
 
-Native title bars, traffic lights/GTK caption reservations, Windows caption actions, drag and resize regions, actual maximize state and close lifecycle remain host responsibilities. On macOS, keep real system traffic lights over the application-owned top band. Normal History/Settings SplitViews own this band without a separate application-name row, reserve native button bounds and keep the sidebar toggle outside inert navigation. Setup/startup retain a fallback safe-area row. Do not draw replacement caption buttons. Linux/macOS system-frame preference and restart semantics remain unchanged. Platform modifiers, tray/system menus, OS file/credential prompts, updater, notifications, shortcuts and clipboard/focus/paste integration remain native.
+Native title bars, traffic lights/GTK caption reservations, Windows caption actions, drag and resize regions, actual maximize state and close lifecycle remain host responsibilities. On macOS, keep real system traffic lights over the application-owned top band. Normal History/Settings SplitViews own this band without a separate application-name row, reserve native button bounds and keep the sidebar toggle outside inert navigation. macOS and Windows setup extend their panel backgrounds behind the caption area. Windows setup places the host caption buttons in the top-right and reserves clearance in each layout. Startup retains a fallback safe-area row. Do not draw replacement buttons for the macOS traffic lights. Linux/macOS system-frame preference and restart semantics remain unchanged. Platform modifiers, tray/system menus, OS file/credential prompts, updater, notifications, shortcuts and clipboard/focus/paste integration remain native.
 
 In-content Select, action and context menus use the shared BoardUI presentation. This does not replace the tray's OS menu or move native integration into the public control package. The separate GUI/Quick Panel/tray/service process roles and exclusive tray clipboard adapter remain intact.
 
@@ -81,8 +83,8 @@ overlay indicator clear of row content and align the 28-DIP quiet chrome toggle
 with the navigation grid. Footer actions stay fixed outside the scroll viewport.
 Application rows are 30 DIP with 13-DIP `body-2` typography, 16-DIP icons (8-DIP
 circular swatches for tags), 8-DIP icon/label gaps, 2-DIP intra-section gaps and
-14-DIP section separation. Built-in content tags stay off the sidebar by default
-while remaining opt-in from the tag manager; sidebar tag rows omit redundant `#`
+14-DIP section separation. Text, Images and Files appear in the sidebar by default.
+Other built-in tags are opt-in from the tag manager. Sidebar tag rows omit redundant `#`
 prefixes. Section commands are quiet 24-DIP buttons aligned visually with row
 counts; More is a 26-DIP secondary row aligned with navigation labels.
 This is an application composition, not a claim that the full official dashboard

@@ -6,6 +6,9 @@ on:
         type: boolean
         default: false
         description: Sign and notarize macOS candidates without publishing
+      expected_source:
+        type: string
+        description: Expected source SHA for a joint release
   workflow_call:
     secrets:
       UNIC_UPDATE_PRIVATE_KEY:
@@ -29,6 +32,9 @@ on:
       source_sha:
         type: string
         required: true
+      joint:
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -38,6 +44,8 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
+      - if: github.event_name == 'workflow_dispatch' && inputs.expected_source != '' && inputs.expected_source != github.sha
+        run: exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.source_sha || github.sha }}
@@ -59,6 +67,8 @@ jobs:
   targets:
     needs: prepare
     timeout-minutes: 40
+    env:
+      DESKTOP_METADATA: ${{ inputs.joint && 'dist/cli-input/products.toml' || 'release/products.toml' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
@@ -80,7 +90,13 @@ jobs:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: python3 tools/package/signing.py keychain --path "$RUNNER_TEMP/unic-desktop.keychain-db" --env-output "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        if: inputs.joint
+        with:
+          name: joint-desktop-cli
+          path: dist/cli-input
       - name: Fetch exact accepted CLI files
+        if: '!inputs.joint'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -88,17 +104,24 @@ jobs:
       - name: Stage and inspect native Desktop
         shell: bash
         run: |
-          go run ./tools/package -product desktop -target '${{ matrix.target }}' -cli-manifest dist/cli-input/release-manifest.json -output dist/stage
+          go run ./tools/package -metadata "$DESKTOP_METADATA" -product desktop -target '${{ matrix.target }}' -cli-manifest dist/cli-input/release-manifest.json -output dist/stage
           python tools/package/desktop.py smoke --stage dist/stage
       - name: Sign Desktop payload
         if: matrix.goos == 'darwin' && inputs.distribution
         run: python3 tools/package/desktop.py sign --stage dist/stage --identity "$UNIC_MACOS_SIGNING_IDENTITY"
+      - name: Restore Linux packaging tool downloads
+        if: matrix.goos == 'linux'
+        uses: actions/cache@v4
+        with:
+          path: .cache/packaging-tools
+          key: packaging-tools-v1-${{ matrix.target }}-${{ hashFiles('packaging/tools.json') }}
+          restore-keys: packaging-tools-v1-${{ matrix.target }}-
       - name: Install pinned Linux format tools
         if: matrix.goos == 'linux'
         run: |
-          python3 tools/package/install-tools.py --output dist/tools/nfpm
-          python3 tools/package/install-tools.py --tool appimagetool --output dist/tools/appimagetool
-          python3 tools/package/install-tools.py --tool appimage-runtime --output dist/tools/appimage-runtime
+          python3 tools/package/install-tools.py --cache-dir .cache/packaging-tools --output dist/tools/nfpm
+          python3 tools/package/install-tools.py --cache-dir .cache/packaging-tools --tool appimagetool --output dist/tools/appimagetool
+          python3 tools/package/install-tools.py --cache-dir .cache/packaging-tools --tool appimage-runtime --output dist/tools/appimage-runtime
       - name: Construct Linux packages
         if: matrix.goos == 'linux'
         env:
@@ -121,12 +144,14 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
         run: |
           package_stage=dist/stage
+          dmg_extra=()
           if [ "$DISTRIBUTION" = true ]; then
             python3 tools/package/desktop.py notarize-stage --stage dist/stage --output dist/notarized
             package_stage=dist/notarized
+            dmg_extra=(--notarize-container)
           fi
           python3 tools/package/desktop.py smoke --stage "$package_stage"
-          python3 tools/package/desktop.py package --stage "$package_stage" --format dmg --output dist/packages/dmg
+          python3 tools/package/desktop.py package --stage "$package_stage" --format dmg "${dmg_extra[@]}" --output dist/packages/dmg
           python3 tools/package/desktop.py package --stage "$package_stage" --format app.tar.gz --output dist/packages/app-archive
       - name: Install NSIS
         if: matrix.goos == 'windows'
@@ -152,10 +177,11 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          python e2e/packaging/windows-upgrade-fixture.py --target "$env:TARGET"
+          $identity = Get-Content dist/stage/manifest.json -Raw | ConvertFrom-Json
+          python e2e/packaging/windows-upgrade-fixture.py --metadata "$env:DESKTOP_METADATA" --target "$env:TARGET" --build-number $identity.build_number
           $first = (Get-ChildItem dist/packages/setup/*.exe).FullName
           $newer = (Get-ChildItem dist/windows-upgrade-fixture/packages/*.exe).FullName
-          ./e2e/packaging/windows-lifecycle.ps1 -Installer $first -Newer $newer -Receipt dist/lifecycle -Target "$env:TARGET"
+          ./e2e/packaging/windows-lifecycle.ps1 -Installer $first -Newer $newer -Receipt dist/lifecycle -Target "$env:TARGET" -Version $identity.version -BuildNumber $identity.build_number
           python tools/package/desktop.py accept --packages dist/packages/setup --receipt dist/lifecycle/report.json
       - name: Remove temporary signing keychain
         if: always() && matrix.goos == 'darwin' && inputs.distribution
@@ -163,7 +189,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-${{ matrix.target }}
+          name: ${{ inputs.joint && job.status != 'success' && format('joint-desktop-failure-{0}-{1}', matrix.target, github.run_attempt) || format('desktop-{0}', matrix.target) }}
           path: |
             dist/stage/manifest.json
             dist/notarized/manifest.json

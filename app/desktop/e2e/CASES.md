@@ -6,10 +6,12 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 |---|---|---|
 | [boardui-composition](#boardui-composition) | view | Retain the existing complete input, control, navigation, layout and overlay interaction coverage in one BoardUI design system and both color schemes. |
 | [boardui-menus](#boardui-menus) | view | Retain filter/action menu cancellation, visible choices and selected-value dispatch using real in-window BoardUI popups. |
+| [boardui-palette](#boardui-palette) | view | Verify brand-only and complete light/dark palettes drive real controls without source-blue primary states or lost caller state. |
 | [boardui-production-migration](#boardui-production-migration) | view | Verify complete production history/settings/return and quick-panel compositions use source-bound BoardUI resources with no legacy UI Kit dependency or appearance branch. |
 | [boardui-settings](#boardui-settings) | view | Exercise the independent BoardUI Go package through a complete settings form with real input, selection and dialog scopes. |
 | [boardui-states](#boardui-states) | view | Exercise fixed-source BoardUI component variants and narrow reduced-motion behavior through the public native API. |
 | [boardui-surfaces](#boardui-surfaces) | view | Retain full-view hover feedback, pointer-exit reset, visible actions and send-popup cancellation in the unified BoardUI design system. |
+| [boardui-theme](#boardui-theme) | view | Resolve custom light/dark tokens through public controls, application composition and native mygo defaults. |
 | [builtin-plugin-policy](#builtin-plugin-policy) | native | Save Tailcat content policies and automatic thresholds from the real Plugins page. |
 | [builtin-plugin-processors](#builtin-plugin-processors) | native | Manage classification and text tools from Plugins and verify actual behavior after Desktop restart. |
 | [data-binding](#data-binding) | process | History, tags, restore, pairing and reconnect through real services. |
@@ -23,6 +25,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [gui-approval-reconnect](#gui-approval-reconnect) | view | Legacy GUI fingerprint approval and recovery after service disconnection. |
 | [gui-empty-layout](#gui-empty-layout) | view | Legacy GUI empty-history layout and narrow-window bounds. |
 | [gui-navigation](#gui-navigation) | view | Legacy GUI navigation, pairing input and destructive-confirmation barriers. |
+| [history-favorites](#history-favorites) | native | Verify persistent favorites, chronological history and the hidden reserved tag using production history. |
 | [history-search-copy](#history-search-copy) | native | Connect visible user actions to production history and clipboard application. |
 | [i18n](#i18n) | view | Exercise five language catalogues through the shared desktop composition. |
 | [idle-event-wakeup](#idle-event-wakeup) | native | Verify native service event and content completion delivery. |
@@ -35,10 +38,16 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [quick-panel-screenshots](#quick-panel-screenshots) | view | Quick-panel history, action menu and image-grid compositions in both themes. |
 | [quick-panel](#quick-panel) | view | Quick-panel keyboard, search, actions, previews, scrolling and simulated effects. |
 | [search-badge-delete](#search-badge-delete) | view | Whole-condition deletion from composite search badges. |
-| [search-contract](#search-contract) | process | Literal matching, paging, counts, candidates, repair, cancellation and viewport detail prefetch. |
+| [search-contract](#search-contract) | process | Literal matching, paging, counts, candidates, repair, cancellation, viewport detail prefetch and persistent favorites. |
 | [search-disclosure-reduced-motion](#search-disclosure-reduced-motion) | view | Toolbar search disclosure with Reduce Motion enabled. |
 | [search-disclosure](#search-disclosure) | view | Animated toolbar search expansion, collapse, filtering and keyboard dismissal. |
 | [send-device-menu](#send-device-menu) | view | Send-menu device projection, disabled targets and selected-device dispatch. |
+| [settings-appearance](#settings-appearance) | process | Verify appearance defaults, saves, rejection, external edits and service restart without a renderer. |
+| [settings-backup](#settings-backup) | process | Verify portable allowlisting, strict preflight, preview confirmation, revision conflicts and restart persistence. |
+| [settings-diagnostics](#settings-diagnostics) | process | Verify persistent logging, bounded overrides, telemetry controls and safe diagnostic export through production processes. |
+| [settings-shortcuts](#settings-shortcuts) | process | Exercise the production Desktop binding against a private service with controlled permission-host callbacks. |
+| [settings-storage](#settings-storage) | process | Read the real service cache ledger through the production settings model without scanning or deleting user files. |
+| [settings-visual-evidence](#settings-visual-evidence) | native | Capture the actual settings composition for diagnostics, storage, appearance, permission guidance and portable backup. |
 | [setup-later-migration](#setup-later-migration) | native | Resume a later migration after cancelling and reopening the real Desktop. |
 | [setup-onboarding](#setup-onboarding) | native | Record the real welcome, migration confirmation, passphrase fallback, import, verification and history entry. |
 | [setup-pages](#setup-pages) | view | Exercise the production BoardUI setup renderer in light and dark. |
@@ -73,6 +82,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep unified production history controls within the toolbar at 600x480. |
 | [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
+| [wetype-pairing](#wetype-pairing) | view | Join the first shared space with a six-digit code using the installed default plugin instance. |
 | [window-chrome-native-dark](#window-chrome-native-dark) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
 | [window-chrome-native-input](#window-chrome-native-input) | native | Verify physical input on the owned main window without clipboard access. |
 | [window-chrome-native](#window-chrome-native) | native | Verify the shared frame switch and pending state against GUI lifetime rather than daemon lifetime. |
@@ -106,6 +116,20 @@ Forbidden: Direct command invocation behind the view, lost cancellation or persi
 
 ```text
 acceptance desktopui boardui-menus
+```
+
+## boardui-palette
+
+Twelve-color palette authoring and derived mygo states
+
+Steps: Define one-color and twelve-color palettes, edit an input, toggle a switch, activate buttons, switch themes, inspect rendered backgrounds and native colors, and apply exact token overrides.
+
+Expected: Empty palettes preserve defaults, light brands receive readable foregrounds, all primary states derive from the brand, exact overrides remain isolated, and PNG/accessibility checkpoints plus resolved palette JSON are exported.
+
+Forbidden: Native-window or contrast-certification claims, global palette mutation, resetting caller data, or missing failure artifacts.
+
+```text
+acceptance boardui boardui-palette
 ```
 
 ## boardui-production-migration
@@ -162,6 +186,20 @@ Forbidden: Requiring removed OS-glass rims, legacy system-menu delegation, dropp
 
 ```text
 acceptance desktopui boardui-surfaces
+```
+
+## boardui-theme
+
+Code-defined shared mygo color theme
+
+Steps: Edit a real input, activate a primary button, switch light/dark/light, inspect native colors and gradient resolution, and restore the default theme.
+
+Expected: Overrides remain immutable, unknown names fail, native colors and gradients share tokens, caller state survives changes, and PNG/accessibility checkpoints plus resolved token JSON are retained.
+
+Forbidden: Native-window or OS integration acceptance claims, global theme mutation, or resetting caller state.
+
+```text
+acceptance boardui boardui-theme
 ```
 
 ## builtin-plugin-policy
@@ -435,9 +473,9 @@ screenshot recreated-gui
 
 Independent Desktop role processes
 
-Steps: Start normal mode with explicit background intent, verify no initial GUI, reopen and close each UI role, then verify durable state and cleanup.
+Steps: Start normal mode with explicit background intent, verify no initial GUI, reopen and close each UI role, then verify durable state and cleanup. Reject a GUI quit, retry the GUI-only restart, and request a full restart after saving a plugin change.
 
-Expected: Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running.
+Expected: Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running. GUI-only restart returns the quit failure and preserves the tray, quick panel and unicd on retry. Full restart replaces the owned unicd and clears the pending configuration.
 
 Forbidden: Resident hidden GUI, shared role PID, duplicate owners, foreign-profile activation, lost state, leaked processes, or native acceptance claims.
 
@@ -539,9 +577,9 @@ stop-policy-peer
 
 First-install setup and offline v1 import
 
-Steps: Discover synthetic sources; skip and reopen; import with wrong and correct credentials; cancel and resume; repair and retry; start a real service and read imported history; reject concurrent migration; stop the owned service, reopen a pending later migration, cancel and resume, then restart service.
+Steps: Discover synthetic sources; skip and reopen; import with wrong and correct credentials; cancel and resume; repair and retry; start a real service and read imported history and shortcut preferences; reject concurrent migration; stop the owned service, reopen a pending later migration, cancel and resume, then restart service.
 
-Expected: Established profiles bypass setup; unfinished first and later migrations resume; imported records survive cancellation without duplication; partial counts remain distinct; source data remains unchanged; service exposes stable imported history identities after restart.
+Expected: Established profiles bypass setup; unfinished first and later migrations resume; imported records survive cancellation without duplication; partial counts remain distinct; source data remains unchanged; service exposes stable imported history identities after restart; source shortcut settings remain unchanged and a conflicting new default stays unbound.
 
 Forbidden: Native GUI launch, personal profile or credential access, sync, clipboard capture, duplicate import, or automatic termination of an unrelated service.
 
@@ -589,6 +627,53 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance gui gui-navigation
+```
+
+## history-favorites
+
+Save and filter favorites in the native desktop
+
+Steps: Submit two text entries. Favorite the older entry and select Favorites. Restart and inspect Favorites and the tag manager. Remove the favorite.
+
+Expected: Both entries appear in All Items with the original newer entry first. Favorites shows only the older entry before and after restart. The tag manager omits the reserved tag. Removing the favorite empties Favorites and leaves both entries in All Items.
+
+Forbidden: Demo rows, system clipboard writes, missing screenshots or missing continuous recording.
+
+```text
+start
+submit favorite '收藏验证：保留这条记录'
+submit ordinary '普通记录：仍在全部项目中'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-wait listItem '普通记录：仍在全部项目中'
+ui-click listItem '收藏验证：保留这条记录'
+ui-enabled button '切换收藏'
+ui-click button '切换收藏'
+ui-click listItem '已收藏'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-absent listItem '普通记录：仍在全部项目中'
+screenshot favorites-filter
+ui-click listItem '全部项目'
+ui-wait listItem '普通记录：仍在全部项目中'
+ui-wait listItem '收藏验证：保留这条记录'
+screenshot all-items-after-favoriting
+restart-desktop
+ui-wait listItem '已收藏'
+ui-click listItem '已收藏'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-absent listItem '普通记录：仍在全部项目中'
+screenshot favorites-after-restart
+ui-click button '管理标签'
+ui-wait text '~系统类型.*'
+ui-absent text '#favorite'
+screenshot tag-manager
+ui-click button '完成'
+ui-enabled button '切换收藏'
+ui-click button '切换收藏'
+ui-wait heading '还没有收藏的内容'
+screenshot favorite-removed
+ui-click listItem '全部项目'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-wait listItem '普通记录：仍在全部项目中'
 ```
 
 ## history-search-copy
@@ -816,7 +901,7 @@ History search contract
 
 Steps: Execute the registered production-process suite and validate its receipt.
 
-Expected: The suite runs, passes its assertions and emits a successful receipt.
+Expected: Favorites persist across a service restart, combine with search filters and remain hidden from tag catalogues. The suite emits a successful receipt.
 
 Forbidden: A skipped suite, a missing receipt, or labeling fixtures as native OS acceptance.
 
@@ -866,6 +951,122 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 acceptance desktopui send-device-menu
 ```
 
+## settings-appearance
+
+Persisted Desktop appearance through the production service
+
+Steps: Start a private production service; inspect the default mode; save dark/light/system; reject an invalid mode and a stale revision; reload a valid external edit; restart the owned service and read the saved value.
+
+Expected: Color mode defaults to system, valid changes persist, invalid or stale writes retain the last valid mode, unrelated sync and telemetry settings survive, and service restart preserves the saved appearance.
+
+Forbidden: Native GUI, browser, software renderer, system clipboard, personal profiles, sync or telemetry upload.
+
+```text
+acceptance desktopui settings-appearance
+```
+
+## settings-backup
+
+Portable settings export and confirmed import
+
+Steps: Start production unicd, drive Desktop backup actions, reject invalid inputs, confirm a portable import and restart.
+
+Expected: Exports exclude local secrets/paths, preview never writes, confirmation preserves excluded local state and refuses stale revisions.
+
+Forbidden: Secret export, implicit import, invalid document mutation, lost external edits, or claims of native dialog acceptance.
+
+```text
+acceptance desktopui settings-backup
+```
+
+## settings-diagnostics
+
+Diagnostic settings and safe local export
+
+Steps: Drive the production Desktop binding against unicd, restart, and inspect an archive made by the production CLI.
+
+Expected: Saved and effective values agree, overrides reset, telemetry retains signal preferences, and export preserves unrelated files.
+
+Forbidden: A skipped scenario, stale status labeled current, silent conflict overwrite, secret archive membership, or claims of native dialog acceptance.
+
+```text
+acceptance desktopui settings-diagnostics
+```
+
+## settings-shortcuts
+
+Shortcut persistence, sequence dispatch, and explicit System Settings guidance
+
+Steps: Save a two-step shortcut and a disabled binding; reopen and dispatch the saved sequence; reject a conflicting prefix; read denied/granted/unsupported/error states; explicitly request settings guidance without granting permission; overlap an outstanding read with opening settings; replace callbacks and cancel a late completion.
+
+Expected: Bindings survive reopening and rejected conflicts preserve the revision; reads never request permission or open settings; opening settings never grants permission; operations do not block each other; stale or cancelled results do not replace current state.
+
+Forbidden: Native permission calls, GUI, renderer, browser, system settings launch, system clipboard, OS shortcut registration.
+
+```text
+acceptance desktopui settings-shortcuts
+```
+
+## settings-storage
+
+Storage inventory and directory action
+
+Steps: Start an isolated service, refresh inventory, preserve unrelated files, restart with a custom destination, and exercise directory callbacks and failed refresh.
+
+Expected: Ledger bytes and reservations match the service, custom files remain outside the measurement, callback errors stay sanitized, and no setting is changed by reading.
+
+Forbidden: Native GUI or file-manager launch, user-file deletion, whole-disk usage claims, stale success after a failed refresh, or missing checksummed evidence.
+
+```text
+acceptance desktopui settings-storage
+```
+
+## settings-visual-evidence
+
+Native settings screenshots for the parallel settings delivery
+
+Steps: Start an isolated production desktop, visit each implemented settings section, reveal its controls and retain native window captures.
+
+Expected: Settings controls render in the live composition; the real service supplies diagnostic and cache values; screenshots and a continuous recording are retained.
+
+Forbidden: Personal profiles, system clipboard access, telemetry uploads, permission requests, file dialogs, invented pixels or claims of completed update/paste acceptance.
+
+```text
+start
+ui-wait listItem 设置…
+ui-click listItem 设置…
+ui-wait listItem 通用
+screenshot general
+ui-wait listItem 诊断与隐私
+ui-click listItem 诊断与隐私
+ui-wait popUpButton 本机日志等级
+ui-click button 刷新诊断状态
+ui-enabled button 刷新诊断状态
+screenshot diagnostics-levels
+ui-reveal button 打开日志目录
+screenshot diagnostics-signals-export
+ui-click listItem 存储与备份
+ui-wait button 刷新缓存用量
+ui-click button 刷新缓存用量
+ui-enabled button 刷新缓存用量
+screenshot storage-usage
+ui-reveal button 导入配置
+screenshot backup-controls
+ui-click listItem 外观
+ui-wait button 深色
+screenshot appearance
+ui-click button 深色
+config-equals desktop.color_mode '"dark"'
+observe 1
+screenshot appearance-dark
+ui-click button 跟随系统
+config-equals desktop.color_mode '"system"'
+ui-click listItem 快捷面板
+ui-wait button 刷新权限状态
+ui-enabled button 刷新权限状态
+screenshot shortcut-permissions
+```
+
 ## setup-later-migration
 
 Settings migration cancellation and restart
@@ -885,9 +1086,10 @@ ui-click button '暂不迁移'
 history-count 0
 ui-wait listItem 设置…
 ui-click listItem 设置…
-ui-wait listItem 存储
-ui-click listItem 存储
+ui-wait listItem 存储与备份
+ui-click listItem 存储与备份
 ui-wait button '从 v1 迁移'
+ui-reveal button '从 v1 迁移'
 screenshot settings
 ui-click button '从 v1 迁移'
 ui-wait button '开始迁移'
@@ -1128,12 +1330,12 @@ start
 submit text 'UNIC-D cleanup settings synthetic'
 ui-wait listItem 'UNIC-D cleanup settings synthetic'
 ui-click listItem 设置…
-ui-wait listItem 存储
-ui-click listItem 存储
+ui-wait listItem 存储与备份
+ui-click listItem 存储与备份
 config-equals history.auto_cleanup false
 ui-disabled popUpButton 历史保留时间
 ui-disabled popUpButton 最大历史条目数
-ui-disabled checkBox '保留 #文本'
+ui-disabled button '保留 #文本'
 ui-enabled popUpButton 单设备缓存配额
 screenshot cleanup-off
 ui-enabled switch 自动清理历史
@@ -1141,19 +1343,19 @@ ui-click switch 自动清理历史
 config-equals history.auto_cleanup true
 ui-enabled popUpButton 历史保留时间
 ui-enabled popUpButton 最大历史条目数
-ui-enabled checkBox '保留 #文本'
+ui-enabled button '保留 #文本'
 ui-enabled switch 自动清理历史
 ui-click switch 自动清理历史
 config-equals history.auto_cleanup false
 restart-desktop
 ui-wait listItem 设置…
 ui-click listItem 设置…
-ui-wait listItem 存储
-ui-click listItem 存储
+ui-wait listItem 存储与备份
+ui-click listItem 存储与备份
 config-equals history.auto_cleanup false
 ui-disabled popUpButton 历史保留时间
 ui-disabled popUpButton 最大历史条目数
-ui-disabled checkBox '保留 #文本'
+ui-disabled button '保留 #文本'
 ui-enabled popUpButton 单设备缓存配额
 screenshot persisted-after-restart
 ```
@@ -1415,7 +1617,7 @@ Environment: disposable guest; explicit GUEST=<VM UUID> required.
 
 Steps: Open the production panel from settings, attempt Enter, copy through Ctrl+C, reopen and dismiss through Escape.
 
-Expected: The panel reports unsupported automatic paste; Enter leaves the clipboard unchanged; Copy applies exact bytes; Escape hides the panel without changing the clipboard.
+Expected: The panel falls back to Copy without an inline alert banner; Enter leaves the clipboard unchanged; Copy applies exact bytes; Escape hides the panel without changing the clipboard.
 
 Forbidden: Synthetic target capture authority, automatic paste claims, portal approval claims or host clipboard access.
 
@@ -1430,7 +1632,8 @@ ui-click listItem 快捷面板
 ui-wait button 打开快捷面板
 ui-click button 打开快捷面板
 system-window 'unic · 快捷面板' visible
-ui-wait alert 当前桌面会话不支持自动粘贴。请使用复制。
+ui-wait text 复制到剪贴板
+ui-absent alert '~.*'
 screenshot wayland-copy-fallback
 system-key Enter
 system-board-equals 'UNIC-D panel baseline'
@@ -1722,6 +1925,20 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 acceptance desktopui unified-scrollbars
 ```
 
+## wetype-pairing
+
+WeType shared-space pairing from Desktop
+
+Steps: Open the production plugin detail with a local service fixture, check the pending-restart and short-code states, reject one code, then accept a new code and show the joined space.
+
+Expected: The request selects the default instance, the user sees useful rejection feedback, and the joined space replaces the form after refresh.
+
+Forbidden: Instance IDs in the first-run form, requests before restart or for incomplete codes, repeated submission while pending, and a native or live WeType acceptance claim.
+
+```text
+acceptance desktopui wetype-pairing
+```
+
 ## window-chrome-native-dark
 
 Native dark main-window frame persistence and GUI recreation
@@ -1743,6 +1960,10 @@ screenshot custom-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-reveal switch '使用系统边框'
 ui-click switch '使用系统边框'
@@ -1763,6 +1984,10 @@ screenshot system-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 ui-reveal switch '使用系统边框'
@@ -1780,6 +2005,10 @@ screenshot custom-reopened
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 
@@ -1823,7 +2052,7 @@ role-checkpoint initial
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
-ui-wait switch '使用系统边框'
+ui-wait switch '登录时启动'
 windows-frame physical-drag-resize-os custom drag-resize
 role-close-gui caption
 role-reopen-gui
@@ -1852,6 +2081,10 @@ screenshot custom-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-reveal switch '使用系统边框'
 ui-click switch '使用系统边框'
@@ -1872,6 +2105,10 @@ screenshot system-history
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 ui-reveal switch '使用系统边框'
@@ -1889,6 +2126,10 @@ screenshot custom-reopened
 ui-click button '切换侧栏'
 ui-wait listItem '设置…'
 ui-click listItem '设置…'
+ui-wait button '切换设置侧栏'
+ui-click button '切换设置侧栏'
+ui-wait listItem '外观'
+ui-click listItem '外观'
 ui-wait switch '使用系统边框'
 ui-absent text '部分设置将在下次启动时生效。'
 
@@ -1913,11 +2154,11 @@ ui-absent text '部分设置将在下次启动时生效。'
 
 ## window-chrome-setup
 
-Native setup and migration fallback controls
+Native setup and migration caption controls
 
 Steps: Open isolated first-install setup, enter migration confirmation and the synthetic passphrase fallback, and exercise caption actions.
 
-Expected: Each setup page has one minimal fallback band; the existing migration controls remain usable; the service remains absent before consent.
+Expected: Windows caption controls share the window top with the setup panels; the existing migration controls remain usable; the service remains absent before consent.
 
 Forbidden: Personal profiles, real credential access, clipboard changes, an extra normal-page caption row, or native-frame claims from content captures.
 

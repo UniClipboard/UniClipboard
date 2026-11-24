@@ -44,11 +44,37 @@ func (l *liveState) scheduleWake(d *viewState) {
 			due = l.pageRetry
 		}
 	}
+	if l.foregroundLoading && !l.loadingSince.IsZero() {
+		showAt := l.loadingSince.Add(foregroundLoadingIndicatorDelay)
+		if time.Now().Before(showAt) && (due.IsZero() || showAt.Before(due)) {
+			due = showAt
+		}
+	}
+	if !l.detailLoadingSince.IsZero() {
+		showAt := l.detailLoadingSince.Add(foregroundLoadingIndicatorDelay)
+		if time.Now().Before(showAt) && (due.IsZero() || showAt.Before(due)) {
+			due = showAt
+		}
+	}
 	if d.page == "devices" && d.deviceTask == "invite" && d.inviteMode != "ticket" && !l.busy && l.code.ExpiresAtMs > 0 {
 		expires := time.UnixMilli(l.code.ExpiresAtMs)
 		if due.IsZero() || expires.Before(due) {
 			due = expires
 		}
+	}
+	if d.page == "settings" && d.settings.Value == "diagnostics" && !d.diagnostics.busy {
+		if !d.diagnostics.nextRead.IsZero() && (due.IsZero() || d.diagnostics.nextRead.Before(due)) {
+			due = d.diagnostics.nextRead
+		}
+		if d.diagnostics.loaded && (d.diagnostics.levels.Local.Expires != nil || d.diagnostics.levels.Remote.Expires != nil) {
+			tick := time.Now().Add(time.Second)
+			if due.IsZero() || tick.Before(due) {
+				due = tick
+			}
+		}
+	}
+	if d.page == "settings" && d.settings.Value == "quickPanel" && !d.shortcuts.loading && !d.shortcuts.nextRead.IsZero() && (due.IsZero() || d.shortcuts.nextRead.Before(due)) {
+		due = d.shortcuts.nextRead
 	}
 	l.wakeMu.Lock()
 	defer l.wakeMu.Unlock()

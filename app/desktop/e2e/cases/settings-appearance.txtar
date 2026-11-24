@@ -1,0 +1,8 @@
+# Case: Persisted Desktop appearance through the production service
+# Mode: process
+# Purpose: Verify appearance defaults, saves, rejection, external edits and service restart without a renderer.
+# Steps: Start a private production service; inspect the default mode; save dark/light/system; reject an invalid mode and a stale revision; reload a valid external edit; restart the owned service and read the saved value.
+# Expected: Color mode defaults to system, valid changes persist, invalid or stale writes retain the last valid mode, unrelated sync and telemetry settings survive, and service restart preserves the saved appearance.
+# Forbidden: Native GUI, browser, software renderer, system clipboard, personal profiles, sync or telemetry upload.
+
+acceptance desktopui settings-appearance

@@ -1,0 +1,36 @@
+---
+title: 欢迎使用 UniClipboard
+description: 复制一次，在每台设备上粘贴。无需账号、无需云端的跨设备剪贴板同步。
+---
+
+UniClipboard（命令行名 `unic`）在你的电脑之间同步剪贴板：在一台设备上复制，在另一台设备上直接粘贴。
+
+- **跨平台**：Windows、macOS、Linux 之间同步，同一 Wi-Fi 或跨网络均可，另有命令行工具。
+- **无云端**：设备之间通过加密链路直连，无需注册，历史只保存在你自己的设备上。
+- **轻量**：后台同步服务 `unicd` 空闲时约占 14 MB 内存（macOS Apple Silicon、空历史下测得）。
+- **内容齐全**：文本、图片、文件和整个文件夹。
+
+<Callout type="warn">
+UniClipboard v2 尚未发布正式安装包，目前可从源码运行。详见[安装](./getting-started/install)。
+</Callout>
+
+## 快速入口
+
+<Cards>
+  <Card title="安装" href="./getting-started/install" description="获取桌面端与命令行，了解发布通道" />
+  <Card title="快速上手" href="./getting-started/quick-start" description="三步连接第二台设备并开始同步" />
+  <Card title="同步" href="./core-features/sync" description="自动同步的内容类型与规则" />
+  <Card title="快速传送" href="./core-features/quick-transfer" description="不配对，用 6 位取件码发送内容" />
+  <Card title="历史与搜索" href="./core-features/history-and-search" description="用关键词、#标签、@设备、/类型查找历史" />
+  <Card title="命令行" href="./cli/getting-started" description="在终端、SSH 或脚本中使用 unic" />
+  <Card title="插件" href="./plugins/marketplace" description="从设置中一键安装插件" />
+  <Card title="从 v1 迁移" href="./migration/v1-to-v2" description="导入 v1 本机历史，重新配对设备" />
+</Cards>
+
+## 隐私概要
+
+- 设备之间端到端加密，UniClipboard 不运行任何保存你剪贴板内容的服务器。
+- 每台新设备都需要你核对指纹并批准；移除的设备立即失去访问权限。
+- 剪贴板内容、文件路径和设备地址不会写入日志。
+
+更多说明见[隐私与安全](./core-features/privacy-and-security)。

@@ -76,6 +76,37 @@
       }
     },
     {
+      "schema": "process",
+      "payload": {
+        "event": "clipboard.received",
+        "generation": "9007199254740994",
+        "item": {
+          "id": "item-ext-1",
+          "type": "text",
+          "text": {
+            "stream_id": "3",
+            "size": "3",
+            "purpose": "process_text"
+          },
+          "formats": [
+            "text/plain"
+          ],
+          "origin": {
+            "kind": "external",
+            "device_id": "",
+            "plugin_id": "unic.syncclipboard"
+          },
+          "files": []
+        },
+        "policy": {
+          "persist": true,
+          "sync": true,
+          "expires_at_ms": "0",
+          "tags": []
+        }
+      }
+    },
+    {
       "schema": "patch",
       "payload": {
         "generation": "9007199254740993",

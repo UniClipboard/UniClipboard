@@ -7,6 +7,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/clipboardintegration"
+
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
@@ -14,10 +16,10 @@ var (
 	ErrTarget      = errors.New("quick panel: target unavailable")
 	ErrPermission  = errors.New("quick panel: permission required")
 	ErrProtected   = errors.New("quick panel: secure input enabled")
-	ErrPlain       = errors.New("quick panel: no plain-text representation")
+	ErrPlain       = clipboardintegration.ErrPlain
 	ErrFocus       = errors.New("quick panel: target focus changed")
 	ErrInput       = errors.New("quick panel: input unavailable")
-	ErrClipboard   = errors.New("quick panel: clipboard changed")
+	ErrClipboard   = clipboardintegration.ErrClipboard
 	ErrShortcut    = errors.New("quick panel: shortcut unavailable")
 	ErrBusy        = errors.New("quick panel: operation in progress")
 	ErrUnsupported = errors.New("quick panel: unsupported session")

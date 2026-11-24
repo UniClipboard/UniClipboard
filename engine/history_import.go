@@ -6,10 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/uniclipboard/unic/internal/store"
 	"github.com/uniclipboard/unic/internal/wire"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 // HistoryImportRequest is one immutable record from a local archive. Source
@@ -224,5 +226,5 @@ func (e *Engine) ListHistoryTags(ctx context.Context) ([]string, error) {
 	if serr != nil {
 		return nil, historyStoreErr(serr)
 	}
-	return tags, nil
+	return slices.DeleteFunc(tags, func(tag string) bool { return tag == plugin.TagFavorite }), nil
 }

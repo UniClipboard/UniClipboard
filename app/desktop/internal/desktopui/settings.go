@@ -6,17 +6,81 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 )
 
-var categories = []desktopkit.SidebarNavItem{
-	{ID: "general", Label: "通用", Icon: desktopkit.IconSettings},
-	{ID: "appearance", Label: "外观", Icon: desktopkit.IconSun},
-	{ID: "shortcuts", Label: "快捷键", Icon: desktopkit.IconEdit},
-	{ID: "quickPanel", Label: "快捷面板", Icon: desktopkit.IconList},
-	{ID: "sync", Label: "同步", Icon: desktopkit.IconRetry},
-	{ID: "plugins", Label: "插件", Icon: desktopkit.IconPackage},
-	{ID: "security", Label: "安全", Icon: desktopkit.IconShield},
-	{ID: "network", Label: "网络", Icon: desktopkit.IconGlobe},
-	{ID: "storage", Label: "存储", Icon: desktopkit.IconPackage},
-	{ID: "about", Label: "关于", Icon: desktopkit.IconInfo},
+type settingsSectionSpec struct {
+	id, title string
+	items     []desktopkit.SidebarNavItem
+}
+
+var settingsSections = []settingsSectionSpec{
+	{
+		id: "general-experience", title: "常规与体验",
+		items: []desktopkit.SidebarNavItem{
+			{ID: "general", Label: "通用", Icon: desktopkit.IconSettings},
+			{ID: "appearance", Label: "外观", Icon: desktopkit.IconSun},
+			{ID: "shortcuts", Label: "快捷键", Icon: desktopkit.IconKeyboard},
+			{ID: "quickPanel", Label: "快捷面板", Icon: desktopkit.IconQuickPanel},
+		},
+	},
+	{
+		id: "sync-data", title: "同步与数据",
+		items: []desktopkit.SidebarNavItem{
+			{ID: "sync", Label: "同步", Icon: desktopkit.IconRetry},
+			{ID: "storage", Label: "存储与备份", Icon: desktopkit.IconFolder},
+			{ID: "plugins", Label: "插件", Icon: desktopkit.IconPackage},
+		},
+	},
+	{
+		id: "diagnostics-system", title: "排错与系统",
+		items: []desktopkit.SidebarNavItem{
+			{ID: "diagnostics", Label: "诊断与隐私", Icon: desktopkit.IconShield},
+			{ID: "about", Label: "关于", Icon: desktopkit.IconInfo},
+		},
+	},
+}
+
+func (d *viewState) settingsSidebarSections() ([]desktopkit.SidebarNavSection, string) {
+	warnTone := desktopkit.StatusWarning
+	qpWarn := d.shortcuts.status == "denied"
+	if !qpWarn && d.quickShortcutStatus != nil {
+		if _, msg := d.quickShortcutStatus(); msg != "" {
+			qpWarn = true
+		}
+	}
+	storageWarn := d.storage.message != ""
+	diagActive := d.diagnostics.loaded && (d.diagnostics.levels.Local.Expires != nil || d.diagnostics.levels.Remote.Expires != nil)
+
+	sections := make([]desktopkit.SidebarNavSection, 0, len(settingsSections))
+	title := d.tr("通用")
+	for _, spec := range settingsSections {
+		items := make([]desktopkit.SidebarNavItem, len(spec.items))
+		for i, it := range spec.items {
+			it.Label = d.tr(it.Label)
+			switch it.ID {
+			case "quickPanel":
+				if qpWarn {
+					it.Indicator = &warnTone
+				}
+			case "storage":
+				if storageWarn {
+					it.Indicator = &warnTone
+				}
+			case "diagnostics":
+				if diagActive {
+					it.Indicator = &warnTone
+				}
+			}
+			if it.ID == d.settings.Value {
+				title = it.Label
+			}
+			items[i] = it
+		}
+		sections = append(sections, desktopkit.SidebarNavSection{
+			ID:    spec.id,
+			Title: d.tr(spec.title),
+			Items: items,
+		})
+	}
+	return sections, title
 }
 
 func (d *viewState) openPluginSettings(instanceID string) {
@@ -31,16 +95,7 @@ func (d *viewState) openPluginSettings(instanceID string) {
 }
 
 func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
-	items := append([]desktopkit.SidebarNavItem(nil), categories...)
-	for i := range items {
-		items[i].Label = d.tr(items[i].Label)
-	}
-	title := d.tr("通用")
-	for _, v := range items {
-		if v.ID == d.settings.Value {
-			title = v.Label
-		}
-	}
+	sections, title := d.settingsSidebarSections()
 	var titleLeading func()
 	var toolbar func()
 	if d.live != nil && d.settings.Value == "plugins" {
@@ -48,7 +103,11 @@ func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 			if d.pluginSettings.view == "marketplace" && d.pluginSettings.id == "" {
 				title = d.tr("插件市场")
 				toolbar = func() {
-					if k.Button(c.Key("market-refresh-tb"), d.tr("刷新目录"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconRetry, Busy: d.live.marketplaceLoading, Disabled: d.live.marketplaceLoading}).Clicked() {
+					if k.ToolbarQuietButton(c.Key("market-refresh-tb"), d.tr("刷新目录"), desktopkit.ToolbarQuietButtonProps{
+						Icon:     desktopkit.IconRetry,
+						Busy:     d.live.marketplaceLoading,
+						Disabled: d.live.marketplaceLoading,
+					}).Clicked() {
 						d.ensureMarketplaceLoaded(true)
 					}
 				}
@@ -57,10 +116,16 @@ func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 			}
 			titleLeading = func() {
 				label := d.tr("返回插件列表")
-				if k.Button(c.Key("back-to-plugins"), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconBack, Label: label, Tooltip: label, Disabled: d.live.busy || d.live.loading}).Clicked() {
+				if k.ToolbarIconButton(c.Key("back-to-plugins"), desktopkit.ToolbarIconButtonProps{
+					Icon:     desktopkit.IconBack,
+					Label:    label,
+					Tooltip:  label,
+					Disabled: d.live.busy || d.live.loading,
+				}).Clicked() {
 					d.pluginSettings.id = ""
 					d.pluginSettings.view = ""
 					d.pluginSettings.form = nil
+					d.pluginSettings.channelPair = weTypePairing{}
 				}
 			}
 		} else {
@@ -70,8 +135,9 @@ func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 		}
 	}
 	k.SplitView(c, desktopkit.SplitViewProps{Toolbar: toolbar, ToolbarTrailing: d.trailingToolbar(c), Title: title, TitleLeading: titleLeading, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
-		k.SidebarNav(c, &d.settings, desktopkit.SidebarNavProps{Label: d.tr("设置"), Sections: []desktopkit.SidebarNavSection{{ID: "categories", Items: items}}, Footer: []desktopkit.SidebarNavItem{{ID: "back", Label: d.tr("返回历史"), Icon: desktopkit.IconBack, ShortcutHint: "Esc"}}}).Grow(1)
+		k.SidebarNav(c, &d.settings, desktopkit.SidebarNavProps{Label: d.tr("设置"), Sections: sections, Footer: []desktopkit.SidebarNavItem{{ID: "back", Label: d.tr("返回历史"), Icon: desktopkit.IconBack, ShortcutHint: "Esc"}}}).Grow(1)
 		if d.settings.Changed() {
+			d.shortcutEditor = shortcutEditor{}
 			if d.settings.Value == "back" {
 				d.page, d.settings.Value = "history", "general"
 			}
@@ -162,7 +228,7 @@ func (d *viewState) settingsContent(c *ui.Context, k desktopkit.Kit) {
 			d.selectRow(c, k, "shortcut", d.tr("打开快捷面板"), d.tr("演示快捷键不会注册到系统"), "⌘⇧V", "⌃⌥V", "Ctrl+Shift+V")
 		})
 		group("window", d.tr("窗口快捷键"), func() {
-			for _, v := range []struct{ name, value string }{{d.tr("复制所选内容"), "Enter"}, {d.tr("置顶或取消置顶"), "⌘P"}, {d.tr("打开设置"), "⌘,"}, {d.tr("切换侧栏"), "⌃⌘S"}} {
+			for _, v := range []struct{ name, value string }{{d.tr("复制所选内容"), "Enter"}, {d.tr("收藏或取消收藏"), "⌘P"}, {d.tr("打开设置"), "⌘,"}, {d.tr("切换侧栏"), "⌃⌘S"}} {
 				k.SettingsRow(c.Key(v.name), desktopkit.SettingsRowProps{Label: v.name}, nil, func() { k.Text(c, v.value, desktopkit.TextProps{Role: desktopkit.RoleCallout}) })
 			}
 		})

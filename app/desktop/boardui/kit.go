@@ -3,7 +3,10 @@ package boardui
 import "github.com/egoist/mygo/ui"
 
 // Kit selects a color scheme. It never stores mutable control state.
-type Kit struct{ Dark bool }
+type Kit struct {
+	Dark   bool
+	Colors *ColorTheme
+}
 
 // Theme maps canonical source colors to mature native primitive defaults.
 // LoadFonts must succeed before the first view is created.
@@ -14,26 +17,28 @@ func (k Kit) Theme() *ui.Theme {
 	}
 	t.Font = "BoardUI Inter"
 	t.FontSize = Typography("body-regular").Size
-	t.Background = Token(k.Dark, "background-full")
-	t.Text = Token(k.Dark, "text-primary")
-	t.TextMuted = Token(k.Dark, "text-secondary")
-	t.Surface = Token(k.Dark, "background-primary-default")
-	t.SurfaceHover = Token(k.Dark, "background-primary-hover")
-	t.SurfacePressed = Token(k.Dark, "background-primary-active")
-	t.Border = Token(k.Dark, "border-button-default")
-	t.Focus = Token(k.Dark, "border-focus-ring")
+	t.Background = k.Color("background-full")
+	t.Text = k.Color("text-primary")
+	t.TextMuted = k.Color("text-secondary")
+	t.Surface = k.Color("background-primary-default")
+	t.SurfaceHover = k.Color("background-primary-hover")
+	t.SurfacePressed = k.Color("background-primary-active")
+	t.Border = k.Color("border-button-default")
+	t.Focus = k.Color("border-focus-ring")
 	t.FocusRingWidth, t.FocusRingOffset = 2, 2
-	t.Accent = Token(k.Dark, "accent-500")
-	t.AccentText = Token(k.Dark, "text-white")
-	t.AccentHover = Token(k.Dark, "accent-600")
-	t.AccentPressed = Token(k.Dark, "accent-800")
-	t.InactiveAccent = t.Accent
-	t.Danger = Token(k.Dark, "text-error-primary")
-	t.Success = Token(k.Dark, "notification-success-foreground")
-	t.Warning = Token(k.Dark, "status-yellow-text")
+	t.Accent = k.Color("accent-500")
+	t.AccentText = k.Color("text-on-accent")
+	t.AccentHover = k.Color("accent-600")
+	t.AccentPressed = k.Color("accent-800")
+	t.InactiveAccent = k.Color("native-inactive-accent")
+	t.Danger = k.Color("text-error-primary")
+	t.Success = k.Color("notification-success-foreground")
+	t.Warning = k.Color("status-yellow-text")
 	t.Radius = Geometry("input", "medium").Radius
-	t.Selection = t.Accent.Alpha(.25)
-	t.Scrollbar = Token(k.Dark, "text-secondary").Alpha(.35)
+	t.Selection = k.Color("native-selection")
+	t.Inverse = k.Color("native-inverse")
+	t.InverseText = k.Color("native-inverse-text")
+	t.Scrollbar = k.Color("native-scrollbar")
 	t.ScrollbarWidth = 4
 	return t
 }
@@ -46,7 +51,7 @@ func (k Kit) Apply(c *ui.Context) {
 
 // Text applies one complete BoardUI typography record to a native text element.
 func (k Kit) Text(c *ui.Context, text, style string) ui.Element {
-	e := ui.Text(c, text).TextColor(Token(k.Dark, "text-primary"))
+	e := ui.Text(c, text).TextColor(k.Color("text-primary"))
 	dressType(e, style)
 	return e
 }
@@ -58,7 +63,7 @@ func dressType(e ui.Element, name string) {
 }
 
 func (k Kit) shadows(e ui.Element, name string) {
-	for _, s := range Shadows(k.Dark, name) {
+	for _, s := range k.Shadows(name) {
 		if s.Inset {
 			e.InsetShadow(s.X, s.Y, s.Blur, s.Spread, s.Color)
 		} else {

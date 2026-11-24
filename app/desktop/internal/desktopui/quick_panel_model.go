@@ -9,7 +9,9 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
 
+	"github.com/uniclipboard/unic/app/desktop/boardui"
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 type qpEntry struct {
@@ -36,12 +38,15 @@ type qpEffect struct {
 	KeepOpen bool   `json:",omitempty"`
 }
 type quickPanelState struct {
+	colors       *boardui.ColorTheme
 	previewImage ui.ImageSource
 	language     string
 	live         *quickLive
 	richPreview  *richtext.Document
 
-	revealSelection bool
+	revealSelection      bool
+	keySequence          shortcutSequence
+	windowZoom, textZoom int
 
 	blurDue                       time.Time
 	nativeFocused                 func() bool
@@ -54,7 +59,7 @@ type quickPanelState struct {
 	imageID     string
 	imagePan    ui.Point
 
-	theme, mode, query, kind, message              string
+	theme, mode, query, kind                       string
 	entries, rows                                  []qpEntry
 	chips                                          []qpFilter
 	selected, hovered, gridTop                     int
@@ -93,7 +98,6 @@ func (p *quickPanelState) queryChanged() {
 	p.hovered = -1
 	p.keyboard = true
 	p.menu = ""
-	p.message = ""
 	p.queryDue = p.now.Add(300 * time.Millisecond)
 	p.update()
 }
@@ -395,7 +399,6 @@ func (p *quickPanelState) clear() {
 	p.kind = ""
 	p.chips = nil
 	p.menu = ""
-	p.message = ""
 	p.queryChanged()
 	p.suggestOpen = false
 }
@@ -430,18 +433,12 @@ func (p *quickPanelState) restore(paste, plain, keep bool) {
 			return
 		}
 		if plain && e.kind != "文本" && e.kind != "富文本" {
-			p.message = "此内容不支持纯文本粘贴。"
-			p.update()
 			return
 		}
 		if p.live.system == nil {
-			p.message = "系统交互尚未连接。"
-			p.update()
 			return
 		}
-		if err := p.live.system.Start(e.id, plain, paste, keep); err != nil {
-			p.message = p.live.system.Message
-		}
+		_ = p.live.system.Start(e.id, plain, paste, keep)
 		p.menu = ""
 		p.update()
 		return
@@ -455,8 +452,6 @@ func (p *quickPanelState) restore(paste, plain, keep bool) {
 		return
 	}
 	if e.lost {
-		p.message = "这条记录的内容已丢失。"
-		p.update()
 		return
 	}
 	action := "copy"
@@ -471,12 +466,24 @@ func (p *quickPanelState) restore(paste, plain, keep bool) {
 	p.update()
 }
 func (p *quickPanelState) actions() []qpAction {
-	if p.live != nil {
-		available := p.active() != nil && !p.live.d.live.busy && (p.live.system == nil || !p.live.system.Busy)
-		canPaste := available && p.live.system != nil && p.live.system.CanPaste
-		return []qpAction{{"paste", "粘贴到原应用", "Enter", canPaste}, {"plain", "纯文本粘贴", "Shift+Enter", canPaste && p.active() != nil && (p.active().kind == "文本" || p.active().kind == "富文本")}, {"copy", "复制到剪贴板", p.commandLabel() + "C", available}, {"delete", "删除", "", available}, {"main", "打开主窗口", "", true}, {"settings", "设置…", "", true}}
-	}
 	e := p.active()
+	if p.live != nil {
+		available := e != nil && !p.live.d.live.busy && (p.live.system == nil || !p.live.system.Busy)
+		canPaste := available && p.live.system != nil && p.live.system.CanPaste
+		favorite := "收藏"
+		if e != nil && e.favorite {
+			favorite = "取消收藏"
+		}
+		return []qpAction{
+			{"paste", "粘贴到原应用", "Enter", canPaste},
+			{"plain", "纯文本粘贴", "Shift+Enter", canPaste && (e.kind == "文本" || e.kind == "富文本")},
+			{"copy", "复制到剪贴板", p.commandLabel() + "C", available},
+			{"favorite", favorite, "", available},
+			{"delete", "删除", "", available},
+			{"main", "打开主窗口", "", true},
+			{"settings", "设置…", "", true},
+		}
+	}
 	if e == nil {
 		return nil
 	}
@@ -763,4 +770,14 @@ func (p *quickPanelState) host(action string) {
 	p.visible = false
 	p.menu = ""
 	p.update()
+}
+
+func (p *quickPanelState) setFavoriteFilter(enabled bool) {
+	p.chips = slices.DeleteFunc(p.chips, func(f qpFilter) bool { return f.dimension == "tag" && f.value == plugin.TagFavorite })
+	if enabled {
+		p.query, p.kind, p.menu = "", "", ""
+		p.chips = []qpFilter{{dimension: "tag", value: plugin.TagFavorite}}
+		p.queryDue = time.Time{}
+		p.suggestOpen, p.suggestFocused = false, false
+	}
 }

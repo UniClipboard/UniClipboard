@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -30,7 +31,7 @@ type Spec struct {
 	Path   string   // absolute path of the executable
 	SHA256 string   // hex digest the file must match; required
 	Args   []string // extra arguments
-	Env    []string // extra KEY=VALUE entries; nothing else is inherited
+	Env    []string // extra KEY=VALUE entries; only minimal OS/temp/TLS/proxy vars are inherited
 	Dir    string   // private data directory, also the working directory
 	// Expected is the identity the process must present in the handshake.
 	Expected plugin.Spec
@@ -290,10 +291,7 @@ func (p *Proxy) spawn(ctx context.Context) (*session, error) {
 	}
 	cmd := exec.Command(exe, p.spec.Args...)
 	cmd.Dir = p.spec.Dir
-	cmd.Env = append([]string{"UNIC_PLUGIN_PROTOCOL=1"}, p.spec.Env...)
-	if p.spec.Dir != "" {
-		cmd.Env = append(cmd.Env, "UNIC_PLUGIN_DIR="+p.spec.Dir)
-	}
+	cmd.Env = buildEnv(runtime.GOOS, os.Environ(), p.spec.Env, p.spec.Dir, os.TempDir())
 	cmd.Stderr = nil // discarded: plugin diagnostics must never reach host logs
 	setProcAttrs(cmd)
 	stdin, err := cmd.StdinPipe()

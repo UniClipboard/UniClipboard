@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"image"
 	"io"
 	"mime"
 	"path/filepath"
@@ -75,6 +76,12 @@ func (s *Desktop) SetLoginStatus(read func() (bool, string), retry func()) {
 // SetMigrationOpener delegates exclusive runtime ownership to the Desktop host.
 func (s *Desktop) SetMigrationOpener(open func()) { s.d.live.openMigration = open }
 
+// SetRestarter delegates GUI recreation or a restart that includes the
+// tray-owned service. The host reports failures to a still-open GUI.
+func (s *Desktop) SetRestarter(restart func(restartService bool, done func(error))) {
+	s.d.live.restartApp = restart
+}
+
 type liveState struct {
 	wakeMu       sync.Mutex
 	wakeServices ui.Services
@@ -82,18 +89,23 @@ type liveState struct {
 	wakeDue      time.Time
 
 	openMigration                              func()
+	restartApp                                 func(restartService bool, done func(error))
+	restarting                                 bool
 	sendCancel                                 context.CancelFunc
 	sendStage                                  string
 	queryOverride                              func() engine.HistorySearchQuery
 	appliedSerial, contentSerial               uint64
+	resultEpoch                                uint64
 	searchCancel, catalogueCancel, countCancel context.CancelFunc
+	sidebarCountCancel                         context.CancelFunc
 	detailEpoch                                uint64
 	detailWindow                               []string
 	detailReads                                map[string]*detailRead
 	loadGeneration                             uint64
-	catalogueKey, countKey                     string
+	catalogueKey, countKey, sidebarCountKey    string
 	catalogue                                  map[string][]engine.HistorySearchCandidate
 	counts                                     map[string]uint64
+	sidebarCounts                              map[string]uint64
 
 	ctx                                          context.Context
 	cancel                                       context.CancelFunc
@@ -107,37 +119,38 @@ type liveState struct {
 	searchSlots                                  chan struct{}
 	connected, loaded, loading, busy, detailBusy bool
 	// loading serializes all history reads; foregroundLoading controls visible loading.
-	foregroundLoading                          bool
-	message, readError, cursor, key, detailKey string
-	nextRefresh                                time.Time
-	pageRetry                                  time.Time
-	historyRevision                            uint64
-	historyInvalid                             bool
-	serviceID                                  string
-	windowOffset                               int
-	previousPage                               bool
-	checkpoints                                []historyCheckpoint
-	retained                                   *entry
-	items                                      map[string]api.HistoryItem
-	details                                    map[string]entry
-	config                                     config.State
-	actions                                    []api.Action
-	syncBackends                               []api.SyncBackendInfo
-	pairingBackend                             string
-	externalPlugins                            []api.PluginInfo
-	marketplace                                api.PluginMarketplace
-	marketplaceLoaded                          bool
-	marketplaceLoading                         bool
-	marketplaceError                           string
-	peers                                      map[string]api.PeerStatus
-	pending                                    map[string]api.PendingPeer
-	taskKnownPending                           map[string]int64
-	join                                       *api.PairResult
-	codeAttempted, ticketAttempted             bool
-	code                                       api.Code
-	ticket                                     string
-	loginStatus                                func() (bool, string)
-	retryLogin                                 func()
+	foregroundLoading                                                                        bool
+	loadingSince, detailLoadingSince                                                         time.Time
+	message, readError, cursor, key, displayedKey, displayedScope, lastResultKind, detailKey string
+	nextRefresh                                                                              time.Time
+	pageRetry                                                                                time.Time
+	historyRevision                                                                          uint64
+	historyInvalid                                                                           bool
+	serviceID                                                                                string
+	windowOffset                                                                             int
+	previousPage                                                                             bool
+	checkpoints                                                                              []historyCheckpoint
+	retained                                                                                 *entry
+	items                                                                                    map[string]api.HistoryItem
+	details                                                                                  map[string]entry
+	config                                                                                   config.State
+	actions                                                                                  []api.Action
+	syncBackends                                                                             []api.SyncBackendInfo
+	pairingBackend                                                                           string
+	externalPlugins                                                                          []api.PluginInfo
+	marketplace                                                                              api.PluginMarketplace
+	marketplaceLoaded                                                                        bool
+	marketplaceLoading                                                                       bool
+	marketplaceError                                                                         string
+	peers                                                                                    map[string]api.PeerStatus
+	pending                                                                                  map[string]api.PendingPeer
+	taskKnownPending                                                                         map[string]int64
+	join                                                                                     *api.PairResult
+	codeAttempted, ticketAttempted                                                           bool
+	code                                                                                     api.Code
+	ticket                                                                                   string
+	loginStatus                                                                              func() (bool, string)
+	retryLogin                                                                               func()
 }
 
 func (l *liveState) work() {
@@ -229,12 +242,13 @@ drained:
 		l.nextRefresh = time.Time{}
 	}
 	l.loadCatalogue(d)
+	l.loadSidebarCounts(d)
 	key := d.liveQueryKey()
 	if l.loading && key != l.key {
 		l.invalidateSearch()
 	}
 	if key != l.key {
-		l.foregroundLoading = true
+		l.startForegroundLoading()
 	}
 	if !l.loading && !l.busy && (key != l.key || (time.Now().After(l.nextRefresh) && !time.Now().Before(l.pageRetry))) {
 		l.loadHistory(d, false)
@@ -303,7 +317,7 @@ func (d *viewState) liveQuery() api.HistoryQuery {
 	return q
 }
 func (d *viewState) unsupportedSearch() bool {
-	return d.kind == "代码" || d.kind == "链接" || d.nav.Value == "pinned"
+	return d.kind == "代码" || d.kind == "链接"
 }
 func (l *liveState) loadHistory(d *viewState, more bool) {
 	if l.loading {
@@ -324,6 +338,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 		}
 	}()
 	q := engine.HistorySearchRequest{Query: d.historySearchQuery(), Limit: 50}
+	favoritesOnly := slices.Contains(q.Query.Tags, plugin.TagFavorite) && q.Query.TagMatch != "any"
 	previous := l.previousPage
 	l.previousPage = false
 	target := min(historyWindowLimit, max(50, len(d.entries)))
@@ -338,6 +353,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 		}
 	}
 	selected := d.selected
+	prevSelected := d.selected
 	selectedItem := l.items[selected]
 	var selectedEntry *entry
 	if v := d.current(); v != nil {
@@ -348,7 +364,10 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 	invalid := l.historyInvalid
 	selectedRevision := selectedItem.Revision
 	key := d.liveQueryKey()
-	foreground := !l.loaded || key != l.key
+	scope := d.liveScopeKey()
+	wasLoaded := l.loaded
+	queryChanged := !l.loaded || key != l.displayedKey
+	foreground := queryChanged
 	expired := false
 	for _, it := range l.items {
 		if it.ExpiresAt > 0 && it.ExpiresAt <= time.Now().UnixMilli() {
@@ -356,33 +375,27 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 			break
 		}
 	}
-	if key != l.key {
+	if queryChanged {
 		previous = false
-		l.resetDetails(d)
 		target = 50
 		offset = 0
 		points = nil
 		anchors = nil
 		selected = ""
 		selectedEntry = nil
-		l.retained = nil
-		l.windowOffset = 0
-		l.cursor = ""
-		l.pageRetry = time.Time{}
-		d.entries = nil
-		l.items = map[string]api.HistoryItem{}
-		d.selected = ""
-		l.detailKey = ""
-		d.quickLook = false
 	}
 	if more {
-		if l.cursor == "" || key != l.key {
+		if l.cursor == "" || key != l.key || queryChanged {
 			return
 		}
 		q.Cursor = l.cursor
 		points = rememberHistoryCheckpoint(points, historyCheckpoint{offset + len(d.entries), q.Cursor})
 	}
-	l.foregroundLoading = !l.loaded || key != l.key
+	if foreground {
+		l.startForegroundLoading()
+	} else {
+		l.stopForegroundLoading()
+	}
 	l.loading = true
 	l.loadGeneration++
 	generation := l.loadGeneration
@@ -424,7 +437,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 					if e != nil && api.ReasonOf(e) != "not_found" {
 						err = e
 					}
-					if e != nil {
+					if e != nil || favoritesOnly && !slices.Contains(current.Tags, plugin.TagFavorite) {
 						selectedEntry = nil
 					} else {
 						selectedItem = current
@@ -461,7 +474,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 					return
 				}
 				l.loading = false
-				l.foregroundLoading = false
+				l.stopForegroundLoading()
 				if key != d.liveQueryKey() {
 					l.nextRefresh = time.Time{}
 					return
@@ -488,6 +501,17 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 					l.readError = ""
 					if page.IndexIncomplete {
 						l.readError = "部分内容的搜索索引不可用。元数据仍可浏览。"
+					}
+					if queryChanged {
+						l.detailEpoch++
+						l.detailWindow = nil
+						for _, read := range l.detailReads {
+							read.obsolete = true
+							read.cancel()
+						}
+						l.detailKey, l.detailBusy = "", false
+						l.retained = nil
+						d.quickLook = false
 					}
 					if !more {
 						fresh := make(map[string]api.HistoryItem, len(page.Hits))
@@ -555,13 +579,43 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 						}
 					}
 					l.cursor = page.NextCursor
+					selectedPending := false
 					if l.pendingSelectID != "" {
 						if slices.ContainsFunc(d.entries, func(e entry) bool { return e.id == l.pendingSelectID }) {
 							d.selectEntry(l.pendingSelectID)
 							d.detailOpen, d.inspector = true, true
 							d.list.ScrollTo(l.pendingSelectID)
+							selectedPending = true
 						}
 						l.pendingSelectID = ""
+					}
+					if queryChanged {
+						sameScope := wasLoaded && l.displayedScope == scope
+						if !wasLoaded {
+							l.lastResultKind = "cold"
+						} else if !sameScope {
+							l.lastResultKind = "scope"
+						} else {
+							l.lastResultKind = "refine"
+						}
+						l.displayedKey = key
+						l.displayedScope = scope
+						l.resultEpoch++
+						if !selectedPending {
+							if len(d.entries) > 0 {
+								if sameScope && prevSelected != "" && slices.ContainsFunc(d.entries, func(e entry) bool { return e.id == prevSelected }) {
+									d.selectEntry(prevSelected)
+								} else {
+									d.selectEntry(d.entries[0].id)
+									d.list.ScrollTo(d.entries[0].id)
+								}
+							} else {
+								d.selectEntry("")
+								l.detailKey = ""
+								l.detailLoadingSince = time.Time{}
+								d.quickLook, d.detailOpen, d.inspector = false, false, false
+							}
+						}
 					}
 				}
 				l.connected = true
@@ -717,7 +771,7 @@ func projectHistory(it api.HistoryItem) entry {
 	if it.Origin == "external" || it.Origin == "migration" {
 		source = it.Origin
 	}
-	v := entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: humanBytes(it.TotalBytes), kind: kind, tags: slices.Clone(it.Tags), createdAt: it.CreatedAt, syncState: it.SyncState, backendSync: slices.Clone(it.Backends)}
+	v := entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: humanBytes(it.TotalBytes), kind: kind, tags: withFavoriteTag(it.Tags, false), pinned: slices.Contains(it.Tags, plugin.TagFavorite), createdAt: it.CreatedAt, syncState: it.SyncState, backendSync: slices.Clone(it.Backends)}
 	if app := it.SourceApplication; app != nil {
 		v.sourceAppName, v.sourceAppID = strings.TrimSpace(app.Name), app.Identifier
 		if v.sourceAppName == "" {
@@ -998,7 +1052,7 @@ func (d *viewState) setEntryTags(id string, tags []string) {
 	if !ok {
 		return
 	}
-	tags = slices.Clone(tags)
+	tags = withFavoriteTag(tags, slices.Contains(it.Tags, plugin.TagFavorite))
 	client := d.live.client
 	d.mutate(func(ctx context.Context) error {
 		_, err := client.UpdateHistory(ctx, id, api.HistoryUpdate{Revision: it.Revision, Tags: &tags})
@@ -1065,6 +1119,7 @@ func (d *viewState) saveLiveConfigThen(cfg config.Config, after func()) {
 }
 func (d *viewState) projectLiveConfig() {
 	c := d.live.config.Config
+	d.theme = c.Desktop.ColorMode
 	d.options["startup"] = c.Desktop.LaunchAtLogin
 	d.options["sync"] = c.Sync.Enabled
 	d.options["autoSync"] = c.Sync.Automatic
@@ -1369,6 +1424,8 @@ func (d *viewState) runHistoryAction(id, key string) {
 
 		result, err := client.ExecuteAction(callCtx, id, key, request)
 		var resultText string
+		var resultURL string
+		var qrImg *image.NRGBA
 		var truncated bool
 		if err == nil && wantPresent && result.Item.ID != "" {
 			if rc, cerr := client.HistoryContent(callCtx, result.Item.ID, 0); cerr == nil {
@@ -1380,6 +1437,8 @@ func (d *viewState) runHistoryAction(id, key string) {
 						truncated = true
 					}
 					resultText = strings.ToValidUTF8(string(raw), "")
+					resultURL = validHTTPURL(resultText)
+					qrImg = encodeActionQRImage(resultURL)
 				}
 			}
 		}
@@ -1443,7 +1502,8 @@ func (d *viewState) runHistoryAction(id, key string) {
 					plugin:      pluginLabel,
 					historyID:   result.Item.ID,
 					text:        resultText,
-					url:         validHTTPURL(resultText),
+					url:         resultURL,
+					qr:          newActionResultQR(qrImg),
 					copied:      wantCopy && result.Applied,
 					applyFailed: applyFailed,
 					truncated:   truncated,

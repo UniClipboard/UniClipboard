@@ -1,0 +1,53 @@
+---
+title: 环境变量
+description: unic、unicd 与桌面端读取的环境变量，以及默认数据目录位置。
+---
+
+## 用户可用的环境变量
+
+| 变量 | 作用 |
+|---|---|
+| `UNIC_HOME` | 数据目录（数据库、配置、日志、接收文件、插件）。用于运行第二个实例或隔离的配置 |
+| `UNIC_SOCK` | 控制套接字路径，默认 `$UNIC_HOME/unic.sock` |
+| `UNIC_RENDEZVOUS_URL` | 配对码服务地址；配置文件中的 `rendezvous_url` 优先 |
+| `UNIC_PLUGIN_REGISTRY_URL` | 桌面插件市场的注册表地址；设为空字符串时不联网获取 |
+
+例如在同一台电脑上启动第二个本地节点：
+
+```bash
+UNIC_HOME=/tmp/unicA unicd
+UNIC_HOME=/tmp/unicA unic status
+```
+
+<Callout type="warn">
+Unix 套接字路径长度有限（macOS 约 104 字节）。使用 `UNIC_HOME` 时请保持路径简短，或用 `UNIC_SOCK` 指定一个短路径。
+</Callout>
+
+桌面端在设置了 `UNIC_HOME` 或 `UNIC_SOCK` 时视为自定义配置运行。
+
+## 默认数据目录
+
+未设置 `UNIC_HOME` 时按以下顺序决定：
+
+1. 可执行文件旁存在普通文件 `portable.dat` 时，使用同目录下的 `data/`（便携模式）。
+2. 否则使用系统配置目录下的 `unic`（开发版本为 `unic-development`）：
+
+| 系统 | 路径 |
+|---|---|
+| macOS | `~/Library/Application Support/unic` |
+| Windows | `%AppData%\unic` |
+| Linux | `$XDG_CONFIG_HOME/unic`，默认 `~/.config/unic` |
+
+用 `unic config path` 可以查看实际使用的配置文件位置。
+
+## 插件进程获得的变量
+
+外部 Go 插件进程启动时会收到 `UNIC_PLUGIN_DIR`，指向插件自身的目录。详见 [Go 插件开发](../plugins/develop-go)。
+
+<Callout>
+仓库中其它以 `UNIC_` 开头的变量（如 `UNIC_E2E*`、`UNIC_DESKTOP_E2E*`）仅用于测试与构建，不面向终端用户。
+</Callout>
+
+<Callout type="warn">
+不要用环境变量传递 v1 旧口令；迁移时请使用 `--passphrase-stdin`，见 [v1 迁移](../migration/v1-to-v2)。
+</Callout>

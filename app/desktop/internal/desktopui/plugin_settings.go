@@ -19,6 +19,7 @@ import (
 type builtinPluginSettings struct {
 	id, revision, threshold, thresholdError string
 	instanceName                            string
+	channelPair                             weTypePairing
 	tab, query                              string
 	view                                    string // "" (list) | "marketplace" | "advanced"
 	marketQuery                             string
@@ -37,6 +38,7 @@ type builtinPluginSettings struct {
 	rollbackOpen                            bool
 	rollbackID, rollbackName, rollbackVer   string
 	form                                    *pluginSettingsForm
+	classification                          classificationSettings
 }
 
 type builtinPluginEntry struct {
@@ -58,14 +60,16 @@ var builtinPluginEntries = []builtinPluginEntry{
 func (d *viewState) pluginsToolbarActions(c *ui.Context, k desktopkit.Kit) {
 	l := d.live
 	p := &d.pluginSettings
-	if k.Button(c.Key("tb-refresh-marketplace"), d.tr("检查更新"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconRetry, Busy: l.marketplaceLoading, Disabled: l.marketplaceLoading}).Clicked() {
+	if k.ToolbarQuietButton(c.Key("tb-refresh-marketplace"), d.tr("检查更新"), desktopkit.ToolbarQuietButtonProps{
+		Icon:     desktopkit.IconRetry,
+		Busy:     l.marketplaceLoading,
+		Disabled: l.marketplaceLoading,
+	}).Clicked() {
 		d.ensureMarketplaceLoaded(true)
 	}
-	_, cmd := k.Menu(c.Key("tb-plugin-more"), desktopkit.MenuProps{
-		Label:    d.tr("更多"),
-		Icon:     desktopkit.IconMore,
-		IconOnly: true,
-		Variant:  desktopkit.Subtle,
+	_, cmd := k.ToolbarIconMenu(c.Key("tb-plugin-more"), desktopkit.ToolbarIconMenuProps{
+		Label: d.tr("更多"),
+		Icon:  desktopkit.IconMore,
 		Items: []desktopkit.MenuEntry{
 			{ID: "advanced", Label: d.tr("执行顺序与高级设置"), Icon: desktopkit.IconList},
 			{ID: "manual", Label: d.tr("从链接手动安装"), Icon: desktopkit.IconLink},
@@ -129,6 +133,21 @@ func pluginIconForCategory(category string, caps []string) (desktopkit.IconName,
 	return desktopkit.IconPackage, "accent"
 }
 
+func pluginPresentationIcon(category string, caps []string, declared ...string) (desktopkit.IconName, string) {
+	fallback, tone := pluginIconForCategory(category, caps)
+	for _, name := range declared {
+		icon := desktopkit.IconName(name)
+		switch icon {
+		case desktopkit.IconChat, desktopkit.IconCode, desktopkit.IconDevices, desktopkit.IconEdit,
+			desktopkit.IconFile, desktopkit.IconFilter, desktopkit.IconFolder, desktopkit.IconGlobe,
+			desktopkit.IconImage, desktopkit.IconLink, desktopkit.IconLock, desktopkit.IconPackage,
+			desktopkit.IconSend, desktopkit.IconShield, desktopkit.IconTag, desktopkit.IconText:
+			return icon, tone
+		}
+	}
+	return fallback, tone
+}
+
 func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	l := d.live
 	d.ensureMarketplaceLoaded(false)
@@ -140,7 +159,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 		cfg.Plugins.Instances = map[string]config.Instance{}
 	}
 	if l.config.ApplyError != "" {
-		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: d.tr("设置已保存，但未能生效。请重试或重新启动桌面端。")})
+		d.restartNotice(c.Key("apply-error-notice"), k, desktopkit.ToneError, d.tr("设置已保存，但未能生效。请重试或重新启动桌面端。"), true)
 	}
 	if l.config.Error != "" {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("配置文件无效。当前保留上一份有效设置。")})
@@ -151,10 +170,12 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 			pending = true
 		}
 	}
-	if pending {
-		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("插件设置已保存。请退出并重新启动桌面端以生效。")})
-	}
 	p := &d.pluginSettings
+	external, externalSelected := d.installedExternalPlugin(p.id)
+	externalPending := externalSelected && (external.Restart || p.form != nil && p.form.state.Restart)
+	if pending || externalPending {
+		d.restartNotice(c.Key("plugin-restart-notice"), k, desktopkit.ToneWarning, d.tr("插件设置已保存。请退出并重新启动桌面端以生效。"), true)
+	}
 	if p.installError != "" {
 		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: p.installError})
 	} else if p.installNotice != "" {
@@ -191,11 +212,9 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 		}
 	}
 	if entry.id == "" {
-		for _, item := range l.externalPlugins {
-			if item.ID == p.id {
-				d.externalPluginDetail(c, k, item, cfg)
-				return
-			}
+		if externalSelected {
+			d.externalPluginDetail(c, k, external, cfg)
+			return
 		}
 		p.id = ""
 		p.form = nil
@@ -241,7 +260,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 		d.syncPluginPolicy(c, k, p.id, cfg)
 		return
 	}
-	k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name}, func() {
+	k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name, Footer: d.tr("以下策略保存后立即生效，仍受全局同步设置限制。")}, func() {
 		enabled := cfg.PluginEnabled(p.id)
 		label := "启用文本工具"
 		if p.id == "builtin.classify" {
@@ -278,6 +297,9 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	if changed {
 		cfg.Plugins.Instances[p.id] = instance
 		d.saveLiveConfig(cfg)
+	}
+	if p.id == "builtin.classify" {
+		d.classificationRules(c, k, cfg, instance)
 	}
 }
 
@@ -344,7 +366,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 			if len(l.marketplace.Plugins) > 0 {
 				pick := l.marketplace.Plugins[0]
 				accentBg, accentEdge := deviceAccentSurface(k)
-				icon, tone := pluginIconForCategory(pick.Category, pick.Capabilities)
+				icon, tone := pluginPresentationIcon(pick.Category, pick.Capabilities, pick.Icon)
 				ui.Column(c.Key("pick-card-"+pick.ID)).Padding(14, 16).Radius(13).Background(accentBg).Border(1, accentEdge).Gap(10).Children(func() {
 					ui.Row(c.Key("top")).Gap(12).AlignItems(ui.Center).Children(func() {
 						pluginIconTile(c.Key("ico"), k, icon, tone, 36)
@@ -400,20 +422,15 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 				shown := 0
 				for _, item := range l.externalPlugins {
 					cat, hasCat := d.marketplaceEntry(item.ID)
-					displayName := item.ID
-					summary := "v" + item.Version
+					displayName, catSummary := d.pluginDisplay(item)
+					summary := pluginSubtitle(item, catSummary)
 					meta := "v" + item.Version
-					icon, tone := pluginIconForCategory("", item.Capabilities)
+					icon, tone := pluginPresentationIcon(cat.Category, item.Capabilities, item.Icon, cat.Icon)
 					if hasCat {
-						displayName = cat.Name
-						summary = cat.Summary
 						meta = "v" + item.Version + " · " + cat.Author
 						if cat.ZeroConfig {
 							meta += " · " + d.tr("免配置")
 						}
-						icon, tone = pluginIconForCategory(cat.Category, item.Capabilities)
-					} else if item.ImplementationID != "" && item.ImplementationID != item.ID {
-						summary = item.ImplementationID + " · v" + item.Version
 					}
 					if query != "" && !strings.Contains(strings.ToLower(displayName+" "+item.ID+" "+summary), query) {
 						continue
@@ -458,6 +475,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 								p.view = ""
 								p.detailTechOpen = false
 								p.form = nil
+								p.channelPair = weTypePairing{}
 							}
 							if item.Source != "local" {
 								if k.Button(c.Key("uninstall-"+item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconDelete, Label: d.tr("卸载") + displayName, Tooltip: d.tr("卸载"), Disabled: l.busy}).Clicked() {
@@ -544,7 +562,6 @@ func (d *viewState) syncPluginPolicy(c *ui.Context, k desktopkit.Kit, id string,
 				instance.Enabled = &enabled
 			}
 		}
-		k.Text(c, d.tr("以下策略保存后立即生效，仍受全局同步设置限制。"), footnote)
 		on := func(v *bool) bool { return v == nil || *v }
 		text, images, files := on(instance.Sync.Text), on(instance.Sync.Images), on(instance.Sync.Files)
 		toggle("text", "同步文本", "允许此后端发送和接收文本。", &text)

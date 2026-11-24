@@ -308,7 +308,7 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			}
 			count := 0
 			for _, n := range nodes {
-				if n.Label != "显示方式" && n.Label != "发送到设备" && n.Label != "切换置顶" && n.Label != "更多操作" && n.Role != "search" {
+				if n.Label != "显示方式" && n.Label != "发送到设备" && n.Label != "切换收藏" && n.Label != "更多操作" && n.Role != "search" {
 					continue
 				}
 				b := n.Bounds

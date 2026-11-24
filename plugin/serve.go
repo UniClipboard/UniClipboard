@@ -106,6 +106,8 @@ func (s *server) handle(ctx context.Context, c *rpc.Call) (any, error) {
 		res, err = s.onEvent(ctx, c)
 	case rpc.MethodSubmit:
 		res, err = s.submit(ctx, c)
+	case rpc.MethodPairChannel:
+		res, err = s.pairChannel(ctx, c)
 	case rpc.MethodLeaveChannel:
 		res, err = s.leaveChannel(ctx, c)
 	case rpc.MethodBind:

@@ -1,0 +1,87 @@
+---
+title: 无头部署
+description: 在服务器或无桌面环境中常驻运行 unicd。
+---
+
+`unic` 按需启动的临时服务只在命令运行期间存在，命令之间不会接收任何内容。要让一台机器持续在线收发，请常驻运行 `unicd`。
+
+## 运行 unicd
+
+```sh
+UNIC_HOME=/absolute/private/state unicd
+```
+
+- 一个数据目录只能有一个服务、一个设备身份和一个历史库。
+- 自己启动的 `unicd` 不会被任何 `unic` 命令停止；`unic` 会直接复用它。
+- `unicd` 不加载任何图形界面库，默认以无头方式启动。
+- 无头环境没有系统剪贴板适配器：`history use`、`history action --apply`、`dev copy`、`dev paste` 不可用；但内容接收不受影响，收到的内容可通过 `unic history` 和 `unic recv list` 读取。
+
+<Callout type="warn">
+使用前必须先对该数据目录完成[首次初始化](./installation#首次初始化)，例如 `UNIC_HOME=/absolute/private/state unic migrate --initialize-empty --json`。
+</Callout>
+
+## 用服务管理器托管
+
+发行包不提供服务管理器的注册文件，需要自行配置。以 systemd 用户服务为例（路径按实际安装调整）：
+
+```ini
+# ~/.config/systemd/user/unicd.service
+[Unit]
+Description=unic clipboard service
+
+[Service]
+Environment=UNIC_HOME=%h/.local/share/unic
+ExecStart=/usr/local/bin/unicd
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now unicd
+```
+
+在同一用户下执行 `unic` 时，务必使用相同的 `UNIC_HOME`（或 `UNIC_SOCK`），才能连接到这个服务。
+
+## 配对与发送
+
+```sh
+export UNIC_HOME=/absolute/private/state
+unic device add                       # 显示配对码
+unic device list
+unic device approve <id> '<指纹>'
+echo hello | unic send --to all --json
+```
+
+## 多个本地节点
+
+用不同的 `UNIC_HOME` 可以在同一台机器上运行相互独立的节点，便于测试：
+
+```sh
+UNIC_HOME=/tmp/unicA unicd &
+UNIC_HOME=/tmp/unicB unicd &
+```
+
+## 与桌面版共存
+
+桌面版托盘启动时，若已有独立运行的 `unicd`，会直接接管使用而不停止它；退出桌面版也不会停止这个服务。若当前是 `unic` 启动的临时服务，桌面版会拒绝启动，等命令结束后重试即可。
+
+## 配置与日志
+
+- 配置文件位于数据目录的 `config.toml`，保存即生效；个别项需重启 `unicd`，`unic config` 会列出。参见[配置参考](../reference/configuration)。
+- 远程日志、指标与事件默认开启，可在 `config.toml` 中关闭：
+
+```toml
+[telemetry]
+enabled = false
+```
+
+- 导出本地日志无需服务运行：`unic dev logs export --output ./unic-logs.tar.gz`。参见[诊断](../reference/diagnostics)。
+
+## 已知限制
+
+- 发行包不含已签名的安装器或服务管理器注册。
+- 退出登录会话后服务是否继续运行取决于服务管理器。
+- 进程级验收仅在主机平台运行；macOS、Windows、Linux 的原生剪贴板验收另行进行。

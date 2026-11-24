@@ -48,14 +48,14 @@ func (k Kit) dressCheckbox(c *ui.Context, e ui.Element, checked, mixed bool, p C
 			if e.Hovered() && !p.Disabled {
 				from, to = "accent-400", "accent-500"
 			}
-			box.Gradient(Token(k.Dark, from), Token(k.Dark, to), 180).
-				InsetShadow(0, 2, 0, 0, ui.RGBA(255, 255, 255, .25)).InsetShadow(0, 0, 0, 1, Token(k.Dark, "accent-500"))
+			box.Gradient(k.Color(from), k.Color(to), 180).
+				InsetShadow(0, 2, 0, 0, k.Color("control-highlight")).InsetShadow(0, 0, 0, 1, k.Color("accent-500"))
 		} else {
 			edge := "border-checkbox-default"
 			if e.Hovered() && !p.Disabled {
 				edge = "border-checkbox-hover"
 			}
-			box.Background(Token(k.Dark, "background-primary-default")).Border(1, Token(k.Dark, edge))
+			box.Background(k.Color("background-primary-default")).Border(1, k.Color(edge))
 			k.shadows(box, "xs")
 		}
 		if p.Disabled {
@@ -84,7 +84,7 @@ func (k Kit) dressCheckbox(c *ui.Context, e ui.Element, checked, mixed bool, p C
 					} else {
 						path.MoveTo(x(4), y(7.7002)).LineTo(x(6.64645), y(10.3466)).CubeTo(x(6.84171), y(10.5419), x(7.15829), y(10.5419), x(7.35355), y(10.3466)).LineTo(x(12), y(5.7002)).Trim(0, progress)
 					}
-					pt.StrokePath(path, 2*scale, ui.RGB(255, 255, 255))
+					pt.StrokePath(path, 2*scale, k.Color("checkbox-check"))
 				})
 			})
 		}

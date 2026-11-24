@@ -47,7 +47,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: 1bba08c23671101e1dea5eb484eb5b539923bfbf
+verified: 5fe04abc83db1ff76b505e20699bf3c655cb1177
 ---
 # Clipboard pipeline and local history
 
@@ -66,21 +66,32 @@ The stage chain is Capture/Receive → Processing → Commit → Sync → Use �
 - **Receive**: Admission checks part sizes, policy, deduplication and storage before body delivery. Processing sees only accepted parts. An empty filtered result is dropped without successful deduplication. Received content is never forwarded. Reserve a Received slot before writing history and successful deduplication. The final publication rechecks lifecycle, sync policy and source authorization. Failure removes the new history and deduplication record.
 - **Temporary receive**: `AdmitTransfer` reserves the shared receive path under backend `unic.transfer` and pseudo-channel `transfer`. It creates no stored device or channel. Ephemeral receipts bypass device/channel authorization, but still require active lifecycle, enabled sync, receive policy and storage admission. They use origin `external`, run received processors and do not request automatic clipboard application.
 - **Use**: `BeginApply` and `BeginApplyHistory` apply content without a new commit. History tickets freeze the stored origin classification for `history_applied`; the event requires successful application with `UserRestore=true`. Desktop can call `SyncRestoredHistory` after explicit restore when `sync.on_restore` is enabled. Action-result application remains local. See [desktop runtime](desktop-runtime.md).
-- **Actions**: User-triggered `ListActions`/`RunAction` support text, image and file history for Go plugins; Lua Actions remain text-only. Every Action must explicitly declare non-empty unique `Placements` from `{history.item_menu, history.toolbar, quick_panel}` and non-empty unique `PostActions` from `{copy, notify, present, select, none}` (`none` exclusive) so cross-platform hosts render matching surfaces and execute bounded follow-up behavior. A plugin action must produce one nonempty UTF-8 text result. The new `action` record forces persistence and passes captured processors and normal sync decisions. The source remains unchanged. Action execution shares the processor instance gate. Go declarations can select deadlines up to five minutes; zero keeps the ten-second default. Lua retains its VM budget. Request IDs share the submission namespace. Plugin failures return opaque errors. The host applies the new history item. `builtin.text` provides upper/lower/trim/plain (`history.item_menu`, `history.toolbar`; `copy`, `notify`) and email/URL tagging. Service routes are `GET /v1/actions` and `POST /v1/history/{id}/actions/{key}`.
+- **Actions**: User-triggered `ListActions`/`RunAction` support text, image and file history for Go plugins; Lua Actions remain text-only. Every Action must explicitly declare non-empty unique `Placements` from `{history.item_menu, history.toolbar, quick_panel}` and non-empty unique `PostActions` from `{copy, notify, present, select, none}` (`none` exclusive) so cross-platform hosts render matching surfaces and execute bounded follow-up behavior. A plugin action must produce one nonempty UTF-8 text result. The new `action` record forces persistence and passes captured processors and normal sync decisions. The source remains unchanged. Action execution shares the processor instance gate. Go declarations can select deadlines up to five minutes; zero keeps the ten-second default. Lua retains its VM budget. Request IDs share the submission namespace. Plugin failures return opaque errors. The host applies the new history item. `builtin.text` provides upper/lower/trim/plain (`history.item_menu`, `history.toolbar`; `copy`, `notify`) and email tagging. Service routes are `GET /v1/actions` and `POST /v1/history/{id}/actions/{key}`.
 - **History**: SQLite records and private blobs belong to Engine. Host-managed files remain external references. Stable IDs, pagination, edits, leases, expiry and apply follow the [history contract](../contracts/history-contract.md). Cleanup defaults to enabled, 180 days, unlimited eligible records and no excluded tags. The startup history byte budget is 4 GiB. Live history settings affect existing records. Tag exclusions protect records and managed files. Explicit item expiry is independent. The service exposes `/v1/history*` and `unic history`.
 - **Notifications**: Observers receive content-free events and cannot mutate content. Each observer has a 64-entry queue that drops the newest event when full and a 200 ms callback budget. Delivery is lossy. Successful capacity eviction emits `clipboard.deleted` once per deleted history ID.
+
+The service can activate an installed Go Action-only plugin or external-channel
+backend at runtime. Engine assembles the verified child process before
+registering its Actions or publishing the backend and its policy. An inactive,
+enabled instance can activate when the user saves its required settings.
+External Go plugin subprocesses receive a minimal allowlisted environment
+(`UNIC_PLUGIN_PROTOCOL`, `UNIC_PLUGIN_DIR`, OS temporary-directory and Windows
+system-root variables, Unix TLS certificate variables, and outbound HTTP proxy
+variables) without inheriting unrelated host environment variables or
+credentials.
 
 ## Built-in content tags
 
 The service assembles `builtin.classify` before `builtin.text` by default.
-The ordinary processor adds `builtin:text`, `builtin:image` or `builtin:files` from the Engine item type on capture, explicit commit, Action results and receipt.
-Text containing an HTTP(S) URL also receives `builtin:link`; inspection is limited to the first 64 KiB.
-It changes no content and performs no network or file-body reads.
-Existing history is not backfilled. Disabling `plugins.instances."builtin.classify".enabled` takes effect after service restart and stops classification of new items; existing tags remain.
-The existing `builtin.text` email/URL hints and text Actions remain independent.
-Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes the six built-in labels, protects their management operations and always lists them, including when history is empty. Custom tag labels remain unchanged. Built-in sidebar visibility survives refresh within the current desktop session.
+The classifier adds `builtin:text`, `builtin:image`, `builtin:files` or `builtin:folder` from the Engine item type on capture, explicit commit, Action results and receipt.
+It also adds `builtin:link` when the first 64 KiB of text contains an HTTP(S) URL. The independent `builtin.text` plugin adds `builtin:email` for email addresses and supplies text Actions.
+The classifier runs four default full-text rules for colors, version numbers, UUIDs and IPv4 addresses. It trims surrounding whitespace before matching text up to 64 KiB. Each default rule has an independent switch. The classifier applies custom [regular expression rules](../contracts/plugin-contract.md#built-in-content-classification) to the original text prefix. Local Lua processors can apply tags through `ctx:add_tag` under the existing sandbox and event subscriptions. Tags belong to the local history, so each peer applies its own rules.
+These processors annotate content without changing it. The classifier performs no network or file-body reads. Changes to its rules or enablement apply after service restart. Existing history retains its stored tags.
+Tag IDs remain language-independent through storage, filtering and cleanup settings. Desktop localizes built-in labels, protects their management operations and lists them even when history is empty. Custom tag labels retain their literal names. Built-in sidebar visibility survives refresh within the current desktop session.
 
-The offline v1 importer preserves canonical link, image, folder and code memberships from the profile-scoped v1 search tag table, separately from encrypted custom assignments. `builtin:code` is currently preserved by migration; `builtin.classify` does not produce it for new content. The importer also preserves palette and hexadecimal colors from the v1 presentation layout through host configuration. Every CLI and Desktop migration automatically fills safe missing tags and colors while preserving target edits, existing color overrides and deletions. See the [history contract](../contracts/history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252).
+The reserved `favorite` tag is local history metadata. Desktop writes it through the existing revision-checked tag update from the history and Quick Panel actions. The Favorites sidebar uses the existing Engine tag search and exact count. The tag is omitted from tag catalogues and ordinary tag displays. See the [history contract](../contracts/history-contract.md#favorites).
+
+The offline v1 importer preserves canonical link, image, folder and code memberships from the profile-scoped v1 search tag table, separately from encrypted custom assignments. The default classifier has no code-detection rule. A custom rule may target `builtin:code`. The importer also preserves palette and hexadecimal colors from the v1 presentation layout through host configuration. Every CLI and Desktop migration automatically fills safe missing tags and colors while preserving target edits, existing color overrides and deletions. See the [history contract](../contracts/history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252).
 
 Windows drive-letter source databases use absolute SQLite file URIs with an empty authority. Source databases remain read-only and query-only.
 

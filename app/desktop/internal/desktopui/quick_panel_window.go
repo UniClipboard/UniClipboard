@@ -25,11 +25,18 @@ func openQuickWindow(p *quickPanelState, closed func()) *mygo.Window {
 		Placement: mygo.PlacementRight, Gap: 8, Shadow: true, CornerRadius: 12,
 		Anchor: mygo.Rectangle{X: 0, Y: 54, Width: 380, Height: 30}, Content: ui.View(p.satellite),
 	})
+	windowZoom := 0
 	syncWindow := func() {
 		if !p.visible {
 			satellite.Hide()
 			history.Hide()
 			return
+		}
+		scale := zoomScale(p.windowZoom)
+		panelWidth := int(380 * scale)
+		if p.windowZoom != windowZoom {
+			windowZoom = p.windowZoom
+			history.SetContentSize(panelWidth, int(366*scale))
 		}
 		if p.menu == "" && p.previewID == "" {
 			satellite.Hide()
@@ -52,8 +59,8 @@ func openQuickWindow(p *quickPanelState, closed func()) *mygo.Window {
 		}
 		// Use the full parent width so the satellite follows a row vertically
 		// but never overlaps the history panel horizontally.
-		satellite.SetAnchor(mygo.Rectangle{X: 0, Y: int(anchor.Y), Width: 380, Height: int(anchor.H)})
-		satellite.SetSize(width, height)
+		satellite.SetAnchor(mygo.Rectangle{X: 0, Y: int(anchor.Y), Width: panelWidth, Height: int(anchor.H)})
+		satellite.SetSize(int(float32(width)*scale), int(float32(height)*scale))
 		satellite.Invalidate()
 		satellite.ShowInactive()
 	}

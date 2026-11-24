@@ -45,6 +45,7 @@ func BundledMarketplace() api.PluginMarketplace {
 			{
 				ID:            "unic.wenshushu",
 				Name:          "文叔叔临时分享",
+				Icon:          "link",
 				Author:        "UniClipboard 官方",
 				Official:      true,
 				Category:      "share",
@@ -59,6 +60,44 @@ func BundledMarketplace() api.PluginMarketplace {
 				Ref:           "8e0c92fcb0a033cc0a934ef6ec193b391ad104e1",
 				BuildFallback: true,
 				Capabilities:  []string{"action"},
+			},
+			{
+				ID:            "unic.wormhole",
+				Name:          "Wormhole 临时分享",
+				Icon:          "lock",
+				Author:        "UniClipboard 官方",
+				Official:      true,
+				Category:      "share",
+				Version:       "0.1.0",
+				Summary:       "将选中的文本、图片或文件生成端到端加密的临时下载链接。",
+				Description:   "无需账号或配置。在剪贴板历史中选中条目并触发分享动作。上传完成后，链接会保存为一条新的历史记录。",
+				Highlights:    []string{"端到端加密", "支持文本、图片和多个文件", "约 24 小时自动过期"},
+				HowTo:         []string{"在剪贴板历史中选中一条文本、图片或文件", "打开「动作」并点击「通过 Wormhole 临时分享」", "将下载链接发送给接收方"},
+				Privacy:       "仅在主动触发动作时上传加密内容。解密密钥在链接片段中，任何持有完整链接的人都可以下载并解密。",
+				ZeroConfig:    true,
+				Repository:    "https://github.com/UniClipboard/unic-plugin-wormhole",
+				Ref:           "6b4fd2e7efae996539e1f00522003b312088b58d",
+				BuildFallback: true,
+				Capabilities:  []string{"action"},
+			},
+			{
+				ID:            "unic.security",
+				Name:          "敏感内容拦截",
+				Icon:          "shield",
+				Author:        "UniClipboard 官方",
+				Official:      true,
+				Category:      "organize",
+				Version:       "0.1.0",
+				Summary:       "自动识别剪贴板中的密钥、密码管理器内容与敏感文件，拦截不入库且不同步。",
+				Description:   "开箱即用的本地敏感内容保护插件。默认识别私钥、常见云/AI/GitHub 令牌与 JWT、含密码数据库连接串、密码/密钥键值对、1Password/Bitwarden/KeePassXC/Apple 密码等密码管理器来源应用以及 .env、id_rsa、*.pem/*.key/*.kdbx 等敏感文件，并阻止其写入本地历史或同步到其他设备；也可在插件设置中切换为仅本机保留/自动过期模式，或自定义应用名单与正则/关键词规则。",
+				Highlights:    []string{"默认拦截不入库且不同步，免配置开箱即用", "支持私钥、API 密钥、密码管理器来源应用与敏感文件名", "支持自定义正则/关键词、白名单应用与仅本机过期模式"},
+				HowTo:         []string{"在插件市场安装并启用「敏感内容拦截」，然后重启服务", "默认即刻拦截敏感内容不写入历史库且不跨设备同步", "按需在「设置 > 插件 > 敏感内容拦截」调整拦截模式、规则开关或自定义规则"},
+				Privacy:       "100% 本地检测，零网络访问；绝不在日志、错误或通知中记录剪贴板原文、密钥值或文件名。",
+				ZeroConfig:    true,
+				Repository:    "https://github.com/UniClipboard/unic-plugin-security",
+				Ref:           "0f23b17ee8922fdbe5e5e47016e0a70f979f1185",
+				BuildFallback: true,
+				Capabilities:  []string{"processor"},
 			},
 		},
 	}
@@ -178,6 +217,9 @@ func validateMarketplace(cat api.PluginMarketplace) error {
 		seen[p.ID] = true
 		if !validText(p.Name, 1, 80) || !validText(p.Author, 1, 80) || !validText(p.Version, 1, 64) || !validText(p.Summary, 1, 240) {
 			return errors.New("invalid marketplace plugin metadata")
+		}
+		if !validIcon(p.Icon) {
+			return errors.New("invalid marketplace plugin icon")
 		}
 		if p.Description != "" && !validText(p.Description, 1, 2000) {
 			return errors.New("invalid marketplace plugin description")

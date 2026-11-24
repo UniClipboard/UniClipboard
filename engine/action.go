@@ -151,6 +151,8 @@ func (c *actionContext) SetText(text string) error {
 }
 
 func (e *Engine) findAction(key string) *pipelineAction {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	for _, a := range e.actions {
 		if a.key() == key {
 			return a
@@ -166,10 +168,12 @@ func (e *Engine) ListActions(ctx context.Context) ([]ActionInfo, error) {
 		return nil, gerr
 	}
 	defer release()
+	e.mu.Lock()
 	out := make([]ActionInfo, 0, len(e.actions))
 	for _, a := range e.actions {
 		out = append(out, a.info())
 	}
+	e.mu.Unlock()
 	slices.SortFunc(out, func(a, b ActionInfo) int { return strings.Compare(a.Key, b.Key) })
 	return out, nil
 }

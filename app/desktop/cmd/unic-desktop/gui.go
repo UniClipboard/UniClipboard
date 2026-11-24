@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -177,7 +179,7 @@ func runGUI(settings *config.Manager) error {
 	if _, err = launchDesktopRole(context.Background(), dir, socket, desktopprocess.Tray, "--background"); err != nil {
 		return err
 	}
-	configureNativeRole(dir, false)
+	configureNativeRole(dir, false, settings.Current().Desktop.ColorMode)
 	defer session.close()
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
 		session.requestQuit(e)
@@ -199,7 +201,11 @@ func runGUI(settings *config.Manager) error {
 	})
 	mygo.App.WhenReady(func() {
 		if runtime.GOOS == "darwin" {
-			_ = mygo.App.Dock.SetIcon(appicons.PNG)
+			// Let Launch Services supply the icon for a packaged app.
+			program, _ := os.Executable()
+			if _, err := os.Stat(filepath.Join(filepath.Dir(program), "..", "Resources", "icon.icns")); err != nil || program == "" {
+				_ = mygo.App.Dock.SetIcon(appicons.MacPNG)
+			}
 		}
 		session.windowFrame = settings.Current().Desktop.SystemWindowFrame
 		view := session.view
@@ -221,7 +227,7 @@ func runGUI(settings *config.Manager) error {
 				windowchrome.Controls(c, actions, settings.Current().Desktop.Language)
 			}
 			view = func(c *ui.Context) {
-				if session.setup == nil && session.runtime != nil {
+				if session.setup != nil || session.runtime != nil {
 					session.view(c)
 					return
 				}
@@ -229,12 +235,12 @@ func runGUI(settings *config.Manager) error {
 			}
 		} else if (runtime.GOOS == "linux" || runtime.GOOS == "darwin") && !session.windowFrame {
 			view = func(c *ui.Context) {
-				if runtime.GOOS == "darwin" && session.runtime != nil && session.message == "" {
-					// Normal macOS pages own the window top, as the v1 SplitView did.
+				if runtime.GOOS == "darwin" && (session.setup != nil || (session.runtime != nil && session.message == "")) {
+					// Normal macOS pages and setup own the window top, as the v1 SplitView did.
 					session.view(c)
 					return
 				}
-				// Setup and startup still need their own draggable safe-area row.
+				// Startup and Linux fallback still need their own draggable safe-area row.
 				windowchrome.NativeView(c, func() { session.view(c) })
 			}
 		}
@@ -242,10 +248,15 @@ func runGUI(settings *config.Manager) error {
 		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, MinWidth: 600, MinHeight: 480, Content: ui.View(view)}
 		windowchrome.Configure(&opts, runtime.GOOS, session.windowFrame)
 		if flow.Required() {
-			opts.Width, opts.Height = 640, 560
+			opts.Width, opts.Height = setupWindowWidth, setupWindowHeight
 		}
 		g.win = mygo.NewWindow(opts)
-		_ = g.win.SetIcon(appicons.PNG)
+		switch runtime.GOOS {
+		case "windows":
+			_ = g.win.SetIcon(appicons.WindowsPNG)
+		case "linux":
+			_ = g.win.SetIcon(appicons.PNG)
+		}
 		g.win.OnClose(func(e *mygo.CloseEvent) {
 			if quitting {
 				return
@@ -263,6 +274,7 @@ func runGUI(settings *config.Manager) error {
 		settings.OnChange = func(_, current config.Config, err error) {
 			if err == nil {
 				mygo.RunOnMain(func() {
+					mygo.Theme.SetSource(mygo.ThemeSource(current.Desktop.ColorMode))
 					if session.setup != nil {
 						session.setup.SetLanguage(current.Desktop.Language)
 					}

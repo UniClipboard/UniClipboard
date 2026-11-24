@@ -6,9 +6,11 @@
 - 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)。
 - 范围：Go / Lua 统一模型、builtin 进程内装配与外部独立进程 RPC、默认同步插件及 GitHub 安装。历史、流水线与插件调度在 `engine/`。
 
+The [sync integration contract](sync-integration-contract.md) describes planned capability discovery, management operations, and explicit forwarding. Its SyncClipboard section identifies the implemented external-channel slice.
+
 ## 1. 标识、能力与入口
 
-插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。sync_backend 还可声明 `ExternalChannels`（对端是没有 unic 身份的外部渠道，见 0009）与 `RemoteRevocation`（须同时声明 ExternalChannels，并实现 `ChannelLeaver`）；其他插件声明这两项被拒绝。外部渠道后端实现 `ReceiverAware`，Engine 在 Init 之后、Start 之前交给它 `Receiver`，收到的内容经 `Receive(channelID, Received)` 进入 Engine；被拒（渠道停用、策略、空间、重复）时返回错误，后端丢弃且不得重试。当前只支持进程内 Go 实例，外部进程后端待 RPC 业务层。ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`builtin.tailcat` 保留给发行版内置同步插件。能力为 processor（自动标注）、observer（只读通知）、action（用户主动触发的内容变换）、sync_backend（同步后端）。Lua 首版支持前三项；声明能力还须通过 Engine 校验和配置授权。
+插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。sync_backend 还可声明 `ExternalChannels`（对端是没有 unic 身份的外部渠道，见 0009）与 `RemoteRevocation`（须同时声明 ExternalChannels，并实现 `ChannelLeaver`）；其他插件声明这两项被拒绝。外部渠道后端实现 `ReceiverAware`，Engine 在 Init 之后、Start 之前交给它 `Receiver`，收到的内容经 `Receive(channelID, Received)` 进入 Engine；被拒（渠道停用、策略、空间、重复）时返回错误，后端丢弃且不得重试。External Go processes use the [external-channel RPC profile](sync-backend-contract.md).ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`builtin.tailcat` 保留给发行版内置同步插件。能力为 processor（自动标注）、observer（只读通知）、action（用户主动触发的内容变换）、sync_backend（同步后端）。Lua 首版支持前三项；声明能力还须通过 Engine 校验和配置授权。
 
 processor 只能改标签、过期、persist、sync，不能改写正文；改写正文只能通过 action，见[Action 契约](clipboard-action-contract.md)。action 能力须在 Spec 中静态声明 `Actions []ActionSpec{ID, Title, Accepts, Placements, PostActions}`：ID 匹配 `[a-z][a-z0-9_-]*`、最多 64 字节且插件内唯一，对外键为 `pluginID/actionID`；Title 为 1..64 字节的纯 UTF-8；Go `Accepts` is a non-empty unique subset of `{text, image, files}`; results remain text. Lua Actions accept text only. `Placements` is a required, non-empty unique subset of `{history.item_menu, history.toolbar, quick_panel}` declaring cross-platform UI entry points. `PostActions` is a required, non-empty unique subset of `{copy, notify, present, select, none}` (`none` exclusive) declaring bounded host follow-up behavior. 首版没有参数。声明了 Actions 却无 action 能力，或反之，均为 invalid_config。
 
@@ -63,6 +65,10 @@ Plugin SDK 的 Main 函数服务 RPC，Engine 使用代理；Lua 实现相同业
 ## 2. 生命周期与失败
 
 Go：spawn → handshake → Init → Start → callbacks → Close → wait。Lua：load → Init → Start → callbacks → Close。Init 校验配置并准备资源，不联网；Start 后可以运行后台任务。启动任一步失败，Engine 逆序清理所有部分初始化实例，并报告启动失败。
+
+The service checks required Schema values before handing an external plugin to
+Engine. An incomplete instance stays inactive and editable while the service
+starts. See the [settings contract](plugin-settings-contract.md#4-runtime-configuration).
 
 同一实例的 Process/OnEvent 串行，不同内容也遵守；Sync Send 允许跨目标并发。RPC 读写不能被回调阻塞，Engine 不持业务锁调用插件。处理超时默认 200ms，Go 先发取消，再给 1 秒宽限，仍不响应则终止子进程并回收；Lua 终止该次调用并丢弃失败状态，等待显式重载；后续调用仍遵循错误策略。SDK 恢复 Go 回调 panic，返回稳定错误码。迟到响应不得提交。
 
@@ -123,7 +129,7 @@ RPC 的 SetExpire 使用正整数毫秒，小于 1ms 或非整毫秒返回 inval
 
 Host 只提供 Notify(ctx, message)，限流并限制长度，由宿主展示，不进入事件或日志，失败不阻断。PluginEvent 只有 Kind、ItemID、AtMs，不含正文；观察者不能修改 commit 后内容。普通 Host 不提供再入 Engine 提交或数据库访问。
 
-Lua 处理器使用 ctx.item、ctx.policy 及 ctx:add_tag/remove_tag/set_persist/set_sync/set_expire；时长如 "30s"。方法错误回滚整次回调。订阅由配置控制，不使用全局 events.on。
+Lua 处理器使用 ctx.item、ctx.policy 及 ctx:add_tag/remove_tag/set_persist/set_sync/set_expire；set_expire 接受正整数毫秒（如 600000 表示 10 分钟），自 commit 起算，不接受 "30s" 这类时长字符串，非正值返回 invalid_argument。方法错误回滚整次回调。订阅由配置控制，不使用全局 events.on。
 
 **Action 上下文**：Go 的 `ActionContext` 提供 `Action() string`、只读 `Item()` 快照（同上，含 Text）和 `SetText(string) error`，没有标签/策略方法；`Host.Notify` 可用。必须恰好调用一次 SetText，规则、限制与失败语义见[Action 契约](clipboard-action-contract.md)。Lua 在插件表声明 `actions = {{id=..., title=..., accepts={"text"}, placements={"history.item_menu", "history.toolbar"}, post_actions={"copy", "notify"}}}` 并实现 `run_action(ctx)`，ctx.action 为 ID，ctx.item 只读，`ctx:set_text(s)`、`ctx:notify(msg)` 可用。Action 不订阅事件，只在用户触发时运行；Go 经 RPC `plugin.run_action`（见 [RPC 核心协议](plugin-rpc-contract.md)）。
 
@@ -302,6 +308,11 @@ bypasses the cache age. Fetch or validation failure uses a valid cache,
 including an expired cache, then the bundled official catalog. The response
 identifies its source and provides a warning when fallback follows failure.
 
+Each catalog entry may declare an `icon` string using the [plugin icon names](#display-icon).
+Desktop uses the catalog value when browsing the marketplace, including before
+installation. An omitted, empty or unrecognized icon uses the existing
+category or capability icon.
+
 Marketplace installation reuses the installer below. Catalog recommendations,
 including `build_fallback`, do not grant execution or source-build permission.
 The caller supplies the installation options explicitly. The
@@ -366,6 +377,33 @@ tag = "email"
 
 An artifact specifies a gzip tar archive. Each GOOS/GOARCH may appear once. A declared minimum macOS version is checked on macOS. Other minimum OS and library requirements are treated as unverified and the artifact is skipped.Release/asset 指向同仓库发布资产，不猜文件名；摘要固定内容。清单是所选 commit 中的数据，不能用 Release 名称代替 commit 锁定。清单与启动握手 Spec 必须一致。
 
+### 展示文本与多语言
+
+清单可选声明 `name`（≤64 字符）、`summary`（≤200 字符）和 `[i18n.<语言>]` 表，表内只有 `name`、`summary`。语言键为 `en`、`ja`、`pt-BR` 这类标签，最多 16 种；非法标签、未知键、超长、控制字符或非法 UTF-8 拒绝整个清单。这些字段是纯文本，不属于插件身份，也不进入握手 Spec；修改它们不需要重启。宿主按“完整标签、主语言子标签、默认文本”逐字段回退（忽略大小写）。桌面标题优先级为清单本地化文本、市场条目、插件 ID。Action 标题仍是单语言文本。
+
+```toml
+name = "微信输入法"
+summary = "把剪贴板内容发送到微信输入法。"
+[i18n.en]
+name = "WeChat IME"
+summary = "Send clipboard content to WeChat IME."
+```
+
+### Display icon
+
+A Go or Lua `spec.toml` may declare a top-level `icon`, for example
+`icon = "shield"`. The same field is available on each marketplace JSON entry.
+A nonempty name starts with a lowercase ASCII letter and contains at most 32
+ASCII letters, digits or hyphens, using lowercase letters only. The manifest
+and marketplace validate this syntax.
+
+Desktop recognizes `chat`, `code`, `devices`, `edit`, `file`, `filter`,
+`folder`, `globe`, `image`, `link`, `lock`, `package`, `send`, `shield`,
+`tag` and `text`. These names select bundled glyphs. Installed plugin views
+prefer a recognized manifest icon, then a recognized catalog icon, then the
+category or capability icon. The field is independent of language, plugin
+identity and the RPC handshake.
+
 ### 安装选择与 --build
 
 1. 规范 GitHub HTTPS URL，允许末尾 .git。分支、tag、commit 用 --ref；子目录用 --path，不解析 tree/blob 网页 URL。默认解析默认分支 HEAD，所有 ref 锁到完整 commit；获取该 commit 清单。首版仅公共仓库，不处理子模块。
@@ -382,6 +420,15 @@ An artifact specifies a gzip tar archive. Each GOOS/GOARCH may appear once. A de
 ### 启用、升级与卸载
 
 首次安装默认不启用；--enable 等价显式 enable，采用清单配置默认值并追加到阶段顺序末尾，不覆盖用户已有配置。启用列表变更按第 3 节在重启时生效。The installed version and its previous version remain immutable. Use `unic plugin rollback ID` to select the previous commit, then restart the service.
+
+Desktop Marketplace offers an explicit Start operation for installed,
+inactive external Go plugins that declare only Action or an external-channel
+object-store backend. Start preserves the service process and registers the
+plugin only after its verified subprocess is ready. If required settings are
+missing, Start records enablement and the first successful settings save
+activates the plugin. Disable, uninstall, version replacement and rollback
+still follow their existing lifecycle. See the [local service
+contract](local-service-contract.md#marketplace-and-installation-lifecycle).
 
 list 显示 installed/ready、source、configured_enabled、running_version、restart_required，区分磁盘与实际运行状态。Disable and uninstall take effect after restart. The service closes the process, and startup prunes version directories that the current lock and running service no longer reference. Uninstall preserves history and settings.内置 builtin.tailcat 随宿主编译和升级，不经外部安装器安装/卸载，不允许第三方覆盖保留 ID；可禁用，其关联记录保留，全部后端禁用后进入本机模式。
 
@@ -403,7 +450,7 @@ Processor `Item.Type` additionally accepts `directory_reference` and `directory`
 
 ## Built-in content classification
 
-`builtin.classify` is an ordinary processor assembled by the service before `builtin.text`. It supports the existing enabled and on_error settings and accepts no plugin configuration. Capture, explicit commit, Action results and received content use the same processor path.
+`builtin.classify` is an ordinary processor assembled by the service before `builtin.text`. Capture, explicit commit, Action results and received content use the same processor path.
 
 | Item type | Stable tag ID |
 |---|---|
@@ -413,7 +460,29 @@ Processor `Item.Type` additionally accepts `directory_reference` and `directory`
 | `directory`, `directory_reference` | `builtin:folder` |
 | Text containing an HTTP(S) URL in the first 64 KiB | `builtin:link`, in addition to `builtin:text` |
 
-The processor performs no network access and does not change content. It does not backfill existing history. Hosts translate the six built-in labels at display time and retain these IDs in persisted tags, filters and settings. User-defined tag labels remain literal. Existing `builtin.text` email/url hints and Actions remain independent.
+Four built-in regular expressions are enabled by default. They match the entire plain-text value after trimming surrounding whitespace. The entire value must fit within 64 KiB.
+
+| Full-text match | Stable tag ID |
+|---|---|
+| `#` followed by six or eight hexadecimal digits | `builtin:color` |
+| Lowercase `v` followed by three decimal version components and an optional dot-separated prerelease suffix | `builtin:version` |
+| Hexadecimal UUID in 8-4-4-4-12 form | `builtin:uuid` |
+| Four decimal IPv4 octets from 0 to 255 with no leading zeros | `builtin:ipv4` |
+
+List any of these four IDs in `disabled_default_tags` to disable their default rules. The list rejects unknown and duplicate IDs. The omitted or empty list enables all four. This setting is independent of custom rules.
+
+The service accepts up to 16 custom rules under `plugins.instances."builtin.classify".rules`. Each rule requires a nonempty Go regular expression of up to 1024 bytes and a nonblank tag of up to 64 UTF-8 bytes. Invalid rules reject the configuration before it is saved. The service compiles rules at startup. Each matching rule adds its tag to new text, based on the first 64 KiB. Repeated tags collapse to one membership through the Engine. The processor follows the existing per-instance error policy and stops running when the classifier is disabled.
+
+```toml
+[plugins.instances."builtin.classify"]
+disabled_default_tags = ["builtin:color"]
+
+[[plugins.instances."builtin.classify".rules]]
+pattern = '\bUNI-[0-9]+\b'
+tag = "Issue"
+```
+
+Rule and enablement changes apply after service restart. The processor performs no network access, changes no content and leaves existing history intact. Hosts translate built-in labels at display time and retain stable IDs in persisted tags, filters and settings. User-defined tag labels remain literal. The independent `builtin.text` processor emits `builtin:email` for email addresses and offers the text Actions. `builtin:link` is the built-in tag for URLs. Existing literal `url` or `email` tags retain their stored names.
 
 ## Source application metadata
 
@@ -421,8 +490,8 @@ Clipboard content and history preserve optional source application identity and 
 See the [source application contract](source-application-contract.md) for capture attribution, resource bounds, and transport semantics.
 
 The reserved `plugin.TagCode` identifier is `builtin:code`. The offline v1
-importer preserves v1 code membership under this identifier. `builtin.classify`
-does not currently generate code membership for new content. The
+importer preserves v1 code membership under this identifier. Custom rules can
+target it. The
 [history contract](history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252)
 defines migration and automatic recovery.
 

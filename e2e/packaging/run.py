@@ -189,13 +189,18 @@ cli_manifest_sha256 = "{lock}"
         icons = ROOT / "app/desktop/internal/appicons"
         if operating_system == "darwin":
             info = plistlib.loads((payload.parent / "Info.plist").read_bytes())
-            check("macOS v1 bundle icon declaration", info.get("CFBundleIconFile") == "icon.icns")
-            packaged_icon = payload.parent / "Resources/icon.icns"
-            source_icon = icons / "icon.icns"
+            check("macOS bundle icon declaration", info.get("CFBundleIconFile") == "icon.icns")
+            icon_root = payload.parent / "Resources"
+            icon_names = ("icon.icns",)
         else:
-            source_icon = icons / ("icon.ico" if operating_system == "windows" else "icon.png")
-            packaged_icon = payload / source_icon.name
-        check("packaged icon matches v1 artwork", sha(packaged_icon) == sha(source_icon))
+            icon_root = payload
+            icon_names = (
+                ("icon.ico",)
+                if operating_system == "windows"
+                else ("icon.png", "icon-linux-48.png", "icon-linux.svg")
+            )
+        for name in icon_names:
+            check("staged icon matches source: " + name, sha(icon_root / name) == sha(icons / name))
         report["stage_manifest_sha256"] = sha(stage / "manifest.json")
         report["staged_source_files"] = receipt["source_files"]
         suffix = ".exe" if operating_system == "windows" else ""
@@ -321,6 +326,36 @@ cli_manifest_sha256 = "{lock}"
                     sha(packages / x["file"]) == x["sha256"] for x in built["artifacts"]
                 ),
             )
+            if format_name == "dmg":
+                sys.path.insert(0, str(ROOT / "tools/package"))
+                import macos_dmg
+
+                expected_bundle_files = {
+                    name.removeprefix("UniClipboard.app/"): digest
+                    for name, digest in receipt["files"].items()
+                    if name.startswith("UniClipboard.app/")
+                }
+                dmg_info = macos_dmg.verify_dmg(
+                    packages / built["artifacts"][0]["file"],
+                    expected_bundle_files=expected_bundle_files,
+                )
+                check(
+                    "macOS DMG uses ULFO format, Applications drop link, BoardUI background and exact bundle bytes",
+                    dmg_info["format"] == "ULFO"
+                    and dmg_info["app_position"] == list(macos_dmg.APP_POSITION)
+                    and dmg_info["applications_position"]
+                    == list(macos_dmg.APPLICATIONS_POSITION),
+                )
+            if format_name == "deb":
+                unpacked = temp / "deb-content"
+                run(["dpkg-deb", "-x", packages / built["artifacts"][0]["file"], unpacked])
+                hicolor = unpacked / "usr/share/icons/hicolor"
+                for name, installed in (
+                    ("icon.png", "512x512/apps/uniclipboard.png"),
+                    ("icon-linux-48.png", "48x48/apps/uniclipboard.png"),
+                    ("icon-linux.svg", "scalable/apps/uniclipboard.svg"),
+                ):
+                    check("installed icon matches source: " + installed, sha(hicolor / installed) == sha(icons / name))
             if a.lifecycle and format_name == "deb":
                 configure(sha(manifest), desktop_build=2)
                 second = temp / "second-stage"

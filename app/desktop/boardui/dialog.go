@@ -27,16 +27,16 @@ func (k Kit) Dialog(c *ui.Context, p DialogProps, body func()) ui.Element {
 		width = 480
 	}
 	panel := ui.DialogBase(c, p.Open, func(backdrop, panel ui.Element) {
-		backdrop.Background(ui.RGBA(0, 0, 0, Number("dialog-backdrop-opacity")))
+		backdrop.Background(k.Color("dialog-backdrop"))
 		panel.Label(p.Title).Description(p.Description).TabStop(false).FocusRing(false).Column().Width(min(width, w-32)).MaxHeight(h - 32).Padding(Number("dialog-padding")).Gap(Number("dialog-header-body-gap")).
-			Radius(Number("dialog-radius")).Background(Token(k.Dark, "background-full"))
+			Radius(Number("dialog-radius")).Background(k.Color("background-dialog"))
 		k.shadows(panel, "xs")
 		panel.Transition(ui.ElementTransition{Duration: time.Duration(Number("dialog-ms")) * time.Millisecond, Ease: ui.CubicBezier(.32, .72, 0, 1), Enter: &ui.Motion{Opacity: 0, Scale: .85, Blur: 4}, Exit: &ui.Motion{Opacity: 0, Scale: .85, Blur: 4}})
 		panel.Children(func() {
 			ui.Column(c.Key("heading")).Gap(4).Children(func() {
 				k.Text(c.Key("title"), p.Title, "title-2-medium").Role(ui.RoleHeading).Level(2)
 				if p.Description != "" {
-					k.Text(c.Key("description"), p.Description, "body-regular").TextColor(Token(k.Dark, "text-secondary"))
+					k.Text(c.Key("description"), p.Description, "body-regular").TextColor(k.Color("text-secondary"))
 				}
 			})
 			if body != nil {

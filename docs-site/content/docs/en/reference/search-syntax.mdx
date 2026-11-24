@@ -1,0 +1,59 @@
+---
+title: Search Syntax
+description: Keywords, filter prefixes, and matching rules for the desktop history search box.
+---
+
+Search runs against local history using an index maintained by the service; nothing is uploaded.
+
+## Keywords
+
+- Separate multiple keywords with spaces; **all keywords must appear in the same history entry**.
+- Matching is case-insensitive substring matching, including short CJK queries.
+- Wrap phrases containing spaces in quotes: `"meeting notes"`. Use `\` to escape a single character.
+- `%`, `_`, quotes, punctuation, and words like `AND`/`OR` are matched literally—not as wildcards or operators.
+- No accent folding, Unicode normalization, or pinyin matching is performed.
+
+What is searched:
+
+| Type | Searched Content |
+|---|---|
+| Plain text | Full text |
+| HTML-only | Visible text after stripping tags, scripts, and styles |
+| Files | Each file's **filename** (file contents are not read) |
+| Images | Pixel content is not searched (no OCR) |
+
+## Filter Prefixes
+
+Typing any of the following prefixes in the search box opens a suggestion list; selecting an item turns it into a filter chip:
+
+| Prefix | Dimension | Example |
+|---|---|---|
+| `/` | Type: text, rich text, image, file, folder | `/image` |
+| `#` | Tag | `#Issue` |
+| `@` | Source device (this device, other devices, external channels, migrated) | `@laptop` |
+| `on:` | Time: today, yesterday, last 7 days, last 30 days, this week, this month | `on:today` |
+| `ext:` | File extension (lowercase, without the leading dot) | `ext:pdf` |
+
+Rules:
+
+- Different dimensions are combined with AND.
+- Multiple tags in the main window require **all** selected tags; tags in the Quick Panel match **any**.
+- Time ranges use the local calendar, with weeks starting on Monday.
+- Typing an unquoted `#favorite` is equivalent to filtering by favorites.
+
+You can also select these filters from the filter menu next to the search box, which shows the match count for each option.
+
+## Quick Panel
+
+The Quick Panel treats the entire input as a single literal phrase without splitting keywords.
+
+## Limits
+
+- Up to 16 keywords; at most 4096 bytes per keyword and 8192 bytes total.
+- Up to 64 values per filter dimension.
+- 2-second timeout per search.
+- If part of the history is not yet indexed, text and extension search report unavailable rather than returning incomplete results; browsing by type, tag, or time still works.
+
+<Callout>
+The CLI does not currently have a full-text search command; `unic history list` supports `--type`, `--tag`, and `--origin` filters. See [CLI Reference](../cli/reference).
+</Callout>

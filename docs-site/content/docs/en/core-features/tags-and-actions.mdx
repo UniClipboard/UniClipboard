@@ -1,0 +1,77 @@
+---
+title: Tags & Actions
+description: Automatic classification tags, custom tags, and user-triggered content transformation Actions.
+---
+
+unic automatically tags content when saving it, and you can also manage tags manually. When you want to transform content, use a user-triggered **Action**—the result is saved as a new history item while the original item remains unchanged.
+
+## Auto-tags
+
+The built-in classifier adds tags to copied, explicitly sent, Action-generated, and received items:
+
+| Tag | Condition |
+|---|---|
+| `builtin:text` / `builtin:image` / `builtin:files` / `builtin:folder` | By content type |
+| `builtin:link` | Contains an HTTP(S) URL within the first 64 KiB of text |
+| `builtin:email` | Contains an email address (added by the `builtin.text` plugin) |
+| Color, version, UUID, IPv4 | The entire trimmed text matches the format; each rule can be toggled individually |
+
+- You can add **custom regex rules** in desktop Settings to apply a specified tag to matching text. Classifier rule changes take effect **after a service restart**, and existing history keeps its original tags.
+- The classifier makes no network requests and does not read file contents.
+- Tags belong to local history and do not sync; each device tags items according to its own rules.
+- Local Lua plugins can also add tags; see [Lua Plugin Development](../plugins/develop-lua).
+
+## Manual Tags
+
+```bash
+unic history tag @1 --add work,todo
+unic history tag @1 --remove todo
+unic history tag @1 --set work
+```
+
+In the desktop app, you can edit tags on any item, filter by tag in the sidebar, and assign colors to tags. Built-in tags are displayed with localized names and cannot be deleted or renamed.
+
+Tags can be used for:
+
+- [Search and filtering](./history-and-search#search)
+- [Auto-cleanup exclusions](./history-and-search#auto-cleanup) (`history.excluded_tags`)
+- [Favorites](./history-and-search#favorites) (reserved tag `favorite`)
+
+## Actions
+
+Actions are content transformations provided by plugins, such as "Uppercase" or "Strip formatting". They run only when you trigger them and never rewrite your clipboard automatically.
+
+### Built-in Actions
+
+The `builtin.text` plugin provides the following text Actions:
+
+| Action | Effect |
+|---|---|
+| Uppercase / Lowercase | Case conversion |
+| Trim whitespace | Remove leading and trailing whitespace |
+| Plain text | Strip formatting |
+
+### Using in Desktop
+
+Select an Action from the **Actions** submenu in a history item's context menu, or from the **Actions** menu in the history toolbar. Plugin-declared Actions may also appear in the [Quick Panel](./quick-panel). Depending on the plugin's declaration, the desktop app may automatically copy the result, show a notification, open a result window, or select the new item.
+
+### Using in CLI
+
+```bash
+unic history action @1                     # List Actions available for this item
+unic history action @1 builtin.text/upper  # Run an Action
+unic history action @1 builtin.text/upper --apply   # Run and write result to clipboard
+```
+
+Actions are identified as `<plugin-id>/<action-id>`. The CLI can run any enabled Action regardless of desktop display placement.
+
+### Behavior
+
+- Results are always saved as a **new history item** with origin `action`; the original item (including its tags and expiration) is unchanged.
+- Like a normal copy, the new item is auto-tagged and synced according to your sync settings; a sync failure does not affect the Action's own success.
+- If a plugin fails, times out, or returns an invalid result, no item is created. The default timeout is 10 seconds, and Go plugins can declare up to 5 minutes.
+- External Go plugin Actions can process text, images, and files, and always return text (such as a share link after uploading); Lua plugin Actions process text only.
+- Actions do not take arguments.
+- Side effects on external services (such as uploads) cannot be undone.
+
+For plugin installation and development, see [Plugin Marketplace](../plugins/marketplace) and [Go Plugin Development](../plugins/develop-go).

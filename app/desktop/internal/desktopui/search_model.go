@@ -12,6 +12,8 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/desktopkeys"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 // The model follows main's composite-search model and token-range controller.
@@ -149,6 +151,9 @@ func (d *viewState) searchValues() []searchCandidate {
 	return out
 }
 func (d *viewState) searchCandidates(dim, partial string) []searchCandidate {
+	if d.live != nil && dim == "tag" && partial == plugin.TagFavorite {
+		return nil
+	}
 	needle := strings.ToLower(partial)
 	var out []searchCandidate
 	rank := func(c searchCandidate) int {
@@ -459,6 +464,9 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 		if d.filterOpen && len(prospective) == 0 {
 			prospective = d.filterPopoverProspectiveQueries()
 		}
+		if len(d.entries) == 0 && !d.live.foregroundLoading && d.hasActiveSearchOrFilter() && !d.unsupportedSearch() && d.live.readError == "" {
+			prospective = append(prospective, d.searchRelaxationQueries()...)
+		}
 		if len(prospective) > 0 {
 			d.live.requestCounts(prospective)
 		}
@@ -472,13 +480,17 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 		}
 	}
 	filterCount := d.activeFilterCount()
-	res := k.TokenSearchField(c, desktopkit.TokenSearchFieldProps{
+	var overrides map[string][]string
+	if d.live != nil {
+		overrides = d.live.config.Config.Desktop.Shortcuts
+	}
+	res := k.TokenSearchField(c, desktopkit.TokenSearchFieldProps{ExternalShortcut: true,
 		Toolbar:           true,
 		Unified:           true,
 		Label:             d.tr("搜索历史"),
 		Value:             &s.buffer,
 		Placeholder:       d.tr("搜索或筛选…"),
-		ShortcutHint:      "⌘F",
+		ShortcutHint:      shortcutHint(overrides, desktopkeys.Search),
 		Tokens:            s.tokens(d),
 		Suggestions:       suggestions,
 		Open:              &s.open,
@@ -490,6 +502,7 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 		FilterCount:       filterCount,
 		FilterLabel:       d.tr("筛选条件"),
 		FilterPanel:       func() { d.filterPopover(c.Key("filter-popover"), k) },
+		Loading:           d.live != nil && d.live.showForegroundLoading(),
 		OnKey:             func(key desktopkit.SearchFieldKey) bool { return s.key(d, key) },
 		OnSelectionChange: func(start, end int) {
 			if !restore && !s.restore && (s.start != start || s.end != end) {

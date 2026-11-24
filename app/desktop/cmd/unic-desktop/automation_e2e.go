@@ -83,6 +83,7 @@ func init() {
 	sum := sha256.Sum256([]byte(profile))
 	desktopAppName = fmt.Sprintf("unic E2E %x", sum[:6])
 	if os.Getenv("UNIC_DESKTOP_E2E_GUEST") == "" {
+		useDaemonClipboard = false
 		newDesktopBoard = func() clipboardintegration.Board { return testboard.Dir(filepath.Join(profile, "board")) }
 	} else {
 		if runtime.GOOS != "linux" || os.Getenv("WAYLAND_DISPLAY") == "" {

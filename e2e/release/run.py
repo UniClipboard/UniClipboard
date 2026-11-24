@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import tomllib
 from urllib.parse import unquote, urlparse
 
 sys.dont_write_bytecode = True
@@ -86,6 +87,9 @@ blobs = {}
 uploads = []
 tag_writes = []
 fail_tag = None
+upload_barrier = threading.Barrier(2, timeout=10)
+overlap_targets = set()
+failed_upload = None
 
 
 class Registry(BaseHTTPRequestHandler):
@@ -137,6 +141,10 @@ class Registry(BaseHTTPRequestHandler):
             fail_tag = None
             return self.send({"error": "injected package upload failure"}, 503)
         name = body["name"]
+        if name == failed_upload:
+            return self.send({"error": "injected platform upload failure"}, 403)
+        if name in overlap_targets:
+            upload_barrier.wait()
         entry = packages.setdefault(
             name, {"name": name, "versions": {}, "dist-tags": {}}
         )
@@ -312,6 +320,62 @@ try:
             )
             return json.loads(receipt.read_text())
 
+        # Exercise two uploads without claiming native acceptance for a second host.
+        parallel = temp / "parallel"
+        parallel.mkdir()
+        targets = ["linux-amd64", "linux-arm64"]
+        names = ["@uniclipboard/cli-linux-x64", "@uniclipboard/cli-linux-arm64"]
+        version = "2.0.0-build.1"
+        items = []
+        for name in [*names, "@uniclipboard/cli"]:
+            package_dir = parallel / name.split("/")[1]
+            package_dir.mkdir()
+            metadata = {"name": name, "version": version}
+            if name == "@uniclipboard/cli":
+                metadata["optionalDependencies"] = dict.fromkeys(names, version)
+            (package_dir / "package.json").write_text(json.dumps(metadata))
+            output = execute(
+                ["npm", "pack", package_dir, "--pack-destination", parallel]
+            )
+            filename = output.stdout.strip()
+            data = (parallel / filename).read_bytes()
+            items.append(
+                {
+                    "name": name,
+                    "version": version,
+                    "file": filename,
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "integrity": "sha512-"
+                    + base64.b64encode(hashlib.sha512(data).digest()).decode(),
+                }
+            )
+        parallel_manifest = parallel / "release-manifest.json"
+        parallel_manifest.write_text(
+            json.dumps(
+                {
+                    "schema": 1,
+                    "product": "cli",
+                    "version": "2.0.0",
+                    "build_number": 1,
+                    "npm_version": version,
+                    "targets": targets,
+                    "packages": items,
+                }
+            )
+        )
+        overlap_targets.update(names)
+        result = distribute("publish", parallel_manifest, "alpha")
+        check(
+            "platform uploads overlap and finish before the main package",
+            result["status"] == "available"
+            and uploads[-1][0] == "@uniclipboard/cli"
+            and sorted(name for name, _ in uploads[:-1]) == sorted(names),
+        )
+        check("publish reuses tags set by npm publish", not tag_writes)
+        overlap_targets.clear()
+        packages.clear()
+        uploads.clear()
+
         for package in manifest["packages"]:
             packages[package["name"]] = {
                 "name": package["name"],
@@ -335,7 +399,7 @@ try:
         )
         check(
             "platform package publishes before main",
-            [name for name, v in uploads] == [x["name"] for x in manifest["packages"]],
+            [name for name, _ in uploads] == [p["name"] for p in manifest["packages"]],
         )
         check(
             "v2 alpha transition preserves v1 stable",
@@ -418,6 +482,17 @@ try:
             "invalid local integrity rejects before any upload",
             distribute("publish", bad, "stable", 1)["status"] == "failed"
             and len(uploads) == before_uploads,
+        )
+        failed_upload = name
+        result = distribute("publish", second, "stable", 1)
+        failed_upload = None
+        check(
+            "platform failure keeps the main package on the previous build",
+            result["status"] == "failed"
+            and {p["name"]: p["status"] for p in result["packages"]}[name] == "failed"
+            and ("@uniclipboard/cli", "2.0.0-build.42") not in uploads
+            and packages["@uniclipboard/cli"]["dist-tags"]["latest"]
+            == "2.0.0-build.41",
         )
         fail_tag = "publish"
         check(
@@ -510,6 +585,56 @@ try:
                 (resumed / p["file"]).read_bytes() == (staged / p["file"]).read_bytes()
                 for p in value["packages"]
             ),
+        )
+        joint_metadata = temp / "joint-products.toml"
+        joint_metadata.write_text(
+            (temp / "products-41.toml").read_text()
+            + '\n[products.desktop]\nversion = "2.0.0"\nbuild_number = 42\n'
+            + f'targets = ["{target}"]\nupdate_public_key = ""\n'
+        )
+        joint_output = temp / "joint-cli"
+        joint_resume = [
+            joint_metadata
+            if x == temp / "products-41.toml"
+            else joint_output
+            if x == resumed
+            else x
+            for x in resume
+        ] + ["--reuse-published"]
+        draft = execute(joint_resume, 1)
+        check(
+            "joint resume rejects a draft from different metadata",
+            "conflicts with the selected source or metadata" in draft.stderr,
+        )
+        execute(["gh", "release", "edit", "cli/v2.0.0-build.41", "--draft=false"])
+        execute(joint_resume)
+        desktop_lock = temp / "desktop-lock.toml"
+        execute(
+            [
+                sys.executable,
+                ROOT / "tools/release/joint.py",
+                "2.0.0",
+                "--metadata",
+                joint_metadata,
+                "--cli-manifest",
+                joint_output / "release-manifest.json",
+                "--output",
+                desktop_lock,
+                "--github-output",
+                output,
+            ]
+        )
+        lock = tomllib.loads(desktop_lock.read_text())["products"]["desktop"]
+        check(
+            "joint release reuses published CLI bytes and binds the exact Desktop lock",
+            (joint_output / "release-manifest.json").read_bytes()
+            == staged_manifest.read_bytes()
+            and (
+                lock["build_number"],
+                lock["cli_build_number"],
+                lock["cli_manifest_sha256"],
+            )
+            == (42, 41, hashlib.sha256(staged_manifest.read_bytes()).hexdigest()),
         )
         bad_asset = fixture / "assets" / value["packages"][0]["file"]
         bad_asset.write_bytes(b"changed")

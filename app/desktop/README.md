@@ -1,6 +1,6 @@
 # Desktop application
 
-`unic-desktop` supplies independent tray, GUI and quick-panel OS processes from one executable. The tray owns the only native clipboard adapter, global shortcut, notifications and login registration.
+`unic-desktop` supplies independent tray, GUI and quick-panel OS processes from one executable. The tray owns global shortcuts, notifications and login registration. macOS Desktop enables the native clipboard adapter in unicd. Other platforms host the adapter in the tray.
 `unicd` runs separately and owns Engine, history, configuration and networking.
 The UI-free `unic` CLI and `unicd` live in [the service application](../service/README.md).
 See [headless architecture](../../docs/architecture/headless.md) and the [local service contract](../../docs/contracts/local-service-contract.md).
@@ -11,7 +11,7 @@ unic-desktop --role tray -- adapter IPC --+
      +-- clipboard / shortcut / notifications
 unic-desktop --role gui -------- local IPC -- unicd
 unic-desktop --role quick-panel --+
-     +-- target checks / focus / paste; clipboard writes delegate to tray
+     +-- target checks / focus / paste; clipboard writes delegate to the active adapter
 ```
 
 | Path | Responsibility |
@@ -123,6 +123,12 @@ go build -o .build/unicd ./app/service/cmd/unicd
 Open Settings > Plugins to configure Tailcat content policies and the automatic file threshold. Files and folders share the same backend permission. Policies apply immediately and remain subject to global Sync settings.
 
 Text tools and content classification expose enablement and processor failure policy. Quit and reopen Desktop to apply these settings. The pending-restart notice remains visible until the startup settings match. Existing history remains unchanged. See [Desktop configuration](../../docs/architecture/desktop-runtime.md#built-in-plugin-management).
+
+In Settings > Plugins > Content classification, select Add rule. Enter a Go regular expression and the tag to apply. Enter a new tag name, an existing custom tag name, or a built-in tag ID such as `builtin:code`. Save the rule and restart the service. When several rules match, each rule contributes its tag. Each device applies its own rules to its local history. See the [TOML equivalent](../../docs/contracts/plugin-contract.md#built-in-content-classification).
+
+Under Default regular expression rules, use the individual switches for Color, Version number, UUID and IPv4 address. These rules start enabled. Each matches the entire text after trimming surrounding whitespace. Restart the service to apply switch changes.
+
+For Lua rules, copy the [Lua tagging example](../../plugins/examples/lua/emailtag) into `$UNIC_HOME/plugins/lua/<plugin-id>/` as `spec.toml` and `main.lua`. Give the manifest and script the same unique plugin ID. Change the script's `process` function to check `ctx.item` and call `ctx:add_tag("your-label")` when it matches. Add the ID to the `[plugins]` section's `lua` list in `config.toml` and restart the service. Subsequent script edits take effect through the local Lua watcher. See the [Lua processor interface](../../docs/contracts/plugin-contract.md#4-处理上下文).
 
 ## CLI sync and file settings
 
@@ -239,7 +245,7 @@ language = "pt-BR"
 
 Use `make desktop-e2e CASE=i18n` for the repeatable software-view language matrix. See [desktop languages](../../docs/architecture/overview.md#desktop-languages) and the [acceptance receipt](../../docs/exec/desktop-i18n.md).
 
-Built-in Text, Images, Files and Links tags use the selected interface language. The default `builtin.classify` processor annotates new captured, received and Action content. Links also carry the Text tag. Existing history is not backfilled. Built-in tags cannot be renamed, merged or deleted in Desktop. The inline ComboField lists unattached custom tags and offers a five-color creation row. Custom chip removal detaches the tag from that entry. Colors persist through the existing desktop configuration API. Sidebar visibility is retained during refresh within the current session. See [classification](../../docs/architecture/pipeline.md#built-in-content-tags) and [tag controls](../../docs/architecture/overview.md#tag-controls-and-colors).
+Built-in tags use the selected interface language. The default `builtin.classify` processor annotates new captured, received and Action content. Links also carry the Text tag. Existing history is not backfilled. Built-in tags cannot be renamed, merged or deleted in Desktop. The inline ComboField lists unattached custom tags and offers a five-color creation row. Custom chip removal detaches the tag from that entry. Colors persist through the existing desktop configuration API. Sidebar visibility is retained during refresh within the current session. See [classification](../../docs/architecture/pipeline.md#built-in-content-tags) and [tag controls](../../docs/architecture/overview.md#tag-controls-and-colors).
 
 ## Tray icon style
 

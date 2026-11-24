@@ -33,6 +33,10 @@ type Manifest struct {
 	ManifestVersion  int                 `toml:"manifest_version"`
 	ID               string              `toml:"id"`
 	Version          string              `toml:"version"`
+	Name             string              `toml:"name"`
+	Icon             string              `toml:"icon"`
+	Summary          string              `toml:"summary"`
+	I18N             map[string]Text     `toml:"i18n"`
 	APIVersion       int                 `toml:"api_version"`
 	Kind             string              `toml:"kind"`
 	Entry            string              `toml:"entry"`
@@ -48,6 +52,13 @@ type Manifest struct {
 	Actions          []plugin.ActionSpec `toml:"actions"`
 	Artifacts        []Artifact          `toml:"artifacts"`
 	Defaults         map[string]any      `toml:"config"`
+}
+
+// Text is one language's display text for the plugin list and detail page.
+// Empty fields fall back to the manifest's default name or summary.
+type Text struct {
+	Name    string `toml:"name"`
+	Summary string `toml:"summary"`
 }
 
 type Artifact struct {
@@ -263,6 +274,9 @@ func Specs(root string, enabled []string, settings func(id string) (onError stri
 			continue
 		}
 		cfg, err := s.RuntimeConfig(root, c)
+		if MissingRequiredSettings(err) {
+			continue
+		}
 		if err != nil {
 			return nil, nil, err
 		}

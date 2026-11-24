@@ -1,0 +1,2523 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UniClipboard · 桌面设置重设计原型（BoardUI v2）</title>
+<!--
+  Interactive HTML prototype redesigning Desktop Settings for the working-tree changes on this branch:
+    - Group A: Diagnostics & Privacy (log levels, 15m debug overrides, telemetry signals, log export/dir)
+    - Group B: Storage (managed file-cache usage meter & metrics, quota, data directory, history retention)
+    - Group C: About & Updates (landed in PR #2288, preserved faithfully)
+    - Group D: Appearance (desktop.color_mode visual picker + live theme application across roles)
+    - Group E: Quick Panel & Shortcut Permissions (global shortcut status + passive macOS Accessibility status)
+    - Group F: Network (truthful capability status per Tailcat review — no inert switches)
+    - Group G: Portable Configuration Backup (26-field export, strict import diff preview & AlertDialog confirm)
+  Open directly in any browser. Zero external dependencies.
+-->
+<style>
+:root {
+  /* BoardUI v2 Light Surface Hierarchy (aligned with app/desktop/internal/desktopkit/surface.go) */
+  --bg-canvas-outer: #e7e7eb;
+  --bg-sidebar: #f6f6f8;
+  --bg-nav-active: #ffffff;
+  --bg-nav-hover: #ededf0;
+  --bg-workspace: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-subtle: #f7f7f9;
+  --bg-inset: #f2f2f5;
+  --bg-sheet: #ffffff;
+  --bg-tertiary: #ececef;
+
+  --sep: #ececef;
+  --border-sidebar: #e5e5e8;
+  --card-border: #e4e4e8;
+  --border-btn: #dcdce2;
+  --border-hover: #c5c5cd;
+
+  --text-primary: #111114;
+  --text-secondary: #686870;
+  --text-tertiary: #96969e;
+
+  --accent-50: #f0f6ff;
+  --accent-100: #dbeafe;
+  --accent-200: #bfd8ff;
+  --accent-500: #2b7fff;
+  --accent-600: #155dfc;
+
+  /* Semantic status tokens */
+  --ok-bg: #eaf9d0;
+  --ok-fg: #2f5700;
+  --ok-dot: #5ea500;
+  --warn-bg: #fffbeb;
+  --warn-pill-bg: #fef3c7;
+  --warn-fg: #92400e;
+  --warn-border: #fde68a;
+  --warn-dot: #d97706;
+  --info-bg: #eff6ff;
+  --info-fg: #1d4ed8;
+  --info-border: #bfdbfe;
+  --err-bg: #fff1f2;
+  --err-fg: #be123c;
+  --err-border: #fecdd3;
+  --danger: #d92d20;
+
+  /* Tag tints (BoardUI status semantics) */
+  --tag-blue-bg: #e0edff; --tag-blue-fg: #155dfc; --tag-blue-dot: #2b7fff;
+  --tag-orange-bg: #ffedd5; --tag-orange-fg: #c2410c; --tag-orange-dot: #f97316;
+  --tag-lime-bg: #ecfccb; --tag-lime-fg: #3f6212; --tag-lime-dot: #65a30d;
+  --tag-purple-bg: #f3e8ff; --tag-purple-fg: #7e22ce; --tag-purple-dot: #a855f7;
+  --tag-gray-bg: #f1f1f4; --tag-gray-fg: #52525b; --tag-gray-dot: #71717a;
+
+  --sw-off: #dcdce0;
+  --sw-on-start: #2b7fff;
+  --sw-on-end: #155dfc;
+
+  --shadow-window: 0 24px 64px rgba(0,0,0,.13), 0 0 0 1px rgba(0,0,0,.07);
+  --shadow-card: 0 1px 2px rgba(0,0,0,.03);
+  --shadow-nav: 0 1px 2px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04);
+  --shadow-modal: 0 20px 50px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.08);
+  --scrim: rgba(0,0,0,.32);
+}
+
+[data-theme="dark"] {
+  /* BoardUI v2 Dark Surface Hierarchy */
+  --bg-canvas-outer: #09090b;
+  --bg-sidebar: #161618;
+  --bg-nav-active: rgba(255,255,255,.10);
+  --bg-nav-hover: rgba(255,255,255,.05);
+  --bg-workspace: #1d1d20;
+  --bg-card: #242428;
+  --bg-card-subtle: #1f1f23;
+  --bg-inset: #19191c;
+  --bg-sheet: #232328;
+  --bg-tertiary: #2d2d33;
+
+  --sep: rgba(255,255,255,.075);
+  --border-sidebar: rgba(255,255,255,.08);
+  --card-border: rgba(255,255,255,.09);
+  --border-btn: rgba(255,255,255,.14);
+  --border-hover: rgba(255,255,255,.24);
+
+  --text-primary: #f4f4f6;
+  --text-secondary: #9c9ca6;
+  --text-tertiary: #6e6e78;
+
+  --accent-50: rgba(43,127,255,.14);
+  --accent-100: rgba(43,127,255,.22);
+  --accent-200: rgba(77,160,255,.36);
+  --accent-500: #4da0ff;
+  --accent-600: #3b8eff;
+
+  --ok-bg: rgba(94,165,0,.22);
+  --ok-fg: #a3e635;
+  --ok-dot: #84cc16;
+  --warn-bg: rgba(217,119,6,.14);
+  --warn-pill-bg: rgba(245,158,11,.20);
+  --warn-fg: #fbbf24;
+  --warn-border: rgba(245,158,11,.32);
+  --warn-dot: #f59e0b;
+  --info-bg: rgba(43,127,255,.14);
+  --info-fg: #7cb8ff;
+  --info-border: rgba(77,160,255,.30);
+  --err-bg: rgba(244,63,94,.16);
+  --err-fg: #fda4af;
+  --err-border: rgba(244,63,94,.32);
+  --danger: #f87171;
+
+  --tag-blue-bg: rgba(43,127,255,.20); --tag-blue-fg: #7cb8ff; --tag-blue-dot: #4da0ff;
+  --tag-orange-bg: rgba(249,115,22,.20); --tag-orange-fg: #fdba74; --tag-orange-dot: #fb923c;
+  --tag-lime-bg: rgba(132,204,22,.20); --tag-lime-fg: #bef264; --tag-lime-dot: #a3e635;
+  --tag-purple-bg: rgba(168,85,247,.22); --tag-purple-fg: #d8b4fe; --tag-purple-dot: #c084fc;
+  --tag-gray-bg: rgba(255,255,255,.09); --tag-gray-fg: #a1a1aa; --tag-gray-dot: #a1a1aa;
+
+  --sw-off: #3a3a42;
+  --sw-on-start: #3b8eff;
+  --sw-on-end: #2563eb;
+
+  --shadow-window: 0 28px 72px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.09);
+  --shadow-card: 0 1px 2px rgba(0,0,0,.22);
+  --shadow-nav: none;
+  --shadow-modal: 0 24px 60px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.11);
+  --scrim: rgba(0,0,0,.55);
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg-canvas-outer);
+  color: var(--text-primary);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background .18s ease, color .18s ease;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+svg { display: block; flex: none; }
+
+/* ---------------- Top Review Toolbar ---------------- */
+.proto-bar {
+  position: sticky; top: 0; z-index: 40;
+  background: color-mix(in srgb, var(--bg-workspace) 90%, transparent);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border-sidebar);
+  padding: 9px 20px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.proto-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.proto-title {
+  font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 7px;
+  margin-right: 4px;
+}
+.proto-badge {
+  font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-50); color: var(--accent-600); border: 1px solid var(--accent-200);
+}
+.proto-grp { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.proto-lbl { font-size: 11.5px; color: var(--text-secondary); margin-right: 3px; }
+.chip {
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.chip:hover { border-color: var(--border-hover); background: var(--bg-card-subtle); }
+.chip.on {
+  background: var(--accent-500);
+  border-color: var(--accent-500);
+  color: #fff;
+  font-weight: 500;
+}
+.proto-sp { flex: 1; }
+
+/* ---------------- Stage & Desktop Window ---------------- */
+.stage {
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 26px 20px 56px;
+}
+.app-window {
+  width: 1040px; height: 690px;
+  max-width: calc(100vw - 40px);
+  background: var(--bg-workspace);
+  border-radius: 14px;
+  box-shadow: var(--shadow-window);
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  transition: width .2s ease, height .2s ease, background .18s ease;
+}
+.app-window.compact { width: 720px; height: 640px; }
+
+/* ---------------- Sidebar (BoardUI SplitView + SidebarNav) ---------------- */
+.sidebar {
+  width: 222px; flex: none;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-sidebar);
+  display: flex; flex-direction: column;
+  user-select: none;
+  transition: transform .2s ease;
+}
+.app-window.compact .sidebar {
+  position: absolute; top: 0; bottom: 0; left: 0; z-index: 20;
+  box-shadow: 12px 0 36px rgba(0,0,0,.18);
+}
+.app-window.compact.sb-hidden .sidebar { transform: translateX(-100%); box-shadow: none; }
+.sb-scrim {
+  display: none; position: absolute; inset: 0; z-index: 15; background: var(--scrim);
+}
+.app-window.compact:not(.sb-hidden) .sb-scrim { display: block; }
+
+.sb-top {
+  height: 46px; padding: 0 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex: none;
+}
+.lights { display: flex; gap: 7px; padding-left: 2px; }
+.lights i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.lights i:nth-child(1) { background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }
+
+.sb-scroll {
+  flex: 1; overflow-y: auto; padding: 2px 10px 10px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.sb-sec-lbl {
+  font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+  padding: 10px 10px 4px; letter-spacing: .02em;
+}
+.sb-sec-lbl:first-child { padding-top: 2px; }
+.nav-item {
+  width: 100%; height: 32px; padding: 0 10px;
+  border: 0; background: transparent; border-radius: 8px;
+  display: flex; align-items: center; gap: 9px;
+  font-size: 13px; color: var(--text-primary);
+  text-align: left;
+  transition: background .1s;
+}
+.nav-item:hover { background: var(--bg-nav-hover); }
+.nav-item.on {
+  background: var(--bg-nav-active);
+  box-shadow: var(--shadow-nav);
+  font-weight: 600;
+}
+.nav-item .nav-ic { width: 16px; height: 16px; color: var(--text-secondary); }
+.nav-item.on .nav-ic { color: var(--accent-500); }
+.nav-item .nav-lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-item .nav-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+}
+.nav-item .nav-dot.warn { background: var(--warn-dot); }
+.nav-item .nav-dot.ok { background: var(--ok-dot); }
+.nav-item .nav-tag {
+  font-size: 10px; padding: 0 5px; border-radius: 4px;
+  background: var(--bg-tertiary); color: var(--text-tertiary); font-weight: 500;
+}
+.nav-item .nav-kbd {
+  font-size: 11px; color: var(--text-tertiary);
+}
+.sb-foot {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-sidebar);
+  flex: none;
+}
+
+/* ---------------- Main Settings Pane ---------------- */
+.main-pane {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg-workspace);
+}
+.pane-header {
+  height: 46px; flex: none;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--sep);
+  display: flex; align-items: center; gap: 10px;
+}
+.pane-title {
+  font-size: 15px; font-weight: 700; margin: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.pane-sub-pill {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-50); color: var(--accent-600);
+}
+.pane-sp { flex: 1; }
+
+.pane-scroll {
+  flex: 1; overflow-y: auto;
+  padding: 24px 28px 40px;
+}
+.pane-scroll::-webkit-scrollbar { width: 8px; }
+.pane-scroll::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+
+.settings-col {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex; flex-direction: column; gap: 24px;
+}
+
+/* ---------------- BoardUI SettingsGroup & SettingsRow ---------------- */
+.s-group { display: flex; flex-direction: column; }
+.s-group-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 0 4px 8px;
+}
+.s-group-title {
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  margin: 0; display: flex; align-items: center; gap: 7px;
+}
+.s-group-actions { display: flex; align-items: center; gap: 8px; }
+.s-group-body {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.s-group-foot {
+  padding: 7px 6px 0;
+  font-size: 11.5px; color: var(--text-tertiary); line-height: 1.5;
+}
+
+.s-row {
+  min-height: 54px;
+  padding: 12px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.s-row + .s-row,
+.s-row + .s-block,
+.s-block + .s-row,
+.s-block + .s-block,
+.s-row + .s-foot-bar,
+.s-block + .s-foot-bar,
+.s-strip + .s-row,
+.s-row + .s-strip {
+  border-top: 1px solid var(--sep);
+}
+.s-row.dim { opacity: .62; }
+.s-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.s-row-label {
+  font-size: 13px; font-weight: 500; color: var(--text-primary);
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+}
+.s-row-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.45; }
+.s-row-ctl { display: flex; align-items: center; gap: 8px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+
+.s-block { padding: 14px 16px; }
+.s-foot-bar {
+  padding: 10px 16px;
+  background: var(--bg-card-subtle);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.s-foot-msg { font-size: 12px; color: var(--text-secondary); flex: 1; min-width: 180px; }
+.s-foot-btns { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
+
+/* Calm strip inside card (e.g. master switch off reminder / custom destination note) */
+.s-strip {
+  padding: 9px 16px;
+  font-size: 12px;
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-card-subtle);
+  color: var(--text-secondary);
+}
+.s-strip.info { background: var(--info-bg); color: var(--info-fg); }
+.s-strip.warn { background: var(--warn-bg); color: var(--warn-fg); }
+
+/* ---------------- BoardUI Controls ---------------- */
+.btn {
+  height: 30px; padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 12.5px; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  white-space: nowrap;
+  transition: background .12s, border-color .12s, opacity .12s;
+}
+.btn:hover:not(:disabled) { background: var(--bg-card-subtle); border-color: var(--border-hover); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.sm { height: 27px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
+.btn.primary {
+  background: var(--accent-500); border-color: var(--accent-500); color: #fff;
+}
+.btn.primary:hover:not(:disabled) { background: var(--accent-600); border-color: var(--accent-600); }
+.btn.danger {
+  background: var(--danger); border-color: var(--danger); color: #fff;
+}
+.btn.danger:hover:not(:disabled) { filter: brightness(1.06); }
+.btn.danger-soft {
+  background: var(--err-bg); border-color: var(--err-border); color: var(--err-fg);
+}
+.btn.warn-soft {
+  background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-fg);
+}
+.btn.subtle {
+  border-color: transparent; background: transparent; color: var(--text-secondary);
+}
+.btn.subtle:hover:not(:disabled) { background: var(--bg-nav-hover); color: var(--text-primary); border-color: transparent; }
+.btn.icon-only { width: 30px; padding: 0; }
+.btn.icon-only.sm { width: 26px; height: 26px; }
+
+.select {
+  height: 30px; padding: 0 28px 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  outline: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  cursor: pointer;
+}
+.select:hover:not(:disabled) { border-color: var(--border-hover); }
+.select:focus { border-color: var(--accent-500); box-shadow: 0 0 0 3px var(--accent-50); }
+.select:disabled { opacity: .45; cursor: not-allowed; }
+.select.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; min-width: 84px; }
+
+.text-input {
+  height: 30px; padding: 0 10px; min-width: 210px;
+  border-radius: 8px; border: 1px solid var(--border-btn);
+  background: var(--bg-card); color: var(--text-primary);
+  font-size: 12.5px; outline: none;
+}
+.text-input:focus { border-color: var(--accent-500); box-shadow: 0 0 0 3px var(--accent-50); }
+
+/* BoardUI Switch */
+.switch {
+  width: 36px; height: 21px; border-radius: 11px; border: 0; padding: 2px;
+  background: var(--sw-off); position: relative; flex: none;
+  transition: background .16s ease;
+}
+.switch::after {
+  content: ""; display: block; width: 17px; height: 17px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.22);
+  transform: translateX(0); transition: transform .16s cubic-bezier(.32,.72,0,1);
+}
+.switch.on { background: linear-gradient(180deg, var(--sw-on-start), var(--sw-on-end)); }
+.switch.on::after { transform: translateX(15px); }
+.switch:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Semantic Pills */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 21px; padding: 0 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+  background: var(--bg-tertiary); color: var(--text-secondary);
+}
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); }
+.pill.ok { background: var(--ok-bg); color: var(--ok-fg); }
+.pill.ok .dot { background: var(--ok-dot); }
+.pill.warn { background: var(--warn-pill-bg); color: var(--warn-fg); }
+.pill.warn .dot { background: var(--warn-dot); }
+.pill.info { background: var(--info-bg); color: var(--info-fg); }
+.pill.info .dot { background: var(--accent-500); }
+.pill.err { background: var(--err-bg); color: var(--err-fg); }
+.pill.err .dot { background: var(--danger); }
+.pill.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 500; }
+
+/* InlineNotice */
+.notice {
+  border-radius: 10px;
+  padding: 10px 13px;
+  display: flex; align-items: flex-start; gap: 10px;
+  font-size: 12.5px; line-height: 1.45;
+  border: 1px solid var(--card-border);
+  background: var(--bg-card-subtle);
+}
+.notice.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-fg); }
+.notice.info { background: var(--info-bg); border-color: var(--info-border); color: var(--info-fg); }
+.notice.err { background: var(--err-bg); border-color: var(--err-border); color: var(--err-fg); }
+.notice-body { flex: 1; min-width: 0; }
+.notice-title { font-weight: 600; }
+.notice-desc { font-size: 12px; opacity: .9; margin-top: 2px; }
+.notice-ic { width: 16px; height: 16px; margin-top: 1px; }
+
+/* ---------------- Appearance Visual Theme Cards ---------------- */
+.theme-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+}
+.theme-card {
+  border: 1.5px solid var(--card-border);
+  background: var(--bg-card-subtle);
+  border-radius: 11px;
+  padding: 10px;
+  display: flex; flex-direction: column; gap: 9px;
+  text-align: left;
+  transition: border-color .14s, background .14s, transform .1s;
+}
+.theme-card:hover { border-color: var(--border-hover); }
+.theme-card.on {
+  border-color: var(--accent-500);
+  background: var(--accent-50);
+  box-shadow: 0 0 0 2px var(--accent-100);
+}
+.theme-preview {
+  height: 74px; border-radius: 7px; overflow: hidden;
+  border: 1px solid rgba(128,128,140,.22);
+  position: relative; display: flex;
+}
+.tp-half { flex: 1; display: flex; }
+.tp-side { width: 28%; padding: 6px 5px; display: flex; flex-direction: column; gap: 4px; }
+.tp-main { flex: 1; padding: 7px 6px; display: flex; flex-direction: column; gap: 5px; }
+.tp-dots { display: flex; gap: 3px; margin-bottom: 2px; }
+.tp-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .45; }
+.tp-bar { height: 5px; border-radius: 2px; }
+.tp-card { flex: 1; border-radius: 4px; padding: 4px; display: flex; flex-direction: column; gap: 3px; }
+.tp-light .tp-side { background: #f2f2f5; border-right: 1px solid #e2e2e7; color: #888; }
+.tp-light .tp-main { background: #ffffff; }
+.tp-light .tp-bar { background: #d4d4dc; }
+.tp-light .tp-bar.ac { background: #2b7fff; }
+.tp-light .tp-card { background: #f7f7fa; border: 1px solid #e5e5ea; }
+.tp-dark .tp-side { background: #141417; border-right: 1px solid #2b2b32; color: #777; }
+.tp-dark .tp-main { background: #1e1e22; }
+.tp-dark .tp-bar { background: #3b3b44; }
+.tp-dark .tp-bar.ac { background: #4da0ff; }
+.tp-dark .tp-card { background: #27272d; border: 1px solid #35353d; }
+
+.theme-meta { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 2px; }
+.theme-name { font-size: 13px; font-weight: 600; }
+.theme-sub { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
+.theme-check {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid var(--border-btn);
+  display: grid; place-items: center; flex: none;
+}
+.theme-card.on .theme-check {
+  background: var(--accent-500); border-color: var(--accent-500); color: #fff;
+}
+
+/* Tray Icon Segmented Picker */
+.tray-seg {
+  display: inline-flex; gap: 4px; padding: 3px;
+  background: var(--bg-inset); border: 1px solid var(--card-border); border-radius: 9px;
+}
+.tray-opt {
+  height: 26px; padding: 0 10px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--text-secondary);
+  font-size: 12px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.tray-opt.on {
+  background: var(--bg-card); color: var(--text-primary); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+
+/* ---------------- Storage Quota Meter & FactList ---------------- */
+.quota-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin-bottom: 8px; flex-wrap: wrap;
+}
+.quota-primary { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.quota-sub { font-size: 12px; color: var(--text-secondary); margin-left: 6px; }
+.quota-cap { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.quota-bar {
+  height: 8px; border-radius: 4px; background: var(--bg-tertiary);
+  overflow: hidden; display: flex;
+}
+.quota-fill { background: var(--accent-500); height: 100%; transition: width .25s ease; }
+.quota-res {
+  background: color-mix(in srgb, var(--accent-500) 38%, transparent);
+  height: 100%; transition: width .25s ease;
+}
+
+.fact-grid {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+  margin-top: 12px;
+}
+.app-window.compact .fact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fact-tile {
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+  padding: 9px 11px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.fact-lbl { font-size: 11px; color: var(--text-secondary); }
+.fact-val { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ---------------- Tag Pill Toggles (History Excluded Tags) ---------------- */
+.tag-pills {
+  display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; max-width: 440px;
+}
+.tag-pill {
+  height: 26px; padding: 0 9px; border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: var(--bg-card-subtle);
+  color: var(--text-secondary);
+  font-size: 12px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: all .12s;
+}
+.tag-pill:hover:not(:disabled) { border-color: var(--border-hover); color: var(--text-primary); }
+.tag-pill:disabled { opacity: .45; cursor: not-allowed; }
+.tag-pill .tdot { width: 7px; height: 7px; border-radius: 50%; }
+.tag-pill.on.blue { background: var(--tag-blue-bg); border-color: transparent; color: var(--tag-blue-fg); font-weight: 600; }
+.tag-pill.on.orange { background: var(--tag-orange-bg); border-color: transparent; color: var(--tag-orange-fg); font-weight: 600; }
+.tag-pill.on.lime { background: var(--tag-lime-bg); border-color: transparent; color: var(--tag-lime-fg); font-weight: 600; }
+.tag-pill.on.purple { background: var(--tag-purple-bg); border-color: transparent; color: var(--tag-purple-fg); font-weight: 600; }
+.tag-pill.on.gray { background: var(--tag-gray-bg); border-color: var(--border-hover); color: var(--text-primary); font-weight: 600; }
+
+/* ---------------- Backup Scope Disclosure & Import Diff ---------------- */
+.disclosure-btn {
+  width: 100%; border: 0; background: var(--bg-card-subtle);
+  padding: 9px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; color: var(--text-secondary);
+  border-top: 1px solid var(--sep);
+}
+.disclosure-btn:hover { color: var(--text-primary); }
+.scope-cols {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  padding: 12px 16px 14px;
+  background: var(--bg-card-subtle);
+  border-top: 1px solid var(--sep);
+  font-size: 12px;
+}
+.app-window.compact .scope-cols { grid-template-columns: 1fr; }
+.scope-box h5 { margin: 0 0 6px; font-size: 11.5px; font-weight: 600; display: flex; align-items: center; gap: 5px; }
+.scope-box.yes h5 { color: var(--ok-fg); }
+.scope-box.no h5 { color: var(--text-secondary); }
+.scope-box p { margin: 0; color: var(--text-secondary); line-height: 1.55; }
+
+.diff-card {
+  border: 1.5px solid var(--accent-200);
+  border-radius: 12px;
+  background: var(--bg-card);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.diff-head {
+  padding: 11px 16px;
+  background: var(--accent-50);
+  border-bottom: 1px solid var(--accent-200);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.diff-head-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.diff-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.diff-table th {
+  text-align: left; font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+  padding: 8px 16px; border-bottom: 1px solid var(--sep);
+  background: var(--bg-card-subtle);
+}
+.diff-table td { padding: 9px 16px; border-top: 1px solid var(--sep); vertical-align: middle; }
+.diff-table tr:first-child td { border-top: 0; }
+.diff-arrow { color: var(--text-tertiary); margin: 0 6px; }
+.diff-old { color: var(--text-secondary); text-decoration: line-through; }
+.diff-new { font-weight: 600; color: var(--accent-600); }
+
+/* ---------------- About Page (PR #2288 faithful) ---------------- */
+.about-hero {
+  display: flex; align-items: center; gap: 16px; padding: 4px 4px 2px; flex-wrap: wrap;
+}
+.app-logo {
+  width: 50px; height: 50px; border-radius: 12px; flex: none;
+  background: linear-gradient(145deg, #2b7fff, #6366f1);
+  display: grid; place-items: center; color: #fff;
+  box-shadow: 0 6px 16px rgba(43,127,255,.28);
+}
+.sponsor-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+}
+.app-window.compact .sponsor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sponsor-card {
+  border: 1px solid var(--card-border); border-radius: 10px; padding: 12px;
+  background: var(--bg-card); display: flex; flex-direction: column; align-items: center; gap: 6px;
+  text-align: center;
+}
+.sponsor-card.gold {
+  background: var(--warn-bg); border-color: var(--warn-border);
+}
+.sponsor-av {
+  width: 38px; height: 38px; border-radius: 50%;
+  background: var(--bg-tertiary); display: grid; place-items: center;
+  font-weight: 700; font-size: 13px; color: var(--text-secondary);
+}
+
+/* ---------------- Modal (BoardUI AlertDialog) & Toast ---------------- */
+.modal-scrim {
+  position: absolute; inset: 0; z-index: 50;
+  background: var(--scrim);
+  display: grid; place-items: center; padding: 20px;
+}
+.modal {
+  width: 400px; max-width: 100%;
+  background: var(--bg-sheet);
+  border-radius: 14px;
+  box-shadow: var(--shadow-modal);
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.modal h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.modal p { margin: 0; font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+.toast {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(8px);
+  z-index: 60;
+  background: var(--text-primary); color: var(--bg-workspace);
+  padding: 7px 14px; border-radius: 9px; font-size: 12px; font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0,0,0,.22);
+  opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s;
+  white-space: nowrap; max-width: 90%; overflow: hidden; text-overflow: ellipsis;
+}
+.toast.show { opacity: .95; transform: translateX(-50%) translateY(0); }
+
+/* ---------------- Review Notes Drawer ---------------- */
+.review-backdrop {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(0,0,0,.35);
+  display: flex; justify-content: flex-end;
+}
+.review-drawer {
+  width: 520px; max-width: 94vw; height: 100%;
+  background: var(--bg-workspace);
+  border-left: 1px solid var(--border-sidebar);
+  box-shadow: -12px 0 40px rgba(0,0,0,.2);
+  display: flex; flex-direction: column;
+}
+.review-head {
+  padding: 16px 20px; border-bottom: 1px solid var(--sep);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.review-head h3 { margin: 0; font-size: 15px; }
+.review-body {
+  flex: 1; overflow-y: auto; padding: 18px 20px 32px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.rv-card {
+  border: 1px solid var(--card-border); border-radius: 11px;
+  background: var(--bg-card-subtle); padding: 13px 15px;
+}
+.rv-card h4 { margin: 0 0 8px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.rv-card ul { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 12.5px; line-height: 1.6; }
+.rv-card li b { color: var(--text-primary); }
+
+/* ---------------- Empty / Unavailable & Helpers ---------------- */
+.unavail {
+  border: 1px dashed var(--card-border); border-radius: 12px;
+  padding: 40px 24px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.unavail-ic {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: var(--bg-card-subtle); color: var(--text-tertiary);
+  display: grid; place-items: center; margin-bottom: 4px;
+}
+.cmd-box {
+  background: var(--bg-card-subtle); border: 1px solid var(--card-border);
+  border-radius: 8px; padding: 8px 10px;
+  display: flex; align-items: center; gap: 8px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+}
+.spin { animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- Prototype Review Control Bar -->
+<div class="proto-bar">
+  <div class="proto-row">
+    <div class="proto-title">
+      UniClipboard · 桌面设置重设计原型
+      <span class="proto-badge">BoardUI v2</span>
+    </div>
+    <div class="proto-grp">
+      <span class="proto-lbl">场景</span>
+      <button class="chip" data-preset="default">默认状态</button>
+      <button class="chip" data-preset="debug">临时调试中</button>
+      <button class="chip" data-preset="telemetryOff">遥测关 / 离线</button>
+      <button class="chip" data-preset="storageWarn">缓存警告 / 自定义目录</button>
+      <button class="chip" data-preset="backupPreview">配置导入预览</button>
+      <button class="chip" data-preset="permDenied">未授权 / 快捷键冲突</button>
+      <button class="chip" data-preset="winLinux">Windows / Linux</button>
+    </div>
+  </div>
+  <div class="proto-row">
+    <div class="proto-grp">
+      <span class="proto-lbl">侧栏结构</span>
+      <button class="chip" data-ia="recommended">推荐：8 项精简 + 独立诊断</button>
+      <button class="chip" data-ia="legacy">现状：10 项（含占位/网络）</button>
+    </div>
+    <div class="proto-grp">
+      <span class="proto-lbl">颜色模式</span>
+      <button class="chip" data-cm="system">跟随系统</button>
+      <button class="chip" data-cm="light">浅色</button>
+      <button class="chip" data-cm="dark">深色</button>
+    </div>
+    <div class="proto-grp">
+      <span class="proto-lbl">窗口宽度</span>
+      <button class="chip" data-vp="standard">标准 1040px</button>
+      <button class="chip" data-vp="compact">紧凑 720px</button>
+    </div>
+    <div class="proto-sp"></div>
+    <button class="btn sm primary" id="openReviewBtn">审核对比说明</button>
+  </div>
+</div>
+
+<!-- Stage -->
+<div class="stage">
+  <div class="app-window" id="appWin"></div>
+</div>
+
+<div id="reviewRoot"></div>
+
+<script>
+const IC = {
+  settings: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  sun: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>',
+  list: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>',
+  sync: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-15.5-6.3L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 15.5 6.3L21 16"/><path d="M16 16h5v5"/></svg>',
+  database: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg>',
+  activity: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+  puzzle: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4.5v11L12 22l-8-4.5v-11L12 2z"/><path d="M12 22V12M20 6.5L12 12 4 6.5"/></svg>',
+  info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>',
+  shield: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3 5 6v6c0 4 3 7.5 7 9 4-1.5 7-5 7-9V6z"/></svg>',
+  globe: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+  keyboard: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 13h.01M10 13h.01M14 13h.01M18 13h.01M8 16h8"/></svg>',
+  back: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
+  sidebar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></svg>',
+  refresh: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>',
+  folder: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  download: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg>',
+  upload: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/></svg>',
+  external: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/></svg>',
+  check: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>',
+  warn: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+  bug: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2l1.88 1.88M14.12 3.88 16 2M9 7.13v-1a3 3 0 0 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6z"/><path d="M12 20v-9M6.53 9C4.6 8.8 3 7.1 3 5M6 13H2M6 17l-3 1M17.47 9c1.93-.2 3.53-1.9 3.53-4M18 13h4M18 17l3 1"/></svg>',
+  chev: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+  cat: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10V5l4 3a9 9 0 0 1 8 0l4-3v5c0 5-3.5 9-8 9s-8-4-8-9z"/><circle cx="9.5" cy="12" r=".8" fill="currentColor"/><circle cx="14.5" cy="12" r=".8" fill="currentColor"/></svg>',
+  glyph: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="16" rx="2"/><path d="M9 4V3h6v1M9.5 12l2.5 2.5L14.5 12"/></svg>',
+  clip: '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="4" width="14" height="17" rx="3"/><path d="M9 4V3h6v1M9 12h6M9 16h4"/></svg>',
+};
+
+const TAGS = [
+  { id: 'text', label: '文本', tone: 'blue' },
+  { id: 'image', label: '图片', tone: 'orange' },
+  { id: 'file', label: '文件', tone: 'orange' },
+  { id: 'folder', label: '文件夹', tone: 'purple' },
+  { id: 'code', label: '代码', tone: 'gray' },
+  { id: 'link', label: '链接', tone: 'blue' },
+];
+
+const BACKUP_SAMPLE_DIFF = [
+  { key: 'desktop.color_mode', label: '颜色模式', before: '跟随系统', after: '深色', restart: false },
+  { key: 'desktop.system_window_frame', label: '使用系统边框', before: '关闭', after: '开启', restart: true },
+  { key: 'logging.level', label: '本机日志等级', before: 'info', after: 'warn', restart: false },
+  { key: 'history.retention_days', label: '历史保留时间', before: '180 天', after: '90 天', restart: false },
+  { key: 'file_cache.max_bytes', label: '单设备缓存配额', before: '500 MB', after: '1 GB', restart: false },
+];
+
+function createState() {
+  return {
+    preset: 'default',
+    ia: 'recommended', // 'recommended' | 'legacy'
+    viewport: 'standard', // 'standard' | 'compact'
+    sbHidden: false,
+    tab: 'diagnostics',
+    os: 'darwin', // 'darwin' | 'linux'
+    reviewOpen: false,
+
+    // Live persisted config (revision-checked)
+    config: {
+      language: 'zh-CN',
+      deviceName: 'Mark 的 MacBook Pro',
+      mode: 'normal',
+      launchAtLogin: true,
+      startInBackground: false,
+      loginApplied: true,
+      loginErr: '',
+      trayIcon: 'glyph',
+      colorMode: 'system',
+      systemWindowFrame: false,
+      initialWindowFrame: false,
+      updateChannel: 'stable',
+      quickPanelShortcut: 'Cmd+Ctrl+V',
+      // Diagnostics & Telemetry
+      loggingLevel: 'info',
+      telemetryEnabled: true,
+      logsEnabled: true,
+      logsLevel: 'warn',
+      metricsEnabled: true,
+      tracesEnabled: true,
+      analyticsEnabled: true,
+      // Sync
+      syncEnabled: true,
+      syncAutomatic: true,
+      syncOnRestore: false,
+      syncFiles: true,
+      syncDirAuto: false,
+      maxFileMB: 100,
+      // Storage
+      autoCleanup: true,
+      retentionDays: 180,
+      maxItems: 1000,
+      excludedTags: ['file', 'code'],
+      cacheQuotaMB: 500,
+      inbox: '',
+    },
+
+    // Runtime Diagnostics State (Group A)
+    diag: {
+      loaded: true,
+      busy: false,
+      localOverrideSec: 0, // >0 means 15m debug override active
+      remoteOverrideSec: 0,
+      dropped: { logs: 0, metrics: 0, traces: 0, analytics: 0 },
+      lastRefresh: '刚刚',
+      notice: '',
+      err: '',
+    },
+
+    // Runtime Storage State (Group B)
+    storage: {
+      loaded: true,
+      loading: false,
+      storedMB: 128.4,
+      reservedMB: 12.0,
+      fileCount: 14,
+      heldCount: 2,
+      customDestination: false,
+      err: '',
+      openErr: '',
+      scopeOpen: false,
+    },
+
+    // Runtime Portable Backup State (Group G)
+    backup: {
+      busy: false,
+      preview: null, // null | { filename, changes: [...], conflict: bool }
+      confirmOpen: false,
+      notice: '',
+      err: '',
+      scopeOpen: false,
+    },
+
+    // Runtime Shortcut & Permission State (Group E)
+    qp: {
+      permStatus: 'granted', // 'granted' | 'denied' | 'unknown' | 'unsupported'
+      permLoading: false,
+      permNotice: '',
+      permErr: '',
+      effectiveShortcut: 'Cmd+Ctrl+V',
+      shortcutConflict: '',
+    },
+
+    // About / Updater State (Group C - PR #2288)
+    about: {
+      version: '2.0.0-alpha.4 (240)',
+      owner: 'direct', // 'direct' | 'Homebrew'
+      autoCheck: true,
+      autoDownload: true,
+      notice: '',
+      alphaDialog: false,
+      manualDialog: false,
+      copiedCmd: false,
+    },
+
+    toast: '',
+    toastTimer: null,
+  };
+}
+
+let S = createState();
+
+// Countdown tick for active 15-min debug overrides
+setInterval(() => {
+  let dirty = false;
+  if (S.diag.localOverrideSec > 0) { S.diag.localOverrideSec--; dirty = true; }
+  if (S.diag.remoteOverrideSec > 0) { S.diag.remoteOverrideSec--; dirty = true; }
+  if (dirty && (S.tab === 'diagnostics' || (S.ia === 'legacy' && S.tab === 'general'))) {
+    render();
+  }
+}, 1000);
+
+function fmtCountdown(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function showToast(msg) {
+  S.toast = msg;
+  renderToast();
+  clearTimeout(S.toastTimer);
+  S.toastTimer = setTimeout(() => { S.toast = ''; renderToast(); }, 2400);
+}
+function renderToast() {
+  const el = document.getElementById('toastEl');
+  if (!el) return;
+  el.textContent = S.toast;
+  el.classList.toggle('show', !!S.toast);
+}
+
+function applyTheme() {
+  let eff = S.config.colorMode;
+  if (eff === 'system') {
+    eff = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.documentElement.dataset.theme = eff;
+}
+
+function applyPreset(name) {
+  const prevIA = S.ia, prevVP = S.viewport;
+  S = createState();
+  S.preset = name;
+  S.ia = prevIA;
+  S.viewport = prevVP;
+
+  if (name === 'default') {
+    S.tab = 'diagnostics';
+  } else if (name === 'debug') {
+    S.tab = S.ia === 'recommended' ? 'diagnostics' : 'general';
+    S.diag.localOverrideSec = 14 * 60 + 42;
+    S.diag.dropped = { logs: 0, metrics: 2, traces: 0, analytics: 0 };
+  } else if (name === 'telemetryOff') {
+    S.tab = S.ia === 'recommended' ? 'diagnostics' : 'general';
+    S.config.telemetryEnabled = false;
+    S.diag.loaded = true;
+    S.diag.notice = '演示：切换上方「模拟服务离线」可查看状态不可用时的诚实提示。';
+  } else if (name === 'storageWarn') {
+    S.tab = 'storage';
+    S.storage.err = '无法刷新缓存用量。下方显示上次成功读取的用量。';
+    S.storage.customDestination = true;
+    S.config.inbox = '/Users/mark/Downloads/UniClipboard';
+  } else if (name === 'backupPreview') {
+    S.tab = 'storage';
+    S.backup.preview = {
+      filename: 'unic-preferences-20261122.json',
+      changes: BACKUP_SAMPLE_DIFF.map(x => ({ ...x })),
+      conflict: false,
+    };
+  } else if (name === 'permDenied') {
+    S.tab = 'quickPanel';
+    S.qp.permStatus = 'denied';
+    S.qp.shortcutConflict = '快捷键 Cmd+Ctrl+V 已被其他应用占用，保留上一个有效注册。';
+    S.qp.effectiveShortcut = 'Ctrl+`';
+  } else if (name === 'winLinux') {
+    S.os = 'linux';
+    S.tab = 'quickPanel';
+    S.config.quickPanelShortcut = 'Ctrl+Alt+V';
+    S.qp.effectiveShortcut = 'Ctrl+Alt+V';
+    S.qp.permStatus = 'unsupported';
+  }
+  applyTheme();
+  render();
+}
+
+function getNavSections() {
+  const permWarn = S.qp.permStatus === 'denied' || !!S.qp.shortcutConflict;
+  const diagActive = S.diag.localOverrideSec > 0 || S.diag.remoteOverrideSec > 0;
+  if (S.ia === 'recommended') {
+    return [
+      {
+        title: '常规与体验',
+        items: [
+          { id: 'general', label: '通用', icon: 'settings' },
+          { id: 'appearance', label: '外观', icon: 'sun' },
+          { id: 'quickPanel', label: '快捷面板', icon: 'list', dot: permWarn ? 'warn' : '' },
+        ],
+      },
+      {
+        title: '同步与数据',
+        items: [
+          { id: 'sync', label: '同步', icon: 'sync' },
+          { id: 'storage', label: '存储与备份', icon: 'database', dot: S.storage.err ? 'warn' : '' },
+          { id: 'plugins', label: '插件', icon: 'puzzle' },
+        ],
+      },
+      {
+        title: '排错与系统',
+        items: [
+          { id: 'diagnostics', label: '诊断与隐私', icon: 'activity', dot: diagActive ? 'warn' : '' },
+          { id: 'about', label: '关于', icon: 'info' },
+        ],
+      },
+    ];
+  }
+  return [
+    {
+      title: '',
+      items: [
+        { id: 'general', label: '通用', icon: 'settings', dot: diagActive ? 'warn' : '' },
+        { id: 'appearance', label: '外观', icon: 'sun' },
+        { id: 'shortcuts', label: '快捷键', icon: 'keyboard', tag: '待定' },
+        { id: 'quickPanel', label: '快捷面板', icon: 'list', dot: permWarn ? 'warn' : '' },
+        { id: 'sync', label: '同步', icon: 'sync' },
+        { id: 'plugins', label: '插件', icon: 'puzzle' },
+        { id: 'security', label: '安全', icon: 'shield', tag: '待定' },
+        { id: 'network', label: '网络', icon: 'globe', tag: '只读' },
+        { id: 'storage', label: '存储', icon: 'database', dot: S.storage.err ? 'warn' : '' },
+        { id: 'about', label: '关于', icon: 'info' },
+      ],
+    },
+  ];
+}
+
+function pageTitle(id) {
+  const map = {
+    general: '通用',
+    appearance: '外观',
+    shortcuts: '快捷键',
+    quickPanel: '快捷面板',
+    sync: '同步',
+    plugins: '插件',
+    security: '安全',
+    network: '网络',
+    storage: S.ia === 'recommended' ? '存储与备份' : '存储',
+    diagnostics: '诊断与隐私',
+    about: '关于',
+  };
+  return map[id] || '设置';
+}
+
+/* ---------------- Page Renderers ---------------- */
+
+function renderGeneral() {
+  const c = S.config;
+  const loginMismatch = c.launchAtLogin !== c.loginApplied || !!c.loginErr;
+  let html = `
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">语言与设备</h3></div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">界面语言</div>
+            <div class="s-row-desc">更改后立即应用于主窗口与快捷面板。</div>
+          </div>
+          <div class="s-row-ctl">
+            <select class="select" onchange="setCfg('language', this.value, '界面语言已保存')">
+              <option value="zh-CN" ${c.language==='zh-CN'?'selected':''}>简体中文</option>
+              <option value="en" ${c.language==='en'?'selected':''}>English</option>
+              <option value="ja" ${c.language==='ja'?'selected':''}>日本語</option>
+              <option value="pt-BR" ${c.language==='pt-BR'?'selected':''}>Português (Brasil)</option>
+              <option value="ru" ${c.language==='ru'?'selected':''}>Русский</option>
+            </select>
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">设备名称</div>
+            <div class="s-row-desc">其他已配对设备将看到此名称，按回车保存。</div>
+          </div>
+          <div class="s-row-ctl">
+            <input class="text-input" value="${esc(c.deviceName)}" onkeydown="if(event.key==='Enter'){setCfg('deviceName', this.value.trim()||S.config.deviceName, '设备名称已更新'); this.blur();}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="s-group">
+      <div class="s-group-head">
+        <h3 class="s-group-title">启动与运行模式</h3>
+        <div class="s-group-actions">
+          <span class="pill ${c.loginApplied ? 'ok' : ''}">
+            <span class="dot"></span>${c.loginApplied ? '系统登录启动已开启' : '系统登录启动已关闭'}
+          </span>
+        </div>
+      </div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">运行模式</div>
+            <div class="s-row-desc">常规模式关闭主窗口后保留托盘与同步服务；轻量模式仅保留后台同步服务。</div>
+          </div>
+          <div class="s-row-ctl">
+            <select class="select" onchange="setCfg('mode', this.value, '运行模式已更新')">
+              <option value="normal" ${c.mode==='normal'?'selected':''}>常规模式</option>
+              <option value="lightweight" ${c.mode==='lightweight'?'selected':''}>轻量模式</option>
+            </select>
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">登录时启动</div>
+            <div class="s-row-desc">登录操作系统后自动启动 UniClipboard。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="switch ${c.launchAtLogin?'on':''}" onclick="toggleLogin()"></button>
+          </div>
+        </div>
+        <div class="s-row ${c.mode==='lightweight'?'dim':''}">
+          <div class="s-row-text">
+            <div class="s-row-label">后台启动</div>
+            <div class="s-row-desc">仅控制常规模式的登录启动；手动点击应用图标始终打开主窗口。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="switch ${c.startInBackground?'on':''}" ${c.mode==='lightweight'?'disabled':''} onclick="toggleCfg('startInBackground', '后台启动设置已保存')"></button>
+          </div>
+        </div>
+        ${loginMismatch ? `
+        <div class="s-foot-bar">
+          <span class="s-foot-msg" style="color:var(--warn-fg)">系统登录注册状态与配置不一致，可重新应用。</span>
+          <div class="s-foot-btns">
+            <button class="btn sm" onclick="S.config.loginApplied=S.config.launchAtLogin;S.config.loginErr='';showToast('已重新应用系统登录启动设置');render()">重新应用登录启动设置</button>
+          </div>
+        </div>` : ''}
+      </div>
+    </div>
+  `;
+
+  if (S.ia === 'recommended') {
+    html += `
+      <div class="notice info">
+        <span class="notice-ic">${IC.info}</span>
+        <div class="notice-body">
+          <div class="notice-title">信息架构精简说明（供审核）</div>
+          <div class="notice-desc">
+            已将「托盘图标」与「使用系统边框」归入 <a href="#" style="color:inherit;font-weight:600" onclick="goTab('appearance');return false">外观</a>，将「遥测与诊断日志」独立为 <a href="#" style="color:inherit;font-weight:600" onclick="goTab('diagnostics');return false">诊断与隐私</a>，避免通用页过长。可在顶部控制条切换「现状 10 项」对比原排布。
+          </div>
+        </div>
+      </div>
+    `;
+  } else {
+    html += renderWindowTrayGroup();
+    html += renderDiagnosticsSections();
+  }
+  return html;
+}
+
+function renderWindowTrayGroup() {
+  const c = S.config;
+  return `
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">托盘与窗口</h3></div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">托盘图标</div>
+            <div class="s-row-desc">更改后立即生效，无需重启。</div>
+          </div>
+          <div class="s-row-ctl">
+            <div class="tray-seg">
+              <button class="tray-opt ${c.trayIcon==='glyph'?'on':''}" onclick="setCfg('trayIcon','glyph','已切换为默认托盘图标')">${IC.glyph} 默认</button>
+              <button class="tray-opt ${c.trayIcon==='cat'?'on':''}" onclick="setCfg('trayIcon','cat','已切换为经典猫头图标')">${IC.cat} 经典猫头</button>
+            </div>
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">
+              使用系统边框
+              ${c.systemWindowFrame !== c.initialWindowFrame ? '<span class="pill warn">需重开窗口</span>' : ''}
+            </div>
+            <div class="s-row-desc">关闭并重新打开主窗口后生效。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="switch ${c.systemWindowFrame?'on':''}" onclick="toggleCfg('systemWindowFrame','窗口边框设置已保存，重开主窗口后生效')"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAppearance() {
+  const cm = S.config.colorMode;
+  const previewMini = (kind) => {
+    if (kind === 'system') {
+      return `
+        <div class="theme-preview">
+          <div class="tp-half tp-light">
+            <div class="tp-side"><div class="tp-dots"><i></i><i></i></div><div class="tp-bar ac"></div><div class="tp-bar" style="width:70%"></div></div>
+            <div class="tp-main"><div class="tp-card"><div class="tp-bar" style="width:75%"></div><div class="tp-bar" style="width:45%"></div></div></div>
+          </div>
+          <div class="tp-half tp-dark">
+            <div class="tp-main"><div class="tp-card"><div class="tp-bar ac" style="width:65%"></div><div class="tp-bar" style="width:80%"></div></div></div>
+          </div>
+        </div>`;
+    }
+    const cls = kind === 'dark' ? 'tp-dark' : 'tp-light';
+    return `
+      <div class="theme-preview ${cls}">
+        <div class="tp-side">
+          <div class="tp-dots"><i></i><i></i><i></i></div>
+          <div class="tp-bar ac"></div>
+          <div class="tp-bar" style="width:76%"></div>
+          <div class="tp-bar" style="width:60%"></div>
+        </div>
+        <div class="tp-main">
+          <div class="tp-card">
+            <div class="tp-bar" style="width:55%"></div>
+            <div class="tp-bar" style="width:85%"></div>
+            <div class="tp-bar" style="width:40%"></div>
+          </div>
+        </div>
+      </div>`;
+  };
+
+  const modes = [
+    { id: 'system', name: '跟随系统', sub: '自动匹配操作系统外观' },
+    { id: 'light', name: '浅色', sub: '始终使用明亮界面' },
+    { id: 'dark', name: '深色', sub: '始终使用低眩光深色' },
+  ];
+
+  return `
+    <div class="s-group">
+      <div class="s-group-head">
+        <h3 class="s-group-title">颜色模式</h3>
+        <div class="s-group-actions">
+          <span class="pill info">实时生效 · 同步全角色</span>
+        </div>
+      </div>
+      <div class="s-group-body">
+        <div class="s-block">
+          <div class="theme-grid">
+            ${modes.map(m => `
+              <button class="theme-card ${cm===m.id?'on':''}" onclick="setColorMode('${m.id}')">
+                ${previewMini(m.id)}
+                <div class="theme-meta">
+                  <div>
+                    <div class="theme-name">${m.name}</div>
+                    <div class="theme-sub">${m.sub}</div>
+                  </div>
+                  <span class="theme-check">${cm===m.id ? IC.check : ''}</span>
+                </div>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="s-group-foot">
+        保存于 <code>desktop.color_mode</code>，通过 mygo 共享主题源同步应用到主窗口、首次引导与快捷面板，无需重启。
+      </div>
+    </div>
+
+    ${S.ia === 'recommended' ? renderWindowTrayGroup() : ''}
+  `;
+}
+
+function renderDiagnosticsSections() {
+  const c = S.config;
+  const d = S.diag;
+  const effLocal = d.localOverrideSec > 0 ? 'debug' : c.loggingLevel;
+  const effRemote = d.remoteOverrideSec > 0 ? 'debug' : c.logsLevel;
+
+  const signals = [
+    { key: 'logsEnabled', id: 'logs', label: '诊断日志', desc: '上传达到设定等级的脱敏运行日志' },
+    { key: 'metricsEnabled', id: 'metrics', label: '性能指标', desc: '同步耗时、传输成功率与连接恢复指标' },
+    { key: 'tracesEnabled', id: 'traces', label: '采样追踪', desc: '低频采样的流水线与同步调用链' },
+    { key: 'analyticsEnabled', id: 'analytics', label: '匿名使用事件', desc: '使用独立随机档案标识，不含剪贴板内容' },
+  ];
+
+  const telPill = !d.loaded
+    ? '<span class="pill warn"><span class="dot"></span>诊断状态不可用</span>'
+    : c.telemetryEnabled
+      ? '<span class="pill ok"><span class="dot"></span>当前上传：已启用</span>'
+      : '<span class="pill"><span class="dot"></span>当前上传：未启用</span>';
+
+  const levelSelect = (field, val) => `
+    <select class="select mono" onchange="setCfg('${field}', this.value, '日志等级已保存')">
+      ${['debug','info','warn','error'].map(lv => `<option value="${lv}" ${val===lv?'selected':''}>${lv}</option>`).join('')}
+    </select>
+  `;
+
+  return `
+    <!-- 1. Unified Telemetry & Privacy -->
+    <div class="s-group">
+      <div class="s-group-head">
+        <h3 class="s-group-title">隐私与遥测</h3>
+        <div class="s-group-actions">
+          ${telPill}
+          <button class="btn sm subtle" onclick="toggleDiagService()">${d.loaded ? '模拟服务离线' : '恢复服务连接'}</button>
+          <button class="btn sm subtle" onclick="refreshDiag()">${IC.refresh} 刷新</button>
+        </div>
+      </div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">发送使用数据与诊断</div>
+            <div class="s-row-desc">总开关关闭后立即停止遥测上传，并保留下方各信号的选择。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="switch ${c.telemetryEnabled?'on':''}" onclick="toggleCfg('telemetryEnabled', S.config.telemetryEnabled?'已关闭遥测上传（各信号选择已保留）':'已开启遥测上传')"></button>
+          </div>
+        </div>
+        ${!c.telemetryEnabled ? `
+          <div class="s-strip">
+            <span>${IC.info}</span>
+            <span>总开关已关闭：以下 4 项信号当前均暂停上传，但你的偏好开关已被保留。</span>
+          </div>
+        ` : ''}
+        ${signals.map(sig => {
+          const on = c[sig.key];
+          const runtimeActive = d.loaded && c.telemetryEnabled && on;
+          const dropped = d.dropped[sig.id] || 0;
+          const badge = !d.loaded
+            ? '<span class="pill">状态不可用</span>'
+            : `<span class="pill mono ${runtimeActive ? 'ok' : ''}">${runtimeActive ? 'active' : 'disabled'} · ${dropped} 丢弃</span>`;
+          return `
+            <div class="s-row ${!c.telemetryEnabled ? 'dim' : ''}">
+              <div class="s-row-text">
+                <div class="s-row-label">${sig.label} ${badge}</div>
+                <div class="s-row-desc">${sig.desc}</div>
+              </div>
+              <div class="s-row-ctl">
+                <button class="switch ${on?'on':''}" onclick="toggleCfg('${sig.key}', '${sig.label}设置已保存')"></button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- 2. Log Levels + Contextual 15-min Debug Overrides -->
+    <div class="s-group">
+      <div class="s-group-head">
+        <h3 class="s-group-title">诊断日志</h3>
+        <div class="s-group-actions">
+          <span style="font-size:11.5px;color:var(--text-tertiary)">上次同步：${d.lastRefresh}</span>
+        </div>
+      </div>
+      <div class="s-group-body">
+        ${!d.loaded ? `
+          <div class="s-strip warn">
+            <span>${IC.warn}</span>
+            <span>无法读取服务当前有效日志等级，临时调试操作暂不可用。</span>
+          </div>
+        ` : ''}
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">
+              本机日志等级
+              ${d.loaded ? (d.localOverrideSec > 0
+                ? `<span class="pill warn mono"><span class="dot"></span>临时调试 debug · 剩余 ${fmtCountdown(d.localOverrideSec)}</span>`
+                : `<span class="pill mono">有效：${effLocal}</span>`) : ''}
+            </div>
+            <div class="s-row-desc">写入本机日志目录的持久化日志级别，独立于上传日志等级。</div>
+          </div>
+          <div class="s-row-ctl">
+            ${levelSelect('loggingLevel', c.loggingLevel)}
+            ${d.localOverrideSec > 0
+              ? `<button class="btn sm warn-soft" ${!d.loaded?'disabled':''} onclick="setDebugOverride('local', true)">恢复默认</button>`
+              : `<button class="btn sm" ${!d.loaded?'disabled':''} onclick="setDebugOverride('local', false)">${IC.bug} 临时调试 15m</button>`
+            }
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">
+              上传日志等级
+              ${d.loaded ? (d.remoteOverrideSec > 0
+                ? `<span class="pill warn mono"><span class="dot"></span>临时调试 debug · 剩余 ${fmtCountdown(d.remoteOverrideSec)}</span>`
+                : `<span class="pill mono">有效：${effRemote}</span>`) : ''}
+            </div>
+            <div class="s-row-desc">随遥测上传的日志级别，受上方遥测总开关与日志开关控制。</div>
+          </div>
+          <div class="s-row-ctl">
+            ${levelSelect('logsLevel', c.logsLevel)}
+            ${d.remoteOverrideSec > 0
+              ? `<button class="btn sm warn-soft" ${!d.loaded?'disabled':''} onclick="setDebugOverride('remote', true)">恢复默认</button>`
+              : `<button class="btn sm" ${!d.loaded?'disabled':''} onclick="setDebugOverride('remote', false)">${IC.bug} 临时调试 15m</button>`
+            }
+          </div>
+        </div>
+      </div>
+      <div class="s-group-foot">
+        临时调试覆盖仅在服务内存中生效 15 分钟，不改写配置文件，到期后自动恢复已保存等级。
+      </div>
+    </div>
+
+    <!-- 3. Diagnostic Files -->
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">诊断文件</h3></div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">导出诊断日志</div>
+            <div class="s-row-desc">仅导出本机保留的脱敏日志与校验清单（.tar.gz），不含配置、凭据或剪贴板历史。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="btn sm" onclick="simulateLogExport()">${IC.download} 导出诊断日志…</button>
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">本机日志目录</div>
+            <div class="s-row-desc">在系统文件管理器中打开当前配置档案的日志目录。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="btn sm" onclick="S.diag.notice='已请求打开日志目录。';S.diag.err='';showToast('已请求打开日志目录');render()">${IC.folder} 打开日志目录</button>
+          </div>
+        </div>
+        ${d.notice || d.err ? `
+          <div class="s-strip ${d.err ? 'warn' : 'info'}">
+            <span>${d.err ? IC.warn : IC.info}</span>
+            <span>${esc(d.err || d.notice)}</span>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderStorage() {
+  const c = S.config;
+  const st = S.storage;
+  const bk = S.backup;
+  const pctStored = Math.min(100, (st.storedMB / c.cacheQuotaMB) * 100);
+  const pctRes = Math.min(100 - pctStored, (st.reservedMB / c.cacheQuotaMB) * 100);
+
+  return `
+    <!-- 1. Managed Cache Usage + Quota -->
+    <div class="s-group">
+      <div class="s-group-head">
+        <h3 class="s-group-title">接收文件缓存</h3>
+        <div class="s-group-actions">
+          <button class="btn sm subtle" onclick="toggleStorageError()">${st.err ? '恢复正常刷新' : '模拟刷新失败'}</button>
+          <button class="btn sm subtle" ${st.loading?'disabled':''} onclick="refreshStorage()">
+            <span class="${st.loading?'spin':''}">${IC.refresh}</span> ${st.loading ? '刷新中…' : '刷新用量'}
+          </button>
+        </div>
+      </div>
+      <div class="s-group-body">
+        ${st.err ? `
+          <div class="s-strip warn">
+            <span>${IC.warn}</span>
+            <span>${esc(st.err)}</span>
+          </div>
+        ` : ''}
+        <div class="s-block">
+          <div class="quota-head">
+            <div>
+              <span class="quota-primary">${st.storedMB.toFixed(1)} MB</span>
+              <span class="quota-sub">已存储${st.reservedMB > 0 ? ` · + ${st.reservedMB.toFixed(1)} MB 传输预留` : ''}</span>
+            </div>
+            <div class="quota-cap">配额 ${c.cacheQuotaMB >= 1024 ? (c.cacheQuotaMB/1024)+' GB' : c.cacheQuotaMB+' MB'} (${pctStored.toFixed(1)}%)</div>
+          </div>
+          <div class="quota-bar">
+            <div class="quota-fill" style="width:${pctStored}%"></div>
+            <div class="quota-res" style="width:${pctRes}%"></div>
+          </div>
+          <div class="fact-grid">
+            <div class="fact-tile">
+              <span class="fact-lbl">已存储文件</span>
+              <span class="fact-val">${st.storedMB.toFixed(1)} MB</span>
+            </div>
+            <div class="fact-tile">
+              <span class="fact-lbl">传输预留空间</span>
+              <span class="fact-val">${st.reservedMB.toFixed(1)} MB</span>
+            </div>
+            <div class="fact-tile">
+              <span class="fact-lbl">缓存文件数</span>
+              <span class="fact-val">${st.fileCount}</span>
+            </div>
+            <div class="fact-tile">
+              <span class="fact-lbl">使用中文件数</span>
+              <span class="fact-val">${st.heldCount}</span>
+            </div>
+          </div>
+        </div>
+        ${st.customDestination ? `
+          <div class="s-strip info">
+            <span>${IC.info}</span>
+            <span>当前使用自定义接收目录。该目录由用户管理，不计入上方默认缓存用量。</span>
+          </div>
+        ` : ''}
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">单设备缓存配额</div>
+            <div class="s-row-desc">仅限制应用管理的文件缓存上限。</div>
+          </div>
+          <div class="s-row-ctl">
+            <select class="select" onchange="setCfg('cacheQuotaMB', Number(this.value), '缓存配额已更新')">
+              ${[100,500,1024,2048,4096].map(v => `<option value="${v}" ${c.cacheQuotaMB===v?'selected':''}>${v>=1024?(v/1024)+' GB':v+' MB'}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">
+              接收目录
+              <span class="pill ${st.customDestination ? 'info' : ''}">${st.customDestination ? '用户管理' : '应用管理'}</span>
+            </div>
+            <div class="s-row-desc" style="${c.inbox?'font-family:ui-monospace,Menlo,monospace':''}">${c.inbox ? esc(c.inbox) : '应用管理的默认缓存目录'}</div>
+          </div>
+        </div>
+      </div>
+      <div class="s-group-foot">
+        仅统计应用管理的接收文件缓存账本；不包含 SQLite 数据库、日志、自定义接收目录或其他用户文件。
+      </div>
+    </div>
+
+    <!-- 2. History Retention (with Tag Pills instead of 6 raw checkboxes!) -->
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">历史保留</h3></div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">自动清理历史</div>
+            <div class="s-row-desc">定期清理过期历史记录及应用管理的关联文件。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="switch ${c.autoCleanup?'on':''}" onclick="toggleCfg('autoCleanup', '自动清理设置已保存')"></button>
+          </div>
+        </div>
+        <div class="s-row ${!c.autoCleanup?'dim':''}">
+          <div class="s-row-text">
+            <div class="s-row-label">历史保留时间</div>
+            <div class="s-row-desc">按记录创建时间计算。</div>
+          </div>
+          <div class="s-row-ctl">
+            <select class="select" ${!c.autoCleanup?'disabled':''} onchange="setCfg('retentionDays', Number(this.value), '保留时间已保存')">
+              ${[7,30,90,180,365,0].map(v => `<option value="${v}" ${c.retentionDays===v?'selected':''}>${v===0?'无限制':v+' 天'}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="s-row ${!c.autoCleanup?'dim':''}">
+          <div class="s-row-text">
+            <div class="s-row-label">最大历史条目数</div>
+            <div class="s-row-desc">排除标签命中的记录不计入上限。</div>
+          </div>
+          <div class="s-row-ctl">
+            <select class="select" ${!c.autoCleanup?'disabled':''} onchange="setCfg('maxItems', Number(this.value), '最大条目数已保存')">
+              ${[100,500,1000,5000,0].map(v => `<option value="${v}" ${c.maxItems===v?'selected':''}>${v===0?'无限制':v+' 条'}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="s-row ${!c.autoCleanup?'dim':''}">
+          <div class="s-row-text">
+            <div class="s-row-label">清理时保留标签</div>
+            <div class="s-row-desc">命中以下任一标签的历史将不会被自动清理。</div>
+          </div>
+          <div class="s-row-ctl">
+            <div class="tag-pills">
+              ${TAGS.map(t => {
+                const on = c.excludedTags.includes(t.id);
+                return `
+                  <button class="tag-pill ${on?'on '+t.tone:''}" ${!c.autoCleanup?'disabled':''} onclick="toggleTag('${t.id}')">
+                    <span class="tdot" style="background:var(--tag-${t.tone}-dot)"></span>
+                    #${t.label}
+                    ${on ? IC.check : ''}
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Portable Configuration Backup (Group G) -->
+    <div class="s-group">
+      <div class="s-group-head">
+        <h3 class="s-group-title">配置备份</h3>
+        <div class="s-group-actions">
+          <span class="pill">仅 26 项可移动偏好</span>
+        </div>
+      </div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">导出配置</div>
+            <div class="s-row-desc">生成可跨设备迁移的 JSON 偏好文件（绝不覆盖已有目标文件）。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="btn sm" onclick="simulateBackupExport()">${IC.download} 导出配置…</button>
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">导入配置</div>
+            <div class="s-row-desc">读取后严格校验并展示逐项对比预览，二次确认后按原修订版本写入。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="btn sm" onclick="openSampleBackup('valid')">${IC.upload} 导入配置…</button>
+            <button class="btn sm subtle" onclick="openSampleBackup('invalid')">模拟损坏文件</button>
+          </div>
+        </div>
+        ${bk.err ? `
+          <div class="s-strip warn">
+            <span>${IC.warn}</span>
+            <span>${esc(bk.err)}</span>
+          </div>
+        ` : ''}
+        ${bk.notice ? `
+          <div class="s-strip info">
+            <span>${IC.info}</span>
+            <span>${esc(bk.notice)}</span>
+          </div>
+        ` : ''}
+        <button class="disclosure-btn" onclick="S.backup.scopeOpen=!S.backup.scopeOpen;render()">
+          <span>查看备份包含与排除范围</span>
+          <span style="transform:rotate(${bk.scopeOpen?'180':'0'}deg);transition:transform .15s">${IC.chev}</span>
+        </button>
+        ${bk.scopeOpen ? `
+          <div class="scope-cols">
+            <div class="scope-box yes">
+              <h5>✓ 包含（26 项白名单偏好）</h5>
+              <p>界面语言、颜色模式、托盘图标、更新渠道、系统边框、运行模式、后台启动、日志等级、遥测开关、同步开关、历史保留与缓存配额、单文件/总大小上限。</p>
+            </div>
+            <div class="scope-box no">
+              <h5>✕ 明确排除（保留本机原值）</h5>
+              <p>设备名称与身份密钥、配对凭据、插件配置与私有目录、数据/接收路径、系统登录注册、全局快捷键绑定、更新器独立偏好。</p>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+
+    ${bk.preview ? renderBackupPreview(bk.preview) : ''}
+
+    <!-- 4. Local Data Directory & Migration -->
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">本机数据与迁移</h3></div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">数据目录</div>
+            <div class="s-row-desc">在系统文件管理器中查看当前配置的数据目录。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="btn sm" onclick="showToast('已在系统文件管理器中打开数据目录')">${IC.folder} 打开数据目录</button>
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">从 v1 迁移</div>
+            <div class="s-row-desc">迁移前会停止当前同步和剪贴板捕获，旧数据会保留。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="btn sm" onclick="showToast('将打开独立离线迁移向导（见 setup.html）')">从 v1 迁移…</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderBackupPreview(pv) {
+  return `
+    <div class="diff-card">
+      <div class="diff-head">
+        <div class="diff-head-title">
+          导入预览
+          <span class="pill info">${pv.changes.length} 项变更</span>
+          <span style="font-size:11.5px;font-weight:400;color:var(--text-secondary)">${esc(pv.filename)}</span>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn sm subtle" onclick="S.backup.preview.conflict=!S.backup.preview.conflict;render()">
+            ${pv.conflict ? '清除冲突模拟' : '模拟修订冲突'}
+          </button>
+        </div>
+      </div>
+      ${pv.conflict ? `
+        <div class="s-strip warn">
+          <span>${IC.warn}</span>
+          <span>检测到外部编辑导致配置修订版本已变化。请重新选择备份并核对预览，不会覆盖外部修改。</span>
+        </div>
+      ` : ''}
+      <table class="diff-table">
+        <thead>
+          <tr><th style="width:40%">设置项</th><th>变更对比</th></tr>
+        </thead>
+        <tbody>
+          ${pv.changes.map(ch => `
+            <tr>
+              <td>
+                <span style="font-weight:500">${esc(ch.label)}</span>
+                ${ch.restart ? '<span class="pill warn" style="margin-left:6px">需重启</span>' : ''}
+              </td>
+              <td>
+                <span class="diff-old">${esc(ch.before)}</span>
+                <span class="diff-arrow">→</span>
+                <span class="diff-new">${esc(ch.after)}</span>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <div class="s-foot-bar">
+        <span class="s-foot-msg">预览阶段尚未写入任何配置。确认后仅替换上方列出的可移动设置。</span>
+        <div class="s-foot-btns">
+          <button class="btn sm" onclick="S.backup.preview=null;S.backup.notice='已取消导入。';render()">取消导入</button>
+          <button class="btn sm primary" ${pv.conflict || pv.changes.length===0 ? 'disabled' : ''} onclick="S.backup.confirmOpen=true;render()">应用导入…</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderQuickPanel() {
+  const c = S.config;
+  const qp = S.qp;
+  const permMap = {
+    granted: { cls: 'ok', text: '已授权' },
+    denied: { cls: 'warn', text: '未授权' },
+    unknown: { cls: '', text: '状态未知' },
+    unsupported: { cls: '', text: '此平台无此权限开关' },
+  };
+  const pm = permMap[qp.permStatus] || permMap.unknown;
+  const effLabel = qp.effectiveShortcut ? qp.effectiveShortcut.replace('Cmd', '⌘').replace('Ctrl', '⌃').replace('Alt', '⌥').replace(/\+/g, '') : '关闭';
+
+  return `
+    <!-- 1. Global Shortcut -->
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">全局快捷键</h3></div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">打开快捷面板</div>
+            <div class="s-row-desc">在常规模式运行时生效。切换后由托盘进程原子替换注册。</div>
+          </div>
+          <div class="s-row-ctl">
+            <select class="select" onchange="changeShortcut(this.value)">
+              <option value="Cmd+Ctrl+V" ${c.quickPanelShortcut==='Cmd+Ctrl+V'?'selected':''}>Command+Ctrl+V</option>
+              <option value="Ctrl+Alt+V" ${c.quickPanelShortcut==='Ctrl+Alt+V'?'selected':''}>Ctrl+Alt+V</option>
+              <option value="Ctrl+\`" ${c.quickPanelShortcut==='Ctrl+`'?'selected':''}>Ctrl+\`</option>
+              <option value="CmdOrCtrl+Shift+Space" ${c.quickPanelShortcut==='CmdOrCtrl+Shift+Space'?'selected':''}>Command/Ctrl+Shift+Space</option>
+              <option value="" ${c.quickPanelShortcut===''?'selected':''}>关闭</option>
+            </select>
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">当前注册状态</div>
+            <div class="s-row-desc">${qp.shortcutConflict ? '新快捷键注册失败，已自动保留上一个有效绑定。' : '显示系统全局快捷键实际注册结果。'}</div>
+          </div>
+          <div class="s-row-ctl">
+            ${qp.shortcutConflict
+              ? `<span class="pill warn"><span class="dot"></span>注册冲突 · 仍为 ${esc(effLabel)}</span>
+                 <button class="btn sm" onclick="S.qp.shortcutConflict='';S.qp.effectiveShortcut=S.config.quickPanelShortcut;showToast('快捷键重新注册成功');render()">重试注册</button>`
+              : `<span class="pill ${qp.effectiveShortcut ? 'ok' : ''}"><span class="dot"></span>${qp.effectiveShortcut ? '已注册：'+esc(effLabel) : '已关闭'}</span>`
+            }
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">预览快捷面板</div>
+            <div class="s-row-desc">立即打开快捷面板查看当前外观与键盘交互。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="btn sm" onclick="showToast('已请求唤起快捷面板')">打开快捷面板</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. System Permissions (Group E) -->
+    <div class="s-group">
+      <div class="s-group-head">
+        <h3 class="s-group-title">系统权限</h3>
+        <div class="s-group-actions">
+          <span class="proto-lbl">演示切换：</span>
+          <button class="btn sm subtle" onclick="cyclePermStatus()">切换状态 (${pm.text})</button>
+        </div>
+      </div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">辅助功能权限（macOS）</div>
+            <div class="s-row-desc">仅显示当前应用的系统授权状态，读取不会弹出授权框；此状态不代表目标应用一定支持自动粘贴。</div>
+          </div>
+          <div class="s-row-ctl">
+            <span class="pill ${qp.permLoading ? '' : pm.cls}">
+              <span class="dot"></span>${qp.permLoading ? '正在读取…' : pm.text}
+            </span>
+          </div>
+        </div>
+        ${qp.permNotice ? `
+          <div class="s-strip info">
+            <span>${IC.info}</span>
+            <span>${esc(qp.permNotice)}</span>
+          </div>
+        ` : ''}
+        ${qp.permErr ? `
+          <div class="s-strip warn">
+            <span>${IC.warn}</span>
+            <span>${esc(qp.permErr)}</span>
+          </div>
+        ` : ''}
+        <div class="s-foot-bar">
+          <span class="s-foot-msg">
+            ${qp.permStatus === 'unsupported'
+              ? '当前平台无需 macOS 辅助功能权限开关。'
+              : '授权完成后请手动点击刷新，以读取系统最新状态。'}
+          </span>
+          <div class="s-foot-btns">
+            <button class="btn sm" ${qp.permLoading?'disabled':''} onclick="refreshPerm()">
+              <span class="${qp.permLoading?'spin':''}">${IC.refresh}</span> 刷新状态
+            </button>
+            ${qp.permStatus !== 'unsupported' ? `
+              <button class="btn sm ${qp.permStatus==='denied'?'primary':''}" onclick="openPermSettings()">
+                打开系统设置 ${IC.external}
+              </button>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderSync() {
+  const c = S.config;
+  return `
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">同步行为</h3></div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text"><div class="s-row-label">启用同步</div><div class="s-row-desc">控制所有同步后端的发送与接收。</div></div>
+          <div class="s-row-ctl"><button class="switch ${c.syncEnabled?'on':''}" onclick="toggleCfg('syncEnabled','同步总开关已保存')"></button></div>
+        </div>
+        <div class="s-row ${!c.syncEnabled?'dim':''}">
+          <div class="s-row-text"><div class="s-row-label">自动同步</div><div class="s-row-desc">复制内容后自动发送给已授权设备。</div></div>
+          <div class="s-row-ctl"><button class="switch ${c.syncAutomatic?'on':''}" onclick="toggleCfg('syncAutomatic','自动同步已保存')"></button></div>
+        </div>
+        <div class="s-row ${!c.syncEnabled?'dim':''}">
+          <div class="s-row-text"><div class="s-row-label">使用历史时同步</div><div class="s-row-desc">再次应用本机历史条目后发送一次。</div></div>
+          <div class="s-row-ctl"><button class="switch ${c.syncOnRestore?'on':''}" onclick="toggleCfg('syncOnRestore','设置已保存')"></button></div>
+        </div>
+        <div class="s-row ${!c.syncEnabled?'dim':''}">
+          <div class="s-row-text"><div class="s-row-label">同步文件</div><div class="s-row-desc">允许在设备之间发送和接收文件。</div></div>
+          <div class="s-row-ctl"><button class="switch ${c.syncFiles?'on':''}" onclick="toggleCfg('syncFiles','文件同步已保存')"></button></div>
+        </div>
+        <div class="s-row ${!c.syncEnabled?'dim':''}">
+          <div class="s-row-text"><div class="s-row-label">自动同步目录</div><div class="s-row-desc">默认关闭。开启后，每次复制目录都会扫描并发送。</div></div>
+          <div class="s-row-ctl"><button class="switch ${c.syncDirAuto?'on':''}" onclick="toggleCfg('syncDirAuto','自动同步目录已保存')"></button></div>
+        </div>
+        ${S.os === 'linux' ? `
+          <div class="s-strip">
+            <span>${IC.info}</span>
+            <span>此平台无法识别同一路径的重复复制，建议对目录使用主动发送。</span>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">文件传输</h3></div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text"><div class="s-row-label">单文件传输上限</div><div class="s-row-desc">双向限制单个文件的最大传输大小。</div></div>
+          <div class="s-row-ctl">
+            <select class="select" onchange="setCfg('maxFileMB', Number(this.value), '单文件传输上限已保存')">
+              ${[10,50,100,500].map(v => `<option value="${v}" ${c.maxFileMB===v?'selected':''}>${v} MB</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPlugins() {
+  return `
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">内置同步后端</h3></div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">Tailcat <span class="pill ok"><span class="dot"></span>运行中</span></div>
+            <div class="s-row-desc">builtin.tailcat · 文本 / 图片 / 文件 · 自动文件上限 10 MB</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="btn sm" onclick="showToast('完整插件管理交互见 prototype/plugins.html')">配置策略 ›</button>
+          </div>
+        </div>
+      </div>
+      <div class="s-group-foot">插件列表、GitHub 安装与 Schema 表单详见 <code>prototype/plugins.html</code>。</div>
+    </div>
+  `;
+}
+
+function renderAbout() {
+  const ab = S.about;
+  const ch = S.config.updateChannel;
+  const isExt = ab.owner !== 'direct';
+  return `
+    <div class="about-hero">
+      <div class="app-logo">${IC.clip}</div>
+      <div style="flex:1;min-width:180px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:17px;font-weight:700">UniClipboard</span>
+          <span class="pill ${ch==='alpha'?'warn':''}">${ch==='alpha'?'Alpha':'Stable'}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:2px">版本 ${esc(ab.version)}</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn sm subtle" onclick="S.about.owner=S.about.owner==='direct'?'Homebrew':'direct';render()">
+          ${isExt ? '切换为直接安装' : '模拟 Homebrew 安装'}
+        </button>
+        <button class="btn sm" onclick="checkUpdates()">${IC.refresh} 检查更新</button>
+      </div>
+    </div>
+
+    ${ab.notice ? `
+      <div class="notice info"><span class="notice-ic">${IC.info}</span><div class="notice-body">${esc(ab.notice)}</div></div>
+    ` : ''}
+
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">更新</h3></div>
+      <div class="s-group-body">
+        <div class="s-row ${isExt?'dim':''}">
+          <div class="s-row-text"><div class="s-row-label">自动检查更新</div><div class="s-row-desc">应用启动时自动检查是否有新版本。</div></div>
+          <div class="s-row-ctl">
+            <button class="switch ${ab.autoCheck && !isExt?'on':''}" ${isExt?'disabled':''} onclick="S.about.autoCheck=!S.about.autoCheck;showToast('自动检查偏好已保存');render()"></button>
+          </div>
+        </div>
+        <div class="s-row ${isExt || !ab.autoCheck ? 'dim' : ''}">
+          <div class="s-row-text">
+            <div class="s-row-label">后台下载更新</div>
+            <div class="s-row-desc">${ab.autoCheck ? '检测到新版本时静默下载安装包，点击安装时无需等待。' : '请先开启「自动检查更新」（原下载偏好已保留）'}</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="switch ${ab.autoCheck && ab.autoDownload && !isExt?'on':''}" ${isExt || !ab.autoCheck ? 'disabled' : ''} onclick="S.about.autoDownload=!S.about.autoDownload;showToast('后台下载偏好已保存');render()"></button>
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text"><div class="s-row-label">更新渠道</div><div class="s-row-desc">选择接收更新的发布渠道。</div></div>
+          <div class="s-row-ctl">
+            <select class="select" onchange="selectChannel(this.value)">
+              <option value="stable" ${ch==='stable'?'selected':''}>稳定版</option>
+              <option value="alpha" ${ch==='alpha'?'selected':''}>内测版</option>
+            </select>
+          </div>
+        </div>
+        ${isExt ? `
+          <div class="s-strip info">
+            <span>${IC.info}</span>
+            <span>此安装由 Homebrew 管理更新，应用内自动更新已关闭。</span>
+          </div>
+        ` : ''}
+      </div>
+    </div>
+
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">赞助者</h3></div>
+      <div class="sponsor-grid">
+        <div class="sponsor-card gold"><div class="sponsor-av">AL</div><div style="font-weight:600;font-size:12.5px">Alex Lin</div><span class="pill warn">金牌</span></div>
+        <div class="sponsor-card"><div class="sponsor-av">MK</div><div style="font-weight:600;font-size:12.5px">Mikael</div><span style="font-size:11px;color:var(--text-secondary)">持续支持开源</span></div>
+        <div class="sponsor-card"><div class="sponsor-av">YC</div><div style="font-weight:600;font-size:12.5px">Yichen</div><span style="font-size:11px;color:var(--text-secondary)">早期赞助者</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderNetworkTruthful() {
+  return `
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">传输后端状态</h3></div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">builtin.tailcat <span class="pill ok"><span class="dot"></span>运行中</span></div>
+            <div class="s-row-desc">传输路径由内置 Tailcat 后端自动协商（直连优先，必要时通过默认 DERP 区域中继）。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="btn sm" onclick="goTab('plugins')">查看内容策略 ›</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">当前版本传输能力边界（Group F 调研结论）</h3></div>
+      <div class="s-group-body">
+        <div class="s-strip info">
+          <span>${IC.info}</span>
+          <span>为避免提供「保存但无实际效果」的假开关，以下网络传输项在对应上游能力与契约决策落地前保持只读说明。</span>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">仅局域网 / 禁用中继回退 <span class="pill">上游未支持</span></div>
+            <div class="s-row-desc">当前固定版本 Tailcat v0.7.0 未暴露物理路径排除或无 DERP 启动策略 API。</div>
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">自定义 DERP 区域与连通性探测 <span class="pill">待契约决策</span></div>
+            <div class="s-row-desc">更改已固定区域会影响对端传输地址，需先明确重授权策略与独立探测操作边界。</div>
+          </div>
+        </div>
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">中继认证凭据与拥塞控制 <span class="pill">上游未支持</span></div>
+            <div class="s-row-desc">WireGuard/netstack 隧道未提供应用层中继认证钩子或拥塞控制算法切换接口。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderUnavailable(kind) {
+  const isSC = kind === 'shortcuts';
+  return `
+    <div class="unavail">
+      <div class="unavail-ic">${isSC ? IC.keyboard : IC.shield}</div>
+      <div style="font-weight:600;font-size:14px">${isSC ? '自定义快捷键编辑尚未启用' : '安全设置正在规划 v2 模型'}</div>
+      <div style="font-size:12.5px;color:var(--text-secondary);max-width:400px;line-height:1.55">
+        ${isSC
+          ? '自由按键录制与核心面板命令改键涉及公共契约决策（E1/E2）。当前的全局快捷面板快捷键与辅助功能权限状态位于「快捷面板」。'
+          : 'v2 采用全新设备指纹核对与信任模型，旧版口令自动解锁流程已移除。'}
+      </div>
+      ${isSC ? `<div style="margin-top:8px"><button class="btn sm primary" onclick="goTab('quickPanel')">前往快捷面板设置</button></div>` : ''}
+    </div>
+  `;
+}
+
+/* ---------------- Main Window Render ---------------- */
+
+function render() {
+  applyTheme();
+
+  // Sync top toolbar chips
+  document.querySelectorAll('[data-preset]').forEach(b => b.classList.toggle('on', b.dataset.preset === S.preset));
+  document.querySelectorAll('[data-ia]').forEach(b => b.classList.toggle('on', b.dataset.ia === S.ia));
+  document.querySelectorAll('[data-cm]').forEach(b => b.classList.toggle('on', b.dataset.cm === S.config.colorMode));
+  document.querySelectorAll('[data-vp]').forEach(b => b.classList.toggle('on', b.dataset.vp === S.viewport));
+
+  const win = document.getElementById('appWin');
+  win.className = 'app-window' + (S.viewport === 'compact' ? ' compact' : '') + (S.sbHidden ? ' sb-hidden' : '');
+
+  const sections = getNavSections();
+  let pageHTML = '';
+  switch (S.tab) {
+    case 'general': pageHTML = renderGeneral(); break;
+    case 'appearance': pageHTML = renderAppearance(); break;
+    case 'diagnostics': pageHTML = renderDiagnosticsSections(); break;
+    case 'storage': pageHTML = renderStorage(); break;
+    case 'quickPanel': pageHTML = renderQuickPanel(); break;
+    case 'sync': pageHTML = renderSync(); break;
+    case 'plugins': pageHTML = renderPlugins(); break;
+    case 'about': pageHTML = renderAbout(); break;
+    case 'network': pageHTML = renderNetworkTruthful(); break;
+    default: pageHTML = renderUnavailable(S.tab); break;
+  }
+
+  const needsRestart = S.config.systemWindowFrame !== S.config.initialWindowFrame;
+
+  win.innerHTML = `
+    <div class="sb-scrim" onclick="S.sbHidden=true;render()"></div>
+    <aside class="sidebar">
+      <div class="sb-top">
+        <div class="lights"><i></i><i></i><i></i></div>
+        <button class="btn icon-only sm subtle" title="收起侧栏" onclick="S.sbHidden=!S.sbHidden;render()">${IC.sidebar}</button>
+      </div>
+      <div class="sb-scroll">
+        ${sections.map(sec => `
+          ${sec.title ? `<div class="sb-sec-lbl">${sec.title}</div>` : ''}
+          ${sec.items.map(it => `
+            <button class="nav-item ${S.tab===it.id?'on':''}" onclick="goTab('${it.id}')">
+              <span class="nav-ic">${IC[it.icon]}</span>
+              <span class="nav-lbl">${it.label}</span>
+              ${it.dot ? `<span class="nav-dot ${it.dot}"></span>` : ''}
+              ${it.tag ? `<span class="nav-tag">${it.tag}</span>` : ''}
+            </button>
+          `).join('')}
+        `).join('')}
+      </div>
+      <div class="sb-foot">
+        <button class="nav-item" onclick="showToast('返回剪贴板历史（Esc）')">
+          <span class="nav-ic">${IC.back}</span>
+          <span class="nav-lbl">返回历史</span>
+          <span class="nav-kbd">Esc</span>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main-pane">
+      <header class="pane-header">
+        ${S.viewport === 'compact' ? `<button class="btn icon-only sm subtle" onclick="S.sbHidden=!S.sbHidden;render()">${IC.sidebar}</button>` : ''}
+        <h1 class="pane-title">${pageTitle(S.tab)}</h1>
+        <div class="pane-sp"></div>
+        ${S.tab === 'diagnostics' || S.tab === 'storage' || S.tab === 'appearance' || S.tab === 'quickPanel'
+          ? '<span class="pane-sub-pill">本分支重点改动</span>' : ''}
+      </header>
+      <div class="pane-scroll">
+        <div class="settings-col">
+          ${pageHTML}
+          ${needsRestart ? `
+            <div class="notice warn">
+              <span class="notice-ic">${IC.warn}</span>
+              <div class="notice-body">部分设置（使用系统边框）将在关闭并重新打开主窗口后生效。</div>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    </main>
+
+    ${renderDialogs()}
+    <div class="toast ${S.toast?'show':''}" id="toastEl">${esc(S.toast)}</div>
+  `;
+
+  renderReviewDrawer();
+}
+
+function renderDialogs() {
+  if (S.backup.confirmOpen && S.backup.preview) {
+    const n = S.backup.preview.changes.length;
+    return `
+      <div class="modal-scrim">
+        <div class="modal">
+          <h3>导入配置？</h3>
+          <p>导入将替换预览中的 ${n} 项可移动设置。本机设备身份、凭据、插件配置与快捷键绑定保持不变。部分设置需要重启。</p>
+          <div class="modal-actions">
+            <button class="btn" onclick="S.backup.confirmOpen=false;render()">取消</button>
+            <button class="btn danger" onclick="confirmImport()">确认导入</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  if (S.about.alphaDialog) {
+    return `
+      <div class="modal-scrim">
+        <div class="modal">
+          <h3>切换到内测版？</h3>
+          <p>内测版可能包含未充分验证的功能和回归问题。切换后会立即检查内测版更新。</p>
+          <div class="modal-actions">
+            <button class="btn" onclick="S.about.alphaDialog=false;render()">取消</button>
+            <button class="btn primary" onclick="S.about.alphaDialog=false;S.config.updateChannel='alpha';S.about.notice='已切换到内测版并开始检查更新。';showToast('已切换至内测版');render()">继续切换</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  if (S.about.manualDialog) {
+    return `
+      <div class="modal-scrim">
+        <div class="modal">
+          <h3>请通过系统包管理器升级</h3>
+          <p>你当前通过 Homebrew 安装了 UniClipboard，请在终端执行以下命令升级：</p>
+          <div class="cmd-box">
+            <span style="flex:1">brew upgrade --cask uniclipboard</span>
+            <button class="btn sm subtle" onclick="S.about.copiedCmd=true;showToast('命令已复制');render()">${S.about.copiedCmd?'已复制':'复制命令'}</button>
+          </div>
+          <div class="modal-actions">
+            <button class="btn" onclick="S.about.manualDialog=false;showToast('已在浏览器打开发布页');render()">打开发布页</button>
+            <button class="btn primary" onclick="S.about.manualDialog=false;render()">知道了</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  return '';
+}
+
+function renderReviewDrawer() {
+  const root = document.getElementById('reviewRoot');
+  if (!S.reviewOpen) { root.innerHTML = ''; return; }
+  root.innerHTML = `
+    <div class="review-backdrop" onclick="if(event.target===this){S.reviewOpen=false;render()}">
+      <div class="review-drawer">
+        <div class="review-head">
+          <h3>设计改动对比与审核要点</h3>
+          <button class="btn sm subtle" onclick="S.reviewOpen=false;render()">关闭</button>
+        </div>
+        <div class="review-body">
+          <div class="rv-card">
+            <h4>1. 信息架构（侧栏结构）</h4>
+            <ul>
+              <li><b>现状问题</b>：诊断日志与遥测 4 个分组全部堆在「通用」底部（滚屏 2 页以上）；「外观」只有 1 个下拉框；侧栏有 3 个进入即提示「暂不可用」的死胡同。</li>
+              <li><b>重设计方案</b>：推荐 8 项分组侧栏——独立出<b>「诊断与隐私」</b>，将「托盘图标 / 系统边框」归入<b>「外观」</b>，移除暂无能力的占位项（也可切换顶部「现状 10 项」查看网络只读能力页）。</li>
+            </ul>
+          </div>
+          <div class="rv-card">
+            <h4>2. 诊断与隐私（Group A）</h4>
+            <ul>
+              <li><b>现状问题</b>：4 个全宽大按钮（临时开启/恢复）无内边距贴边堆叠；4 个开关行与 4 个 <code>disabled · 0</code> 状态行重复占高；导出/打开/刷新 3 个全宽大按钮垂直堆叠。</li>
+              <li><b>重设计方案</b>：每个遥测信号将<b>开关 + 运行状态/丢弃数胶囊</b>合并为 1 行；日志等级精简为 2 行，右侧按需展示「临时调试 15m」或「恢复默认」紧凑按钮，开启后行内显示倒计时胶囊；诊断文件采用标准右对齐操作行，刷新放至分组标题栏。</li>
+            </ul>
+          </div>
+          <div class="rv-card">
+            <h4>3. 存储与配置备份（Group B + G）</h4>
+            <ul>
+              <li><b>现状问题</b>：说明文案无内边距紧贴卡片顶边；4 个用量数字拆成 4 个大行 + 底部全宽刷新条；历史保留标签用 6 个无内边距带分割线的裸复选框；配置备份 2 个全宽大按钮。</li>
+              <li><b>重设计方案</b>：顶部配额进度条 + BoardUI 4 列 <code>FactList</code> 指标卡，范围说明移至卡片底部标准脚注；历史保留标签改为紧凑彩色 <b>Tag Pill 多选胶囊</b>；配置备份提供「包含/排除范围」折叠详情，导入预览以清晰的「当前值 → 备份值」对比表格 + 修订冲突护栏 + <code>AlertDialog</code> 二次确认呈现。</li>
+            </ul>
+          </div>
+          <div class="rv-card">
+            <h4>4. 外观（Group D）</h4>
+            <ul>
+              <li><b>现状问题</b>：整页仅有一个孤立的「颜色模式」下拉选择框。</li>
+              <li><b>重设计方案</b>：升级为 <b>3 张可视化迷你窗口主题卡片</b>（跟随系统 / 浅色 / 深色），所见即所得并即时切换全窗口配色；配合托盘图标可视化分段器。</li>
+            </ul>
+          </div>
+          <div class="rv-card">
+            <h4>5. 快捷面板与权限（Group E）</h4>
+            <ul>
+              <li><b>现状问题</b>：分组标题与行标签均叫「辅助功能权限状态」完全重复；刷新/打开设置按钮无内边距紧贴左边框；底部「打开快捷面板」拉伸成 800px 宽巨型条。</li>
+              <li><b>重设计方案</b>：分组改为「系统权限」+ 语义色状态胶囊（绿/琥珀/中性）+ 标准带底色内边距底部操作条；全局快捷键注册状态升级为语义胶囊 + 行内冲突重试；「打开快捷面板」收束为标准右对齐设置行按钮。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------------- Actions ---------------- */
+
+function goTab(id) {
+  S.tab = id;
+  if (S.viewport === 'compact') S.sbHidden = true;
+  render();
+}
+function setCfg(key, val, msg) {
+  S.config[key] = val;
+  if (msg) showToast(msg);
+  render();
+}
+function toggleCfg(key, msg) {
+  S.config[key] = !S.config[key];
+  if (msg) showToast(msg);
+  render();
+}
+function toggleLogin() {
+  S.config.launchAtLogin = !S.config.launchAtLogin;
+  S.config.loginApplied = S.config.launchAtLogin;
+  showToast(S.config.launchAtLogin ? '已开启登录时启动' : '已关闭登录时启动');
+  render();
+}
+function setColorMode(mode) {
+  S.config.colorMode = mode;
+  applyTheme();
+  const names = { system: '跟随系统', light: '浅色', dark: '深色' };
+  showToast(`颜色模式已切换为「${names[mode]}」（实时同步全角色）`);
+  render();
+}
+function toggleDiagService() {
+  S.diag.loaded = !S.diag.loaded;
+  S.diag.err = '';
+  S.diag.notice = S.diag.loaded ? '' : '';
+  showToast(S.diag.loaded ? '诊断服务已恢复连接' : '已模拟诊断服务不可用');
+  render();
+}
+function refreshDiag() {
+  S.diag.lastRefresh = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  showToast('已刷新诊断状态');
+  render();
+}
+function setDebugOverride(target, reset) {
+  if (target === 'local') {
+    S.diag.localOverrideSec = reset ? 0 : 900;
+    showToast(reset ? '已恢复本机保存日志等级' : '已临时开启本机调试日志（15 分钟）');
+  } else {
+    S.diag.remoteOverrideSec = reset ? 0 : 900;
+    showToast(reset ? '已恢复上传保存日志等级' : '已临时开启上传调试日志（15 分钟）');
+  }
+  render();
+}
+function simulateLogExport() {
+  const ts = new Date().toISOString().replace(/[-:T]/g,'').slice(0,15);
+  S.diag.err = '';
+  S.diag.notice = `日志已导出：~/Downloads/unic-logs-${ts}.tar.gz`;
+  showToast('诊断日志已导出（已脱敏，不含凭据与剪贴板历史）');
+  render();
+}
+function refreshStorage() {
+  S.storage.loading = true;
+  render();
+  setTimeout(() => {
+    S.storage.loading = false;
+    S.storage.err = '';
+    showToast('已刷新缓存用量');
+    render();
+  }, 420);
+}
+function toggleStorageError() {
+  S.storage.err = S.storage.err ? '' : '无法刷新缓存用量。下方显示上次成功读取的用量。';
+  render();
+}
+function toggleTag(id) {
+  const arr = S.config.excludedTags;
+  const idx = arr.indexOf(id);
+  if (idx >= 0) arr.splice(idx, 1); else arr.push(id);
+  showToast('历史保留标签已更新');
+  render();
+}
+function simulateBackupExport() {
+  const ts = new Date().toISOString().replace(/[-:T]/g,'').slice(0,15);
+  S.backup.err = '';
+  S.backup.notice = `配置已导出：~/Downloads/unic-preferences-${ts}.json（26 项可移动偏好）`;
+  showToast('配置备份已导出');
+  render();
+}
+function openSampleBackup(kind) {
+  S.backup.notice = '';
+  S.backup.err = '';
+  if (kind === 'invalid') {
+    S.backup.preview = null;
+    S.backup.err = '无法导入此配置备份。请检查格式、版本和设置值（拒绝未知字段或缺失字段）。';
+    render();
+    return;
+  }
+  S.backup.preview = {
+    filename: 'unic-preferences-20261122.json',
+    changes: BACKUP_SAMPLE_DIFF.map(x => ({ ...x })),
+    conflict: false,
+  };
+  render();
+}
+function confirmImport() {
+  S.config.colorMode = 'dark';
+  S.config.systemWindowFrame = true;
+  S.config.loggingLevel = 'warn';
+  S.config.retentionDays = 90;
+  S.config.cacheQuotaMB = 1024;
+  S.backup.confirmOpen = false;
+  S.backup.preview = null;
+  S.backup.notice = '配置已导入（5 项已更新）。请检查需要重启的设置。';
+  applyTheme();
+  showToast('配置导入成功，已实时应用深色外观与新配额');
+  render();
+}
+function changeShortcut(v) {
+  S.config.quickPanelShortcut = v;
+  S.qp.effectiveShortcut = v;
+  S.qp.shortcutConflict = '';
+  showToast(v ? `全局快捷键已更新为 ${v}` : '已关闭全局快捷键');
+  render();
+}
+function cyclePermStatus() {
+  const order = ['granted', 'denied', 'unknown', 'unsupported'];
+  S.qp.permStatus = order[(order.indexOf(S.qp.permStatus) + 1) % order.length];
+  S.qp.permNotice = '';
+  render();
+}
+function refreshPerm() {
+  S.qp.permLoading = true;
+  S.qp.permNotice = '';
+  render();
+  setTimeout(() => {
+    S.qp.permLoading = false;
+    showToast('已读取最新系统权限状态');
+    render();
+  }, 380);
+}
+function openPermSettings() {
+  S.qp.permNotice = '已请求打开系统设置。请完成授权后点击「刷新状态」。';
+  showToast('已请求打开 macOS 辅助功能设置');
+  render();
+}
+function checkUpdates() {
+  if (S.about.owner !== 'direct') {
+    S.about.copiedCmd = false;
+    S.about.manualDialog = true;
+  } else {
+    S.about.notice = '当前已是最新版本。';
+    showToast('检查完成：当前已是最新版本');
+  }
+  render();
+}
+function selectChannel(v) {
+  if (v === 'alpha') {
+    S.about.alphaDialog = true;
+    render();
+  } else {
+    S.config.updateChannel = 'stable';
+    S.about.notice = '';
+    showToast('已切换至稳定版渠道');
+    render();
+  }
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+}
+
+/* ---------------- Bind Top Toolbar ---------------- */
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
+document.querySelectorAll('[data-ia]').forEach(b => b.addEventListener('click', () => {
+  S.ia = b.dataset.ia;
+  if (S.ia === 'legacy' && S.tab === 'diagnostics') S.tab = 'general';
+  if (S.ia === 'recommended' && ['shortcuts','security','network'].includes(S.tab)) S.tab = 'general';
+  render();
+}));
+document.querySelectorAll('[data-cm]').forEach(b => b.addEventListener('click', () => setColorMode(b.dataset.cm)));
+document.querySelectorAll('[data-vp]').forEach(b => b.addEventListener('click', () => {
+  S.viewport = b.dataset.vp;
+  S.sbHidden = S.viewport === 'compact';
+  render();
+}));
+document.getElementById('openReviewBtn').addEventListener('click', () => { S.reviewOpen = true; render(); });
+
+// Support URL query params for direct review deep links (?preset=...&tab=...&theme=...&ia=...)
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (q.get('ia') === 'legacy' || q.get('ia') === 'recommended') S.ia = q.get('ia');
+  if (q.get('preset')) applyPreset(q.get('preset'));
+  if (q.get('tab')) S.tab = q.get('tab');
+  if (q.get('theme') && ['system','light','dark'].includes(q.get('theme'))) S.config.colorMode = q.get('theme');
+  if (q.get('scroll') === 'bottom') {
+    render();
+    const sc = document.querySelector('.pane-scroll');
+    if (sc) sc.scrollTop = sc.scrollHeight;
+    return;
+  }
+  render();
+})();
+</script>
+</body>
+</html>

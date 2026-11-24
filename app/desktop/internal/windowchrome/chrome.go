@@ -54,9 +54,32 @@ func NativeView(c *ui.Context, body func()) {
 func Controls(c *ui.Context, actions Actions, language string) {
 	k := desktopkit.For(c.Theme().Dark)
 	tr := func(s string) string { return i18n.Translate(language, s) }
-	ui.Row(c.Key("window-controls")).Gap(0).Shrink(0).AlignItems(ui.Center).Children(func() {
+	ui.Row(c.Key("window-controls")).Gap(2).Shrink(0).AlignItems(ui.Center).Children(func() {
 		button := func(id, label string, icon desktopkit.IconName, action func()) ui.Element {
-			b := k.Button(c.Key(id), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Size: desktopkit.SizeSmall, Label: tr(label), Tooltip: tr(label), Icon: icon}).Width(46).Height(32).Shrink(0)
+			name := tr(label)
+			b := ui.ButtonBase(c.Key(id)).Size(42, 32).Shrink(0).Radius(5).
+				AlignItems(ui.Center).Justify(ui.Center).Label(name).Tooltip(name).
+				FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(0)
+			ink := k.Color("foreground-icon-secondary")
+			pressed := b.Pressed() || (b.Focused() && c.KeyDown(ui.KeySpace))
+			if pressed || b.Hovered() {
+				ink = k.Color("foreground-icon-primary")
+				fill := ink.Alpha(.08)
+				if pressed {
+					fill = ink.Alpha(.14)
+				}
+				if id == "close" {
+					ink = k.Color("text-on-danger")
+					fill = k.Color("gradient-button-danger-default-to")
+					if pressed {
+						fill = k.Color("gradient-button-danger-active-to")
+					}
+				}
+				b.Background(fill)
+			}
+			b.Children(func() {
+				k.Icon(c.Key("glyph"), icon, 14).TextColor(ink)
+			})
 			if b.Clicked() && action != nil {
 				action()
 			}

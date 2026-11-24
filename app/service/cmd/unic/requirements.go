@@ -56,11 +56,14 @@ var catalog = []leaf{
 	{Name: "status", Requirement: reqService, Completion: doneResponse},
 	{Name: "config", Requirement: reqService, Completion: doneResponse},
 
+	{Name: "channel pair", Requirement: reqService, Completion: doneResponse},
 	{Name: "device add", Requirement: reqService, Completion: doneSession},
 	{Name: "device addr", Requirement: reqService, Completion: doneResponse},
 	{Name: "device path", Requirement: reqService, Completion: doneResponse},
 	{Name: "device backends", Requirement: reqService, Completion: doneResponse},
 	{Name: "device list", Requirement: reqService, Completion: doneResponse},
+	{Name: "device channel-add", Requirement: reqService, Completion: doneResponse},
+	{Name: "device channel", Requirement: reqService, Completion: doneResponse},
 	{Name: "device remove", Requirement: reqService, Completion: doneResponse},
 	{Name: "device approve", Requirement: reqService, Completion: doneResponse},
 	{Name: "device reject", Requirement: reqService, Completion: doneResponse},
@@ -94,8 +97,9 @@ var firstWord = map[string]string{"s": "send", "r": "recv", "h": "history", "-h"
 
 // groupUsage is printed when a group has no valid subcommand.
 var groupUsage = map[string]string{
-	"device": "usage: unic device add [CODE|ADDRESS] | addr | list | remove ID | approve ID FINGERPRINT | reject ID | suggestions | suggest-pair ID BACKEND | suggest-ignore ID | suggest-restore ID",
-	"dev":    "usage: unic dev submission ID | capabilities | watch | logs level|export|help | diagnostics telemetry | cache [--json] | copy [TEXT] | paste",
+	"channel": "usage: unic channel pair INSTANCE [--resume]",
+	"device":  "usage: unic device add [CODE|ADDRESS] | addr | list | remove ID | channel-add INSTANCE NAME | channel pause|resume|remove ID REVISION | approve ID FINGERPRINT | reject ID | suggestions | suggest-pair ID BACKEND | suggest-ignore ID | suggest-restore ID",
+	"dev":     "usage: unic dev submission ID | capabilities | watch | logs level|export|help | diagnostics telemetry | cache [--json] | copy [TEXT] | paste",
 }
 
 // classify resolves a command line to its declaration before any service is touched.
@@ -126,7 +130,7 @@ func classify(cmd string, args []string) (leaf, []string, error) {
 			return leaf{}, nil, fmt.Errorf("%s", strings.TrimRight(historyUsage, "\n"))
 		}
 		return leaf{}, nil, fmt.Errorf("unknown history command %q\n%s", args[0], strings.TrimRight(historyUsage, "\n"))
-	case "device", "dev":
+	case "channel", "device", "dev":
 		return leaf{}, nil, fmt.Errorf("%s", groupUsage[cmd])
 	case "submission", "capabilities", "watch", "logs", "diagnostics", "cache", "copy", "paste":
 		return leaf{}, nil, fmt.Errorf("%q is a development command: run `unic dev %s`", cmd, cmd)
@@ -186,6 +190,7 @@ var helpLines = []helpLine{
 	{"device approve <id> <fp>", "accept a waiting device", []string{"device approve"}},
 	{"device reject <id>", "dismiss a waiting device", []string{"device reject"}},
 	{"device suggestions", "devices vouched for by your devices (suggest-pair|suggest-ignore|suggest-restore)", []string{"device suggestions", "device suggest-pair", "device suggest-ignore", "device suggest-restore"}},
+	{"channel pair INSTANCE", "pair an external clipboard channel", []string{"channel pair"}},
 	{"status", "show this device and its peers", []string{"status"}},
 	{"config [path]", "show settings; set <key> <value>; apply <file>", []string{"config"}},
 	{"plugin", "install, list and manage plugins", []string{"plugin"}},

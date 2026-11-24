@@ -4,15 +4,20 @@ go 1.27.3
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/creack/pty v1.1.24
 	github.com/disintegration/imaging v1.6.2
 	github.com/ebitengine/purego v0.11.1
 	github.com/egoist/mygo v0.8.4-0.20261108082913-9233663736ca
 	github.com/fsnotify/fsnotify v1.9.0
-	github.com/jezek/xgb v1.3.1
 	github.com/godbus/dbus/v5 v5.2.2
+	github.com/jezek/xgb v1.3.1
 	github.com/klauspost/compress v1.19.1
 	github.com/posthog/posthog-go v1.42.0
 	github.com/rogpeppe/go-internal v1.14.1
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+	github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55
+	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc
 	github.com/tailscale/tailcat v0.7.0
 	github.com/zeebo/blake3 v0.2.4
 	go.opentelemetry.io/contrib/bridges/otelslog v0.21.0
@@ -21,14 +26,15 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.47.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.47.0
-	go.opentelemetry.io/otel/trace v1.47.0
 	go.opentelemetry.io/otel/metric v1.47.0
 	go.opentelemetry.io/otel/sdk v1.47.0
 	go.opentelemetry.io/otel/sdk/log v1.47.0
 	go.opentelemetry.io/otel/sdk/metric v1.47.0
+	go.opentelemetry.io/otel/trace v1.47.0
 	go.opentelemetry.io/proto/otlp v1.11.0
 	golang.org/x/crypto v0.58.0
 	golang.org/x/image v0.46.0
+	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.47.0
 	golang.org/x/text v0.43.0
@@ -46,9 +52,7 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/charmbracelet/bubbles v1.0.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
-	github.com/charmbracelet/lipgloss v1.1.0 // indirect
 	github.com/charmbracelet/x/ansi v0.11.6 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
@@ -57,7 +61,6 @@ require (
 	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/creachadair/msync v0.8.1 // indirect
-	github.com/creack/pty v1.1.24 // indirect
 	github.com/dblohm7/wingoes v0.0.0-20240119213807-a09d6be7affa // indirect
 	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
@@ -94,9 +97,7 @@ require (
 	github.com/safchain/ethtool v0.3.0 // indirect
 	github.com/tailscale/certstore v0.1.1-0.20260409135935-3638fb84b77d // indirect
 	github.com/tailscale/gliderssh v0.3.4-0.20260716005906-1a0f895faf28 // indirect
-	github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55 // indirect
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd // indirect
-	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976 // indirect
 	github.com/tailscale/wireguard-go v0.0.0-20260911194433-e3222a3340cd // indirect
 	github.com/u-root/u-root v0.14.0 // indirect
@@ -107,7 +108,6 @@ require (
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
-	golang.org/x/net v0.61.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.52.0 // indirect

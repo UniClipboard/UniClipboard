@@ -1,0 +1,41 @@
+# Case: Save and filter favorites in the native desktop
+# Mode: native
+# Purpose: Verify persistent favorites, chronological history and the hidden reserved tag using production history.
+# Steps: Submit two text entries. Favorite the older entry and select Favorites. Restart and inspect Favorites and the tag manager. Remove the favorite.
+# Expected: Both entries appear in All Items with the original newer entry first. Favorites shows only the older entry before and after restart. The tag manager omits the reserved tag. Removing the favorite empties Favorites and leaves both entries in All Items.
+# Forbidden: Demo rows, system clipboard writes, missing screenshots or missing continuous recording.
+
+start
+submit favorite '收藏验证：保留这条记录'
+submit ordinary '普通记录：仍在全部项目中'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-wait listItem '普通记录：仍在全部项目中'
+ui-click listItem '收藏验证：保留这条记录'
+ui-enabled button '切换收藏'
+ui-click button '切换收藏'
+ui-click listItem '已收藏'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-absent listItem '普通记录：仍在全部项目中'
+screenshot favorites-filter
+ui-click listItem '全部项目'
+ui-wait listItem '普通记录：仍在全部项目中'
+ui-wait listItem '收藏验证：保留这条记录'
+screenshot all-items-after-favoriting
+restart-desktop
+ui-wait listItem '已收藏'
+ui-click listItem '已收藏'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-absent listItem '普通记录：仍在全部项目中'
+screenshot favorites-after-restart
+ui-click button '管理标签'
+ui-wait text '~系统类型.*'
+ui-absent text '#favorite'
+screenshot tag-manager
+ui-click button '完成'
+ui-enabled button '切换收藏'
+ui-click button '切换收藏'
+ui-wait heading '还没有收藏的内容'
+screenshot favorite-removed
+ui-click listItem '全部项目'
+ui-wait listItem '收藏验证：保留这条记录'
+ui-wait listItem '普通记录：仍在全部项目中'

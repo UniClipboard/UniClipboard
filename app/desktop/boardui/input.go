@@ -31,7 +31,7 @@ func (k Kit) Input(c *ui.Context, value *string, p InputProps) ui.Element {
 			ui.Row(c.Key("label-row")).Gap(2).Children(func() {
 				label = k.Text(c.Key("label"), p.Label, "body-medium")
 				if p.Required {
-					k.Text(c.Key("required"), "*", "body-medium").TextColor(Token(k.Dark, "text-error-primary")).AccessHidden(true)
+					k.Text(c.Key("required"), "*", "body-medium").TextColor(k.Color("text-error-primary")).AccessHidden(true)
 				}
 			})
 		}
@@ -64,12 +64,12 @@ func (k Kit) Input(c *ui.Context, value *string, p InputProps) ui.Element {
 		if input.Focused() && p.Error == "" && !p.Disabled {
 			placeholder = "text-primary"
 		}
-		input.Background(Token(k.Dark, fill)).TextColor(Token(k.Dark, ink)).PlaceholderColor(Token(k.Dark, placeholder))
+		input.Background(k.Color(fill)).TextColor(k.Color(ink)).PlaceholderColor(k.Color(placeholder))
 		if p.Error == "" && !p.Disabled {
 			if input.Focused() {
-				input.InsetShadow(0, 0, 0, 2, Token(k.Dark, "border-button-active"))
+				input.InsetShadow(0, 0, 0, 2, k.Color("border-button-active"))
 			} else if input.Hovered() {
-				input.InsetShadow(0, 0, 0, 2, Token(k.Dark, "border-button-hover"))
+				input.InsetShadow(0, 0, 0, 2, k.Color("border-button-hover"))
 			}
 		}
 		description := p.Description
@@ -77,11 +77,11 @@ func (k Kit) Input(c *ui.Context, value *string, p InputProps) ui.Element {
 			input.Description("Required.")
 		}
 		if description != "" && p.Error == "" {
-			hint := k.Text(c.Key("description"), description, "caption-1-medium").Padding(Number("input-hint-padding-top"), 0, 0).TextColor(Token(k.Dark, "text-secondary"))
+			hint := k.Text(c.Key("description"), description, "caption-1-medium").Padding(Number("input-hint-padding-top"), 0, 0).TextColor(k.Color("text-secondary"))
 			input.DescribedBy(hint)
 		}
 		if p.Error != "" {
-			err := k.Text(c.Key("error"), p.Error, "caption-1-medium").Padding(Number("input-hint-padding-top"), 0, 0).TextColor(Token(k.Dark, "text-error-primary"))
+			err := k.Text(c.Key("error"), p.Error, "caption-1-medium").Padding(Number("input-hint-padding-top"), 0, 0).TextColor(k.Color("text-error-primary"))
 			input.ErrorMessage(err)
 		}
 	})

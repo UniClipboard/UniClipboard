@@ -1,0 +1,109 @@
+---
+title: Migrating from v1 to v2
+description: Import local history from UniClipboard v1 into v2 using unic migrate or desktop first-install setup.
+---
+
+UniClipboard v2 is a brand-new implementation. It **cannot sync with v1** and cannot directly use v1 databases, settings, or device identities. Migration only imports local history offline into v2.
+
+## What Is Migrated
+
+| Content | Migrated |
+|---|---|
+| Text, HTML | Yes |
+| Images | Yes; JPEG/TIFF/WebP are converted to PNG |
+| Files | Yes; copied as v2-managed copies; folders preserve directory structure as ZIP archives |
+| Tags and tag colors | Yes; built-in link/image/folder/code tags are mapped to their v2 equivalents |
+| Creation time and ordering | Yes |
+| Favorites | No; listed in the report |
+| Settings, device identity, trust relationships, network settings | No |
+
+Migration does not modify v1 data. Missing or corrupted items are counted as partial migration in the report.
+
+## Before Migrating
+
+1. **Back up your v1 data** and keep the backup until you have verified the v2 history.
+2. Quit v1 and stop any `unicd` using the target data directory (migration does not stop it for you).
+3. After all devices are upgraded to v2, [pair them again](../core-features/devices).
+
+## Using the Desktop App
+
+On a fresh install, launching the v2 desktop app opens the setup wizard, which offers optional v1 history import using the same migration flow as the CLI.
+
+## Using the CLI
+
+<Steps>
+<Step>
+
+### Dry run (does not write to target)
+
+```bash
+unic migrate --dry-run --json
+```
+
+</Step>
+<Step>
+
+### Import and verify
+
+```bash
+unic migrate --json
+```
+
+During import, the system will request credential access; if reading credentials fails, you will be prompted for your v1 passphrase (input is hidden).
+
+</Step>
+<Step>
+
+### Check the report
+
+After verifying the report and v2 history, start `unicd`.
+
+</Step>
+</Steps>
+
+The default source is the local v1 desktop data directory (macOS `~/Library/Application Support/app.uniclipboard.desktop`, Windows `%LOCALAPPDATA%\app.uniclipboard.desktop`, Linux `~/.local/share/app.uniclipboard.desktop`); the default target is `UNIC_HOME` or the standard unic data directory.
+
+### Options
+
+| Option | Description |
+|---|---|
+| `--source DIR` | v1 data directory; required for custom or portable v1 installations |
+| `--target DIR` | v2 data directory |
+| `--service NAME` | Legacy credential service name, defaults to `UniClipboard`; named profiles use `UniClipboard-<profile>` |
+| `--dry-run` | Read and verify only without modifying the target |
+| `--json` | Output JSON progress and final report |
+| `--passphrase-stdin` | Read one line of the legacy passphrase from stdin for automation |
+| `--initialize-empty` | Explicitly initialize when no v1 data exists on this machine; can only be used with `--target` and `--json` |
+
+<Callout type="error">
+Never pass the passphrase in command-line arguments or environment variables. Use `--passphrase-stdin` for automation.
+</Callout>
+
+### When There Is No v1 Data
+
+Each CLI data directory must complete migration initialization before first use; otherwise, regular commands exit with code 6 (`migration_required`). If this machine has never used v1:
+
+```bash
+unic migrate --initialize-empty --json
+```
+
+It checks known v1 locations and refuses to run if v1 data or an incomplete import is found. This is not a "skip" flag; for v1 data in a custom location, import it with `--source DIR`.
+
+## Results and Retries
+
+| Exit Code | Status |
+|---|---|
+| 0 | `ready` (dry run passed) or `complete` (import and verification finished) |
+| 3 | `partial` (some items missing or failed) |
+| 1 | `failed` or `cancelled` |
+
+- Dry runs, partial completions, failures, and cancellations **do not count as complete**; the data directory remains locked until a full import succeeds.
+- If interrupted, rerun the same command: already imported items are not duplicated, failed items are retried, and new items are added.
+- Each import automatically fills in missing tags and tag colors; items you edited or deleted in v2 are preserved and will not be overwritten or resurrected.
+- Check `tag_repairs_skipped`, `color_failures`, and `colors_missing` in the report and handle them manually in v2 if needed.
+- Migration progress and reports contain only counts and error categories—no payloads, paths, or filenames.
+- When the target is a v2 directory that already has history, migration appends and merges without replacing its identity or configuration.
+
+<Callout>
+Migration is primarily validated against newer v1 data formats; unknown formats fail explicitly rather than guessing.
+</Callout>

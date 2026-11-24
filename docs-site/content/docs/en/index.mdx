@@ -1,0 +1,36 @@
+---
+title: Welcome to UniClipboard
+description: Copy once, paste on every device. Cross-device clipboard sync with no account and no cloud.
+---
+
+UniClipboard (CLI `unic`) syncs your clipboard across your computers: copy on one device, paste directly on another.
+
+- **Cross-platform**: Syncs across Windows, macOS, and Linux, over local Wi-Fi or across networks, plus a CLI tool.
+- **No cloud**: Devices connect directly over encrypted links—no registration required, and history stays only on your own devices.
+- **Lightweight**: The background sync service `unicd` uses about 14 MB of memory when idle (measured on macOS Apple Silicon with an empty history).
+- **Rich content**: Text, images, files, and entire folders.
+
+<Callout type="warn">
+UniClipboard v2 has not published official installers yet; for now you can run it from source. See [Installation](./getting-started/install).
+</Callout>
+
+## Quick Links
+
+<Cards>
+  <Card title="Installation" href="./getting-started/install" description="Get the desktop app and CLI, and learn about release channels" />
+  <Card title="Quick Start" href="./getting-started/quick-start" description="Connect a second device and start syncing in three steps" />
+  <Card title="Sync" href="./core-features/sync" description="Supported content types and automatic sync rules" />
+  <Card title="Quick Transfer" href="./core-features/quick-transfer" description="Send content with a 6-digit code without pairing" />
+  <Card title="History & Search" href="./core-features/history-and-search" description="Find history by keyword, #tag, @device, or /type" />
+  <Card title="CLI" href="./cli/getting-started" description="Use unic in terminals, over SSH, or in scripts" />
+  <Card title="Plugins" href="./plugins/marketplace" description="Install plugins in one click from Settings" />
+  <Card title="Migrate from v1" href="./migration/v1-to-v2" description="Import local v1 history and re-pair devices" />
+</Cards>
+
+## Privacy Summary
+
+- End-to-end encrypted between devices; UniClipboard runs no servers that store your clipboard content.
+- Every new device requires you to verify its fingerprint and approve it; removed devices lose access immediately.
+- Clipboard content, file paths, and device addresses are never written to logs.
+
+For more details, see [Privacy & Security](./core-features/privacy-and-security).

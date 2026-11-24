@@ -85,7 +85,7 @@ func (q *quickLive) poll(p *quickPanelState) {
 			if text == "" {
 				text = v.preview
 			}
-			p.entries = append(p.entries, qpEntry{highlights: v.highlights, id: v.id, title: d.entryTitle(v), text: text, kind: kind, source: d.sourceName(v.source), age: d.displayDate(v.date), tags: slices.Clone(v.tags), lost: v.contentError != ""})
+			p.entries = append(p.entries, qpEntry{highlights: v.highlights, id: v.id, title: d.entryTitle(v), text: text, kind: kind, source: d.sourceName(v.source), age: d.displayDate(v.date), tags: slices.Clone(v.tags), favorite: v.pinned, lost: v.contentError != ""})
 		}
 		p.rows = slices.Clone(p.entries)
 		p.selected = 0
@@ -100,9 +100,6 @@ func (q *quickLive) poll(p *quickPanelState) {
 			p.schedulePreview()
 		}
 		p.update()
-	}
-	if l.readError != "" {
-		p.message = l.readError
 	}
 
 	if p.queryDue.IsZero() && !l.loading && !time.Now().Before(l.pageRetry) && l.cursor != "" && (p.selected >= len(p.rows)-8 || p.hovered >= len(p.rows)-8) {
@@ -186,8 +183,8 @@ func (p *quickPanelState) liveAction(id string) {
 		p.restore(false, false, false)
 	case "delete":
 		d.deleteLiveEntries([]string{e.id})
-	default:
-		p.message = "此操作暂不可用。"
+	case "favorite":
+		d.toggleFavorites([]string{e.id})
 	}
 	p.menu = ""
 	p.update()

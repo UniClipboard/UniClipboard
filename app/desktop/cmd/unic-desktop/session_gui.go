@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -40,10 +41,15 @@ type desktopSession struct {
 	workers           sync.WaitGroup
 }
 
+const (
+	setupWindowWidth  = 780
+	setupWindowHeight = 540
+)
+
 func (s *desktopSession) showSetup(migrationOnly bool) {
 	s.setup = setupui.New(s.flow, s.settings.Current().Desktop.Language, migrationOnly, s.start)
 	s.g.win.SetMinimumSize(600, 480)
-	s.g.win.SetContentSize(640, 560)
+	resizeContentCentered(s.g.win, setupWindowWidth, setupWindowHeight)
 	s.g.win.Show()
 	s.g.win.Focus()
 	s.g.win.Invalidate()
@@ -51,7 +57,7 @@ func (s *desktopSession) showSetup(migrationOnly bool) {
 func (s *desktopSession) view(c *ui.Context) {
 	c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
 	if s.setup != nil {
-		s.setup.View(c)
+		s.setup.View(c, s.windowControls)
 		return
 	}
 	if s.runtime != nil {
@@ -109,11 +115,16 @@ func (s *desktopSession) start() {
 			s.setup = nil
 			ctx, cancel := context.WithCancel(s.ctx)
 			screen := desktopui.NewDesktop(ctx, s.g.c)
+			bindStorageActions(screen, s.dir)
+			bindDesktopDiagnostics(screen, s.dir, func() string { return s.settings.Current().Desktop.Language })
+			bindBackupActions(screen, func() string { return s.settings.Current().Desktop.Language })
+			bindDesktopShortcutPermissions(screen)
 			screen.SetWindowToolbar(s.windowFrame, s.windowControls)
 			r := &desktopRuntime{screen: screen, cancel: cancel}
 			s.runtime = r
 			s.navigate(s.pendingAction)
 			screen.SetMigrationOpener(s.migrate)
+			screen.SetRestarter(s.restart)
 			screen.SetQuickPanelOpener(func(string) {
 				nativeAsync(func(ctx context.Context) error {
 					return desktopprocess.Call(ctx, s.dir, desktopprocess.Tray, "open-quick-panel", nil, nil)
@@ -174,7 +185,7 @@ func (s *desktopSession) start() {
 			})
 			go s.followHost(ctx)
 			s.g.win.SetMinimumSize(600, 480)
-			s.g.win.SetContentSize(desktopWindowWidth, desktopWindowHeight)
+			resizeContentCentered(s.g.win, desktopWindowWidth, desktopWindowHeight)
 			s.g.win.Invalidate()
 		})
 	}()
@@ -216,6 +227,29 @@ func (s *desktopSession) startFailed() {
 	}
 	s.g.win.Invalidate()
 }
+func (s *desktopSession) restart(restartService bool, done func(error)) {
+	if s.starting || s.runtime == nil {
+		if done != nil {
+			done(errors.New("desktop session is not ready to restart"))
+		}
+		return
+	}
+	command := "restart-gui"
+	if restartService {
+		command = "restart"
+	}
+	s.workers.Add(1)
+	go func() {
+		defer s.workers.Done()
+		ctx, cancel := context.WithTimeout(s.ctx, 12*time.Second)
+		defer cancel()
+		err := desktopprocess.Call(ctx, s.dir, desktopprocess.Tray, command, nil, nil)
+		if done != nil && s.ctx.Err() == nil {
+			done(err)
+		}
+	}()
+}
+
 func (s *desktopSession) migrate() {
 	if s.starting || s.runtime == nil {
 		return
@@ -278,4 +312,84 @@ func (s *desktopSession) navigate(action string) {
 		s.runtime.screen.OpenFromPanel(action)
 		s.pendingAction = ""
 	}
+}
+
+type resizableWindow interface {
+	IsMaximized() bool
+	IsFullScreen() bool
+	Bounds() mygo.Rectangle
+	ContentBounds() mygo.Rectangle
+	SetContentBounds(mygo.Rectangle)
+	SetContentSize(width, height int)
+}
+
+func resizeContentCentered(win *mygo.Window, width, height int) {
+	if win == nil {
+		return
+	}
+	resizeContentCenteredWith(win, width, height, displayWorkAreaFor)
+}
+
+func displayWorkAreaFor(outer mygo.Rectangle) mygo.Rectangle {
+	if outer.Width > 0 && outer.Height > 0 {
+		if wa := mygo.Screen.DisplayMatching(outer).WorkArea; wa.Width > 0 && wa.Height > 0 {
+			return wa
+		}
+	}
+	return mygo.Screen.PrimaryDisplay().WorkArea
+}
+
+func resizeContentCenteredWith(win resizableWindow, width, height int, workAreaFor func(mygo.Rectangle) mygo.Rectangle) {
+	if win == nil || win.IsMaximized() || win.IsFullScreen() {
+		return
+	}
+	content := win.ContentBounds()
+	if content.Width == width && content.Height == height {
+		return
+	}
+	if content.Width <= 0 || content.Height <= 0 {
+		win.SetContentSize(width, height)
+		return
+	}
+	outer := win.Bounds()
+	var workArea mygo.Rectangle
+	if workAreaFor != nil {
+		workArea = workAreaFor(outer)
+	}
+	win.SetContentBounds(centeredContentBounds(outer, content, width, height, workArea))
+}
+
+// centeredContentBounds computes target content bounds of size (width, height)
+// anchored on the window's current center, clamping the resulting outer frame
+// inside workArea when available.
+func centeredContentBounds(outer, content mygo.Rectangle, width, height int, workArea mygo.Rectangle) mygo.Rectangle {
+	insetLeft := content.X - outer.X
+	insetTop := content.Y - outer.Y
+	insetRight := (outer.X + outer.Width) - (content.X + content.Width)
+	insetBottom := (outer.Y + outer.Height) - (content.Y + content.Height)
+	if outer.Width <= 0 || outer.Height <= 0 || insetLeft < 0 || insetTop < 0 || insetRight < 0 || insetBottom < 0 {
+		insetLeft, insetTop, insetRight, insetBottom = 0, 0, 0, 0
+	}
+
+	target := mygo.Rectangle{
+		X:      content.X + (content.Width-width)/2,
+		Y:      content.Y + (content.Height-height)/2,
+		Width:  width,
+		Height: height,
+	}
+
+	if workArea.Width > 0 && workArea.Height > 0 {
+		targetOuter := mygo.Rectangle{
+			X:      target.X - insetLeft,
+			Y:      target.Y - insetTop,
+			Width:  width + insetLeft + insetRight,
+			Height: height + insetTop + insetBottom,
+		}
+		targetOuter.X = max(min(targetOuter.X, workArea.X+workArea.Width-targetOuter.Width), workArea.X)
+		targetOuter.Y = max(min(targetOuter.Y, workArea.Y+workArea.Height-targetOuter.Height), workArea.Y)
+		target.X = targetOuter.X + insetLeft
+		target.Y = targetOuter.Y + insetTop
+	}
+
+	return target
 }

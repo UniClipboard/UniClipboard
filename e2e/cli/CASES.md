@@ -15,7 +15,9 @@
 | [cold-start-send](#cold-start-send) | 冷启动 CLI 发送文本，等待本次发送完成后才停止临时服务 |
 | [content-formats](#content-formats) | HTML、PNG 和文件原样同步 |
 | [crash-and-suspend-recovery](#crash-and-suspend-recovery) | 对端崩溃或挂起后自动恢复 |
+| [custom-content-tags](#custom-content-tags) | Custom content tagging rules |
 | [data-dir-single-instance](#data-dir-single-instance) | 同一数据目录只允许一个 unicd，日志不泄露秘密 |
+| [default-content-tags](#default-content-tags) | Default full-text classification |
 | [directory-auto-responsive](#directory-auto-responsive) | Slow automatic directory preparation does not block a newer copy |
 | [directory-cli-export](#directory-cli-export) | Directory CLI export preserves trees and protects user outputs |
 | [directory-copy-and-send](#directory-copy-and-send) | Directory copy defers work and explicit send preserves a tree |
@@ -656,6 +658,91 @@ retry-copy alpha beta after-suspend
 
 </details>
 
+## custom-content-tags
+
+**Custom content tagging rules**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/custom-content-tags' -v`
+
+**目的**
+
+Verify regular expressions, local Lua, and stable built-in tag IDs through real services.
+
+
+**流程**
+
+1. Apply rules to one peer and verify the pending restart.
+2. Reject an invalid regular expression and verify the saved rules survive.
+3. Restart and send matching and nonmatching text between peers.
+
+**期望**
+
+- All matching rules contribute tags. Lua can add a label on receipt.
+- Links and email addresses use canonical built-in IDs.
+
+**不应**
+
+- Apply rules before restart or modify the clipboard content.
+- Save an invalid regex or create a second URL tag.
+
+<details><summary>脚本 testdata/custom-content-tags.txtar</summary>
+
+```
+node-start alpha
+node-start beta
+pair alpha beta
+u beta config apply $WORK/rules.toml
+u beta config --json
+stdout 'plugins.settings'
+cp beta/config.toml saved.toml
+! u beta config apply $WORK/invalid.toml
+stderr 'invalid regular expression'
+cmp beta/config.toml saved.toml
+u beta config --json
+stdout 'release-note'
+
+board-set alpha text before.txt
+board-wait beta text before.txt
+until beta 'builtin:link' h list -n 1 --json
+! stdout '"release-note"'
+! stdout '"url"'
+
+node-stop beta
+node-start beta
+until alpha 'online' device list
+until beta 'online' device list
+u beta config --json
+! stdout 'plugins.settings'
+u beta h list -n 1 --json
+! stdout '"issue"'
+board-set alpha text matching.txt
+board-wait beta text matching.txt
+until beta '"issue"' h list -n 1 --json
+u beta h list -n 1 --json
+stdout '"builtin:link"'
+stdout '"builtin:email"'
+stdout '"issue"'
+stdout '"release-note"'
+stdout '"from-lua"'
+! stdout '"url"'
+u alpha h list -n 1 --json
+! stdout '"issue"'
+! stdout '"release-note"'
+! stdout '"from-lua"'
+
+board-set alpha text plain.txt
+board-wait beta text plain.txt
+until beta '"total_bytes":25' h list -n 1 --json
+! stdout '"issue"'
+! stdout '"release-note"'
+! stdout '"from-lua"'
+
+board-set beta text local.txt
+until beta '"tags":\["builtin:text","issue"\]' h list -n 1 --json
+```
+
+</details>
+
 ## data-dir-single-instance
 
 **同一数据目录只允许一个 unicd，日志不泄露秘密**
@@ -704,6 +791,86 @@ board-wait beta text again.txt
 ! logs alpha unic-pair:
 ! logs beta unic-pair:
 logs alpha in_use
+```
+
+</details>
+
+## default-content-tags
+
+**Default full-text classification**
+
+运行：`UNIC_E2E=1 go test ./e2e/cli -run 'TestCLI/default-content-tags' -v`
+
+**目的**
+
+Verify four built-in regular expressions and their independent switches through a real service.
+
+
+**流程**
+
+1. Copy representative values and nonmatching text with the default configuration.
+2. Disable the color rule and reject an unknown default tag.
+3. Check behavior before and after restarting the service.
+
+**期望**
+
+- Color, version, UUID and IPv4 values receive stable built-in tag IDs.
+- Disabling the color rule leaves the other defaults and custom rules active.
+
+**不应**
+
+- Match a value embedded in ordinary text or an out-of-range IPv4 address.
+- Apply a saved switch before restart or remove a tag from existing history.
+
+<details><summary>脚本 testdata/default-content-tags.txtar</summary>
+
+```
+node-start alpha
+until alpha '^startup-probe$' dev paste
+board-set alpha text color.txt
+until alpha '"tags":\["builtin:color","builtin:text"\]' h list -n 1 --json
+board-set alpha text version.txt
+until alpha '"tags":\["builtin:text","builtin:version"\]' h list -n 1 --json
+board-set alpha text uuid.txt
+until alpha '"tags":\["builtin:text","builtin:uuid"\]' h list -n 1 --json
+board-set alpha text ipv4.txt
+until alpha '"tags":\["builtin:ipv4","builtin:text"\]' h list -n 1 --json
+
+board-set alpha text log.txt
+until alpha '"total_bytes":24' h list -n 1 --json
+stdout '"tags":\["builtin:text"\]'
+board-set alpha text invalid-ipv4.txt
+until alpha '"total_bytes":12' h list -n 1 --json
+stdout '"tags":\["builtin:text"\]'
+
+u alpha config apply $WORK/disabled.toml
+u alpha config --json
+stdout 'plugins.settings'
+cp alpha/config.toml saved.toml
+! u alpha config apply $WORK/invalid.toml
+stderr 'unknown default classification tag'
+cmp alpha/config.toml saved.toml
+board-set alpha text color-before-restart.txt
+until alpha '"tags":\["builtin:color","builtin:text"\]' h list -n 1 --json
+
+node-stop alpha
+node-start alpha
+until alpha '^#12AB34$' dev paste
+u alpha config --json
+! stdout 'plugins.settings'
+board-set alpha text color-after-restart.txt
+until alpha '"tags":\["builtin:text","custom-color"\]' h list -n 1 --json
+board-set alpha text version-after-restart.txt
+until alpha '"tags":\["builtin:text","builtin:version"\]' h list -n 1 --json
+u alpha h list --tag builtin:color --json
+stdout '"builtin:color"'
+
+u alpha config apply $WORK/alpha-defaults.toml
+node-stop alpha
+node-start alpha
+until alpha '^v2\.4\.0$' dev paste
+board-set alpha text color-reenabled.txt
+until alpha '"tags":\["builtin:color","builtin:text"\]' h list -n 1 --json
 ```
 
 </details>
@@ -2016,6 +2183,9 @@ Lua 立即使用新标签。重启后设置保留。清除后凭据状态为 fal
 
 ```
 node-start alpha
+u alpha plugin settings show example.required
+stdout '"/keyword":false'
+stdout '"restart_required":false'
 u alpha plugin settings show example.schema
 stdout '"/credential":false'
 u alpha plugin settings save example.schema $WORK/valid.json
@@ -2031,6 +2201,10 @@ u alpha plugin settings show example.schema
 stdout '"tag":"saved"'
 board-set alpha text first.txt
 until alpha 'saved' h list -n 1
+u alpha h list -n 1
+! stdout 'required-ready'
+u alpha plugin settings save example.required $WORK/required.json
+stdout '"restart_required":true'
 node-stop alpha
 node-start alpha
 u alpha plugin settings show example.schema
@@ -2039,6 +2213,7 @@ stdout '"/credential":true'
 board-set alpha text second.txt
 until alpha 'second setting fixture' h show @1
 until alpha 'saved' h list -n 1
+until alpha 'required-ready' h list -n 1
 cp broken.lua alpha/plugins/lua/schema/main.lua
 sleep 400ms
 board-set alpha text third.txt

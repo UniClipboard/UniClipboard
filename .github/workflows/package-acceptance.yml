@@ -11,10 +11,15 @@ on:
       - 'release/**'
       - 'app/desktop/cmd/unic-desktop/**'
       - 'app/desktop/internal/appupdates/**'
+      - 'internal/desktopupdate/**'
+      - 'app/service/cmd/unicd/update*.go'
       - 'app/desktop/e2e/updateprobe/**'
       - '.github/workflows/package-acceptance.yml'
       - '.github/workflows/build-cli.yml'
+      - '.github/workflows/build-desktop.yml'
       - '.github/workflows/build-desktop-test.yml'
+      - '.github/workflows/prepare-legacy-desktop-alpha.yml'
+      - '.github/workflows/release-cli.yml'
       - '.github/workflows/release-desktop.yml'
       - '.github/release-notes/**'
   workflow_dispatch:
@@ -77,7 +82,11 @@ jobs:
         with:
           node-version: '22.23.4'
       - name: Real native packaging processes without a GUI
+        if: "!startsWith(matrix.target, 'darwin-')"
         run: python e2e/packaging/run.py
+      - name: Real native packaging processes and customized ULFO DMG without a GUI
+        if: startsWith(matrix.target, 'darwin-')
+        run: python e2e/packaging/run.py --format dmg
       - name: Single-target test-package controller and native archive
         if: matrix.target == 'darwin-arm64'
         run: python e2e/packaging/test_package.py

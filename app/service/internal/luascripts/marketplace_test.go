@@ -119,7 +119,7 @@ func TestMarketplaceValidationRejectsInvalidEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := readMarketplaceCache(cachePath)
-	if err != nil || len(got.Catalog.Plugins) != 1 {
+	if err != nil || len(got.Catalog.Plugins) != len(valid.Plugins) {
 		t.Fatalf("cache roundtrip failed: %v %+v", err, got)
 	}
 }

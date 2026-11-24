@@ -62,9 +62,18 @@ func (k Kit) layRadius() float32 {
 const SinglePaneWidth = 760
 
 type SplitViewProps struct {
+	// ContentScale converts the physical view width to the scaled layout width.
+	// Zero preserves unscaled layout.
+	ContentScale float32
 	// Title of the content at the leading end of the toolbar band; Subtitle is secondary
 	// text after it, e.g. the item count.
 	Title, Subtitle string
+	// SubtitleMuted softly dims Subtitle during a slow foreground refresh instead of
+	// blanking it out and causing header flicker.
+	SubtitleMuted bool
+	// ToolbarLoading draws a subtle 2-DIP indeterminate progress hairline along the
+	// bottom edge of the toolbar while a slow query is in flight.
+	ToolbarLoading bool
 	// TitleLeading holds navigation controls immediately before the heading.
 	TitleLeading func()
 	// Sidebar is drawn on the sidebar window region. Leave nil for a window without one.
@@ -138,6 +147,9 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 	hidden := p.SidebarHidden != nil && *p.SidebarHidden
 	overlay := p.SidebarOverlay && p.Sidebar != nil
 	w, _ := c.Size()
+	if p.ContentScale > 0 {
+		w /= p.ContentScale
+	}
 	single := p.DetailOpen != nil && w < SinglePaneWidth
 	detail := single && *p.DetailOpen
 
@@ -276,7 +288,7 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 		bar.DragWindow()
 		bar.Children(func() {
 			if detail {
-				back := k.Button(c.Key("split-back"), p.BackLabel, ButtonProps{Variant: Subtle, Icon: IconBack})
+				back := k.Button(c.Key("split-back"), p.BackLabel, ButtonProps{Variant: Subtle, Size: SizeSmall, Icon: IconBack})
 				if back.Clicked() {
 					*p.DetailOpen = false
 				}
@@ -296,7 +308,19 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 					k.Text(c.Key("t"), p.Title, TextProps{Role: RoleHeadline, Emphasized: true, Truncate: true})
 
 					if p.Subtitle != "" {
-						k.Text(c.Key("s"), p.Subtitle, TextProps{Role: RoleCaption, Tone: ToneSecondary, Truncate: true})
+						sub := k.Text(c.Key("s"), p.Subtitle, TextProps{Role: RoleCaption, Tone: ToneSecondary, Truncate: true})
+						subTarget := float32(1)
+						if p.SubtitleMuted {
+							subTarget = 0.42
+						}
+						subAlpha := sub.AnimateTo("sub-a", subTarget, ui.Animation{
+							Duration:  140 * time.Millisecond,
+							Ease:      ui.EaseOut,
+							NonMotion: true,
+						})
+						if subAlpha < 0.999 {
+							sub.Opacity(subAlpha)
+						}
 					}
 				})
 			}
@@ -368,6 +392,7 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			if p.ToolbarTrailing != nil {
 				ui.Row(c.Key("split-host-controls")).Shrink(0).AlignItems(ui.Center).Children(p.ToolbarTrailing)
 			}
+			k.TopHairlineProgress(c.Key("toolbar-progress"), p.ToolbarLoading)
 
 		})
 	}
@@ -446,20 +471,14 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 				if rad <= 0 {
 					rad = 12
 				}
-				shadowAlpha := float32(.16)
-				if k.Dark {
-					shadowAlpha = .58
-				}
+				shadow := k.Color("drawer-shadow-inset")
 				drawer.Radius(rad).
 					Border(1, k.Color("border-button-default")).
-					Shadow(0, 18, 48, 0, ui.RGBA(0, 0, 0, shadowAlpha*drawerProgress))
+					Shadow(0, 18, 48, 0, shadow.Alpha(drawerProgress))
 			} else {
-				shadowAlpha := float32(.12)
-				if k.Dark {
-					shadowAlpha = .45
-				}
+				shadow := k.Color("drawer-shadow-edge")
 				drawer.InsetShadow(1, 0, 0, 0, t.Border).
-					Shadow(-12, 0, 32, 0, ui.RGBA(0, 0, 0, shadowAlpha*drawerProgress))
+					Shadow(-12, 0, 32, 0, shadow.Alpha(drawerProgress))
 			}
 			// M5 Layered Depth Slide transform: +120px slide + 0.98->1 scale + opacity fade.
 			tx := 120 * (1 - drawerProgress)

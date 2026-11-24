@@ -1,0 +1,11 @@
+# Case: Diagnostic settings and safe local export
+# Mode: process
+# Purpose: Verify persistent logging, bounded overrides, telemetry controls and safe diagnostic export through production processes.
+# Steps:
+#   Drive the production Desktop binding against unicd, restart, and inspect an archive made by the production CLI.
+# Expected:
+#   Saved and effective values agree, overrides reset, telemetry retains signal preferences, and export preserves unrelated files.
+# Forbidden:
+#   A skipped scenario, stale status labeled current, silent conflict overwrite, secret archive membership, or claims of native dialog acceptance.
+
+acceptance desktopui settings-diagnostics

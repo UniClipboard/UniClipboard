@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"github.com/uniclipboard/unic/app/desktop/boardui"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/internal/v1migration"
@@ -38,7 +39,7 @@ type detection struct {
 }
 
 func New(flow *setupflow.Flow, language string, migrationOnly bool, enter func()) *Screen {
-	s := &Screen{flow: flow, model: Model{Stage: "welcome", Language: language}, enter: enter, results: make(chan completion, 1), progress: make(chan v1migration.Progress, 1), detections: make(chan detection, 1)}
+	s := &Screen{flow: flow, model: Model{Stage: "welcome", Language: language, MigrationOnly: migrationOnly}, enter: enter, results: make(chan completion, 1), progress: make(chan v1migration.Progress, 1), detections: make(chan detection, 1)}
 	if source := flow.State().Source; source != "" {
 		s.model.Source, s.model.Stage = source, "confirm"
 	} else if migrationOnly {
@@ -154,10 +155,12 @@ func (s *Screen) RequestClose(done func()) bool {
 	s.stop()
 	return false
 }
-func (s *Screen) View(c *ui.Context) {
+func (s *Screen) View(c *ui.Context, windowControls func(*ui.Context)) {
 	s.poll()
 	c.After(50 * time.Millisecond)
-	Render(c, s.model, &s.fields, Actions{
+	model := s.model
+	model.WindowControls = windowControls
+	Render(c, model, &s.fields, Actions{
 		Begin: s.begin, Redetect: func() { s.detect("") }, Pick: s.pick,
 		Start: func() { s.start(nil) }, Unlock: func() { s.start([]byte(s.fields.Passphrase)) },
 		Stop: s.stop, Enter: s.enterApp,
@@ -208,3 +211,7 @@ func (s *Screen) poll() {
 	default:
 	}
 }
+
+// SetColorTheme selects code-defined setup colors on the view thread.
+// Invalidate the host window after changing the theme.
+func (s *Screen) SetColorTheme(theme *boardui.ColorTheme) { s.model.Colors = theme }

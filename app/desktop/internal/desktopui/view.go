@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
 
+	"github.com/uniclipboard/unic/app/desktop/boardui"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -154,10 +155,15 @@ type deviceCandidate struct {
 }
 
 type viewState struct {
+	colors          *boardui.ColorTheme
 	toolbarTrailing func(*ui.Context)
 	windowFrame     *bool
 	pluginSettings  builtinPluginSettings
 	about           aboutState
+	storage         storageSettingsState
+	diagnostics     diagnosticsState
+	backup          backupSettingsState
+	shortcuts       shortcutSettingsState
 
 	reference                                                             string
 	previewImage                                                          ui.ImageSource
@@ -186,6 +192,11 @@ type viewState struct {
 	confirmEntries                                                        []string
 	drawerSwitchDir                                                       int
 	sidebarHidden, detailOpen, inspector, tagsOpen, quickLook, filterOpen bool
+	zoomStep                                                              int
+	shortcutReturnPage                                                    string
+	shortcutEditor                                                        shortcutEditor
+	keyboardSequence                                                      shortcutSequence
+	historySendMenu, historyActionsMenu                                   bool
 	compact                                                               bool
 	gridSize                                                              float64
 	deviceTask, deviceTaskForID, pairingChannelID                         string
@@ -208,29 +219,34 @@ func (d *viewState) view(c *ui.Context) {
 	if d.theme != "system" {
 		dark = d.theme == "dark"
 	}
-	k := desktopkit.For(dark)
+	k := desktopkit.Kit{Dark: dark, Colors: d.colors}
 	k.Apply(c)
-	k.UiRoot(c, func() {
+	scale := zoomScale(d.zoomStep)
+	k.ScaledUiRoot(c, scale, func() {
 		w, _ := c.Size()
 		// main's library collapses its sidebar below 1100 px. The Kit separately
 		// switches list/detail navigation below SinglePaneWidth.
-		compact := w < 1100
+		compact := w/scale < 1100
 		if compact != d.compact {
 			d.sidebarHidden, d.compact = compact, compact
 		}
 		c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
-		if !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" && !d.about.alphaWarningOpen && !d.about.manualUpdateOpen {
-			if d.page == "history" {
-				c.OnShortcut(ui.Cmd, ui.KeyComma, func() { d.page = "settings" })
-				c.OnShortcut(ui.Cmd, ui.KeyP, d.togglePin)
-				c.OnShortcut(0, ui.KeyT, d.openTagEditor)
+		if !d.quickLook && !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" && !d.about.alphaWarningOpen && !d.about.manualUpdateOpen && !d.backup.confirmOpen {
+			if d.shortcutEditor.id == "" || d.page != "settings" {
+				d.bindKeyboardCommands(c)
 			}
-			if d.page == "settings" && (!d.compact || d.sidebarHidden) {
+			if d.page == "settings" && d.shortcutEditor.id == "" && (!d.compact || d.sidebarHidden) {
 				// A narrow sidebar drawer owns Escape before page navigation.
 				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
 			}
-			if d.page == "devices" && !d.renaming {
-				c.OnShortcut(0, ui.KeyEscape, func() { d.page = "history" })
+			if d.page == "devices" {
+				singlePane := w < desktopkit.SinglePaneWidth
+				c.OnWindowShortcut(0, ui.KeyEscape, func() {
+					if c.ShortcutRepeated() {
+						return
+					}
+					d.devicesBack(singlePane)
+				})
 			}
 		}
 		switch d.page {
@@ -323,22 +339,6 @@ func (d *viewState) selectEntry(id string) {
 	d.selected = id
 	d.list.Select(id)
 	d.notice = ""
-}
-
-func (d *viewState) togglePin() {
-	if d.live != nil {
-		d.live.message = "置顶功能尚不可用。"
-		return
-	}
-	if v := d.current(); v != nil {
-		on := !v.pinned
-		ids := d.list.Selection()
-		for i := range d.entries {
-			if slices.Contains(ids, d.entries[i].id) {
-				d.entries[i].pinned = on
-			}
-		}
-	}
 }
 
 func (d *viewState) requestDelete(ids []string) {
@@ -445,5 +445,6 @@ func (d *viewState) quickPanel(c *ui.Context, _ desktopkit.Kit) {
 	if d.quick == nil {
 		return
 	}
+	d.quick.colors = d.colors
 	d.quick.panel(c)
 }

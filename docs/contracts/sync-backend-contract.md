@@ -125,8 +125,27 @@ sync_host.receive 参数只有 receive_id，其 RESPONSE 等所有 part 和 rece
 
 - Engine→插件：`backend.submit`（`transfer_id`、`timestamp_ms`、已启用渠道 ID 的 `targets`、`parts`；每个 part 是以请求 ID 为根的 `sync_part` 流，仅内存，文件 part 跳过，总量 ≤ 16 MiB）、`backend.leave_channel`（仅声明 `remote_revocation` 时存在，成功后 Engine 才删除记录）。
 - 插件→Engine：`backend.register`（登记本次 transfer 的目标，必须是已启用渠道）、`backend.report`（`queued/sending/sent/superseded/failed`，未登记目标或未知 transfer 被拒绝；失败原因文本被丢弃，只保留状态）、`backend.receive`（`receive_part` 流，准入、去重与历史来源 `external` 同进程内路径）。
+- `backend.authorize_channel` accepts `{channel_id,mime}` and returns `{allowed}`. The channel must belong to the calling instance and be enabled while Engine and global sync are active. Use an empty MIME for an initial request check or a specific MIME to include the active representation policy. Check again immediately before returning a publication. This request does not retain content or authorize later requests.
 - Engine 为每个 transfer 保存目标表（≤ 256），全部目标终态或进程退出后清除；进程崩溃时未终态目标按失败结束，重启后重新装载。
 - 真实子进程测试：`engine/pluginchannel_proc_test.go`。P2P 的撤销屏障、`authorize_send`、接收准入与身份方法仍未实现。
+
+### Provider pairing and group resolution
+
+An external-channel plugin can implement `plugin.ChannelPairer`. Engine sends
+`backend.pair_channel` with a six-digit ASCII code. An empty payload explicitly
+resumes an existing provider pairing. The plugin returns a private group context
+of 1 to 256 bytes and a display name after the provider confirms membership.
+Engine then creates the channel through `AddChannel`. Pairing the same context
+again preserves the existing channel and its settings.
+
+Plugins use `backend.resolve_channel` with the private context to look up the
+local ID before polling or sending. An empty result means the channel is absent,
+disabled, or globally paused. The lookup is scoped to the calling plugin
+instance. The plugin verifies that the resolved ID appears in the submitted
+targets before publication and pins the provider request to that group.
+Engine checks receive authorization again when it admits content.
+Providers can return `unsupported` for pairing. Both methods keep the
+provider code and group context out of public status and error text.
 
 ## 6. 失败恢复、权限与待实现测试
 

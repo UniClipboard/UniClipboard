@@ -151,7 +151,7 @@ func scenarioDesktopLiveData(t *testing.T) {
 		t.Fatal("initial history read must expose foreground loading")
 	}
 	spin("empty history", func() bool { return d.live.loaded && !d.live.loading })
-	if d.page != "history" || len(d.entries) != 0 || len(d.devices) != 1 || len(d.tags) != 6 {
+	if d.page != "history" || len(d.entries) != 0 || len(d.devices) != 1 || len(d.tags) != len(builtinTags()) {
 		t.Fatal("fixture or entry flow leaked")
 	}
 	checks = append(checks, "opens empty history directly without fixtures")
@@ -257,6 +257,17 @@ func scenarioDesktopLiveData(t *testing.T) {
 	if d.tagColor("acceptance") != "purple" {
 		t.Fatal("refresh reset tag color")
 	}
+	if !d.tagByID("acceptance").sidebar || d.tagByID("builtin:link").sidebar {
+		t.Fatal("unexpected default sidebar visibility")
+	}
+	d.setTagSidebar("acceptance", false)
+	spin("hide custom tag", func() bool {
+		return !d.live.busy && !d.tagByID("acceptance").sidebar
+	})
+	d.setTagSidebar("builtin:link", true)
+	spin("show built-in tag", func() bool {
+		return !d.live.busy && d.tagByID("builtin:link").sidebar
+	})
 	colorDesktop := NewDesktop(ctx, client)
 	defer colorDesktop.Close()
 	colorReopen := colorDesktop.d
@@ -267,6 +278,10 @@ func scenarioDesktopLiveData(t *testing.T) {
 	if colorReopen.tagColor("acceptance") != "purple" {
 		t.Fatal("desktop reopen lost tag color")
 	}
+	if colorReopen.tagByID("acceptance").sidebar || !colorReopen.tagByID("builtin:link").sidebar {
+		t.Fatal("desktop reopen lost saved sidebar visibility")
+	}
+	checks = append(checks, "built-in and custom sidebar choices persist through the service and Desktop reopen")
 	checks = append(checks, "tag color persists through real service, refresh and desktop reopen")
 	// The same creation intent used by ComboField reaches both real APIs.
 	d.pickTag(d.current(), desktopkit.SearchSuggestion{ID: "palette-created", Create: true}, "blue")

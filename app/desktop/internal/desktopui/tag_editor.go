@@ -14,6 +14,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	api "github.com/uniclipboard/unic/internal/localapi"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 type tagEditorState struct {
@@ -72,7 +73,7 @@ func (d *viewState) tagSuggestions(v *entry) []desktopkit.SearchSuggestion {
 		return byUse(a, b)
 	})
 	var out []desktopkit.SearchSuggestion
-	if name != "" && !exists && !strings.HasPrefix(name, "builtin:") && utf8.RuneCountInString(name) <= 64 {
+	if name != "" && name != plugin.TagFavorite && !exists && !strings.HasPrefix(name, "builtin:") && utf8.RuneCountInString(name) <= 64 {
 		out = append(out, desktopkit.SearchSuggestion{ID: name, Label: fmt.Sprintf(d.tr("新建 #%s"), name), Create: true})
 	}
 	for _, tag := range candidates[:min(limit, len(candidates))] {
@@ -166,7 +167,7 @@ func (d *viewState) detailTags(c *ui.Context, k desktopkit.Kit, v *entry) {
 }
 
 func (d *viewState) pickTag(v *entry, s desktopkit.SearchSuggestion, color desktopkit.TagColor) {
-	if d.selected != v.id || d.live != nil && d.live.busy || slices.Contains(v.tags, s.ID) {
+	if d.selected != v.id || s.ID == plugin.TagFavorite || d.live != nil && d.live.busy || slices.Contains(v.tags, s.ID) {
 		return
 	}
 	tags := append(slices.Clone(v.tags), s.ID)
@@ -191,6 +192,7 @@ func (d *viewState) pickTag(v *entry, s desktopkit.SearchSuggestion, color deskt
 		if !ok {
 			return
 		}
+		tags = withFavoriteTag(tags, slices.Contains(item.Tags, plugin.TagFavorite))
 		entryID := v.id
 		client := d.live.client
 		d.mutate(func(ctx context.Context) error {

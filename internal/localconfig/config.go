@@ -18,6 +18,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/desktopkeys"
 	"github.com/uniclipboard/unic/internal/observability"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
@@ -85,16 +86,21 @@ type Config struct {
 
 // Desktop configures the graphical launcher. The service only stores these values.
 type Desktop struct {
+	ColorMode     string `toml:"color_mode" json:"color_mode"`
 	TrayIcon      string `toml:"tray_icon" json:"tray_icon"`
 	UpdateChannel string `toml:"update_channel" json:"update_channel"`
 	// TagColors maps SHA-256 tag identifiers to local presentation colors. It stores no tag names.
-	TagColors          map[string]string `toml:"tag_colors,omitempty" json:"tag_colors,omitempty"`
-	Language           string            `toml:"language" json:"language"`
-	QuickPanelShortcut string            `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
-	Mode               string            `toml:"mode" json:"mode"`
-	LaunchAtLogin      bool              `toml:"launch_at_login" json:"launch_at_login"`
-	StartInBackground  bool              `toml:"start_in_background" json:"start_in_background"`
-	SystemWindowFrame  bool              `toml:"system_window_frame" json:"system_window_frame"`
+	TagColors map[string]string `toml:"tag_colors,omitempty" json:"tag_colors,omitempty"`
+	// TagSidebar uses the same hashed identifiers as TagColors.
+	TagSidebar          map[string]bool     `toml:"tag_sidebar,omitempty" json:"tag_sidebar,omitempty"`
+	Language            string              `toml:"language" json:"language"`
+	Shortcuts           map[string][]string `toml:"shortcuts,omitempty" json:"shortcuts,omitempty"`
+	QuickPanelDoubleTap string              `toml:"quick_panel_double_tap,omitempty" json:"quick_panel_double_tap,omitempty"`
+	QuickPanelShortcut  string              `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
+	Mode                string              `toml:"mode" json:"mode"`
+	LaunchAtLogin       bool                `toml:"launch_at_login" json:"launch_at_login"`
+	StartInBackground   bool                `toml:"start_in_background" json:"start_in_background"`
+	SystemWindowFrame   bool                `toml:"system_window_frame" json:"system_window_frame"`
 }
 
 // History configures live cleanup and the startup storage budget.
@@ -156,6 +162,9 @@ type Instance struct {
 	// in the plugin directory, so installing or upgrading a plugin never
 	// replaces what the user chose.
 	Config map[string]any `toml:"config" json:"config,omitempty"`
+	// These settings belong to the built-in content classifier.
+	Rules               []builtinclassify.Rule `toml:"rules,omitempty" json:"rules,omitempty"`
+	DisabledDefaultTags []string               `toml:"disabled_default_tags,omitempty" json:"disabled_default_tags,omitempty"`
 }
 
 // PluginImplementation resolves a local instance to its installed program.
@@ -208,7 +217,17 @@ func (c Config) processorSettingsKey() map[string]Instance {
 	ids := append([]string{builtinclassify.ID, builtintext.ID}, c.ExternalPlugins()...)
 	for _, id := range ids {
 		oe, cfg := c.ProcessorSettings(id)
-		out[id] = Instance{Implementation: c.Plugins.Instances[id].Implementation, OnError: oe, Config: cfg}
+		in := c.Plugins.Instances[id]
+		if len(in.Rules) == 0 {
+			in.Rules = nil
+		}
+		out[id] = Instance{
+			Implementation:      in.Implementation,
+			OnError:             oe,
+			Config:              cfg,
+			Rules:               in.Rules,
+			DisabledDefaultTags: slices.Sorted(slices.Values(in.DisabledDefaultTags)),
+		}
 	}
 	return out
 }
@@ -240,7 +259,7 @@ func Default() Config {
 		shortcut = "Cmd+Ctrl+V"
 	}
 	return Config{
-		Desktop: Desktop{TrayIcon: "glyph", UpdateChannel: "stable", Language: "zh-CN", Mode: "normal", QuickPanelShortcut: shortcut},
+		Desktop: Desktop{ColorMode: "system", TrayIcon: "glyph", UpdateChannel: "stable", Language: "zh-CN", Mode: "normal", QuickPanelShortcut: shortcut},
 		Logging: observability.Default().Logging, Telemetry: observability.Default().Telemetry,
 		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
 		Sync:      Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
@@ -302,6 +321,11 @@ func (c Config) backendPolicies() map[engine.PluginID]engine.BackendSyncPolicy {
 // uses, so the file and the SDK cannot disagree. Messages never include the
 // offending values of fields that could carry secrets.
 func (c Config) Validate() error {
+	switch c.Desktop.ColorMode {
+	case "system", "light", "dark":
+	default:
+		return errors.New("desktop.color_mode: must be system, light or dark")
+	}
 	switch c.Desktop.Language {
 	case "", "zh-CN", "en", "ja", "pt-BR", "ru":
 	default:
@@ -325,6 +349,22 @@ func (c Config) Validate() error {
 				return errors.New("desktop.tag_colors: invalid color")
 			}
 		}
+	}
+	if len(c.Desktop.TagSidebar) > 4096 {
+		return errors.New("desktop.tag_sidebar: at most 4096 overrides")
+	}
+	for id := range c.Desktop.TagSidebar {
+		if key, err := hex.DecodeString(id); err != nil || len(key) != 32 {
+			return errors.New("desktop.tag_sidebar: invalid tag identifier")
+		}
+	}
+	switch c.Desktop.QuickPanelDoubleTap {
+	case "", "alt", "control", "meta":
+	default:
+		return errors.New("desktop.quick_panel_double_tap: unsupported modifier")
+	}
+	if err := desktopkeys.Validate(c.Desktop.Shortcuts, c.Desktop.QuickPanelShortcut); err != nil {
+		return fmt.Errorf("desktop.shortcuts: %w", err)
 	}
 	switch c.Desktop.QuickPanelShortcut {
 	case "", "Ctrl+`", "CmdOrCtrl+Shift+Space", "Ctrl+Alt+V", "Cmd+Ctrl+V":
@@ -365,6 +405,14 @@ func (c Config) Validate() error {
 		}
 		if !validOnError(in.OnError) {
 			return fmt.Errorf(`plugins.instances.%q.on_error: must be "continue" or "block_sync"`, id)
+		}
+		if len(in.Rules) != 0 || len(in.DisabledDefaultTags) != 0 {
+			if id != builtinclassify.ID {
+				return fmt.Errorf("plugins.instances.%q: this plugin takes no classification rules", id)
+			}
+			if _, err := builtinclassify.New(in.Rules, in.DisabledDefaultTags); err != nil {
+				return fmt.Errorf("plugins.instances.%q: %w", id, err)
+			}
 		}
 		if in.Config != nil && !lua[id] && !dormantExternalPlugin(id, in) {
 			return fmt.Errorf("plugins.instances.%q: this plugin takes no config", id)
@@ -436,6 +484,9 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # tray_icon = "glyph"  # "glyph" or "cat"; applies immediately
 # quick_panel_shortcut = "Ctrl+Alt+V"
 # macOS default: "Cmd+Ctrl+V"
+# quick_panel_double_tap = ""  # off, alt, control, or meta
+# [desktop.shortcuts]
+# "clipboard.search" = ["mod+f"]  # [] disables the binding
 
 # Logging and PostHog/OTLP upload. All four remote signals default on.
 # Traces use a fixed 1% root sample when enabled.
@@ -508,13 +559,20 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # rest of that copy); sending by hand ignores it. 0 = no extra limit.
 # auto_file_max_bytes = "100MB"
 
-# builtin.classify adds stable builtin:text/image/files/link tags to new content.
+# builtin.classify adds stable builtin:text/image/files/folder/link tags to new content.
 # Link text also receives builtin:text. It never changes content.
 # [plugins.instances."builtin.classify"]
 # enabled = true
+# Full-text rules are enabled by default. List individual tag IDs to disable.
+# disabled_default_tags = ["builtin:color"]
+#
+# Each matching rule adds a tag to new text after a service restart.
+# [[plugins.instances."builtin.classify".rules]]
+# pattern = '\bUNI-[0-9]+\b'
+# tag = "Issue"
 
-# builtin.text tags copied text that holds an email address ("email") or a
-# link ("url"), and offers the text actions in the history window. It only
+# builtin.text tags text that holds an email address ("builtin:email")
+# and offers the text actions in the history window. It only
 # adds tags; it never changes what you copied. Needs a restart of unicd.
 # [plugins.instances."builtin.text"]
 # enabled = true

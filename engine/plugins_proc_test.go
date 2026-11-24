@@ -35,12 +35,24 @@ func (procHelper) Init(context.Context, plugin.Host, plugin.Config) error { retu
 func (procHelper) Start(context.Context) error                            { return nil }
 func (procHelper) Close(context.Context) error                            { return nil }
 func (procHelper) Process(_ context.Context, pc plugin.ProcessContext) error {
-	text := pc.Item().Text
+	it := pc.Item()
+	text := it.Text
 	if strings.Contains(text, "crash") {
 		os.Exit(3)
 	}
 	if strings.Contains(text, "hang") {
 		time.Sleep(time.Hour)
+	}
+	if strings.Contains(text, "secret-drop") {
+		if err := pc.SetPersist(false); err != nil {
+			return err
+		}
+		return pc.SetSync(false)
+	}
+	if it.Origin.Kind == "external" && it.Origin.PluginID != "" {
+		if err := pc.AddTag("ext:" + it.Origin.PluginID); err != nil {
+			return err
+		}
 	}
 	if strings.Contains(text, "@") {
 		return pc.AddTag("email")
@@ -191,5 +203,49 @@ func TestRestartPluginAfterItGaveUp(t *testing.T) {
 	eventually(t, "the plugin gave up and restarts on request", func() bool { return n.e.RestartPlugin(bg, id) == nil })
 	if !tagged("after") {
 		t.Fatal("not working after an explicit restart")
+	}
+}
+
+func TestProcessPluginReceivesExternalChannelOrigin(t *testing.T) {
+	b := &storeBackend{id: "test.ext", kind: plugin.TransportObjectStore, chans: true}
+	n := newContentNode(t, func(o *Options) {
+		o.Plugins = []PluginInstance{
+			procInstance(""),
+			{Plugin: b},
+		}
+	})
+	start(t, n)
+	ch := addCh(t, n, "test.ext")
+
+	// Sensitive external-channel content is intercepted by the subprocess processor (SetPersist(false)).
+	if err := b.rcv.Receive(bg, ch.ID, plugin.Received{
+		Transfer: "ext-t1",
+		View:     "ext-v1",
+		Parts:    []plugin.ReceivedPart{{MIME: MimeText, Data: []byte("secret-drop payload")}},
+	}); err != nil {
+		t.Fatalf("Receive secret-drop: %v", err)
+	}
+	page, err := n.e.ListHistory(bg, ListHistoryRequest{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListHistory: %v", err)
+	}
+	if len(page.Items) != 0 {
+		t.Fatalf("expected external-channel secret-drop not to persist, got %d items", len(page.Items))
+	}
+
+	// Normal external-channel content passes through with origin.kind="external" and receives the processor's tag.
+	if err := b.rcv.Receive(bg, ch.ID, plugin.Received{
+		Transfer: "ext-t2",
+		View:     "ext-v2",
+		Parts:    []plugin.ReceivedPart{{MIME: MimeText, Data: []byte("hello from external channel")}},
+	}); err != nil {
+		t.Fatalf("Receive benign: %v", err)
+	}
+	page, err = n.e.ListHistory(bg, ListHistoryRequest{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListHistory: %v", err)
+	}
+	if len(page.Items) != 1 || !slices.Contains(page.Items[0].Tags, "ext:test.ext") {
+		t.Fatalf("expected 1 persisted item tagged ext:test.ext, got %+v", page.Items)
 	}
 }

@@ -4,11 +4,11 @@ on:
     inputs:
       operation:
         type: choice
-        options: [github-draft, publish, promote]
+        options: [preflight, github-draft, publish, promote]
         required: true
       candidate_run_id:
         type: string
-        required: true
+        description: Required for github-draft, publish and promote
       channel:
         type: choice
         options: [alpha, stable]
@@ -20,6 +20,31 @@ on:
       expected_revision:
         type: string
         default: '0'
+      stable_acceptance:
+        type: string
+        description: JSON with darwin, linux and windows receipts for stable promotion
+      expected_source:
+        type: string
+        description: Expected source SHA for a joint release
+  workflow_call:
+    inputs:
+      operation:
+        type: string
+        required: true
+      candidate_run_id:
+        type: string
+        required: true
+      channel:
+        type: string
+        required: true
+      expected_revision:
+        type: string
+        default: '0'
+      stable_acceptance:
+        type: string
+      joint:
+        type: boolean
+        required: true
 permissions:
   contents: read
   actions: read
@@ -27,7 +52,35 @@ concurrency:
   group: release-desktop
   cancel-in-progress: false
 jobs:
+  preflight:
+    if: inputs.operation == 'preflight'
+    runs-on: ubuntu-24.04
+    environment: Production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: tools/release/requirements.txt
+      - run: pip install -r tools/release/requirements.txt
+      - name: Verify authenticated R2 read-back and both FlareRelease contracts
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+          R2_ENDPOINT: ${{ vars.R2_RELEASE_ENDPOINT }}
+          RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
+        run: python3 tools/release/desktop_release.py preflight --endpoint "$R2_ENDPOINT" --admin "$RELEASE_ADMIN"
   deliver:
+    if: inputs.operation != 'preflight'
     permissions:
       contents: write
       actions: read
@@ -35,6 +88,8 @@ jobs:
     environment: Production
     timeout-minutes: 60
     steps:
+      - if: inputs.expected_source != '' && inputs.expected_source != github.sha
+        run: exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -45,15 +100,47 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
+          cache: pip
+          cache-dependency-path: tools/release/requirements.txt
       - run: pip install -r tools/release/requirements.txt
+      - uses: actions/download-artifact@v4
+        if: inputs.joint && inputs.channel == 'alpha'
+        with:
+          name: joint-desktop-cli
+          path: dist/cli-input
+      - uses: actions/download-artifact@v4
+        if: inputs.joint && inputs.channel == 'alpha'
+        with:
+          pattern: desktop-*64
+          path: dist/desktop-build-artifacts
       - name: Acquire exact accepted native candidate and locked CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+          IN_RUN_BUILD: ${{ inputs.joint && inputs.channel == 'alpha' }}
         run: |
-          python3 tools/release/desktop_release.py acquire --run-id "$CANDIDATE_RUN" --output dist/candidate
-          python3 tools/package/desktop.py fetch-cli --allow-ci --target linux-amd64 --output dist/cli-input
-          python3 tools/release/desktop_release.py assemble --input dist/candidate --output dist/catalogue
+          metadata=release/products.toml
+          args=()
+          if [[ "$IN_RUN_BUILD" == true ]]; then
+            metadata=dist/cli-input/products.toml
+            args+=(--current-artifacts dist/desktop-build-artifacts)
+          else
+            python3 tools/package/desktop.py fetch-cli --allow-ci --target linux-amd64 --output dist/cli-input
+          fi
+          python3 tools/release/desktop_release.py acquire --run-id "$CANDIDATE_RUN" --output dist/candidate "${args[@]}"
+          python3 tools/release/desktop_release.py assemble --metadata "$metadata" --input dist/candidate --output dist/catalogue
+      - name: Verify stable acceptance before joint publication
+        if: inputs.joint && inputs.operation == 'github-draft' && inputs.channel == 'stable'
+        env:
+          STABLE_ACCEPTANCE: ${{ inputs.stable_acceptance }}
+        run: |
+          printf '%s\n' "$STABLE_ACCEPTANCE" > dist/stable-acceptance.json
+          PYTHONPATH=tools/release python3 - <<'PY'
+          from desktop_release import load, verify_stable_acceptance
+
+          manifest, catalogue = load('dist/catalogue/release-manifest.json', True)
+          verify_stable_acceptance(manifest, catalogue, 'dist/stable-acceptance.json')
+          PY
       - name: Stage or verify immutable GitHub Release before delivery
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -84,6 +171,8 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
           R2_ENDPOINT: ${{ vars.R2_RELEASE_ENDPOINT }}
@@ -98,6 +187,8 @@ jobs:
           RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
           CHANNEL: ${{ inputs.channel }}
           EXPECTED_REVISION: ${{ inputs.expected_revision }}
+          FORWARD_ONLY: ${{ inputs.joint || inputs.expected_source != '' }}
+          STABLE_ACCEPTANCE: ${{ inputs.stable_acceptance }}
         run: |
           python3 - <<'PY'
           import json, urllib.request
@@ -110,7 +201,15 @@ jobs:
               raise ValueError('publication receipt exceeds limit')
           open('dist/publication.json', 'wb').write(data)
           PY
-          python3 tools/release/desktop_release.py promote --manifest dist/catalogue/release-manifest.json --publication dist/publication.json --admin "$RELEASE_ADMIN" --channel "$CHANNEL" --expected-revision "$EXPECTED_REVISION" --receipt dist/promotion.json
+          args=()
+          if [[ "$FORWARD_ONLY" == true ]]; then
+            args+=(--forward-only)
+          fi
+          if [[ "$CHANNEL" == stable ]]; then
+            printf '%s\n' "$STABLE_ACCEPTANCE" > dist/stable-acceptance.json
+            args+=(--acceptance dist/stable-acceptance.json --cli-manifest dist/cli-input/release-manifest.json)
+          fi
+          python3 tools/release/desktop_release.py promote --manifest dist/catalogue/release-manifest.json --publication dist/publication.json --admin "$RELEASE_ADMIN" --channel "$CHANNEL" --expected-revision "$EXPECTED_REVISION" --receipt dist/promotion.json "${args[@]}"
       - name: Publish alpha page only after origin availability
         if: inputs.operation == 'publish' && inputs.channel == 'alpha'
         env:
@@ -128,10 +227,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-delivery-receipt
+          name: ${{ inputs.joint && format('desktop-delivery-{0}-{1}', inputs.operation, github.run_attempt) || 'desktop-delivery-receipt' }}
           path: |
             dist/publication.json
             dist/promotion.json
+            dist/stable-acceptance.json
             dist/github-page/github-receipt.json
             dist/github-page/release-notes.md
             dist/github-page/SHA256SUMS.txt

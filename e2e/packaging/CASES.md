@@ -34,6 +34,7 @@ Public destinations, native windows and system clipboard acceptance are separate
 - A CI CLI candidate with the wrong workflow/run/repository/SHA, missing target or altered package must fail lock selection before metadata changes.
 - Mixed Desktop sources, missing formats, absent lifecycle/signing receipts or an untrusted updater key must fail final assembly.
 - A destination object with different bytes must never be overwritten; retry of identical bytes must resume; partial upload must not move a channel.
+- A conditional write conflict must preserve the conflicting object and block registration and the availability receipt, even when other independent uploads succeeded.
 - A live FlareRelease contract mismatch, stale revision or missing stable CLI must prevent channel mutation.
 - The updater must reject corrupt signatures, oversized responses, wrong format/target and downgrades; package-managed/Scoop/portable installs must not replace manager-owned files.
 - Reuse mygo's native updater and authenticated extraction/swap implementation. Its raw Ed25519/SHA256 protocol must not be confused with Minisign.
@@ -42,13 +43,13 @@ Public destinations, native windows and system clipboard acceptance are separate
 
 Before implementation, require real Python release subprocesses and the actual GitHub CLI against disposable HTTP endpoints. Cover v1-style page rendering; all 22 native attachments, manifest, checksums and six raw updater signatures; exact CLI references; immutable tag/source binding; idempotent interrupted draft recovery; changed/extra/corrupt assets; publication without availability; stable without promotion; stable-to-alpha downgrade; and isolated fixture credentials. Missing evidence or cleanup fails. Never create a real Release in this fixture.
 
-## Desktop icon reuse
+## Desktop application artwork
 
-- A placeholder or unrelated icon replaces the v1 artwork: compare staged resources with the canonical Desktop assets.
+- A placeholder replaces the supplied Unic artwork: compare staged resources with the canonical platform assets.
 - macOS omits its icon declaration or resource: inspect the actual bundle plist and ICNS digest.
-- Linux packages or AppImage retain the placeholder SVG: require the v1 PNG in the package recipe.
-- Windows loses executable icon resources: cross-build both architectures and inspect PE resource types.
-- Runtime artwork differs from the packaged artwork: share one embedded PNG between the window, Dock and About view.
+- Linux loses a launcher icon: compare the staged SVG and PNGs with their source bytes and inspect the installed hicolor paths in a real DEB.
+- Windows loses executable icon resources: cross-build both architectures and check that the PE contains the full ICO frame count and app icon group.
+- Check the native Dock, Windows and Linux window artwork against the corresponding platform assets during visual acceptance.
 - Tray artwork loses template contrast: retain mygo template handling and the v1 macOS padding.
 - Native visual acceptance requires separate authorization; process acceptance must not start the GUI.
 

@@ -1,0 +1,62 @@
+---
+title: Privacy & Security
+description: How unic protects device trust, clipboard content, and diagnostic data, and how to disable telemetry.
+---
+
+## Device Trust
+
+- **Device identity**: Each device generates an Ed25519 identity key on first launch, stored in `<data-dir>/identity/device.key` (readable only by the owner). The private key never leaves the device, and sync plugins cannot use it to sign arbitrary data. If the key is missing or corrupted, the service refuses to start rather than silently regenerating it.
+- **Mutual approval**: Pairing codes and tickets only prove possession of the current ticket—they do not grant trust. Two devices sync only after you verify the fingerprint and approve, and the peer approves as well. See [Devices & Pairing](./devices).
+- **Engine-verified identity**: Identity proofs during the handshake are verified inside unic core, bound to the current connection, and protected against replay; claims by a sync backend that a peer is "verified" are never trusted.
+- **Instant revocation**: Removing a device immediately revokes all paths and terminates active sessions; a removed device must be approved again.
+
+## Handling Secrets
+
+Device addresses, pairing codes, pairing tickets, and Quick Transfer links are treated as secrets:
+
+- Never written to logs, events, or error messages (errors expose only stable error codes);
+- Never shown in device lists or service status, and only obtainable via explicit export (`unic device addr` or **Generate Ticket** in the GUI);
+- Single-use and valid for up to 5 minutes.
+
+Target app names, window identifiers, and clipboard fingerprints used by the Quick Panel are kept only in memory.
+
+## Local History
+
+Clipboard history is stored in a local database. You control how long it is kept and can configure automatic cleanup; see [History & Search](./history-and-search). Tags and expiration settings are never synced to other devices.
+
+## Telemetry & Diagnostics
+
+unic enables four diagnostic upload signals by default: logs, metrics, sampled traces (fixed 1% root sampling), and product analytics events.
+
+- Uploaded payloads pass through an allowlist filter and **never include clipboard content**, device addresses, or tickets—only resource attributes such as service name/version, OS type, and architecture.
+- Product analytics uses a separate random identifier unrelated to your device identity; disabling and re-enabling analytics rotates this identifier. No user profiling or GeoIP processing is performed.
+- Failed uploads are not retried and never block clipboard sync.
+
+Disable in `config.toml` (takes effect on save):
+
+```toml
+[telemetry]
+enabled = false        # Disable all uploads
+
+# Or disable individual signals
+[telemetry.logs]
+enabled = false
+[telemetry.metrics]
+enabled = false
+[telemetry.analytics]
+enabled = false
+[telemetry.traces]
+enabled = false
+```
+
+Changing `telemetry.endpoint` requires a service restart. Environment variables cannot enable uploads or change the upload destination.
+
+Local logs are separate from uploads: written as JSON Lines in the data directory, up to 4 MiB per file, 20 MiB total, retained for 7 days. The local log level is controlled by `[logging] level` (default `info`). See [Diagnostics](../reference/diagnostics) for exporting logs and temporarily raising log levels.
+
+## Release Verification
+
+Current locally packaged v2 archives include a SHA-256 manifest, but are **not yet signed**: checksums prove file integrity only, not publisher identity. Do not reuse v1 update signing keys for v2.
+
+## Reporting Security Issues
+
+Submit reports through GitHub's [private vulnerability reporting](https://github.com/UniClipboard/UniClipboard/security/advisories/new) rather than disclosing unpatched vulnerabilities in public issues. Include the branch and commit or version, reproduction steps, affected platforms, and impact, and remove any clipboard content, credentials, device addresses, or pairing tickets from attachments.

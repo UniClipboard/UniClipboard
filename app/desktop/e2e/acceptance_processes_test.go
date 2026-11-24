@@ -516,10 +516,80 @@ func scenarioDesktopProcesses(t *testing.T) {
 	ownedGUI = waitRole(ownedHome, "gui")
 	ownedPanel = waitRole(ownedHome, "quick-panel")
 	checks = append(checks, "tray crash closes its owned service pipe and restart reclaims the profile role lock")
+	success(ownedHome, "unic", "config", "set", "desktop.system_window_frame", "true")
+	// A failed GUI close must reach the caller and leave the GUI available for a retry.
+	rejectQuit := filepath.Join(ownedHome, "fixture-reject-gui-quit")
+	must(t, os.WriteFile(rejectQuit, nil, 0600))
+	if err := command(ownedHome, "tray", "restart-gui", nil); err == nil || !strings.Contains(err.Error(), "fixture rejected GUI quit") {
+		t.Fatalf("expected GUI quit failure from restart, got %v", err)
+	}
+	if current := waitRole(ownedHome, "gui"); current.PID != ownedGUI.PID {
+		t.Fatal("failed restart replaced the GUI")
+	}
+	must(t, os.Remove(rejectQuit))
+	must(t, command(ownedHome, "tray", "restart-gui", nil))
+	exited(t, ownedGUI.PID)
+	reopenedGUI := waitRole(ownedHome, "gui")
+	if reopenedGUI.PID == ownedGUI.PID || waitRole(ownedHome, "quick-panel").PID != ownedPanel.PID ||
+		waitRole(ownedHome, "tray").PID != ownedTray.PID || service(ownedHome).ID != ownedService.ID {
+		t.Fatal("GUI-only restart must replace only the GUI")
+	}
+	ownedGUI = reopenedGUI
+	checks = append(checks, "GUI-only restart reports a close failure, accepts a retry, and preserves tray, quick panel and service")
+
+	// Tray restart command closes graphical views, restarts the tray-owned service, and reopens GUI.
+	cfgCtx, cfgCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	beforeRestartCfg, err := cFor(ownedHome).Config(cfgCtx)
+	cfgCancel()
+	must(t, err)
+	if !beforeRestartCfg.Config.Desktop.SystemWindowFrame || len(beforeRestartCfg.RestartRequired) != 0 {
+		t.Fatal("the frame preference must persist without a pending service restart")
+	}
+	existingRaw, err := os.ReadFile(filepath.Join(ownedHome, "config.toml"))
+	must(t, err)
+	updatedRaw := append([]byte(strings.TrimSpace(string(existingRaw))), []byte("\n[plugins.instances.\"builtin.classify\"]\nenabled = false\n")...)
+	putCtx, putCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	savedRestartCfg, err := cFor(ownedHome).SaveConfig(putCtx, beforeRestartCfg.Revision, updatedRaw)
+	putCancel()
+	must(t, err)
+	if len(savedRestartCfg.RestartRequired) == 0 {
+		t.Fatal("expected pending restart requirement after disabling builtin.classify")
+	}
+	must(t, command(ownedHome, "tray", "restart", nil))
+	waitGone(ownedHome, "quick-panel", ownedPanel.PID)
+	exited(t, ownedGUI.PID)
+	exited(t, ownedService.PID)
+	var restartedService servicelifecycle.Instance
+	eventually(t, func() bool {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		var err error
+		restartedService, err = cFor(ownedHome).Service(ctx)
+		return err == nil && restartedService.ID != ownedService.ID
+	})
+	var restartedGUI desktopRoleIdentity
+	eventually(t, func() bool {
+		id, err := probe(ownedHome, "gui")
+		if err != nil || id.PID == ownedGUI.PID {
+			return false
+		}
+		restartedGUI = id
+		return true
+	})
+	afterCtx, afterCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	afterRestartCfg, err := cFor(ownedHome).Config(afterCtx)
+	afterCancel()
+	must(t, err)
+	if len(afterRestartCfg.RestartRequired) != 0 {
+		t.Fatalf("restart_required not cleared after tray restart: %v", afterRestartCfg.RestartRequired)
+	}
+	ownedGUI = restartedGUI
+	ownedService = restartedService
+	services = append(services, ownedService)
+	checks = append(checks, "tray restart closes views, replaces its owned service to clear restart_required, and reopens GUI")
 	must(t, command(ownedHome, "tray", "quit", nil))
 	waitGone(ownedHome, "tray", ownedTray.PID)
 	waitGone(ownedHome, "gui", ownedGUI.PID)
-	waitGone(ownedHome, "quick-panel", ownedPanel.PID)
 	eventually(t, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()

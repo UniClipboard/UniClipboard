@@ -13,6 +13,7 @@ import (
 	"github.com/uniclipboard/unic/app/service/internal/host"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
 // Opt-in fixture plugins use public plugin and Engine interfaces. They produce
@@ -46,6 +47,13 @@ func (*followupExternalBackend) Close(context.Context) error                    
 func (b *followupExternalBackend) SetReceiver(receiver plugin.Receiver)                 { b.receiver = receiver }
 func (*followupExternalBackend) Submit(context.Context, plugin.SyncView, plugin.SyncHost) (bool, error) {
 	return false, nil
+}
+
+func (*followupExternalBackend) PairChannel(_ context.Context, code string) ([]byte, string, error) {
+	if code != "012345" {
+		return nil, "", rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	return []byte("0020-private-group"), "0020-private-channel", nil
 }
 
 type followupPanicObserver struct{ committed atomic.Uint64 }

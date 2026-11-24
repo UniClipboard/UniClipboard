@@ -19,17 +19,17 @@ type ActionBarProps struct {
 
 func (k Kit) dockSurface(e ui.Element, radius float32) {
 	if k.Dark {
-		e.Background(ui.RGBA(34, 34, 34, .94)).
-			Border(1, ui.RGBA(255, 255, 255, .10)).
-			Shadow(0, 12, 28, 0, ui.RGBA(0, 0, 0, .48)).
-			Shadow(0, 1, 4, 0, ui.RGBA(0, 0, 0, .32)).
+		e.Background(k.Color("dock-background")).
+			Border(1, k.Color("dock-border")).
+			Shadow(0, 12, 28, 0, k.Color("dock-shadow-far")).
+			Shadow(0, 1, 4, 0, k.Color("dock-shadow-near")).
 			Radius(radius)
 		return
 	}
-	e.Background(k.Color("background-primary-default").Alpha(.95)).
-		Border(1, ui.RGBA(10, 10, 10, .09)).
-		Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, .10)).
-		Shadow(0, 1, 3, 0, ui.RGBA(0, 0, 0, .06)).
+	e.Background(k.Color("dock-background")).
+		Border(1, k.Color("dock-border")).
+		Shadow(0, 8, 24, 0, k.Color("dock-shadow-far")).
+		Shadow(0, 1, 3, 0, k.Color("dock-shadow-near")).
 		Radius(radius)
 }
 
@@ -93,7 +93,7 @@ func (k Kit) ActionDockPrimary(c *ui.Context, label string, icon IconName, short
 		scale = .98
 	}
 	b.AnimatePose(ui.Pose{Scale: scale}, ui.Animation{Duration: 100 * time.Millisecond, Ease: ui.EaseOut})
-	ink := k.Color("text-white")
+	ink := k.Color("text-on-accent")
 	b.Children(func() {
 		if icon != "" {
 			k.Icon(c, icon, 15).TextColor(ink).Shrink(0)

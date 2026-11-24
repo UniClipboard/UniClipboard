@@ -1,10 +1,10 @@
 # Case: History search contract
 # Mode: process
-# Purpose: Literal matching, paging, counts, candidates, repair, cancellation and viewport detail prefetch.
+# Purpose: Literal matching, paging, counts, candidates, repair, cancellation, viewport detail prefetch and persistent favorites.
 # Steps:
 #   Execute the registered production-process suite and validate its receipt.
 # Expected:
-#   The suite runs, passes its assertions and emits a successful receipt.
+#   Favorites persist across a service restart, combine with search filters and remain hidden from tag catalogues. The suite emits a successful receipt.
 # Forbidden:
 #   A skipped suite, a missing receipt, or labeling fixtures as native OS acceptance.
 

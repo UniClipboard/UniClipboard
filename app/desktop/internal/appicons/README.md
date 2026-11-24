@@ -1,22 +1,23 @@
 # Desktop icons
 
-The four binary assets below were copied byte-for-byte from UniClipboard v1 commit `c6483d73c7a0234be68571fdb5fa3d38a17c4871`.
-The source directory is `apps/gui-go/icons/`.
+`unic-logo.svg` is the supplied artwork. The platform assets preserve its black field, white cat path, and aspect ratio.
 
-| Asset | SHA-256 |
+| Platform | Artwork and delivery |
 |---|---|
-| `icon.png` | `4f73034c64869baee5ced45b8b6899c74aa4ba5635f5fe596445a2579e00aa7b` |
-| `icon.icns` | `c2e8f8b06afb6321c6ae8da264d6293a0317575e6164bc3c3b43a93eb5bf26cd` |
-| `icon.ico` | `dc691b4edab0b4adba8fe01bcdea0409562a986c415ccd163f6ae7605736f6fe` |
-| `tray-cat@2x.png` | `21e459b6f6fd8fa4de3335370f8198a400ae7d555550388cf48d239d4e34a93b` |
+| macOS | `icon.icns` contains 16, 32, 128, 256 and 512 point images at 1× and 2×. The 1024 px master uses an inset 824 px rounded square for the existing macOS 13+ bundle. Launch Services supplies the packaged Dock icon. The unbundled binary uses `icon-macos.png`. |
+| Windows | `icon.ico` contains 14 sizes from 16 to 256 px. The icon uses a 48-unit grid with a 44-unit silhouette and a 2-unit exterior corner radius. Its neutral edge separates the black field from dark surfaces. Both executable architectures embed the ICO and PE `VERSIONINFO` metadata (from `release/products.toml`) via `tools/package/windows-icons.sh`, and the NSIS installer uses the same ICO. The main window uses `icon-windows.png` through mygo. |
+| Linux | `icon-linux.svg` uses a 128-unit canvas, a 96-unit field and a 4-unit lower face. Installed packages provide the scalable SVG and 48 and 512 px fallbacks in the hicolor theme. AppImage uses the 512 px PNG at its root. Linux windows and the About view use the same 512 px PNG. |
 
-The PNG is shared by the main window, macOS Dock and About view.
-macOS bundles use the original ICNS. Linux packages and AppImage use the original PNG.
-Windows executables embed resources generated from the original ICO for amd64 and arm64.
-Regenerate these resources with `sh tools/package/windows-icons.sh` (GNU windres and LLVM cvtres required).
-The installer also uses the original ICO.
+Platform references:
 
-The tray defaults to `glyph` and also supports `cat`, matching v1. `tray-glyph.svg` copies the exact front/back paths and stroke geometry from `apps/gui-go/tray_icon_design.go` at the source commit above. It uses a transparent 24-unit grid and the current foreground color. The application renders it with existing mygo SVG support, rather than maintaining a separate SVG rasterizer.
+- [Apple app icon guidance](https://developer.apple.com/design/human-interface-guidelines/app-icons/) and [high-resolution ICNS production](https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/Optimizing/Optimizing.html)
+- [Microsoft design grid](https://learn.microsoft.com/en-us/windows/apps/design/iconography/app-icon-design) and [Win32 icon sizes](https://learn.microsoft.com/en-us/windows/apps/design/iconography/app-icon-construction#icon-sizes-win32)
+- [GNOME app icon geometry](https://developer.gnome.org/hig/guidelines/app-icons.html) and [Freedesktop icon installation](https://specifications.freedesktop.org/icon-theme/latest/#install_icons)
 
-The cat PNG remains unchanged. macOS scales it to 34 pixels inside a 44-pixel transparent canvas, matching v1 padding; the glyph uses a centered 36-pixel design grid. Windows delegates template contrast to mygo. Linux reuses the v1 explicit KDE/gsettings palette rules for both styles.
-Native panel sizing, contrast and installed icon cache behavior require separate platform acceptance.
+Run `python3 tools/package/desktop-icons.py` from the repository root on macOS. The generator uses ImageMagick 7, Apple `iconutil`, GNU windres and LLVM cvtres. Desktop builds use the checked-in assets.
+
+## Tray artwork
+
+The tray supports the default glyph and the classic cat. Both come from UniClipboard v1 commit `c6483d73c7a0234be68571fdb5fa3d38a17c4871`. The glyph copies the front and back paths from `apps/gui-go/tray_icon_design.go` on a 24-unit grid. The cat uses the original alpha mask from `apps/gui-go/icons/`.
+
+macOS scales the cat to 34 pixels inside a 44-pixel transparent canvas. The glyph uses a centered 36-pixel grid. Windows delegates template contrast to mygo. Linux uses the explicit KDE and gsettings palette rules for both styles.

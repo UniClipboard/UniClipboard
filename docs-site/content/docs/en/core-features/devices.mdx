@@ -1,0 +1,102 @@
+---
+title: Devices & Pairing
+description: Add devices with a pairing code or ticket, verify fingerprints to approve, and pause or remove devices.
+---
+
+unic syncs only between devices that have **mutually approved** each other. Each device generates a local-only identity key on first launch, and its device ID is derived from the public key; pairing codes only help two devices find each other and do not grant trust.
+
+## Pairing Flow
+
+<Steps>
+<Step>
+### Generate a pairing code on Device A
+
+In the desktop app, choose **Join another device**, or run in the CLI:
+
+```bash
+unic device add
+```
+
+This displays a 6-digit pairing code in `NNN-NNN` format, valid for up to 5 minutes for a single device. Generating a new code invalidates the previous one.
+</Step>
+<Step>
+### Enter the pairing code on Device B
+
+```bash
+unic device add 123456
+```
+
+The output displays both devices' **fingerprints** (8 groups of 4 hex digits).
+</Step>
+<Step>
+### Verify fingerprints and approve on both sides
+
+The peer appears in the device list as **Pending**. Confirm both devices show the same fingerprint, then approve:
+
+```bash
+unic device list
+unic device approve <device-id> '<fingerprint-shown-on-other-device>'
+```
+
+You must verify and enter the fingerprint manually—it is never auto-filled, and approval fails if it does not match. Syncing starts only **after both devices approve**.
+</Step>
+</Steps>
+
+<Callout type="warn">
+Any device joining via a pairing code or ticket requires your manual approval; unic provides no option to skip approval. Rejecting (`unic device reject <id>`) is equivalent to removing.
+</Callout>
+
+### Full Ticket Without a Server
+
+Pairing codes relay addresses through a rendezvous service. You can also export a full ticket and pass it directly to the other device (also single-use, valid for up to 5 minutes):
+
+```bash
+unic device addr              # Export a unic-pair:… ticket on Device A
+unic device add 'unic-pair:…' # Use it on Device B
+```
+
+Tickets and pairing codes contain connection addresses and are secrets—do not share them publicly.
+
+The rendezvous service URL can be set via `rendezvous_url` in config or the `UNIC_RENDEZVOUS_URL` environment variable; see [Environment Variables](../reference/environment).
+
+## Device List
+
+```bash
+unic device list [--json]
+```
+
+Device states are Pending, Trusted, and Removed. A device can connect over multiple sync backends; each connection is a "path" that can be paused independently:
+
+```bash
+unic device path pause|resume|remove <path-id> <revision>
+unic device backends          # List configured sync backends
+```
+
+To specify a backend instance when pairing, use `unic device add … --backend <instance>` or `unic device addr --backend <instance>`; if the chosen backend does not support pairing, the command fails directly without falling back to the default backend.
+
+The name you assign to a peer device is stored separately from the name it advertises. To change the name this device advertises to others, set `device_name` in config (defaults to hostname; takes effect on next connection).
+
+## Remove a Device
+
+```bash
+unic device remove <device-id>
+```
+
+Removing a device immediately revokes all of its paths and terminates existing connections. If a removed device connects again, it appears only as **Pending** and must be verified and approved again.
+
+## Device Suggestions
+
+When `sync.introductions` is enabled (on by default), trusted devices recommend other devices they trust to you. Suggestions are advisory only—they never establish trust automatically, and names in suggestions are unverified; suggestions expire if not re-recommended within 7 days.
+
+```bash
+unic device suggestions
+unic device suggest-pair <id> <backend-id>
+unic device suggest-ignore <id>
+unic device suggest-restore <id>
+```
+
+Pairing from a suggestion still requires both sides to verify fingerprints and approve.
+
+## External Channels
+
+Third-party peers without a unic identity, such as WeChat Input Method, are called "external channels". They are not devices and have no fingerprints; see [External Channels](../plugins/external-channels).

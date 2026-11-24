@@ -80,7 +80,7 @@ Adapter RPC operations have an eight-second deadline.
 An expired queued command is not dispatched. A dispatched write whose response is lost has an uncertain outcome.
 The caller must not infer success or automatically replay that write.
 
-Clipboard reads, explicit copy, history application and restore execute in the desktop process.
+Clipboard reads, explicit copy, history application and restore execute in the active clipboard adapter. macOS hosts the adapter in `unicd` after explicit Desktop opt-in. Other platforms host it in the tray.
 The adapter serializes these operations with observation and automatic application.
 A write succeeds only after actual read-back and an accepted Engine application result.
 Copy writes, establishes a new baseline and submits once, even for unchanged content.
@@ -94,7 +94,19 @@ A service restart invalidates all sessions, handles and application tokens.
 The service does not retain a system clipboard lease across restart.
 On reconnect the adapter reads a fresh baseline, does not broadcast that content, and ignores the receipt IDs returned by the service readiness snapshot. A failed receipt snapshot cannot establish readiness.
 The adapter never replays disconnected backlog into the system clipboard.
-Normal GUI close terminates the GUI process and leaves tray capture/application running. Lightweight GUI close also terminates tray and quick panel, releases shortcut and adapter, and retains only the same unicd generation after confirmed ownership release. Manual application activation always opens GUI again. Explicit application Quit releases integration and stops only a still-owned service. A standalone service, including a confirmed lightweight handoff, survives later borrowed Desktop sessions and continues network reception and explicit headless submissions.
+Normal GUI close terminates the GUI process and leaves clipboard capture and application running. Lightweight GUI close also terminates tray and quick panel, unregisters the shortcut, and retains the same service generation after confirmed ownership release. Explicit application Quit stops only an owned service. An enabled macOS service retains its adapter until service exit, including after ownership release and after a borrowing Desktop exits. Other platforms release their tray-owned adapter at tray exit. Manual activation opens the GUI again.
+
+On macOS, the local Desktop client uses `POST /v1/desktop/clipboard/enable` to opt in after setup. An existing standalone service can opt in without changing its generation. A CLI-temporary service rejects opt-in. The repeated request uses the same adapter. The first successful response follows the ordinary adapter baseline and readiness barrier. Ordinary service startup is headless and needs no graphical session. Clipboard access requires the active console user. The setting is in memory and resets when the service stops.
+
+Quick Panel uses the owner-only service socket for tracked write and match on macOS. The panel calls `POST /v1/desktop/clipboard/apply` with a history ID and a plain-text flag. The response carries a write mark or a stable failure category. `POST /v1/desktop/clipboard/match` checks the mark immediately before the Desktop sends native paste input. Neither operation records clipboard contents or paste targets.
+
+On macOS, `POST /v1/desktop/notifications/enable` returns a boolean identifying whether the daemon accepted notification responsibility. A bundled service for the active console user subscribes once per daemon generation. It applies the current Desktop language and submits only new pairing events to the native notification center. System authorization is requested in response to the first pairing notification. An unbundled, retiring or CLI-temporary service declines responsibility. A running tray may provide notifications for an unbundled service. Neither the endpoint nor the daemon logs notification text.
+
+## macOS Desktop updates
+
+`POST /v1/desktop/update/check` accepts the current Desktop version and its public archive verification key. It selects the release from the configured stable or alpha feed, using the service host target and current Desktop language. It returns a manifest and an opaque selection token. The endpoint uses the fixed release origin and takes no archive URL from the caller. A CLI-temporary service or an inactive console session cannot check or fetch a Desktop update.
+
+`GET /v1/desktop/update/archive/{token}` streams the selected archive only after verifying the advertised size, digest, signature and embedded numbered release identity. The daemon admits one check or archive operation at a time. A later successful check replaces the previous selection. Desktop completes and verifies the local transfer with its embedded public key before allowing shutdown or installation. Download errors do not retire Desktop processes.
 
 ## Export and CLI behavior
 
@@ -281,9 +293,18 @@ Search pages contain only explicit bounded previews, not image bytes, host refer
 New search revisions serialize as decimal strings. Counts are JSON numbers in request order.
 Exact semantics and errors are in the [history search contract](history-search-contract.md).
 
-### Quick-panel host preference
+### Desktop shortcut preferences
 
-The shared configuration adds `desktop.quick_panel_shortcut`. It defaults to Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Accepted values are `Ctrl+` followed by a backtick, `CmdOrCtrl+Shift+Space`, `Ctrl+Alt+V`, `Cmd+Ctrl+V`, and the empty string (disabled). The existing configuration revision check and TOML hot reload apply. The service persists the preference; only the tray process registers it while Desktop integration is active. Lightweight GUI close removes the tray and shortcut. Registration failure does not revert the saved configuration and is shown separately from the effective host registration. No target identity, paste status or OS input command enters service DTOs. See the [Desktop quick-panel contract](desktop-quick-panel-contract.md).
+The revision-checked configuration accepts `desktop.shortcuts`, a mapping
+from supported action IDs to arrays of one- or two-step bindings. Empty arrays
+disable an action. Omitted entries select defaults. The existing
+`desktop.quick_panel_shortcut` preference remains the preset fallback for panel
+activation. `desktop.quick_panel_double_tap` accepts an empty string (off),
+`alt`, `control`, or `meta`. Validation rejects ambiguous bindings and retains
+the previous revision on rejected saves. The service persists preferences.
+The Desktop tray owns system-wide registration, retry and effective status.
+No target identity or OS input command enters service DTOs. See the
+[Desktop quick-panel contract](desktop-quick-panel-contract.md).
 
 ## Desktop language configuration
 
@@ -326,6 +347,17 @@ toolbar. This field never adds a graphical dependency to the service.
 ## Desktop tray icon preference
 
 The configuration API exposes `config.desktop.tray_icon` as `glyph` or `cat`. An omitted TOML key uses `glyph`. Revision-checked saves, `unic config set` and direct file reloads use the same enum validation. Invalid values do not replace the previous valid configuration. The service stores the preference and does not render a tray. The tray watches saved configuration while Desktop integration is active and updates its image without requiring restart. Lightweight GUI close removes the tray. `desktop.tray_icon` is not a restart-required key.
+
+## Desktop color mode preference
+
+`config.desktop.color_mode` accepts `system`, `light` or `dark`. An omitted TOML
+key uses `system`; other values, including the empty string, reject the complete
+configuration. The existing revision-checked save API, CLI and file watcher use
+the same validation. Invalid saves preserve the previous valid state. The field
+is host-owned, does not change Engine settings and is not restart-required.
+Desktop applies the saved value to mygo's shared theme source in each native
+role, including startup/setup before the normal history view exists. The
+service stores the value without importing or initializing a graphical host.
 
 ## Explicit CLI migration initialization
 
@@ -384,12 +416,19 @@ across service restarts. Review cleanup policy before importing old real history
 
 The service provides `GET /v1/plugins`, `GET /v1/plugins/{id}/settings`, and `PUT /v1/plugins/{id}/settings`. The [settings contract](plugin-settings-contract.md#4-runtime-configuration) defines DTOs, revisions, write-only fields, and activation.
 
+`PluginInfo` also carries the optional manifest display text: `name`, `summary` and `i18n` (`{language: {name?, summary?}}`). The service does not know the UI language; the client resolves it as described in the [plugin contract](plugin-contract.md#展示文本与多语言).
+
+The optional `PluginInfo.icon` string comes from the plugin manifest. The
+optional `plugins[].icon` string in the marketplace response comes from the
+catalog. Both fields use the [plugin icon syntax](plugin-contract.md#display-icon).
+
 ### Marketplace and installation lifecycle
 
 | Method and path | Request | Result |
 |---|---|---|
 | `GET /v1/plugins/marketplace` | Optional `refresh=1` or `refresh=true` | `{version,source,updated_at?,warning?,plugins}` |
 | `POST /v1/plugins/install` | `{repository,ref?,path?,build?,replace?,enable?}` | Installed `PluginInfo` |
+| `POST /v1/plugins/{id}/start` | None | Enabled or configuration-pending `PluginInfo` |
 | `DELETE /v1/plugins/{id}` | None | `{ok:true}` |
 | `POST /v1/plugins/{id}/rollback` | None | Selected `PluginInfo` |
 
@@ -397,6 +436,13 @@ The install request is limited to 8192 bytes. Unknown fields, trailing JSON and
 an empty repository are rejected. Boolean options default false. Installation
 uses the existing commit-locked GitHub installer. `enable=true` also updates
 the plugin configuration; a service restart activates the installed version.
+For an inactive installed Go Action-only plugin or external-channel backend
+with `live_start: true`, the explicit start route requests activation in the
+current service. It enables the instance, starts the verified process and
+publishes its capabilities when ready. An instance with missing required
+values returns `needs_settings: true` and activates on the first successful
+settings save. Sending the same start request to the running configured
+version is idempotent. Start failures return an error and publish no runtime.
 Uninstall disables the plugin and removes its installation lock entry. Running
 code stops and old files are cleaned up after restart. Rollback selects the
 retained previous version and also requires restart. History and local plugin
@@ -428,6 +474,13 @@ cancellation revokes upload readers when the opt-in flag is true.
 
 `POST /v1/code` and `POST /v1/pairing-ticket` accept an empty body or `{ "backend_id": "instance.id" }`. An empty selection uses Tailcat. Unknown selections and unsupported transports fail explicitly and never fall back. Backend selection does not grant trust. The existing fingerprint and complete device/binding revision approval still applies.
 
+Pair an installed external-channel backend through `POST /v1/channels/pair`.
+Send `{backend_id, code}` for a new pairing or `{backend_id, resume: true}`
+to resume an existing provider pairing. The response is the external peer
+projection. The pairing code and group context are private. The CLI command
+`unic channel pair INSTANCE` reads the code from standard input.
+`unic channel pair INSTANCE --resume` requests explicit recovery without a code.
+
 CLI exposes `unic device backends` and `unic device addr --backend INSTANCE`. Desktop exposes the same backend selection in the invitation task. Standard backend policies use `plugins.instances."INSTANCE".sync` through the existing revision-checked configuration route. Enablement changes require service restart. Global sync and policies apply to the assembled running backend set while restart is pending. A zero-backend service retains local content, history and Actions.
 
 The single-instance external-process acceptance and remaining contract decision are recorded in the [workflow receipt](../exec/sync-plugin-workflow.md).
@@ -452,3 +505,13 @@ The single-instance external-process acceptance and remaining contract decision 
 `DELETE /v1/peers/{id}` accepts an optional `?revision=N` query parameter. When present, `N` must be a positive integer (otherwise HTTP 400 `invalid_argument`) and revocation uses Engine `UnpairDevice` CAS, returning HTTP 409 (`conflict`) without unpairing on a stale revision or HTTP 404 (`not_found`) for an unknown peer. When omitted, the route retains whole-device unpairing against the current revision.
 
 `PATCH /v1/bindings/{id}` requires both `revision` and `enabled`. `DELETE /v1/bindings/{id}?revision=N` removes only that path. Both use Engine CAS and revocation barriers; stale revisions return HTTP 409. `unic device list --json` exposes the current path revisions; `unic device path pause|resume|remove BINDING_ID REVISION` submits them. Desktop device details expose the same per-path switch and removal operation. Whole-device removal still revokes every path.
+
+### Local external-channel registration
+
+`POST /v1/channels` accepts `{backend_id,name}` on the owner-only service socket.
+It registers a locally approved channel on the selected external backend
+instance and returns the same peer projection as status. Registration is
+idempotent by instance and registration name until removal.
+`unic device channel-add INSTANCE NAME` uses this route.
+`unic device channel pause|resume|remove ID REVISION` uses the existing
+revision-checked update and removal routes. Channel IDs carry no device trust.

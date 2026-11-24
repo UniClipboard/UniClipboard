@@ -10,6 +10,8 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/uniclipboard/unic/internal/nativeboard"
+
 	"golang.org/x/sys/windows"
 
 	"github.com/uniclipboard/unic/sourceapp"
@@ -48,7 +50,7 @@ func nativeSource() sourceState {
 	if a.Validate() != nil {
 		return state
 	}
-	a.IconPNG = cachedIcon("windows:"+path, func() []byte { return executableIcon(path) })
+	a.IconPNG = nativeboard.CachedIcon("windows:"+path, func() []byte { return executableIcon(path) })
 	state.app = a
 	return state
 }

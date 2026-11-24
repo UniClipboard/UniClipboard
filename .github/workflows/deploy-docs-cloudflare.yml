@@ -1,0 +1,84 @@
+name: Deploy Docs to Cloudflare
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs-site/**'
+      - '.github/workflows/deploy-docs-cloudflare.yml'
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Target docs environment (preview or stable)'
+        required: false
+        type: string
+        default: 'stable'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target docs environment'
+        required: true
+        type: choice
+        default: 'preview'
+        options:
+          - preview
+          - stable
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs-site
+    concurrency:
+      group: docs-site-${{ (inputs.environment == 'stable' && (github.event_name == 'workflow_call' || github.event_name == 'workflow_dispatch')) && 'stable' || 'preview' }}
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve target environment
+        id: target
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_call" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV_NAME="${{ inputs.environment || 'stable' }}"
+          else
+            ENV_NAME="preview"
+          fi
+          if [ "$ENV_NAME" = "stable" ]; then
+            echo "env=stable" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://docs.uniclipboard.app" >> "$GITHUB_OUTPUT"
+            echo "wrangler_env=" >> "$GITHUB_OUTPUT"
+          else
+            echo "env=preview" >> "$GITHUB_OUTPUT"
+            echo "site_url=https://preview.docs.uniclipboard.app" >> "$GITHUB_OUTPUT"
+            echo "wrangler_env=preview" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build Cloudflare Worker
+        run: NEXT_PUBLIC_SITE_URL="${{ steps.target.outputs.site_url }}" bun run opennextjs-cloudflare build
+
+      - name: Deploy Cloudflare Worker (${{ steps.target.outputs.env }})
+        shell: bash
+        run: |
+          if [ -n "${{ steps.target.outputs.wrangler_env }}" ]; then
+            bun run opennextjs-cloudflare deploy --env "${{ steps.target.outputs.wrangler_env }}"
+          else
+            bun run opennextjs-cloudflare deploy
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

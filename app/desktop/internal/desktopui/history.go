@@ -3,7 +3,9 @@ package desktopui
 import (
 	"context"
 	"fmt"
+	"mime"
 	"net/url"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -16,21 +18,34 @@ import (
 	"github.com/egoist/mygo/ui/richtext"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
+	"github.com/uniclipboard/unic/internal/desktopkeys"
 )
 
 func (d *viewState) sidebar(c *ui.Context, k desktopkit.Kit) {
-	pinned := 0
-	for _, v := range d.entries {
-		if v.pinned {
-			pinned++
+	favoriteCount := ""
+	if d.live == nil {
+		count := 0
+		for _, v := range d.entries {
+			if v.pinned {
+				count++
+			}
 		}
+		favoriteCount = fmt.Sprint(count)
+	} else if count, ok := d.live.countFor(favoriteHistoryQuery()); ok {
+		favoriteCount = fmt.Sprint(count)
 	}
 	tags := []desktopkit.SidebarNavItem{}
 	for _, tag := range d.tags {
 		if !tag.sidebar {
 			continue
 		}
-		tags = append(tags, desktopkit.SidebarNavItem{ID: "tag:" + tag.id, Label: d.tagLabel(tag.id), Swatch: tag.color, Count: fmt.Sprint(d.tagCount(tag.id))})
+		tagCountLabel := ""
+		if d.live == nil {
+			tagCountLabel = fmt.Sprint(d.tagCount(tag.id))
+		} else if count, ok := d.live.countFor(tagHistoryQuery(tag.id)); ok {
+			tagCountLabel = fmt.Sprint(count)
+		}
+		tags = append(tags, desktopkit.SidebarNavItem{ID: "tag:" + tag.id, Label: d.tagLabel(tag.id), Swatch: tag.color, Count: tagCountLabel})
 	}
 	devices := []desktopkit.SidebarNavItem{}
 	for _, v := range d.devices {
@@ -47,11 +62,15 @@ func (d *viewState) sidebar(c *ui.Context, k desktopkit.Kit) {
 		}
 		devices = append(devices, desktopkit.SidebarNavItem{ID: "device:" + v.id, Label: v.name, Status: &tone, Count: state})
 	}
+	var overrides map[string][]string
+	if d.live != nil {
+		overrides = d.live.config.Config.Desktop.Shortcuts
+	}
 	k.SidebarNav(c, &d.nav, desktopkit.SidebarNavProps{Label: d.tr("资料库"), Sections: []desktopkit.SidebarNavSection{
-		{ID: "library", Items: []desktopkit.SidebarNavItem{{ID: "all", Label: d.tr("全部项目"), Icon: desktopkit.IconHistory, Count: d.historyCountLabel()}, {ID: "pinned", Label: d.tr("已置顶"), Icon: desktopkit.IconPin, Count: fmt.Sprint(pinned)}}},
+		{ID: "library", Items: []desktopkit.SidebarNavItem{{ID: "all", Label: d.tr("全部项目"), Icon: desktopkit.IconHistory, Count: d.historyCountLabel()}, {ID: "pinned", Label: d.tr("已收藏"), Icon: desktopkit.IconPin, Count: favoriteCount}}},
 		{ID: "tags", Title: d.tr("标签"), Items: tags, Action: &desktopkit.NavAction{Label: d.tr("管理标签"), Icon: desktopkit.IconAdd}, More: &desktopkit.NavAction{Label: fmt.Sprintf(d.tr("全部标签 · %d"), len(d.tags))}},
 		{ID: "devices", Title: d.tr("设备"), Items: devices},
-	}, Footer: []desktopkit.SidebarNavItem{{ID: "manage", Label: d.tr("管理设备…"), Icon: desktopkit.IconDevices}, {ID: "settings", Label: d.tr("设置…"), Icon: desktopkit.IconSettings, ShortcutHint: "⌘,"}}}).Grow(1)
+	}, Footer: []desktopkit.SidebarNavItem{{ID: "manage", Label: d.tr("管理设备…"), Icon: desktopkit.IconDevices}, {ID: "settings", Label: d.tr("设置…"), Icon: desktopkit.IconSettings, ShortcutHint: shortcutHint(overrides, desktopkeys.Settings)}}}).Grow(1)
 	if cmd, _ := d.nav.Command(); cmd == desktopkit.NavSectionAction || cmd == desktopkit.NavMore {
 		d.tagsOpen = true
 	}
@@ -102,10 +121,21 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 		c.OnWindowShortcut(0, ui.KeyEscape, func() {
 			d.inspector = false
 		})
+	} else if len(items) == 0 && (d.hasActiveSearchOrFilter() || d.isSearchUnavailableState()) && !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" && !d.filterOpen {
+		c.OnWindowShortcut(0, ui.KeyEscape, d.clearAllHistoryFilters)
 	}
-	k.SplitView(c, desktopkit.SplitViewProps{ToolbarTrailing: d.trailingToolbar(c),
-		Title: d.tr("全部"), Subtitle: fmt.Sprint(len(items)),
-		Sidebar: func() { d.sidebar(c, k) }, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact,
+	coldLoading := len(items) == 0 && d.live != nil && d.live.foregroundLoading && !d.live.loaded
+	subtitle := fmt.Sprint(len(items))
+	if d.isSearchUnavailableState() {
+		subtitle = "—"
+	} else if coldLoading {
+		subtitle = ""
+	}
+	subtitleMuted := !coldLoading && d.live != nil && d.live.showForegroundLoading() && d.live.displayedKey != d.liveQueryKey()
+	k.SplitView(c, desktopkit.SplitViewProps{ContentScale: zoomScale(d.zoomStep), ToolbarTrailing: d.trailingToolbar(c),
+		Title: d.historyHeadingTitle(), Subtitle: subtitle, SubtitleMuted: subtitleMuted,
+		ToolbarLoading: d.live != nil && d.live.showForegroundLoading(),
+		Sidebar:        func() { d.sidebar(c, k) }, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact,
 		SidebarToggleLabel: d.tr("切换侧栏"), DetailOpen: &d.detailOpen, BackLabel: d.tr("返回历史"),
 		DrawerOpen:     gridDrawerOpen,
 		DrawerLabel:    d.tr("历史详情"),
@@ -121,7 +151,7 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 		},
 		ToolbarLeading: func() {
 			ui.Row(c.Key("layout-controls")).AlignItems(ui.Center).Shrink(0).Children(func() {
-				showSlider := d.layout == "grid" && !d.compact
+				showSlider := d.layout == "grid" && !d.compact && len(items) > 0
 				sliderHost := ui.Row(c.Key("card-size-reveal")).Height(30).AlignItems(ui.Center).Clip().Shrink(0).AccessHidden(!showSlider)
 				sliderDur := 220 * time.Millisecond
 				if c.Preferences().ReduceMotion {
@@ -185,36 +215,96 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 			stage.Translate(28*st.dir*(1-v3P), 0).Opacity(0.55 + 0.45*v3P)
 		}
 		stage.Children(func() {
+			empty := len(items) == 0
+			coldLoading := empty && d.live != nil && d.live.foregroundLoading && !d.live.loaded
+			initialLoading := empty && d.live != nil && d.live.foregroundLoading
+			showColdSplit := coldLoading && d.layout == "list" && !d.compact
 			pane := desktopkit.PaneList
-			if d.layout == "grid" {
+			if d.layout == "grid" || (empty && !showColdSplit) {
 				pane = desktopkit.PaneMain
 			}
 			k.Pane(c.Key("browse"), desktopkit.PaneProps{Kind: pane, Label: d.tr("历史列表"), DetailOpen: &d.detailOpen}, func() {
-				if d.live != nil {
-					if d.live.readError != "" {
-						k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr(d.live.readError)})
+				resultsStage := ui.Column(c.Key("results-stage")).Grow(1).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
+				rsw := ui.Local(resultsStage, "results-transition", func() resultsTransitionState { return resultsTransitionState{} })
+				resultKey := d.resultsTransitionKey(empty)
+				if !rsw.initialized {
+					resultsStage.Jump("res-p", 1)
+					resultsStage.Jump("stale-a", 1)
+					rsw.initialized = true
+					rsw.lastKey = resultKey
+					rsw.wasEmpty = empty
+					rsw.lastScope = d.liveScopeKey()
+				} else if resultKey != rsw.lastKey {
+					scopeShift := rsw.wasEmpty != empty || d.isScopeResultTransition(rsw.lastScope)
+					rsw.scopeShift = scopeShift
+					rsw.wasEmpty = empty
+					rsw.lastScope = d.liveScopeKey()
+					if !c.Preferences().ReduceMotion {
+						resultsStage.Jump("res-p", 0)
+					} else {
+						resultsStage.Jump("res-p", 1)
 					}
-					if d.live.message != "" {
-						k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr(d.live.message)})
-					}
-					if d.live.foregroundLoading {
-						k.Text(c, d.tr("正在读取历史…"), secondary)
-					}
-					if d.unsupportedSearch() {
-						k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("此搜索条件暂不可用"), Text: d.tr("请选择类型、设备、标签或时间筛选。")})
-					}
+					rsw.lastKey = resultKey
 				}
-				if len(items) == 0 {
-					k.ContentUnavailable(c, desktopkit.ContentUnavailableProps{Icon: desktopkit.IconSearch, Title: d.tr("没有匹配的历史"), Description: d.tr("修改搜索词或清除筛选。")}, func() {
-						if k.Button(c, d.tr("清除筛选"), desktopkit.ButtonProps{}).Clicked() {
-							d.query, d.kind, d.source, d.tag, d.timeRange, d.nav.Value = "", "", "", "", "", "all"
+				resAnim := ui.Animation{Duration: 115 * time.Millisecond, Ease: ui.EaseOut, NonMotion: true}
+				if rsw.scopeShift {
+					resAnim = ui.Animation{Duration: 165 * time.Millisecond, Ease: ui.CubicBezier(.22, 1, .36, 1)}
+				}
+				if c.Preferences().ReduceMotion {
+					resAnim.Duration = 0
+					resultsStage.Jump("res-p", 1)
+				}
+				resP := resultsStage.AnimateTo("res-p", 1, resAnim)
+				staleTarget := float32(1)
+				if d.live != nil && d.live.showForegroundLoading() && !empty {
+					staleTarget = 0.78
+				}
+				staleA := resultsStage.AnimateTo("stale-a", staleTarget, ui.Animation{
+					Duration:  140 * time.Millisecond,
+					Ease:      ui.EaseOut,
+					NonMotion: true,
+				})
+				baseOpacity := float32(0.88) + 0.12*resP
+				if rsw.scopeShift {
+					baseOpacity = 0.68 + 0.32*resP
+				}
+				opacity := baseOpacity * staleA
+				if rsw.scopeShift && resP < 0.999 {
+					resultsStage.Translate(0, 4*(1-resP))
+				}
+				if opacity < 0.999 {
+					resultsStage.Opacity(opacity)
+				}
+				resultsStage.Children(func() {
+					if coldLoading {
+						if d.live.showForegroundLoading() {
+							if d.layout == "grid" {
+								d.coldStartGridSkeleton(c.Key("cold-grid"), k)
+							} else {
+								d.coldStartListSkeleton(c.Key("cold-list"), k)
+							}
 						}
-					})
-				} else {
-					d.historyList(c, k, items)
-				}
+					} else if initialLoading {
+						if d.live.showForegroundLoading() {
+							ui.Column(c.Key("history-loading")).Grow(1).FillWidth().AlignItems(ui.Center).Justify(ui.Center).Gap(10).Children(func() {
+								ui.Spinner(c.Key("spin")).Size(18, 18).TextColor(k.Color("text-tertiary"))
+								k.Text(c.Key("lbl"), d.tr("正在读取历史…"), secondary)
+							})
+						}
+					} else if empty {
+						d.historyEmptyState(c, k)
+					} else {
+						d.historyList(c, k, items)
+					}
+				})
 			})
-			if d.layout == "list" || (d.compact && d.detailOpen) {
+			if showColdSplit {
+				k.Pane(c.Key("detail"), desktopkit.PaneProps{Kind: desktopkit.PaneDetail, Label: d.tr("历史详情"), DetailOpen: &d.detailOpen}, func() {
+					if d.live.showForegroundLoading() {
+						d.coldStartDetailSkeleton(c.Key("cold-detail"), k)
+					}
+				})
+			} else if !empty && (d.layout == "list" || (d.compact && d.detailOpen)) {
 				k.Pane(c.Key("detail"), desktopkit.PaneProps{Kind: desktopkit.PaneDetail, Label: d.tr("历史详情"), DetailOpen: &d.detailOpen}, func() { d.detail(c, k) })
 			}
 		})
@@ -235,6 +325,249 @@ type layoutSwitchState struct {
 	initialized bool
 	lastLayout  string
 	dir         float32
+}
+
+type resultsTransitionState struct {
+	initialized bool
+	lastKey     string
+	lastScope   string
+	wasEmpty    bool
+	scopeShift  bool
+}
+
+type detailImageFadeState struct {
+	initialized bool
+	lastID      string
+	hadImage    bool
+}
+
+func (d *viewState) resultsTransitionKey(empty bool) string {
+	if d.live != nil {
+		return fmt.Sprintf("live:%d:%v", d.live.resultEpoch, empty)
+	}
+	return fmt.Sprintf("demo:%s:%v", d.liveQueryKey(), empty)
+}
+
+func (d *viewState) isScopeResultTransition(prevScope string) bool {
+	if d.live != nil {
+		return d.live.lastResultKind == "scope" || d.live.lastResultKind == "cold"
+	}
+	return prevScope != d.liveScopeKey()
+}
+
+func (d *viewState) expectImagePreview(v entry) bool {
+	if v.kind == desktopkit.KindImage || v.image != nil {
+		return true
+	}
+	if v.kind != desktopkit.KindFile {
+		return false
+	}
+	if d.live != nil {
+		if it, ok := d.live.items[v.id]; ok {
+			fileCount := 0
+			var size int64
+			for _, p := range it.Parts {
+				if p.Kind == "file" {
+					fileCount++
+					size = p.Size
+				}
+			}
+			if fileCount != 1 || size > 32<<20 {
+				return false
+			}
+		}
+	}
+	name := strings.TrimSpace(entryBodyText(v))
+	if name == "" {
+		name = strings.TrimSpace(v.title)
+	}
+	if name == "" || strings.Contains(name, "\n") {
+		return false
+	}
+	return strings.HasPrefix(mime.TypeByExtension(strings.ToLower(filepath.Ext(name))), "image/")
+}
+
+func (d *viewState) previewTextWhileLoading(v entry) (string, bool) {
+	if d.live == nil || !d.live.detailBusy || v.contentError != "" || v.preview == "" {
+		return "", false
+	}
+	if v.kind != desktopkit.KindText && v.kind != desktopkit.KindCode && v.kind != desktopkit.KindLink {
+		return "", false
+	}
+	if it, ok := d.live.items[v.id]; ok {
+		for _, p := range it.Parts {
+			if p.MIME == "text/html" {
+				return "", false
+			}
+		}
+	}
+	return v.preview, true
+}
+
+func (d *viewState) renderDetailImagePreview(c *ui.Context, k desktopkit.Kit, v entry, height float32) {
+	img := d.entryImage(c, v)
+	upgrading := d.live != nil && v.picture != nil && !v.picture.matches(0)
+	stage := ui.Box(c.Key("img-stage")).FillWidth().Height(height).Clip().Center()
+	st := ui.Local(stage, "detail-img-fade", func() detailImageFadeState { return detailImageFadeState{} })
+	if !st.initialized || st.lastID != v.id {
+		st.initialized = true
+		st.lastID = v.id
+		st.hadImage = img != nil
+		stage.Jump("img-a", 1)
+		if upgrading {
+			stage.Jump("img-blur", 1)
+		} else {
+			stage.Jump("img-blur", 0)
+		}
+	} else if !st.hadImage && img != nil {
+		st.hadImage = true
+		stage.Jump("img-a", 0)
+	}
+	alpha := stage.AnimateTo("img-a", 1, ui.Animation{
+		Duration:  150 * time.Millisecond,
+		Ease:      ui.EaseOut,
+		NonMotion: true,
+	})
+	blurTarget := float32(0)
+	if upgrading {
+		blurTarget = 1
+	}
+	blurP := stage.AnimateTo("img-blur", blurTarget, ui.Animation{
+		Duration:  210 * time.Millisecond,
+		Ease:      ui.EaseOut,
+		NonMotion: true,
+	})
+	stage.Children(func() {
+		if img == nil {
+			k.ShimmerBox(c.Key("img-skel"), 8).Fill()
+			return
+		}
+		im := ui.Image(c.Key("img"), img).FillWidth().Height(height)
+		if alpha < 0.999 {
+			im.Opacity(alpha)
+		}
+		if blurP > 0.01 {
+			im.Blur(6 * blurP)
+			if !c.Preferences().ReduceMotion {
+				sc := float32(1) + 0.03*blurP
+				im.Scale(sc, sc)
+			}
+		}
+		if upgrading && d.live != nil && d.live.showDetailLoading() {
+			ui.Row(c.Key("hd-badge")).Absolute().Right(10).Bottom(10).Padding(4, 9).Radius(999).Gap(5).
+				AlignItems(ui.Center).Background(ui.RGBA(17, 17, 20, .64)).ZIndex(2).Children(func() {
+				ui.Spinner(c.Key("spin")).Size(11, 11).TextColor(ui.RGB(255, 255, 255)).Shrink(0).AccessHidden(true)
+				ui.Text(c.Key("lbl"), d.tr("正在加载原图…")).FontSize(11).TextColor(ui.RGB(255, 255, 255)).SingleLine()
+			})
+		}
+	})
+}
+
+func (d *viewState) renderStreamingTailSkeleton(c *ui.Context, k desktopkit.Kit, padX float32, onDark bool) {
+	sep := k.Color("separator-border")
+	if onDark {
+		sep = ui.RGBA(255, 255, 255, .14)
+	}
+	ui.Column(c.Key("streaming-tail")).Margin(0, padX, 16, padX).Padding(10, 0, 0, 0).Gap(7).
+		BorderWidth(1, 0, 0, 0).BorderColor(sep).Children(func() {
+		k.ShimmerBox(c.Key("t1"), 5).WidthPercent(88).Height(11)
+		k.ShimmerBox(c.Key("t2"), 5).WidthPercent(62).Height(11)
+	})
+}
+
+func (d *viewState) renderDetailLoadingSkeleton(c *ui.Context, k desktopkit.Kit, v entry, padY, padX float32) {
+	if v.kind == desktopkit.KindFolder {
+		ui.Column(c.Key("folder-skel")).Padding(padY, padX).Gap(10).FillWidth().Children(func() {
+			widths := []float32{78, 64, 86, 52}
+			for i, w := range widths {
+				ui.Row(c.Key(i)).Gap(10).AlignItems(ui.Center).FillWidth().Children(func() {
+					k.ShimmerBox(c.Key("ic"), 4).Size(16, 16).Shrink(0)
+					k.ShimmerBox(c.Key("ln"), 5).WidthPercent(w).Height(12)
+				})
+			}
+		})
+		return
+	}
+	ui.Column(c.Key("body-skel")).Padding(padY, padX).Gap(10).FillWidth().Children(func() {
+		k.ShimmerBox(c.Key("l1"), 5).WidthPercent(84).Height(13)
+		k.ShimmerBox(c.Key("l2"), 5).WidthPercent(94).Height(13)
+		k.ShimmerBox(c.Key("l3"), 5).WidthPercent(62).Height(13)
+	})
+}
+
+func (d *viewState) coldStartListSkeleton(c *ui.Context, k desktopkit.Kit) {
+	border := k.Color("separator-border")
+	ui.Column(c).Grow(1).FillWidth().Padding(10, 10, 24, 10).Gap(6).Children(func() {
+		ui.Row(c.Key("gh")).Padding(6, 6, 4, 6).AlignItems(ui.Center).Children(func() {
+			k.ShimmerBox(c.Key("t"), 5).Size(44, 11)
+			ui.Spacer(c)
+			k.ShimmerBox(c.Key("cnt"), 5).Size(28, 11)
+		})
+		widths := [][2]float32{{72, 54}, {64, 48}, {82, 66}, {58, 70}, {76, 44}}
+		for i, w := range widths {
+			ui.Row(c.Key(i)).Padding(9, 11).Radius(10).Gap(10).AlignItems(ui.Start).
+				Background(k.CardSurface()).Border(1, border).FillWidth().Children(func() {
+				if i == 1 {
+					k.ShimmerBox(c.Key("th"), 7).Size(34, 34).Shrink(0)
+				} else {
+					k.ShimmerBox(c.Key("ic"), 7).Size(28, 28).Margin(2, 0, 0, 0).Shrink(0)
+				}
+				ui.Column(c.Key("col")).Grow(1).MinWidth(0).Gap(6).Children(func() {
+					k.ShimmerBox(c.Key("r1"), 5).WidthPercent(w[0]).Height(13)
+					k.ShimmerBox(c.Key("r2"), 5).WidthPercent(w[1]).Height(11)
+					k.ShimmerBox(c.Key("r3"), 5).Size(108, 10)
+				})
+			})
+		}
+	})
+}
+
+func (d *viewState) coldStartDetailSkeleton(c *ui.Context, k desktopkit.Kit) {
+	border := k.Color("separator-border")
+	ui.Column(c).Grow(1).FillWidth().Padding(18, 24, 36, 24).Gap(16).Children(func() {
+		ui.Row(c.Key("hdr")).Gap(10).AlignItems(ui.Center).Children(func() {
+			k.ShimmerBox(c.Key("badge"), 6).Size(48, 20)
+			k.ShimmerBox(c.Key("prov"), 5).Size(168, 13)
+		})
+		ui.Column(c.Key("frame")).Padding(20).Gap(10).Radius(12).
+			Background(k.SubtleCardSurface()).Border(1, border).FillWidth().Children(func() {
+			k.ShimmerBox(c.Key("p1"), 5).WidthPercent(82).Height(14)
+			k.ShimmerBox(c.Key("p2"), 5).WidthPercent(94).Height(14)
+			k.ShimmerBox(c.Key("p3"), 5).WidthPercent(76).Height(14)
+			k.ShimmerBox(c.Key("p4"), 5).WidthPercent(46).Height(14)
+		})
+		ui.Row(c.Key("facts")).Gap(8).FillWidth().Children(func() {
+			for i := 0; i < 3; i++ {
+				ui.Column(c.Key(i)).Grow(1).Basis(0).Padding(9, 11).Radius(9).Gap(6).
+					Background(k.SubtleCardSurface()).Border(1, border).Children(func() {
+					k.ShimmerBox(c.Key("k"), 4).Size(44, 10)
+					k.ShimmerBox(c.Key("v"), 5).Size(74, 13)
+				})
+			}
+		})
+	})
+}
+
+func (d *viewState) coldStartGridSkeleton(c *ui.Context, k desktopkit.Kit) {
+	border := k.Color("separator-border")
+	ui.Column(c).Grow(1).FillWidth().Padding(14, 16, 28, 16).Gap(12).Children(func() {
+		k.ShimmerBox(c.Key("gh"), 5).Size(48, 12)
+		for row := 0; row < 2; row++ {
+			ui.Row(c.Key(row)).Gap(12).FillWidth().Children(func() {
+				for col := 0; col < 3; col++ {
+					ui.Column(c.Key(col)).Grow(1).Basis(0).Height(176).Padding(11).Radius(12).Gap(8).
+						Background(k.CardSurface()).Border(1, border).Children(func() {
+						ui.Row(c.Key("h")).Gap(6).AlignItems(ui.Center).Children(func() {
+							k.ShimmerBox(c.Key("ic"), 5).Size(18, 18).Shrink(0)
+							k.ShimmerBox(c.Key("t"), 5).WidthPercent(58).Height(12)
+						})
+						k.ShimmerBox(c.Key("m"), 8).Grow(1).FillWidth()
+						k.ShimmerBox(c.Key("f"), 5).WidthPercent(52).Height(10)
+					})
+				}
+			})
+		}
+	})
 }
 
 func entryBodyText(v entry) string {
@@ -298,30 +631,53 @@ func listRowExcerpt(v entry, title string) string {
 }
 
 func (d *viewState) historyCommands(c *ui.Context, k desktopkit.Kit) {
-	fit := func(e ui.Element) ui.Element {
-
-		return e
-	}
 	v := d.current()
-	b, command := k.Menu(c.Key("send"), desktopkit.MenuProps{Label: d.tr("发送到设备"), Icon: desktopkit.IconSend, IconOnly: true, Variant: desktopkit.Subtle, Items: d.sendMenuItems()})
-	fit(b)
+	_, command := k.ToolbarIconMenu(c.Key("send"), desktopkit.ToolbarIconMenuProps{
+		Label:    d.tr("发送到设备"),
+		Open:     &d.historySendMenu,
+		Icon:     desktopkit.IconSend,
+		Disabled: v == nil,
+		Items:    d.sendMenuItems(),
+	})
 	if command != "" {
 		d.sendTo(command)
 	}
-	if fit(k.Button(c.Key("pin"), "", desktopkit.ButtonProps{Icon: desktopkit.IconPin, Label: d.tr("切换置顶"), Variant: desktopkit.Subtle, Disabled: v == nil || d.live != nil})).Clicked() {
+	if k.ToolbarIconButton(c.Key("pin"), desktopkit.ToolbarIconButtonProps{
+		Icon:        desktopkit.IconPin,
+		Label:       d.tr("切换收藏"),
+		Active:      v != nil && v.pinned,
+		ActiveColor: k.Color("status-orange-text"),
+		Disabled:    v == nil || d.live != nil && d.live.busy,
+	}).Clicked() {
 		d.togglePin()
 	}
 	if d.live != nil && v != nil && !d.live.busy {
 		if actions := d.historyActionsFor(v.id, plugin.ActionPlacementHistoryToolbar, ""); len(actions) > 0 {
-			button, key := k.Menu(c.Key("history-actions"), desktopkit.MenuProps{Label: d.tr("动作"), Icon: desktopkit.IconEdit, IconOnly: true, Variant: desktopkit.Subtle, Items: actions})
-			fit(button)
+			_, key := k.ToolbarIconMenu(c.Key("history-actions"), desktopkit.ToolbarIconMenuProps{
+				Label: d.tr("动作"),
+				Open:  &d.historyActionsMenu,
+				Icon:  desktopkit.IconEdit,
+				Items: actions,
+			})
 			if key != "" {
 				d.runHistoryAction(v.id, key)
 			}
+		} else {
+			d.historyActionsMenu = false
 		}
+	} else {
+		d.historyActionsMenu = false
 	}
-	b, command = k.Menu(c.Key("more"), desktopkit.MenuProps{Label: d.tr("更多操作"), Icon: desktopkit.IconMore, IconOnly: true, Variant: desktopkit.Subtle, Items: []desktopkit.MenuEntry{{ID: "tags", Label: d.tr("管理标签"), Icon: desktopkit.IconTag}, {ID: "delete", Label: d.tr("删除"), Icon: desktopkit.IconDelete, Destructive: true, Disabled: v == nil}, desktopkit.MenuSeparator("sep"), {ID: "quick-panel", Label: d.tr("查看快捷面板")}}})
-	fit(b)
+	_, command = k.ToolbarIconMenu(c.Key("more"), desktopkit.ToolbarIconMenuProps{
+		Label: d.tr("更多操作"),
+		Icon:  desktopkit.IconMore,
+		Items: []desktopkit.MenuEntry{
+			{ID: "tags", Label: d.tr("管理标签"), Icon: desktopkit.IconTag},
+			{ID: "delete", Label: d.tr("删除"), Icon: desktopkit.IconDelete, Destructive: true, Disabled: v == nil},
+			desktopkit.MenuSeparator("sep"),
+			{ID: "quick-panel", Label: d.tr("查看快捷面板")},
+		},
+	})
 	switch command {
 	case "tags":
 		d.tagsOpen = true
@@ -391,23 +747,24 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 				SourceAppIcon: v.sourceAppIcon,
 				Pinned:        v.pinned,
 				Tags:          cardTags,
+				Highlight:     d.historyHighlightTerms(v),
 				CopyLabel:     d.tr("复制"),
-				PinLabel:      d.tr("切换置顶"),
+				PinLabel:      d.tr("切换收藏"),
 				OnCopy: func() {
 					d.selected = entryItem.id
 					d.list.Select(entryItem.id)
 					d.useEntry()
 				},
 			}
-			if d.live == nil {
-				card.OnPin = func() {
-					d.selected = entryItem.id
-					d.list.Select(entryItem.id)
-					d.togglePin()
-				}
+			if d.live == nil || !d.live.busy {
+				card.OnPin = func() { d.toggleFavorites([]string{entryItem.id}) }
 			}
 			if v.kind == desktopkit.KindImage {
-				card.Media = func() { ui.Image(c, d.entryImage(c, entryItem)).FillWidth().Grow(1).Fit(ui.Cover) }
+				if img := d.entryImage(c, entryItem); img != nil {
+					card.Media = func() { ui.Image(c, img).FillWidth().Grow(1).Fit(ui.Cover) }
+				} else if d.live != nil {
+					card.ImageLoading = true
+				}
 			}
 			cards = append(cards, card)
 		}
@@ -456,6 +813,7 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 			}
 			if v.kind == desktopkit.KindImage {
 				row.Image = d.entryImage(c, entryItem)
+				row.ImageLoading = row.Image == nil && d.live != nil
 			}
 			rows = append(rows, row)
 		}
@@ -486,7 +844,7 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 		case cmd == "copy":
 			d.useEntry()
 		case cmd == "pin":
-			d.togglePin()
+			d.toggleFavorites(ids)
 		case strings.HasPrefix(cmd, "send:"):
 			d.sendTo(strings.TrimPrefix(cmd, "send:"))
 		case strings.HasPrefix(cmd, "action:"):
@@ -537,17 +895,9 @@ func (d *viewState) historyActionsFor(id, placement, idPrefix string) []desktopk
 }
 
 func (d *viewState) historyItemMenu(ids []string) []desktopkit.MenuEntry {
-	allPinned := len(ids) > 0
-	for _, id := range ids {
-		idx := slices.IndexFunc(d.entries, func(e entry) bool { return e.id == id })
-		if idx < 0 || !d.entries[idx].pinned {
-			allPinned = false
-			break
-		}
-	}
-	pinLabel := d.tr("置顶")
-	if allPinned {
-		pinLabel = d.tr("取消置顶")
+	pinLabel := d.tr("收藏")
+	if d.allFavorited(ids) {
+		pinLabel = d.tr("取消收藏")
 	}
 	rawSend := d.sendMenuItems()
 	sendChildren := make([]desktopkit.MenuEntry, len(rawSend))
@@ -560,7 +910,7 @@ func (d *viewState) historyItemMenu(ids []string) []desktopkit.MenuEntry {
 	sendDisabled := len(ids) != 1 || len(sendChildren) == 0 || sendChildren[0].Disabled
 	entries := []desktopkit.MenuEntry{
 		{ID: "copy", Label: d.tr("复制"), Icon: desktopkit.IconCopy, Disabled: len(ids) != 1},
-		{ID: "pin", Label: pinLabel, Icon: desktopkit.IconPin, Disabled: len(ids) == 0 || d.live != nil},
+		{ID: "pin", Label: pinLabel, Icon: desktopkit.IconPin, Disabled: len(ids) == 0 || d.live != nil && d.live.busy},
 		{ID: "send", Label: d.tr("发送到"), Icon: desktopkit.IconSend, Disabled: sendDisabled, Children: sendChildren},
 	}
 	if len(ids) == 1 {
@@ -634,6 +984,19 @@ func (d *viewState) detail(c *ui.Context, k desktopkit.Kit) {
 		detailStage.Jump("ds1-p", 1)
 	}
 	ds1P := detailStage.AnimateTo("ds1-p", 1, ui.Animation{Duration: ds1Dur, Ease: ui.CubicBezier(.22, 1, .36, 1)})
+	detailStaleTarget := float32(1)
+	if d.live != nil && d.live.showForegroundLoading() {
+		detailStaleTarget = 0.78
+	}
+	detailStaleA := detailStage.AnimateTo("detail-stale-a", detailStaleTarget, ui.Animation{
+		Duration:  140 * time.Millisecond,
+		Ease:      ui.EaseOut,
+		NonMotion: true,
+	})
+	if detailStaleA < 0.999 {
+		detailStage.Opacity(detailStaleA)
+	}
+	highlightTerms := d.historyHighlightTerms(*v)
 	detailStage.Children(func() {
 		detailScroll := k.Scroll(c.Key(v.id)).Grow(1).MinHeight(0)
 		if ds1P < 0.999 {
@@ -658,17 +1021,19 @@ func (d *viewState) detail(c *ui.Context, k desktopkit.Kit) {
 				if v.kind == desktopkit.KindCode {
 					kind = desktopkit.PreviewCode
 				}
-				if v.kind == desktopkit.KindImage {
-					kind = desktopkit.PreviewImage
-				}
 				if v.kind == desktopkit.KindFile || v.kind == desktopkit.KindFolder {
 					kind = desktopkit.PreviewFile
 				}
-				if v.image != nil {
+				if d.expectImagePreview(*v) && (v.image != nil || d.live == nil || d.live.detailBusy) {
 					kind = desktopkit.PreviewImage
 				}
-				if v.kind == desktopkit.KindLink && v.rich == nil && v.image == nil && (d.live == nil || (!d.live.detailBusy && v.contentError == "")) {
-					host, _ := urlHostAndPath(v.text)
+				loadingPreviewText, useLoadingPreviewText := d.previewTextWhileLoading(*v)
+				linkBody := v.text
+				if linkBody == "" && useLoadingPreviewText {
+					linkBody = loadingPreviewText
+				}
+				if v.kind == desktopkit.KindLink && v.rich == nil && v.image == nil && (d.live == nil || (v.contentError == "" && (!d.live.detailBusy || useLoadingPreviewText))) {
+					host, _ := urlHostAndPath(linkBody)
 					ui.Column(c.Key("link-preview")).Padding(14, 16).Radius(12).Gap(10).
 						Background(k.SubtleCardSurface()).Border(1, border).Shrink(0).Children(func() {
 						if host != "" {
@@ -677,45 +1042,89 @@ func (d *viewState) detail(c *ui.Context, k desktopkit.Kit) {
 								ui.Box(c.Key("ico")).Size(18, 18).Radius(5).Background(bg).Center().Shrink(0).Children(func() {
 									k.Icon(c, desktopkit.IconLink, 11).TextColor(fg)
 								})
-								ui.Text(c.Key("h"), host).FontSize(12).FontWeight(600).TextColor(fg).SingleLine()
+								k.HighlightedText(c.Key("h"), host, highlightTerms, desktopkit.HighlightTextProps{
+									FontSize:   12,
+									FontWeight: 600,
+									TextColor:  fg,
+									SingleLine: true,
+								})
 							})
 						}
-						if title := d.entryTitle(*v); title != "" && title != strings.TrimSpace(v.text) {
-							ui.Text(c.Key("t"), title).FontSize(15).FontWeight(600).TextColor(k.Color("text-primary"))
+						if title := d.entryTitle(*v); title != "" && title != strings.TrimSpace(linkBody) {
+							k.HighlightedText(c.Key("t"), title, highlightTerms, desktopkit.HighlightTextProps{
+								FontSize:   15,
+								FontWeight: 600,
+								TextColor:  k.Color("text-primary"),
+							})
 						}
 						ui.Box(c.Key("url-box")).Padding(9, 11).Radius(8).
 							Background(k.DrawerInnerSurface()).Border(1, border).Children(func() {
-							ui.Text(c, strings.TrimSpace(v.text)).Font("monospace").FontSize(11.5).TextColor(k.Color("accent-500"))
+							k.HighlightedText(c, strings.TrimSpace(linkBody), highlightTerms, desktopkit.HighlightTextProps{
+								FontSize:  11.5,
+								TextColor: k.Color("accent-500"),
+								Monospace: true,
+							})
 						})
 					})
 				} else {
 					p := desktopkit.PreviewFrameProps{Kind: kind}
 					if kind == desktopkit.PreviewImage {
 						if v.kind == desktopkit.KindFile {
-							p.Caption = v.text
+							capText := v.text
+							if capText == "" {
+								capText = strings.TrimSpace(v.preview)
+							}
+							p.Caption = capText
 						}
-						p.BottomStart = func() {
-							if k.Button(c, d.tr("快速查看"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall}).Clicked() {
-								d.quickLook = true
+						if v.image != nil || d.live == nil {
+							p.BottomStart = func() {
+								if k.Button(c, d.tr("快速查看"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall}).Clicked() {
+									d.quickLook = true
+								}
 							}
 						}
 					}
 					k.PreviewFrame(c, p, func() {
-						if d.live != nil && (d.live.detailBusy || v.contentError != "") {
-							label := d.tr(v.contentError)
-							if d.live.detailBusy {
-								label = d.tr("正在读取内容…")
+						if d.live != nil && v.contentError != "" && !d.live.detailBusy {
+							k.Text(c, d.tr(v.contentError), secondary).Padding(20, 24)
+							return
+						}
+						if kind == desktopkit.PreviewImage {
+							d.renderDetailImagePreview(c, k, *v, 220)
+							return
+						}
+						if d.live != nil && d.live.detailBusy {
+							if useLoadingPreviewText {
+								isCode := v.kind == desktopkit.KindCode
+								textCol := k.Color("text-primary")
+								if isCode {
+									textCol = ui.RGBA(235, 235, 240, 1)
+								}
+								ui.Column(c.Key("loading-preview")).FillWidth().Children(func() {
+									k.HighlightedText(c.Key("txt"), loadingPreviewText, highlightTerms, desktopkit.HighlightTextProps{
+										FontSize:  13,
+										TextColor: textCol,
+										Monospace: isCode,
+										OnDark:    isCode,
+									}).Padding(24).FillWidth()
+									if d.live.showDetailLoading() && len([]rune(loadingPreviewText)) >= 80 {
+										d.renderStreamingTailSkeleton(c, k, 24, isCode)
+									}
+								})
+								return
 							}
-							k.Text(c, label, secondary)
+							if v.kind == desktopkit.KindFile && strings.TrimSpace(v.preview) != "" {
+								for i, name := range strings.Split(strings.TrimSpace(v.preview), "\n") {
+									k.SettingsRow(c.Key(i), desktopkit.SettingsRowProps{Label: name, Description: d.tr("已接收")}, nil, func() { k.Icon(c, desktopkit.IconFile, 18) })
+								}
+								return
+							}
+							d.renderDetailLoadingSkeleton(c, k, *v, 20, 24)
 							return
 						}
 
 						if v.rich != nil {
 							richtext.EditorBase(c, v.rich, richtext.EditorOptions{Label: d.tr("富文本预览"), ReadOnly: true}).FillWidth().Height(240)
-							return
-						}
-						if kind == desktopkit.PreviewImage {
-							ui.Image(c, d.entryImage(c, *v)).FillWidth().Height(220)
 							return
 						}
 						if v.kind == desktopkit.KindFolder {
@@ -728,10 +1137,17 @@ func (d *viewState) detail(c *ui.Context, k desktopkit.Kit) {
 							}
 							return
 						}
-						e := k.Text(c, v.text, desktopkit.TextProps{}).Padding(24).FillWidth()
-						if v.kind == desktopkit.KindCode {
-							e.Font("monospace").TextColor(ui.RGBA(235, 235, 240, 1))
+						isCode := v.kind == desktopkit.KindCode
+						textCol := k.Color("text-primary")
+						if isCode {
+							textCol = ui.RGBA(235, 235, 240, 1)
 						}
+						k.HighlightedText(c, v.text, highlightTerms, desktopkit.HighlightTextProps{
+							FontSize:  13,
+							TextColor: textCol,
+							Monospace: isCode,
+							OnDark:    isCode,
+						}).Padding(24).FillWidth()
 					})
 				}
 				// 3-column compact facts strip matching the D1-b drawer.
@@ -758,6 +1174,8 @@ func (d *viewState) detail(c *ui.Context, k desktopkit.Kit) {
 						if v.image != nil {
 							w, h := imageDimensions(*v)
 							facts = []desktopkit.Fact{{ID: "size", Label: d.tr("尺寸"), Value: fmt.Sprintf("%.0f × %.0f", w, h)}, {ID: "bytes", Label: d.tr("大小"), Value: v.size}}
+						} else if d.live.detailBusy {
+							facts = []desktopkit.Fact{{ID: "size", Label: d.tr("尺寸"), Value: "—"}, {ID: "bytes", Label: d.tr("大小"), Value: v.size}}
 						}
 					}
 					if len(facts) > 0 {
@@ -925,6 +1343,19 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 
 	renderBody := func(key string, item *entry, idx int, interactive bool) ui.Element {
 		layer := k.Scroll(c.Key(key)).Grow(1).MinHeight(0)
+		drawerStaleTarget := float32(1)
+		if d.live != nil && d.live.showForegroundLoading() {
+			drawerStaleTarget = 0.78
+		}
+		drawerStaleA := layer.AnimateTo("drawer-stale-a", drawerStaleTarget, ui.Animation{
+			Duration:  140 * time.Millisecond,
+			Ease:      ui.EaseOut,
+			NonMotion: true,
+		})
+		if drawerStaleA < 0.999 {
+			layer.Opacity(drawerStaleA)
+		}
+		drawerHighlights := d.historyHighlightTerms(*item)
 		layer.Children(func() {
 			ui.Column(c).Padding(14, 18, 88).Gap(14).Children(func() {
 				// Subtle sub-row: source device · timestamp on left, index counter on right.
@@ -938,8 +1369,13 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 				})
 
 				// Semantic content preview.
-				if item.kind == desktopkit.KindLink && item.rich == nil && item.image == nil && (d.live == nil || (!d.live.detailBusy && item.contentError == "")) {
-					host, _ := urlHostAndPath(item.text)
+				drawerLoadingText, useDrawerLoadingText := d.previewTextWhileLoading(*item)
+				drawerLinkBody := item.text
+				if drawerLinkBody == "" && useDrawerLoadingText {
+					drawerLinkBody = drawerLoadingText
+				}
+				if item.kind == desktopkit.KindLink && item.rich == nil && item.image == nil && (d.live == nil || (item.contentError == "" && (!d.live.detailBusy || useDrawerLoadingText))) {
+					host, _ := urlHostAndPath(drawerLinkBody)
 					ui.Column(c.Key("link-preview")).Padding(14, 16).Radius(12).Gap(10).
 						Background(k.DrawerInnerSurface()).Border(1, border).Shrink(0).Children(func() {
 						if host != "" {
@@ -948,15 +1384,28 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 								ui.Box(c.Key("ico")).Size(18, 18).Radius(5).Background(bg).Center().Shrink(0).Children(func() {
 									k.Icon(c, desktopkit.IconLink, 11).TextColor(fg)
 								})
-								ui.Text(c.Key("h"), host).FontSize(12).FontWeight(600).TextColor(fg).SingleLine()
+								k.HighlightedText(c.Key("h"), host, drawerHighlights, desktopkit.HighlightTextProps{
+									FontSize:   12,
+									FontWeight: 600,
+									TextColor:  fg,
+									SingleLine: true,
+								})
 							})
 						}
-						if title := d.entryTitle(*item); title != "" && title != strings.TrimSpace(item.text) {
-							ui.Text(c.Key("t"), title).FontSize(15).FontWeight(600).TextColor(k.Color("text-primary"))
+						if title := d.entryTitle(*item); title != "" && title != strings.TrimSpace(drawerLinkBody) {
+							k.HighlightedText(c.Key("t"), title, drawerHighlights, desktopkit.HighlightTextProps{
+								FontSize:   15,
+								FontWeight: 600,
+								TextColor:  k.Color("text-primary"),
+							})
 						}
 						ui.Box(c.Key("url-box")).Padding(9, 11).Radius(8).
 							Background(k.Color("background-primary-default")).Border(1, border).Children(func() {
-							ui.Text(c, strings.TrimSpace(item.text)).Font("monospace").FontSize(11.5).TextColor(k.Color("accent-500"))
+							k.HighlightedText(c, strings.TrimSpace(drawerLinkBody), drawerHighlights, desktopkit.HighlightTextProps{
+								FontSize:  11.5,
+								TextColor: k.Color("accent-500"),
+								Monospace: true,
+							})
 						})
 					})
 				} else {
@@ -964,18 +1413,22 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 					if item.kind == desktopkit.KindCode {
 						kind = desktopkit.PreviewCode
 					}
-					if item.kind == desktopkit.KindImage || item.image != nil {
-						kind = desktopkit.PreviewImage
-					}
 					if item.kind == desktopkit.KindFile || item.kind == desktopkit.KindFolder {
 						kind = desktopkit.PreviewFile
+					}
+					if d.expectImagePreview(*item) && (item.image != nil || d.live == nil || d.live.detailBusy) {
+						kind = desktopkit.PreviewImage
 					}
 					p := desktopkit.PreviewFrameProps{Kind: kind}
 					if kind == desktopkit.PreviewImage {
 						if item.kind == desktopkit.KindFile {
-							p.Caption = item.text
+							capText := item.text
+							if capText == "" {
+								capText = strings.TrimSpace(item.preview)
+							}
+							p.Caption = capText
 						}
-						if interactive {
+						if interactive && (item.image != nil || d.live == nil) {
 							p.BottomStart = func() {
 								if k.Button(c, d.tr("快速查看"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall}).Clicked() {
 									d.quickLook = true
@@ -984,20 +1437,45 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 						}
 					}
 					k.PreviewFrame(c, p, func() {
-						if d.live != nil && (d.live.detailBusy || item.contentError != "") {
-							label := d.tr(item.contentError)
-							if d.live.detailBusy {
-								label = d.tr("正在读取内容…")
+						if d.live != nil && item.contentError != "" && !d.live.detailBusy {
+							k.Text(c, d.tr(item.contentError), secondary).Padding(18, 20)
+							return
+						}
+						if kind == desktopkit.PreviewImage {
+							d.renderDetailImagePreview(c, k, *item, 210)
+							return
+						}
+						if d.live != nil && d.live.detailBusy {
+							if useDrawerLoadingText {
+								isCode := item.kind == desktopkit.KindCode
+								textCol := k.Color("text-primary")
+								if isCode {
+									textCol = ui.RGBA(235, 235, 240, 1)
+								}
+								ui.Column(c.Key("loading-preview")).FillWidth().Children(func() {
+									k.HighlightedText(c.Key("txt"), drawerLoadingText, drawerHighlights, desktopkit.HighlightTextProps{
+										FontSize:  13,
+										TextColor: textCol,
+										Monospace: isCode,
+										OnDark:    isCode,
+									}).Padding(18).FillWidth()
+									if d.live.showDetailLoading() && len([]rune(drawerLoadingText)) >= 80 {
+										d.renderStreamingTailSkeleton(c, k, 18, isCode)
+									}
+								})
+								return
 							}
-							k.Text(c, label, secondary)
+							if item.kind == desktopkit.KindFile && strings.TrimSpace(item.preview) != "" {
+								for i, name := range strings.Split(strings.TrimSpace(item.preview), "\n") {
+									k.SettingsRow(c.Key(i), desktopkit.SettingsRowProps{Label: name, Description: d.tr("已接收")}, nil, func() { k.Icon(c, desktopkit.IconFile, 18) })
+								}
+								return
+							}
+							d.renderDetailLoadingSkeleton(c, k, *item, 18, 20)
 							return
 						}
 						if item.rich != nil {
 							richtext.EditorBase(c, item.rich, richtext.EditorOptions{Label: d.tr("富文本预览"), ReadOnly: true}).FillWidth().Height(220)
-							return
-						}
-						if kind == desktopkit.PreviewImage {
-							ui.Image(c, d.entryImage(c, *item)).FillWidth().Height(210)
 							return
 						}
 						if item.kind == desktopkit.KindFolder {
@@ -1010,10 +1488,17 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 							}
 							return
 						}
-						e := k.Text(c, item.text, desktopkit.TextProps{}).Padding(18).FillWidth()
-						if item.kind == desktopkit.KindCode {
-							e.Font("monospace").TextColor(ui.RGBA(235, 235, 240, 1))
+						isCode := item.kind == desktopkit.KindCode
+						textCol := k.Color("text-primary")
+						if isCode {
+							textCol = ui.RGBA(235, 235, 240, 1)
 						}
+						k.HighlightedText(c, item.text, drawerHighlights, desktopkit.HighlightTextProps{
+							FontSize:  13,
+							TextColor: textCol,
+							Monospace: isCode,
+							OnDark:    isCode,
+						}).Padding(18).FillWidth()
 					})
 				}
 
@@ -1109,13 +1594,14 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 					}
 				})
 
+				busy := d.live != nil && d.live.busy
 				pinBtn := ui.ButtonBase(c.Key("drawer-pin")).Size(28, 28).Radius(7).Center().
-					Label(d.tr("切换置顶")).Tooltip(d.tr("切换置顶")).Disabled(d.live != nil)
+					Label(d.tr("切换收藏")).Tooltip(d.tr("切换收藏")).Disabled(busy)
 				pinCol := k.Color("text-secondary")
 				if v.pinned {
 					pinCol = k.Color("status-orange-text")
 				}
-				if pinBtn.Hovered() && d.live == nil {
+				if pinBtn.Hovered() && !busy {
 					pinBtn.Background(k.Color("background-secondary-hover"))
 					if !v.pinned {
 						pinCol = k.Color("text-primary")
@@ -1123,7 +1609,7 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 				}
 				pinBtn.Children(func() { k.Icon(c, desktopkit.IconPin, 13).TextColor(pinCol) })
 				if pinBtn.Clicked() {
-					d.togglePin()
+					d.toggleFavorites([]string{v.id})
 				}
 
 				delBtn := ui.ButtonBase(c.Key("drawer-del")).Size(28, 28).Radius(7).Center().
@@ -1263,22 +1749,54 @@ func syncStateLabel(s string) string {
 }
 
 func (d *viewState) historyCountLabel() string {
-	if d.live != nil && d.live.cursor != "" {
-		return fmt.Sprintf("%d+", len(d.entries))
+	if d.live != nil {
+		if count, ok := d.live.countFor(allHistoryQuery()); ok {
+			return fmt.Sprint(count)
+		}
+		if d.live.cursor != "" {
+			return fmt.Sprintf("%d+", len(d.entries))
+		}
+		if !d.live.loaded {
+			return ""
+		}
 	}
 	return fmt.Sprint(len(d.entries))
 }
 
 func (d *viewState) historyHighlightTerms(v entry) []string {
-	if d.live == nil {
-		return nil
-	}
-	r := []rune(v.title)
 	out := []string{}
-	for _, span := range v.highlights {
-		start, end := max(0, span.Start), min(len(r), span.End)
-		if start < end {
-			out = append(out, string(r[start:end]))
+	seen := map[string]bool{}
+	add := func(term string) {
+		t := strings.TrimSpace(term)
+		if t == "" {
+			return
+		}
+		low := strings.ToLower(t)
+		if seen[low] {
+			return
+		}
+		seen[low] = true
+		out = append(out, t)
+	}
+	if d.live != nil && len(v.highlights) > 0 {
+		src := v.preview
+		if src == "" {
+			src = v.title
+		}
+		r := []rune(src)
+		for _, span := range v.highlights {
+			start, end := max(0, span.Start), min(len(r), span.End)
+			if start < end {
+				add(string(r[start:end]))
+			}
+		}
+	}
+	if len(out) == 0 && strings.TrimSpace(d.query) != "" {
+		for _, tok := range strings.Fields(d.query) {
+			if strings.HasPrefix(tok, "#") || strings.HasPrefix(tok, "@") || strings.HasPrefix(tok, "/") || strings.Contains(tok, ":") {
+				continue
+			}
+			add(strings.Trim(tok, `"'`))
 		}
 	}
 	return out

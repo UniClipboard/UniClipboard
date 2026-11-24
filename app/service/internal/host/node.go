@@ -70,11 +70,13 @@ type Node struct {
 	logf          func(string, ...any)
 	customReceive bool
 
-	luaDir          string
-	pluginMu        sync.Mutex
-	runningPlugins  map[string]luascripts.Script
-	pluginRevisions map[string]string
-	lua             map[string]luascripts.Script // as running, by plugin ID
+	dataDir          string
+	luaDir           string
+	pluginMu         sync.Mutex
+	runningPluginsMu sync.RWMutex // configuration callbacks also read runningPlugins
+	runningPlugins   map[string]luascripts.Script
+	pluginRevisions  map[string]string
+	lua              map[string]luascripts.Script // as running, by plugin ID
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -101,7 +103,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}
 	// Install the notification after Node exists. Its hub is allocated before
 	// Engine.New, so diagnostics may report initialization without a GUI.
-	n := &Node{peer: peer}
+	n := &Node{peer: peer, dataDir: o.Dir}
 	obsOpts.Changed = func() { n.hub.emit(api.Event{Kind: "diagnostics"}) }
 	diagnostics := observability.New(obsOpts)
 	n.diagnostics = diagnostics
@@ -132,52 +134,58 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}
 	if c.PluginEnabled(builtinclassify.ID) {
 		onError, _ := c.ProcessorSettings(builtinclassify.ID)
-		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtinclassify.New(), OnError: onError})
+		settings := c.Plugins.Instances[builtinclassify.ID]
+		classifier, err := builtinclassify.New(settings.Rules, settings.DisabledDefaultTags)
+		if err != nil {
+			return nil, err
+		}
+		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: classifier, OnError: onError})
 	}
 	if c.PluginEnabled(builtintext.ID) {
 		onError, _ := c.ProcessorSettings(builtintext.ID)
 		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtintext.New(), OnError: onError})
 	}
 	opts.Plugins = append(opts.Plugins, o.Plugins...)
-	var loaded map[string]luascripts.Script
 	if o.LuaDir != "" {
-		var specs []engine.LuaPluginSpec
-		var lerr error
+		enabled := c.ExternalPlugins()
 		var implementations []string
-		for _, id := range c.ExternalPlugins() {
+		for _, id := range enabled {
 			if impl := c.PluginImplementation(id); !slices.Contains(implementations, impl) {
 				implementations = append(implementations, impl)
 			}
 		}
-		if specs, loaded, lerr = luascripts.Specs(o.LuaDir, implementations, c.ProcessorSettings); lerr != nil {
-			return nil, lerr
+		specs, loaded, err := luascripts.Specs(o.LuaDir, implementations, c.ProcessorSettings)
+		if err != nil {
+			return nil, err
 		}
 		opts.LuaPlugins = specs
 		opts.PluginOrder = slices.DeleteFunc(slices.Clone(c.Plugins.Lua), func(id string) bool {
 			return slices.Contains(c.Plugins.Order, id)
 		})
 		opts.PluginOrder = append(opts.PluginOrder, c.Plugins.Order...)
-		installed := loaded
-		loaded = make(map[string]luascripts.Script)
-		for _, id := range c.ExternalPlugins() {
-			s := installed[c.PluginImplementation(id)]
+		n.runningPlugins = make(map[string]luascripts.Script)
+		n.lua = make(map[string]luascripts.Script)
+		for _, spec := range specs {
+			s := loaded[spec.ID].ForInstance(spec.ID)
+			n.lua[spec.ID] = s
+			n.runningPlugins[spec.ID] = s
+		}
+		for _, id := range enabled {
+			s := loaded[c.PluginImplementation(id)]
 			if id != s.Manifest.ID && (s.Manifest.Kind != "go" || !slices.Contains(s.Manifest.Capabilities, plugin.CapSyncBackend)) {
 				return nil, errors.New("distinct instances require an external Go sync backend")
 			}
-			loaded[id] = s.ForInstance(id)
-		}
-		n.runningPlugins = loaded
-		n.lua = make(map[string]luascripts.Script)
-		for _, id := range c.ExternalPlugins() {
-			s := loaded[id]
 			if s.Manifest.Kind == "lua" {
-				n.lua[id] = s
 				continue
 			}
+			s = s.ForInstance(id)
 			onError, raw := c.ProcessorSettings(id)
 			values, err := s.RuntimeConfig(o.LuaDir, raw)
+			if luascripts.MissingRequiredSettings(err) {
+				continue
+			}
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("plugin %q: %w", id, err)
 			}
 			spec := s.Manifest.PluginSpec()
 			pp := &engine.PluginProcess{Path: s.Executable(), SHA256: s.BinarySHA256, Spec: spec}
@@ -188,6 +196,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 				}
 			}
 			opts.Plugins = append(opts.Plugins, engine.PluginInstance{ID: engine.PluginID(id), Process: pp, Config: values, OnError: onError, Events: s.Manifest.Events})
+			n.runningPlugins[id] = s
 		}
 	}
 	e, err := engine.New(ctx, opts)
@@ -305,10 +314,8 @@ func (n *Node) pushSettings(ctx context.Context) error {
 		for id := range st.Settings.Value.BackendPolicies {
 			policies[id] = configured.BackendPolicy(string(id))
 		}
-		for id := range configured.Settings().BackendPolicies {
-			if s, ok := n.runningPlugins[string(id)]; ok && !slices.Contains(s.Manifest.Capabilities, plugin.CapSyncBackend) {
-				return errors.New("standard sync settings require a sync backend")
-			}
+		if !n.validBackendPolicies(configured.Settings().BackendPolicies) {
+			return errors.New("standard sync settings require a sync backend")
 		}
 		want.BackendPolicies = policies
 		if reflect.DeepEqual(st.Settings.Value, want) {
@@ -321,6 +328,17 @@ func (n *Node) pushSettings(ctx context.Context) error {
 		}
 	}
 	return errors.New("settings keep changing")
+}
+
+func (n *Node) validBackendPolicies(policies map[engine.PluginID]engine.BackendSyncPolicy) bool {
+	n.runningPluginsMu.RLock()
+	defer n.runningPluginsMu.RUnlock()
+	for id := range policies {
+		if s, ok := n.runningPlugins[string(id)]; ok && !slices.Contains(s.Manifest.Capabilities, plugin.CapSyncBackend) {
+			return false
+		}
+	}
+	return true
 }
 
 // ---- helpers ----
@@ -418,6 +436,25 @@ func (n *Node) channelName(ctx context.Context, id string) string {
 		return c.DisplayName()
 	}
 	return ""
+}
+
+func (n *Node) PairChannel(ctx context.Context, req api.ChannelPairRequest) (api.PeerStatus, error) {
+	c, err := n.e.PairChannel(ctx, engine.PairChannelRequest{BackendID: engine.PluginID(req.BackendID), Code: req.Code})
+	if err != nil {
+		return api.PeerStatus{}, apiErr(err, false)
+	}
+	return apiChannel(c), nil
+}
+
+func (n *Node) AddChannel(ctx context.Context, in api.ChannelAdd) (api.PeerStatus, error) {
+	c, err := n.e.AddChannel(ctx, engine.AddChannelRequest{
+		BackendID: engine.PluginID(in.BackendID), RemoteContext: []byte("local:" + in.Name),
+		ReportedName: in.Name,
+	})
+	if err != nil {
+		return api.PeerStatus{}, apiErr0(err)
+	}
+	return apiChannel(c), nil
 }
 
 func (n *Node) UpdateChannel(ctx context.Context, id string, u api.ChannelUpdate) (api.PeerStatus, error) {

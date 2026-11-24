@@ -19,9 +19,14 @@ paths:
   - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
   - internal/localconfig
+  - internal/desktopkeys
+  - internal/desktopupdate
+  - internal/pairnotice
+  - internal/v1migration/shortcuts.go
   - internal/localapi
   - app/service/internal/server
   - app/service/internal/host
+  - app/service/internal/luascripts/marketplace.go
   - app/service/cmd/unic/cli.go
   - app/service/cmd/unic/history.go
   - app/service/cmd/unic/requirements.go
@@ -42,16 +47,16 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 18a4f93db24178acf9cf5871c102611acb46dfa9
+verified: f1d1fd63ae8d256411452c529bda6e5582683fd3
 ---
 # Desktop configuration and received files
 
 The UI-free service loads `config.toml` and exposes the effective saved configuration over its local socket.
 CLI changes and file edits use the same validation and Engine settings.
 
-The independent GUI process uses the production `desktopui` renderer with live service data. While active, the tray process owns the sole clipboard adapter, global shortcut, notifications, login intent and service-lifetime pipe. The quick panel runs in a third Desktop OS process and remains hidden between requests. The separate `unicd` process owns Engine. Manual activation always opens the GUI. Normal GUI close keeps tray and service; lightweight GUI close retires all Desktop roles and leaves only unicd.
+The independent GUI process uses the production `desktopui` renderer with live service data. While active, the tray process owns global shortcuts, login intent and the service-lifetime pipe. On macOS a bundled service delivers pairing notifications after Desktop opt-in. Other platforms and unbundled macOS services use tray delivery. macOS Desktop opts in the sole native clipboard adapter inside unicd. Other platforms host it in the tray. The quick panel runs in a third Desktop OS process and remains hidden between requests. The separate `unicd` process owns Engine. Manual activation always opens the GUI. Normal GUI close keeps tray and service; lightweight GUI close retires all Desktop roles and leaves only unicd.
 Fresh profiles show first-install setup and optional v1 migration before normal runtime startup. Completed setup and established v2 profiles open history directly. There is no recurring unlock flow. The marker, source detection and exclusive migration lifecycle are described in the [live desktop composition](overview.md#live-desktop-composition).
-Settings > Storage > Migrate from v1 reopens the migration flow. The GUI requests a serialized tray pause. The tray closes its quick panel and unregisters its shortcut, cancels and waits for its clipboard adapter, and stops its owned service before permitting offline import. The pause and pending setup marker form the migration admission barrier before the GUI shows migration. A marker write failure prevents migration. Cancellation or process exit preserves this pending state; reopening Desktop returns to migration with its selected source. Import completion alone does not complete setup. Explicit entry starts the normal runtime again and persists completion after service readiness. An external target owner blocks import before credential access; it is not automatically stopped by migration.
+Settings > Storage > Migrate from v1 reopens the migration flow. The GUI requests a serialized tray pause. The tray closes its quick panel and unregisters its shortcut. It retires the tray-owned adapter on platforms that use one. It stops and waits for its owned service, including the in-service adapter on macOS, before permitting offline import. The pause and pending setup marker form the migration admission barrier before the GUI shows migration. A marker write failure prevents migration. Cancellation or process exit preserves this pending state; reopening Desktop returns to migration with its selected source. Import completion alone does not complete setup. Explicit entry starts the normal runtime again and persists completion after service readiness. An external target owner blocks import before credential access; it is not automatically stopped by migration.
 General, Sync and Storage controls save through the revision-checked local configuration API.
 Saved-but-not-applied failures remain visible. Native login status remains a separate launcher-owned receipt.
 See the [live binding execution receipt](../exec/desktop-live-data.md) for supported operations and gaps.
@@ -63,22 +68,32 @@ Settings > Plugins lists Tailcat sync, text tools and content classification. Pl
 
 Tailcat exposes its standard `text`, `images`, `files` and `auto_file_max_bytes` backend policies. They apply immediately. The file permission covers files and entire directory snapshots, including empty trees. The automatic threshold uses the selected files' total byte count; explicit sends bypass only that threshold. Global synchronization permissions and automatic-directory intent remain on Settings > Sync. Tailcat stays assembled and cannot be independently disabled or uninstalled.
 
-Text tools and classification expose enablement and a processor failure policy. The dropdown offers inheritance from `plugins.on_error`, explicit continue and explicit block-sync choices. The inherited choice shows the current global policy; the accessible value shows the displayed choice. These settings apply after restarting the service. Quitting and reopening Desktop restarts a tray-owned service. An independently started service requires a separate restart by its owner. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
+Text tools and classification expose enablement and a processor failure policy. The dropdown offers inheritance from `plugins.on_error`, explicit continue and explicit block-sync choices. The inherited choice shows the current global policy; the accessible value shows the displayed choice. These settings apply after restarting the service. Quitting and reopening Desktop restarts a tray-owned service. An independently started service requires a separate restart by its owner. The Plugins page shows a pending-restart notice and does not claim the saved intent is already running. Service restart notices across Settings and Devices expose a restart action. The tray closes the graphical views, restarts its owned service, and reopens the main window. If the tray cannot close a view, it returns the error to the requesting window so the user can retry. Both plugins' enablement changes participate in restart reporting; reverting to the startup settings clears the notice. Existing history is not reprocessed.
+
+Content classification provides an independent switch for each default regular expression. Users can add, edit and delete custom rules that pair a pattern with a target tag. The form validates the draft before saving it through the same revision-checked configuration API. A valid save that changes the active rules appears in the service restart notice. See [classifier settings](../contracts/plugin-contract.md#built-in-content-classification).
 
 The three built-in plugins have no plugin-specific Schema fields. See the [execution receipt](../exec/desktop-builtin-plugin-settings.md) for built-in management evidence.
 
 ## External plugin settings
 
+The Plugins page shows a single restart banner at the top when plugin configuration or the selected external plugin's settings require a restart.
+
 Settings > Plugins lists external plugins discovered by the service. An external plugin detail page shows enablement, pending restart and any form defined by its manifest. The mygo renderer uses the same portable Schema as the service. Password fields show presence and allow replacement or clearing. Save checks the last revision. The service hot-replaces running Lua settings and reports a restart for Go settings. Install and uninstall are CLI operations.
 
-The history toolbar (`history.toolbar`) and the history list/grid right-click context menu "动作" submenu (`history.item_menu`) expose matching plugin Actions filtered by both declared `Accepts` and `Placements`, displaying each Action's plugin provenance subtitle. When a single item has no matching Actions (or multiple items are selected), the context menu hides the "动作" submenu. Desktop honors each Action's declared `PostActions`: `copy` requests clipboard application through the active adapter, `notify` shows a window-level status toast (with running cancellation), `present` opens a BoardUI result dialog with copy, view-item and explicit `http(s)://` open-link controls, `select` focuses the new history item, and `none` commits silently to history. A clipboard failure leaves the committed result in history. See the [settings contract](../contracts/plugin-settings-contract.md) and [Action contract](../contracts/clipboard-action-contract.md).
+The detail and list names come from the manifest's text for the current UI language, then the marketplace entry, then the plugin ID; the subtitle never repeats the ID. Schema `title`, `description`, `group` and `option_labels` resolve the same way through `x-unic-ui.i18n` (see [plugin contract](../contracts/plugin-contract.md#展示文本与多语言)). Top-level schema fields carry the same inset as a settings row, the instance-creation control is a settings row, and the sync policy caption is the group footer.
+
+The WeType marketplace detail opens the installed plugin's shared-space setup after enablement. Once the service runs the plugin, Desktop accepts the six-digit WeType code on the plugin detail and submits it to the existing channel pairing endpoint using the selected instance. The first space uses the installed default instance. The form clears the code on submission and shows the joined space when the service reports its external channel. Connection options contain explicit recovery of an existing provider pairing and creation of additional instances for other spaces.
+
+The history toolbar (`history.toolbar`) and the history list/grid right-click context menu "动作" submenu (`history.item_menu`) expose matching plugin Actions filtered by both declared `Accepts` and `Placements`, displaying each Action's plugin provenance subtitle. When a single item has no matching Actions (or multiple items are selected), the context menu hides the "动作" submenu. Desktop honors each Action's declared `PostActions`: `copy` requests clipboard application through the active adapter, `notify` shows a window-level status toast (with running cancellation), `present` opens a BoardUI result dialog with copy, view-item, explicit `http(s)://` open-link controls, and a locally generated QR code (expanded by default) for non-loopback `http(s)://` URLs within scannable length bounds, `select` focuses the new history item, and `none` commits silently to history. A clipboard failure leaves the committed result in history. See the [settings contract](../contracts/plugin-settings-contract.md) and [Action contract](../contracts/clipboard-action-contract.md).
 
 ## Main-window decoration
 
 `desktop.system_window_frame` is a persisted boolean, defaulting to `false`.
 Settings > General exposes the same switch on Windows, Linux and macOS. The host
 captures its value when creating each GUI window. Saving a change leaves the
-existing window intact. Close and reopen the main window to apply it. The GUI
+existing window intact. The restart action recreates only the main window when
+the frame preference is the only pending change. It preserves the tray, quick
+panel, and service. Closing and reopening the main window also applies the preference. The GUI
 compares saved intent with its own captured value for the pending notice. The
 UI-free service stores the preference and never adds this host-only key to
 `restart_required`; an older service generation does not keep a recreated GUI pending.
@@ -92,8 +107,8 @@ its persistent toggle remains outside the hidden/inert sidebar. The content
 heading leads its toolbar, and view/search/actions trail. Collapsed/overlay
 layouts continuously clear the native control area reported by mygo. Traffic
 lights use a (14,18)-DIP native inset; no replacement buttons are drawn.
-Setup and startup keep a separate draggable safe-area wrapper until normal
-runtime content takes ownership of the window top. Linux
+Setup extends its panel backgrounds behind the traffic lights and reserves a
+draggable area. Startup uses a separate draggable safe-area wrapper. Linux
 reserves GTK's reported caption-control area above the application content. With
 the preference on, all three platforms use the normal native title bar and buttons.
 
@@ -104,8 +119,10 @@ caption buttons share one 52-DIP band. Settings and plugin details use the same
 slot. Ordinary pages have no separate `unic` caption row. Search shrinks to the
 available width while caption and command hit targets retain their sizes.
 
-Setup, offline migration, loading and startup-error pages have no SplitView;
-these pages use a single minimal draggable fallback band with the same controls.
+Setup and offline migration extend their panel backgrounds to the window top.
+The same controls occupy the top-right of a transparent 40-DIP draggable
+region. Setup reserves space for the region in both wide and compact layouts.
+Loading and startup-error pages use a separate minimal fallback band.
 Only empty toolbar regions drag. Interactive children retain input. mygo owns
 native hit testing, edge resize and double-click maximize. Maximize/Restore reads
 the OS window state; the maximize element uses mygo's native maximize-button
@@ -117,7 +134,7 @@ satellite windows retain their independent decoration. See the
 
 ## Native application updates
 
-Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences (`AutomaticChecks` and `AutomaticDownloads`) remain owned by the tray process in the same v2 user-data directory as the Desktop profile, and are exposed to the Settings → About view over Desktop role IPC (`status`, `check-updates`, and `set-update-prefs`). Switching the About channel selector to `alpha` requires explicit confirmation before persisting `desktop.update_channel` and triggering a check. Package-manager installations and portable archives retain external update ownership and route About's update check to package-manager or release-page instructions. AppImage self-update remains unsupported. The About view also lazily loads the public sponsor feed (`GET https://www.uniclipboard.app/api/v1/sponsors`) on demand and hides the sponsors section when empty or offline. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.
+Direct installations with a configured production update key use mygo's native updater window and the tray's check-updates action. macOS delegates release selection, download and archive verification to unicd. The tray receives the verified file before closing views or retiring its service. `desktop.update_channel` accepts `stable` or `alpha`; it defaults to `stable` and applies on the next check. Updater preferences (`AutomaticChecks` and `AutomaticDownloads`) remain owned by the tray process in the same v2 user-data directory as the Desktop profile, and are exposed to the Settings → About view over Desktop role IPC (`status`, `check-updates`, and `set-update-prefs`). Switching the About channel selector to `alpha` requires explicit confirmation before persisting `desktop.update_channel` and triggering a check. Package-manager installations and portable archives retain external update ownership and route About's update check to package-manager or release-page instructions. AppImage self-update remains unsupported. The About view also lazily loads the public sponsor feed (`GET https://www.uniclipboard.app/api/v1/sponsors`) on demand and hides the sponsors section when empty or offline. The [release architecture](releases.md#native-application-updates) defines signed identity verification and deployment prerequisites.
 
 ## Incremental history browsing
 
@@ -170,8 +187,62 @@ The [Desktop source application receipt](../exec/desktop-source-application.md) 
 
 ## Settings
 
+Settings organizes active categories into three grouped sidebar sections:
+General & Experience (`general`, `appearance`, `quickPanel`), Sync & Data
+(`sync`, `storage`, `plugins`), and Diagnostics & System (`diagnostics`,
+`about`), removing unimplemented placeholder categories from the navigation.
+
+Settings > Appearance exposes `desktop.color_mode` as `system`, `light` or
+`dark` (default `system`) via visual theme cards, alongside `desktop.tray_icon`
+and `desktop.system_window_frame`. The revision-checked configuration path
+persists these host-only preferences. Each native Desktop role sets mygo's
+shared theme source before startup and watches subsequent configuration changes.
+Main GUI, setup and Quick Panel therefore consume the same saved scheme. The
+[appearance receipt](../exec/desktop-settings-appearance.md) proves configuration
+and production binding behavior; native appearance remains separate acceptance.
+
+Settings > Diagnostics & Privacy exposes persistent local/upload log levels,
+per-signal telemetry switches with inline runtime/dropped status pills,
+effective diagnostic state and bounded fifteen-minute debug overrides with live
+countdown badges. Overrides use existing diagnostic operations without editing
+the saved configuration. The view schedules status refreshes while this page is
+open. Native Desktop callbacks select an archive destination and run the private
+sibling CLI against the current profile. Export safety follows the offline log
+archive contract. Opening the logs directory remains host-owned. See the
+[diagnostic receipt](../exec/desktop-settings-diagnostics.md).
+
+Settings > Storage & Backup shows aggregate default-cache stored/reserved bytes
+and file/held counts through the existing service operation, paired with a
+quota meter, cache quota control, receive directory indicator, history
+retention tag-pill exclusions and local data directory/migration actions. Cache
+values exclude the database, logs, user-managed receive directories and other
+user files. An explicit refresh failure marks any retained sample as previous
+data. The profile-directory opener remains host-owned. Full disk inventory,
+manual cache maintenance, clear-all history and explicit search-index
+maintenance are not supplied by these reads. See the
+[storage receipt](../exec/desktop-settings-storage.md).
+
+Storage also exports and imports a bounded portable-preference backup. It uses
+an explicit typed allowlist rather than copying the profile or serializing the
+full configuration. Import validates before preview, requires confirmation and
+saves against the preview's original revision. Local identities, credentials,
+plugin settings, paths, login registration, shortcut bindings and the separate
+mygo updater preferences remain excluded. Exports refuse existing destinations.
+See the [backup receipt](../exec/desktop-settings-backup.md) for the format,
+allowlist and unexecuted native-file-panel boundaries.
+
+Quick Panel settings passively display the current application's Accessibility
+permission status and provide explicit refresh and System Settings actions.
+macOS uses the existing mygo permissionflow library. Other platforms expose an
+unsupported state for this specific permission switch. Reading never requests
+permission; opening settings never counts as a grant or paste readiness. Reads
+and actions use independent bounded workers with generation/cancellation checks.
+The actual paste owner retains its existing permission checks. See the
+[permission settings receipt](../exec/desktop-settings-shortcuts.md).
+
 | Key | Default | Effect |
 |---|---|---|
+| `desktop.color_mode` | `"system"` | Select the shared system/light/dark scheme for native Desktop roles; apply saved changes without a restart. |
 | `desktop.mode` | `"normal"` | Manual activation always opens the GUI. Normal GUI close keeps tray/service; lightweight GUI close leaves only unicd. Explicit background entry omits the GUI after setup. Lightweight login is service-only; normal login uses its background preference. |
 | `desktop.launch_at_login` | `false` | The running tray applies login registration; actual OS status is displayed separately. |
 | `desktop.tray_icon` | `"glyph"` | Immediately select `glyph` or `cat`; no restart required. |
@@ -367,9 +438,20 @@ Unsupported OS paste and semantic classifications remain separate from retrieval
 
 The tray captures the external foreground target before starting or activating the independent quick-panel process. It sends the ephemeral target through private Desktop IPC. The quick-panel process owns the target session in `app/desktop/internal/quickpanel`, its history window and its nonfocusable preview. Global shortcuts, tray activation and the Settings button use the same opening path. Repeated activation while visible dismisses the panel without replacing the target.
 
-`desktop.quick_panel_shortcut` defaults to Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Settings offers both platform bindings, Ctrl plus backtick, Command/Ctrl+Shift+Space and disabled. The existing revision-checked configuration persists the choice. The host registers a replacement before removing the working registration and exposes requested/effective disagreement with an explicit retry. Normal mode keeps the tray shortcut available after GUI close. Lightweight GUI close and lightweight background/login entry leave only unicd, so no shortcut or clipboard adapter remains.
+Settings > Shortcuts records one or two key combinations and groups actions by
+where they run. Window navigation, history actions and quick-panel actions read
+the current profile preferences. The tray registers system-wide bindings and
+preserves the previous set if the operating system refuses a replacement.
+Settings > Quick Panel shows the registration result and lets the user retry.
+Normal mode keeps shortcuts available after the GUI closes. Lightweight mode
+releases all Desktop registrations when only unicd remains.
 
-Enter applies history through the existing IPC clipboard adapter, hides both windows, restores the captured target and sends one paste chord. Shift+Enter uses the existing plain-text Action and applies its resulting history item. Command/Ctrl+Enter waits 150 ms after input dispatch and reopens the panel only if the target still owns focus. Copy does not inject keyboard input. The panel delegates application and clipboard-match checks to the tray through private IPC. The tray's tracked clipboard wrapper verifies exactly one adapter write and compares content plus file paths before paste. The panel never acquires another adapter.
+Offline v1 migration imports configured shortcuts and the double-tap setting
+from the selected source profile. Existing v2 overrides take priority. An
+imported v1 binding takes priority over an overlapping newly added default.
+Migration reports unsupported bindings. See the [quick-panel contract](../contracts/desktop-quick-panel-contract.md).
+
+Enter applies history through the existing IPC clipboard adapter, hides both windows, restores the captured target and sends one paste chord. Shift+Enter uses the existing plain-text Action and applies its resulting history item. Command/Ctrl+Enter waits 150 ms after input dispatch and reopens the panel only if the target still owns focus. Copy does not inject keyboard input. The panel sends application and clipboard-match requests directly to unicd on macOS and uses private tray IPC on other platforms. The active adapter tracks the write and compares content plus file paths before paste. The panel never acquires another adapter.
 
 Generation cancellation prevents stale clipboard completions from sending input. Focus checks, held-key waits and input dispatch are bounded; errors never automatically replay input. External blur does not restore focus. Explicit Escape dismissal restores the original target only while unic still owns the foreground. Target names, IDs and clipboard fingerprints remain transient host state and never enter logs or analytics.
 
@@ -395,7 +477,7 @@ Before writing a prepared tree, the adapter rechecks the current clipboard again
 
 ## Application and tray icons
 
-Desktop reuses the original v1 application assets in `app/desktop/internal/appicons`. The asset README records their source commit and SHA-256 digests. The main window, macOS Dock and About view share the embedded application PNG.
+Desktop generates its launch artwork from the supplied Unic logo. The packaged macOS Dock uses the bundle icon through Launch Services. The unbundled macOS binary uses the matching embedded PNG. Windows and Linux windows use their platform artwork. About uses the 512-pixel PNG. See the [asset guide](../../app/desktop/internal/appicons/README.md).
 
 Settings > General > Tray icon selects `glyph` (the v1 default, two offset rounded cards) or `cat` (the original cat alpha mask). The revision-checked configuration API persists `desktop.tray_icon`. The existing Desktop file watcher applies the saved preference immediately. `unic config set desktop.tray_icon '"cat"'` and direct TOML edits use the same validation and update path. Invalid values retain the previous valid configuration. The tray applies this preference while it runs. Normal GUI close retains the tray; lightweight GUI close removes it.
 
@@ -418,6 +500,11 @@ welcome/skip and history navigation do not publish CLI completion. See the
 ## External sync instances
 
 Plugins separates installed program identity from configured runtime instances. Create an instance with its own ID, edit its Schema values, enable it and restart. A new instance starts disabled and never copies another instance's credentials. The detail shows local runtime state; standard content policies save through the existing revision-checked configuration route. Go settings changes take effect after restart and invalidate that instance's old authorizations before its new process starts.
+
+An enabled external plugin with missing required Schema values stays inactive.
+The service and Desktop start with the other plugins. The Plugins page shows
+**Setup required** and keeps the settings available. Saving the required values
+allows the plugin to activate on the next service start.
 
 Device management uses one unified BoardUI presentation for live and preview data with user-facing "sync channel" terminology. The left canvas opens with a runtime sync-channel status strip that surfaces running, restarting, unavailable, and disabled channels plus pending-restart notices and jumps directly to Settings > Plugins (or a specific plugin detail). A global-sync-off warning banner offers one-click re-enablement. Pending banners distinguish brand-new device join requests from new-path requests on already-trusted devices, and external channels (`kind == "external"`) appear in their own section without device fingerprints.
 
@@ -454,8 +541,20 @@ the installed third-party plugins and built-in features. `GET /v1/plugins/market
 reads a static JSON registry (`UNIC_PLUGIN_REGISTRY_URL`, defaulting to the
 official `registry.json` and accepting `off` for offline bundled mode), caches
 validated entries locally under `$UNIC_HOME/plugins/marketplace-cache.json`,
-and falls back to the cached or bundled official catalog (including zero-config
-`unic.wenshushu`) when offline.
+and falls back to the cached or bundled official catalog when offline. The
+bundled catalog includes the zero-configuration [Wenshushu](https://github.com/UniClipboard/unic-plugin-wenshushu)
+and [Wormhole](https://github.com/UniClipboard/unic-plugin-wormhole) share
+Actions. The Wormhole link contains the decryption key and follows normal
+Action result history and sync policy.
+
+The marketplace lists one plugin per row beside a detail pane. Each card shows
+the available author, version, category and install status. Cards, the detail
+pane and the featured plugin use the catalog's declared
+[icon](../contracts/plugin-contract.md#display-icon) with a category or capability
+fallback. Installed plugin views prefer the icon declared in the manifest.
+Selecting a card updates the detail pane and exposes the selected state to accessibility. The
+marketplace and plugin list use quiet 28-DIP toolbar controls for navigation,
+catalog refresh, update checks and the overflow menu.
 
 One-click install and update call `POST /v1/plugins/install`, reusing the
 existing GitHub commit-locked, SHA-256-verified installer (`luascripts.Install`)

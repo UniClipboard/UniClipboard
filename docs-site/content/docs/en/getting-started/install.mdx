@@ -1,0 +1,108 @@
+---
+title: Installation
+description: Download and install the UniClipboard desktop app and CLI on Windows, macOS, and Linux.
+---
+
+## Download Desktop App
+
+Download the installer for your platform from [uniclipboard.app/download](https://uniclipboard.app/download) or [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases).
+
+<Tabs items={['macOS', 'Windows', 'Linux']}>
+  <Tab value="macOS">
+    Download the `.dmg` image (supports Apple Silicon and Intel), open it, and drag **UniClipboard** into the Applications folder.
+
+    Or install with Homebrew:
+
+    ```sh
+    brew install --cask uniclipboard
+    ```
+  </Tab>
+  <Tab value="Windows">
+    Two options are available (x64 and ARM64):
+
+    - **Installer (`.exe`)**: Double-click to run the setup wizard; supports automatic updates.
+    - **Portable (`.zip`)**: Extract and run without writing system installation entries.
+  </Tab>
+  <Tab value="Linux">
+    Choose the package for your distribution (x64 and ARM64):
+
+    - **Debian / Ubuntu**: Download the `.deb` package and install with `apt` or `dpkg -i`.
+    - **Fedora / RHEL**: Download the `.rpm` package and install with `dnf install`.
+    - **Arch Linux**: Download the pacman binary package, or install from the AUR.
+    - **Universal**: Download the `.AppImage`, make it executable, and run it directly (requires system GTK3 runtime; AppImage does not support in-app auto-updates yet).
+  </Tab>
+</Tabs>
+
+<Callout type="info">
+If an official installer is not yet available for your platform, you can try [Run from source (developers)](#run-from-source-developers) below.
+</Callout>
+
+The desktop package bundles private copies of `unic` and `unicd` and will not overwrite a standalone CLI installation.
+
+## Install CLI
+
+If you only need UniClipboard in a terminal, on a server, or over SSH, you can install `unic` and the background service `unicd` separately (`uniclip` is also provided in the archive as an alias for `unic`):
+
+- **npm**:
+
+  ```sh
+  npm install -g @uniclipboard/cli          # stable channel (latest)
+  npm install -g @uniclipboard/cli@alpha    # alpha channel
+  ```
+
+  The main package automatically selects the native binary for your system.
+
+- **GitHub Releases / Homebrew**: Download the headless archive for your platform from [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases), or install the `uniclipboard` formula via Homebrew Tap.
+
+See [CLI Installation](../cli/installation) and [Headless Deployment](../cli/headless-deployment) for details.
+
+## Release Channels: stable and alpha
+
+- **stable**: Releases that have passed stability acceptance; maps to the `latest` tag on npm.
+- **alpha**: Preview builds with earlier access to new features; maps to the `alpha` tag on npm and is marked as a prerelease on GitHub Releases.
+
+The channel name does not appear in the version string, which looks like `2.0.0-build.N`. Within the same channel, the v2 desktop app replaces an installed v1 while preserving user data; `alpha` and `stable` share the same installation identity.
+
+## Check Version
+
+```sh
+unic --version --json
+unicd --version --json
+```
+
+Reads the product version, build number, and source commit without starting the service.
+
+## Run from source (developers)
+
+If you want to build from source or contribute, you only need [Go](https://go.dev/dl/):
+
+<Steps>
+<Step>
+### Get the source code
+
+```sh
+git clone https://github.com/UniClipboard/UniClipboard.git
+cd UniClipboard
+```
+</Step>
+<Step>
+### Run the desktop app
+
+```sh
+make run-desktop
+```
+
+This builds `unic`, `unicd`, and `unic-desktop` into `dist/` and launches the desktop app using `.cache/desktop-dev` inside the repository as an isolated data directory.
+</Step>
+</Steps>
+
+To build only the headless CLI and service:
+
+```sh
+make build-headless
+```
+
+## Next Steps
+
+- [Quick Start](./quick-start)
+- Already using v1? See [Migrate from v1](../migration/v1-to-v2)

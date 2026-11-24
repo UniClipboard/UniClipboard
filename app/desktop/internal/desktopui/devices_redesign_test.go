@@ -419,3 +419,153 @@ func TestLiveErrorMessageMappingAndI18n(t *testing.T) {
 		}
 	}
 }
+
+func TestDevicesEscapeReturnsToPreviousLayer(t *testing.T) {
+	t.Run("sidebar entry without focus returns to history", func(t *testing.T) {
+		d := newDemo("history", "light")
+		tt := ui.NewTester(d.view, 1120, 760)
+		if err := tt.Click("管理设备…"); err != nil {
+			t.Fatal(err)
+		}
+		if d.page != "devices" {
+			t.Fatalf("page = %q, want devices", d.page)
+		}
+		tt.Key(0, ui.KeyEscape)
+		if d.page != "history" {
+			t.Fatalf("Escape after entering devices did not return to history: page=%q", d.page)
+		}
+	})
+
+	t.Run("keyboard shortcut entry returns to history", func(t *testing.T) {
+		d := newDemo("history", "light")
+		tt := ui.NewTester(d.view, 1120, 760)
+		tt.Key(ui.Cmd, ui.Key3)
+		if d.page != "devices" {
+			t.Fatalf("Cmd+3 page = %q, want devices", d.page)
+		}
+		tt.Key(0, ui.KeyEscape)
+		if d.page != "history" {
+			t.Fatalf("Escape after Cmd+3 did not return to history: page=%q", d.page)
+		}
+	})
+
+	t.Run("wide layout after selecting device card returns to history and clears detail flag", func(t *testing.T) {
+		d := newDemo("history", "light")
+		tt := ui.NewTester(d.view, 1120, 760)
+		if err := tt.Click("管理设备…"); err != nil {
+			t.Fatal(err)
+		}
+		if err := tt.Click("Linux 工作站"); err != nil {
+			t.Fatal(err)
+		}
+		if !d.deviceDetailOpen || d.deviceList.Value != "linux" {
+			t.Fatalf("clicking card did not select linux: detail=%v val=%q", d.deviceDetailOpen, d.deviceList.Value)
+		}
+		tt.Key(0, ui.KeyEscape)
+		if d.page != "history" || d.deviceDetailOpen {
+			t.Fatalf("Escape in wide devices page: page=%q detail=%v, want history/false", d.page, d.deviceDetailOpen)
+		}
+	})
+
+	t.Run("single pane pops detail then returns to history", func(t *testing.T) {
+		d := newDemo("devices", "light")
+		tt := ui.NewTester(d.view, 640, 760)
+		if err := tt.Click("Linux 工作站"); err != nil {
+			t.Fatal(err)
+		}
+		if !d.deviceDetailOpen {
+			t.Fatal("single-pane card click did not open detail")
+		}
+		tt.Key(0, ui.KeyEscape)
+		if d.page != "devices" || d.deviceDetailOpen {
+			t.Fatalf("first Escape in single-pane detail: page=%q detail=%v, want devices/false", d.page, d.deviceDetailOpen)
+		}
+		tt.Key(0, ui.KeyEscape)
+		if d.page != "history" {
+			t.Fatalf("second Escape in single-pane overview: page=%q, want history", d.page)
+		}
+	})
+
+	t.Run("inline rename cancels before leaving devices", func(t *testing.T) {
+		d := newDemo("devices", "light")
+		tt := ui.NewTester(d.view, 1120, 760)
+		d.deviceList.Value = "linux"
+		tt.Frame()
+		if err := tt.Click("重命名"); err != nil {
+			t.Fatal(err)
+		}
+		if !d.renaming {
+			t.Fatal("rename did not open")
+		}
+		// Escape while input is focused cancels rename only.
+		tt.Key(0, ui.KeyEscape)
+		if d.renaming || d.page != "devices" {
+			t.Fatalf("Escape with focused rename input: renaming=%v page=%q", d.renaming, d.page)
+		}
+		// Reopen rename and move focus away from input; Escape still cancels rename only.
+		if err := tt.Click("重命名"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Key(0, ui.KeyTab) // focus moves off the text input
+		tt.Key(0, ui.KeyEscape)
+		if d.renaming || d.page != "devices" {
+			t.Fatalf("Escape with unfocused rename box: renaming=%v page=%q", d.renaming, d.page)
+		}
+		// Subsequent Escape leaves devices page.
+		tt.Key(0, ui.KeyEscape)
+		if d.page != "history" {
+			t.Fatalf("Escape after closing rename: page=%q, want history", d.page)
+		}
+	})
+
+	t.Run("path menu and dialogs dismiss before leaving devices", func(t *testing.T) {
+		d := newDemo("devices", "light")
+		tt := ui.NewTester(d.view, 1120, 760)
+		d.deviceList.Value = "linux"
+		tt.Frame()
+
+		// Path overflow menu
+		if err := tt.Click("更多操作"); err != nil {
+			t.Fatal(err)
+		}
+		if !tt.HasText("移除此路径") {
+			t.Fatal("path menu did not open")
+		}
+		tt.Key(0, ui.KeyEscape)
+		if d.page != "devices" || tt.HasText("移除此路径") {
+			t.Fatalf("Escape with menu open: page=%q menuOpen=%v", d.page, tt.HasText("移除此路径"))
+		}
+
+		// Confirm dialog
+		if err := tt.Click("移除设备"); err != nil {
+			t.Fatal(err)
+		}
+		if d.confirm == "" {
+			t.Fatal("confirm dialog did not open")
+		}
+		tt.Key(0, ui.KeyEscape)
+		if d.page != "devices" || d.confirm != "" {
+			t.Fatalf("Escape with confirm dialog open: page=%q confirm=%q", d.page, d.confirm)
+		}
+
+		// Pairing sheet
+		if err := tt.Click("添加设备"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Advance(350 * time.Millisecond)
+		if d.deviceTask == "" {
+			t.Fatal("pairing sheet did not open")
+		}
+		tt.Key(0, ui.KeyEscape)
+		tt.Advance(350 * time.Millisecond)
+		if d.page != "devices" || d.deviceTask != "" {
+			t.Fatalf("Escape with pairing sheet open: page=%q task=%q", d.page, d.deviceTask)
+		}
+
+		// Now Escape leaves devices page cleanly.
+		tt.Key(0, ui.KeyEscape)
+		if d.page != "history" {
+			t.Fatalf("final Escape did not return to history: page=%q", d.page)
+		}
+	})
+}

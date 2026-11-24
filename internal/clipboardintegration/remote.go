@@ -53,6 +53,15 @@ func (r *Remote) ReadContent(ctx context.Context, l engine.LeaseID, p engine.Par
 
 // RunRemote reconnects with a fresh baseline. Commands with uncertain results are never replayed.
 func RunRemote(ctx context.Context, c *api.Client, b Board, emit func(api.Event)) error {
+	return runRemote(ctx, c, b, emit, nil)
+}
+
+// RunRemoteReady closes ready when the initial baseline and session are ready.
+func RunRemoteReady(ctx context.Context, c *api.Client, b Board, ready chan<- struct{}) error {
+	return runRemote(ctx, c, b, nil, ready)
+}
+
+func runRemote(ctx context.Context, c *api.Client, b Board, emit func(api.Event), ready chan<- struct{}) error {
 	registration := api.AdapterRegistration{LaunchID: randID()}
 	for ctx.Err() == nil {
 		var session string
@@ -107,6 +116,10 @@ func RunRemote(ctx context.Context, c *api.Client, b Board, emit func(api.Event)
 			// including reconnects to a replacement service generation.
 			registration.LaunchID = ""
 			cb.IgnoreReceipts(oldReceipts)
+			if ready != nil {
+				close(ready)
+				ready = nil
+			}
 			go func() { defer close(done); cb.Run(run) }()
 		} else {
 			close(done)

@@ -1,0 +1,166 @@
+{
+  "version": 1,
+  "source_head": "fcf5611662039c1db79fc6537c4f79aff2a5b436",
+  "worktree_dirty": true,
+  "native_gui": "NOT_RUN",
+  "native_permissions": "NOT_RUN",
+  "system_clipboard": "NOT_RUN",
+  "cross_application_paste": "NOT_RUN",
+  "cases": {
+    "settings-diagnostics": {
+      "run_id": "20261122T073640Z-ef4963d0",
+      "report": ".build/desktop-e2e/20261122T073640Z-ef4963d0/index.html",
+      "manifest_sha256": "23701cd64fc314dbd46a26886c4285866fc9f742ebd280e3c173de881e4199ca",
+      "scenario_receipt_sha256": "79ecf1ffda2b5e3ed811496db3efc044e12fed79de69da3a98704a0c77390150",
+      "status": "PASS",
+      "checksums_verified": 5,
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "check_groups": 7,
+      "all_tested_files_match_current": true,
+      "replay": "make desktop-e2e CASE=settings-diagnostics"
+    },
+    "settings-storage": {
+      "run_id": "20261122T073640Z-3f099964",
+      "report": ".build/desktop-e2e/20261122T073640Z-3f099964/index.html",
+      "manifest_sha256": "6c18ac42893349a658fe97eb19ce604edb2353215e75852329f842aac866c1bd",
+      "scenario_receipt_sha256": "9dcb0f2e417a535458e444e6df8c3798c7efc236f9194a620cc15afb7d399a32",
+      "status": "PASS",
+      "checksums_verified": 5,
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "check_groups": 5,
+      "all_tested_files_match_current": true,
+      "replay": "make desktop-e2e CASE=settings-storage"
+    },
+    "settings-appearance": {
+      "run_id": "20261122T073640Z-51568c0e",
+      "report": ".build/desktop-e2e/20261122T073640Z-51568c0e/index.html",
+      "manifest_sha256": "a866c7a7c6d60567554f642360cae5acd6a85dedff45562d9d9ed259064e96ab",
+      "scenario_receipt_sha256": "3d08c0626a43d2c22449a9ba8eac7f2e1eecb6102c467876222abcbd91fe7bb5",
+      "status": "PASS",
+      "checksums_verified": 5,
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "check_groups": 6,
+      "all_tested_files_match_current": true,
+      "replay": "make desktop-e2e CASE=settings-appearance"
+    },
+    "settings-backup": {
+      "run_id": "20261122T073640Z-67bac791",
+      "report": ".build/desktop-e2e/20261122T073640Z-67bac791/index.html",
+      "manifest_sha256": "577938550a4be68f82884d139b62a3f451d2aa65561271db67cdf40f80dd56d9",
+      "scenario_receipt_sha256": "6fab0e262dff10b6ad7ecea477a10d108a96de32ce1a5809549f7731ce2d4ade",
+      "status": "PASS",
+      "checksums_verified": 5,
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "check_groups": 7,
+      "all_tested_files_match_current": true,
+      "replay": "make desktop-e2e CASE=settings-backup"
+    },
+    "settings-shortcuts": {
+      "run_id": "20261122T073640Z-3983aca5",
+      "report": ".build/desktop-e2e/20261122T073640Z-3983aca5/index.html",
+      "manifest_sha256": "16d2c7152efd132b917a47d4d809dcd1732df790c0979d471415bb273f1769e4",
+      "scenario_receipt_sha256": "e11cd321204b40146a7a8ae534506c9c930be041d83bc95cae53e419feb50143",
+      "status": "PASS",
+      "checksums_verified": 5,
+      "snapshot_unchanged": true,
+      "private_cleanup": "PASS",
+      "check_groups": 5,
+      "all_tested_files_match_current": true,
+      "replay": "make desktop-e2e CASE=settings-shortcuts"
+    }
+  },
+  "checks": {
+    "full_race": {
+      "command": "TMPDIR=/private/tmp go test -race ./...",
+      "passed": true,
+      "reported_passed_tests": 449,
+      "reported_packages": 91
+    },
+    "lint": {
+      "version": "2.15.0",
+      "command": "golangci-lint run ./app/desktop/... ./internal/localconfig/...",
+      "issues": 0
+    },
+    "docscheck": {
+      "passed": true,
+      "stale_warnings": 7,
+      "verified_bump": "REFUSED_UNCOMMITTED_SOURCE"
+    },
+    "diff_check": {
+      "passed": true
+    }
+  },
+  "tested_source_manifest_sha256": "f1a55b45738e24cfd82fc6dbcf2caf190507f2a01728e065cfab3fa408bf1091",
+  "tested_file_count": 1897,
+  "builds": {
+    "builds": [
+      {
+        "os": "darwin",
+        "arch": "arm64",
+        "passed": true,
+        "sha256": "511604e54da0f05a63f90000f8713c02f1bc19f5f6b0696420dea910a5f51d22"
+      },
+      {
+        "os": "windows",
+        "arch": "amd64",
+        "passed": true,
+        "sha256": "07d8ac7fa5b9c070adc77a1e1d13e8459e43f248e7f3a0c752ce767dcd639f7c"
+      },
+      {
+        "os": "linux",
+        "arch": "amd64",
+        "passed": true,
+        "sha256": "32fd3ae26c66f52172b41ed519f6f8dd16011d1d0191c6e57a418d3a1d19bb71"
+      }
+    ],
+    "temporary_binaries_removed": true
+  },
+  "changed_runtime_sha256": {
+    "app/desktop/cmd/unic-desktop/backup_actions.go": "916a3ca5ae9db713a4c6b9b95c80678df4c6ab51126a8a3085de3193d48edc63",
+    "app/desktop/cmd/unic-desktop/diagnostics_actions.go": "0cd3f14fea529be3ffbe78c32beff3427d7eea7394516671527c942c00a44f83",
+    "app/desktop/cmd/unic-desktop/gui.go": "9a64d7d24c95f011a6a28cdcb7531320ebc2894f1e63225fa16f5e6323f71635",
+    "app/desktop/cmd/unic-desktop/roles_native.go": "f26a2492ea31afb66f05e26db316788587c125e3a9f86c736d749e305403ea1d",
+    "app/desktop/cmd/unic-desktop/session_gui.go": "9f1bb3ab4a353c1fc44701ccdf446c5ab0778071466f49a3352df127d8aeb346",
+    "app/desktop/cmd/unic-desktop/shortcut_permissions.go": "5fa30d48e732ac6a2956c7206028452c38820c2faf21a0eb150f3e994be421eb",
+    "app/desktop/cmd/unic-desktop/storage_actions.go": "4a523a4feb16aa26d6cba93a1c9ea4902d371da0ee8cc0bfe88ba53e7d2f8078",
+    "app/desktop/internal/desktopui/acceptance_settings_appearance_test.go": "d457a0e93f3506981eb0bf5f253d4d6a50e2f0065bdddd3dd6c4d69dd661eae1",
+    "app/desktop/internal/desktopui/acceptance_settings_backup_process_test.go": "4167c2a610002b6dd36858686ca91418642d811c4b69ed9b99be9cdb17c85569",
+    "app/desktop/internal/desktopui/acceptance_settings_diagnostics_test.go": "6877625c530589b248b80b46b64762074158b0e6e2fd72203b9f0fecda39552b",
+    "app/desktop/internal/desktopui/acceptance_settings_shortcuts_process_test.go": "c1faf107bc13891e0fa74856ccae64e60758f82946fe72117412ddc0e21efbb8",
+    "app/desktop/internal/desktopui/acceptance_settings_storage_process_test.go": "851c9d7eef372dcdb910848dc899e99ba2d85be9a1a3cb722c64cc209667e964",
+    "app/desktop/internal/desktopui/acceptance_test.go": "6b24c3de7a4721902cd33531f5d8460f1ef3c6257bfd5ac9ccab2929b8693df1",
+    "app/desktop/internal/desktopui/live.go": "80ddbcd418315dd94a237c706607286b11ead74d0ad216f5573acb87a1f270fd",
+    "app/desktop/internal/desktopui/live_settings.go": "5ad2a713911e667a7eea983b1ed3f3d8ecf8fe2f4892e210db036a5140878fb9",
+    "app/desktop/internal/desktopui/live_wake.go": "45ea5a55983df363c8074cccbe853cce435ad20ba4e3ec901784bcc0fa320299",
+    "app/desktop/internal/desktopui/settings_appearance.go": "c65c9c03e3485caf97e579d14aaf6797d29cbe51594c73278a24d66469e63065",
+    "app/desktop/internal/desktopui/settings_backup.go": "8aa623e15fd4e9ff0913445adc04ce64d9d421aae5a3c25fb3c4a79592efa4e0",
+    "app/desktop/internal/desktopui/settings_diagnostics.go": "7b77aa0cf97d68d30ea900a2cf9a402c43bdc225e08e3ded8a1e533a26d88965",
+    "app/desktop/internal/desktopui/settings_shortcuts.go": "3dd1491ffcde0b7f9b6247f107aebe85dc84ca619648730a93ba3f053bffbc11",
+    "app/desktop/internal/desktopui/settings_storage.go": "67e96b6c2aea6796f4e2540099658aeacff1608040759f5a644fafa1f34bf70c",
+    "app/desktop/internal/desktopui/view.go": "6d09fcef6c30dc99da66bffa03354b2b84b73b2b4b5ee76dc1b056d35f4ccaa9",
+    "app/desktop/internal/i18n/locales.json": "43253c624ee96cf94d5f84dfc3d5c60248b021815c76dff719922bcb00f0917b",
+    "internal/localconfig/config.go": "418bd95adcae2d0f2a8eaaa5e5e595071ad4e0f73e24ac7251a8d276983de608"
+  },
+  "retained_first_failures": [
+    {
+      "run": "20261122T071839Z-6cc127d7",
+      "cause": "incomplete shared storage state integration; compile failure; cleanup PASS"
+    },
+    {
+      "run": "20261122T071909Z-e198ad85",
+      "cause": "incomplete shared diagnostics state integration; compile failure; cleanup PASS"
+    },
+    {
+      "run": "20261122T072011Z-2ba38d5b",
+      "cause": "true appearance red: default color mode absent; cleanup PASS"
+    },
+    {
+      "run": "20261122T072117Z-1fb9a719",
+      "cause": "diagnostics fixture omitted explicit CLI initialization; exit 6; cleanup PASS"
+    }
+  ]
+}

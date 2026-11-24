@@ -1,0 +1,64 @@
+---
+title: Diagnostics and Logs
+description: Check service status, view local logs, temporarily raise log levels, export logs, and manage telemetry settings.
+---
+
+## Service Status
+
+```bash
+unic status        # Local device name and ID, connected devices, pending requests
+unic config        # Current configuration, config errors, keys requiring restart
+```
+
+## Local Logs
+
+- Location: `$UNIC_HOME/logs/` (directory permissions `0700`, file permissions `0600`).
+- Format: JSON Lines, up to 4 MiB per segment, 20 MiB total, retained for 7 days.
+- Logs never include clipboard payloads, device addresses, pairing tickets, or other secrets.
+
+The default level is controlled by `logging.level` (default `info`); see [Configuration File](./configuration#logging-and-telemetry).
+
+### Temporarily Adjusting Log Level
+
+```bash
+unic dev logs level                          # Check current local/remote levels
+unic dev logs level debug --for 15m          # Temporarily set local level to debug
+unic dev logs level debug --target remote    # Temporarily set remote upload level
+unic dev logs level reset                    # Restore configured levels
+```
+
+`--for` accepts an integer duration from 1 second to 1 hour (default 15 minutes); the command stays running during that window and automatically restores the level when it expires or exits. Local and remote levels are independent.
+
+### Exporting Logs
+
+```bash
+unic dev logs export                       # Creates unic-logs-<timestamp>.tar.gz in the current directory
+unic dev logs export --output ./logs.tar.gz
+```
+
+The archive contains only the retained log segments and their SHA-256 manifest, ready to attach to bug reports. The output path cannot be inside the log directory.
+
+## Telemetry
+
+Client telemetry is enabled by default, including remote logs (`warn` and above), metrics, product events, and 1%-sampled traces. Product analytics uses a separate random identifier that is not attached to logs or metrics.
+
+```bash
+unic dev diagnostics telemetry            # View current status of each signal
+unic config set telemetry.enabled false   # Disable all uploads
+```
+
+You can also disable individual signals, such as `telemetry.analytics.enabled = false`. Changes take effect immediately.
+
+## Command Exit Codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success |
+| 1 | Failure |
+| 2 | Usage error |
+| 3 | Migration partially completed (`unic migrate` only) |
+| 4 | Submitted, but send, approval, or wait window did not complete |
+| 5 | Command completed, but stopping the temporary service failed |
+| 6 | Current data directory has not completed migration initialization (`migration_required`) |
+
+On non-zero exit, errors are written to stderr as JSON containing `error` and `reason` fields for scripting.

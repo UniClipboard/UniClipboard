@@ -3,7 +3,9 @@
 
 import argparse
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
+import itertools
 import json
 import os
 from pathlib import Path
@@ -12,10 +14,11 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 import tomllib
 from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -342,8 +345,11 @@ def registry_url(value):
 
 
 def registry_get(registry, name):
+    request = Request(
+        registry + "/" + quote(name, safe="@"), headers={"Cache-Control": "no-cache"}
+    )
     try:
-        with urlopen(registry + "/" + quote(name, safe="@"), timeout=30) as response:
+        with urlopen(request, timeout=30) as response:
             data = response.read(16 * 1024 * 1024 + 1)
             if len(data) > 16 * 1024 * 1024:
                 raise ValueError("registry response too large")
@@ -352,6 +358,18 @@ def registry_get(registry, name):
         if error.code == 404:
             return {"versions": {}, "dist-tags": {}}
         raise
+
+
+def registry_readback(registry, name, select, error):
+    deadline = time.monotonic() + 900
+    while True:
+        observed = select(registry_get(registry, name))
+        if observed:
+            return observed
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ValueError(error + ": " + name)
+        time.sleep(min(2, remaining))
 
 
 def validate_manifest(path):
@@ -400,6 +418,47 @@ def channel_downgrade(current, candidate):
         if legacy and (1, int(legacy[1]), int(legacy[2])) < selected[:3]:
             return False
         raise
+
+
+def distribute_package(package, exists, manifest_path, registry, tag, fixture):
+    name, version = package["name"], package["version"]
+    if not exists:
+        command = [
+            "npm",
+            "publish",
+            str(manifest_path.parent / package["file"]),
+            "--registry",
+            registry,
+            "--access",
+            "public",
+            "--ignore-scripts",
+            "--tag",
+            tag,
+        ]
+        if not fixture:
+            command.append("--provenance")
+        run(command)
+    remote = registry_readback(
+        registry,
+        name,
+        lambda data: data if version in data.get("versions", {}) else None,
+        "package read-back timed out",
+    )
+    published = remote["versions"][version]
+    if published.get("dist", {}).get("integrity") != package["integrity"]:
+        raise ValueError("package read-back integrity conflict: " + name)
+    selected = remote.get("dist-tags", {}).get(tag)
+    if selected == version:
+        return
+    if selected and channel_downgrade(selected, version):
+        raise ValueError("refusing channel downgrade: " + name)
+    run(["npm", "dist-tag", "add", name + "@" + version, tag, "--registry", registry])
+    registry_readback(
+        registry,
+        name,
+        lambda data: data.get("dist-tags", {}).get(tag) == version,
+        "channel read-back timed out",
+    )
 
 
 def distribute(args):
@@ -477,60 +536,57 @@ def distribute(args):
                     if payload.get("optionalDependencies") != expected:
                         raise ValueError("packed platform dependency set mismatch")
             existing[package["name"]] = remote
-        # Complete preflight for the entire set before any mutation.
-        for package in manifest["packages"]:
-            item = {
+        manifest_path = Path(args.manifest).resolve()
+        receipt["packages"] = [
+            {
                 "name": package["name"],
                 "version": package["version"],
                 "integrity": package["integrity"],
                 "status": "pending",
             }
-            receipt["packages"].append(item)
-            save(args.receipt, receipt)
-            if not existing[package["name"]]:
-                command = [
-                    "npm",
-                    "publish",
-                    str(Path(args.manifest).resolve().parent / package["file"]),
-                    "--registry",
-                    registry,
-                    "--access",
-                    "public",
-                    "--ignore-scripts",
-                    "--tag",
-                    tag,
-                ]
-                if not fixture:
-                    command.append("--provenance")
-                run(command)
-            remote = (
-                registry_get(registry, package["name"])
-                .get("versions", {})
-                .get(package["version"])
+            for package in manifest["packages"]
+        ]
+        save(args.receipt, receipt)
+
+        def publish(package):
+            distribute_package(
+                package,
+                existing[package["name"]],
+                manifest_path,
+                registry,
+                tag,
+                fixture,
             )
-            if (
-                not remote
-                or remote.get("dist", {}).get("integrity") != package["integrity"]
-            ):
-                raise ValueError("package read-back failed: " + package["name"])
-            run(
-                [
-                    "npm",
-                    "dist-tag",
-                    "add",
-                    package["name"] + "@" + package["version"],
-                    tag,
-                    "--registry",
-                    registry,
-                ]
-            )
-            if (
-                registry_get(registry, package["name"]).get("dist-tags", {}).get(tag)
-                != package["version"]
-            ):
-                raise ValueError("channel read-back failed: " + package["name"])
-            item["status"] = "available"
-            save(args.receipt, receipt)
+
+        # Complete preflight before mutating. Wait for all platform read-backs before the main package.
+        failure = None
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            platforms = {
+                executor.submit(publish, package): item
+                for package, item in zip(
+                    manifest["packages"][:-1], receipt["packages"][:-1], strict=True
+                )
+            }
+            for future in as_completed(platforms):
+                item = platforms[future]
+                try:
+                    future.result()
+                except Exception as error:
+                    item["status"] = "failed"
+                    item["error"] = str(error)
+                    if failure is None:
+                        failure = error
+                else:
+                    item["status"] = "available"
+                save(args.receipt, receipt)
+        if failure is not None:
+            raise failure
+        try:
+            publish(manifest["packages"][-1])
+        except Exception:
+            receipt["packages"][-1]["status"] = "failed"
+            raise
+        receipt["packages"][-1]["status"] = "available"
         receipt["status"] = "available"
     except Exception as error:
         receipt["status"] = "failed"
@@ -641,6 +697,26 @@ def matrix(args):
     )
 
 
+def find_github_release(repository, tag, read=None):
+    """Find drafts and published releases by their exact tag."""
+    if read is None:
+
+        def read(endpoint):
+            return json.loads(run(["gh", "api", endpoint]))
+
+    matching = None
+    for page in itertools.count(1):
+        endpoint = f"repos/{repository}/releases?per_page=100&page={page}"
+        releases = read(endpoint)
+        for release in releases:
+            if release["tag_name"] == tag:
+                if matching is not None:
+                    raise ValueError("multiple releases for tag: " + tag)
+                matching = release
+        if len(releases) < 100:
+            return matching
+
+
 def github_record(args):
     manifest = validate_manifest(args.manifest)
     if not manifest["source_clean"]:
@@ -649,13 +725,7 @@ def github_record(args):
     repository = args.repository
     if repository != "UniClipboard/UniClipboard":
         raise ValueError("unexpected release repository")
-    endpoint = "repos/" + repository + "/releases/tags/" + quote(tag, safe="")
-    result = subprocess.run(
-        ["gh", "api", endpoint], cwd=ROOT, text=True, capture_output=True
-    )
-    if result.returncode:
-        if "HTTP 404" not in result.stderr:
-            raise ValueError("cannot query GitHub build record: " + result.stderr)
+    if find_github_release(repository, tag) is None:
         if args.finish:
             raise ValueError("staged build record missing")
         ref_endpoint = "repos/" + repository + "/git/ref/tags/" + quote(tag, safe="")
@@ -759,15 +829,8 @@ def resume(args):
     record = metadata(args.metadata)
     tag = f"cli/v{record['version']}-build.{record['build_number']}"
     repository = "UniClipboard/UniClipboard"
-    result = subprocess.run(
-        ["gh", "api", "repos/" + repository + "/releases/tags/" + quote(tag, safe="")],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-    )
-    if result.returncode:
-        if "HTTP 404" not in result.stderr:
-            raise ValueError("cannot query staged candidate: " + result.stderr)
+    release = find_github_release(repository, tag)
+    if release is None:
         staged = False
     else:
         output = Path(args.output).resolve()
@@ -784,17 +847,30 @@ def resume(args):
         ]
         run(base + ["--pattern", "release-manifest.json"])
         manifest = validate_manifest(output / "release-manifest.json")
-        if (
-            manifest["version"],
-            manifest["build_number"],
-            manifest["source_sha"],
-            manifest["metadata_sha256"],
-        ) != (
+        if (manifest["version"], manifest["build_number"]) != (
             record["version"],
             record["build_number"],
-            run(["git", "rev-parse", "HEAD"]),
-            digest(args.metadata),
         ):
+            raise ValueError(
+                "staged candidate conflicts with the selected product identity"
+            )
+        reuse_published = args.reuse_published and release.get("draft") is False
+        if reuse_published:
+            ref = json.loads(
+                run(
+                    [
+                        "gh",
+                        "api",
+                        f"repos/{repository}/git/ref/tags/{quote(tag, safe='')}",
+                    ]
+                )
+            )["object"]
+            if (ref["type"], ref["sha"]) != ("commit", manifest["source_sha"]):
+                raise ValueError("published CLI tag source conflicts with its manifest")
+        if not reuse_published and (
+            manifest["source_sha"],
+            manifest["metadata_sha256"],
+        ) != (run(["git", "rev-parse", "HEAD"]), digest(args.metadata)):
             raise ValueError(
                 "staged candidate conflicts with the selected source or metadata"
             )
@@ -824,6 +900,7 @@ def main():
     p.add_argument("--metadata", default=str(ROOT / "release/products.toml"))
     p.add_argument("--output", required=True)
     p.add_argument("--github-output", required=True)
+    p.add_argument("--reuse-published", action="store_true")
     p = sub.add_parser("smoke")
     p.add_argument("--directory", required=True)
     p = sub.add_parser("assemble")

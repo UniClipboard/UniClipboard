@@ -45,8 +45,15 @@ func scenarioSidebarNavigation(t *testing.T) {
 				if all.X != 12 || all.H != 30 || work.X != all.X || work.H != all.H || all.X+all.W != 238 {
 					t.Errorf("sidebar has asymmetric padding or inconsistent row density: all=%+v tag=%+v", all, work)
 				}
-				if _, ok := tt.AccessByRole(ui.RoleListItem, "文本"); ok {
-					t.Error("builtin content types should stay out of the sidebar by default")
+				for _, label := range []string{"文本", "图片", "文件"} {
+					if _, ok := tt.AccessByRole(ui.RoleListItem, label); !ok {
+						t.Errorf("default content tag missing from the sidebar: %s", label)
+					}
+				}
+				for _, label := range []string{"文件夹", "代码", "链接", "邮箱地址", "颜色", "版本号", "UUID", "IPv4 地址"} {
+					if _, ok := tt.AccessByRole(ui.RoleListItem, label); ok {
+						t.Errorf("optional content tag visible by default: %s", label)
+					}
 				}
 				toggle, ok := tt.AccessByRole(ui.RoleButton, "切换侧栏")
 				if !ok || toggle.Bounds.W != 28 || toggle.Bounds.H != 28 {
@@ -66,7 +73,7 @@ func scenarioSidebarNavigation(t *testing.T) {
 				if !ok || action.Bounds.W != 24 || action.Bounds.H != 24 {
 					t.Errorf("section action is oversized: %+v", action.Bounds)
 				}
-				pinned := row("已置顶")
+				pinned := row("已收藏")
 				if action.Bounds.Y < pinned.Y+pinned.H+12 {
 					t.Errorf("sidebar sections run together: pinned=%+v action=%+v", pinned, action.Bounds)
 				}
@@ -79,7 +86,7 @@ func scenarioSidebarNavigation(t *testing.T) {
 						tagLabel = a.Bounds
 					}
 				}
-				more, ok := tt.AccessByRole(ui.RoleButton, "全部标签 · 10")
+				more, ok := tt.AccessByRole(ui.RoleButton, fmt.Sprintf("全部标签 · %d", len(d.tags)))
 				if !ok || more.Bounds.Y+more.Bounds.H > 900 {
 					t.Fatal("More must be visible for text alignment capture")
 				}

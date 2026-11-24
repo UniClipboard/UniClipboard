@@ -42,6 +42,9 @@ func (f *pluginSettingsForm) load(state api.PluginSettings) error {
 }
 
 func (d *viewState) externalPluginStatus(item api.PluginInfo) (string, desktopkit.StatusTone) {
+	if item.NeedsSettings {
+		return d.tr("需要配置"), desktopkit.StatusWarning
+	}
 	l := d.live
 	if l != nil && slices.Contains(item.Capabilities, "sync_backend") {
 		for _, backend := range l.syncBackends {
@@ -71,19 +74,54 @@ func (d *viewState) externalPluginStatus(item api.PluginInfo) (string, desktopki
 	return d.tr("已停用"), desktopkit.StatusNeutral
 }
 
+// pluginDisplay resolves the name and summary shown for an installed external
+// plugin: the manifest text for the current language, then the marketplace
+// entry, then the bare plugin ID. The summary may be empty.
+func (d *viewState) pluginDisplay(item api.PluginInfo) (name, summary string) {
+	name, summary = item.Name, item.Summary
+	if text, ok := settings.Pick(item.I18N, d.currentLanguage()); ok {
+		if text.Name != "" {
+			name = text.Name
+		}
+		if text.Summary != "" {
+			summary = text.Summary
+		}
+	}
+	if cat, ok := d.marketplaceEntry(item.ID); ok {
+		if name == "" {
+			name = cat.Name
+		}
+		if summary == "" {
+			summary = cat.Summary
+		}
+	}
+	if name == "" {
+		name = item.ID
+	}
+	return name, summary
+}
+
+// pluginSubtitle is the line under a plugin name. It never repeats the plugin
+// ID when the ID is already the title.
+func pluginSubtitle(item api.PluginInfo, summary string) string {
+	if summary != "" {
+		return summary
+	}
+	if item.ImplementationID != "" && item.ImplementationID != item.ID {
+		return item.ImplementationID + " · v" + item.Version
+	}
+	return "v" + item.Version
+}
+
 func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item api.PluginInfo, cfg config.Config) {
 	l := d.live
 	p := &d.pluginSettings
 	cat, hasCat := d.marketplaceEntry(item.ID)
-	title := item.ID
-	desc := item.ImplementationID + " · v" + item.Version
+	title, summary := d.pluginDisplay(item)
+	desc := pluginSubtitle(item, summary)
 	badge := d.tr("已安装")
-	if hasCat {
-		title = cat.Name
-		desc = cat.Summary
-		if cat.Official {
-			badge = d.tr("官方")
-		}
+	if hasCat && cat.Official {
+		badge = d.tr("官方")
 	}
 	stateText, stateTone := d.externalPluginStatus(item)
 	statusColor := desktopkit.TagColor("gray")
@@ -93,7 +131,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 	case desktopkit.StatusWarning, desktopkit.StatusCritical:
 		statusColor = "orange"
 	}
-	icon, tone := pluginIconForCategory(cat.Category, item.Capabilities)
+	icon, tone := pluginPresentationIcon(cat.Category, item.Capabilities, item.Icon, cat.Icon)
 	ui.Row(c.Key("external-plugin-header")).Gap(12).AlignItems(ui.Start).Children(func() {
 		pluginIconTile(c.Key("ico"), k, icon, tone, 46)
 		ui.Column(c.Key("meta")).Grow(1).MinWidth(0).Gap(4).Children(func() {
@@ -109,20 +147,28 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 	})
 
 	k.SettingsGroup(c.Key("external-plugin-control"), desktopkit.SettingsGroupProps{}, func() {
+		if item.LiveStart && item.RunningVersion == "" && !item.NeedsSettings {
+			k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{Label: d.tr("启动")}, nil, func() {
+				if k.Button(c.Key("start"), d.tr("启动"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy || l.loading}).Clicked() {
+					d.startExternalPlugin(item.ID)
+				}
+			})
+			return
+		}
 		on := item.Configured
+		description := ""
+		if !item.LiveStart {
+			description = d.tr("退出并重新启动桌面端后生效。")
+		}
 		k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{
 			Label:       d.tr("启用"),
-			Description: d.tr("退出并重新启动桌面端后生效。"),
+			Description: description,
 		}, nil, func() {
 			if k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.busy || l.loading}).Changed() {
 				d.setExternalPluginEnabled(cfg, item.ID, on)
 			}
 		})
 	})
-
-	if item.Restart || p.form != nil && p.form.state.Restart {
-		k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr("需要重启")})
-	}
 
 	isSyncBackend := slices.Contains(item.Capabilities, "sync_backend")
 	if len(item.Actions) > 0 {
@@ -161,20 +207,18 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 		}
 	}
 
-	if item.Kind == "go" && isSyncBackend {
-		k.SettingsGroup(c.Key("create-instance"), desktopkit.SettingsGroupProps{Title: d.tr("新增同步实例")}, func() {
-			k.FormField(c, desktopkit.FormFieldProps{Label: d.tr("实例 ID"), Value: &p.instanceName, Placeholder: "example.work", Hint: d.tr("新实例使用独立设置和私有数据。配置并启用后重启生效。")})
-			if k.Button(c.Key("create-instance"), d.tr("创建实例"), desktopkit.ButtonProps{Disabled: l.busy || strings.TrimSpace(p.instanceName) == ""}).Clicked() {
-				in := api.PluginInstanceCreate{ID: strings.TrimSpace(p.instanceName), ImplementationID: item.ImplementationID, Revision: l.config.Revision}
-				d.mutate(func(ctx context.Context) error { _, err := l.client.CreatePluginInstance(ctx, in); return err }, "实例已创建。请配置并启用。")
-			}
-		})
+	weType := isWeType(item)
+	canPair := item.Configured && !item.Restart && stateTone == desktopkit.StatusPositive
+	if weType {
+		d.weTypePairingContent(c.Key("wetype"), k, item, stateText, canPair)
+	} else if item.Kind == "go" && isSyncBackend {
+		d.createPluginInstance(c.Key("create-instance"), k, item)
 	}
 	if isSyncBackend {
 		d.syncPluginPolicy(c, k, item.ID, cfg)
-		if item.ExternalChannels {
+		if item.ExternalChannels && !weType {
 			k.Text(c, d.tr("此后端使用外部渠道。请在插件设置中配置授权。无需设备指纹或设备配对码。"), footnote)
-		} else if item.TransportKind == "object_store" {
+		} else if !item.ExternalChannels && item.TransportKind == "object_store" {
 			k.Text(c, d.tr("对象存储设备协议尚未实现。此类型暂不可用。"), footnote)
 		}
 	}
@@ -211,6 +255,10 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 				}
 			})
 		}
+	}
+
+	if weType {
+		d.weTypeConnectionOptions(c.Key("wetype-options"), k, item, canPair)
 	}
 
 	// Collapsible source & technical info (kept out of sight until expanded).
@@ -273,6 +321,27 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 	}
 }
 
+func (d *viewState) createPluginInstance(c *ui.Context, k desktopkit.Kit, item api.PluginInfo) {
+	l := d.live
+	p := &d.pluginSettings
+	k.SettingsGroup(c, desktopkit.SettingsGroupProps{Title: d.tr("新增同步实例")}, func() {
+		k.SettingsRow(c.Key("create-instance-row"), desktopkit.SettingsRowProps{
+			Label:       d.tr("实例 ID"),
+			Description: d.tr("新实例使用独立设置和私有数据。配置并启用后重启生效。"),
+		}, nil, func() {
+			ui.Row(c.Key("create-instance-controls")).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
+				ui.Box(c.Key("instance-id")).Width(200).Children(func() {
+					k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("实例 ID"), Value: &p.instanceName, Placeholder: "example.work", Disabled: l.busy})
+				})
+				if k.Button(c.Key("create-instance-btn"), d.tr("创建实例"), desktopkit.ButtonProps{Disabled: l.busy || strings.TrimSpace(p.instanceName) == ""}).Clicked() {
+					in := api.PluginInstanceCreate{ID: strings.TrimSpace(p.instanceName), ImplementationID: item.ImplementationID, Revision: l.config.Revision}
+					d.mutate(func(ctx context.Context) error { _, err := l.client.CreatePluginInstance(ctx, in); return err }, "实例已创建。请配置并启用。")
+				}
+			})
+		})
+	})
+}
+
 func (d *viewState) refreshPluginForm(id string, f *pluginSettingsForm, edit *api.PluginSettingsEdit) {
 	l := d.live
 	if l.busy {
@@ -326,36 +395,47 @@ func (d *viewState) pluginFormObject(c *ui.Context, k desktopkit.Kit, f *pluginS
 		}
 		return strings.Compare(a, b)
 	})
+	lang := d.currentLanguage()
+	texts := make(map[string]settings.Text, len(keys))
 	groups := make(map[string][]string)
 	var names []string
 	for _, key := range keys {
-		var group string
-		if hints := schema.Properties[key].UI; hints != nil {
-			group = hints.Group
+		text := schema.Properties[key].Localized(lang)
+		texts[key] = text
+		if _, exists := groups[text.Group]; !exists {
+			names = append(names, text.Group)
 		}
-		if _, exists := groups[group]; !exists {
-			names = append(names, group)
+		groups[text.Group] = append(groups[text.Group], key)
+	}
+	// Top-level fields are direct children of the settings card, so they carry
+	// the same inset as a SettingsRow. Nested fields sit inside that inset.
+	inset := func(e ui.Element) ui.Element {
+		if parent == "" {
+			return e.Padding(12, 16)
 		}
-		groups[group] = append(groups[group], key)
+		return e
 	}
 	valid := true
 	for _, group := range names {
 		if group != "" {
-			k.Text(c.Key("group-"+group), group, desktopkit.TextProps{Emphasized: true})
+			ui.Box(c.Key("group-"+group)).Padding(12, 16, 0).Children(func() {
+				k.Text(c, group, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Emphasized: true})
+			})
 		}
 		for _, key := range groups[group] {
 			field := schema.Properties[key]
+			text := texts[key]
 			path := parent + "/" + strings.ReplaceAll(strings.ReplaceAll(key, "~", "~0"), "/", "~1")
-			label := field.Title
+			label := text.Title
 			if label == "" {
 				label = key
 			}
 			required := slices.Contains(schema.Required, key)
 			value, present := values[key]
-			ui.Column(c.Key(path)).Gap(4).Children(func() {
+			inset(ui.Column(c.Key(path)).Gap(4).MinWidth(0)).Children(func() {
 				k.Text(c, label, desktopkit.TextProps{Emphasized: true})
-				if field.Description != "" {
-					k.Text(c, field.Description, footnote)
+				if text.Description != "" {
+					k.Text(c, text.Description, footnote)
 				}
 				if field.WriteOnly {
 					ok := d.pluginSecretField(c, k, f, field, values, key, path, label, required)
@@ -374,7 +454,7 @@ func (d *viewState) pluginFormObject(c *ui.Context, k desktopkit.Kit, f *pluginS
 				if !present {
 					value = initialFieldValue(field)
 				}
-				updated, ok := d.pluginFormField(c, k, f, field, value, path, label)
+				updated, ok := d.pluginFormField(c, k, f, field, value, path, label, text.OptionLabels)
 				values[key] = updated
 				if !required {
 					if k.Button(c.Key("unset-btn"), d.tr("移除"), desktopkit.ButtonProps{Variant: desktopkit.Subtle}).Clicked() {
@@ -437,7 +517,7 @@ func (d *viewState) pluginSecretField(c *ui.Context, k desktopkit.Kit, f *plugin
 	return settings.ValidateField(field, value) == nil
 }
 
-func (d *viewState) pluginFormField(c *ui.Context, k desktopkit.Kit, f *pluginSettingsForm, field *settings.Schema, value any, path, label string) (any, bool) {
+func (d *viewState) pluginFormField(c *ui.Context, k desktopkit.Kit, f *pluginSettingsForm, field *settings.Schema, value any, path, label string, optionLabels []string) (any, bool) {
 	switch field.Type {
 	case "object":
 		child, _ := value.(map[string]any)
@@ -452,7 +532,7 @@ func (d *viewState) pluginFormField(c *ui.Context, k desktopkit.Kit, f *pluginSe
 			index := strconv.Itoa(i)
 			remove := false
 			ui.Row(c.Key(index)).Gap(4).Children(func() {
-				updated, ok := d.pluginFormField(c.Key("value"), k, f, field.Items, v, path+"/"+index, label+" "+index)
+				updated, ok := d.pluginFormField(c.Key("value"), k, f, field.Items, v, path+"/"+index, label+" "+index, nil)
 				list[i] = updated
 				valid = valid && ok
 				remove = k.Button(c.Key("remove"), d.tr("删除"), desktopkit.ButtonProps{Variant: desktopkit.Subtle}).Clicked()
@@ -474,8 +554,8 @@ func (d *viewState) pluginFormField(c *ui.Context, k desktopkit.Kit, f *pluginSe
 		options := make([]desktopkit.SelectItem, 0, len(field.Enum))
 		for i, option := range field.Enum {
 			name := string(option)
-			if field.UI != nil && len(field.UI.OptionLabels) != 0 {
-				name = field.UI.OptionLabels[i]
+			if len(optionLabels) == len(field.Enum) && len(optionLabels) != 0 {
+				name = optionLabels[i]
 			} else if field.Type == "string" {
 				_ = json.Unmarshal(option, &name)
 			}

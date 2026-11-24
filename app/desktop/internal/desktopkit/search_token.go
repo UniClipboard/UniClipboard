@@ -23,11 +23,12 @@ type TokenSearchFieldProps struct {
 	Toolbar bool
 	// Unified renders the always-visible U1 centered omnibar combining live token search
 	// with an integrated trailing filter funnel button and quick-filter popover.
-	Unified      bool
-	Label        string
-	Placeholder  string
-	ShortcutHint string // display-only, e.g. "⌘F"
-	Value        *string
+	Unified          bool
+	Label            string
+	Placeholder      string
+	ExternalShortcut bool
+	ShortcutHint     string // display-only, e.g. "⌘F"
+	Value            *string
 	// Feedback is immediate completion or literal-search feedback shown above the suggestions.
 	Feedback    string
 	Tokens      []SearchFieldToken
@@ -54,7 +55,10 @@ type TokenSearchFieldProps struct {
 	FilterCount int
 	FilterLabel string
 	FilterPanel func()
-	Disabled    bool
+	// Loading replaces the leading search glyph with a quiet spinner of the same size
+	// while a foreground query is taking noticeably long.
+	Loading  bool
+	Disabled bool
 }
 
 // TokenSearchResult is what TokenSearchField reports for one frame.
@@ -91,7 +95,7 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 	width := float32(460)
 	if p.Unified {
 		state = ui.Local(row, "unified-focus", func() searchDisclosureState { return searchDisclosureState{} })
-		if !p.Disabled {
+		if !p.Disabled && !p.ExternalShortcut {
 			modifier := ui.Ctrl
 			if runtime.GOOS == "darwin" {
 				modifier = ui.Cmd
@@ -109,7 +113,7 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 		if active {
 			state.Open = true
 		}
-		if !p.Disabled {
+		if !p.Disabled && !p.ExternalShortcut {
 			modifier := ui.Ctrl
 			if runtime.GOOS == "darwin" {
 				modifier = ui.Cmd
@@ -218,7 +222,7 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 				if p.FilterCount > 0 {
 					ui.Box(c.Key("fcnt")).MinWidth(15).Height(15).PaddingX(4).Radius(7.5).Center().
 						Background(k.Color("accent-500")).AccessHidden(true).Children(func() {
-						ui.Text(c, itoaPos(p.FilterCount)).FontSize(9.5).FontWeight(700).TextColor(k.Color("text-white")).SingleLine()
+						ui.Text(c, itoaPos(p.FilterCount)).FontSize(9.5).FontWeight(700).TextColor(k.Color("text-on-accent")).SingleLine()
 					})
 				}
 			})
@@ -231,7 +235,13 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 		}
 	}
 	row.Children(func() {
-		glyph := func() { k.Icon(c.Key("glyph"), IconSearch, 14).TextColor(pal.fg2).Shrink(0) }
+		glyph := func() {
+			if p.Loading {
+				ui.Spinner(c.Key("glyph-spin")).Size(14, 14).TextColor(k.Color("accent-500")).Shrink(0).AccessHidden(true)
+				return
+			}
+			k.Icon(c.Key("glyph"), IconSearch, 14).TextColor(pal.fg2).Shrink(0)
+		}
 		if disclosure {
 			trigger = ui.ButtonBase(c.Key("search-icon")).Label(p.Label).Size(32, 32).Shrink(0).KeepFocus().Disabled(p.Disabled).Center().TextColor(pal.fg2)
 			trigger.Children(glyph)

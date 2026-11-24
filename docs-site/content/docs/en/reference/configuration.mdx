@@ -1,0 +1,156 @@
+---
+title: Configuration File
+description: Location of config.toml, hot-reload rules, and all configuration keys with default values.
+---
+
+unic stores its settings in `config.toml` inside the data directory (see [Environment Variables](./environment) for default locations). If the file does not exist, a fully commented template matching the default values is created.
+
+## Viewing and Editing
+
+```bash
+unic config path            # Print the configuration file path
+unic config                 # Print the active configuration (TOML)
+unic config --json          # Output as JSON, including errors and keys requiring restart
+unic config set sync.files false      # Set a single key using TOML syntax for the value
+unic config apply ./my-config.toml    # Replace the configuration with a file
+```
+
+You can also edit the file directly with an editor—**changes take effect on save**.
+
+<Callout type="warn">
+If the file contains syntax errors, unknown keys, or invalid values, the entire update is ignored and the previous valid configuration remains active until you fix it. `unic config` displays errors at the top of its output, along with which keys require restarting `unicd`.
+</Callout>
+
+Size values can be written as byte counts or as strings like `"512MB"` or `"2GiB"` (units are base-1024).
+
+## Top-Level Keys
+
+| Key | Default | Description |
+|---|---|---|
+| `device_name` | Local hostname | Name shown to other devices; takes effect on the next connection per device |
+| `rendezvous_url` | `$UNIC_RENDEZVOUS_URL`, otherwise built-in service | Pairing code service URL |
+| `inbox` | `inbox` inside the data directory | Destination for received files; must be an absolute path; requires restarting `unicd` |
+
+## `[desktop]`
+
+Desktop settings; the CLI service only persists them.
+
+| Key | Default | Values |
+|---|---|---|
+| `color_mode` | `"system"` | `system`, `light`, `dark` |
+| `language` | `"zh-CN"` | `zh-CN`, `en`, `ja`, `pt-BR`, `ru`; takes effect immediately |
+| `mode` | `"normal"` | `normal`, `lightweight`; takes effect on next launch |
+| `launch_at_login` | `false` | Launch at login |
+| `start_in_background` | `false` | Do not show the main window on launch; takes effect on next launch |
+| `system_window_frame` | `false` | Use the native system title bar; takes effect after closing and reopening the window |
+| `tray_icon` | `"glyph"` | `glyph`, `cat`; takes effect immediately |
+| `update_channel` | `"stable"` | `stable`, `alpha`; takes effect on the next update check |
+| `quick_panel_shortcut` | macOS `"Cmd+Ctrl+V"`, others `"Ctrl+Alt+V"` | Also supports ``"Ctrl+`"``, `"CmdOrCtrl+Shift+Space"`, or an empty string |
+| `quick_panel_double_tap` | `""` (disabled) | `alt`, `control`, `meta`: double-tap this modifier key to open the Quick Panel |
+| `[desktop.shortcuts]` | Built-in shortcuts | Map of action names to key lists, e.g. `"clipboard.search" = ["mod+f"]`; use `[]` to disable |
+
+`tag_colors` and `tag_sidebar` are managed automatically by the desktop app (keyed by tag name hash without storing tag names) and generally do not need manual editing.
+
+## `[logging]` and `[telemetry]`
+
+| Key | Default | Description |
+|---|---|---|
+| `logging.level` | `"info"` | Local log level: `debug`, `info`, `warn`, `error` |
+| `telemetry.enabled` | `true` | Master switch; set to `false` to stop all uploads |
+| `telemetry.endpoint` | Built-in release endpoint | Must be an HTTPS URL without credentials or query strings; requires restart |
+| `telemetry.logs.enabled` | `true` | Remote logs |
+| `telemetry.logs.level` | `"warn"` | Remote log level |
+| `telemetry.metrics.enabled` | `true` | Metrics |
+| `telemetry.analytics.enabled` | `true` | Product events |
+| `telemetry.traces.enabled` | `true` | Traces (fixed 1% sampling) |
+
+Individual signal switches support hot reload. See [Diagnostics and Logs](./diagnostics) for details.
+
+## `[limits]`
+
+Applies to transfers started after the change.
+
+| Key | Default | Maximum |
+|---|---|---|
+| `max_file_bytes` | `"100MB"` | 2 GiB per file |
+| `max_total_bytes` | `"4GiB"` | 4 GiB per clipboard item |
+
+## `[sync]`
+
+| Key | Default | Description |
+|---|---|---|
+| `enabled` | `true` | Global sync switch; when `false`, sync pauses in both directions while devices stay connected |
+| `automatic` | `true` | Automatically send new copies; local history is unaffected |
+| `on_restore` | `false` | Whether to also send when restoring an item from history to the clipboard |
+| `files` | `true` | Globally allow sending and receiving files |
+| `introductions` | `true` | Devices introduce trusted devices to each other; results appear as candidates and still require your approval |
+| `directories.automatic` | `false` | Whether to automatically sync copied folders; when off, copies record a reference only and bundle on manual send |
+
+## `[history]`
+
+| Key | Default | Description |
+|---|---|---|
+| `auto_cleanup` | `true` | Automatic cleanup, deleting the oldest entries first |
+| `retention_days` | `180` | Retention period in days (`0` disables time-based cleanup); range 0–36500 |
+| `max_items` | `0` | Maximum number of items (`0` for unlimited); range 0–1000000 |
+| `excluded_tags` | `[]` | Entries with any of these tags (exact match) are never automatically deleted |
+| `max_bytes` | `"4GiB"` | History storage limit, max 8 GiB; **requires restart** |
+
+Files copied from disk are recorded by path without storing a duplicate copy, so they do not count toward `max_bytes`; if the original file is moved, it can no longer be read.
+
+## `[file_cache]`
+
+| Key | Default | Description |
+|---|---|---|
+| `max_bytes` | `"500MB"` | Capacity limit for the default managed receive directory, max 8 GiB |
+
+Applies only to the default managed receive directory; files in a custom `inbox` are managed by you and cleanup never deletes them. When space is low, entries are freed according to history cleanup rules (`excluded_tags` remain protected); if cleanup is disabled or cannot free enough space, new files are rejected.
+
+## `[plugins]`
+
+| Key | Default | Description |
+|---|---|---|
+| `lua` | `[]` | Ordered list of enabled Lua plugin IDs; located at `$UNIC_HOME/plugins/lua/<ID>/`; requires restart |
+| `order` | `[]` | Plugins installed from GitHub and their processing order, e.g. `["owner.plugin"]`; requires restart |
+| `on_error` | `"continue"` | Behavior on plugin failure: `continue` discards the plugin's result and syncs normally; `block_sync` keeps the item local only |
+
+<Callout type="warn">
+If you rely on a plugin to block sensitive content from syncing, set `on_error = "block_sync"` for it; otherwise, content will still sync normally if the plugin errors.
+</Callout>
+
+### `[plugins.instances."<ID>"]`
+
+Per-plugin instance settings:
+
+| Key | Description |
+|---|---|
+| `enabled` | Whether enabled; enabled if omitted (Lua plugins are controlled by the `lua` list and cannot use this key) |
+| `on_error` | Overrides global `on_error`; applies only to processor plugins |
+| `config` | Plugin-specific settings table; stored here and preserved across installs/upgrades; requires restart |
+| `implementation` | Plugin program for an external sync backend instance |
+
+Built-in plugin settings:
+
+```toml
+# Built-in peer-to-peer sync (builtin.tailcat) send/receive types; defaults to true if omitted
+[plugins.instances."builtin.tailcat".sync]
+text = true      # Plain text, HTML, and other non-image formats
+images = true
+files = true
+auto_file_max_bytes = "100MB"  # Files larger than this are not auto-synced (the whole copy is skipped); manual send is unrestricted; 0 = no extra limit
+
+# Built-in classifier: adds tags such as builtin:text/image/files/folder/link to new items
+[plugins.instances."builtin.classify"]
+enabled = true
+disabled_default_tags = ["builtin:color"]   # Disable specific default tags
+
+[[plugins.instances."builtin.classify".rules]]   # Custom rules; requires restart
+pattern = '\bUNI-[0-9]+\b'
+tag = "Issue"
+
+# builtin.text: tags text containing email addresses and provides text actions in the history window; requires restart
+[plugins.instances."builtin.text"]
+enabled = true
+```
+
+For plugin development, see [Lua Plugin Development](../plugins/develop-lua) and [Go Plugin Development](../plugins/develop-go).

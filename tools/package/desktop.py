@@ -28,6 +28,11 @@ spec = importlib.util.spec_from_file_location(
 cli = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cli)
 APP_ID = "app.uniclipboard.desktop"
+LINUX_ICONS = {
+    "icon.png": "512x512/apps/uniclipboard.png",
+    "icon-linux-48.png": "48x48/apps/uniclipboard.png",
+    "icon-linux.svg": "scalable/apps/uniclipboard.svg",
+}
 TARGETS = {
     os + "-" + arch
     for os in ["darwin", "linux", "windows"]
@@ -165,7 +170,11 @@ def fetch_cli(args):
         ) as temporary:
             work = Path(temporary) / "candidate"
             cli_candidate.acquire(
-                record.get("cli_artifact_run_id"), work, args.metadata, signed=True
+                record.get("cli_artifact_run_id"),
+                work,
+                args.metadata,
+                signed=True,
+                desktop_lock=True,
             )
             locked_cli(record, work / "release-manifest.json", args.target, False)
             work.rename(output)
@@ -426,13 +435,18 @@ def stage(args):
         for name in ("BOARDUI-MIT.txt", "Inter-OFL.txt", "REMIX-LICENSE.txt"):
             shutil.copyfile(ROOT / "app/desktop/boardui/assets" / name, notices / name)
 
-        icon_name = {
-            "darwin": "icon.icns", "windows": "icon.ico", "linux": "icon.png"
+        icon_names = {
+            "darwin": ("icon.icns",),
+            "windows": ("icon.ico",),
+            "linux": LINUX_ICONS,
         }[os_name]
-        shutil.copyfile(
-            ROOT / "app/desktop/internal/appicons" / icon_name, resources / icon_name
-        )
+        for name in icon_names:
+            shutil.copyfile(
+                ROOT / "app/desktop/internal/appicons" / name, resources / name
+            )
         if os_name == "darwin":
+            # The 1.6.2-alpha.2 updater relaunches the original executable path.
+            (payload / "gui-go").symlink_to("unic-desktop")
             info = {
                 "CFBundleIconFile": "icon.icns",
                 "CFBundleIdentifier": APP_ID,
@@ -692,10 +706,10 @@ def package(args):
                     "src": str(ROOT / "packaging/linux/uniclipboard.desktop"),
                     "dst": "/usr/share/applications/" + APP_ID + ".desktop",
                 },
-                {
-                    "src": str(payload / "icon.png"),
-                    "dst": "/usr/share/icons/hicolor/512x512/apps/uniclipboard.png",
-                },
+            ]
+            contents += [
+                {"src": str(payload / name), "dst": "/usr/share/icons/hicolor/" + path}
+                for name, path in LINUX_ICONS.items()
             ]
             dependencies = {
                 "deb": ["libgtk-3-0 | libgtk-3-0t64", "libayatana-appindicator3-1"],
@@ -788,20 +802,12 @@ def package(args):
                 bundle = bundle_copy
             file = output / (base + (".dmg" if kind == "dmg" else ".app.tar.gz"))
             if kind == "dmg":
-                run(
-                    [
-                        "hdiutil",
-                        "create",
-                        "-quiet",
-                        "-volname",
-                        "UniClipboard",
-                        "-srcfolder",
-                        bundle,
-                        "-format",
-                        "UDZO",
-                        file,
-                    ]
-                )
+                package_dir = str(Path(__file__).resolve().parent)
+                if package_dir not in sys.path:
+                    sys.path.insert(0, package_dir)
+                import macos_dmg
+
+                macos_dmg.build_dmg(bundle, file)
             else:
                 with tarfile.open(file, "w:gz", dereference=False) as t:
                     t.add(bundle, arcname=bundle.name)
@@ -858,6 +864,45 @@ def package(args):
         if args.notarize:
             shutil.rmtree(output / "notary-input")
         container_signed = False
+        container_notarized = False
+        if kind == "dmg" and m["acceptance"].get("signing"):
+            identity = m.get("signing_identity", "")
+            if platform.system() != "Darwin" or not identity:
+                raise ValueError(
+                    "macOS DMG signing requires the accepted native identity"
+                )
+            run(
+                [
+                    "codesign",
+                    "--force",
+                    "--timestamp",
+                    "--sign",
+                    identity,
+                    file,
+                ]
+            )
+            run(["codesign", "--verify", "--strict", file])
+            container_signed = True
+        if args.notarize_container:
+            if kind != "dmg" or not container_signed:
+                raise ValueError(
+                    "container notarization requires a signed macOS DMG"
+                )
+            run(
+                [
+                    sys.executable,
+                    ROOT / "tools/package/signing.py",
+                    "notarize",
+                    "--file",
+                    file,
+                    "--staple",
+                    file,
+                    "--receipt",
+                    output / "dmg-notarization.json",
+                ]
+            )
+            run(["codesign", "--verify", "--strict", file])
+            container_notarized = True
         if kind == "setup.exe" and m["acceptance"].get("signing"):
             if platform.system() != "Windows" or not re.fullmatch(
                 r"[a-fA-F0-9]{40}", m.get("signing_identity", "")
@@ -905,8 +950,9 @@ def package(args):
                 "size": file.stat().st_size,
                 "payload_signed": bool(m["acceptance"].get("signing")),
                 "container_signed": container_signed,
+                "container_notarized": container_notarized,
                 "signed": bool(m["acceptance"].get("signing"))
-                and (kind != "setup.exe" or container_signed),
+                and (kind not in {"setup.exe", "dmg"} or container_signed),
                 "notarized": bool(args.notarize or m["acceptance"].get("notarization")),
             }
         )
@@ -1008,6 +1054,7 @@ def main():
     s.add_argument("--output", required=True)
     s.add_argument("--nfpm", default="nfpm")
     s.add_argument("--notarize", action="store_true")
+    s.add_argument("--notarize-container", action="store_true")
     s.add_argument("--appimagetool", default="appimagetool")
     s.add_argument("--appimage-runtime")
     args = p.parse_args()

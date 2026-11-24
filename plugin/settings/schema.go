@@ -52,6 +52,9 @@ type UI struct {
 	Order        int      `json:"order,omitempty"`
 	Group        string   `json:"group,omitempty"`
 	OptionLabels []string `json:"option_labels,omitempty"` // parallel to enum
+	// I18N overrides title, description, group and option_labels per language.
+	// The untagged fields stay the default text.
+	I18N map[string]*UIText `json:"i18n,omitempty"`
 }
 
 // Error never includes a submitted value or an unknown configuration key.
@@ -360,7 +363,7 @@ func checkSchema(s *Schema, path string, depth int, count *int) error {
 			widget == "list" && s.Type == "array"
 		if !valid || s.WriteOnly && widget != "" && widget != "password" ||
 			len(s.Enum) > 0 && widget != "" && widget != "select" ||
-			len(u.OptionLabels) > 0 && len(u.OptionLabels) != len(s.Enum) {
+			len(u.OptionLabels) > 0 && len(u.OptionLabels) != len(s.Enum) || !checkI18N(s) {
 			return fail("invalid_schema", path)
 		}
 	}

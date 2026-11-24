@@ -8,13 +8,16 @@ import (
 )
 
 // Kit carries the application color scheme. Mutable state belongs to callers.
-type Kit struct{ Dark bool }
+type Kit struct {
+	Dark   bool
+	Colors *boardui.ColorTheme
+}
 
 func For(dark bool) Kit           { return Kit{Dark: dark} }
-func (k Kit) native() boardui.Kit { return boardui.Kit{Dark: k.Dark} }
+func (k Kit) native() boardui.Kit { return boardui.Kit{Dark: k.Dark, Colors: k.Colors} }
 
 // Color accepts only canonical BoardUI token names.
-func (k Kit) Color(name string) ui.Color { return boardui.Token(k.Dark, name) }
+func (k Kit) Color(name string) ui.Color { return k.native().Color(name) }
 func (k Kit) Theme() *ui.Theme           { return k.native().Theme() }
 func (k Kit) Apply(c *ui.Context) {
 	if err := boardui.LoadFonts(); err != nil {

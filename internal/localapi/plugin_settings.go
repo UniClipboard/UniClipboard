@@ -17,25 +17,37 @@ type PluginActionInfo struct {
 	TimeoutMS   int64    `json:"timeout_ms,omitempty"`
 }
 
+// PluginText is one language's display text declared by the plugin manifest.
+type PluginText struct {
+	Name    string `json:"name,omitempty"`
+	Summary string `json:"summary,omitempty"`
+}
+
 type PluginInfo struct {
-	ImplementationID string             `json:"implementation_id"`
-	Capabilities     []string           `json:"capabilities"`
-	TransportKind    string             `json:"transport_kind,omitempty"`
-	ExternalChannels bool               `json:"external_channels,omitempty"`
-	ID               string             `json:"id"`
-	Version          string             `json:"version"`
-	Kind             string             `json:"kind"`
-	Source           string             `json:"source"`
-	Repository       string             `json:"repository,omitempty"`
-	Commit           string             `json:"commit,omitempty"`
-	HasPrevious      bool               `json:"has_previous,omitempty"`
-	PreviousVersion  string             `json:"previous_version,omitempty"`
-	Events           []string           `json:"events,omitempty"`
-	Actions          []PluginActionInfo `json:"actions,omitempty"`
-	Configured       bool               `json:"configured_enabled"`
-	RunningVersion   string             `json:"running_version,omitempty"`
-	HasSettings      bool               `json:"has_settings"`
-	Restart          bool               `json:"restart_required"`
+	ImplementationID string                `json:"implementation_id"`
+	Name             string                `json:"name,omitempty"`
+	Icon             string                `json:"icon,omitempty"`
+	Summary          string                `json:"summary,omitempty"`
+	I18N             map[string]PluginText `json:"i18n,omitempty"`
+	Capabilities     []string              `json:"capabilities"`
+	TransportKind    string                `json:"transport_kind,omitempty"`
+	ExternalChannels bool                  `json:"external_channels,omitempty"`
+	ID               string                `json:"id"`
+	Version          string                `json:"version"`
+	Kind             string                `json:"kind"`
+	Source           string                `json:"source"`
+	Repository       string                `json:"repository,omitempty"`
+	Commit           string                `json:"commit,omitempty"`
+	HasPrevious      bool                  `json:"has_previous,omitempty"`
+	PreviousVersion  string                `json:"previous_version,omitempty"`
+	Events           []string              `json:"events,omitempty"`
+	Actions          []PluginActionInfo    `json:"actions,omitempty"`
+	Configured       bool                  `json:"configured_enabled"`
+	RunningVersion   string                `json:"running_version,omitempty"`
+	LiveStart        bool                  `json:"live_start,omitempty"`
+	HasSettings      bool                  `json:"has_settings"`
+	NeedsSettings    bool                  `json:"needs_settings,omitempty"`
+	Restart          bool                  `json:"restart_required"`
 }
 
 type PluginSettings struct {
@@ -54,6 +66,7 @@ type PluginSettingsEdit struct {
 type MarketplaceEntry struct {
 	ID            string   `json:"id"`
 	Name          string   `json:"name"`
+	Icon          string   `json:"icon,omitempty"`
 	Author        string   `json:"author"`
 	Official      bool     `json:"official,omitempty"`
 	Category      string   `json:"category"`
@@ -104,6 +117,11 @@ func (c *Client) PluginMarketplace(ctx context.Context, refresh bool) (out Plugi
 
 func (c *Client) InstallPlugin(ctx context.Context, in PluginInstallRequest) (out PluginInfo, err error) {
 	err = c.do(ctx, http.MethodPost, "/v1/plugins/install", in, &out)
+	return
+}
+
+func (c *Client) StartPlugin(ctx context.Context, id string) (out PluginInfo, err error) {
+	err = c.do(ctx, http.MethodPost, "/v1/plugins/"+url.PathEscape(id)+"/start", nil, &out)
 	return
 }
 

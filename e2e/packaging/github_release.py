@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run the actual GitHub CLI and page controller against an isolated HTTP service."""
+
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -153,7 +154,14 @@ try:
                 return dict(
                     state["release"],
                     assets=[
-                        {"id": i, "name": a["name"], "size": len(a["data"])}
+                        {
+                            "id": i,
+                            "name": a["name"],
+                            "size": len(a["data"]),
+                            "digest": None
+                            if a.get("legacy")
+                            else "sha256:" + hashlib.sha256(a["data"]).hexdigest(),
+                        }
                         for i, a in state["assets"].items()
                     ],
                 )
@@ -171,10 +179,22 @@ try:
                 if path.endswith("/releases/1/assets"):
                     return self.send(200, self.current()["assets"])
                 if "/releases/assets/" in path:
-                    return self.send(
-                        200, state["assets"][int(path.rsplit("/", 1)[1])]["data"]
+                    asset = state["assets"][int(path.rsplit("/", 1)[1])]
+                    asset["downloads"] = asset.get("downloads", 0) + 1
+                    return self.send(200, asset["data"])
+                if path.endswith("/releases"):
+                    page = parse_qs(urlparse(self.path).query).get("page", ["1"])[0]
+                    releases = (
+                        [self.current()] if page == "1" and state["release"] else []
                     )
-                if "/releases/tags/" in path or path.endswith("/releases/1"):
+                    return self.send(200, releases)
+                if "/releases/tags/" in path:
+                    return (
+                        self.send(200, self.current())
+                        if state["release"] and not state["release"].get("draft")
+                        else self.send(404, {"message": "Not Found"})
+                    )
+                if path.endswith("/releases/1"):
                     return (
                         self.send(200, self.current())
                         if state["release"]
@@ -376,6 +396,19 @@ try:
                 not state["release"]["prerelease"],
             )
             first = next(iter(state["assets"]))
+            downloads = state["assets"][first]["downloads"]
+            run("draft", "--channel", "stable")
+            check(
+                "matching GitHub digest reuses staged bytes",
+                state["assets"][first]["downloads"] == downloads,
+            )
+            state["assets"][first]["legacy"] = True
+            run("draft", "--channel", "stable")
+            check(
+                "missing GitHub digest uses byte read-back",
+                state["assets"][first]["downloads"] == downloads + 1,
+            )
+            del state["assets"][first]["legacy"]
             original = state["assets"][first]["data"]
             state["assets"][first]["data"] += b"changed"
             writes = state["writes"]

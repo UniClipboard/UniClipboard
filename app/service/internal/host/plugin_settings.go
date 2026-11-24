@@ -46,7 +46,13 @@ func (n *Node) pluginsLocked() []api.PluginInfo {
 	for id, s := range found {
 		running, active := n.runningPlugins[id]
 		wanted := slices.Contains(enabled, id)
-		restart := wanted != active || active && !running.Same(s)
+		needsSettings := false
+		if wanted && !active && s.Schema != nil {
+			_, err := s.RuntimeConfig(n.luaDir, nil)
+			needsSettings = luascripts.MissingRequiredSettings(err)
+		}
+		liveStart := canStartLive(s)
+		restart := active && (!wanted || !running.Same(s)) || wanted && !active && !needsSettings && !liveStart
 		if !restart && active && s.Manifest.Kind == "go" && s.Schema != nil {
 			revision, _, err := s.ReadSettings(n.luaDir)
 			restart = err != nil || revision != n.pluginRevisions[id]
@@ -70,6 +76,10 @@ func (n *Node) pluginsLocked() []api.PluginInfo {
 		out = append(out, api.PluginInfo{
 			ID:               id,
 			ImplementationID: s.Manifest.ID,
+			Name:             s.Manifest.Name,
+			Icon:             s.Manifest.Icon,
+			Summary:          s.Manifest.Summary,
+			I18N:             pluginTexts(s.Manifest.I18N),
 			Version:          s.Manifest.Version,
 			Kind:             s.Manifest.Kind,
 			Source:           source,
@@ -84,7 +94,9 @@ func (n *Node) pluginsLocked() []api.PluginInfo {
 			ExternalChannels: s.Manifest.ExternalChannels,
 			Configured:       wanted,
 			RunningVersion:   running.Manifest.Version,
+			LiveStart:        liveStart,
 			HasSettings:      s.Schema != nil,
+			NeedsSettings:    needsSettings,
 			Restart:          restart,
 		})
 	}
@@ -233,6 +245,8 @@ func (n *Node) pluginSettings(ctx context.Context, id string, edit *api.PluginSe
 		return out, err
 	}
 	running, active := n.runningPlugins[id]
+	wanted := slices.Contains(n.cfg.Current().ExternalPlugins(), id)
+	canStart := !active && wanted && canStartLive(s)
 	canReload := active && s.Manifest.Kind == "lua" && running.Same(s)
 	if edit != nil {
 		if edit.Revision != revision {
@@ -258,14 +272,26 @@ func (n *Node) pluginSettings(ctx context.Context, id string, edit *api.PluginSe
 			if err := n.e.ConfigureLuaPlugin(ctx, engine.PluginID(id), cfg, persist); err != nil {
 				return out, err
 			}
+		} else if canStart {
+			var cfg plugin.Config
+			if err := json.Unmarshal(values, &cfg); err != nil {
+				return out, err
+			}
+			onError, _ := n.cfg.Current().ProcessorSettings(id)
+			if err := n.activatePluginLocked(ctx, s, id, onError, cfg, &revision, persist); err != nil {
+				return out, err
+			}
 		} else if err := persist(); err != nil {
 			return out, err
 		}
 		n.hub.emit(api.Event{Kind: "config"})
 	}
 	out, err = s.SettingsView(revision, values)
-	out.Restart = active && !canReload && (!running.Same(s) || revision != n.pluginRevisions[id]) ||
-		!active && slices.Contains(n.cfg.Current().ExternalPlugins(), id)
+	out.Restart = active && !canReload && (!running.Same(s) || revision != n.pluginRevisions[id])
+	if !active && wanted && !canStart {
+		_, validationErr := s.Schema.Normalize(values)
+		out.Restart = !luascripts.MissingRequiredSettings(validationErr)
+	}
 	return out, err
 }
 
@@ -292,5 +318,16 @@ func (n *Node) CreatePluginInstance(ctx context.Context, in api.PluginInstanceCr
 		return configState, err
 	}
 	n.hub.emit(api.Event{Kind: "config"})
-	return api.PluginInfo{ID: in.ID, ImplementationID: in.ImplementationID, Kind: s.Manifest.Kind, Version: s.Manifest.Version, Configured: false, Restart: false, Capabilities: s.Manifest.Capabilities, TransportKind: s.Manifest.TransportKind, ExternalChannels: s.Manifest.ExternalChannels, HasSettings: s.Schema != nil}, nil
+	return api.PluginInfo{ID: in.ID, ImplementationID: in.ImplementationID, Name: s.Manifest.Name, Icon: s.Manifest.Icon, Summary: s.Manifest.Summary, I18N: pluginTexts(s.Manifest.I18N), Kind: s.Manifest.Kind, Version: s.Manifest.Version, Configured: false, Restart: false, Capabilities: s.Manifest.Capabilities, TransportKind: s.Manifest.TransportKind, ExternalChannels: s.Manifest.ExternalChannels, HasSettings: s.Schema != nil}, nil
+}
+
+func pluginTexts(in map[string]luascripts.Text) map[string]api.PluginText {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]api.PluginText, len(in))
+	for tag, text := range in {
+		out[tag] = api.PluginText{Name: text.Name, Summary: text.Summary}
+	}
+	return out
 }

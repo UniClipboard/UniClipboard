@@ -1,0 +1,1 @@
+{ "title": "Plugins & Extensions", "icon": "Puzzle", "defaultOpen": true, "pages": ["marketplace","external-channels","develop-lua","develop-go"] }

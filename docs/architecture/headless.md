@@ -22,7 +22,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: e93c850d86a7d499aaecda877c0f6965c65eec44
+verified: 1cd17c916ea5d3436bebd521293f2827b825a3dd
 ---
 # Headless service and desktop integration
 
@@ -32,7 +32,7 @@ All programs expose `--version --json` before configuration and host initializat
 
 The product has three runtime programs and two development distributions.
 `unic` is a command-line client. `unicd` is the Engine owner and local service.
-`unic-desktop` provides three independent OS processes from one executable: tray, GUI and quick panel. The tray owns system integration; the GUI and quick panel own their respective views. `unicd` remains a fourth, UI-free process.
+`unic-desktop` provides three independent OS processes from one executable: tray, GUI and quick panel. On Linux each role sets its process/thread name via `PR_SET_NAME` (`unic-tray`, `unic-gui`, `unic-panel`) without changing `/proc/<pid>/exe`. The tray owns menu, shortcut and notification integration. The GUI and quick panel own their respective views. `unicd` remains a fourth process without a UI toolkit.
 The headless distribution includes `unic` and `unicd`.
 The desktop distribution includes those same binary files plus `unic-desktop`.
 Both archives expose `uniclip` as an alias of `unic`.
@@ -40,7 +40,7 @@ Production Desktop staging copies an accepted exact CLI pair into an application
 On macOS/Linux, `uniclip` is a relative symbolic link to the sibling `unic` file; tar preserves the link.
 On Windows, `uniclip.cmd` invokes the sibling `unic.exe` and preserves arguments and its exit code without requiring symbolic-link privileges.
 The packaging manifest records the alias separately from executable hashes. Moving an extracted installation keeps the alias valid.
-Neither headless program imports the desktop application or a UI toolkit, directly or transitively.
+Neither headless program imports the desktop application or a UI toolkit, directly or transitively. macOS Desktop packages must lock a CLI artifact containing the local desktop clipboard API described below.
 
 ```text
 unic ------------+-- local IPC -- unicd -- Engine / history / plugins / network
@@ -48,7 +48,7 @@ unic-desktop --role tray -- adapter IPC --+
       +-- clipboard / shortcut / notifications
 unic-desktop --role gui -------- local IPC -- unicd
 unic-desktop --role quick-panel --+
-      +-- target checks / focus / paste; clipboard writes delegate to tray
+      +-- target checks / focus / paste; clipboard writes delegate to the active adapter
 ```
 
 The service accepts explicit text, PNG and file-reference submissions without a clipboard observation epoch.
@@ -112,6 +112,10 @@ never grant permission. Explicit Desktop imports share this gate; welcome/skip
 does not initialize the CLI. Source identity prevents another source from completing
 a pending import. See the [CLI initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
 
+Offline import fills unset v2 display name, theme, anonymous usage-event
+preference and tag presentation settings. See the
+[v1 preference contract](../contracts/history-contract.md#v1-preference-preservation).
+
 ## Offline CLI operations
 
 `unic dev logs export [--output FILE]` reads only retained local log segments and writes
@@ -134,7 +138,7 @@ credentials, databases or history. See section 12 of the
 - The CLI does not launch a GUI or silently replace system clipboard reads with history reads.
 - A CLI command stops only a temporary generation whose last lease it released. It never stops a standalone or desktop-owned service.
 - The launcher never unlinks a socket or kills a process it did not create and verify.
-- The desktop owns system clipboard access. The service owns submission, sync and history policy.
+- On macOS, Desktop explicitly enables the native clipboard adapter in `unicd` over the owner-only local socket. The adapter loads AppKit on demand and accesses the pasteboard only for the active console user. Tray retains the menu, shortcut and target capture. A bundled macOS service may also take over pairing notifications after Desktop opts in. It keeps its subscription through lightweight handoff. A Desktop borrowing an unbundled service sends notifications from the tray. On other platforms, the tray hosts the adapter. The service owns submission, sync and history policy on every platform.
 - Reconnect establishes a baseline and does not apply disconnected backlog.
 - A lost write result is uncertain and is never automatically retried.
 - Snapshot uploads, session leases and pending commands have fixed limits.
@@ -145,11 +149,12 @@ credentials, databases or history. See section 12 of the
 | Path | Responsibility |
 |---|---|
 | `app/service/cmd/unic` | CLI, streams and explicit export |
-| `app/service/cmd/unicd` | Headless lifecycle and socket server |
+| `app/service/cmd/unicd` | Service lifecycle, socket server and opt-in macOS clipboard adapter |
 | `app/service/internal/host` | Engine assembly, session ownership, local request handling |
 | `app/desktop/cmd/unic-desktop` | Launcher and independent tray, GUI and quick-panel roles |
 | `app/desktop/internal/desktopprocess` | Profile-scoped role locks, private activation IPC and OS peer executable verification |
-| `app/desktop/internal/board` | Native mygo clipboard access |
+| `app/desktop/internal/board` | Desktop mygo clipboard adapter |
+| `internal/nativeboard` | macOS pasteboard access without the desktop UI runtime and shared source-application icon processing |
 | `app/desktop/internal/quickpanel` | Desktop-only target sessions, adapter-write receipts, native paste and global-shortcut ownership |
 | `app/service/internal/server` | Service-owned HTTP routes and socket listener |
 | `internal/localapi` | Shared protocol DTOs and clients |
@@ -210,7 +215,7 @@ The shared `config.toml` has a `[desktop]` section. Engine does not consume it.
 `language = "zh-CN"` selects the default desktop language. Supported alternatives are `en`, `ja`, `pt-BR` and `ru`. Language changes apply through normal configuration refresh without a restart. See [desktop languages](overview.md#desktop-languages).
 `mode = "normal"` is the default. A manual no-argument launch always opens or activates the GUI in either mode. `unic-desktop --background` selects the background entry: normal mode retains tray and unicd without a GUI; lightweight mode retains only unicd. At login, normal mode uses `desktop.start_in_background`: true omits the GUI, while false opens it. Lightweight login startup always keeps only unicd. Fresh or pending setup always opens the GUI first and cannot be bypassed by mode or background entry. `desktop.start_in_background` applies only to normal-mode login startup and never suppresses manual activation. Explicit `--background` always overrides it for that launch.
 
-The tray's Open main window command starts or activates the GUI. Normal GUI close releases its renderer and subscriptions while keeping tray integration. Lightweight GUI close releases the GUI, tray and quick-panel processes and leaves only the service. The quick panel starts on its first request and remains hidden between requests while tray integration exists. It owns no adapter or global shortcut. Explicit application Quit closes all Desktop roles, unregisters the shortcut, releases the adapter and stops only a tray-owned service. Running `unicd` alone supplies no tray, shortcut or clipboard adapter.
+The tray's Open main window command starts or activates the GUI. Normal GUI close releases its renderer and subscriptions while keeping tray integration. Lightweight GUI close releases the GUI, tray and quick-panel processes and leaves only the service. The quick panel starts on its first request and remains hidden between requests while tray integration exists. It owns no adapter or global shortcut. Explicit application Quit closes all Desktop roles, unregisters the shortcut and stops only a tray-owned service. A macOS service already enabled by Desktop keeps the adapter for its own lifetime after ownership transfer or when the tray releases a borrowed service. This includes lightweight login and lightweight GUI close. Ordinary standalone and CLI-temporary launches start without the adapter. Desktop may opt in an existing standalone service without replacing it. A CLI-temporary service cannot opt in.
 
 `unic-desktop --mode normal|lightweight` selects a background startup policy without changing the saved mode. `--background` selects background entry explicitly. The no-role manual entry requests a visible GUI regardless of saved mode or background intent. Internal `--role tray|gui|quick-panel` entries use the same executable. `unic-desktop-demo` remains an independent fixture and manages no service.
 
@@ -251,3 +256,11 @@ These paths are separate from v1 data. Program replacement never imports v1 hist
 `unic device backends` lists implementation identity, runtime identity, transport kind, pairing support and local runtime state. `unic device addr --backend INSTANCE` and `unic device add [CODE|TICKET] --backend INSTANCE` choose local instances explicitly. The receiving instance may have another ID but must use the ticket's implementation. No compatible selection means an explicit error, never Tailcat fallback.
 
 `unic device list --json` includes sanitized binding IDs, revisions and sync state. `unic device path pause|resume|remove BINDING_ID REVISION` operates on one path; device removal still revokes every path. Zero configured backends preserve local history and Actions. The [workflow receipt](../exec/sync-plugin-workflow.md) records real CLI/service/child-process acceptance and the boundary to unsupported production transports.
+
+### External-channel registration
+
+`unic device channel-add INSTANCE NAME` explicitly grants one external backend
+instance a named local channel. The service owns channel identity and the
+revision-checked pause, resume, and removal commands. An installed process can
+check current channel authorization with the plugin RPC before serving a
+published representation. See the [local service contract](../contracts/local-service-contract.md#local-external-channel-registration).

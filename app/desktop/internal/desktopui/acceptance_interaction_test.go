@@ -39,7 +39,7 @@ func scenarioInteractionMotion(t *testing.T) {
 		tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: true})
 		proof.Capture(t, tt)
 		read := func() ui.Rect {
-			a, ok := tt.AccessByRole(ui.RoleButton, "切换置顶")
+			a, ok := tt.AccessByRole(ui.RoleButton, "切换收藏")
 			if !ok {
 				t.Fatal("pin missing")
 			}
@@ -141,13 +141,13 @@ func scenarioInteractionMotion(t *testing.T) {
 		d := newDemo("history", "dark")
 		tt := ui.NewTesterWith(d.view, 1100, 720, ui.TesterOptions{Dark: true, Preferences: ui.Preferences{ReduceMotion: true, TextScale: 1}})
 		proof.Capture(t, tt)
-		b, ok := tt.AccessByRole(ui.RoleButton, "切换置顶")
+		b, ok := tt.AccessByRole(ui.RoleButton, "切换收藏")
 		if !ok {
 			t.Fatal("pin missing")
 		}
 		tt.Press(b.Bounds.X+b.Bounds.W/2, b.Bounds.Y+b.Bounds.H/2)
 		tt.Advance(220 * time.Millisecond)
-		p, _ := tt.AccessByRole(ui.RoleButton, "切换置顶")
+		p, _ := tt.AccessByRole(ui.RoleButton, "切换收藏")
 		if p.Bounds != b.Bounds {
 			t.Error("press scales with Reduce Motion enabled")
 		}

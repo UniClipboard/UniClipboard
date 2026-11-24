@@ -2,6 +2,8 @@
 
 The service implements manifest discovery, Schema validation, revision-checked settings, write-only fields, and Lua replacement. Desktop renders the portable profile with mygo and the UI Kit. The built-in management pages expose host policy. See the [desktop architecture](../architecture/desktop-runtime.md#external-plugin-settings).
 
+The selected target for runtime discovery, activation results, secret operations and generic management steps is defined in the [sync integration contract](sync-integration-contract.md). That extension is not implemented; the existing schema subset below remains unchanged.
+
 ## 1. 格式与支持范围
 
 根必须有：
@@ -64,12 +66,13 @@ schema ≤256 KiB，节点深度≤16（根为 0）、总数≤512；配置输�
 | object / `group` | 嵌套分组 |
 | array / `list` | 可添加/删除的基础字段列表 |
 
-`x-unic-ui` 只有 `widget`、`order`、`group`、`option_labels`：
+`x-unic-ui` 只有 `widget`、`order`、`group`、`option_labels`、`i18n`：
 
 - `widget` 可省略，按上表推导；与 type/enum/writeOnly 冲突则拒绝。
 - `order` 是整数，缺省 0；同级字段按 order 升序，再按字段名升序排列。
 - `group` 是同级字段的展示组名，组按有序字段中首次出现的顺序排列。对象本身仍保留层级，不扁平化配置键。
 - `option_labels` 是与 enum 一一对应的字符串数组，省略或空数组时展示值本身。label 不改变实际提交值。
+- `i18n` 是 `{语言: {title, description, group, option_labels}}`，最多 16 种语言，键为 `en`、`pt-BR` 这类标签。各字段可省略，省略即沿用默认文本（无标签的 `title`、`description`、`group`、`option_labels`）。`option_labels` 非空时必须与 enum 数量一致。`title`/`group`/标签 ≤256 字符、`description` ≤1024 字符，拒绝控制字符。shell 按“完整标签、主语言子标签、默认文本”逐字段回退，忽略大小写。Go 生成器读取 `i18n:"{\"en\":{\"title\":\"Mode\"}}"` 标签。
 
 必填字段始终需要有效值；可选字段必须区分“未设置”与已设置的 false/0/空串。macOS 预览以“Set…”和“Remove value”表达可选值，使用原生 Form、TextField、Stepper、Picker、Toggle、TextEditor、SecureField，保持系统键盘导航和语义颜色。
 
@@ -119,7 +122,14 @@ Public fields use their Schema types. A missing public field takes its Schema de
 
 The service atomically saves each configuration under `$UNIC_HOME/plugins/settings/` in a private local file. The random revision is independent of the secret value. Schema changes carry forward compatible fields. Former secrets cannot become readable through a new Schema. Legacy TOML plugin configuration remains available for Schema-less Lua plugins. Use the settings API for secrets.
 
-For a running Lua instance, the service validates the candidate and completes its Init and Start at a callback boundary. It persists the settings, switches the instance and closes the old Lua state. Failed preparation or persistence preserves the old state and settings. Go settings are validated by Schema before saving and by the plugin at the next service start. Enabling a plugin and changing its manifest or installed commit require a service restart.
+At startup, the service leaves an enabled external Go or Lua plugin inactive when its Schema reports a missing required value. Other plugins and the desktop service can start. The host preserves the installed version, enablement intent, and saved settings. `GET /v1/plugins` returns `needs_settings: true` for an enabled inactive plugin with missing required settings. Its running version is absent and restart is not requested for that plugin. Users can open and save its settings while it is inactive. An inactive enabled Go plugin that supports explicit live start activates
+on the first successful settings save. The service prepares its process
+before persisting the candidate settings. Other inactive plugins wait for
+the next service start.
+
+For a running Lua instance, the service validates the candidate and completes its Init and Start at a callback boundary. It persists the settings, switches the instance and closes the old Lua state. Failed preparation or persistence preserves the old state and settings. Settings for already running Go plugins are validated by Schema before
+saving and by the plugin at the next service start. Plugin assembly changes
+require a restart outside the explicit live-start operation.
 
 ## 5. 验收与边界
 
@@ -129,4 +139,4 @@ macOS 设置的 Plugins 页提供“Preview plugin settings…”。保存只作
 
 ## Runtime instance ownership
 
-Settings routes use the local runtime instance ID. The immutable Schema and executable still come from the selected installed implementation. Each instance stores an independent private settings file under `plugins/settings/`; instance creation does not copy another instance's credentials. Read responses omit write-only fields and report presence booleans. Saving a Go backend's settings requires restart. When the new configuration loads, Engine atomically invalidates that instance's old device bindings and external channels before starting its new process. Other instances retain their settings and authorizations.
+Settings routes use the local runtime instance ID. The immutable Schema and executable still come from the selected installed implementation. Each instance stores an independent private settings file under `plugins/settings/`; instance creation does not copy another instance's credentials. Read responses omit write-only fields and report presence booleans. Saving a running Go backend's settings requires restart. The first settings save can activate an enabled, inactive external-channel backend that supports live start. When the new configuration loads, Engine atomically invalidates that instance's old device bindings and external channels before granting the process access to them. Other instances retain their settings and authorizations.

@@ -10,7 +10,7 @@
     "esm_sha256": "6fb6c465b78ba9d68640aaca14b9e5fc13721d94c083f10df8a47dbda1859c9d"
   },
   "compiler": {
-    "generator_sha256": "676fb856260f59cc71df3c7ff35a312e0305946e956a1393d774c7b3962dc187",
+    "generator_sha256": "aec7dbd14c6ec6357603d1f5b3b83a5b380302ad741881a9962b7f5403ae595e",
     "node": "v22.23.4",
     "react": "19.2.4",
     "lock_sha256": "a2b76d8a2a20270e1748a3ac2d39df0a3aa265f95e0ead25c05bbab588073c0d"
@@ -93,6 +93,10 @@
       "export": "RiFilter3Line",
       "sha256": "44833e3d78052361d65de49419bb9ad1df5aceb47a6f02587eeb3df01f1916b6"
     },
+    "flash": {
+      "export": "RiFlashlightLine",
+      "sha256": "edca538c3a0dfdcf8542c6561330472c181391f434e8140b06946151e83f038e"
+    },
     "folder": {
       "export": "RiFolderLine",
       "sha256": "49696993b70344bb6b44b72f948fc25cd63a8f76e06943c735808b543d1d7f16"
@@ -116,6 +120,10 @@
     "info": {
       "export": "RiInformationLine",
       "sha256": "60d6299dcee8402fe090532a07dae248876c3cb5755665d0cc25a3826c10f53e"
+    },
+    "keyboard": {
+      "export": "RiKeyboardBoxLine",
+      "sha256": "433eddd0e4e32d573cc374a80b0585ca14cee12b240a7b189579a3d79c879614"
     },
     "list": {
       "export": "RiListUnordered",
@@ -166,8 +174,8 @@
       "sha256": "b0b9e186266de23a4095fba2cafd4de94024a79a10f7923385a3bae5fec7a85f"
     },
     "pin": {
-      "export": "RiPushpinLine",
-      "sha256": "bc2b1f1a431f1e6550150a2e75a18da081bc3b090d460a9a773e2f1ca31b1ad1"
+      "export": "RiStarLine",
+      "sha256": "22fd08cf2afcb380787de873cdef2c02b635151ce686d005280a25d672d9ffa1"
     },
     "plus": {
       "export": "RiAddLine",
@@ -218,5 +226,5 @@
       "sha256": "cd71cca8d301caf2e6f8f8000e3a084703d4c64087891ec9c681bbfcfcdd563d"
     }
   },
-  "cacheBound": 49
+  "cacheBound": 51
 }

@@ -40,7 +40,7 @@ func NewProcessPanel(ctx context.Context, client *api.Client, clipboard PanelCli
 func (p *ProcessPanel) Visible() bool {
 	return p.state != nil && p.state.visible && p.window != nil && p.window.IsVisible()
 }
-func (p *ProcessPanel) Open(target quickpanel.Target, captureError string) {
+func (p *ProcessPanel) Open(target quickpanel.Target, captureError string, favorites bool) {
 	if p.Visible() {
 		p.Hide()
 		return
@@ -53,6 +53,7 @@ func (p *ProcessPanel) Open(target quickpanel.Target, captureError string) {
 	if p.state == nil {
 		q := newLiveQuick(p.ctx, p.client, "system", p.root)
 		p.state = q
+		q.setFavoriteFilter(favorites)
 		show := func(visible bool) {
 			q.visible = visible
 			q.blurDue = time.Time{}
@@ -62,7 +63,7 @@ func (p *ProcessPanel) Open(target quickpanel.Target, captureError string) {
 			}
 			q.update()
 		}
-		q.live.system = quickpanel.New(quickpanel.Options{Context: p.ctx, Client: p.client, Clipboard: p.clipboard, Platform: p.native, Dispatch: mygo.RunOnMain, Visible: show, Changed: func() { q.message = q.live.system.Message; q.update() }})
+		q.live.system = quickpanel.New(quickpanel.Options{Context: p.ctx, Client: p.client, Clipboard: p.clipboard, Platform: p.native, Dispatch: mygo.RunOnMain, Visible: show, Changed: q.update})
 		q.live.system.Open()
 		p.window = openQuickWindow(q, func() { q.live.system.Dismiss(false); q.live.d.live.cancel(); p.state = nil; p.window = nil })
 		// A windowless panel process must explicitly display its first window.
@@ -76,10 +77,18 @@ func (p *ProcessPanel) Open(target quickpanel.Target, captureError string) {
 		q.visible = true
 		q.menu = ""
 		q.blurDue = time.Time{}
+		q.setFavoriteFilter(favorites)
 		q.applySearch()
 		p.window.Show()
 		p.window.Focus()
 		p.window.Invalidate()
+	}
+}
+func (p *ProcessPanel) FilterFavorites() {
+	if p.Visible() {
+		p.state.setFavoriteFilter(true)
+		p.state.applySearch()
+		p.state.update()
 	}
 }
 func (p *ProcessPanel) Hide() {

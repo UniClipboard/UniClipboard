@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/uniclipboard/unic/internal/nativeboard"
+
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
 
@@ -80,7 +82,7 @@ func nativeSource() sourceState {
 	if a.Validate() != nil {
 		return state
 	}
-	a.IconPNG = cachedIcon("linux:"+id, func() []byte {
+	a.IconPNG = nativeboard.CachedIcon("linux:"+id, func() []byte {
 		atom := sourceAtom(c, "_NET_WM_ICON")
 		if atom == 0 {
 			return nil
@@ -106,7 +108,7 @@ func nativeSource() sourceState {
 				}
 				var b bytes.Buffer
 				if png.Encode(&b, img) == nil {
-					return smallPNG(b.Bytes())
+					return nativeboard.SmallPNG(b.Bytes())
 				}
 				return nil
 			}

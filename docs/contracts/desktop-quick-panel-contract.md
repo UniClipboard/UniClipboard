@@ -8,13 +8,51 @@ The persistent tray captures the external foreground target before creating or a
 
 Enter pastes. Shift+Enter requests the existing builtin.text/plain Action, applies its new history item, then pastes. A stored plain-text representation is required; HTML-only history receives an explicit rejection without a transform or clipboard write. Images/files cannot use plain mode. Command/Ctrl+Enter pastes and reopens the panel with the original target after a 150 ms dispatch interval and a fresh focus check. A user switch during that interval leaves the panel hidden. Copy applies history without synthetic input. Preserve current search, chip, preview and keyboard UX.
 
-Order: validate target and native permission; delegate application through private Desktop IPC to the tray's real clipboard adapter; confirm that exactly one tracked clipboard write completed; hide the panel and preview; activate the same target; wait for focus and all command modifiers to be released; recheck target and clipboard; send one paste chord. A one-second focus/modifier deadline bounds the final stage. An OS send acknowledgement is not proof that the receiving application inserted content.
+Order: validate target and native permission; delegate application through private Desktop IPC to the active clipboard adapter; confirm that exactly one tracked clipboard write completed; hide the panel and preview; activate the same target; wait for focus and all command modifiers to be released; recheck target and clipboard; send one paste chord. A one-second focus/modifier deadline bounds the final stage. An OS send acknowledgement is not proof that the receiving application inserted content.
 
 Cancellation, external blur, a newer session, shutdown, failed apply, missing permission, target exit/reuse, focus theft, clipboard replacement and partial input injection must never retry paste. Clipboard application may already have completed after cancellation; do not roll it back or report it as pasted. Explicit Escape dismissal can restore focus only while unic still owns the foreground. External blur never restores focus. Hide/reopen and mutation completion must remain generation-bound.
 
 ## Shortcut preference
 
-Use mygo.GlobalShortcut. Persist desktop.quick_panel_shortcut in the existing revision-checked TOML config. Default: Cmd+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux. Supported choices: Ctrl+`, CmdOrCtrl+Shift+Space, Ctrl+Alt+V, Cmd+Ctrl+V, or empty to disable. These fixed choices avoid duplicating mygo's private accelerator parser. Register a replacement before removing the previous registration. Report requested and effective registration separately; a conflict preserves the previous working registration. Offer an explicit retry. Release owned registrations on quit. On Wayland, mygo acknowledges an asynchronous portal registration request; the in-process registration receipt does not prove that the user approved the desktop binding. The tray owns the only global registration while Desktop integration runs. The quick panel registers no global shortcut and acquires no clipboard adapter. It starts on first request and remains hidden between requests. Normal GUI close retains tray integration, so the shortcut can reopen the panel without a GUI process. Lightweight GUI close retires GUI, tray and panel and leaves only unicd, without a hotkey or adapter. Lightweight background/login entry also keeps only unicd after setup. Manual activation always reopens the GUI. Explicit application Quit closes all Desktop roles and releases the tray registration.
+The tray registers system-wide shortcuts with mygo.GlobalShortcut while Desktop
+integration runs. The default panel binding is Command+Ctrl+V on macOS and
+Ctrl+Alt+V on Windows/Linux. The optional Show Main Window and Open Favorites
+in Quick Panel actions are unbound by default. Opening favorites on a visible
+panel changes its filter without recapturing the target. The normal panel
+shortcut still dismisses an already visible panel.
+
+Settings stores recorded alternatives in `desktop.shortcuts`. Each binding
+contains one or two space-separated key combinations. A two-step sequence
+expires one second after its first combination. An empty array disables an
+action. An absent entry uses the action default. For panel activation only, the
+existing `desktop.quick_panel_shortcut` preset remains the fallback. Settings
+rejects overlapping bindings and prefixes within each application window and
+within system-wide bindings. A step claimed by a system-wide binding cannot
+also belong to a window binding. History and main window scopes overlap.
+The two independent windows may share bindings.
+
+The shortcut editor opens beside the selected binding. Unmodified Enter
+confirms the recorded sequence and Escape dismisses the editor. Pressing Enter
+without a recorded combination leaves the binding unchanged. The row menu
+provides clear and reset actions.
+
+The tray registers the complete replacement set before releasing superseded
+registrations. If registration fails, it rolls back added registrations and
+reports the previous effective panel binding. A saved preference can differ
+from an effective binding. The user can retry registration. On Wayland a mygo
+portal request is asynchronous and does not establish user approval. The tray
+drops its registrations on pause, explicit quit or lightweight retirement.
+
+`desktop.quick_panel_double_tap` independently enables two standalone presses
+of Alt, Ctrl or the platform Super key. The setting defaults to off. The tray
+samples only the selected modifier and the presence of other keys while this
+feature is active. macOS requires Accessibility permission. Windows and native
+X11 support the feature. Wayland cannot observe the global modifier gesture.
+
+The quick-panel process registers no global shortcuts and owns no clipboard
+adapter. On macOS the panel calls the adapter in unicd directly for tracked writes and clipboard checks. Other platforms use private tray IPC. The quick-panel process starts on first activation and remains hidden between requests.
+Normal GUI close retains the tray. Lightweight close and lightweight login
+keep only unicd. Manual activation reopens the GUI.
 
 ## Platforms and privacy
 

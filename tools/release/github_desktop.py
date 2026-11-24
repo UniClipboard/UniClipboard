@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Render v1-style Desktop pages and stage immutable GitHub Release assets."""
+
 import argparse
 import hashlib
 import json
@@ -95,9 +96,9 @@ def page(m, cli, notes, channel, previous, generated):
         f"## {m['version']} — Desktop build {m['build_number']}\n\n{notes['en']}"
     )
     source = (
-        f'**Full Changelog**: {WEB}/compare/{quote(previous, safe="")}...{m["source_sha"]}'
+        f"**Full Changelog**: {WEB}/compare/{quote(previous, safe='')}...{m['source_sha']}"
         if previous
-        else f'**Source**: {WEB}/commit/{m["source_sha"]}'
+        else f"**Source**: {WEB}/commit/{m['source_sha']}"
     )
     warnings = [
         "All paired devices must use v2. Quit v1 before starting v2. Import v1 history explicitly with `unic migrate`."
@@ -289,8 +290,8 @@ def run(args):
         m["source_sha"],
     ):
         raise ValueError("Desktop tag source conflict")
-    existing = gh.api(
-        "GET", prefix + "/releases/tags/" + quote(tag, safe=""), missing=True
+    existing = release.package.cli.find_github_release(
+        REPO, tag, read=lambda endpoint: gh.api("GET", "/" + endpoint)
     )
     title = f"UniClipboard Desktop {m['version']} (build {m['build_number']})"
     if (
@@ -350,6 +351,10 @@ def run(args):
             raise ValueError("existing Release notes differ from accepted inputs")
         with tempfile.TemporaryDirectory(prefix="unic-gh-readback-") as temporary:
             for name, a in assets.items():
+                if a.get("digest"):
+                    if a["digest"] != "sha256:" + receipt["assets"][name]:
+                        raise ValueError("existing Release attachment byte conflict")
+                    continue
                 downloaded = Path(temporary) / name
                 gh.api(
                     "GET", prefix + f"/releases/assets/{a['id']}", download=downloaded
@@ -402,6 +407,11 @@ def run(args):
     observed_assets = {a["name"]: (a["id"], a["size"]) for a in current_assets}
     if len(current_assets) != len(files) or observed_assets != expected_assets:
         raise ValueError("Release attachment set changed during staging")
+    if any(
+        a.get("digest") and a["digest"] != "sha256:" + receipt["assets"][a["name"]]
+        for a in current_assets
+    ):
+        raise ValueError("Release attachment digest changed during staging")
     current_ref = gh.api("GET", prefix + "/git/ref/tags/" + quote(tag, safe=""))
     if (current_ref["object"].get("type"), current_ref["object"].get("sha")) != (
         "commit",

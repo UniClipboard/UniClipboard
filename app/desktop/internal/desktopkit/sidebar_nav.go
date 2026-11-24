@@ -19,6 +19,8 @@ type SidebarNavItem struct {
 	Count string
 	// Status 非 nil 时用状态点代替图标（如设备连接状态）。
 	Status *StatusTone
+	// Indicator 非 nil 时在尾部显示状态圆点，同时保留左侧图标。
+	Indicator *StatusTone
 	// ShortcutHint 仅显示，如 `⌘,`。
 	ShortcutHint string
 }
@@ -148,7 +150,7 @@ func (k Kit) SidebarNavEntry(c *ui.Context, st *NavState, item SidebarNavItem) u
 		if k.Dark {
 			row.Border(1, k.Color("text-primary").Alpha(.08))
 		} else {
-			row.Border(1, k.Color("separator-border")).Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, .04))
+			row.Border(1, k.Color("separator-border")).Shadow(0, 1, 2, 0, k.Color("sidebar-selection-shadow"))
 		}
 		labelStyle = "body-2-medium"
 		countStyle = "caption-1-medium"
@@ -177,6 +179,9 @@ func (k Kit) SidebarNavEntry(c *ui.Context, st *NavState, item SidebarNavItem) u
 			k.Icon(c, item.Icon, lk.icon).TextColor(iconColor)
 		}
 		k.native().Text(c, item.Label, labelStyle).TextColor(fg).SingleLine().Grow(1).MinWidth(0)
+		if item.Indicator != nil {
+			ui.Box(c.Key("ind")).Size(7, 7).Radius(3.5).Shrink(0).Background(k.navStatusColor(*item.Indicator)).AccessHidden(true)
+		}
 		if item.Count != "" {
 			k.native().Text(c, item.Count, countStyle).TextColor(mute).SingleLine().Shrink(0)
 		}

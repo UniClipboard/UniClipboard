@@ -1,0 +1,109 @@
+---
+title: 从 v1 迁移到 v2
+description: 用 unic migrate 或桌面首次设置把 UniClipboard v1 的本机历史导入 v2。
+---
+
+UniClipboard v2 是全新实现，**不能与 v1 互相同步**，也不能直接使用 v1 的数据库、设置或设备身份。迁移只把本机历史离线导入 v2。
+
+## 会迁移什么
+
+| 内容 | 是否迁移 |
+|---|---|
+| 文本、HTML | 是 |
+| 图片 | 是；JPEG/TIFF/WebP 会转为 PNG |
+| 文件 | 是；复制为 v2 自管的副本，文件夹以 ZIP 形式保留目录结构 |
+| 标签及标签颜色 | 是；内置的链接/图片/文件夹/代码等标签映射为 v2 对应标签 |
+| 创建时间与排序 | 是 |
+| 收藏 | 否，会在报告中列出 |
+| 设置、设备身份、信任关系、网络设置 | 否 |
+
+迁移不会修改 v1 的数据。缺失或损坏的内容会在报告中计为部分迁移。
+
+## 迁移前
+
+1. **备份 v1 数据**，在确认 v2 历史无误前保留备份。
+2. 退出 v1，并停止使用目标数据目录的 `unicd`（迁移不会替你停止）。
+3. 所有设备都升级到 v2 后，需要[重新配对](../core-features/devices)。
+
+## 使用桌面端
+
+全新安装的 v2 桌面端首次启动时会进入设置向导，其中提供可选的 v1 历史导入，走的是与命令行相同的迁移流程。
+
+## 使用命令行
+
+<Steps>
+<Step>
+
+### 预检（不写入目标）
+
+```bash
+unic migrate --dry-run --json
+```
+
+</Step>
+<Step>
+
+### 导入并校验
+
+```bash
+unic migrate --json
+```
+
+导入过程中会请求系统凭据授权；读取失败时会提示输入 v1 的旧口令（不回显）。
+
+</Step>
+<Step>
+
+### 检查报告
+
+确认报告和 v2 历史无误后，再启动 `unicd`。
+
+</Step>
+</Steps>
+
+默认来源是本机 v1 桌面数据目录（macOS `~/Library/Application Support/app.uniclipboard.desktop`，Windows `%LOCALAPPDATA%\app.uniclipboard.desktop`，Linux `~/.local/share/app.uniclipboard.desktop`）；默认目标是 `UNIC_HOME` 或常规 unic 数据目录。
+
+### 参数
+
+| 参数 | 说明 |
+|---|---|
+| `--source DIR` | v1 数据目录；自定义或便携版 v1 必须指定 |
+| `--target DIR` | v2 数据目录 |
+| `--service NAME` | 旧凭据服务名，默认 `UniClipboard`；命名配置使用 `UniClipboard-配置名` |
+| `--dry-run` | 只读取并校验，不修改目标 |
+| `--json` | 输出 JSON 进度与最终报告 |
+| `--passphrase-stdin` | 从标准输入读取一行旧口令，用于自动化 |
+| `--initialize-empty` | 本机没有 v1 数据时显式初始化，只能与 `--target`、`--json` 同用 |
+
+<Callout type="error">
+不要把口令写在命令行参数或环境变量里。自动化场景请使用 `--passphrase-stdin`。
+</Callout>
+
+### 没有 v1 数据时
+
+命令行每个数据目录首次使用前都必须完成迁移初始化，否则普通命令会以退出码 6（`migration_required`）结束。如果这台电脑从未使用过 v1：
+
+```bash
+unic migrate --initialize-empty --json
+```
+
+它会检查已知的 v1 位置；若发现 v1 数据或未完成的导入则拒绝执行。这不是“跳过”选项，自定义位置的 v1 数据请用 `--source DIR` 导入。
+
+## 结果与重试
+
+| 退出码 | 状态 |
+|---|---|
+| 0 | `ready`（预检通过）或 `complete`（导入并校验完成） |
+| 3 | `partial`，部分内容缺失或失败 |
+| 1 | `failed` 或 `cancelled` |
+
+- 预检、部分完成、失败和取消都**不算完成**，数据目录仍保持锁定，直到一次完整导入成功。
+- 中断后用相同命令重跑即可：已成功的条目不会重复，失败的会重试，新增的会补充。
+- 每次导入都会自动补齐缺失的标签与标签颜色；你在 v2 中编辑过或删除的条目会被保留，不会被覆盖或复活。
+- 报告中请关注 `tag_repairs_skipped`、`color_failures`、`colors_missing`，必要时在 v2 中手动处理。
+- 迁移进度和报告只包含数量与错误类别，不包含正文、路径或文件名。
+- 目标是已有历史的 v2 目录时，迁移以追加方式合并，不替换其身份与配置。
+
+<Callout>
+迁移主要针对较新的 v1 版本数据格式验收；未知格式会明确失败，而不是猜测。
+</Callout>

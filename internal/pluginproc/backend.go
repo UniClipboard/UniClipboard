@@ -6,6 +6,7 @@ import (
 	"io"
 	"slices"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/uniclipboard/unic/plugin"
@@ -23,6 +24,17 @@ func (m backM) Submit(ctx context.Context, v plugin.SyncView, h plugin.SyncHost)
 	return m.p.submit(ctx, v, h)
 }
 func (m backM) SetReceiver(r plugin.Receiver) { m.p.setReceiver(r) }
+func (m backM) PairChannel(ctx context.Context, code string) ([]byte, string, error) {
+	s := m.p.current()
+	if s == nil {
+		return nil, "", ErrUnavailable
+	}
+	var out rpc.ChannelPairResult
+	_, err := s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodPairChannel, Timeout: m.p.callTimeout(ctx, 90*time.Second),
+		Params: rpc.ChannelPair{Code: code}}, &out)
+	return out.RemoteContext, out.ReportedName, err
+}
+
 func (m leaveM) LeaveChannel(ctx context.Context, id string) error {
 	return m.p.leaveChannel(ctx, id)
 }
@@ -156,8 +168,14 @@ func (p *Proxy) handleBackend(ctx context.Context, c *rpc.Call) (res any, err er
 		return nil, p.register(t, in), true
 	case rpc.MethodReport:
 		return nil, p.report(c), true
+	case rpc.MethodResolveChannel:
+		res, err = p.resolveChannel(ctx, c)
+		return res, err, true
 	case rpc.MethodReceive:
 		return nil, p.receive(ctx, c), true
+	case rpc.MethodAuthorizeChannel:
+		res, err = p.authorizeChannel(ctx, c)
+		return res, err, true
 	case rpc.MethodReceiveOpen:
 		res, err = p.receiveOpen(ctx, c)
 		return res, err, true
@@ -247,6 +265,42 @@ func (p *Proxy) report(c *rpc.Call) error {
 		p.dropTransfer(in.TransferID, t)
 	}
 	return nil
+}
+
+func (p *Proxy) resolveChannel(ctx context.Context, c *rpc.Call) (rpc.ChannelResolution, error) {
+	p.bmu.Lock()
+	resolver, ok := p.receiver.(plugin.ChannelResolver)
+	p.bmu.Unlock()
+	if !ok {
+		return rpc.ChannelResolution{}, rpc.NewError(rpc.CodeUnsupported)
+	}
+	var in rpc.ChannelContext
+	if err := rpc.Decode(c.Params, &in); err != nil || in.Validate() != nil {
+		return rpc.ChannelResolution{}, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	id, err := resolver.ResolveChannel(ctx, in.RemoteContext)
+	if err != nil {
+		return rpc.ChannelResolution{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	return rpc.ChannelResolution{ID: id}, nil
+}
+
+func (p *Proxy) authorizeChannel(ctx context.Context, c *rpc.Call) (rpc.AuthorizeChannelResult, error) {
+	p.bmu.Lock()
+	authorizer, ok := p.receiver.(plugin.ChannelAuthorizer)
+	p.bmu.Unlock()
+	if !ok {
+		return rpc.AuthorizeChannelResult{}, rpc.NewError(rpc.CodeUnsupported)
+	}
+	var in rpc.AuthorizeChannel
+	if err := rpc.Decode(c.Params, &in); err != nil || !validID(in.ChannelID) || (in.MIME != "" && !validID(in.MIME)) {
+		return rpc.AuthorizeChannelResult{}, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	allowed, err := authorizer.AuthorizeChannel(ctx, in.ChannelID, in.MIME)
+	if err != nil {
+		return rpc.AuthorizeChannelResult{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	return rpc.AuthorizeChannelResult{Allowed: allowed}, nil
 }
 
 func (p *Proxy) receive(ctx context.Context, c *rpc.Call) error {

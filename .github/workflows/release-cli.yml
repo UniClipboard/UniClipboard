@@ -1,4 +1,4 @@
-name: Release CLI
+name: Release CLI and Desktop
 on:
   workflow_dispatch:
     inputs:
@@ -10,6 +10,21 @@ on:
         type: choice
         options: [alpha, stable]
         required: true
+      version:
+        type: string
+        description: Set the configured version to release both CLI and Desktop
+      desktop_candidate_run_id:
+        type: string
+        description: Accepted standalone Desktop build. Required for joint stable.
+      stable_acceptance:
+        type: string
+        description: JSON with darwin, linux and windows receipts. Required for joint stable.
+      expected_source:
+        type: string
+        description: Expected source SHA for a joint release
+      candidate_manifest_sha256:
+        type: string
+        description: Exact manifest required by the Desktop CLI lock
 permissions:
   contents: write
   actions: read
@@ -18,12 +33,44 @@ concurrency:
   group: release-cli
   cancel-in-progress: false
 jobs:
+  plan:
+    name: Select product builds
+    runs-on: ubuntu-24.04
+    outputs:
+      desktop_build: ${{ steps.plan.outputs.desktop_build }}
+      cli_manifest_sha256: ${{ steps.plan.outputs.cli_manifest_sha256 }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - id: plan
+        if: inputs.version != ''
+        env:
+          VERSION: ${{ inputs.version }}
+          CHANNEL: ${{ inputs.channel }}
+          DESKTOP_CANDIDATE: ${{ inputs.desktop_candidate_run_id }}
+          STABLE_ACCEPTANCE: ${{ inputs.stable_acceptance }}
+          CLI_CANDIDATE: ${{ inputs.candidate_run_id }}
+        run: |
+          args=()
+          test -z "$CLI_CANDIDATE"
+          if [[ "$CHANNEL" == stable ]]; then
+            test -n "$DESKTOP_CANDIDATE"
+            test -n "$STABLE_ACCEPTANCE"
+            args+=(--stable)
+          fi
+          python3 tools/release/joint.py "$VERSION" --github-output "$GITHUB_OUTPUT" "${args[@]}"
   resolve:
+    name: Recover CLI candidate
+    needs: plan
+    if: inputs.candidate_run_id == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
       staged: ${{ steps.resume.outputs.staged }}
     steps:
+      - if: inputs.expected_source != '' && inputs.expected_source != github.sha
+        run: exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -32,14 +79,11 @@ jobs:
         id: resume
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+          JOINT_VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "$CANDIDATE_RUN" ]; then
-            python3 tools/release/cli_candidate.py --run-id "$CANDIDATE_RUN" --output dist/npm --require-macos-signing
-            echo "staged=true" >> "$GITHUB_OUTPUT"
-          else
-            python3 tools/release/release.py resume --output dist/npm --github-output "$GITHUB_OUTPUT"
-          fi
+          args=()
+          if [[ -n "$JOINT_VERSION" ]]; then args+=(--reuse-published); fi
+          python3 tools/release/release.py resume --output dist/npm --github-output "$GITHUB_OUTPUT" "${args[@]}"
       - uses: actions/upload-artifact@v4
         if: steps.resume.outputs.staged == 'true'
         with:
@@ -47,6 +91,7 @@ jobs:
           path: dist/npm/
           if-no-files-found: error
   build:
+    name: Build and sign CLI
     needs: resolve
     if: needs.resolve.outputs.staged != 'true'
     uses: ./.github/workflows/build-cli.yml
@@ -58,11 +103,14 @@ jobs:
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
   publish:
-    needs: [resolve, build]
-    if: ${{ !cancelled() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true') }}
+    name: Publish CLI to npm
+    needs: [plan, resolve, build, stable_draft]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.stable_draft.result == 'success' || needs.stable_draft.result == 'skipped') && (inputs.candidate_run_id != '' || (needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true'))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
+      - if: inputs.expected_source != '' && inputs.expected_source != github.sha
+        run: exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -70,6 +118,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22.23.4'
+          package-manager-cache: false
+      - name: Restore pinned npm downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm/_cacache
+          key: release-npm-v1-${{ runner.os }}-${{ runner.arch }}-11.21.2
       - run: npm install --global npm@11.21.2
       - name: Isolate npm configuration for OIDC
         run: |
@@ -77,9 +131,23 @@ jobs:
           echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/unic-npmrc" >> "$GITHUB_ENV"
           echo "NODE_AUTH_TOKEN=" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
+        if: inputs.candidate_run_id == ''
         with:
           name: ${{ needs.resolve.outputs.staged == 'true' && 'cli-npm-resumed' || 'cli-npm-candidate' }}
           path: dist/npm
+      - name: Acquire the selected immutable CLI candidate
+        if: inputs.candidate_run_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+        run: python3 tools/release/cli_candidate.py --run-id "$CANDIDATE_RUN" --output dist/npm --require-macos-signing
+      - name: Verify the Desktop CLI lock
+        if: inputs.candidate_manifest_sha256 != '' || needs.plan.outputs.cli_manifest_sha256 != ''
+        env:
+          EXPECTED_DIGEST: ${{ needs.plan.outputs.cli_manifest_sha256 || inputs.candidate_manifest_sha256 }}
+        run: |
+          actual=$(sha256sum dist/npm/release-manifest.json)
+          test "${actual%% *}" = "$EXPECTED_DIGEST"
       - name: Stage durable immutable build record
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -95,6 +163,101 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: cli-publication-receipt
+          name: ${{ inputs.version != '' && format('cli-publication-receipt-{0}', github.run_attempt) || 'cli-publication-receipt' }}
           path: dist/publication.json
           if-no-files-found: warn
+
+  desktop_lock:
+    name: Lock Desktop to the accepted CLI
+    needs: [plan, resolve, build]
+    if: ${{ !cancelled() && inputs.version != '' && inputs.channel == 'alpha' && needs.plan.result == 'success' && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.resolve.outputs.staged == 'true' && 'cli-npm-resumed' || 'cli-npm-candidate' }}
+          path: dist/desktop-cli
+      - env:
+          VERSION: ${{ inputs.version }}
+        run: python3 tools/release/joint.py "$VERSION" --cli-manifest dist/desktop-cli/release-manifest.json --output dist/desktop-cli/products.toml --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: joint-desktop-cli
+          path: dist/desktop-cli/
+          if-no-files-found: error
+  desktop_build:
+    name: Build and sign Desktop
+    needs: desktop_lock
+    if: ${{ !cancelled() && needs.desktop_lock.result == 'success' }}
+    uses: ./.github/workflows/build-desktop.yml
+    with:
+      distribution: true
+      source_sha: ${{ github.sha }}
+      joint: true
+    secrets: inherit
+  stable_draft:
+    name: Verify native acceptance
+    needs: plan
+    if: inputs.version != '' && inputs.channel == 'stable'
+    uses: ./.github/workflows/release-desktop.yml
+    with:
+      operation: github-draft
+      channel: stable
+      candidate_run_id: ${{ inputs.desktop_candidate_run_id }}
+      stable_acceptance: ${{ inputs.stable_acceptance }}
+      joint: true
+    secrets: inherit
+  desktop_publish:
+    name: Publish Desktop
+    needs: [plan, publish, desktop_build]
+    if: ${{ !cancelled() && inputs.version != '' && needs.publish.result == 'success' && (inputs.channel == 'stable' || needs.desktop_build.result == 'success') }}
+    uses: ./.github/workflows/release-desktop.yml
+    with:
+      operation: publish
+      channel: ${{ inputs.channel }}
+      candidate_run_id: ${{ inputs.channel == 'alpha' && github.run_id || inputs.desktop_candidate_run_id }}
+      stable_acceptance: ${{ inputs.stable_acceptance }}
+      joint: true
+    secrets: inherit
+  legacy_alpha:
+    name: Verify and stage legacy upgrades
+    needs: [plan, desktop_publish]
+    if: ${{ !cancelled() && inputs.channel == 'alpha' && needs.plan.result == 'success' && needs.desktop_publish.result == 'success' }}
+    uses: ./.github/workflows/prepare-legacy-desktop-alpha.yml
+    with:
+      version: ${{ inputs.version }}
+      build_number: ${{ needs.plan.outputs.desktop_build }}
+      stage: true
+    secrets: inherit
+  desktop_promote:
+    name: Advance and verify Desktop channel
+    needs: [desktop_publish, legacy_alpha]
+    if: ${{ !cancelled() && needs.desktop_publish.result == 'success' && (inputs.channel == 'stable' || needs.legacy_alpha.result == 'success') }}
+    uses: ./.github/workflows/release-desktop.yml
+    with:
+      operation: promote
+      channel: ${{ inputs.channel }}
+      candidate_run_id: ${{ inputs.channel == 'alpha' && github.run_id || inputs.desktop_candidate_run_id }}
+      stable_acceptance: ${{ inputs.stable_acceptance }}
+      expected_revision: ${{ inputs.channel == 'stable' && 'auto' || needs.legacy_alpha.outputs.expected_revision }}
+      joint: true
+    secrets: inherit
+  verify_joint_release:
+    name: Verify both release results
+    needs: [publish, desktop_promote]
+    if: ${{ !cancelled() && inputs.version != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - env:
+          CLI_RESULT: ${{ needs.publish.result }}
+          DESKTOP_RESULT: ${{ needs.desktop_promote.result }}
+        run: |
+          if [[ "$CLI_RESULT" != success || "$DESKTOP_RESULT" != success ]]; then
+            printf 'Joint release incomplete (CLI: %s, Desktop: %s)\n' "$CLI_RESULT" "$DESKTOP_RESULT" >&2
+            exit 1
+          fi

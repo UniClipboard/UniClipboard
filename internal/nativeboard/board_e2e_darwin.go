@@ -31,3 +31,29 @@ func (b *Board) ReleaseForE2E() error {
 		return nil
 	})
 }
+
+// WriteFileReferencesForE2E writes Finder-style file reference URLs to a private test pasteboard.
+func (b *Board) WriteFileReferencesForE2E(paths ...string) error {
+	if b.name == "" {
+		return errors.New("refusing to write to the system pasteboard")
+	}
+	return b.use(func(board objc.ID) error {
+		items := send(objc.ID(objc.GetClass("NSMutableArray")), "array")
+		for _, path := range paths {
+			u := send(objc.ID(objc.GetClass("NSURL")), "fileURLWithPath:", nsString(path))
+			ref := send(u, "fileReferenceURL")
+			if ref == 0 {
+				return errors.New("could not build file reference URL")
+			}
+			item := send(send(objc.ID(objc.GetClass("NSPasteboardItem")), "alloc"), "init")
+			defer send(item, "release")
+			send(item, "setString:forType:", send(ref, "absoluteString"), nsString("public.file-url"))
+			send(items, "addObject:", item)
+		}
+		send(board, "clearContents")
+		if !objc.Send[bool](board, objc.RegisterName("writeObjects:"), items) {
+			return errors.New("could not write file reference pasteboard")
+		}
+		return nil
+	})
+}

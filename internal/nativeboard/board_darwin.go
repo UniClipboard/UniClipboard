@@ -87,15 +87,46 @@ func nsBytes(data objc.ID) ([]byte, error) {
 	return append([]byte(nil), unsafe.Slice(p, int(n))...), nil
 }
 
+func resolveFileURL(raw string) string {
+	raw = strings.TrimRight(raw, "\x00")
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || !strings.EqualFold(u.Scheme, "file") || (u.Host != "" && !strings.EqualFold(u.Host, "localhost")) {
+		return ""
+	}
+	if strings.HasPrefix(u.Path, "/.file/") {
+		// Finder writes file reference URLs (file:///.file/id=...) to public.file-url;
+		// resolve them through NSURL.filePathURL instead of treating /.file/... as a POSIX path.
+		nsu := send(objc.ID(objc.GetClass("NSURL")), "URLWithString:", nsString(raw))
+		if nsu == 0 {
+			return ""
+		}
+		resolved := send(nsu, "filePathURL")
+		if resolved == 0 {
+			return ""
+		}
+		path := goString(send(resolved, "path"))
+		if filepath.IsAbs(path) {
+			return path
+		}
+		return ""
+	}
+	if filepath.IsAbs(u.Path) {
+		return u.Path
+	}
+	return ""
+}
+
 func filePaths(board objc.ID) []string {
 	items := send(board, "pasteboardItems")
 	var paths []string
 	for i, count := uint64(0), objc.Send[uint64](items, objc.RegisterName("count")); i < count; i++ {
 		item := send(items, "objectAtIndex:", i)
 		value := goString(send(item, "stringForType:", nsString("public.file-url")))
-		u, err := url.Parse(value)
-		if err == nil && u.Scheme == "file" && (u.Host == "" || u.Host == "localhost") && filepath.IsAbs(u.Path) {
-			paths = append(paths, u.Path)
+		if path := resolveFileURL(value); path != "" {
+			paths = append(paths, path)
 		}
 	}
 	if len(paths) > 0 {

@@ -387,7 +387,7 @@ func (k Kit) l1ListRow(c *ui.Context, r ui.ListRow, it ItemListItem) ui.Element 
 
 	row.Children(func() {
 		// Leading provenance / media tile.
-		if it.Kind == KindImage && (it.Image != nil || it.ImageLoading) {
+		if (it.Kind == KindImage || it.Kind == KindFile) && (it.Image != nil || it.ImageLoading) {
 			slot := ui.Box(c.Key("thumb-slot")).Size(34, 34).Radius(7).Clip().
 				Border(1, k.Color("separator-border")).Shrink(0).AccessHidden(true)
 			tf := ui.Local(slot, "thumb-fade", func() thumbFadeState { return thumbFadeState{} })

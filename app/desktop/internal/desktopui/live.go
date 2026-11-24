@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"image"
 	"io"
-	"mime"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -1291,7 +1289,7 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 			names = append(names, r.Name)
 			// Preview a single image file without changing its file/copy semantics.
 			// Damaged or oversized images retain the ordinary file preview.
-			imageFile := strings.HasPrefix(r.MIME, "image/") || strings.HasPrefix(mime.TypeByExtension(strings.ToLower(filepath.Ext(r.Name))), "image/")
+			imageFile := strings.HasPrefix(r.MIME, "image/") || isImageFilename(r.Name)
 			if fileCount == 1 && imageFile && p.Size <= 32<<20 && r.Size <= 32<<20 {
 				v.picture, _ = readPreviewImage(ctx, r, edge)
 				if v.picture != nil {

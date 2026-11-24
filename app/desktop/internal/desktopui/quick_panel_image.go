@@ -2,19 +2,23 @@ package desktopui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 )
 
-func (p *quickPanelState) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
+func (p *quickPanelState) imagePreview(c *ui.Context, k desktopkit.Kit, a qpPalette, e qpEntry) {
 	if p.imageID != e.id {
 		p.imageID = e.id
 		p.actualSize = false
 		p.imagePan = ui.Point{}
 		p.imageDragging = false
 	}
-	stage := ui.Column(c).Fill().Clip().Background(a.muted).Label(e.title)
+	img := p.quickImage(c, e)
+	stage := ui.Column(c).FillWidth().Grow(1).MinHeight(0).Clip().Background(a.muted).Label(e.title)
 	bounds := stage.Bounds()
 	width, height := float32(800), float32(500)
 	if p.live != nil {
@@ -28,6 +32,9 @@ func (p *quickPanelState) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
 	}
 	toggle := func() { p.actualSize = !p.actualSize; p.imagePan = ui.Point{}; p.imageDragging = false; p.update() }
 	stage.HandleInput(func(ev ui.InputEvent) bool {
+		if img == nil {
+			return false
+		}
 		switch ev.Kind {
 		case ui.InputPointerDown:
 			if ev.Button != 0 {
@@ -59,10 +66,14 @@ func (p *quickPanelState) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
 		return false
 	})
 	stage.Children(func() {
+		if img == nil {
+			k.ShimmerBox(c.Key("img-preview-skel"), 0).Fill()
+			return
+		}
 		if p.actualSize {
-			ui.Image(c, p.quickImage(c, e)).Size(width, height).Absolute().LeftPercent(50).TopPercent(50).Margin(-height/2+p.imagePan.Y, 0, 0, -width/2+p.imagePan.X)
+			ui.Image(c, img).Size(width, height).Absolute().LeftPercent(50).TopPercent(50).Margin(-height/2+p.imagePan.Y, 0, 0, -width/2+p.imagePan.X)
 		} else {
-			ui.Image(c, p.quickImage(c, e)).Fill().Fit(ui.Contain).Label(e.title)
+			ui.Image(c, img).Fill().Fit(ui.Contain).Label(e.title)
 		}
 		target := float32(0)
 		if stage.Hovered() {
@@ -70,8 +81,18 @@ func (p *quickPanelState) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
 		}
 		opacity := stage.Animate("image-overlay", target, 140*time.Millisecond)
 		{
+			format := "PNG"
+			if e.kind == "文件" {
+				if ext := qpFileExtensionBadge(e); ext != "" {
+					format = ext
+				}
+			}
+			meta := fmt.Sprintf(p.tr("%.0f × %.0f · PNG · 来自 %s"), width, height, e.source)
+			if format != "PNG" {
+				meta = strings.Replace(meta, " · PNG · ", " · "+format+" · ", 1)
+			}
 			ui.Row(c).Absolute().Top(12).Left(12).Padding(5, 8).Radius(6).Background(a.background).Opacity(opacity).Children(func() {
-				ui.Text(c, fmt.Sprintf(p.tr("%.0f × %.0f · PNG · 来自 %s"), width, height, e.source)).FontSize(11).TextColor(a.quiet)
+				ui.Text(c, meta).FontSize(11).TextColor(a.quiet)
 			})
 			label := p.tr("原始尺寸")
 			if p.actualSize {
@@ -80,4 +101,12 @@ func (p *quickPanelState) imagePreview(c *ui.Context, a qpPalette, e qpEntry) {
 			ui.ButtonBase(c.Key("zoom")).Label(label).Disabled(opacity <= 0).Absolute().Right(12).Bottom(12).Height(28).PaddingX(10).Radius(6).Background(a.background).Opacity(opacity).Children(func() { ui.Text(c, label).FontSize(12) }).OnClick(toggle)
 		}
 	})
+	if e.kind == "文件" {
+		if caption := qpSingleFileName(e); caption != "" {
+			ui.Row(c.Key("img-file-caption")).Height(30).Shrink(0).Padding(0, 12).Gap(6).BorderWidth(1, 0, 0, 0).BorderColor(a.border).AlignItems(ui.Center).Children(func() {
+				k.Icon(c, desktopkit.IconFile, 13).TextColor(a.quiet)
+				ui.Text(c, caption).FontSize(11.5 * zoomScale(p.textZoom)).TextColor(a.quiet).SingleLine().Grow(1).MinWidth(0)
+			})
+		}
+	}
 }

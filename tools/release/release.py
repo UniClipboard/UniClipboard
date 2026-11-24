@@ -4,6 +4,7 @@
 import argparse
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import nullcontext
 import hashlib
 import itertools
 import json
@@ -12,8 +13,10 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
+import threading
 import time
 import tomllib
 from urllib.error import HTTPError
@@ -31,6 +34,12 @@ SHA256 = re.compile(r"[a-f0-9]{64}\Z")
 MAX_FILE = 512 * 1024 * 1024
 NODE_OS = {"darwin": "darwin", "linux": "linux", "windows": "win32"}
 NODE_ARCH = {"amd64": "x64", "arm64": "arm64"}
+LOG_LOCK = threading.Lock()
+
+
+def log(message):
+    with LOG_LOCK:
+        print(message, file=sys.stderr, flush=True)
 
 
 def digest(path, algorithm="sha256"):
@@ -420,8 +429,11 @@ def channel_downgrade(current, candidate):
         raise
 
 
-def distribute_package(package, exists, manifest_path, registry, tag, fixture):
+def distribute_package(
+    package, exists, manifest_path, registry, tag, fixture, mutation_slots=None
+):
     name, version = package["name"], package["version"]
+    slots = mutation_slots if mutation_slots is not None else nullcontext()
     if not exists:
         command = [
             "npm",
@@ -437,7 +449,14 @@ def distribute_package(package, exists, manifest_path, registry, tag, fixture):
         ]
         if not fixture:
             command.append("--provenance")
-        run(command)
+        with slots:
+            started = time.monotonic()
+            run(command)
+            elapsed = time.monotonic() - started
+        log(
+            f"release: uploaded {name}@{version} in {elapsed:.1f}s; waiting for registry read-back"
+        )
+    readback_started = time.monotonic()
     remote = registry_readback(
         registry,
         name,
@@ -447,17 +466,32 @@ def distribute_package(package, exists, manifest_path, registry, tag, fixture):
     published = remote["versions"][version]
     if published.get("dist", {}).get("integrity") != package["integrity"]:
         raise ValueError("package read-back integrity conflict: " + name)
+    log(
+        f"release: read back {name}@{version} in {time.monotonic() - readback_started:.1f}s"
+    )
     selected = remote.get("dist-tags", {}).get(tag)
     if selected == version:
         return
     if selected and channel_downgrade(selected, version):
         raise ValueError("refusing channel downgrade: " + name)
-    run(["npm", "dist-tag", "add", name + "@" + version, tag, "--registry", registry])
+    with slots:
+        tag_started = time.monotonic()
+        run(
+            ["npm", "dist-tag", "add", name + "@" + version, tag, "--registry", registry]
+        )
+        tag_elapsed = time.monotonic() - tag_started
+    log(
+        f"release: updated dist-tag {tag} for {name}@{version} in {tag_elapsed:.1f}s; waiting for read-back"
+    )
+    tag_readback_started = time.monotonic()
     registry_readback(
         registry,
         name,
         lambda data: data.get("dist-tags", {}).get(tag) == version,
         "channel read-back timed out",
+    )
+    log(
+        f"release: verified dist-tag {tag} for {name}@{version} in {time.monotonic() - tag_readback_started:.1f}s"
     )
 
 
@@ -548,6 +582,8 @@ def distribute(args):
         ]
         save(args.receipt, receipt)
 
+        mutation_slots = threading.Semaphore(3)
+
         def publish(package):
             distribute_package(
                 package,
@@ -556,15 +592,22 @@ def distribute(args):
                 registry,
                 tag,
                 fixture,
+                mutation_slots,
             )
 
-        # Complete preflight before mutating. Wait for all platform read-backs before the main package.
+        # Complete preflight before mutating. Bound concurrent npm mutations to 3 while
+        # allowing all platform packages to poll registry read-back without blocking uploads.
+        # Wait for all platform read-backs before the main package.
         failure = None
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        platform_packages = manifest["packages"][:-1]
+        platform_receipts = receipt["packages"][:-1]
+        with ThreadPoolExecutor(
+            max_workers=max(1, len(platform_packages))
+        ) as executor:
             platforms = {
                 executor.submit(publish, package): item
                 for package, item in zip(
-                    manifest["packages"][:-1], receipt["packages"][:-1], strict=True
+                    platform_packages, platform_receipts, strict=True
                 )
             }
             for future in as_completed(platforms):

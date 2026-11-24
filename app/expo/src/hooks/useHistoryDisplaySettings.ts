@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 
-const STORAGE_KEY = '@uniclipboard-shell:history_display_settings';
+const STORAGE_KEY = 'unic.history-display-settings';
 
 /** 首页历史的显示方式:卡片网格 / 分组列表 / 紧凑分组列表。按设备保存,不随同步。 */
 export type HistoryLayout = 'grid' | 'list' | 'compact';
@@ -47,6 +47,7 @@ export function useHistoryDisplaySettings() {
   useEffect(() => {
     let cancelled = false;
     AsyncStorage.getItem(STORAGE_KEY)
+      .then((stored) => stored ?? AsyncStorage.getItem('@uniclipboard-shell:history_display_settings'))
       .then((stored) => {
         if (cancelled) return;
         latestRef.current = parseSettings(stored);

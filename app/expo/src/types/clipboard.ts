@@ -112,6 +112,7 @@ export interface ClipboardItem extends HistoryItemRevision {
 
   /** 是否置顶 */
   pinned: boolean;
+  tags?: readonly string[];
 
   /** 本地数据是否就绪（false表示仅有元数据） */
   isLocalFileReady: boolean;

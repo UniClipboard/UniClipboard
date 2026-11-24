@@ -265,6 +265,9 @@ public final class UnicEngineModule: Module {
     }
     var leaseID: String?
     if let text = pbResult.1, !text.isEmpty {
+      if text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("unic-pair:") {
+        return "{\"skipped\":true,\"reason\":\"empty_or_unsupported\"}"
+      }
       let hJSON = try callGoString { eng.importText(text, html: "", obsKey: "ios-pb:\(changeCount)", error: $0) }
       if let d = hJSON.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
         leaseID = obj["lease_id"] as? String
@@ -583,7 +586,7 @@ public final class UnicEngineModule: Module {
   public func definition() -> ModuleDefinition {
     Name("UnicEngine")
 
-    Events("onEngineEvent", "onEngineResync", "onMigrationProgress", "onClipboardChanged")
+    Events("onEngineEvent", "onEngineResync", "onMigrationProgress", "onClipboardChanged", "onIncomingShare")
 
     OnAppBecomesActive { [weak self] in
       guard let self = self else { return }
@@ -811,6 +814,25 @@ public final class UnicEngineModule: Module {
       self.shutdownEngineInternal()
     }.runOnQueue(engineQueue)
 
+    AsyncFunction("listIncomingShares") { () -> String in
+      try IncomingShare().list()
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("commitIncomingShare") { (id: String, targets: String) -> String in
+      let inbox = IncomingShare()
+      guard let item = inbox.item(id) else {
+        throw UnicModuleException("[unic:not_found] {\"code\":\"not_found\",\"message\":\"shared item unavailable\"}")
+      }
+      let engine = try self.requireEngine()
+      let result = try callGoString { engine.commitSharedItem(item.path, deviceIDsJSON: targets, error: $0) }
+      try inbox.remove(id)
+      return result
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("dismissIncomingShare") { (id: String) in
+      try IncomingShare().remove(id)
+    }.runOnQueue(engineQueue)
+
     AsyncFunction("getState") { () -> String in
       let eng = try self.requireEngine()
       return try callGoString { eng.getState($0) }
@@ -853,6 +875,19 @@ public final class UnicEngineModule: Module {
     AsyncFunction("listHistoryFolder") { (id: String, limit: Int) -> String in
       let eng = try self.requireEngine()
       return try callGoString { eng.listHistoryFolder(id, limit: limit, error: $0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("copyPairingTicket") { (text: String, expiresAtMs: Double) in
+      _ = try self.requireEngine()
+      let expires = Date(timeIntervalSince1970: expiresAtMs / 1000)
+      guard expires > Date() else {
+        throw UnicModuleException("[unic:expired] {\"code\":\"expired\",\"message\":\"pairing ticket expired\"}")
+      }
+      self.lastAppliedChangeCount = DispatchQueue.main.sync {
+        let clipboard = UIPasteboard.general
+        clipboard.setItems([[UTType.utf8PlainText.identifier: text]], options: [.localOnly: true, .expirationDate: expires])
+        return clipboard.changeCount
+      }
     }.runOnQueue(engineQueue)
 
     AsyncFunction("copyPlainText") { (text: String) in

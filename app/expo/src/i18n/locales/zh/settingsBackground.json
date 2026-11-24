@@ -235,5 +235,8 @@
     "denied": "需要短信权限才能复制验证码",
     "enabled": "将自动复制验证码",
     "disabled": "已关闭验证码复制"
+  },
+  "live": {
+    "description": "在 Android 通知显示期间继续接收同步历史。达到系统时限后，Android 可以停止该服务。"
   }
 }

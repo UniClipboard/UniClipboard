@@ -3,6 +3,7 @@ package mobile
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/skip2/go-qrcode"
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
@@ -664,6 +666,7 @@ type commitReqDTO struct {
 	LeaseID         engine.LeaseID    `json:"lease_id"`
 	BackendIDs      []engine.PluginID `json:"backend_ids,omitempty"`
 	DeviceIDs       []engine.DeviceID `json:"device_ids,omitempty"`
+	LocalOnly       bool              `json:"local_only,omitempty"`
 }
 
 // CommitContent commits leased content through the pipeline and optionally syncs it.
@@ -680,6 +683,7 @@ func (m *Engine) CommitContent(token *CancelToken, reqJSON string) (string, erro
 		LeaseID:         dto.LeaseID,
 		BackendIDs:      dto.BackendIDs,
 		DeviceIDs:       dto.DeviceIDs,
+		LocalOnly:       dto.LocalOnly,
 	})
 	if err != nil {
 		return "", wrapErr(err)
@@ -1092,7 +1096,14 @@ func (m *Engine) ExportPairingTicket(token *CancelToken) (string, error) {
 	if err != nil {
 		return "", wrapErr(err)
 	}
-	return marshalJSON(t)
+	result := struct {
+		engine.SensitiveTicket
+		QRPNG string `json:"qr_png,omitempty"`
+	}{SensitiveTicket: t}
+	if png, err := qrcode.Encode(t.Ticket, qrcode.Low, 512); err == nil {
+		result.QRPNG = base64.StdEncoding.EncodeToString(png)
+	}
+	return marshalJSON(result)
 }
 
 type joinReqDTO struct {

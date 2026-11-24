@@ -35,6 +35,8 @@ function files(directory) {
         ].includes(entry.name) &&
           directory === root) ||
         (directory === join(root, "e2e") && entry.name === "results") ||
+        (directory.startsWith(join(root, "targets") + "/") &&
+          entry.name === "generated.entitlements") ||
         (directory === join(root, "modules", "unic-engine", "ios") &&
           entry.name === "Frameworks") ||
         (directory === join(root, "modules", "unic-engine", "android") &&
@@ -98,7 +100,8 @@ try {
         ts.isStringLiteral(node.arguments[0])
       )
         specifier = node.arguments[0].text;
-      if (specifier && forbidden.test(specifier))
+      const pairingScanner = file === join(root, "src", "screens", "PairingScanner.tsx") && specifier === "expo-camera";
+      if (specifier && forbidden.test(specifier) && !pairingScanner)
         throw new Error(
           `Integration import in ${relative(root, file)}: ${specifier}`,
         );
@@ -121,7 +124,7 @@ try {
     exitCode: 0,
   });
   const pkg = JSON.parse(readFileSync("package.json"));
-  if (Object.keys(pkg.dependencies).some((name) => forbidden.test(name)))
+  if (Object.keys(pkg.dependencies).some((name) => name !== "expo-camera" && forbidden.test(name)))
     throw new Error("Integration package in dependencies");
   run("types", ["node_modules/typescript/bin/tsc", "--noEmit"]);
   run("search-tab-patch", [

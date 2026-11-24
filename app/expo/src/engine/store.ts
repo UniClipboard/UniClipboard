@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AppState } from "react-native";
 import { create } from "zustand";
+import i18n from "@/i18n";
 import type { ClipboardItem } from "@/types/clipboard";
 import type { DisplayKind } from "@/utils/displayKind";
 import {
@@ -80,7 +81,6 @@ interface EngineStoreState {
   fileCache: FileCacheState | null;
   pendingClipboardHint: ClipboardChangedEvent | null;
   pairingCode: PairingCode | null;
-  exportedTicket: SensitiveTicket | null;
   busy: boolean;
   lastError: EngineError | null;
 
@@ -131,19 +131,20 @@ interface EngineStoreState {
   dismissReceived: (receiptID: string) => Promise<void>;
   toggleStar: (historyID: string) => Promise<void>;
   togglePin: (historyID: string) => Promise<void>;
+  setHistoryTag: (historyID: string, tag: string, present: boolean) => Promise<void>;
   deleteHistoryItems: (ids: readonly string[]) => Promise<void>;
   runAction: (key: string, historyID: string) => Promise<void>;
 
   createPairingCode: () => Promise<PairingCode>;
   cancelPairingCode: () => Promise<void>;
   exportPairingTicket: () => Promise<SensitiveTicket>;
-  joinByCode: (code: string) => Promise<void>;
-  joinByTicket: (ticket: string) => Promise<void>;
+  joinByCode: (code: string) => Promise<string>;
+  joinByTicket: (ticket: string) => Promise<string>;
   approveDevice: (device: EngineDevice, verifiedFingerprint: string) => Promise<void>;
   renameDevice: (id: string, expectedRevision: number, name: string) => Promise<void>;
   setBindingSync: (bindingId: string, expectedRevision: number, syncEnabled: boolean) => Promise<void>;
   unpairDevice: (id: string, expectedRevision: number) => Promise<void>;
-  pairCandidate: (candidate: EngineCandidate) => Promise<void>;
+  pairCandidate: (candidate: EngineCandidate) => Promise<string>;
   ignoreCandidate: (deviceId: string, ignored: boolean) => Promise<void>;
 }
 
@@ -493,7 +494,6 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
   fileCache: null,
   pendingClipboardHint: null,
   pairingCode: null,
-  exportedTicket: null,
   busy: false,
   lastError: null,
 
@@ -639,17 +639,19 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
         lastAttemptImported: res.imported || 0,
         cumulativeImported: nextCumulative,
         setupViewState: nextView,
-        migrationErrorMessage: res.error?.message ?? "",
+        migrationErrorMessage: res.error ? i18n.t(`errors:engine.${res.error.code}`, {
+          defaultValue: i18n.t("settingsStorage:migration.failedBody"),
+        }) : "",
       });
     } catch (err) {
       active = false;
       subProg.remove();
       const e = parseEngineError(err);
       let nextView: SetupScreenViewState = "r-failed";
-      let msg = e.message;
+      let msg = i18n.t(`errors:engine.${e.code}`, { defaultValue: i18n.t("settingsStorage:migration.failedBody") });
       if (e.code === "permission_denied") {
         nextView = suppliedPassphrase ? "m-auth-err" : "m-auth";
-        msg = suppliedPassphrase ? "旧口令不正确或无法解锁凭据，请重新输入" : "";
+        msg = suppliedPassphrase ? i18n.t("settingsStorage:migration.unlockFailed") : "";
       } else if (e.code === "in_use") {
         nextView = "r-conflict";
       } else if (e.code === "cancelled") {
@@ -764,11 +766,15 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
         nextCursor = page.next_cursor || null;
         historyRevision = page.history_revision || null;
       } else {
-        const page = await unicEngineNative.listHistory({
-          limit: HISTORY_PAGE_SIZE,
-          filter: plan.listFilter,
-        });
-        items = page.items ?? [];
+        const request = { limit: HISTORY_PAGE_SIZE, filter: plan.listFilter };
+        const pinnedRequest = state.queryTags.length === 0
+          ? unicEngineNative.listHistory({ ...request, filter: { ...request.filter, tags: ["pinned"] } })
+          : null;
+        const [page, pinned] = await Promise.all([unicEngineNative.listHistory(request), pinnedRequest]);
+        const head = page.items ?? [];
+        const pins = pinned?.history_revision === page.history_revision ? pinned?.items ?? [] : [];
+        const pinnedIDs = new Set(pins.map((item) => item.id));
+        items = [...pins, ...head.filter((item) => !pinnedIDs.has(item.id))];
         nextCursor = page.next_cursor || null;
         historyRevision = page.history_revision || null;
       }
@@ -1078,15 +1084,20 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
   },
 
   togglePin: async (historyID) => {
-    const item = get().rawHistory.find((it) => it.id === historyID);
+    const item = get().rawHistory.find((entry) => entry.id === historyID);
+    if (item) await get().setHistoryTag(historyID, "pinned", !item.tags?.includes("pinned"));
+  },
+
+  setHistoryTag: async (historyID, tag, present) => {
+    const item = get().rawHistory.find((entry) => entry.id === historyID);
     if (!item) return;
-    const current = new Set(item.tags ?? []);
-    if (current.has("pinned")) current.delete("pinned");
-    else current.add("pinned");
+    const tags = new Set(item.tags ?? []);
+    if (present) tags.add(tag);
+    else tags.delete(tag);
     await unicEngineNative.updateHistoryItem({
       id: item.id,
       expected_revision: item.revision,
-      tags: Array.from(current),
+      tags: Array.from(tags),
     });
     await get().refreshHistory();
   },
@@ -1120,44 +1131,17 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
     set({ pairingCode: null });
   },
 
-  exportPairingTicket: async () => {
-    const ticket = await unicEngineNative.exportPairingTicket();
-    set({ exportedTicket: ticket });
-    return ticket;
-  },
+  exportPairingTicket: () => unicEngineNative.exportPairingTicket(),
 
-  joinByCode: async (code) => {
-    const opID = await unicEngineNative.joinByCode({
-      request_id: `mobile-join-code-${Date.now()}`,
-      code: code.trim(),
-    });
-    // Poll briefly so user sees any immediate join failure or pending peer right away.
-    for (let i = 0; i < 15; i++) {
-      const op = await unicEngineNative.getOperation(opID);
-      if (op.phase === "failed") {
-        throw parseEngineError(op.error ?? new Error("pairing failed"));
-      }
-      if (op.phase === "succeeded" || op.phase === "completed") break;
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    await get().refreshDevicesAndCandidates();
-  },
+  joinByCode: (code) => unicEngineNative.joinByCode({
+    request_id: `mobile-join-code-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    code: code.trim(),
+  }),
 
-  joinByTicket: async (ticket) => {
-    const opID = await unicEngineNative.joinByTicket({
-      request_id: `mobile-join-ticket-${Date.now()}`,
-      ticket: ticket.trim(),
-    });
-    for (let i = 0; i < 15; i++) {
-      const op = await unicEngineNative.getOperation(opID);
-      if (op.phase === "failed") {
-        throw parseEngineError(op.error ?? new Error("pairing failed"));
-      }
-      if (op.phase === "succeeded" || op.phase === "completed") break;
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    await get().refreshDevicesAndCandidates();
-  },
+  joinByTicket: (ticket) => unicEngineNative.joinByTicket({
+    request_id: `mobile-join-ticket-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    ticket: ticket.trim(),
+  }),
 
   approveDevice: async (device, verifiedFingerprint) => {
     await unicEngineNative.approveDevice({
@@ -1191,22 +1175,11 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
     await get().refreshDevicesAndCandidates();
   },
 
-  pairCandidate: async (candidate) => {
-    const opID = await unicEngineNative.pairCandidate({
-      request_id: `mobile-pair-cand-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      device_id: candidate.device_id,
-      backend_id: candidate.backend_id,
-    });
-    for (let i = 0; i < 15; i++) {
-      const op = await unicEngineNative.getOperation(opID);
-      if (op.phase === "failed") {
-        throw parseEngineError(op.error ?? new Error("pairing failed"));
-      }
-      if (op.phase === "succeeded" || op.phase === "completed") break;
-      await new Promise((r) => setTimeout(r, 200));
-    }
-    await get().refreshDevicesAndCandidates();
-  },
+  pairCandidate: (candidate) => unicEngineNative.pairCandidate({
+    request_id: `mobile-pair-candidate-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    device_id: candidate.device_id,
+    backend_id: candidate.backend_id,
+  }),
 
   ignoreCandidate: async (deviceId, ignored) => {
     await unicEngineNative.ignoreCandidate(deviceId, ignored);

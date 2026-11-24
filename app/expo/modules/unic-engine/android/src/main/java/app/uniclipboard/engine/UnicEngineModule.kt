@@ -14,6 +14,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
 import android.os.Build
+import android.os.PersistableBundle
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
@@ -94,6 +95,10 @@ class UnicEngineModule : Module() {
 
   private var engine: Engine? = null
   private var setupSession: MigrationSession? = null
+  private var stagedMigrationSource: File? = null
+  private var stagedMigrationURI: Uri? = null
+  private val incomingShare by lazy { IncomingShare(appContextOrThrow()) }
+  private var coldShareCaptured = false
   @Volatile private var activeMigrationCancel: CancelToken? = null
 
   private var pendingFolderPromise: Promise? = null
@@ -201,7 +206,7 @@ class UnicEngineModule : Module() {
         }
       }
       val text = item.coerceToText(ctx)?.toString()
-      if (!text.isNullOrEmpty()) {
+      if (!text.isNullOrEmpty() && !text.trim().startsWith("unic-pair:")) {
         return@onMainSync AndroidClipSnapshot.Text(text, item.htmlText ?: "")
       }
       AndroidClipSnapshot.Empty
@@ -515,6 +520,8 @@ class UnicEngineModule : Module() {
 
   private fun ensureSetupSession(): MigrationSession {
     setupSession?.let { return it }
+    // A process killed during staging leaves only an app-private cache copy.
+    File(appContextOrThrow().cacheDir, "unic-migration-source").deleteRecursively()
     val created = Mobile.openSetupFlow(dataDirectoryPath(), defaultV1DirectoryPath())
     setupSession = created
     return created
@@ -603,25 +610,24 @@ class UnicEngineModule : Module() {
     return value as T
   }
 
-  private fun tryResolveTreeUriToLocalPath(uri: Uri): String? {
-    if (uri.scheme == "file") {
-      return uri.path
+  private fun selectMigrationTree(uri: Uri): String {
+    val session = ensureSetupSession()
+    val context = appContextOrThrow()
+    val staged = stageMigrationTree(context, uri, File(context.cacheDir, "unic-migration-source"))
+    try {
+      val result = session.selectSource(staged.canonicalPath)
+      clearStagedMigrationSource()
+      stagedMigrationSource = staged
+      stagedMigrationURI = uri
+      return JSONObject(result).getString("source")
+    } finally {
+      if (stagedMigrationSource != staged) staged.deleteRecursively()
     }
-    if (!DocumentsContract.isTreeUri(uri)) {
-      return null
-    }
-    val docId = DocumentsContract.getTreeDocumentId(uri) ?: return null
-    val parts = docId.split(":", limit = 2)
-    if (parts.isEmpty()) return null
-    if (parts[0].equals("primary", ignoreCase = true)) {
-      val root = Environment.getExternalStorageDirectory()
-      val rel = if (parts.size > 1) parts[1] else ""
-      val candidate = if (rel.isEmpty()) root else File(root, rel)
-      if (candidate.exists() && candidate.isDirectory) {
-        return candidate.canonicalPath
-      }
-    }
-    return null
+  }
+
+  private fun clearStagedMigrationSource() {
+    stagedMigrationSource?.deleteRecursively()
+    stagedMigrationSource = null
   }
 
   private inner class AndroidFileOpener(
@@ -826,10 +832,88 @@ class UnicEngineModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("UnicEngine")
 
-    Events("onEngineEvent", "onEngineResync", "onMigrationProgress", "onClipboardChanged")
+    Events("onEngineEvent", "onEngineResync", "onMigrationProgress", "onClipboardChanged", "onIncomingShare")
+
+    OnNewIntent { intent ->
+      engineScope.launch {
+        if (runCatching { incomingShare.stage(intent) }.getOrDefault(false)) {
+          sendEvent("onIncomingShare", emptyMap<String, Any>())
+        }
+      }
+    }
+
+    AsyncFunction("listIncomingShares") { ->
+      if (!coldShareCaptured) {
+        coldShareCaptured = true
+        appContext.currentActivity?.intent?.let { runCatching { incomingShare.stage(it) } }
+      }
+      incomingShare.list()
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("commitIncomingShare") { id: String, targets: String ->
+      try {
+        val item = incomingShare.item(id) ?: throw rawCodeException("not_found", "shared item unavailable")
+        val result = requireEngine().commitSharedItem(item.path, targets)
+        incomingShare.remove(id)
+        result
+      } catch (error: Throwable) {
+        throw if (error is CodedException) error else moduleException(error)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("dismissIncomingShare") { id: String ->
+      incomingShare.remove(id)
+    }.runOnQueue(engineScope)
+
+    OnCreate {
+      BackgroundSyncService.onRunningChanged = { running ->
+        engineScope.launch {
+          if (!isForeground) engine?.let { eng ->
+            runCatching { eng.setRuntimeState(if (running) "active" else "suspended") }
+          }
+        }
+      }
+    }
+
+    AsyncFunction("getBackgroundSyncEnabled") { ->
+      BackgroundSyncService.enabled(appContextOrThrow())
+    }
+
+    AsyncFunction("setBackgroundSyncEnabled") { enabled: Boolean, promise: Promise ->
+      val context = appContextOrThrow()
+      val change = {
+        try {
+          if (enabled) BackgroundSyncService.start(context) else BackgroundSyncService.stop(context)
+          BackgroundSyncService.setEnabled(context, enabled)
+          promise.resolve(enabled)
+        } catch (error: Exception) {
+          promise.reject(moduleException(error))
+        }
+      }
+      mainHandler.post {
+        val permission = Manifest.permission.POST_NOTIFICATIONS
+        val permissions = appContext.permissions
+        if (enabled && Build.VERSION.SDK_INT >= 33 && permissions?.hasGrantedPermissions(permission) != true) {
+          if (permissions == null) {
+            promise.reject(rawCodeException("permission_denied", "notifications unavailable"))
+          } else {
+            permissions.askForPermissions({ result ->
+              if (result[permission]?.status == PermissionsStatus.GRANTED) change()
+              else promise.reject(rawCodeException("permission_denied", "notification access denied"))
+            }, permission)
+          }
+        } else {
+          change()
+        }
+      }
+    }
 
     OnActivityEntersForeground {
       isForeground = true
+      val context = appContext.reactContext
+      if (context != null && BackgroundSyncService.enabled(context)) {
+        runCatching { BackgroundSyncService.start(context) }
+      }
       engineScope.launch {
         val eng = engine ?: return@launch
         try { eng.setRuntimeState("active") } catch (_: Exception) {}
@@ -846,11 +930,15 @@ class UnicEngineModule : Module() {
         observationSequence = 0L
         val eng = engine ?: return@launch
         updateHostCapabilities(eng, "unavailable", "unavailable")
-        try { eng.setRuntimeState("suspended") } catch (_: Exception) {}
+        if (!BackgroundSyncService.running) {
+          try { eng.setRuntimeState("suspended") } catch (_: Exception) {}
+        }
       }
     }
 
     OnDestroy {
+      BackgroundSyncService.onRunningChanged = null
+      appContext.reactContext?.let(BackgroundSyncService::stop)
       activeMigrationCancel?.cancel()
       stopClipboardListener()
       stopNetworkMonitor()
@@ -873,15 +961,12 @@ class UnicEngineModule : Module() {
           val uri = payload.data!!.data!!
           engineScope.launch {
             try {
-              val localPath = tryResolveTreeUriToLocalPath(uri)
-                ?: throw rawCodeException("invalid_argument", "unsupported or invalid v1 data directory")
-              val sess = ensureSetupSession()
-              val resJSON = sess.selectSource(localPath)
-              val parsed = JSONObject(resJSON)
-              val out = JSONObject()
-                .put("cancelled", false)
-                .put("source", parsed.optString("source", localPath))
-              promise.resolve(out.toString())
+              val source = selectMigrationTree(uri)
+              promise.resolve(JSONObject().put("cancelled", false).put("source", source).toString())
+            } catch (_: InvalidMigrationTree) {
+              promise.reject(rawCodeException("invalid_argument", "invalid v1 backup directory"))
+            } catch (_: MigrationTreeTooLarge) {
+              promise.reject(rawCodeException("too_large", "v1 backup exceeds the staging limit"))
             } catch (ce: CodedException) {
               promise.reject(ce)
             } catch (t: Throwable) {
@@ -1015,7 +1100,13 @@ class UnicEngineModule : Module() {
 
     AsyncFunction("detectSetupSource") { dir: String ->
       try {
-        ensureSetupSession().detectSource(dir)
+        val result = ensureSetupSession().detectSource(dir)
+        val selected = JSONObject(result).optString("source")
+        if (selected.isNotEmpty() && selected != stagedMigrationSource?.canonicalPath) {
+          clearStagedMigrationSource()
+          stagedMigrationURI = null
+        }
+        result
       } catch (ce: CodedException) {
         throw ce
       } catch (t: Throwable) {
@@ -1053,6 +1144,7 @@ class UnicEngineModule : Module() {
       setKeepScreenOn(true)
       try {
         val sess = ensureSetupSession()
+        if (stagedMigrationSource == null) stagedMigrationURI?.let(::selectMigrationTree)
         val token = Mobile.newCancelToken()
         activeMigrationCancel = token
         val pwBytes = if (!passphrase.isNullOrEmpty()) passphrase.toByteArray(Charsets.UTF_8) else null
@@ -1066,7 +1158,15 @@ class UnicEngineModule : Module() {
             ),
           )
         }
-        sess.run(token, pwBytes, NoStoredSecretProvider(), sink)
+        try {
+          val result = sess.run(token, pwBytes, NoStoredSecretProvider(), sink)
+          if (JSONObject(result).optString("status") in setOf("complete", "done", "cancelled")) {
+            clearStagedMigrationSource()
+          }
+          result
+        } finally {
+          pwBytes?.fill(0)
+        }
       } catch (ce: CodedException) {
         throw ce
       } catch (t: Throwable) {
@@ -1084,6 +1184,8 @@ class UnicEngineModule : Module() {
     AsyncFunction("markSetupComplete") { ->
       try {
         ensureSetupSession().markComplete()
+        clearStagedMigrationSource()
+        stagedMigrationURI = null
       } catch (ce: CodedException) {
         throw ce
       } catch (t: Throwable) {
@@ -1125,7 +1227,7 @@ class UnicEngineModule : Module() {
           }
         }
         val snapshot = eng.subscribe(sink)
-        eng.setRuntimeState(if (isForeground) "active" else "suspended")
+        eng.setRuntimeState(if (isForeground || BackgroundSyncService.running) "active" else "suspended")
         eng.start(null)
         engine = eng
         observationEpoch = ""
@@ -1205,6 +1307,24 @@ class UnicEngineModule : Module() {
       try { requireEngine().listHistoryFolder(id, limit.toLong()) } catch (error: Exception) { throw moduleException(error) }
     }.runOnQueue(engineScope)
 
+    AsyncFunction("copyPairingTicket") { text: String, expiresAtMs: Double ->
+      requireEngine()
+      if (System.currentTimeMillis() >= expiresAtMs) {
+        throw rawCodeException("expired", "pairing ticket expired")
+      }
+      val fingerprint = "text:${sha256Hex(text.toByteArray(Charsets.UTF_8))}"
+      lastAppliedFingerprint = fingerprint
+      lastObservedFingerprint = fingerprint
+      val context = appContextOrThrow()
+      onMainSync {
+        val clipboard = context.getSystemService(ClipboardManager::class.java)
+        val clip = ClipData.newPlainText("UniClipboard", text)
+        clip.description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
+        clipboard.setPrimaryClip(clip)
+      }
+      Unit
+    }.runOnQueue(engineScope)
+
     AsyncFunction("copyPlainText") { text: String ->
       requireEngine()
       val ctx = appContextOrThrow()
@@ -1218,15 +1338,15 @@ class UnicEngineModule : Module() {
     }.runOnQueue(engineScope)
 
     AsyncFunction("pickAndCommitImage") { camera: Boolean, promise: Promise ->
-      mainHandler.post {
+      val open = open@{
         if (pendingImage != null) {
           promise.reject(rawCodeException("invalid_state", "image picker already open"))
-          return@post
+          return@open
         }
         val activity = appContext.currentActivity
         if (activity == null) {
           promise.reject(rawCodeException("invalid_state", "no foreground activity"))
-          return@post
+          return@open
         }
         var cameraFile: File? = null
         try {
@@ -1255,6 +1375,20 @@ class UnicEngineModule : Module() {
           pendingImage = null
           cameraFile?.delete()
           promise.reject(moduleException(error))
+        }
+      }
+      mainHandler.post {
+        val permissions = appContext.permissions
+        val permission = Manifest.permission.CAMERA
+        if (!camera || permissions?.hasGrantedPermissions(permission) == true) {
+          open()
+        } else if (permissions == null) {
+          promise.reject(rawCodeException("permission_denied", "camera access unavailable"))
+        } else {
+          permissions.askForPermissions({ result ->
+            if (result[permission]?.status == PermissionsStatus.GRANTED) open()
+            else promise.reject(rawCodeException("permission_denied", "camera access denied"))
+          }, permission)
         }
       }
     }

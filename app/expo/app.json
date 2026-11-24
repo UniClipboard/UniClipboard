@@ -10,9 +10,12 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.uniclipboard.shell",
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.app.uniclipboard.shell.incoming-share"]
+      },
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "Take a photo to add to clipboard history.",
+        "NSCameraUsageDescription": "Take a photo for clipboard history or scan a pairing code.",
         "NSPhotoLibraryAddUsageDescription": "Save an image from clipboard history to Photos.",
         "UIApplicationSceneManifest": {
           "UIApplicationSupportsMultipleScenes": false,
@@ -37,6 +40,16 @@
       }
     },
     "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Take a photo for clipboard history or scan a pairing code.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      "./plugins/withAndroidIncomingShare.js",
+      "@bacons/apple-targets",
       "./plugins/withXcode27SceneLifecycle.js",
       "./plugins/withXcode27DeploymentTargets.js"
     ]

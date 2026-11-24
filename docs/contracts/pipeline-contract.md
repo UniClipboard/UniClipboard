@@ -52,6 +52,13 @@ commit 成功后不再把网络调度失败作为 CommitContent 的 error 返回
 
 ## 3. 同步决策
 
+`CommitRequest.LocalOnly` uses the ordinary local processing and persistence
+path and bypasses backend dispatch. The committed result has
+`SyncDisposition=not_requested`, no operation ID, and no backend results.
+Both `BackendIDs` and `DeviceIDs` must be nil, including when the caller would
+otherwise pass an empty slice. The flag defaults to false and participates in
+request idempotency.
+
 在 commit 可见提交点，按[0007](../decisions/proposed/0007-multiple-sync-backends.md) 执行：先检查全局 sync.enabled 和条目 Policy，再为选定且启用的后端独立过滤类型、判断自动文件阈值、校验授权/限额并建立目标任务。captured 自动提交受阈值约束，explicit 手动提交只跳过阈值；不能越过类型开关或全局授权。原始导入/处理限制仍在 commit 前校验。
 
 各后端结果保存在 BackendResults，任一有任务则聚合 queued，返回一个涵盖实际目标的 OperationID；没有任务时 disabled/not_requested/no_backend/failed/no_targets/policy_filtered 的优先级按 0007。实际目标键是 (BackendID, TargetKind, TargetID)，其他后端的失败/跳过不得冒充某目标发送成功。历史保存过滤前的最终内容，同一提交只处理和 commit 一次。

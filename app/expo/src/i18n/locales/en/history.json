@@ -121,5 +121,15 @@
     "folderLoading": "Loading folder contents…",
     "folderEmpty": "The folder is empty.",
     "folderTruncated": "Showing the first 200 entries."
+  },
+  "tags": {
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "edit": "Edit tags",
+    "name": "Tag name",
+    "add": "Add tag",
+    "remove": "Remove “{{tag}}”",
+    "filter": "Tags",
+    "all": "All tags"
   }
 }

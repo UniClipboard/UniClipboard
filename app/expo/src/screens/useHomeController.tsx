@@ -46,6 +46,7 @@ export function useHomeController(
   const insets = useSafeAreaInsets();
   const engineMode = useEngineStore((s) => s.mode);
   const engineRecords = useEngineStore((s) => s.records);
+  const availableTags = useEngineStore((s) => s.availableTags);
   const engineActions = useEngineStore((s) => s.actions);
   const engineReceived = useEngineStore((s) => s.received);
   const shellRecords = useShellStore((s) => s.records);
@@ -53,6 +54,8 @@ export function useHomeController(
   const [selectedIds, setSelectedIds] = useState(new Set<string>());
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [tagEditID, setTagEditID] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedFilterKinds, setSelectedFilterKinds] = useState<DisplayKind[]>(
     [],
@@ -137,6 +140,7 @@ export function useHomeController(
   }, [clearSelection]);
   const handleClearFilters = useCallback(() => {
     setSelectedFilterKinds([]);
+    setSelectedTag(null);
     setSelectedDateFilter("all");
     setSelectedSourceFilter("all");
   }, []);
@@ -286,6 +290,17 @@ export function useHomeController(
       });
       if (engineMode === "live") {
         baseGroups.push([{
+          key: "togglePin",
+          label: t(item.pinned ? "history:tags.unpin" : "history:tags.pin"),
+          icon: "pin-outline",
+          onPress: () => runHistoryAction(() => useEngineStore.getState().togglePin(item.profileHash)),
+        }, {
+          key: "editTags",
+          label: t("history:tags.edit"),
+          icon: "pricetag-outline",
+          onPress: () => setTagEditID(item.profileHash),
+        }]);
+        baseGroups.push([{
           key: "sendTo",
           label: t("detail.sendTo"),
           icon: "paper-plane-outline",
@@ -382,7 +397,7 @@ export function useHomeController(
     if (engineMode !== "live") return;
     void useEngineStore.getState().setQueryFilters({
       text: isSearching ? searchText : "",
-      tags: [],
+      tags: selectedTag ? [selectedTag] : [],
       kinds: selectedFilterKinds,
       dateFilter: selectedDateFilter,
       sourceFilter: selectedSourceFilter,
@@ -391,6 +406,7 @@ export function useHomeController(
     engineMode,
     isSearching,
     searchText,
+    selectedTag,
     selectedFilterKinds,
     selectedDateFilter,
     selectedSourceFilter,
@@ -409,6 +425,11 @@ export function useHomeController(
     onOpenSettings,
     items,
     baseItems: records,
+    availableTags,
+    selectedTag,
+    setSelectedTag,
+    tagEditItem: records.find((item) => item.profileHash === tagEditID) ?? null,
+    closeTagEditor: () => setTagEditID(null),
     filter,
     resultCount: items.length,
     isHistoryLoading: false,
@@ -450,6 +471,7 @@ export function useHomeController(
     setSelectedSourceFilter,
     hasActiveFilters:
       selectedFilterKinds.length > 0 ||
+      selectedTag !== null ||
       selectedDateFilter !== "all" ||
       selectedSourceFilter !== "all",
     handleSelectFilterKind: (kind: DisplayKind | null) =>

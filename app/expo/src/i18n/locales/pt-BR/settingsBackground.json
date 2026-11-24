@@ -235,5 +235,8 @@
     "denied": "A permissão de mensagens de texto é necessária para copiar códigos de verificação",
     "enabled": "Os códigos de verificação serão copiados",
     "disabled": "Cópia de códigos de verificação desativada"
+  },
+  "live": {
+    "description": "Continue recebendo o histórico sincronizado enquanto a notificação do Android estiver ativa. O Android pode encerrar o serviço ao atingir o limite de tempo."
   }
 }

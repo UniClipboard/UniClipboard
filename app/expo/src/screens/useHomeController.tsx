@@ -3,6 +3,9 @@ import { Alert, BackHandler } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import { openWebLink, shareHistoryItems } from "@/engine/historyActions";
+import { unicEngineNative } from "@/engine/nativeModule";
+import { useMessageStore } from "@/stores/messageStore";
 import { useEngineStore } from "@/engine/store";
 import { useTheme } from "@/hooks/useTheme";
 import { useHistoryDisplaySettings } from "@/hooks/useHistoryDisplaySettings";
@@ -206,11 +209,36 @@ export function useHomeController(
       setContextTarget({ item, anchor }),
     [],
   );
+  const runHistoryAction = useCallback(
+    (action: () => Promise<unknown>) => {
+      if (engineMode !== "live") {
+        showUnavailable();
+        return;
+      }
+      void action().catch((error: unknown) => Alert.alert(
+        t("history:media.actionFailed"),
+        error instanceof Error ? error.message : undefined,
+      ));
+    },
+    [engineMode, t],
+  );
+  const saveHistoryMedia = useCallback((item: ClipboardItem, destination: "photos" | "files") => {
+    runHistoryAction(async () => {
+      const saved = await unicEngineNative.exportHistoryMedia(item.profileHash, destination);
+      if (saved) useMessageStore.getState().showMessage(t("history:media.saved"), "success");
+    });
+  }, [runHistoryAction, t]);
+
   const makeActionGroups = useCallback(
     (item: ClipboardItem, kind: DisplayKind, anchor: CardAnchorRect | null) => {
       const baseGroups = buildActionMenuGroups(item, kind, {
         onCopy: () => void handleItemCopy(item),
-        onCopyPlainText: () => void handleItemCopy(item),
+        onCopyPlainText: () => runHistoryAction(async () => {
+          const text = await unicEngineNative.readHistoryFullText(item.profileHash);
+          if (text.truncated) throw new Error(t("history:media.textTooLong"));
+          await unicEngineNative.copyPlainText(text.text);
+          useMessageStore.getState().showMessage(t("history:wordPicker.copied"), "success");
+        }),
         onSelectText: () => {
           if (engineMode === "live" && item.type === "Text") {
             void useEngineStore
@@ -241,17 +269,29 @@ export function useHomeController(
             });
           }
         },
-        onOpenInBrowser: showUnavailable,
-        onSaveImage: showUnavailable,
-        onSaveFile: showUnavailable,
+        onOpenInBrowser: () => runHistoryAction(async () => {
+          const text = await unicEngineNative.readHistoryFullText(item.profileHash);
+          if (text.truncated) throw new Error(t("history:media.textTooLong"));
+          await openWebLink(text.text);
+        }),
+        onSaveImage: () => saveHistoryMedia(item, "photos"),
+        onSaveFile: () => saveHistoryMedia(item, "files"),
         onResend: () => openSendTo(item),
-        onShare: () => openSendTo(item),
+        onShare: () => runHistoryAction(() => shareHistoryItems([item])),
         onSelect: () => {
           setIsSelectMode(true);
           setSelectedIds(new Set([item.profileHash]));
         },
         onDelete: () => handleItemDelete(item),
       });
+      if (engineMode === "live") {
+        baseGroups.push([{
+          key: "sendTo",
+          label: t("detail.sendTo"),
+          icon: "paper-plane-outline",
+          onPress: () => openSendTo(item),
+        }]);
+      }
       if (engineMode === "live" && (kind === "text" || kind === "url")) {
         const textActions = engineActions
           .filter((act) => act.accepts?.includes("text"))
@@ -275,7 +315,7 @@ export function useHomeController(
       }
       return baseGroups;
     },
-    [engineMode, engineActions, handleItemCopy, handleItemDelete, openSendTo, t],
+    [engineMode, engineActions, handleItemCopy, handleItemDelete, runHistoryAction, saveHistoryMedia, openSendTo, t],
   );
   const actionMenuGroups = useMemo(
     () =>
@@ -443,17 +483,14 @@ export function useHomeController(
     },
     reportVisibleHistoryItems: (_items: ClipboardItem[]) => {},
     handleBatchCopy: () => {
-      if (engineMode !== "live" || selectedIds.size === 0) {
-        showUnavailable();
-        return;
-      }
-      const firstId = [...selectedIds][0];
-      void useEngineStore.getState().applyToClipboard(firstId);
+      const first = items.find((it) => selectedIds.has(it.profileHash));
+      if (!first) return;
+      void handleItemCopy(first);
       exitSelectMode();
     },
     handleBatchShare: () => {
-      const first = items.find((it) => selectedIds.has(it.profileHash));
-      openSendTo(first);
+      const selected = items.filter((item) => selectedIds.has(item.profileHash));
+      if (selected.length > 0) runHistoryAction(() => shareHistoryItems(selected));
     },
     handleBatchSendTo: () => {
       const first = items.find((it) => selectedIds.has(it.profileHash));
@@ -469,37 +506,24 @@ export function useHomeController(
     },
     showAddMenu,
     setShowAddMenu,
-    handleTakePhoto: showUnavailable,
-    handleUploadImage: () => {
-      if (engineMode !== "live") {
-        showUnavailable();
-        return;
-      }
+    handleTakePhoto: () => {
       setShowAddMenu(false);
-      void useEngineStore.getState().pickAndCommitFile();
+      runHistoryAction(() => unicEngineNative.pickAndCommitImage(true));
+    },
+    handleUploadImage: () => {
+      setShowAddMenu(false);
+      runHistoryAction(() => unicEngineNative.pickAndCommitImage(false));
     },
     handleUploadFile: () => {
-      if (engineMode !== "live") {
-        showUnavailable();
-        return;
-      }
       setShowAddMenu(false);
-      void useEngineStore.getState().pickAndCommitFile();
+      runHistoryAction(() => useEngineStore.getState().pickAndCommitFile());
     },
     handleUpload: () => {
-      if (engineMode !== "live") {
-        showUnavailable();
-        return;
-      }
       setShowAddMenu(false);
-      openSendTo();
+      runHistoryAction(() => useEngineStore.getState().readSystemClipboardAndCommit());
     },
     handleSyncHistory: () => {
-      if (engineMode !== "live") {
-        showUnavailable();
-        return;
-      }
-      void useEngineStore.getState().readSystemClipboardAndCommit();
+      runHistoryAction(() => useEngineStore.getState().readSystemClipboardAndCommit());
     },
     receiveEntryCount: engineMode === "live" ? engineReceived.length : 0,
     receiveResultsOpen,

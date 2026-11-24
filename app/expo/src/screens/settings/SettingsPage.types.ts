@@ -1,4 +1,4 @@
-import type { ShellGroup } from "./settings";
+import type { ShellGroup } from "@/shell/settings";
 export type SettingsPageProps = {
   title: string;
   groups: ShellGroup[];

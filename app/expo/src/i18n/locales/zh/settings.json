@@ -42,6 +42,7 @@
     "updateFailed": "切换同步方式失败"
   },
   "category": {
+    "network": "高级网络",
     "sync": "同步",
     "about": "关于",
     "other": "其他",
@@ -122,5 +123,45 @@
     "resetConfirm": "重置身份",
     "resetDone": "统计身份已重置",
     "error": "无法更新统计设置"
+  },
+  "live": {
+    "deviceName": "设备名称",
+    "syncEnabled": "启用同步",
+    "syncAutomatic": "自动同步新剪贴板内容",
+    "syncRestore": "同步恢复的历史内容",
+    "syncFiles": "同步文件",
+    "syncIntroductions": "推荐设备",
+    "capture": "检测剪贴板变化",
+    "captureHint": "在 iOS 上，确认后才读取检测到的剪贴板内容。",
+    "cleanup": "自动清理历史",
+    "retention": "保留天数",
+    "excludedTags": "清理时排除的标签",
+    "excludedHint": "天数或条数填 0 表示不限。自定义标签用逗号分隔。",
+    "starred": "收藏",
+    "pinned": "置顶",
+    "max_file_bytes": "单文件上限（字节）",
+    "max_total_bytes": "内容总量上限（字节）",
+    "cacheLimit": "文件缓存配额（字节）",
+    "clearPreviews": "清理本地预览",
+    "rendezvous": "配对服务 URL",
+    "default": "默认",
+    "resetRendezvous": "恢复默认配对服务",
+    "runtime": "网络活动",
+    "tailcat": "Tailcat 连接",
+    "connected": "已连接 {{connected}} 台，共 {{total}} 台",
+    "observe": "读取剪贴板",
+    "apply": "写入剪贴板",
+    "integer": "请输入非负整数。",
+    "loading": "正在加载 Engine 设置…",
+    "status": {
+      "available": "可用",
+      "permission_required": "需要权限",
+      "unavailable": "不可用",
+      "unsupported": "不支持",
+      "active": "运行中",
+      "suspended": "已暂停",
+      "sync_disabled": "同步已关闭",
+      "not_running": "Engine 已停止"
+    }
   }
 }

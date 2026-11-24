@@ -16,7 +16,7 @@ import type {
   SpaceDeviceTarget,
 } from "@/navigation/AppNavigator.types";
 import { useTheme } from "@/hooks/useTheme";
-import { SettingsPage } from "@/shell/SettingsPage";
+import { SettingsPage } from "@/screens/settings/SettingsPage";
 import { showUnavailable } from "@/shell/notice";
 
 export function DevicesScreen(_props: SpaceDeviceTarget) {

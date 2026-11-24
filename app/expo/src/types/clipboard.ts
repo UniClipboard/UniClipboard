@@ -66,6 +66,8 @@ export interface ClipboardItem extends HistoryItemRevision {
 
   /** 数据文件名 */
   dataName?: string;
+  fileName?: string;
+  isFolder?: boolean;
 
   /** 文件大小（字节） */
   size?: number;

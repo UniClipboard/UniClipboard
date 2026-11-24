@@ -1,4 +1,6 @@
+import { useHistoryImagePreview } from '@/hooks/useHistoryImagePreview';
 import React, { useEffect, useMemo, useState } from 'react';
+import { HistoryFolderEntries } from "@/components/HistoryFolderEntries";
 import { useHistoryItemText } from '@/hooks/useHistoryItemText';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Button as SwiftUIButton, Host, Menu, Section } from '@expo/ui/swift-ui';
@@ -122,14 +124,6 @@ export function ClipboardDetailPage({ c, item, onClose }: ClipboardDetailPagePro
             }
           : action
       );
-    {
-      actions.push({
-        key: 'sendTo',
-        label: c.t('detail.sendTo'),
-        icon: 'paper-plane-outline',
-        onPress: () => c.openSendTo(item),
-      });
-    }
     return getDetailPageActionLayout(actions, displayKind);
   }, [c, item, displayKind, onClose]);
 
@@ -294,6 +288,7 @@ interface DetailContentProps {
 }
 
 function DetailContent(props: DetailContentProps) {
+  if (props.item.isFolder) return <HistoryFolderEntries item={props.item} />;
   switch (props.displayKind) {
     case 'url':
       return <UrlContent {...props} />;
@@ -402,13 +397,12 @@ function UrlContent({ c, item, inline }: DetailContentProps) {
 
 function ImageContent({ c, item }: DetailContentProps) {
   const { colors } = c.theme;
-  const uri = item.fileUri && item.isLocalFileReady ? item.fileUri : null;
+  const preview = useHistoryImagePreview(item, true);
+  const uri = preview.uri;
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     setSize(null);
-    setFailed(false);
     if (!uri) return;
     let cancelled = false;
     Image.getSize(
@@ -416,16 +410,14 @@ function ImageContent({ c, item }: DetailContentProps) {
       (width, height) => {
         if (!cancelled) setSize({ width, height });
       },
-      () => {
-        if (!cancelled) setFailed(true);
-      }
+      () => {}
     );
     return () => {
       cancelled = true;
     };
-  }, [uri]);
+  }, [uri, preview.retry]);
 
-  const format = getFileExtension(item.dataName) || getFileExtension(uri ?? undefined);
+  const format = getFileExtension(item.fileName || item.dataName) || getFileExtension(uri ?? undefined);
   const info = [
     { key: 'dimensions', value: size ? `${size.width} × ${size.height}` : '—' },
     { key: 'format', value: format ? format.toUpperCase() : '—' },
@@ -435,13 +427,13 @@ function ImageContent({ c, item }: DetailContentProps) {
   return (
     <>
       <View style={[styles.card, styles.imageCard, { backgroundColor: iosColors?.tertiarySystemFill }]}>
-        {uri && !failed ? (
+        {uri ? (
           <Image
             testID="detail-image"
-            source={{ uri }}
+            key={preview.retry} source={{ uri }}
             style={[styles.image, size ? { aspectRatio: size.width / size.height } : null]}
             resizeMode="contain"
-            onError={() => setFailed(true)}
+            onError={preview.onError}
           />
         ) : (
           <View style={styles.imagePlaceholder}>
@@ -478,7 +470,7 @@ function FileContent({ c, item, displayKind }: DetailContentProps) {
   const { colors } = c.theme;
   const name = item.dataName || item.text;
   const isGroup = displayKind === 'group';
-  const ext = getFileExtension(name);
+  const ext = getFileExtension(item.fileName || name);
   const badgeColor = isGroup ? iosKindTints.group : getExtensionColor(ext);
   const rows = [
     { key: 'fileName', value: name },

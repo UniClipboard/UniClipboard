@@ -1,4 +1,7 @@
+import AVFoundation
 import Foundation
+import Photos
+import PhotosUI
 @preconcurrency import ExpoModulesCore
 import Network
 import Security
@@ -168,12 +171,46 @@ private final class DocumentPickerCoordinator: NSObject, UIDocumentPickerDelegat
   }
 }
 
+private final class MediaPickerCoordinator: NSObject, UIImagePickerControllerDelegate,
+  UINavigationControllerDelegate, PHPickerViewControllerDelegate {
+  private let completion: (UIImage?) -> Void
+
+  init(completion: @escaping (UIImage?) -> Void) {
+    self.completion = completion
+  }
+
+  func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+    picker.dismiss(animated: true) { self.completion(nil) }
+  }
+
+  func imagePickerController(
+    _ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+  ) {
+    let image = info[.originalImage] as? UIImage
+    picker.dismiss(animated: true) { self.completion(image) }
+  }
+
+  func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+    picker.dismiss(animated: true) {
+      guard let provider = results.first?.itemProvider else {
+        self.completion(nil)
+        return
+      }
+      provider.loadObject(ofClass: UIImage.self) { image, _ in
+        self.completion(image as? UIImage)
+      }
+    }
+  }
+}
+
 public final class UnicEngineModule: Module {
   private let engineQueue = DispatchQueue(label: "app.uniclipboard.engine", qos: .userInitiated)
   private var engine: MobileEngine?
   private var setupSession: MobileMigrationSession?
   private var activeMigrationCancel: MobileCancelToken?
   private var pathMonitor: NWPathMonitor?
+  private var activeMediaPicker: MediaPickerCoordinator?
+  private var automaticCapture = true
   private var activePickerCoordinator: DocumentPickerCoordinator?
   private var securityScopedSetupURL: URL?
 
@@ -197,20 +234,6 @@ public final class UnicEngineModule: Module {
        let json = String(data: data, encoding: .utf8) {
       try? eng.updateHostCapabilities(json)
     }
-  }
-
-  private func isAutoSyncEnabled(_ eng: MobileEngine) -> Bool {
-    guard let stateJSON = try? callGoString({ eng.getState($0) }),
-          let data = stateJSON.data(using: .utf8),
-          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let settings = obj["settings"] as? [String: Any],
-          let value = settings["value"] as? [String: Any],
-          let sync = value["sync"] as? [String: Any] else {
-      return false
-    }
-    let enabled = sync["enabled"] as? Bool ?? false
-    let automatic = sync["automatic"] as? Bool ?? false
-    return enabled && automatic
   }
 
   private func ensureEmptyObservationBaseline(_ eng: MobileEngine) throws {
@@ -282,7 +305,7 @@ public final class UnicEngineModule: Module {
     ) { [weak self] _ in
       guard let self = self else { return }
       self.engineQueue.async {
-        guard self.isForeground, let eng = self.engine else { return }
+        guard self.isForeground, self.automaticCapture, self.engine != nil else { return }
         let probe: (Int, Bool, Bool) = DispatchQueue.main.sync {
           let pb = UIPasteboard.general
           return (pb.changeCount, pb.hasStrings, pb.hasImages)
@@ -293,16 +316,11 @@ public final class UnicEngineModule: Module {
         }
         self.lastProbedChangeCount = changeCount
         guard probe.1 || probe.2 else { return }
-        // UIPasteboard.changedNotification fires for in-app writes, which do not trigger iOS 16+ cross-app paste prompts.
-        if self.isAutoSyncEnabled(eng) {
-          _ = try? self.observeCurrentPasteboardChange(eng)
-        } else {
-          self.sendEvent("onClipboardChanged", [
-            "changeCount": changeCount,
-            "hasStrings": probe.1,
-            "hasImages": probe.2,
-          ])
-        }
+        self.sendEvent("onClipboardChanged", [
+          "changeCount": changeCount,
+          "hasStrings": probe.1,
+          "hasImages": probe.2,
+        ])
       }
     }
   }
@@ -452,19 +470,19 @@ public final class UnicEngineModule: Module {
     }
   }
 
+  private func presenter() -> UIViewController? {
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    let window = scenes.flatMap { $0.windows }.first(where: { $0.isKeyWindow })
+    var controller = window?.rootViewController
+    while let presented = controller?.presentedViewController {
+      controller = presented
+    }
+    return controller
+  }
+
   private func presentDocumentPicker(types: [UTType], completion: @escaping ([URL]?) -> Void) {
     DispatchQueue.main.async { [weak self] in
-      guard let self = self else {
-        completion(nil)
-        return
-      }
-      let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-      let keyWindow = scenes.flatMap { $0.windows }.first(where: { $0.isKeyWindow }) ?? scenes.first?.windows.first
-      var topController = keyWindow?.rootViewController
-      while let presented = topController?.presentedViewController {
-        topController = presented
-      }
-      guard let presenter = topController else {
+      guard let self, let presenter = self.presenter(), self.activePickerCoordinator == nil else {
         completion(nil)
         return
       }
@@ -475,6 +493,88 @@ public final class UnicEngineModule: Module {
         completion(urls)
       }
       self.activePickerCoordinator = coordinator
+      picker.delegate = coordinator
+      presenter.present(picker, animated: true)
+    }
+  }
+
+  private func stageExport(_ id: String, imagesOnly: Bool) throws -> (URL, [URL]) {
+    let eng = try requireEngine()
+    let json = try callGoString { eng.stageHistoryExport(id, imagesOnly: imagesOnly, error: $0) }
+    guard let value = try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any],
+          let dir = value["directory"] as? String,
+          let files = value["files"] as? [[String: String]] else {
+      throw UnicModuleException("[unic:internal] {\"code\":\"internal\",\"message\":\"invalid export\"}")
+    }
+    return (URL(fileURLWithPath: dir), files.compactMap { $0["path"].map { URL(fileURLWithPath: $0) } })
+  }
+
+  private func commitPickedImage(_ image: UIImage, promise: Promise) {
+    engineQueue.async {
+      do {
+        let eng = try self.requireEngine()
+        let pixelWidth = image.size.width * image.scale
+        let pixelHeight = image.size.height * image.scale
+        let scale = min(1, 4096 / max(pixelWidth, pixelHeight))
+        let size = CGSize(width: max(1, pixelWidth * scale), height: max(1, pixelHeight * scale))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let data = UIGraphicsImageRenderer(size: size, format: format).pngData { _ in
+          image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        guard !data.isEmpty else {
+          throw UnicModuleException("[unic:invalid_argument] {\"code\":\"invalid_argument\",\"message\":\"invalid image\"}")
+        }
+        let handle = try callGoString { eng.importBytes("image/png", fileName: "", data: data, error: $0) }
+        guard let value = try JSONSerialization.jsonObject(with: Data(handle.utf8)) as? [String: Any],
+              let lease = value["lease_id"] as? String else {
+          throw UnicModuleException("[unic:internal] {\"code\":\"internal\",\"message\":\"invalid content handle\"}")
+        }
+        defer { try? eng.releaseContent(lease) }
+        let request = try JSONSerialization.data(withJSONObject: [
+          "request_id": "mobile-image-\(UUID())",
+          "lease_id": lease,
+        ])
+        let submission = try callGoString { eng.commitContent(nil, reqJSON: String(decoding: request, as: UTF8.self), error: $0) }
+        promise.resolve("{\"cancelled\":false,\"submission\":\(submission)}")
+      } catch let err as UnicModuleException {
+        promise.reject(err)
+      } catch {
+        promise.reject(UnicModuleException(formatGoError(error)))
+      }
+    }
+  }
+
+  private func presentImagePicker(camera: Bool, promise: Promise) {
+    guard let presenter = presenter(), activeMediaPicker == nil else {
+      promise.reject(UnicModuleException("[unic:invalid_state] {\"code\":\"invalid_state\",\"message\":\"no available presenter\"}"))
+      return
+    }
+    if camera && !UIImagePickerController.isSourceTypeAvailable(.camera) {
+      promise.reject(UnicModuleException("[unic:unsupported] {\"code\":\"unsupported\",\"message\":\"camera unavailable\"}"))
+      return
+    }
+    let coordinator = MediaPickerCoordinator { [weak self] image in
+      DispatchQueue.main.async {
+        self?.activeMediaPicker = nil
+        if let self, let image {
+          self.commitPickedImage(image, promise: promise)
+        } else {
+          promise.resolve("{\"cancelled\":true}")
+        }
+      }
+    }
+    activeMediaPicker = coordinator
+    if camera {
+      let picker = UIImagePickerController()
+      picker.sourceType = .camera
+      picker.delegate = coordinator
+      presenter.present(picker, animated: true)
+    } else {
+      var config = PHPickerConfiguration(photoLibrary: .shared())
+      config.filter = .images
+      config.selectionLimit = 1
+      let picker = PHPickerViewController(configuration: config)
       picker.delegate = coordinator
       presenter.present(picker, animated: true)
     }
@@ -497,7 +597,7 @@ public final class UnicEngineModule: Module {
           return (pb.changeCount, pb.hasStrings, pb.hasImages)
         }
         let changeCount = probe.0
-        if changeCount != self.lastProbedChangeCount &&
+        if self.automaticCapture && changeCount != self.lastProbedChangeCount &&
            changeCount != self.lastAppliedChangeCount &&
            (probe.1 || probe.2) {
           self.lastProbedChangeCount = changeCount
@@ -728,6 +828,147 @@ public final class UnicEngineModule: Module {
 
     // ---- History & Content ----
 
+    AsyncFunction("getFileCacheState") { () -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.getFileCacheState($0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("setAutomaticCapture") { (enabled: Bool) in
+      self.automaticCapture = enabled
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("clearHistoryPreviews") { () in
+      try self.requireEngine().clearHistoryPreviews()
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("reconcileHistoryPreviews") { () in
+      try self.requireEngine().reconcileHistoryPreviews()
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("historyFileMetadata") { (historyID: String) -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.historyFileMetadata(historyID, error: $0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("listHistoryFolder") { (id: String, limit: Int) -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.listHistoryFolder(id, limit: limit, error: $0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("copyPlainText") { (text: String) in
+      _ = try self.requireEngine()
+      self.lastAppliedChangeCount = DispatchQueue.main.sync {
+        UIPasteboard.general.string = text
+        return UIPasteboard.general.changeCount
+      }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("pickAndCommitImage") { (camera: Bool, promise: Promise) in
+      DispatchQueue.main.async {
+        if camera && AVCaptureDevice.authorizationStatus(for: .video) != .authorized {
+          AVCaptureDevice.requestAccess(for: .video) { granted in
+            DispatchQueue.main.async {
+              if granted {
+                self.presentImagePicker(camera: true, promise: promise)
+              } else {
+                promise.reject(UnicModuleException("[unic:permission_denied] {\"code\":\"permission_denied\",\"message\":\"camera access denied\"}"))
+              }
+            }
+          }
+        } else {
+          self.presentImagePicker(camera: camera, promise: promise)
+        }
+      }
+    }
+
+    AsyncFunction("exportHistoryMedia") { (id: String, action: String, promise: Promise) in
+      self.engineQueue.async {
+        do {
+          let (dir, files) = try self.stageExport(id, imagesOnly: action == "photos")
+          let cleanup = { try? FileManager.default.removeItem(at: dir) }
+          if action == "photos" {
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+              guard status == .authorized || status == .limited else {
+                cleanup()
+                promise.reject(UnicModuleException("[unic:permission_denied] {\"code\":\"permission_denied\",\"message\":\"photo access denied\"}"))
+                return
+              }
+              PHPhotoLibrary.shared().performChanges {
+                for file in files {
+                  let request = PHAssetCreationRequest.forAsset()
+                  request.addResource(with: .photo, fileURL: file, options: nil)
+                }
+              } completionHandler: { success, error in
+                cleanup()
+                if success { promise.resolve(true) }
+                else { promise.reject(UnicModuleException(error.map(formatGoError) ?? "[unic:internal] {}")) }
+              }
+            }
+          } else {
+            DispatchQueue.main.async {
+              guard let presenter = self.presenter(), self.activePickerCoordinator == nil else {
+                cleanup()
+                promise.reject(UnicModuleException("[unic:invalid_state] {\"code\":\"invalid_state\",\"message\":\"no available presenter\"}"))
+                return
+              }
+              let picker = UIDocumentPickerViewController(forExporting: files, asCopy: true)
+              let coordinator = DocumentPickerCoordinator { [weak self] urls in
+                self?.activePickerCoordinator = nil
+                cleanup()
+                promise.resolve(urls != nil)
+              }
+              self.activePickerCoordinator = coordinator
+              picker.delegate = coordinator
+              presenter.present(picker, animated: true)
+            }
+          }
+        } catch let err as UnicModuleException {
+          promise.reject(err)
+        } catch {
+          promise.reject(UnicModuleException(formatGoError(error)))
+        }
+      }
+    }
+
+    AsyncFunction("shareHistoryMedia") { (idsJSON: String, text: String?, promise: Promise) in
+      self.engineQueue.async {
+        var directories: [URL] = []
+        do {
+          let ids = try JSONDecoder().decode([String].self, from: Data(idsJSON.utf8))
+          var files: [URL] = []
+          for id in ids {
+            let (dir, parts) = try self.stageExport(id, imagesOnly: false)
+            directories.append(dir)
+            files.append(contentsOf: parts)
+          }
+          DispatchQueue.main.async {
+            let cleanup = { for dir in directories { try? FileManager.default.removeItem(at: dir) } }
+            var items: [Any] = files
+            if let text, !text.isEmpty { items.insert(text, at: 0) }
+            guard let presenter = self.presenter(), !items.isEmpty else {
+              cleanup()
+              promise.reject(UnicModuleException("[unic:invalid_state] {\"code\":\"invalid_state\",\"message\":\"no available presenter\"}"))
+              return
+            }
+            let sheet = UIActivityViewController(activityItems: items, applicationActivities: nil)
+            sheet.popoverPresentationController?.sourceView = presenter.view
+            sheet.popoverPresentationController?.sourceRect = CGRect(
+              x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1
+            )
+            sheet.completionWithItemsHandler = { _, _, _, error in
+              cleanup()
+              if let error { promise.reject(UnicModuleException(formatGoError(error))) }
+              else { promise.resolve(nil) }
+            }
+            presenter.present(sheet, animated: true)
+          }
+        } catch {
+          for dir in directories { try? FileManager.default.removeItem(at: dir) }
+          promise.reject((error as? UnicModuleException) ?? UnicModuleException(formatGoError(error)))
+        }
+      }
+    }
+
     AsyncFunction("listHistory") { (reqJSON: String) -> String in
       let eng = try self.requireEngine()
       return try callGoString { eng.listHistory(reqJSON, error: $0) }
@@ -750,19 +991,11 @@ public final class UnicEngineModule: Module {
 
     AsyncFunction("exportHistoryImagePreview") { (historyID: String) -> String in
       let eng = try self.requireEngine()
-      let cacheDir = try self.cacheDirectoryPath()
-      let previewDir = URL(fileURLWithPath: cacheDir, isDirectory: true).appendingPathComponent("previews", isDirectory: true)
-      try FileManager.default.createDirectory(at: previewDir, withIntermediateDirectories: true)
-      let destFile = previewDir.appendingPathComponent("\(historyID).img")
-      let exportedJSON = try callGoString {
-        eng.exportHistoryPart(toFile: historyID, mimePrefix: "image/", destPath: destFile.path, error: $0)
+      let json = try callGoString { eng.exportHistoryImagePreview(historyID, error: $0) }
+      var payload = try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] ?? [:]
+      if let path = payload.removeValue(forKey: "path") as? String {
+        payload["uri"] = URL(fileURLWithPath: path).absoluteString
       }
-      var payload: [String: Any] = [:]
-      if let d = exportedJSON.data(using: .utf8),
-         let parsed = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
-        payload = parsed
-      }
-      payload["uri"] = destFile.absoluteString
       let out = try JSONSerialization.data(withJSONObject: payload)
       return String(data: out, encoding: .utf8) ?? "{}"
     }.runOnQueue(engineQueue)

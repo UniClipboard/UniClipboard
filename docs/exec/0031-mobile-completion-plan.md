@@ -1,6 +1,6 @@
 # 0031 · 移动端完整可用与生产交付执行计划
 
-- 状态：M1（M1.1–M1.4）代码实现、Go 绑定竞态回归测试、Expo 边界/Bundle 校验与 iOS/Android 原生编译已通过；M1 模拟器/跨端交互验收 `NOT RUN`（待执行），M2–M5 待执行
+- Status: M1 implementation and build validation were recorded. M2 implementation and verification are tracked in the [M2 receipt](0031-mobile-m2-receipt.md). M3–M5 remain pending.
 - 日期：2026-11-24
 - 基线快照：分支 `audit-mobile-engine-gaps`，HEAD `b2e8cd60393b5f02ce486822d6c2e34f3375e2da`
 - 前序实现回执：[0031-mobile-engine-integration.md](0031-mobile-engine-integration.md)
@@ -119,12 +119,14 @@
 
 ### M2 · P1 真实设置、详情动作、媒体文件与性能治理
 
+Implementation and process acceptance are recorded in the [M2 receipt](0031-mobile-m2-receipt.md). Native interaction and physical-device acceptance remain pending.
+
 目标：彻底移除 live 模式下的壳占位与 `showUnavailable`，完善媒体/文件处理与缓存生命周期，使日常核心操作无断层。
 
 #### M2.1 真实设置体系落地（覆盖 G06）
 
-- [ ] 在 `useEngineStore` 实现 `updateSettings(mutator)`（基于当前 `snapshot.settings.revision` 提交 `UpdateSettings`，遇 `conflict` 自动刷新快照提示或重试）。
-- [ ] 重构 `app/expo/src/shell/settings.ts`（拆分生产设置模块 `src/screens/settings/`，仅在 `mode === "unavailable"` 时回落 shell 提示）：
+- [x] 在 `useEngineStore` 实现 `updateSettings(mutator)`（基于当前 `snapshot.settings.revision` 提交 `UpdateSettings`，遇 `conflict` 自动刷新快照提示或重试）。
+- [x] 重构 `app/expo/src/shell/settings.ts`（拆分生产设置模块 `src/screens/settings/`，仅在 `mode === "unavailable"` 时回落 shell 提示）：
   - **同步设置**：本机设备名（可编辑）、全局同步开关（`sync.enabled`）、自动同步（`sync.automatic`）、恢复历史时同步（`sync.on_restore`）、文件同步（`sync.files`）、设备推荐（`sync.introductions`）、本地自动应用/自动捕获开关（持久化至本机配置）。
   - **历史与清理**：自动清理开关（`history.auto_cleanup`）、保留天数（`retention_days`）、最大条数（`max_items`）、排除标签（`excluded_tags`，默认保留 `starred`/`pinned` 选项）。
   - **存储与传输限额**：单文件上限（`limits.max_file_bytes`）、总内容上限（`limits.max_total_bytes`）、文件缓存配额（`file_cache.max_bytes`）、实时展示 `GetFileCacheState` 占用与「清理本地预览缓存」动作、保留「从 v1 迁移」入口。
@@ -133,27 +135,27 @@
 
 #### M2.2 详情页动作、媒体/文件导出与目录只读浏览（覆盖 G07）
 
-- [ ] **真实文件名与元信息**：
+- [x] **真实文件名与元信息**：
   - 在 `bindings/mobile/engine.go` 扩展历史摘要辅助（或在 `HistoryItem` 列表水合时通过轻量接口返回文件 part 的真实 `name`、`mime`、`size`、`count`），使单文件显示真实文件名与扩展名徽章，多文件显示首文件名 + 总数。
-- [ ] **关闭全部 `showUnavailable` 详情/卡片/加号菜单动作**：
+- [x] **关闭全部 `showUnavailable` 详情/卡片/加号菜单动作**：
   - **打开链接**：校验 `http://`/`https://` 后调用 `Linking.openURL`。
   - **保存图片到相册**：导出原图临时文件（保留真实扩展名）→ 写入系统相册（iOS `PHPhotoLibrary` / Android `MediaStore.Images`，妥善处理权限拒绝提示）。
   - **导出/保存文件**：iOS 调 `UIDocumentPickerViewController(forExporting:)`，Android 调 `ACTION_CREATE_DOCUMENT` 流式写入用户选定位置，导出后清理临时文件。
   - **系统原生分享**：将「发送到（UniClipboard 设备）」与「系统分享（OS Share Sheet）」解耦；系统分享导出临时文件/文本并拉起 `UIActivityViewController` / Android `Intent.ACTION_SEND`（经 `FileProvider`）。
   - **拍照与相册选图**：`handleTakePhoto` 接入原生相机捕获，`handleUploadImage` 接入原生相册选择器（iOS `PHPickerViewController` / Android Photo Picker），保留 `handleUploadFile` 走文档选择器。
   - **分词选词复制**：修复 `useWordPicker.ts` 的 `copySelected`，走防回环纯文本写入系统剪贴板并弹出已复制反馈。
-- [ ] **目录只读浏览**：
+- [x] **目录只读浏览**：
   - `bindings/mobile/engine.go` 绑定 `ListHistoryFolder(historyID, limit)`；移动端详情页对 `directory` / `directory_reference` 条目展示文件树摘要（路径、大小、是否截断）。
 
 #### M2.3 事件增量刷新与预览缓存治理（覆盖 G08）
 
-- [ ] 改造 `useEngineStore` 事件分发：解析 `Event.Kind` 做分类节流刷新：
+- [x] 改造 `useEngineStore` 事件分发：解析 `Event.Kind` 做分类节流刷新：
   - `history` → 仅刷新历史与标签；
   - `devices` / `pairing_code` → 仅刷新设备、候选与配对码；
   - `received` / `apply` → 仅刷新接收列表与状态快照；
   - `settings` / `capabilities` / `runtime` / `lifecycle` → 刷新快照与能力；
   - 仅在 `onEngineResync` 或回到前台对账时执行全量 `refreshAll()`。
-- [ ] **缓存上限与清理**：
+- [x] **缓存上限与清理**：
   - `textPreviewCache` 与 `imagePreviewCache` 改为有界 LRU（例如最多 200 条文本、60 张图）。
   - 磁盘 `caches/previews/` 使用真实扩展名并设置容量/数量上限（例如 100 MB），启动与删除历史条目时同步清理孤立预览文件。
 

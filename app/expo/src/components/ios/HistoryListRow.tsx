@@ -1,3 +1,4 @@
+import { useHistoryImagePreview } from '@/hooks/useHistoryImagePreview';
 import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -468,16 +469,16 @@ function looksLikeCode(text: string): boolean {
 
 function RowThumbnail({ item }: { item: ClipboardItem }) {
   const { theme } = useTheme();
-  const [failed, setFailed] = useState(false);
-  const ready = item.isLocalFileReady && item.fileUri && !failed;
+  const preview = useHistoryImagePreview(item);
   return (
     <View style={[styles.thumbnail, { backgroundColor: iosColors?.tertiarySystemFill }]}>
-      {ready ? (
+      {preview.uri ? (
         <Image
-          source={{ uri: item.fileUri }}
+          key={preview.retry}
+          source={{ uri: preview.uri }}
           style={StyleSheet.absoluteFill}
           resizeMode="cover"
-          onError={() => setFailed(true)}
+          onError={preview.onError}
         />
       ) : (
         <ImageIcon size={20} color={theme.colors.textSecondary} />

@@ -103,7 +103,11 @@ export function ReceiveResultsSheet({
             远端接收队列
           </Text>
           <Pressable
-            onPress={() => useEngineStore.getState().setAutoApplyReceived(!autoApplyReceived)}
+            onPress={() => {
+              void useEngineStore.getState().setAutoApplyReceived(!autoApplyReceived).catch((error) => {
+                Alert.alert(t("settingsStorage:setFailed"), error instanceof Error ? error.message : undefined);
+              });
+            }}
             style={{
               paddingHorizontal: 10,
               paddingVertical: 6,

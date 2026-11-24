@@ -1,12 +1,15 @@
 package app.uniclipboard.engine
 
+import android.Manifest
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.Uri
@@ -16,9 +19,11 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
 import android.provider.OpenableColumns
+import android.provider.MediaStore
 import android.system.Os
 import android.view.WindowManager
 import androidx.core.content.FileProvider
+import expo.modules.interfaces.permissions.PermissionsStatus
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
@@ -51,6 +56,8 @@ import java.util.concurrent.Executors
 
 private const val REQ_PICK_SETUP_FOLDER = 0x5501
 private const val REQ_PICK_UPLOAD_FILE = 0x5502
+private const val REQ_PICK_IMAGE = 0x5503
+private const val REQ_SAVE_FILES = 0x5504
 
 private val androidNetworkInterfaces = AndroidNetworkInterfaces {
   val snapshot = JSONArray()
@@ -61,8 +68,9 @@ private val androidNetworkInterfaces = AndroidNetworkInterfaces {
   }
   for (iface in interfaces) {
     try {
-      val addresses = iface.interfaceAddresses.map { address ->
-        "${address.address.hostAddress.substringBefore('%')}/${address.networkPrefixLength}"
+      val addresses = iface.interfaceAddresses.mapNotNull { address ->
+        val host = address.address.hostAddress?.substringBefore('%') ?: return@mapNotNull null
+        "$host/${address.networkPrefixLength}"
       }
       snapshot.put(JSONObject()
         .put("name", iface.name)
@@ -90,6 +98,16 @@ class UnicEngineModule : Module() {
 
   private var pendingFolderPromise: Promise? = null
   private var pendingFilePromise: Pair<Promise, String?>? = null
+
+  private data class ImageRequest(val promise: Promise, val cameraFile: File? = null)
+  private data class ExportFile(val source: File, val name: String, val mime: String)
+  private data class StagedExport(val directory: File, val files: List<ExportFile>)
+  private data class ExportRequest(val promise: Promise, val staged: StagedExport)
+
+  private var pendingPickerCommit: (() -> Unit)? = null
+  private var pendingImage: ImageRequest? = null
+  private var pendingExport: ExportRequest? = null
+  private var automaticCapture = true
 
   private var networkCallback: ConnectivityManager.NetworkCallback? = null
   private var connectivityManager: ConnectivityManager? = null
@@ -137,16 +155,6 @@ class UnicEngineModule : Module() {
     try {
       eng.updateHostCapabilities(caps.toString())
     } catch (_: Exception) {
-    }
-  }
-
-  private fun isAutoSyncEnabled(eng: Engine): Boolean {
-    return try {
-      val state = JSONObject(eng.state)
-      val sync = state.optJSONObject("settings")?.optJSONObject("value")?.optJSONObject("sync")
-      sync != null && sync.optBoolean("enabled", false) && sync.optBoolean("automatic", false)
-    } catch (_: Exception) {
-      false
     }
   }
 
@@ -316,6 +324,7 @@ class UnicEngineModule : Module() {
       return
     }
     updateHostCapabilities(eng, "available", "available")
+    if (!automaticCapture) return
     val snap = readAndroidClipboardSnapshot(ctx)
     if (snap is AndroidClipSnapshot.Empty) {
       if (observationEpoch.isEmpty()) {
@@ -334,7 +343,7 @@ class UnicEngineModule : Module() {
         lastObservedFingerprint != null &&
         fp != lastObservedFingerprint &&
         fp != lastAppliedFingerprint
-      if (changedWhileAway && isAutoSyncEnabled(eng)) {
+      if (changedWhileAway && automaticCapture) {
         ensureEmptyObservationBaseline(eng)
         val nextSeq = observationSequence + 1L
         val obsReq = JSONObject()
@@ -391,13 +400,11 @@ class UnicEngineModule : Module() {
         engineScope.launch {
           val eng = engine ?: return@launch
           if (!isForeground) return@launch
-          if (isAutoSyncEnabled(eng)) {
+          if (automaticCapture) {
             try {
               observeCurrentAndroidClipboard(eng, ctx, explicit = false)
             } catch (_: Exception) {
             }
-          } else {
-            sendEvent("onClipboardChanged", mapOf("hasStrings" to true))
           }
         }
       }
@@ -655,6 +662,167 @@ class UnicEngineModule : Module() {
     }
   }
 
+  private fun stageExport(id: String, imagesOnly: Boolean): StagedExport {
+    val payload = JSONObject(requireEngine().stageHistoryExport(id, imagesOnly))
+    val parts = payload.getJSONArray("files")
+    return StagedExport(File(payload.getString("directory")), List(parts.length()) { i ->
+      val file = parts.getJSONObject(i)
+      ExportFile(File(file.getString("path")), file.getString("name"), file.getString("mime"))
+    })
+  }
+
+  private fun commitPickedImage(uri: Uri): String {
+    val resolver = appContextOrThrow().contentResolver
+    val bitmap = if (Build.VERSION.SDK_INT >= 28) {
+      ImageDecoder.decodeBitmap(ImageDecoder.createSource(resolver, uri)) { decoder, info, _ ->
+        decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+        val scale = minOf(1.0, 4096.0 / maxOf(info.size.width, info.size.height))
+        if (scale < 1) {
+          decoder.setTargetSize(
+            maxOf(1, (info.size.width * scale).toInt()), maxOf(1, (info.size.height * scale).toInt())
+          )
+        }
+      }
+    } else {
+      val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+      resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+      if (options.outWidth <= 0 || options.outHeight <= 0) {
+        throw rawCodeException("invalid_argument", "cannot read image")
+      }
+      options.inJustDecodeBounds = false
+      options.inSampleSize = 1
+      while (maxOf(options.outWidth, options.outHeight) / options.inSampleSize > 4096) {
+        options.inSampleSize *= 2
+      }
+      resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        ?: throw rawCodeException("invalid_argument", "cannot decode image")
+    }
+    val png = try {
+      ByteArrayOutputStream().use { output ->
+        if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+          throw rawCodeException("internal", "cannot encode image")
+        }
+        output.toByteArray()
+      }
+    } finally {
+      bitmap.recycle()
+    }
+    val eng = requireEngine()
+    val lease = JSONObject(eng.importBytes("image/png", "", png)).getString("lease_id")
+    try {
+      val request = JSONObject().put("request_id", "mobile-image-${UUID.randomUUID()}").put("lease_id", lease)
+      return JSONObject().put("cancelled", false)
+        .put("submission", JSONObject(eng.commitContent(null, request.toString()))).toString()
+    } finally {
+      try { eng.releaseContent(lease) } catch (_: Exception) {}
+    }
+  }
+
+  private fun savePhotos(staged: StagedExport) {
+    val resolver = appContextOrThrow().contentResolver
+    val inserted = mutableListOf<Uri>()
+    try {
+      for (file in staged.files) {
+        val row = ContentValues().apply {
+          put(MediaStore.Images.Media.DISPLAY_NAME, file.name)
+          put(MediaStore.Images.Media.MIME_TYPE, file.mime)
+          if (Build.VERSION.SDK_INT >= 29) {
+            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/UniClipboard")
+            put(MediaStore.Images.Media.IS_PENDING, 1)
+          }
+        }
+        val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, row)
+          ?: throw rawCodeException("permission_denied", "cannot create photo")
+        inserted.add(uri)
+        writeExport(file, uri)
+      }
+      if (Build.VERSION.SDK_INT < 29) return
+      for (uri in inserted) {
+        val published = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
+        if (resolver.update(uri, published, null, null) != 1) {
+          throw rawCodeException("internal", "cannot publish photo")
+        }
+      }
+    } catch (error: Exception) {
+      inserted.forEach { uri -> runCatching { resolver.delete(uri, null, null) } }
+      throw error
+    }
+  }
+
+  private fun writeExport(file: ExportFile, uri: Uri) {
+    val resolver = appContextOrThrow().contentResolver
+    val stream = resolver.openOutputStream(uri, "wt")
+      ?: throw rawCodeException("permission_denied", "cannot write destination")
+    stream.use { output -> file.source.inputStream().use { input -> input.copyTo(output) } }
+  }
+
+  private fun presentDocumentExport(staged: StagedExport, promise: Promise) {
+    mainHandler.post {
+      val activity = appContext.currentActivity
+      if (activity == null || pendingExport != null) {
+        staged.directory.deleteRecursively()
+        promise.reject(rawCodeException("invalid_state", "document picker unavailable"))
+        return@post
+      }
+      try {
+        val intent = if (staged.files.size == 1) {
+          val file = staged.files.first()
+          Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = file.mime
+            putExtra(Intent.EXTRA_TITLE, file.name)
+          }
+        } else {
+          Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+        }
+        pendingExport = ExportRequest(promise, staged)
+        activity.startActivityForResult(intent, REQ_SAVE_FILES)
+      } catch (error: Exception) {
+        pendingExport = null
+        staged.directory.deleteRecursively()
+        promise.reject(moduleException(error))
+      }
+    }
+  }
+
+  private fun writeDocumentExport(staged: StagedExport, destination: Uri) {
+    val resolver = appContextOrThrow().contentResolver
+    val written = mutableListOf<Uri>()
+    try {
+      if (staged.files.size == 1) {
+        written.add(destination)
+        writeExport(staged.files.first(), destination)
+      } else {
+        val directory = DocumentsContract.buildDocumentUriUsingTree(
+          destination, DocumentsContract.getTreeDocumentId(destination)
+        )
+        for (file in staged.files) {
+          val uri = DocumentsContract.createDocument(resolver, directory, file.mime, file.name)
+            ?: throw rawCodeException("permission_denied", "cannot create document")
+          written.add(uri)
+          writeExport(file, uri)
+        }
+      }
+    } catch (error: Exception) {
+      written.forEach { uri -> runCatching { DocumentsContract.deleteDocument(resolver, uri) } }
+      throw error
+    }
+  }
+
+  private fun commitAfterResume(promise: Promise, action: () -> Unit) {
+    val commit = {
+      engineScope.launch {
+        try {
+          action()
+        } catch (error: Exception) {
+          promise.reject(if (error is CodedException) error else moduleException(error))
+        }
+      }
+      Unit
+    }
+    if (isForeground) commit() else pendingPickerCommit = commit
+  }
+
   override fun definition() = ModuleDefinition {
     Name("UnicEngine")
 
@@ -667,6 +835,8 @@ class UnicEngineModule : Module() {
         try { eng.setRuntimeState("active") } catch (_: Exception) {}
         scheduleForegroundClipboardSync(isResume = true)
       }
+      pendingPickerCommit?.invoke()
+      pendingPickerCommit = null
     }
 
     OnActivityEntersBackground {
@@ -686,6 +856,8 @@ class UnicEngineModule : Module() {
       stopNetworkMonitor()
       setKeepScreenOn(false)
       shutdownEngineInternal()
+      pendingImage?.cameraFile?.delete()
+      pendingExport?.staged?.directory?.deleteRecursively()
       engineExecutor.shutdownNow()
     }
 
@@ -718,6 +890,45 @@ class UnicEngineModule : Module() {
           }
         }
 
+        REQ_PICK_IMAGE -> {
+          val request = pendingImage ?: return@OnActivityResult
+          pendingImage = null
+          val uri = request.cameraFile?.let(Uri::fromFile) ?: payload.data?.data
+          if (payload.resultCode != Activity.RESULT_OK || uri == null) {
+            request.cameraFile?.delete()
+            request.promise.resolve("{\"cancelled\":true}")
+            return@OnActivityResult
+          }
+          commitAfterResume(request.promise) {
+            try {
+              request.promise.resolve(commitPickedImage(uri))
+            } finally {
+              request.cameraFile?.delete()
+            }
+          }
+        }
+
+        REQ_SAVE_FILES -> {
+          val request = pendingExport ?: return@OnActivityResult
+          pendingExport = null
+          val uri = payload.data?.data
+          if (payload.resultCode != Activity.RESULT_OK || uri == null) {
+            request.staged.directory.deleteRecursively()
+            request.promise.resolve(false)
+            return@OnActivityResult
+          }
+          engineScope.launch {
+            try {
+              writeDocumentExport(request.staged, uri)
+              request.promise.resolve(true)
+            } catch (error: Exception) {
+              request.promise.reject(if (error is CodedException) error else moduleException(error))
+            } finally {
+              request.staged.directory.deleteRecursively()
+            }
+          }
+        }
+
         REQ_PICK_UPLOAD_FILE -> {
           val pending = pendingFilePromise ?: return@OnActivityResult
           pendingFilePromise = null
@@ -728,7 +939,7 @@ class UnicEngineModule : Module() {
             return@OnActivityResult
           }
           val uri = payload.data!!.data!!
-          engineScope.launch {
+          commitAfterResume(promise) {
             try {
               val eng = requireEngine()
               val ctx = appContextOrThrow()
@@ -970,6 +1181,173 @@ class UnicEngineModule : Module() {
       }
     }.runOnQueue(engineScope)
 
+    AsyncFunction("getFileCacheState") { ->
+      try { requireEngine().fileCacheState } catch (error: Exception) { throw moduleException(error) }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("setAutomaticCapture") { enabled: Boolean ->
+      automaticCapture = enabled
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("clearHistoryPreviews") { ->
+      try { requireEngine().clearHistoryPreviews() } catch (error: Exception) { throw moduleException(error) }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("reconcileHistoryPreviews") { ->
+      try { requireEngine().reconcileHistoryPreviews() } catch (error: Exception) { throw moduleException(error) }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("historyFileMetadata") { id: String ->
+      try { requireEngine().historyFileMetadata(id) } catch (error: Exception) { throw moduleException(error) }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("listHistoryFolder") { id: String, limit: Int ->
+      try { requireEngine().listHistoryFolder(id, limit.toLong()) } catch (error: Exception) { throw moduleException(error) }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("copyPlainText") { text: String ->
+      requireEngine()
+      val ctx = appContextOrThrow()
+      onMainSync {
+        val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("UniClipboard", text))
+      }
+      val fingerprint = "text:${sha256Hex(text.toByteArray(Charsets.UTF_8))}"
+      lastAppliedFingerprint = fingerprint
+      lastObservedFingerprint = fingerprint
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("pickAndCommitImage") { camera: Boolean, promise: Promise ->
+      mainHandler.post {
+        if (pendingImage != null) {
+          promise.reject(rawCodeException("invalid_state", "image picker already open"))
+          return@post
+        }
+        val activity = appContext.currentActivity
+        if (activity == null) {
+          promise.reject(rawCodeException("invalid_state", "no foreground activity"))
+          return@post
+        }
+        var cameraFile: File? = null
+        try {
+          val intent = if (camera) {
+            val folder = File(activity.cacheDir, "unic-cache/camera").apply { mkdirs() }
+            val file = File.createTempFile("camera-", ".jpg", folder)
+            cameraFile = file
+            val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.unic.fileprovider", file)
+            Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+              putExtra(MediaStore.EXTRA_OUTPUT, uri)
+              clipData = ClipData.newRawUri("UniClipboard", uri)
+              addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+          } else if (Build.VERSION.SDK_INT >= 33) {
+            Intent(MediaStore.ACTION_PICK_IMAGES).setType("image/*")
+          } else {
+            Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("image/*")
+          }
+          pendingImage = ImageRequest(promise, cameraFile)
+          activity.startActivityForResult(intent, REQ_PICK_IMAGE)
+        } catch (error: android.content.ActivityNotFoundException) {
+          pendingImage = null
+          cameraFile?.delete()
+          promise.reject(rawCodeException("unsupported", "image picker unavailable"))
+        } catch (error: Exception) {
+          pendingImage = null
+          cameraFile?.delete()
+          promise.reject(moduleException(error))
+        }
+      }
+    }
+
+    AsyncFunction("exportHistoryMedia") { id: String, action: String, promise: Promise ->
+      val photos = action == "photos"
+      val startExport = {
+        engineScope.launch {
+          try {
+            val staged = stageExport(id, photos)
+            if (photos) {
+              try {
+                savePhotos(staged)
+                promise.resolve(true)
+              } finally {
+                staged.directory.deleteRecursively()
+              }
+            } else {
+              presentDocumentExport(staged, promise)
+            }
+          } catch (error: Exception) {
+            promise.reject(if (error is CodedException) error else moduleException(error))
+          }
+        }
+      }
+      if (photos && Build.VERSION.SDK_INT < 29) {
+        val permission = Manifest.permission.WRITE_EXTERNAL_STORAGE
+        mainHandler.post {
+          val permissions = appContext.permissions
+          if (permissions == null) {
+            promise.reject(rawCodeException("permission_denied", "photo access denied"))
+          } else if (permissions.hasGrantedPermissions(permission)) {
+            startExport()
+          } else {
+            permissions.askForPermissions({ result ->
+              if (result[permission]?.status == PermissionsStatus.GRANTED) {
+                startExport()
+              } else {
+                promise.reject(rawCodeException("permission_denied", "photo access denied"))
+              }
+            }, permission)
+          }
+        }
+      } else {
+        startExport()
+      }
+    }
+
+    AsyncFunction("shareHistoryMedia") { idsJSON: String, text: String?, promise: Promise ->
+      engineScope.launch {
+        val staged = mutableListOf<StagedExport>()
+        try {
+          val ids = JSONArray(idsJSON)
+          for (i in 0 until ids.length()) staged.add(stageExport(ids.getString(i), false))
+          val files = staged.flatMap { it.files }
+          val ctx = appContextOrThrow()
+          val uris = ArrayList(files.map { file ->
+            FileProvider.getUriForFile(ctx, "${ctx.packageName}.unic.fileprovider", file.source)
+          })
+          val intent = Intent(when {
+            uris.size > 1 -> Intent.ACTION_SEND_MULTIPLE
+            else -> Intent.ACTION_SEND
+          }).apply {
+            type = when {
+              files.isEmpty() -> "text/plain"
+              files.all { it.mime == files.first().mime } -> files.first().mime
+              files.all { it.mime.startsWith("image/") } -> "image/*"
+              else -> "*/*"
+            }
+            if (!text.isNullOrEmpty()) putExtra(Intent.EXTRA_TEXT, text)
+            if (uris.isNotEmpty()) {
+              if (uris.size == 1) putExtra(Intent.EXTRA_STREAM, uris.first())
+              else putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+              clipData = ClipData.newRawUri("UniClipboard", uris.first()).also { clip ->
+                uris.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+              }
+              addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+          }
+          onMainSync {
+            val activity = appContext.currentActivity
+              ?: throw rawCodeException("invalid_state", "no foreground activity")
+            activity.startActivity(Intent.createChooser(intent, null))
+          }
+          // The receiving app may read after the chooser closes. Staging expires on reconciliation.
+          promise.resolve(null)
+        } catch (error: Exception) {
+          staged.forEach { it.directory.deleteRecursively() }
+          promise.reject(if (error is CodedException) error else moduleException(error))
+        }
+      }
+    }
+
     // ---- History & Content ----
 
     AsyncFunction("listHistory") { reqJSON: String ->
@@ -1015,12 +1393,10 @@ class UnicEngineModule : Module() {
     AsyncFunction("exportHistoryImagePreview") { historyID: String ->
       try {
         val eng = requireEngine()
-        val previewDir = File(cacheDirectoryPath(), "previews")
-        if (!previewDir.exists()) previewDir.mkdirs()
-        val destFile = File(previewDir, "$historyID.img")
-        val exportedJSON = eng.exportHistoryPartToFile(historyID, "image/", destFile.canonicalPath)
-        val obj = JSONObject(exportedJSON)
-        obj.put("uri", Uri.fromFile(destFile).toString())
+        val obj = JSONObject(eng.exportHistoryImagePreview(historyID))
+        val file = File(obj.getString("path"))
+        obj.remove("path")
+        obj.put("uri", Uri.fromFile(file).toString())
         obj.toString()
       } catch (ce: CodedException) {
         throw ce

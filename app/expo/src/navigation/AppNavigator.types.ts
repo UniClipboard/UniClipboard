@@ -2,6 +2,8 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 
 
 export type SettingsSubSection =
+  | 'sync'
+  | 'network'
   | 'syncChannel'
   | 'space'
   | 'spaceSettings'

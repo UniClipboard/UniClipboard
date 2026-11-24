@@ -21,6 +21,11 @@ service ownership transfer, explicit lightweight background entry, and pending
 setup admission. It records binary/source hashes, role PIDs, process timestamps,
 service generations and cleanup in `receipt.json` and `SHA256SUMS`.
 
+Add `--dock` to count Dock items for the private bundle through macOS
+Accessibility. This requires an existing Accessibility grant. The receipt
+checks zero items on background entry and after GUI close, and one item
+after GUI open or reopen, including while the quick panel is open.
+
 This is a supplemental native bundle-entry check. It does not replace canonical
 Desktop E2E. It does not click a tray item, deliver a global shortcut, register a
 login item, log out, read/write the host clipboard, or inject paste into another

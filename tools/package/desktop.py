@@ -457,6 +457,7 @@ def stage(args):
                 "CFBundleShortVersionString": record["version"],
                 "CFBundleVersion": str(record["build_number"]),
                 "LSMinimumSystemVersion": "13.0",
+                "LSUIElement": True,
                 "NSHighResolutionCapable": True,
                 "NSPrincipalClass": "NSApplication",
             }

@@ -45,6 +45,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--dock", action="store_true", help="verify Dock items using existing Accessibility permission")
     args = parser.parse_args()
     assert platform.system() == "Darwin", "this acceptance requires native macOS"
     root = args.root.resolve()
@@ -53,9 +54,22 @@ def main():
     task = Path(tempfile.mkdtemp(prefix="uc-bundle-", dir="/private/tmp"))
     receipt = {"status": "FAIL", "platform": platform.platform(), "arch": platform.machine(), "checks": [], "checkpoints": [], "native_event_loops": True, "window_visibility_evidence": "mygo automation windows[].visible; app-scoped state only", "os_native_visibility": "NOT_RUN", "foreground_focus": "NOT_RUN", "native_tray_click": "NOT_RUN", "native_hotkey": "NOT_RUN", "native_paste": "NOT_RUN", "login_registration": "NOT_RUN", "clipboard": "desktop_e2e directory board; no host clipboard", "input": "role IPC close/quit; no physical input"}
     receipt["source_head"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+    receipt["dock"] = "NOT_RUN"
     all_pids = set()
     profiles = []
     executable = None
+    dock_probe = task / "dock-probe"
+
+    def check_dock(name, expected):
+        if not args.dock:
+            return
+
+        def matches():
+            count = int(subprocess.check_output([dock_probe, bundle], text=True, timeout=5))
+            assert count == expected, f"{name}: expected {expected} Dock items, got {count}"
+            return True
+        wait(matches, seconds=10)
+        receipt["checks"].append(f"{name}: {expected} Dock items for the private bundle")
 
     def private_processes():
         rows = []
@@ -177,11 +191,15 @@ def main():
             source[name] = sha(target)
         receipt["source_tree_sha256"] = hashlib.sha256(json.dumps(source, sort_keys=True).encode()).hexdigest()
         receipt["source_files"] = source
+        if args.dock:
+            receipt["dock"] = "FAIL"
+            subprocess.run(["swiftc", snapshot / "app/desktop/e2e/testdata/macos-bundle/dock.swift", "-o", dock_probe], check=True, timeout=60)
+            subprocess.run([dock_probe], check=True, timeout=5)
         bundle = task / "UniClipboard Native Acceptance.app"
         macos = bundle / "Contents" / "MacOS"
         macos.mkdir(parents=True)
         identifier = "app.uniclipboard.test.bundle." + uuid.uuid4().hex
-        (bundle / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": identifier, "CFBundleName": "UniClipboard Native Acceptance", "CFBundleExecutable": "unic-desktop", "CFBundlePackageType": "APPL", "CFBundleVersion": "1", "CFBundleShortVersionString": "0.0.0", "NSPrincipalClass": "NSApplication", "NSHighResolutionCapable": True}))
+        (bundle / "Contents" / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier": identifier, "CFBundleName": "UniClipboard Native Acceptance", "CFBundleExecutable": "unic-desktop", "CFBundlePackageType": "APPL", "CFBundleVersion": "1", "CFBundleShortVersionString": "0.0.0", "LSUIElement": True, "NSPrincipalClass": "NSApplication", "NSHighResolutionCapable": True}))
         executable = macos / "unic-desktop"
         for name, source_path in [("unic-desktop", "./app/desktop/cmd/unic-desktop"), ("unicd", "./app/service/cmd/unicd")]:
             command = ["go", "build", "-race", "-buildvcs=false", "-o", str(macos / name)]
@@ -208,6 +226,7 @@ def main():
             time.sleep(0.08)
         roles, _ = checkpoint(background_normal, "background-normal-tray-service-only")
         assert set(roles) == {"tray"}
+        check_dock("background entry", 0)
         receipt["checks"].append("explicit normal background bundle entry retains tray/service without a GUI role")
 
         normal = new_profile("normal", "normal")
@@ -215,10 +234,21 @@ def main():
         wait(lambda: native_window(normal))
         roles, before = checkpoint(normal, "normal-manual-visible")
         assert "gui" in roles and "tray" in roles and len({roles["gui"]["pid"], roles["tray"]["pid"], before["pid"]}) == 3
+        check_dock("normal GUI open", 1)
         control(normal, "gui", "close")
         wait(lambda: not alive(roles["gui"]["pid"]))
         after_roles, after = checkpoint(normal, "normal-gui-closed")
         assert "gui" not in after_roles and after_roles["tray"]["pid"] == roles["tray"]["pid"] and after["id"] == before["id"] and after["pid"] == before["pid"]
+        check_dock("normal GUI closed", 0)
+        if args.dock:
+            control(normal, "tray", "open-gui")
+            wait(lambda: native_window(normal))
+            reopened = probe(normal, "gui")
+            assert reopened["pid"] != roles["gui"]["pid"]
+            check_dock("normal GUI reopened", 1)
+            control(normal, "gui", "close")
+            wait(lambda: not alive(reopened["pid"]))
+            check_dock("reopened GUI closed", 0)
         receipt["checks"].append("manual normal bundle entry reports an app-scoped visible GUI window despite saved background=true; normal close retains same tray/core")
 
         light = new_profile("light", "lightweight")
@@ -231,10 +261,12 @@ def main():
         panel_roles, _ = checkpoint(light, "light-panel-visible")
         assert "quick-panel" in panel_roles
         assert len({panel_roles["gui"]["pid"], panel_roles["tray"]["pid"], panel_roles["quick-panel"]["pid"], before["pid"]}) == 4
+        check_dock("lightweight GUI and quick panel open", 1)
         control(light, "gui", "close")
         wait(lambda: not alive(roles["gui"]["pid"]) and not alive(roles["tray"]["pid"]) and not alive(panel_roles["quick-panel"]["pid"]))
         after_roles, after = checkpoint(light, "light-gui-closed")
         assert not after_roles and after["id"] == before["id"] and after["pid"] == before["pid"] and after["mode"] == "standalone"
+        check_dock("lightweight GUI closed", 0)
         receipt["checks"].append("manual lightweight bundle entry reports app-scoped visible GUI/panel windows; close retires all Desktop roles and preserves same standalone service generation/PID")
 
         background = new_profile("background-light", "lightweight")
@@ -255,6 +287,8 @@ def main():
         assert not (pending / "unic.sock").exists()
         receipt["checkpoints"].append({"name": "pending-setup-background-gated", "at": time.time(), "roles": {"gui": pending_gui, "tray": pending_tray}, "app_window_states": windows, "service": None, "all_private_bundle_processes": private_processes()})
         receipt["checks"].append("pending setup overrides lightweight background entry and reports an app-scoped visible setup window without a service or adapter")
+        if args.dock:
+            receipt["dock"] = "PASS"
         receipt["status"] = "PASS"
     except BaseException as error:
         receipt["error"] = str(error)

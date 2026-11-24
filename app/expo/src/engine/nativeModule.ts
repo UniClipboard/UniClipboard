@@ -1,0 +1,262 @@
+import { type NativeModule, requireOptionalNativeModule } from "expo";
+import {
+  type ActionInfo,
+  type ActionResult,
+  type Capabilities,
+  type CustomSourceSelectionResult,
+  EngineError,
+  type EngineCandidate,
+  type EngineDevice,
+  type EngineErrorPayload,
+  type EngineOperation,
+  type EngineStateSnapshot,
+  type HistoryItem,
+  type HistoryPage,
+  type HistorySearchPage,
+  type ImagePreviewResult,
+  type MigrationProgress,
+  type MigrationRunResult,
+  type PairingCode,
+  type PickAndCommitFileResult,
+  type SensitiveTicket,
+  type SetupFlowState,
+  type SourceDetectionResult,
+  type SubmissionResult,
+  type TextPreview,
+} from "./types";
+
+type NativeEvents = {
+  onEngineEvent: (payload: { event: string }) => void;
+  onEngineResync: (payload: { reason: string }) => void;
+  onMigrationProgress: (payload: MigrationProgress) => void;
+};
+
+declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
+  openSetupFlow(): Promise<string>;
+  getSetupState(): Promise<string>;
+  detectSetupSource(dir: string): Promise<string>;
+  selectSetupCustomSource(): Promise<string>;
+  beginLaterMigration(): Promise<void>;
+  runSetupMigration(passphrase: string | null): Promise<string>;
+  cancelSetupMigration(): Promise<void>;
+  markSetupComplete(): Promise<void>;
+
+  initializeEngine(deviceName: string | null): Promise<string>;
+  shutdownEngine(): Promise<void>;
+  getState(): Promise<string>;
+  getCapabilities(): Promise<string>;
+  updateSettings(reqJSON: string): Promise<string>;
+
+  listHistory(reqJSON: string): Promise<string>;
+  getHistoryItem(historyID: string): Promise<string>;
+  readHistoryTextPreview(historyID: string, maxBytes: number): Promise<string>;
+  exportHistoryImagePreview(historyID: string): Promise<string>;
+  updateHistoryItem(reqJSON: string): Promise<string>;
+  deleteHistoryItem(historyID: string, expectedRevision: string): Promise<void>;
+  listHistoryTags(): Promise<string>;
+  searchHistory(reqJSON: string): Promise<string>;
+  countHistorySearches(reqJSON: string): Promise<string>;
+  commitText(text: string, deviceIdsJson: string | null): Promise<string>;
+  pickAndCommitFile(deviceIdsJson: string | null): Promise<string>;
+  applyHistoryToClipboard(historyID: string): Promise<string>;
+  readSystemClipboardAndCommit(): Promise<string>;
+
+  listActions(): Promise<string>;
+  runAction(reqJSON: string): Promise<string>;
+
+  createPairingCode(): Promise<string>;
+  getPairingCode(): Promise<string>;
+  cancelPairingCode(): Promise<void>;
+  exportPairingTicket(): Promise<string>;
+  joinByCode(reqJSON: string): Promise<string>;
+  joinByTicket(reqJSON: string): Promise<string>;
+  getOperation(opID: string): Promise<string>;
+  listDevices(): Promise<string>;
+  approveDevice(reqJSON: string): Promise<string>;
+  renameDevice(reqJSON: string): Promise<string>;
+  setBindingSync(reqJSON: string): Promise<string>;
+  unpairDevice(deviceID: string, expectedRevision: number): Promise<void>;
+  listCandidates(): Promise<string>;
+  pairCandidate(reqJSON: string): Promise<string>;
+  ignoreCandidate(deviceID: string, ignored: boolean): Promise<void>;
+}
+
+const nativeMod = requireOptionalNativeModule<NativeUnicEngineModule>("UnicEngine");
+
+export function isNativeEngineAvailable(): boolean {
+  return nativeMod !== null;
+}
+
+export function parseEngineError(err: unknown): EngineError {
+  if (err instanceof EngineError) return err;
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+  const tagged = raw.match(/\[unic:([a-z0-9_]+)\]\s*(\{[\s\S]*\})/);
+  if (tagged) {
+    try {
+      const payload = JSON.parse(tagged[2]) as Partial<EngineErrorPayload>;
+      return new EngineError({
+        code: (payload.code ?? tagged[1] ?? "internal") as EngineError["code"],
+        message: payload.message ?? "operation failed",
+        retryable: payload.retryable,
+        retry_after_ms: payload.retry_after_ms,
+      });
+    } catch {
+      return new EngineError({ code: tagged[1] as EngineError["code"], message: "operation failed" });
+    }
+  }
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try {
+      const payload = JSON.parse(trimmed) as Partial<EngineErrorPayload>;
+      if (payload.code) {
+        return new EngineError({
+          code: payload.code,
+          message: payload.message ?? "operation failed",
+          retryable: payload.retryable,
+          retry_after_ms: payload.retry_after_ms,
+        });
+      }
+    } catch {
+      // ignore non-JSON message
+    }
+  }
+  return new EngineError({ code: "internal", message: trimmed || "engine error" });
+}
+
+function requireMod(): NativeUnicEngineModule {
+  if (!nativeMod) {
+    throw new EngineError({
+      code: "unavailable",
+      message: "Native UnicEngine module is unavailable in this runtime",
+    });
+  }
+  return nativeMod;
+}
+
+async function callJSON<T>(fn: () => Promise<string>): Promise<T> {
+  try {
+    const raw = await fn();
+    return JSON.parse(raw) as T;
+  } catch (err) {
+    throw parseEngineError(err);
+  }
+}
+
+async function callString(fn: () => Promise<string>): Promise<string> {
+  try {
+    return await fn();
+  } catch (err) {
+    throw parseEngineError(err);
+  }
+}
+
+async function callVoid(fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    throw parseEngineError(err);
+  }
+}
+
+export const unicEngineNative = {
+  addEventListener: (cb: (eventJSON: string) => void) => {
+    if (!nativeMod) return { remove: () => {} };
+    return nativeMod.addListener("onEngineEvent", ({ event }) => cb(event));
+  },
+  addResyncListener: (cb: (reason: string) => void) => {
+    if (!nativeMod) return { remove: () => {} };
+    return nativeMod.addListener("onEngineResync", ({ reason }) => cb(reason));
+  },
+  addMigrationProgressListener: (cb: (progress: MigrationProgress) => void) => {
+    if (!nativeMod) return { remove: () => {} };
+    return nativeMod.addListener("onMigrationProgress", cb);
+  },
+
+  openSetupFlow: () => callJSON<SetupFlowState>(() => requireMod().openSetupFlow()),
+  getSetupState: () => callJSON<SetupFlowState>(() => requireMod().getSetupState()),
+  detectSetupSource: (dir = "") =>
+    callJSON<SourceDetectionResult>(() => requireMod().detectSetupSource(dir)),
+  selectSetupCustomSource: () =>
+    callJSON<CustomSourceSelectionResult>(() => requireMod().selectSetupCustomSource()),
+  beginLaterMigration: () => callVoid(() => requireMod().beginLaterMigration()),
+  runSetupMigration: (passphrase?: string | null) =>
+    callJSON<MigrationRunResult>(() =>
+      requireMod().runSetupMigration(passphrase && passphrase.length > 0 ? passphrase : null),
+    ),
+  cancelSetupMigration: () => callVoid(() => requireMod().cancelSetupMigration()),
+  markSetupComplete: () => callVoid(() => requireMod().markSetupComplete()),
+
+  initializeEngine: (deviceName?: string) =>
+    callJSON<EngineStateSnapshot>(() => requireMod().initializeEngine(deviceName ?? null)),
+  shutdownEngine: () => callVoid(() => requireMod().shutdownEngine()),
+  getState: () => callJSON<EngineStateSnapshot>(() => requireMod().getState()),
+  getCapabilities: () => callJSON<Capabilities>(() => requireMod().getCapabilities()),
+  updateSettings: (settings: Record<string, unknown>) =>
+    callJSON<EngineStateSnapshot>(() => requireMod().updateSettings(JSON.stringify(settings))),
+
+  listHistory: (req: { limit?: number; cursor?: string; filter?: Record<string, unknown> } = {}) =>
+    callJSON<HistoryPage>(() => requireMod().listHistory(JSON.stringify(req))),
+  getHistoryItem: (historyID: string) =>
+    callJSON<HistoryItem>(() => requireMod().getHistoryItem(historyID)),
+  readHistoryTextPreview: (historyID: string, maxBytes = 512) =>
+    callJSON<TextPreview>(() => requireMod().readHistoryTextPreview(historyID, maxBytes)),
+  exportHistoryImagePreview: (historyID: string) =>
+    callJSON<ImagePreviewResult>(() => requireMod().exportHistoryImagePreview(historyID)),
+  updateHistoryItem: (req: { id: string; expected_revision: string; tags?: string[] }) =>
+    callJSON<HistoryItem>(() => requireMod().updateHistoryItem(JSON.stringify(req))),
+  deleteHistoryItem: (historyID: string, expectedRevision: string) =>
+    callVoid(() => requireMod().deleteHistoryItem(historyID, expectedRevision)),
+  listHistoryTags: () => callJSON<string[]>(() => requireMod().listHistoryTags()),
+  searchHistory: (req: { query: Record<string, unknown>; cursor?: string; limit?: number }) =>
+    callJSON<HistorySearchPage>(() => requireMod().searchHistory(JSON.stringify(req))),
+  countHistorySearches: (queries: Array<Record<string, unknown>>) =>
+    callJSON<{ counts: number[] }>(() => requireMod().countHistorySearches(JSON.stringify({ queries }))),
+  commitText: (text: string, deviceIds?: string[]) =>
+    callJSON<SubmissionResult>(() =>
+      requireMod().commitText(text, deviceIds && deviceIds.length > 0 ? JSON.stringify(deviceIds) : null),
+    ),
+  pickAndCommitFile: (deviceIds?: string[]) =>
+    callJSON<PickAndCommitFileResult>(() =>
+      requireMod().pickAndCommitFile(
+        deviceIds && deviceIds.length > 0 ? JSON.stringify(deviceIds) : null,
+      ),
+    ),
+  applyHistoryToClipboard: (historyID: string) =>
+    callJSON<{ applied: boolean }>(() => requireMod().applyHistoryToClipboard(historyID)),
+  readSystemClipboardAndCommit: () =>
+    callJSON<{ skipped?: boolean; reason?: string; disposition?: string; operation_id?: string }>(() =>
+      requireMod().readSystemClipboardAndCommit(),
+    ),
+
+  listActions: () => callJSON<ActionInfo[]>(() => requireMod().listActions()),
+  runAction: (req: { request_id: string; key: string; history_id: string }) =>
+    callJSON<ActionResult>(() => requireMod().runAction(JSON.stringify(req))),
+
+  createPairingCode: () => callJSON<PairingCode>(() => requireMod().createPairingCode()),
+  getPairingCode: () => callJSON<PairingCode | null>(() => requireMod().getPairingCode()),
+  cancelPairingCode: () => callVoid(() => requireMod().cancelPairingCode()),
+  exportPairingTicket: () => callJSON<SensitiveTicket>(() => requireMod().exportPairingTicket()),
+  joinByCode: (req: { request_id: string; code: string; backend_id?: string }) =>
+    callString(() => requireMod().joinByCode(JSON.stringify(req))),
+  joinByTicket: (req: { request_id: string; ticket: string; backend_id?: string }) =>
+    callString(() => requireMod().joinByTicket(JSON.stringify(req))),
+  getOperation: (opID: string) => callJSON<EngineOperation>(() => requireMod().getOperation(opID)),
+  listDevices: () => callJSON<EngineDevice[]>(() => requireMod().listDevices()),
+  approveDevice: (req: {
+    id: string;
+    expected_revision: number;
+    expected_fingerprint: string;
+    bindings: Array<{ id: string; expected_revision: number }>;
+  }) => callJSON<EngineDevice>(() => requireMod().approveDevice(JSON.stringify(req))),
+  renameDevice: (req: { id: string; expected_revision: number; name: string }) =>
+    callJSON<EngineDevice>(() => requireMod().renameDevice(JSON.stringify(req))),
+  setBindingSync: (req: { id: string; expected_revision: number; sync_enabled: boolean }) =>
+    callJSON<unknown>(() => requireMod().setBindingSync(JSON.stringify(req))),
+  unpairDevice: (deviceID: string, expectedRevision: number) =>
+    callVoid(() => requireMod().unpairDevice(deviceID, expectedRevision)),
+  listCandidates: () => callJSON<EngineCandidate[]>(() => requireMod().listCandidates()),
+  pairCandidate: (req: { device_id: string; backend_id: string; name?: string }) =>
+    callJSON<EngineOperation>(() => requireMod().pairCandidate(JSON.stringify(req))),
+  ignoreCandidate: (deviceID: string, ignored: boolean) =>
+    callVoid(() => requireMod().ignoreCandidate(deviceID, ignored)),
+};

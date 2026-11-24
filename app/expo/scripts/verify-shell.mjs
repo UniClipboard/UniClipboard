@@ -34,7 +34,11 @@ function files(directory) {
           "results",
         ].includes(entry.name) &&
           directory === root) ||
-        (directory === join(root, "e2e") && entry.name === "results")
+        (directory === join(root, "e2e") && entry.name === "results") ||
+        (directory === join(root, "modules", "unic-engine", "ios") &&
+          entry.name === "Frameworks") ||
+        (directory === join(root, "modules", "unic-engine", "android") &&
+          ["libs", "build", ".cxx", ".gradle"].includes(entry.name))
       )
         return [];
       const path = join(directory, entry.name);

@@ -1,3 +1,5 @@
+//go:build linux && !android
+
 package v1migration
 
 import (

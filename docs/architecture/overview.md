@@ -7,6 +7,7 @@ paths:
   - plugins
   - app/desktop
   - app/service
+  - bindings
   - app/expo
   - app/android
   - app/ios
@@ -23,12 +24,12 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 
 ## 现状
 
-- 根 `go.mod` 的模块路径为 `github.com/uniclipboard/unic`。当前只有一个 Go 模块，没有 `go.work` 或 `bindings/`；`go test -race ./...` 覆盖核心、插件和桌面端的 Go 测试。
+- 根 `go.mod` 的模块路径为 `github.com/uniclipboard/unic`。移动端的 Go `gomobile` 绑定作为嵌套子模块位于 [`bindings/`](../../bindings/go.mod)（`bindings/mobile`，使用本地 `replace github.com/uniclipboard/unic => ..` 而不检查入库 `go.work`）；根模块 `go test -race ./...` 仅覆盖核心、插件和桌面端的 Go 测试。
 - `engine/` 是公开 Go SDK，管理生命周期、设备信任、历史、处理流水线与同步调度；根 `internal/` 放核心实现及内置插件。`plugin/` 提供独立进程插件 SDK、RPC 和设置 Schema 工具，`plugins/` 放插件示例及开发说明。
 - Root `internal/v1migration/` provides old-history migration through the in-process `unic migrate` command. It includes desktop profile discovery and platform credential reads, such as macOS Security.framework. Engine does not import it. There is no separate migration program. CLI and Desktop setup share `Source.Run`, including automatic safe tag and color completion on every migration run.
 - `app/service/` contains the UI-free CLI and service. `app/desktop/` contains `unic-desktop`, reusable native BoardUI controls, application composition and native integration. Shared local protocol, configuration, paths and content conversion live in root `internal/local*` packages.
 - `engine.Settings.Validate` validates Engine business settings. `internal/localconfig.Config.Validate` validates host settings and calls it. Engine does not parse TOML or watch configuration files.
-- `app/mac/` 是独立的 Swift Package，保留 SwiftUI 界面与插件设置表单的实验代码，尚未连接 daemon；该客户端路线已取消，停止推进服务接入，现有实验画面不作为最终界面规格。`app/expo/` owns the shared Expo UI shell for Android and iOS. It uses demo state and has no Engine integration. `app/android/` and `app/ios/` retain platform guidance only. Every application directory has its own README and AGENTS.md.
+- `app/mac/` 是独立的 Swift Package，保留 SwiftUI 界面与插件设置表单的实验代码，尚未连接 daemon；该客户端路线已取消，停止推进服务接入，现有实验画面不作为最终界面规格。`app/expo/` owns the shared Expo 57 application for Android and iOS, embedding the Go Engine in-process via [`bindings/mobile/`](../../bindings/mobile/engine.go) and the Expo Local Module `app/expo/modules/unic-engine` (with an explicit `"unavailable"` shell fallback when the native module is absent in JS-only runs). `app/android/` and `app/ios/` retain platform guidance only. Every application directory has its own README and AGENTS.md.
 - CI runs lint, formatting, race checks, all three entry-point builds, and production headless process acceptance. The separate Expo workflow checks TypeScript, prebuild and both native bundles. It does not compile or run native mobile applications or build Swift experiments.
 - Desktop PR CI runs six duration-balanced shards covering all isolated cases, with a thirty-minute limit per job. Ubuntu package bootstrap has a separate five-minute step limit, uses the official HTTPS archive for direct sources and the runner's file-backed mirror list, and bounds APT connection/data waits and retries. See the [Desktop E2E contract](../contracts/desktop-e2e-contract.md).
 
@@ -38,7 +39,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 - Application-specific Desktop packages live in `app/desktop/internal/`. The reusable native control package is `app/desktop/boardui`; it has no Engine or service ownership. Core packages and UI-free commands must not depend on either UI path. Cross-platform business capabilities use the public SDK or protocol. The existing migration exception is root `internal/v1migration/`.
 - `engine` 的传递依赖不得包含应用包、mygo、fsnotify、TOML 解析器、tailcat 会话层 `internal/session` 或传输层 `internal/tcnet`。`engine/boundary_test.go` 检查这条边界；内置后端由宿主显式装配。
 - 系统剪贴板、托盘、GUI、本机 HTTP/socket 服务和配置文件管理属于宿主；核心只接收类型化设置和宿主通过 SDK 提交的观察、应用结果。
-- 当前保持单一根 Go 模块。等移动端实际引入 gomobile 时，再将 `bindings/` 建为嵌套模块并添加本地开发用 `go.work`；不提前创建空绑定层。
+- 根核心包不依赖 `bindings/` 或 `app/*`。`bindings/` 作为嵌套 Go 模块封装 `engine/`、`builtin.tailcat`、`builtin.classify`、`builtin.text` 与 `internal/v1migration/` 供移动端调用；构建脚本用 `GOWORK=off`（不提交常驻 `go.work`）。
 - 每个应用维护自己的 README 与 AGENTS.md，根文档维护总览和跨端约束。
 
 ## 代码地图
@@ -59,7 +60,8 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 | `app/service/cmd/`, `app/service/internal/` | UI-free CLI, service entry point and host assembly |
 | `app/desktop/cmd/`、`app/desktop/internal/` | Go 桌面命令入口与宿主实现 |
 | `app/mac/` | 停止推进的 SwiftUI 实验原型与设置表单样例 |
-| `app/expo/` | Shared Expo mobile presentation, demo state and bundle acceptance |
+| `bindings/` | Nested Go module exposing `gomobile`-compatible Engine & setup/v1 migration bindings (`UnicCore.xcframework` / `unic-engine.aar`) |
+| `app/expo/` | Shared Expo 57 mobile application (`modules/unic-engine` native host, `src/engine/` client, Setup/migration UI, and JS-only shell fallback) |
 | `app/android/`、`app/ios/` | Platform integration guidance; no separate application projects |
 | `e2e/cli/`、`tools/docscheck/` | CLI 多进程端到端验证与文档检查 |
 | `e2e/real/` | Node-configured real-machine CLI testing over local processes and SSH; see [architecture](real-machine-testing.md) |
@@ -209,36 +211,28 @@ Run `make desktop-e2e CASE=production-boundary` to build both desktop commands a
 
 Desktop and CLI share the Engine-owned [directory content model](../contracts/directory-contract.md). Directory automatic sync defaults off. Desktop exposes explicit history-to-device send with progress and cancellation. Directory references, snapshots, storage ownership and native acceptance limits are described in [pipeline](pipeline.md) and [desktop runtime](desktop-runtime.md).
 
-## Expo mobile UI shell
+## Expo mobile client and in-process Engine
 
-`app/expo` is a single Expo 57 application for Android and iOS. It imports the
-UniClip presentation at `ac90f94805a9f2003f6e319aa84484cf0bd615c9` and retains
-its MIT attribution and file provenance. Platform-resolved components keep iOS
-SwiftUI/Liquid Glass and Android Compose/Material presentation.
+`app/expo` is a single Expo 57 application for Android and iOS. It retains the
+imported UniClip presentation at `ac90f94805a9f2003f6e319aa84484cf0bd615c9` with
+MIT attribution and platform-resolved iOS SwiftUI/Liquid Glass and Android
+Compose/Material components.
 
-The shell opens history directly. Original cards, list layouts, search, filters,
-selection, context menus, word selection, phone detail pages and tablet workspace
-use in-memory demo records. Settings/device composition reuses the existing
-native rows and groups. Appearance and local display preferences persist in the
-isolated shell sandbox; demo history, language and business-looking switches do
-not persist. Onboarding remains a preview destination. System-dependent settings
-show unavailable content. Connection confirmation remains a preview without a
-successful pairing transition.
-
-`src/shell` owns concrete demo state and notices. `screens/useHomeController.tsx`
-owns presentation actions. Neither defines a future Engine interface. The old
-runtime, database, transfer/sync services, native extensions and telemetry are
-excluded. Unavailable actions never report real send, pair, copy or sync success.
-The application identifier is `app.uniclipboard.shell`; no production App Group
-or keychain identity is reused.
+In native builds (`modules/unic-engine`), the app embeds the root Go Engine
+in-process via `bindings/mobile` (`UnicCore.xcframework` on iOS; unpacked `classes.jar`
++ `jni/libgojni.so` from `unic-engine.aar` on Android). `src/engine/` drives live
+setup/v1 migration (`MigrationSession`), history queries/previews, pairing code
+and ticket approval with mandatory fingerprint review, device sync management,
+actions and streaming file commits. When the native `UnicEngine` module is not
+loaded (JS-only/shell runs), `useEngineStore` explicitly enters `mode: "unavailable"`
+and retains the in-memory `src/shell` presentation with explicit unavailable notices.
 
 Generated native directories belong under `app/expo/ios` and `app/expo/android`
-and are ignored. `app/ios` and `app/android` are not build inputs. Mobile Engine
-integration, native release/signing and Store workflows remain separate work.
-`npm run verify` checks source boundaries, TypeScript, pinned navigation patches,
-Expo prebuild and both Metro/Hermes bundles. It emits checksummed artifacts and a
-receipt, and explicitly records native UI as not run. Maestro flows provide a
-separate native interaction path. See the [execution receipt](../exec/expo-ui-shell.md).
+and are ignored. `app/ios` and `app/android` are not build inputs. `npm run verify`
+checks source boundaries, TypeScript, pinned navigation patches, Expo prebuild
+and both Metro/Hermes bundles. Physical-device sync soak and production Store
+release workflows remain separate scope. See [the UI shell receipt](../exec/expo-ui-shell.md)
+and [the mobile Engine integration receipt](../exec/0031-mobile-engine-integration.md).
 
 
 ### Resuming a later Desktop migration

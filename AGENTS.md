@@ -57,6 +57,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0026](docs/decisions/proposed/0026-first-install-setup.md) | Desktop first-install setup | Implemented with the shared native Desktop composition and prototype/setup.html; presentation now uses BoardUI. Software-view and macOS native complete/partial recordings passed; actual credential prompts and remaining native scenarios/platforms are pending. Slogan: “让每一次复制更有用”. |
 | [0027](docs/decisions/proposed/0027-wenshushu-share-action.md) | Wenshushu temporary-share Action | Host and independent plugin implemented; process/live provider E2E passed. Repository: `UniClipboard/unic-plugin-wenshushu`; plugin ID: `unic.wenshushu`. Native UI and packaged releases pending. |
 | [0028](docs/decisions/proposed/0028-desktop-plugin-marketplace.md) | Desktop online plugin marketplace | Accepted; Obsidian-style online plugin marketplace backed by static `registry.json` + local cache + bundled fallback, reusing the verified GitHub installer. Prototype in `prototype/plugins.html`. |
+| [0031](docs/decisions/proposed/0031-mobile-engine-integration.md) | 移动端集成 Engine：进程内绑定、Expo 原生宿主与迁移接入 | Implemented for `bindings/mobile`, `app/expo/modules/unic-engine`, TypeScript Engine client and iOS/Android Setup UI; `bindings` race tests, iOS Simulator 3-state launch and Android Debug APK passed (receipt: [0031-mobile-engine-integration](docs/exec/0031-mobile-engine-integration.md)); physical-device pairing/keychain/background acceptance pending |
 
 ### 接口契约（`docs/contracts/`）
 
@@ -114,4 +115,4 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 - Client telemetry defaults enabled. The config.toml master and per-signal switches can disable it. Ship only the ingestion-only project token; analytics uses an independent random profile identifier. See the [observability contract](docs/contracts/observability-contract.md).
 
-- Mobile presentation lives in `app/expo` as one shared Expo application. The sibling `app/ios` and `app/android` directories contain platform guidance only. Engine integration is outside the UI-shell migration. See the [Expo shell](app/expo/README.md).
+- Mobile presentation lives in `app/expo` as one shared Expo application embedding the Go Engine in-process via `bindings/mobile` and `app/expo/modules/unic-engine` (with an explicit `"unavailable"` shell fallback when the native module is absent in JS-only runs). The sibling `app/ios` and `app/android` directories contain platform guidance only. See [app/expo](app/expo/README.md) and [0031 receipt](docs/exec/0031-mobile-engine-integration.md).

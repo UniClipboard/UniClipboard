@@ -5,8 +5,8 @@ The mobile UI is shared with the other mobile platform in
 Do not create a separate native application here. Expo generates its native
 project under `app/expo/ios`.
 
-The Expo application currently uses demo state. Engine integration, clipboard
-access, permissions, background execution and native extensions are outside the
-UI-shell migration. Future integration must follow the
-[Engine contract](../../docs/contracts/engine-contract.md) and report platform
-capabilities accurately.
+In-process Go Engine integration (`UnicCore.xcframework`) lives in the Expo
+Local Module `app/expo/modules/unic-engine/ios`, following the
+[Engine contract](../../docs/contracts/engine-contract.md) and reporting iOS
+clipboard/background/Keychain capabilities honestly. Production App Group,
+Share Extension and Store signing remain separate scope.

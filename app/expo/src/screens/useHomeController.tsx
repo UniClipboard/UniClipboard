@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler } from "react-native";
+import { Alert, BackHandler } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import { useEngineStore } from "@/engine/store";
 import { useTheme } from "@/hooks/useTheme";
 import { useHistoryDisplaySettings } from "@/hooks/useHistoryDisplaySettings";
 import type { AnimatedCardGridHandle } from "@/components/AnimatedCardGrid";
@@ -20,6 +21,19 @@ import {
 import { useShellStore } from "@/shell/store";
 import { showUnavailable } from "@/shell/notice";
 
+function mapDisplayKindToSearchType(kind: DisplayKind | undefined): string | null {
+  switch (kind) {
+    case "text":
+      return "text";
+    case "image":
+      return "image";
+    case "file":
+      return "files";
+    default:
+      return null;
+  }
+}
+
 export function useHomeController(
   onOpenSettings: () => void,
   { clearFiltersOnCloseSearch }: { clearFiltersOnCloseSearch: boolean },
@@ -27,7 +41,11 @@ export function useHomeController(
   const { t } = useTranslation("home");
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const records = useShellStore((s) => s.records);
+  const engineMode = useEngineStore((s) => s.mode);
+  const engineRecords = useEngineStore((s) => s.records);
+  const engineActions = useEngineStore((s) => s.actions);
+  const shellRecords = useShellStore((s) => s.records);
+  const records = engineMode === "live" ? engineRecords : shellRecords;
   const [selectedIds, setSelectedIds] = useState(new Set<string>());
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -40,6 +58,7 @@ export function useHomeController(
   const [selectedSourceFilter, setSelectedSourceFilter] =
     useState<HistorySourceFilter>("all");
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [contextTarget, setContextTarget] = useState<{
     item: ClipboardItem;
     anchor: CardAnchorRect | null;
@@ -130,14 +149,32 @@ export function useHomeController(
   const closeSendTo = useCallback(() => setSendToVisible(false), []);
   const handleContextDismiss = useCallback(() => setContextTarget(null), []);
   const handleItemDelete = useCallback(
-    (item: ClipboardItem) =>
-      useShellStore.getState().deleteRecords([item.profileHash]),
-    [],
+    (item: ClipboardItem) => {
+      if (engineMode === "live") {
+        void useEngineStore.getState().deleteHistoryItems([item.profileHash]);
+      } else {
+        useShellStore.getState().deleteRecords([item.profileHash]);
+      }
+    },
+    [engineMode],
   );
-  const handleItemCopy = useCallback(async (_item: ClipboardItem) => {
-    showUnavailable();
-    return false;
-  }, []);
+  const handleItemCopy = useCallback(
+    async (item: ClipboardItem) => {
+      if (engineMode !== "live") {
+        showUnavailable();
+        return false;
+      }
+      try {
+        await useEngineStore.getState().applyToClipboard(item.profileHash);
+        return true;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : t("shell:unavailable");
+        Alert.alert(t("common:action.copy"), msg);
+        return false;
+      }
+    },
+    [engineMode, t],
+  );
   const handleItemPress = useCallback(
     (item: ClipboardItem) => {
       if (isSelectMode) toggleSelection(item.profileHash);
@@ -151,10 +188,10 @@ export function useHomeController(
     [],
   );
   const makeActionGroups = useCallback(
-    (item: ClipboardItem, kind: DisplayKind, anchor: CardAnchorRect | null) =>
-      buildActionMenuGroups(item, kind, {
+    (item: ClipboardItem, kind: DisplayKind, anchor: CardAnchorRect | null) => {
+      const baseGroups = buildActionMenuGroups(item, kind, {
         onCopy: () => void handleItemCopy(item),
-        onCopyPlainText: showUnavailable,
+        onCopyPlainText: () => void handleItemCopy(item),
         onSelectText: () =>
           setWordPickerTarget({
             text: item.text,
@@ -165,15 +202,38 @@ export function useHomeController(
         onOpenInBrowser: showUnavailable,
         onSaveImage: showUnavailable,
         onSaveFile: showUnavailable,
-        onResend: showUnavailable,
-        onShare: showUnavailable,
+        onResend: () => openSendTo(item),
+        onShare: () => openSendTo(item),
         onSelect: () => {
           setIsSelectMode(true);
           setSelectedIds(new Set([item.profileHash]));
         },
         onDelete: () => handleItemDelete(item),
-      }),
-    [handleItemCopy, handleItemDelete],
+      });
+      if (engineMode === "live" && (kind === "text" || kind === "url")) {
+        const textActions = engineActions
+          .filter((act) => act.accepts?.includes("text"))
+          .map((act) => ({
+            key: `engine-action:${act.key}`,
+            label: act.title,
+            icon: "sparkles-outline",
+            onPress: () => {
+              void useEngineStore
+                .getState()
+                .runAction(act.key, item.profileHash)
+                .catch((err) => {
+                  const msg = err instanceof Error ? err.message : t("shell:unavailable");
+                  Alert.alert(act.title, msg);
+                });
+            },
+          }));
+        if (textActions.length > 0 && baseGroups.length > 0) {
+          return [baseGroups[0], textActions, ...baseGroups.slice(1)];
+        }
+      }
+      return baseGroups;
+    },
+    [engineMode, engineActions, handleItemCopy, handleItemDelete, openSendTo, t],
   );
   const actionMenuGroups = useMemo(
     () =>
@@ -236,11 +296,22 @@ export function useHomeController(
       closeSearch,
     ]),
   );
+  useEffect(() => {
+    if (engineMode !== "live") return;
+    const engineType =
+      selectedFilterKinds.length === 1
+        ? mapDisplayKindToSearchType(selectedFilterKinds[0])
+        : null;
+    void useEngineStore
+      .getState()
+      .setQueryFilters(isSearching ? searchText : "", [], engineType);
+  }, [engineMode, isSearching, searchText, selectedFilterKinds]);
+
   const emptyContent = {
     icon: "search-outline" as const,
     tint: theme.colors.textSecondary,
     title: t("shell:empty"),
-    description: t("shell:localOnly"),
+    description: engineMode === "live" ? t("home:empty.subtitle", { defaultValue: "" }) : t("shell:localOnly"),
   };
   return {
     t,
@@ -307,24 +378,70 @@ export function useHomeController(
     handleItemCopy,
     handleItemDelete,
     handleItemLongPress,
-    refreshing: false,
-    handleRefresh: () => {},
+    refreshing,
+    handleRefresh: () => {
+      if (engineMode !== "live") return;
+      setRefreshing(true);
+      void useEngineStore
+        .getState()
+        .refreshAll()
+        .finally(() => setRefreshing(false));
+    },
     loadMoreItems: () => {},
     reportVisibleHistoryItems: (_items: ClipboardItem[]) => {},
-    handleBatchCopy: showUnavailable,
-    handleBatchShare: showUnavailable,
+    handleBatchCopy: () => {
+      if (engineMode !== "live" || selectedIds.size === 0) {
+        showUnavailable();
+        return;
+      }
+      const firstId = [...selectedIds][0];
+      void useEngineStore.getState().applyToClipboard(firstId);
+      exitSelectMode();
+    },
+    handleBatchShare: () => setSendToVisible(true),
     handleBatchSendTo: () => setSendToVisible(true),
     handleBatchDelete: () => {
-      useShellStore.getState().deleteRecords([...selectedIds]);
+      if (engineMode === "live") {
+        void useEngineStore.getState().deleteHistoryItems([...selectedIds]);
+      } else {
+        useShellStore.getState().deleteRecords([...selectedIds]);
+      }
       exitSelectMode();
     },
     showAddMenu,
     setShowAddMenu,
     handleTakePhoto: showUnavailable,
-    handleUploadImage: showUnavailable,
-    handleUploadFile: showUnavailable,
-    handleUpload: showUnavailable,
-    handleSyncHistory: showUnavailable,
+    handleUploadImage: () => {
+      if (engineMode !== "live") {
+        showUnavailable();
+        return;
+      }
+      setShowAddMenu(false);
+      void useEngineStore.getState().pickAndCommitFile();
+    },
+    handleUploadFile: () => {
+      if (engineMode !== "live") {
+        showUnavailable();
+        return;
+      }
+      setShowAddMenu(false);
+      void useEngineStore.getState().pickAndCommitFile();
+    },
+    handleUpload: () => {
+      if (engineMode !== "live") {
+        showUnavailable();
+        return;
+      }
+      setShowAddMenu(false);
+      setSendToVisible(true);
+    },
+    handleSyncHistory: () => {
+      if (engineMode !== "live") {
+        showUnavailable();
+        return;
+      }
+      void useEngineStore.getState().readSystemClipboardAndCommit();
+    },
     receiveEntryCount: 0,
     setReceiveResultsOpen: (_open: boolean) => showUnavailable(),
     wordPickerTarget,

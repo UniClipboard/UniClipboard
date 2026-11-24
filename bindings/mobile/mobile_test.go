@@ -3,16 +3,20 @@ package mobile
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
@@ -726,5 +730,211 @@ func TestTwoEnginesPairApproveAndSync(t *testing.T) {
 	}
 	if sinkB.countKind(engine.EventReceived) == 0 && sinkB.countKind(engine.EventHistory) == 0 {
 		t.Fatalf("expected EventReceived or EventHistory on B sink")
+	}
+}
+
+func TestSetupFlowCompleteMigrationAndEngineReadbackIntegrity(t *testing.T) {
+	base := tempDirReal(t)
+	v1Root, dbPath, f, err := v1fixture.Build(filepath.Join(base, "v1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Repair the fixture and move timestamps to recent minutes so live 180-day AutoCleanup keeps all records.
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO clipboard_snapshot_representation VALUES('rep-bad','event-bad','text/plain','text/plain',?,NULL,9)`,
+		[]byte(f.Repaired),
+	); err != nil {
+		_ = db.Close()
+		t.Fatal(err)
+	}
+	now := time.Now().UnixMilli()
+	for idx, id := range []string{"entry-text", "entry-duplicate", "entry-file", "entry-image", "entry-bad"} {
+		ts := now - int64(5-idx)*60_000
+		if _, err := db.Exec(
+			`UPDATE clipboard_entry SET created_at_ms = ?, active_time_ms = ? WHERE entry_id = ?`,
+			ts, ts+100, id,
+		); err != nil {
+			_ = db.Close()
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	wantPixel, err := os.ReadFile(filepath.Join("..", "..", "internal", "v1migration", "testdata", "pixel.png"))
+	if err != nil {
+		t.Fatalf("read pixel.png: %v", err)
+	}
+	wantFile := []byte("binary\x00fixture")
+
+	target := filepath.Join(base, "unic-v2")
+	cacheDir := filepath.Join(base, "unic-cache")
+	sess, err := OpenSetupFlow(target, v1Root)
+	if err != nil {
+		t.Fatalf("OpenSetupFlow: %v", err)
+	}
+	detJSON, err := sess.DetectSource("")
+	if err != nil || !strings.Contains(detJSON, `"found"`) {
+		t.Fatalf("DetectSource: %q err=%v", detJSON, err)
+	}
+
+	prog := &progressCollector{}
+	resJSON, err := sess.Run(nil, []byte(f.Passphrase), nil, prog)
+	if err != nil {
+		t.Fatalf("Run complete fixture: %v", err)
+	}
+	var res migrationRunResult
+	if err := json.Unmarshal([]byte(resJSON), &res); err != nil {
+		t.Fatalf("unmarshal run result: %v (%s)", err, resJSON)
+	}
+	if res.Status != "complete" || res.Imported != 5 || res.Verified != 5 || res.Failed != 0 || res.MissingParts != 0 || res.Tags != 2 {
+		t.Fatalf("unexpected complete migration result: %+v", res)
+	}
+
+	prog.mu.Lock()
+	stages := append([]string(nil), prog.stages...)
+	prog.mu.Unlock()
+	if !slices.Contains(stages, "import") || !slices.Contains(stages, "verify") {
+		t.Fatalf("expected both import and verify progress stages, got %v", stages)
+	}
+
+	// Prove source independence and setup completion persistence.
+	if err := os.RemoveAll(v1Root); err != nil {
+		t.Fatalf("RemoveAll v1Root: %v", err)
+	}
+	if err := sess.MarkComplete(); err != nil {
+		t.Fatalf("MarkComplete: %v", err)
+	}
+
+	cfgBytes, _ := json.Marshal(map[string]any{
+		"data_dir":    target,
+		"cache_dir":   cacheDir,
+		"device_name": "Mobile Verify",
+	})
+	eng, err := NewEngine(string(cfgBytes))
+	if err != nil {
+		t.Fatalf("NewEngine after complete migration: %v", err)
+	}
+	defer func() {
+		_ = eng.Stop(nil)
+		_ = eng.Close(nil)
+	}()
+	if err := eng.Start(nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	pageJSON, err := eng.ListHistory(`{"limit":20}`)
+	if err != nil {
+		t.Fatalf("ListHistory: %v", err)
+	}
+	var page engine.HistoryPage
+	if err := json.Unmarshal([]byte(pageJSON), &page); err != nil {
+		t.Fatalf("unmarshal HistoryPage: %v", err)
+	}
+	if len(page.Items) != 5 {
+		t.Fatalf("expected 5 migrated items after startup/AutoCleanup, got %d", len(page.Items))
+	}
+
+	tagsJSON, err := eng.ListHistoryTags()
+	if err != nil {
+		t.Fatalf("ListHistoryTags: %v", err)
+	}
+	var allTags []string
+	if err := json.Unmarshal([]byte(tagsJSON), &allTags); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(allTags, "标签") || !slices.Contains(allTags, "unused") {
+		t.Fatalf("missing expected migrated tags in %v", allTags)
+	}
+
+	readPartBytes := func(historyID engine.HistoryID) []byte {
+		hJSON, err := eng.RetainHistoryContent(string(historyID))
+		if err != nil {
+			t.Fatalf("RetainHistoryContent(%s): %v", historyID, err)
+		}
+		var h engine.ContentHandle
+		if err := json.Unmarshal([]byte(hJSON), &h); err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = eng.ReleaseContent(string(h.LeaseID)) }()
+		if len(h.Content.Parts) == 0 {
+			t.Fatalf("expected parts on %s", historyID)
+		}
+		stream, err := eng.OpenPart(string(h.LeaseID), string(h.Content.Parts[0].ID))
+		if err != nil {
+			t.Fatalf("OpenPart(%s): %v", historyID, err)
+		}
+		defer func() { _ = stream.Close() }()
+		var buf bytes.Buffer
+		for {
+			chunk, err := stream.ReadChunk(4096)
+			if err != nil {
+				t.Fatalf("ReadChunk(%s): %v", historyID, err)
+			}
+			if len(chunk) == 0 {
+				break
+			}
+			buf.Write(chunk)
+		}
+		return buf.Bytes()
+	}
+
+	fixtureTextCount := 0
+	taggedFixtureTextCount := 0
+	recoveredCount := 0
+	imageCount := 0
+	fileCount := 0
+
+	for _, item := range page.Items {
+		if item.Origin.Kind != engine.OriginKindMigration {
+			t.Fatalf("expected migration origin, got %+v", item.Origin)
+		}
+		switch item.Kind {
+		case engine.HistoryText:
+			prevJSON, err := eng.ReadHistoryTextPreview(string(item.ID), 512)
+			if err != nil {
+				t.Fatalf("ReadHistoryTextPreview(%s): %v", item.ID, err)
+			}
+			var prev textPreviewDTO
+			if err := json.Unmarshal([]byte(prevJSON), &prev); err != nil {
+				t.Fatal(err)
+			}
+			switch prev.Text {
+			case "fixture text":
+				fixtureTextCount++
+				if slices.Contains(item.Tags, "标签") {
+					taggedFixtureTextCount++
+				}
+			case "recovered":
+				recoveredCount++
+			default:
+				t.Fatalf("unexpected migrated text item: %q", prev.Text)
+			}
+		case engine.HistoryImage:
+			imageCount++
+			got := readPartBytes(item.ID)
+			if !bytes.Equal(got, wantPixel) {
+				t.Fatalf("migrated image bytes mismatch: got %d bytes, want %d", len(got), len(wantPixel))
+			}
+		case engine.HistoryFiles:
+			fileCount++
+			got := readPartBytes(item.ID)
+			if !bytes.Equal(got, wantFile) {
+				t.Fatalf("migrated file bytes mismatch: got %x, want %x", got, wantFile)
+			}
+		default:
+			t.Fatalf("unexpected migrated item kind %q (%+v)", item.Kind, item)
+		}
+	}
+
+	if fixtureTextCount != 2 || taggedFixtureTextCount != 1 || recoveredCount != 1 || imageCount != 1 || fileCount != 1 {
+		t.Fatalf("unexpected item breakdown: fixtureText=%d tagged=%d recovered=%d image=%d file=%d",
+			fixtureTextCount, taggedFixtureTextCount, recoveredCount, imageCount, fileCount)
 	}
 }

@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Text, View, type ColorValue } from "react-native";
+import { Keyboard, ScrollView, StyleSheet, Text, View, type ColorValue } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   AppAlertDialog,
@@ -204,8 +204,9 @@ export function MigrationSetupScreen() {
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
                 当前设备钥匙串中未读取到旧版密钥。口令仅用于本次本地解密，不会被保存或上传。
               </Text>
-              <View testID="setup-passphrase-field" style={styles.inputWrap}>
+              <View style={styles.inputWrap}>
                 <AppTextField
+                  testID="setup-passphrase-input"
                   value={ctrl.passphrase}
                   onChangeText={ctrl.setPassphrase}
                   placeholder="请输入旧版加密口令"
@@ -213,6 +214,11 @@ export function MigrationSetupScreen() {
                   secure
                   fullWidth
                   disabled={ctrl.busy}
+                  returnKeyType="done"
+                  onSubmitEditing={() => {
+                    Keyboard.dismiss();
+                    void ctrl.handleSubmitPassphrase();
+                  }}
                 />
               </View>
               {ctrl.setupViewState === "m-auth-err" && ctrl.migrationErrorMessage ? (
@@ -230,7 +236,10 @@ export function MigrationSetupScreen() {
                   size="large"
                   fullWidth
                   disabled={ctrl.busy || !ctrl.passphrase.trim()}
-                  onPress={() => void ctrl.handleSubmitPassphrase()}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    void ctrl.handleSubmitPassphrase();
+                  }}
                 />
               </AppHost>
               <AppHost matchContents={{ vertical: true }}>
@@ -570,11 +579,18 @@ export function MigrationSetupScreen() {
     }
   };
 
+  const isAuthView = ctrl.setupViewState === "m-auth" || ctrl.setupViewState === "m-auth-err";
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: c.background }]} edges={["top", "bottom"]}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.hero}>
-          <UnicBrandLogo size={80} borderRadius={20} style={styles.logo} />
+      <ScrollView
+        contentContainerStyle={isAuthView ? styles.scrollAuth : styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.hero, isAuthView ? styles.heroCompact : null]}>
+          <UnicBrandLogo size={isAuthView ? 56 : 80} borderRadius={isAuthView ? 14 : 20} style={styles.logo} />
           <Text testID="setup-welcome-title" style={[styles.title, { color: c.textPrimary }]}>
             欢迎使用 UniClipboard
           </Text>
@@ -611,10 +627,22 @@ const styles = StyleSheet.create({
     gap: 20,
     justifyContent: "space-between",
   },
+  scrollAuth: {
+    flexGrow: 1,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 24,
+    gap: 12,
+    justifyContent: "flex-start",
+  },
   hero: {
     alignItems: "center",
     gap: 10,
     paddingVertical: 12,
+  },
+  heroCompact: {
+    gap: 6,
+    paddingVertical: 4,
   },
   logo: {
     marginBottom: 4,

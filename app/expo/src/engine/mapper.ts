@@ -6,8 +6,12 @@ function mapKindToContentType(item: HistoryItem): ClipboardContentType {
   switch (item.kind) {
     case "image":
       return "Image";
+    case "files":
     case "file":
-      return "File";
+      return item.parts.filter((p) => p.kind === "file").length > 1 ? "Group" : "File";
+    case "directory":
+    case "directory_reference":
+      return "Group";
     case "mixed":
       return item.parts.some((p) => p.kind === "file") ? "Group" : "Text";
     case "text":

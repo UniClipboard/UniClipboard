@@ -310,8 +310,8 @@ export function useHomeController(
   const emptyContent = {
     icon: "search-outline" as const,
     tint: theme.colors.textSecondary,
-    title: t("shell:empty"),
-    description: engineMode === "live" ? t("home:empty.subtitle", { defaultValue: "" }) : t("shell:localOnly"),
+    title: engineMode === "live" ? t("home:empty.online.title") : t("shell:empty"),
+    description: engineMode === "live" ? t("home:empty.online.description") : t("shell:localOnly"),
   };
   return {
     t,

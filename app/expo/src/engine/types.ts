@@ -60,7 +60,7 @@ export interface MigrationProgress {
 }
 
 export interface MigrationRunResult {
-  status: "done" | "partial" | "cancelled" | "failed" | string;
+  status: "complete" | "done" | "partial" | "cancelled" | "failed" | string;
   total: number;
   imported: number;
   recoverable: number;

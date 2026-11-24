@@ -60,3 +60,6 @@ __pycache__/
 /app/expo/modules/unic-engine/android/build/
 /app/expo/modules/unic-engine/android/.gradle/
 /app/expo/modules/unic-engine/android/.cxx/
+/e2e/mobile/node_modules/
+/e2e/mobile/results/
+/e2e/mobile/.e2e/

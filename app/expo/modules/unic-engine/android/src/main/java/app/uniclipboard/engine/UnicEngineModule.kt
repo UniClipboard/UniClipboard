@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
+import mobile.AndroidNetworkInterfaces
 import mobile.CancelToken
 import mobile.Engine
 import mobile.EventSink
@@ -37,6 +38,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.InputStream
+import java.net.NetworkInterface
+import java.net.SocketException
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -44,6 +47,32 @@ import java.util.concurrent.atomic.AtomicInteger
 
 private const val REQ_PICK_SETUP_FOLDER = 0x5501
 private const val REQ_PICK_UPLOAD_FILE = 0x5502
+
+private val androidNetworkInterfaces = AndroidNetworkInterfaces {
+  val snapshot = JSONArray()
+  val interfaces = try {
+    NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+  } catch (_: SocketException) {
+    emptyList()
+  }
+  for (iface in interfaces) {
+    try {
+      val addresses = iface.interfaceAddresses.map { address ->
+        "${address.address.hostAddress.substringBefore('%')}/${address.networkPrefixLength}"
+      }
+      snapshot.put(JSONObject()
+        .put("name", iface.name)
+        .put("index", iface.index)
+        .put("mtu", iface.mtu)
+        .put("up", iface.isUp)
+        .put("loopback", iface.isLoopback)
+        .put("addresses", JSONArray(addresses)))
+    } catch (_: SocketException) {
+      // An interface can disappear while the snapshot is being collected.
+    }
+  }
+  snapshot.toString()
+}
 
 class UnicEngineModule : Module() {
   private val engineExecutor = Executors.newSingleThreadExecutor()
@@ -93,9 +122,21 @@ class UnicEngineModule : Module() {
     return appContext.reactContext ?: throw rawCodeException("invalid_state", "react context unavailable")
   }
 
+  private fun launchOverride(key: String): String? {
+    val fromIntent = appContext.currentActivity?.intent?.getStringExtra(key)?.trim()
+    if (!fromIntent.isNullOrEmpty()) {
+      return fromIntent
+    }
+    val fromEnv = Os.getenv(key)?.trim()
+    if (!fromEnv.isNullOrEmpty()) {
+      return fromEnv
+    }
+    return null
+  }
+
   private fun resolveDir(envName: String, fallback: File): String {
-    val override = Os.getenv(envName)?.trim()
-    val dir = if (!override.isNullOrEmpty()) File(override) else fallback
+    val override = launchOverride(envName)
+    val dir = if (override != null) File(override) else fallback
     if (!dir.exists()) {
       dir.mkdirs()
     }
@@ -113,8 +154,8 @@ class UnicEngineModule : Module() {
   }
 
   private fun defaultV1DirectoryPath(): String {
-    val override = Os.getenv("UNIC_MOBILE_V1_DIR")?.trim()
-    if (!override.isNullOrEmpty()) {
+    val override = launchOverride("UNIC_MOBILE_V1_DIR")
+    if (override != null) {
       return try { File(override).canonicalPath } catch (_: Exception) { override }
     }
     val ctx = appContextOrThrow()
@@ -507,6 +548,7 @@ class UnicEngineModule : Module() {
               .put("observe", "available")
               .put("apply", "available"),
           )
+        Mobile.registerAndroidNetworkInterfaces(androidNetworkInterfaces)
         val eng = Mobile.newEngine(cfg.toString())
         val sink = object : EventSink {
           override fun onEvent(eventJSON: String?) {

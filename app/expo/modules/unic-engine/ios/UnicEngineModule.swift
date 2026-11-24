@@ -181,11 +181,40 @@ public final class UnicEngineModule: Module {
   private var lastObservedChangeCount: Int = 0
   private var lastAppliedSequence: Int = -1
 
+  private func launchOverride(_ key: String) -> String? {
+    let args = ProcessInfo.processInfo.arguments
+    for i in 0..<args.count {
+      let arg = args[i]
+      if arg == "-\(key)" || arg == "--\(key)", i + 1 < args.count {
+        let val = args[i + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+        if !val.isEmpty {
+          return val
+        }
+      }
+      if arg.hasPrefix("--\(key)=") {
+        let val = String(arg.dropFirst("--\(key)=".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !val.isEmpty {
+          return val
+        }
+      }
+      if arg.hasPrefix("-\(key)=") {
+        let val = String(arg.dropFirst("-\(key)=".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !val.isEmpty {
+          return val
+        }
+      }
+    }
+    if let env = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !env.isEmpty {
+      return env
+    }
+    return nil
+  }
+
   private func resolveDirectory(overrideEnv: String, fallbackSubdir: String, searchPath: FileManager.SearchPathDirectory) throws -> String {
     let fm = FileManager.default
     let url: URL
-    if let raw = ProcessInfo.processInfo.environment[overrideEnv]?.trimmingCharacters(in: .whitespacesAndNewlines),
-       !raw.isEmpty {
+    if let raw = launchOverride(overrideEnv) {
       url = URL(fileURLWithPath: raw, isDirectory: true)
     } else {
       guard let base = fm.urls(for: searchPath, in: .userDomainMask).first else {
@@ -198,8 +227,7 @@ public final class UnicEngineModule: Module {
   }
 
   private func defaultV1SourceDirectory() -> String {
-    if let raw = ProcessInfo.processInfo.environment["UNIC_MOBILE_V1_DIR"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-       !raw.isEmpty {
+    if let raw = launchOverride("UNIC_MOBILE_V1_DIR") {
       return URL(fileURLWithPath: raw, isDirectory: true).resolvingSymlinksInPath().path
     }
     let fm = FileManager.default

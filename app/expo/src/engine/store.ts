@@ -266,19 +266,6 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
         return;
       }
 
-      const subProg = unicEngineNative.addMigrationProgressListener((progress) => {
-        set((prev) => ({
-          migrationProgress: progress,
-          setupViewState:
-            prev.setupViewState === "m-stopping"
-              ? "m-stopping"
-              : progress.stage === "verify"
-                ? "m-verifying"
-                : "m-importing",
-        }));
-      });
-      unsubscribeFns.push(() => subProg.remove());
-
       set({
         setupEntryMode: "first-install",
         bootStage: "setup",
@@ -341,6 +328,30 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
 
   startMigration: async (passphrase) => {
     const suppliedPassphrase = typeof passphrase === "string" && passphrase.length > 0;
+    let active = true;
+    const subProg = unicEngineNative.addMigrationProgressListener((progress) => {
+      if (!active) return;
+      set((prev) => {
+        if (!prev.busy) return prev;
+        if (
+          prev.setupViewState !== "m-importing" &&
+          prev.setupViewState !== "m-verifying" &&
+          prev.setupViewState !== "m-stopping"
+        ) {
+          return prev;
+        }
+        return {
+          migrationProgress: progress,
+          setupViewState:
+            prev.setupViewState === "m-stopping"
+              ? "m-stopping"
+              : progress.stage === "verify"
+                ? "m-verifying"
+                : "m-importing",
+        };
+      });
+    });
+
     set({
       busy: true,
       migrationErrorMessage: "",
@@ -350,9 +361,11 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
 
     try {
       const res = await unicEngineNative.runSetupMigration(suppliedPassphrase ? passphrase : null);
+      active = false;
+      subProg.remove();
       const nextCumulative = get().cumulativeImported + (res.imported || 0);
       let nextView: SetupScreenViewState = "r-failed";
-      if (res.status === "done") nextView = "r-done";
+      if (res.status === "complete" || res.status === "done") nextView = "r-done";
       else if (res.status === "partial") nextView = "r-partial";
       else if (res.status === "cancelled") nextView = "r-cancelled";
 
@@ -365,6 +378,8 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
         migrationErrorMessage: res.error?.message ?? "",
       });
     } catch (err) {
+      active = false;
+      subProg.remove();
       const e = parseEngineError(err);
       let nextView: SetupScreenViewState = "r-failed";
       let msg = e.message;

@@ -1,0 +1,15 @@
+{
+  "name": "@uniclipboard/mobile-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "doctor": "e2e doctor",
+    "test:ios": "E2E_PLATFORM=ios e2e run",
+    "test:android": "E2E_PLATFORM=android e2e run"
+  },
+  "devDependencies": {
+    "@e2e-dev/mobile": "0.12.8",
+    "e2e": "0.24.0"
+  }
+}

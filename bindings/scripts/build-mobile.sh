@@ -34,6 +34,7 @@ rm -rf "$IOS_OUT"
   "$BIN_DIR/gomobile" bind \
     -target=ios,iossimulator \
     -iosversion=16.0 \
+    -trimpath -ldflags='-s -w' \
     -o "$IOS_OUT" \
     github.com/uniclipboard/unic/bindings/mobile
 )
@@ -55,6 +56,7 @@ rm -f "$ANDROID_OUT"
   "$BIN_DIR/gomobile" bind \
     -target=android/arm64,android/amd64 \
     -androidapi=24 \
+    -trimpath -ldflags='-s -w' \
     -o "$ANDROID_OUT" \
     github.com/uniclipboard/unic/bindings/mobile
 )

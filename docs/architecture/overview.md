@@ -264,6 +264,10 @@ dispatch. The Android foreground service keeps the app-owned Engine active
 while the service runs. Clipboard observation still requires the foreground
 conditions reported by the host.
 
+The mobile binding build trims Go source paths and omits Go symbol tables and
+DWARF data from the iOS XCFramework and Android AAR. Native packaging retains
+its own debug symbol settings.
+
 Generated native directories belong under `app/expo/ios` and `app/expo/android`
 and are ignored. `app/ios` and `app/android` are not build inputs. `npm run verify`
 checks source boundaries, TypeScript, pinned navigation patches, Expo prebuild

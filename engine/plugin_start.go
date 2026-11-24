@@ -87,18 +87,9 @@ func (e *Engine) StartExternalPlugin(ctx context.Context, in PluginInstance, pol
 			_ = in.Plugin.Close(context.WithoutCancel(ctx))
 		}
 	}()
-	if err := in.Plugin.Init(ctx, &pluginHost{e: e, id: id}, in.Config); err != nil {
-		return newErr(CodeUnavailable, "plugin initialization failed")
-	}
-	var pb *pluginBackend
-	if backend {
-		sb := in.Plugin.(plugin.SyncBackend)
-		pb = &pluginBackend{e: e, id: id, kind: TransportKind(spec.TransportKind), sb: sb, spec: spec}
-		pb.preparing.Store(true)
-		in.Plugin.(plugin.ReceiverAware).SetReceiver(pb)
-	}
-	if err := in.Plugin.Start(ctx); err != nil {
-		return newErr(CodeUnavailable, "plugin startup failed")
+	pb, err := e.startExternalProcess(ctx, id, in.Plugin, in.Config)
+	if err != nil {
+		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return ctxErr(err)
@@ -132,4 +123,21 @@ func (e *Engine) StartExternalPlugin(ctx context.Context, in PluginInstance, pol
 	}
 	published = true
 	return nil
+}
+
+func (e *Engine) startExternalProcess(ctx context.Context, id PluginID, p plugin.Plugin, cfg plugin.Config) (*pluginBackend, *Error) {
+	if err := p.Init(ctx, &pluginHost{e: e, id: id}, cfg); err != nil {
+		return nil, newErr(CodeUnavailable, "plugin initialization failed")
+	}
+	var backend *pluginBackend
+	spec := p.Spec()
+	if spec.ExternalChannels {
+		backend = &pluginBackend{e: e, id: id, kind: TransportKind(spec.TransportKind), sb: p.(plugin.SyncBackend), spec: spec}
+		backend.preparing.Store(true)
+		p.(plugin.ReceiverAware).SetReceiver(backend)
+	}
+	if err := p.Start(ctx); err != nil {
+		return nil, newErr(CodeUnavailable, "plugin startup failed")
+	}
+	return backend, nil
 }

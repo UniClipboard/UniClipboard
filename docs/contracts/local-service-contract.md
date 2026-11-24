@@ -435,7 +435,13 @@ catalog. Both fields use the [plugin icon syntax](plugin-contract.md#display-ico
 The install request is limited to 8192 bytes. Unknown fields, trailing JSON and
 an empty repository are rejected. Boolean options default false. Installation
 uses the existing commit-locked GitHub installer. `enable=true` also updates
-the plugin configuration; a service restart activates the installed version.
+the plugin configuration. The install route with `replace=true` activates a
+verified update within the current service when the active, enabled instances
+and the replacement support the same live-start capability class. A successful
+live update returns the new running version and clears the restart requirement
+for the update. An invalid replacement returns an error and the service
+restores the previous installation and processes. Other installations that
+require activation use the service restart lifecycle.
 For an inactive installed Go Action-only plugin or external-channel backend
 with `live_start: true`, the explicit start route requests activation in the
 current service. It enables the instance, starts the verified process and

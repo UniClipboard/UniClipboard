@@ -104,6 +104,13 @@ func editLock(root string) (string, map[string]installedPlugin, func(), error) {
 }
 
 func Install(ctx context.Context, root string, o InstallOptions) (string, error) {
+	return InstallWithActivation(ctx, root, o, nil)
+}
+
+// InstallWithActivation lets the service start a verified replacement before
+// selecting it. The callback commits the pin at publication. On failure the
+// installer restores the exact prior lock entry while still holding the lock.
+func InstallWithActivation(ctx context.Context, root string, o InstallOptions, activate func(Script, func() error) error) (string, error) {
 	repo, err := openGitHub(o.Repository)
 	if err != nil {
 		return "", err
@@ -203,9 +210,37 @@ func Install(ctx context.Context, root string, o InstallOptions) (string, error)
 	} else if err := os.Rename(bundle, target); err != nil {
 		return "", err
 	}
-	lock[id] = pin
-	if err := writeLock(dir, lock); err != nil {
+	previous, hadPrevious := lock[id]
+	committed := false
+	commitPin := func() error {
+		lock[id] = pin
+		if err := writeLock(dir, lock); err != nil {
+			return err
+		}
+		committed = true
+		return nil
+	}
+	if activate == nil || !hadPrevious {
+		if err := commitPin(); err != nil {
+			return "", err
+		}
+		return id, nil
+	}
+	candidate, err := readInstalled(dir, id, pin)
+	if err != nil {
 		return "", err
+	}
+	if err := activate(candidate, commitPin); err != nil {
+		if committed {
+			lock[id] = previous
+			if restoreErr := writeLock(dir, lock); restoreErr != nil {
+				return "", errors.New("could not restore the previous plugin installation")
+			}
+		}
+		return "", err
+	}
+	if !committed {
+		return "", errors.New("plugin activation did not select the installation")
 	}
 	return id, nil
 }

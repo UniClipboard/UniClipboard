@@ -49,9 +49,31 @@ type transfer struct {
 	allowed  map[string]bool
 	pending  map[string]bool
 	returned bool
+	closed   bool
 }
 
 func (t *transfer) finishedLocked() bool { return t.returned && len(t.pending) == 0 }
+
+func (t *transfer) fail() {
+	t.mu.Lock()
+	t.closed = true
+	pending := t.pending
+	t.pending = nil
+	t.mu.Unlock()
+	for target := range pending {
+		t.h.Report(target, plugin.SyncFailed, ErrUnavailable)
+	}
+}
+
+func (p *Proxy) failPendingTransfers() {
+	p.bmu.Lock()
+	transfers := p.transfers
+	p.transfers = nil
+	p.bmu.Unlock()
+	for _, transfer := range transfers {
+		transfer.fail()
+	}
+}
 
 func (p *Proxy) setReceiver(r plugin.Receiver) {
 	p.bmu.Lock()
@@ -125,6 +147,7 @@ func (p *Proxy) submit(ctx context.Context, v plugin.SyncView, h plugin.SyncHost
 		}}, &res)
 	if err != nil {
 		p.dropTransfer(v.ID, t)
+		t.fail()
 		return false, err
 	}
 	s.conn.ReleaseRoot(id)
@@ -216,21 +239,21 @@ func (p *Proxy) register(t *transfer, in rpc.Register) error {
 		return err
 	}
 	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed {
+		return ErrUnavailable
+	}
 	for _, x := range in.Targets {
 		if !validID(x) || !t.allowed[x] {
-			t.mu.Unlock()
 			return rpc.NewError(rpc.CodePermission)
 		}
 	}
-	t.mu.Unlock()
 	if err := t.h.Register(in.Targets); err != nil {
 		return rpc.NewError(rpc.CodeInvalidArgument)
 	}
-	t.mu.Lock()
 	for _, x := range in.Targets {
 		t.pending[x] = true
 	}
-	t.mu.Unlock()
 	return nil
 }
 

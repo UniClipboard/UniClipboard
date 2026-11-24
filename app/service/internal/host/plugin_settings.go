@@ -124,18 +124,24 @@ func (n *Node) InstallPlugin(ctx context.Context, in api.PluginInstallRequest) (
 	if repo == "" {
 		return api.PluginInfo{}, &api.Error{Status: 400, Reason: "invalid_argument", Message: "repository URL is required"}
 	}
-	id, err := luascripts.Install(ctx, n.luaDir, luascripts.InstallOptions{
+	n.pluginMu.Lock()
+	defer n.pluginMu.Unlock()
+	id, err := luascripts.InstallWithActivation(ctx, n.luaDir, luascripts.InstallOptions{
 		Repository: repo,
 		Ref:        strings.TrimSpace(in.Ref),
 		Path:       strings.TrimSpace(in.Path),
 		Build:      in.Build,
 		Replace:    in.Replace,
+	}, func(candidate luascripts.Script, commit func() error) error {
+		return n.replaceInstalledPluginLocked(ctx, candidate, commit)
 	})
 	if err != nil {
+		var apiErr *api.Error
+		if errors.As(err, &apiErr) {
+			return api.PluginInfo{}, apiErr
+		}
 		return api.PluginInfo{}, &api.Error{Status: 400, Reason: "install_failed", Message: err.Error()}
 	}
-	n.pluginMu.Lock()
-	defer n.pluginMu.Unlock()
 	if in.Enable {
 		if err := n.setPluginEnabledLocked(id, true); err != nil {
 			return api.PluginInfo{}, err

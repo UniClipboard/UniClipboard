@@ -26,6 +26,9 @@ func (b *pluginBackend) ID() PluginID        { return b.id }
 func (b *pluginBackend) Kind() TransportKind { return b.kind }
 
 func (b *pluginBackend) Submit(ctx context.Context, v backendView, h backendHost) (bool, *Error) {
+	if b.preparing.Load() {
+		return false, newErr(CodeUnavailable, "the backend is changing versions")
+	}
 	if len(v.devices) > 0 {
 		return false, nil // a device selection addresses peer sessions only
 	}

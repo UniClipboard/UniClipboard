@@ -34,6 +34,15 @@ backend. A confirmed provider group is passed to `AddChannel`. An empty code
 explicitly resumes the group's existing provider pairing. The result omits
 the code and private group context. Existing channels preserve their settings.
 
+`ReplaceExternalPlugins` replaces active external Go Action-only plugins or
+external-channel object-store backends of one implementation. The replacement
+keeps the same capability class. The Engine closes each old process before
+starting a replacement in its private directory. It publishes the group only
+after all replacements start and the host commits the installation. A failure
+restarts the previous processes with their running configurations. The Engine
+preserves channel authorization for unchanged effective configuration and
+applies the existing revocation rule for changes in one transaction.
+
 ### 0004 扩展边界（待实现）
 
 [0004](../decisions/proposed/0004-clipboard-pipeline-lua.md) 已确定：本机持久历史和处理流水线均由 Engine 管理，业务实现放在 `engine/`；宿主只经 SDK 访问，不另建历史或流水线。[本机历史契约](history-contract.md) 已确定历史 API、筛选分页、稳定 ID、内容租约、更新/删除、容量与过期、接收列表映射、历史应用和事件恢复。该契约为本文的目标扩展，尚未实现；其明确声明的历史语义优先于本文既有实例内接收列表约定。临时资源启动清理不得删除有效历史；标签与过期不进 wire，不承诺重启后的待应用可靠投递。

@@ -78,6 +78,10 @@ The receiver admits the offer through `Engine.AdmitTransfer` before reading data
 
 The plugin manager installs public GitHub Go and Lua plugins from a pinned commit. It prefers a verified release asset and permits a source build only with `--build`. Use `unic plugin list` for installed and active versions, and `unic plugin settings` for revision-checked configuration through the local service. See the [installation contract](../contracts/plugin-contract.md#8-从-github-仓库安装).
 
+The marketplace uses the service installation API to activate eligible Go
+plugin updates in the current service process. The CLI install command updates
+the installation on disk for activation at service startup.
+
 ## On-demand service for CLI commands
 
 Each `unic` leaf command declares one requirement: `local`, `service`, `service+clipboard` or `offline`

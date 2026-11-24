@@ -161,6 +161,9 @@ func (e *Engine) PairChannel(ctx context.Context, req PairChannelRequest) (Chann
 	if b == nil {
 		return Channel{}, newErr(CodeNotFound, "no such external-channel backend")
 	}
+	if b.preparing.Load() {
+		return Channel{}, newErr(CodeUnavailable, "the backend is changing versions")
+	}
 	pairer, ok := b.sb.(plugin.ChannelPairer)
 	if !ok {
 		return Channel{}, newErr(CodeUnsupported, "this backend does not support channel pairing")
@@ -184,6 +187,11 @@ func (e *Engine) PairChannel(ctx context.Context, req PairChannelRequest) (Chann
 			}
 		}
 		return Channel{}, newErr(CodeUnavailable, "channel pairing could not complete")
+	}
+	e.pluginStartMu.Lock()
+	defer e.pluginStartMu.Unlock()
+	if b.preparing.Load() {
+		return Channel{}, newErr(CodeUnavailable, "the backend changed during pairing")
 	}
 	return e.AddChannel(ctx, AddChannelRequest{BackendID: req.BackendID, RemoteContext: remote, ReportedName: name})
 }

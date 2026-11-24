@@ -422,12 +422,24 @@ func (e *Engine) registerActions(spec plugin.Spec, a plugin.Actor) {
 }
 
 func (e *Engine) bindBackendInstance(id, implementation string, cfg plugin.Config) *Error {
+	binding, err := backendInstanceBinding(id, implementation, cfg)
+	if err != nil {
+		return err
+	}
+	return e.bindBackendInstances([]store.BackendInstance{binding})
+}
+
+func backendInstanceBinding(id, implementation string, cfg plugin.Config) (store.BackendInstance, *Error) {
 	config, err := json.Marshal(cfg)
 	if err != nil {
-		return invalidPlugin(id, "configuration must contain JSON values")
+		return store.BackendInstance{}, invalidPlugin(id, "configuration must contain JSON values")
 	}
 	digest := sha256.Sum256(config)
-	if err := e.st.BindBackendInstance(id, implementation, hex.EncodeToString(digest[:])); err != nil {
+	return store.BackendInstance{ID: id, Implementation: implementation, ConfigHash: hex.EncodeToString(digest[:])}, nil
+}
+
+func (e *Engine) bindBackendInstances(bindings []store.BackendInstance) *Error {
+	if err := e.st.BindBackendInstances(bindings); err != nil {
 		if errors.Is(err, store.ErrDeviceConflict) {
 			return newErr(CodeConflict, "backend implementation changed; create a new instance")
 		}
@@ -448,6 +460,8 @@ func (e *Engine) closePlugins(ctx context.Context) {
 // "unavailable") following repeated crashes. In-process plugins and plugins
 // that are running are not restartable.
 func (e *Engine) RestartPlugin(ctx context.Context, id PluginID) error {
+	e.pluginStartMu.Lock()
+	defer e.pluginStartMu.Unlock()
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return gerr

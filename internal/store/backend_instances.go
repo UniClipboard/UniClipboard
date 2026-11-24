@@ -2,15 +2,34 @@ package store
 
 import "database/sql"
 
-// BindBackendInstance fixes program ownership and detects private configuration
-// changes before the new backend process starts. Revocation and its new config
-// identity commit together. Device trust and other instances remain intact.
-func (s *Store) BindBackendInstance(id, implementation, configHash string) error {
+type BackendInstance struct {
+	ID             string
+	Implementation string
+	ConfigHash     string
+}
+
+// BindBackendInstances commits the configuration and authorization changes
+// for every instance of a live replacement together.
+func (s *Store) BindBackendInstances(bindings []BackendInstance) error {
+	if len(bindings) == 0 {
+		return nil
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	for _, binding := range bindings {
+		if err := bindBackendInstance(tx, binding); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func bindBackendInstance(tx *sql.Tx, binding BackendInstance) error {
+	id, implementation, configHash := binding.ID, binding.Implementation, binding.ConfigHash
 	read := func(key string) (string, error) {
 		var value string
 		err := tx.QueryRow("SELECT v FROM meta WHERE k = ?", key).Scan(&value)
@@ -44,5 +63,5 @@ func (s *Store) BindBackendInstance(id, implementation, configHash string) error
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }

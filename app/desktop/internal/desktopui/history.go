@@ -671,19 +671,23 @@ func (d *viewState) historyCommands(c *ui.Context, k desktopkit.Kit) {
 		Label:       d.tr("切换收藏"),
 		Active:      v != nil && v.pinned,
 		ActiveColor: k.Color("status-orange-text"),
-		Disabled:    v == nil || d.live != nil && d.live.busy,
+		Disabled:    v == nil || d.live != nil && d.live.showBusy(),
 	}).Clicked() {
 		d.togglePin()
 	}
-	if d.live != nil && v != nil && !d.live.busy {
+	if d.live != nil && v != nil {
 		if actions := d.historyActionsFor(v.id, plugin.ActionPlacementHistoryToolbar, ""); len(actions) > 0 {
+			if d.live.busy {
+				d.historyActionsMenu = false
+			}
 			_, key := k.ToolbarIconMenu(c.Key("history-actions"), desktopkit.ToolbarIconMenuProps{
-				Label: d.tr("动作"),
-				Open:  &d.historyActionsMenu,
-				Icon:  desktopkit.IconEdit,
-				Items: actions,
+				Label:    d.tr("动作"),
+				Open:     &d.historyActionsMenu,
+				Icon:     desktopkit.IconEdit,
+				Disabled: d.live.showBusy(),
+				Items:    actions,
 			})
-			if key != "" {
+			if key != "" && !d.live.busy {
 				d.runHistoryAction(v.id, key)
 			}
 		} else {
@@ -779,9 +783,9 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 					d.list.Select(entryItem.id)
 					d.useEntry()
 				},
-			}
-			if d.live == nil || !d.live.busy {
-				card.OnPin = func() { d.toggleFavorites([]string{entryItem.id}) }
+				OnPin: func() {
+					d.toggleFavorites([]string{entryItem.id})
+				},
 			}
 			if v.kind == desktopkit.KindImage {
 				if img := d.entryImage(c, entryItem); img != nil {
@@ -1245,12 +1249,8 @@ func (d *viewState) detail(c *ui.Context, k desktopkit.Kit) {
 			})
 		})
 	})
-	status := ""
-	if d.notice != "" {
-		status = d.tr(d.notice)
-	}
 	k.ActionBar(c, desktopkit.ActionBarProps{
-		Status:   status,
+		Status:   d.actionBarStatus(),
 		Floating: true,
 	}, func() {
 		if k.ActionDockPrimary(c.Key("copy"), d.tr("复制"), desktopkit.IconCopy, "↩").Clicked() {
@@ -1627,7 +1627,7 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 					}
 				})
 
-				busy := d.live != nil && d.live.busy
+				busy := d.live != nil && d.live.showBusy()
 				pinBtn := ui.ButtonBase(c.Key("drawer-pin")).Size(28, 28).Radius(7).Center().
 					Label(d.tr("切换收藏")).Tooltip(d.tr("切换收藏")).Disabled(busy)
 				pinCol := k.Color("text-secondary")
@@ -1690,12 +1690,8 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 		})
 
 		// Anchored floating pill dock (never jumps during card switches).
-		status := ""
-		if d.notice != "" {
-			status = d.tr(d.notice)
-		}
 		k.ActionBar(c.Key("drawer-dock"), desktopkit.ActionBarProps{
-			Status:   status,
+			Status:   d.actionBarStatus(),
 			Floating: true,
 		}, func() {
 			if k.ActionDockPrimary(c.Key("copy"), d.tr("复制"), desktopkit.IconCopy, "↩").Clicked() {

@@ -87,20 +87,21 @@ func (d *viewState) detailTags(c *ui.Context, k desktopkit.Kit, v *entry) {
 		d.tagEditor = tagEditorState{}
 	}
 	busy := d.live != nil && d.live.busy
+	showBusy := d.live != nil && d.live.showBusy()
 	ui.Row(c).Gap(6).Wrap().AlignItems(ui.Center).Children(func() {
 		for _, id := range v.tags {
 			props := desktopkit.TagProps{Color: d.tagColor(id)}
-			if tag := d.tagByID(id); !busy && tag != nil && !tag.builtin {
+			if tag := d.tagByID(id); tag != nil && !tag.builtin {
 				props.RemoveLabel = fmt.Sprintf(d.tr("移除 #%s"), d.tagLabel(id))
 			}
-			if k.Tag(c.Key("tag:"+id), "#"+d.tagLabel(id), props).Removed {
+			if k.Tag(c.Key("tag:"+id), "#"+d.tagLabel(id), props).Removed && !busy {
 				tags := slices.Clone(v.tags)
 				tags = slices.DeleteFunc(tags, func(t string) bool { return t == id })
 				d.setEntryTags(v.id, tags)
 			}
 		}
 		if !d.tagEditor.open {
-			if k.Button(c.Key("add"), d.tr("添加标签"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconAdd, Size: desktopkit.SizeSmall, Disabled: busy}).Clicked() {
+			if k.Button(c.Key("add"), d.tr("添加标签"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconAdd, Size: desktopkit.SizeSmall, Disabled: showBusy}).Clicked() {
 				d.openTagEditor()
 			}
 			return

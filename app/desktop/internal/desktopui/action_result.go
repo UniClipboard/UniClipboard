@@ -181,12 +181,12 @@ func (d *viewState) copyHistoryID(id string, onApplied func()) {
 	}
 	client := l.client
 	request := "desktop-" + newRequestID()
-	l.busy = true
+	l.startBusy("")
 	l.message = ""
 	if !l.enqueue(func(ctx context.Context) func() {
 		_, err := client.RestoreHistory(ctx, id, request)
 		return func() {
-			l.busy = false
+			l.stopBusy()
 			l.nextRefresh = time.Time{}
 			if err != nil {
 				l.message = liveErrorMessage(err)
@@ -200,7 +200,7 @@ func (d *viewState) copyHistoryID(id string, onApplied func()) {
 			}
 		}
 	}) {
-		l.busy = false
+		l.stopBusy()
 	}
 }
 

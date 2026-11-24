@@ -25,23 +25,22 @@ func send(id objc.ID, sel string, args ...any) objc.ID {
 func nsString(s string) objc.ID {
 	return send(objc.ID(objc.GetClass("NSString")), "stringWithUTF8String:", s)
 }
+
+const maxStringBytes = 64 << 10
+
 func goString(s objc.ID) string {
 	if s == 0 {
+		return ""
+	}
+	n := objc.Send[uint64](s, objc.RegisterName("lengthOfBytesUsingEncoding:"), uint64(4))
+	if n == 0 || n > maxStringBytes {
 		return ""
 	}
 	p := objc.Send[*byte](s, objc.RegisterName("UTF8String"))
 	if p == nil {
 		return ""
 	}
-	b := make([]byte, 0, 64)
-	for i := 0; i < 1024; i++ {
-		c := *(*byte)(unsafe.Add(unsafe.Pointer(p), i))
-		if c == 0 {
-			return string(b)
-		}
-		b = append(b, c)
-	}
-	return ""
+	return string(unsafe.Slice(p, int(n)))
 }
 func pasteboard() objc.ID { return send(objc.ID(objc.GetClass("NSPasteboard")), "generalPasteboard") }
 func Version() uint64 {

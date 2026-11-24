@@ -173,6 +173,14 @@ func TestMacOSDaemonClipboard(t *testing.T) {
 				page, err = client.ListHistory(ctx, "", "")
 				return err == nil && len(page.Items) == 2 && page.Items[0].Kind == "files"
 			})
+			refPath := filepath.Join(dir, "finder-file.txt")
+			need(t, os.WriteFile(refPath, []byte("finder"), 0600))
+			need(t, board.WriteFileReferencesForE2E(refPath))
+			until(t, "Finder file reference capture", func() bool {
+				page, err = client.ListHistory(ctx, "", "")
+				return err == nil && len(page.Items) == 3 && page.Items[0].Kind == "files" &&
+					len(page.Items[0].Parts) == 1 && page.Items[0].Parts[0].Kind == "file" && page.Items[0].Parts[0].Size == 6
+			})
 			out, err := client.ApplyDesktopClipboard(ctx, first, false)
 			need(t, err)
 			if out.Failure != "" || out.Mark == "" {
@@ -203,7 +211,7 @@ func TestMacOSDaemonClipboard(t *testing.T) {
 			}
 			until(t, "native capture after startup or handoff, without write-back echo", func() bool {
 				page, err = client.ListHistory(ctx, "", "")
-				return err == nil && len(page.Items) == 3
+				return err == nil && len(page.Items) == 4
 			})
 			checks = append(checks, tc.name+": stale receipt rejected and capture continues without echo")
 		})

@@ -103,6 +103,14 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 ## 约定
 
+### Host and plugin responsibilities
+
+- The host owns operating-system clipboard access, local content and history, authorization, sync policy, resource limits, and plugin lifecycle. Keep shared content preparation in the host. Expose it through the existing plugin contract where possible.
+- Each plugin owns its provider protocol, provider credentials and private state, supported content formats, and provider-specific conversions and errors. Keep provider SDKs and provider-specific behavior inside the plugin.
+- Use plugin IDs for identity, configuration lookup, and routing. Select behavior in shared host and Engine flows through declared capabilities. When the existing contract cannot express the required shared behavior, propose a reusable capability with defined defaults and limits. Follow the public-contract change process before extending it.
+- Perform optional content work only when an enabled plugin declares the capability and an eligible operation needs it. A missing or disabled optional plugin must leave ordinary clipboard capture, history, and other backends free of that plugin's extra file reads, decoding, memory charges, and network calls.
+- Verify the feature end to end with the plugin enabled. Also verify ordinary host behavior with the plugin absent and with it installed but disabled.
+
 - When an end-to-end test fails, keep the first failure artifact and set a time or run limit before retrying. If the failure recurs, compare the runs and investigate the cause. If all retries pass, record the original failure, the retry results, and the unresolved cause. Hold delivery when the failure affects the behavior under change or its relevance is unclear. If evidence shows the failure is unrelated, track it separately and continue the task.
 
 - Follow a defect across layers until you identify its cause. If the implementation violates an existing public contract, fix it and verify the behavior end to end. If the fix requires changing a public contract, present the reproduction evidence, the affected contract clause, and the proposed behavior. Wait for the user's decision before changing the contract or implementing the new behavior. This applies to all public contracts, including sync behavior, the Engine public API, and plugin protocols.

@@ -30,6 +30,8 @@ type fixture struct {
 	File     string          `json:"file"`
 	Image    string          `json:"image"`
 	Folder   string          `json:"folder"`
+	Text     string          `json:"text"`
+	URL      string          `json:"url"`
 }
 
 type receipt struct {
@@ -123,6 +125,8 @@ func writeProfile(dir string) {
 		Settings: saved.Value,
 		File:     commit(m, "m2-file", must(m.ImportBytes("text/plain", "report.txt", []byte(payload)))),
 		Image:    commit(m, "m2-image", must(m.ImportBytes(engine.MimePNG, "", pngFixture()))),
+		Text:     commit(m, "m2-text", must(m.ImportText("Alpine meadow ribbon", "", ""))),
+		URL:      commit(m, "m2-url", must(m.ImportText("https://example.com/?unic-m02=simulator", "", ""))),
 	}
 	check(m.Close(nil))
 	f.Folder = seedDirectory(dir)

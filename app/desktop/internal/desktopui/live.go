@@ -118,7 +118,8 @@ type liveState struct {
 	connected, loaded, loading, busy, detailBusy bool
 	// loading serializes all history reads; foregroundLoading controls visible loading.
 	foregroundLoading                                                                        bool
-	loadingSince, detailLoadingSince                                                         time.Time
+	loadingSince, detailLoadingSince, busySince                                              time.Time
+	busyNotice                                                                               string
 	message, readError, cursor, key, displayedKey, displayedScope, lastResultKind, detailKey string
 	nextRefresh                                                                              time.Time
 	pageRetry                                                                                time.Time
@@ -353,6 +354,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 	selected := d.selected
 	prevSelected := d.selected
 	selectedItem := l.items[selected]
+	prevSelectedItem := selectedItem
 	var selectedEntry *entry
 	if v := d.current(); v != nil {
 		copy := *v
@@ -441,6 +443,11 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 						selectedItem = current
 						if current.Revision != selectedRevision {
 							v := projectHistory(current)
+							if !historyContentChanged(prevSelectedItem, current) {
+								v.title = selectedEntry.title
+								v.preview = selectedEntry.preview
+								v.highlights = selectedEntry.highlights
+							}
 							selectedEntry = &v
 						}
 					}
@@ -517,7 +524,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 							fresh[hit.Item.ID] = hit.Item
 						}
 						for id, old := range l.items {
-							if it, ok := fresh[id]; (!ok && id != selected) || (ok && old.Revision != it.Revision) {
+							if it, ok := fresh[id]; (!ok && id != selected) || (ok && (historyContentChanged(old, it) || (old.Revision != it.Revision && l.details[id].contentError != ""))) {
 								l.dropDetail(d, id)
 							}
 						}
@@ -548,8 +555,10 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 						}
 					}
 					if selectedEntry != nil {
-						if selectedItem.Revision != selectedRevision {
+						if historyContentChanged(prevSelectedItem, selectedItem) || (selectedItem.Revision != selectedRevision && l.details[selected].contentError != "") {
 							l.dropDetail(d, selected)
+						} else if cached, ok := l.details[selected]; ok {
+							copyDetail(selectedEntry, cached)
 						}
 						l.retained = selectedEntry
 						l.items[selected] = selectedItem
@@ -990,6 +999,42 @@ func shortText(s string, n int) string {
 	return s
 }
 
+func historyContentChanged(old, next api.HistoryItem) bool {
+	return old.Kind != next.Kind || old.TotalBytes != next.TotalBytes || !slices.Equal(old.Parts, next.Parts)
+}
+
+func (l *liveState) startBusy(notice string) {
+	l.busy = true
+	l.busySince = time.Now()
+	l.busyNotice = notice
+}
+
+func (l *liveState) stopBusy() {
+	l.busy = false
+	l.busySince = time.Time{}
+	l.busyNotice = ""
+}
+
+func (l *liveState) showBusy() bool {
+	if !l.busy {
+		return false
+	}
+	if l.busySince.IsZero() {
+		return true
+	}
+	return time.Since(l.busySince) >= foregroundLoadingIndicatorDelay
+}
+
+func (d *viewState) actionBarStatus() string {
+	if d.live != nil && d.live.showBusy() && d.live.busyNotice != "" {
+		return d.tr(d.live.busyNotice)
+	}
+	if d.notice != "" {
+		return d.tr(d.notice)
+	}
+	return ""
+}
+
 // mutate queues one user intent. Writes are never automatically replayed.
 func (d *viewState) mutate(work func(context.Context) error, success string) {
 	d.mutateWithin(work, success, 15*time.Second)
@@ -1001,13 +1046,12 @@ func (d *viewState) mutateWithin(work func(context.Context) error, success strin
 	}
 	selected := d.selected
 	l.invalidateSearch()
-	l.busy = true
+	l.startBusy("正在处理…")
 	l.message = ""
-	d.notice = "正在处理…"
 	if !l.enqueueWithin(func(ctx context.Context) func() {
 		err := work(ctx)
 		return func() {
-			l.busy = false
+			l.stopBusy()
 			l.nextRefresh = time.Time{}
 			if err != nil {
 				l.message = liveErrorMessage(err)
@@ -1021,7 +1065,7 @@ func (d *viewState) mutateWithin(work func(context.Context) error, success strin
 			}
 		}
 	}, budget) {
-		l.busy = false
+		l.stopBusy()
 	}
 }
 func (d *viewState) useEntry() {
@@ -1398,9 +1442,8 @@ func (d *viewState) runHistoryAction(id, key string) {
 	}
 
 	l.invalidateSearch()
-	l.busy = true
+	l.startBusy("正在处理…")
 	l.message = ""
-	d.notice = "正在处理…"
 	d.actionToast = actionToastState{
 		visible: true,
 		running: true,
@@ -1445,7 +1488,7 @@ func (d *viewState) runHistoryAction(id, key string) {
 			cancelledByUser := actionCtx.Err() != nil && l.ctx.Err() == nil
 			actionCancel()
 			l.actionCancel = nil
-			l.busy = false
+			l.stopBusy()
 			l.nextRefresh = time.Time{}
 
 			if err != nil {
@@ -1554,7 +1597,7 @@ func (d *viewState) runHistoryAction(id, key string) {
 	if !queued {
 		actionCancel()
 		l.actionCancel = nil
-		l.busy = false
+		l.stopBusy()
 		d.actionToast = actionToastState{}
 	}
 }

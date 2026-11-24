@@ -119,7 +119,7 @@
 
 ### M2 · P1 真实设置、详情动作、媒体文件与性能治理
 
-Implementation, process acceptance and simulator acceptance are recorded in the [M2 receipt](0031-mobile-m2-receipt.md). Physical-device acceptance remains pending.
+Implementation, process acceptance, simulator acceptance and iPhone results are recorded in the [M2 receipt](0031-mobile-m2-receipt.md). iPhone document import and Android physical-device acceptance remain pending.
 
 目标：彻底移除 live 模式下的壳占位与 `showUnavailable`，完善媒体/文件处理与缓存生命周期，使日常核心操作无断层。
 

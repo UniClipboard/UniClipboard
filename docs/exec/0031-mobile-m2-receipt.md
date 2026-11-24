@@ -93,5 +93,34 @@ after relaunch. Production app source stayed at the same revision.
 
 The simulator evidence includes fixture generation and staging instructions,
 Maestro flows, JUnit reports, original failures, screenshots and byte-level
-readback. Physical-device acceptance and iOS hardware camera capture remain
-pending.
+readback.
+
+## iOS physical-device acceptance
+
+The Release build from workspace commit
+`a1fb7c683cce68cc82bf52272b2affbfd883f197` used the M2 application source at
+`b1e52bc6811501bb7ff1aac4047b4966fe3ca763`. XCUITest ran against the installed
+development-signed `app.uniclipboard.shell` on an iPhone 16 Pro with iOS 27.3
+(24C5037i). The executable SHA-256 was
+`5e8e7780e21e863bc840c6242f72e52aa2e2719675a89d2ff73b38f7c4329e98`.
+
+| Scenario | iPhone evidence |
+| --- | --- |
+| Hardware camera capture | The shutter and Use Photo controls completed the capture. The app history contained a new 10,032,121-byte PNG from explicit input. |
+| Settings and storage | The edited device name persisted after process termination and relaunch. The storage page exposed file-cache usage and preview removal. |
+| History details and word copy | The controlled file and folder showed their metadata and contents. Selecting a word and copying it triggered the native copy acknowledgement. |
+| Share and browser handoff | The system share sheet showed the fixture document. An HTTPS action opened Safari. |
+| Photos save and import | The system photo picker selected the saved 96 × 96 fixture. The original and imported PNG records matched at four sampled RGB positions. |
+| Local document export | The system picker saved the uniquely named fixture to On My iPhone. A separate profile found the 27-byte file in the Files picker. |
+| Document import | Two selection attempts from the separate profile left the picker active and created no file history record. The cause and byte-level round trip remain unverified on iPhone. |
+
+The first camera attempt used an overly narrow menu selector. The first
+photo-save attempt lacked a completion signal. The later runs used a
+menu selector that matched the device and a four-color fixture with history
+readback. The initial document-import selector hit an existing history card
+and reported an invalid pass. The isolated retries found the exported file
+in the picker, but neither produced a history record. The standalone Files
+readback lost accessibility access to the main window after selecting the
+file. The evidence package includes these results, the test source, the
+reproduction steps and selected readback metadata.
+Android physical-device acceptance remains pending.

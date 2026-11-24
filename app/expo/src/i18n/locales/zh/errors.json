@@ -51,5 +51,21 @@
   "log": {
     "noFilesToExport": "没有可导出的日志文件",
     "storagePermissionDenied": "未授予存储权限"
+  },
+  "engine": {
+    "invalid_argument": "请检查配对码或票据。",
+    "expired": "配对码或票据已过期。",
+    "not_found": "找不到设备。",
+    "timeout": "连接超时。",
+    "rate_limited": "配对请求暂时受限。",
+    "identity_mismatch": "设备身份不匹配。",
+    "permission_denied": "权限被拒绝。",
+    "unavailable": "设备或网络不可用。",
+    "protocol_mismatch": "两台设备的协议版本不兼容。",
+    "conflict": "数据已变更。请核对后重试。",
+    "cancelled": "操作已取消。",
+    "internal": "无法完成操作。",
+    "invalid": "请检查配对码或票据。",
+    "resource_expired": "配对码或票据已过期。"
   }
 }

@@ -51,5 +51,21 @@
   "log": {
     "noFilesToExport": "Nenhum arquivo de log para exportar",
     "storagePermissionDenied": "Permissão de armazenamento não concedida"
+  },
+  "engine": {
+    "invalid_argument": "Confira o código ou convite de pareamento.",
+    "expired": "O código ou convite expirou.",
+    "not_found": "Não foi possível encontrar o dispositivo.",
+    "timeout": "O tempo limite da conexão foi atingido.",
+    "rate_limited": "As solicitações de pareamento estão temporariamente limitadas.",
+    "identity_mismatch": "A identidade do dispositivo não corresponde.",
+    "permission_denied": "A permissão foi negada.",
+    "unavailable": "O dispositivo ou a rede está indisponível.",
+    "protocol_mismatch": "Os dispositivos usam versões incompatíveis do protocolo.",
+    "conflict": "Os dados mudaram. Confira e tente novamente.",
+    "cancelled": "A operação foi cancelada.",
+    "internal": "Não foi possível concluir a operação.",
+    "invalid": "Confira o código ou convite de pareamento.",
+    "resource_expired": "O código ou convite expirou."
   }
 }

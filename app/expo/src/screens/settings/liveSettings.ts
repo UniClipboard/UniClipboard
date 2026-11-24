@@ -13,6 +13,8 @@ import type { ShellGroup, ShellRow } from "@/shell/settings";
 import { useMessageStore } from "@/stores/messageStore";
 import { formatFileSize } from "@/utils";
 
+import { supportsBackgroundSync, useBackgroundSyncGroups } from "./backgroundSync";
+
 type SettingsMutation = (value: EngineSettings) => EngineSettings;
 export type SettingEdit = {
   id: string;
@@ -38,6 +40,7 @@ export function useLiveSettingGroups(
   const { themeMode, setThemeMode } = useTheme();
   const { preference, setLanguage } = useAppLanguage();
   const settings = state.snapshot?.settings.value;
+  const background = useBackgroundSyncGroups(page === "background");
 
   useFocusEffect(useCallback(() => {
     const engine = useEngineStore.getState();
@@ -84,6 +87,7 @@ export function useLiveSettingGroups(
       nav("history"),
       nav("storage"),
       nav("network"),
+      ...(supportsBackgroundSync ? [nav("background")] : []),
       nav("clipboard", t("settings:ios.extensions.clipboardAccess")),
     ] },
     { title: t("settings:general.sectionTitle"), rows: [
@@ -114,6 +118,7 @@ export function useLiveSettingGroups(
       nav("about"),
     ] },
   ];
+  if (page === "background") return background;
   if (!settings) {
     const message = state.lastError?.message ?? t("settings:live.loading");
     return [{ rows: [{ id: "engine-status", title: message }] }];

@@ -14,7 +14,7 @@
     "type-check": "tsc --noEmit",
     "build:engine": "../../bindings/scripts/build-mobile.sh",
     "verify": "node scripts/verify-shell.mjs",
-    "postinstall": "node scripts/patch-react-native-screens-search-tab.cjs && node scripts/patch-react-native-screens-tab-bar-animation.cjs"
+    "postinstall": "node scripts/patch-apple-targets.cjs && node scripts/patch-react-native-screens-search-tab.cjs && node scripts/patch-react-native-screens-tab-bar-animation.cjs"
   },
   "dependencies": {
     "expo": "57.0.22",
@@ -26,6 +26,7 @@
     "@react-navigation/bottom-tabs": "7.19.2",
     "expo-application": "57.0.3",
     "expo-blur": "57.0.3",
+    "expo-camera": "57.0.6",
     "expo-font": "57.0.4",
     "expo-glass-effect": "57.0.3",
     "expo-haptics": "57.0.3",
@@ -48,6 +49,7 @@
     "@shopify/flash-list": "2.0.2"
   },
   "devDependencies": {
+    "@bacons/apple-targets": "4.0.7",
     "typescript": "6.0.3",
     "@types/react": "19.2.14",
     "babel-preset-expo": "57.0.11",

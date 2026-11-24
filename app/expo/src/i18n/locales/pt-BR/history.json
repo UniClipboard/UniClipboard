@@ -122,5 +122,15 @@
     "folderLoading": "Carregando conteúdo da pasta…",
     "folderEmpty": "A pasta está vazia.",
     "folderTruncated": "Mostrando os primeiros 200 itens."
+  },
+  "tags": {
+    "pin": "Fixar",
+    "unpin": "Desafixar",
+    "edit": "Editar etiquetas",
+    "name": "Nome da etiqueta",
+    "add": "Adicionar etiqueta",
+    "remove": "Remover “{{tag}}”",
+    "filter": "Etiquetas",
+    "all": "Todas as etiquetas"
   }
 }

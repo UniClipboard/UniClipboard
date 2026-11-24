@@ -247,6 +247,21 @@ collections. Image previews use a private cache limited to 120 files and
 100 MiB. Reconciliation removes previews for deleted or expired history.
 See the [mobile settings and media receipt](../exec/0031-mobile-m2-receipt.md).
 
+The device screen reads pairing operations on Engine operation events,
+resync, and foreground reconciliation. Both peers compare the shared
+fingerprint before approval. The local device row displays the Engine
+device ID. The ticket view clears on close, expiry and backgrounding.
+History tags use revision-checked updates and Engine tag queries.
+
+Android SAF copies the selected v1 backup to private cache before passing
+it to the existing migration session. Android share intents and the iOS
+Share Extension stage items for confirmation in the main application.
+The main application owns the Engine. It uses the same processing path
+for local saves and device-targeted sends. Local saves request no backend
+dispatch. The Android foreground service keeps the app-owned Engine active
+while the service runs. Clipboard observation still requires the foreground
+conditions reported by the host.
+
 Generated native directories belong under `app/expo/ios` and `app/expo/android`
 and are ignored. `app/ios` and `app/android` are not build inputs. `npm run verify`
 checks source boundaries, TypeScript, pinned navigation patches, Expo prebuild

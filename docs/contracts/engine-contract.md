@@ -263,6 +263,10 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 ### 6.3 Device selection and temporary transfer
 
 - `CommitRequest.DeviceIDs` limits a send to named paired devices. `nil` selects all devices. Empty, unknown, revoked or repeated selections return `invalid_argument`. Selection is part of request idempotency; changing it under the same RequestID returns `conflict`. Only peer-session backends dispatch selected sends. Offline targets retain the `no_targets` disposition.
+- `CommitRequest.LocalOnly` skips dispatch for this request and returns
+  `not_requested` without a send operation. Local processing and history
+  policies apply. The request must omit both target selections. Changing
+  `LocalOnly` under the same request ID returns `conflict`.
 - `AdmitTransfer(ctx, TransferOffer) (*TransferInbox, error)` admits content from a peer without a unic device identity. Admission precedes payload reads. Engine must be running; sync, backend policy, duplicate detection and storage admission apply. The caller writes received files beneath the private `TransferInbox.Dir`, then calls exactly one of `Complete(TransferContent)` or `Abort()`. Completion enters the received pipeline, including processors, deduplication, quota, history and the received list. Origin is `external`, PluginID is `unic.transfer`, PeerID is empty and ChannelID is `transfer`. This peer creates no device, stored channel or trust relationship. Public signatures expose neither tailcat nor internal types. The host owns the transfer protocol. See the [headless architecture](../architecture/headless.md#command-surface-and-temporary-transfer).
 
 ## 7. 资源租约与接收列表

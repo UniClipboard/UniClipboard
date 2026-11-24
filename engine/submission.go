@@ -118,6 +118,9 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 		return nil, newErr(CodeInvalidArgument, "RequestID is required")
 	}
 	key := "submit\x00" + string(req.LeaseID) + "\x00" + string(req.Origin) + backendKey(req.BackendIDs) + deviceKey(req.DeviceIDs)
+	if req.localOnly {
+		key += "\x00local"
+	}
 	if req.action != nil {
 		key = "action\x00" + req.action.act.key() + "\x00" + string(req.action.source)
 	}
@@ -336,6 +339,9 @@ func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (Submissi
 	if req.WritebackGuard != nil {
 		return SubmissionResult{}, newErr(CodeUnsupported, "automatic writeback is not implemented")
 	}
+	if req.LocalOnly && (req.BackendIDs != nil || req.DeviceIDs != nil) {
+		return SubmissionResult{}, newErr(CodeInvalidArgument, "local-only commit cannot select sync targets")
+	}
 	ids, ierr := e.normalizeBackendIDs(req.BackendIDs)
 	if ierr != nil {
 		return SubmissionResult{}, ierr
@@ -345,7 +351,7 @@ func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (Submissi
 		return SubmissionResult{}, derr
 	}
 	e.mu.Lock()
-	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, LeaseID: req.LeaseID, Origin: OriginExplicit, BackendIDs: ids, DeviceIDs: devs})
+	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, LeaseID: req.LeaseID, Origin: OriginExplicit, BackendIDs: ids, DeviceIDs: devs, localOnly: req.LocalOnly})
 	e.mu.Unlock()
 	if err != nil {
 		return SubmissionResult{}, err

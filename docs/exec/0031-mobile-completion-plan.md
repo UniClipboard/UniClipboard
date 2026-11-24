@@ -1,6 +1,6 @@
 # 0031 · 移动端完整可用与生产交付执行计划
 
-- Status: M1 implementation and build validation were recorded. M2 implementation and verification are tracked in the [M2 receipt](0031-mobile-m2-receipt.md). M3–M5 remain pending.
+- Status: M1 implementation and build validation were recorded. M2 implementation and verification are tracked in the [M2 receipt](0031-mobile-m2-receipt.md). M3 implementation and acceptance are tracked in the [M3 receipt](0031-mobile-m3-receipt.md). M4–M5 remain pending.
 - 日期：2026-11-24
 - 基线快照：分支 `audit-mobile-engine-gaps`，HEAD `b2e8cd60393b5f02ce486822d6c2e34f3375e2da`
 - 前序实现回执：[0031-mobile-engine-integration.md](0031-mobile-engine-integration.md)
@@ -168,14 +168,16 @@ Implementation, process acceptance and simulator acceptance are recorded in the 
 
 ### M3 · P1 配对体验、v1 迁移闭环、系统入口与四语收口
 
+The [M3 receipt](0031-mobile-m3-receipt.md) records implementation, contract changes and remaining acceptance.
+
 目标：补齐移动端高频交互闭环（扫码配对、系统分享、Android 真实 Keystore/SAF 迁移、多语言一致性）。
 
 #### M3.1 配对与设备管理体验升级（覆盖 G09）
 
-- [ ] **二维码配对与扫码**：
+- [x] **二维码配对与扫码**：
   - 导出配对票据弹层支持渲染二维码 + 一键复制（关闭弹层或超时后立即从内存与屏幕清除敏感票据）。
   - 加入设备页新增扫码入口（申请相机权限，识别票据或 6 位配对码后自动提交）。
-- [ ] **长时配对操作状态追踪**：
+- [x] **长时配对操作状态追踪**：
   - 取代固定 3 秒轮询：通过 `EventOperations` + `GetOperation` 实时展示 `resolving` → `connecting` → `handshaking` → `waiting_approval` / `succeeded` / `failed`，支持用户主动取消等待并展示明确错误原因。
 - [ ] **设备、候选与标签 UI 补齐**：
   - 设备详情底部表单补齐「重命名设备」（`renameDevice`）；候选设备列表补齐「忽略」（`ignoreCandidate`）。
@@ -186,24 +188,24 @@ Implementation, process acceptance and simulator acceptance are recorded in the 
 
 - [ ] **Android Keystore + `BiometricPrompt` 凭据提供器**：
   - 调研并核对 v1 Android 实际 Keystore alias / 加密封装格式；在 `UnicEngineModule.kt` 用真实 `BiometricSecretProvider` 替换 `NoStoredSecretProvider`（支持生物识别与设备锁屏凭据回落，拒绝或未找到密钥时返回 `ErrUnlock` 并在当前流程内切至旧口令输入）。
-- [ ] **Android SAF 目录兼容（Android 11+ Scoped Storage）**：
+- [x] **Android SAF 目录兼容（Android 11+ Scoped Storage）**：
   - 改造 `selectSetupCustomSource`：不再依赖 `Environment.getExternalStorageDirectory()` 强转路径；使用 `DocumentFile.fromTreeUri` 校验 `vault/keyslot.json` 存在性后，通过 `ContentResolver` 将只读备份目录镜像到应用私有临时暂存目录（校验总大小与路径穿越边界，跳过符号链接），将私有暂存目录交由 `MigrationSession` 读取，迁移完成/取消/切换源时彻底删除暂存目录。
 - [ ] **iOS Keychain / 覆盖升级核验**：
   - 核对 v1 iOS 实际 Keychain `kSecAttrService` / `kSecAttrAccount` / Access Group 与沙盒目录，确保覆盖升级场景下自动检测与 Face ID / Touch ID 解锁可用。
 
 #### M3.3 移动端系统入口与后台策略（覆盖 G11）
 
-- [ ] **Android 分享接收（`ACTION_SEND` / `ACTION_SEND_MULTIPLE`）**：
+- [x] **Android 分享接收（`ACTION_SEND` / `ACTION_SEND_MULTIPLE`）**：
   - 通过 Expo Config Plugin 注册 `IntentFilter`（`text/plain`、`image/*`、`*/*`），收到外部内容后唤起主 App，展示「直接保存到历史 / 发送给指定设备」快捷确认并经 `ImportText` / `ImportFileSource` 提交。
-- [ ] **iOS Share Extension（App Group 暂存投递）**：
+- [x] **iOS Share Extension（App Group 暂存投递）**：
   - 规划独立 Share Extension Target（Expo Config Plugin 注入），仅将共享的文本/图片/文件写入 App Group 共享暂存队列并唤起主 App（或等待主 App 消费），主 App 启动/回前台时由唯一 Engine 消费入库并清理暂存。**严禁在扩展内链接或启动 Engine。**
-- [ ] **Android 可选前台同步服务（Foreground Service）**：
+- [x] **Android 可选前台同步服务（Foreground Service）**：
   - 在「设置 › 后台运行」提供明确开关（默认关闭）：开启时注册带低干扰常驻通知的 Foreground Service（Android 13+ 请求 `POST_NOTIFICATIONS`、Android 14+ 声明合规 `foregroundServiceType`），退后台保持 `RuntimeActive` 以持续接收远端内容；关闭时保持退后台 `suspended` 省电策略。
 
 #### M3.4 国际化与生产代码清理（覆盖 G09）
 
-- [ ] 将 `DevicesScreen`、`SendSheet`（重命名替代 `DemoSendSheet`）、`MigrationSetupScreen.{ios,android}` 及 `EngineError` 错误码提示全部迁入 `app/expo/src/i18n/locales/{zh,en,ru,pt-BR}/`，遵循 Apple / Material 各语言区标准术语，消除硬编码中文。
-- [ ] 将 `useHomeController` / `ThemeContext` / `useHistoryDisplaySettings` 中的 `@uniclipboard-shell:*` 本地存储键统一为生产命名空间。
+- [x] 将 `DevicesScreen`、`SendSheet`（重命名替代 `DemoSendSheet`）、`MigrationSetupScreen.{ios,android}` 及 `EngineError` 错误码提示全部迁入 `app/expo/src/i18n/locales/{zh,en,ru,pt-BR}/`，遵循 Apple / Material 各语言区标准术语，消除硬编码中文。
+- [x] 将 `useHomeController` / `ThemeContext` / `useHistoryDisplaySettings` 中的 `@uniclipboard-shell:*` 本地存储键统一为生产命名空间。
 
 **M3 退出门控**：
 - 二维码配对、6 位码配对与慢网 DERP 握手状态展示通过；设备改名/忽略候选/置顶/标签全通。

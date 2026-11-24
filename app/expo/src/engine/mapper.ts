@@ -71,6 +71,7 @@ export function mapEngineHistoryItem(
     incarnationId: item.revision,
     starred: tags.includes("starred"),
     pinned: tags.includes("pinned"),
+    tags,
     isDeleted: false,
     isLocalFileReady: item.parts.some((p) => p.available),
     syncStatus:

@@ -2,13 +2,14 @@ import { useEffect, useState } from "react";
 import { Alert, Pressable, Text, TextInput, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { AppBottomSheet, AppButton, AppHost } from "@/components/ui";
+import { parseEngineError } from "@/engine/nativeModule";
 import { useEngineStore } from "@/engine/store";
 import { useTheme } from "@/hooks/useTheme";
 import type { ClipboardItem } from "@/types/clipboard";
 import { formatFileSize } from "@/utils";
-import { showUnavailable } from "./notice";
+import { showUnavailable } from "@/shell/notice";
 
-export function DemoSendSheet({
+export function SendSheet({
   visible,
   onClose,
   targetItem,
@@ -20,6 +21,9 @@ export function DemoSendSheet({
   initialDraftText?: string | null;
 }) {
   const { t } = useTranslation();
+  const errorMessage = (error: unknown) => t(`errors:engine.${parseEngineError(error).code}`, {
+    defaultValue: t("errors:engine.internal"),
+  });
   const { theme } = useTheme();
   const mode = useEngineStore((s) => s.mode);
   const devices = useEngineStore((s) => s.devices);
@@ -52,10 +56,10 @@ export function DemoSendSheet({
           <Text style={{ color: theme.colors.textSecondary }}>
             {t("shell:unavailable")}
           </Text>
-          {["Demo Mac", "Demo Phone"].map((name) => (
+          {["demoMac", "demoPhone"].map((device) => (
             <Pressable
-              key={name}
-              testID={`send-${name}`}
+              key={device}
+              testID={`send-${device}`}
               onPress={showUnavailable}
               style={{
                 padding: 20,
@@ -63,7 +67,7 @@ export function DemoSendSheet({
                 backgroundColor: theme.colors.surface,
               }}
             >
-              <Text style={{ color: theme.colors.textPrimary }}>{name}</Text>
+              <Text style={{ color: theme.colors.textPrimary }}>{t(`settingsSync:pairing.${device}`)}</Text>
               <Text style={{ color: theme.colors.textSecondary }}>
                 {t("shell:disconnected")}
               </Text>
@@ -84,6 +88,9 @@ export function DemoSendSheet({
   }
 
   const trustedDevices = devices.filter((d) => d.trust === "trusted");
+  const targetType = targetItem ? t(`errors:contentType.${targetItem.type.toLowerCase()}`, {
+    defaultValue: t("errors:contentType.unknown"),
+  }) : "";
   const targetIds = selectedDeviceIds.length > 0 ? selectedDeviceIds : undefined;
 
   const toggleDeviceSelection = (id: string) => {
@@ -103,7 +110,7 @@ export function DemoSendSheet({
     } catch (err) {
       Alert.alert(
         t("home:detail.sendTo"),
-        err instanceof Error ? err.message : t("shell:unavailable"),
+        errorMessage(err),
       );
     } finally {
       setSubmitting(false);
@@ -121,7 +128,7 @@ export function DemoSendSheet({
     } catch (err) {
       Alert.alert(
         t("home:detail.sendTo"),
-        err instanceof Error ? err.message : t("shell:unavailable"),
+        errorMessage(err),
       );
     } finally {
       setSubmitting(false);
@@ -134,14 +141,14 @@ export function DemoSendSheet({
     try {
       const res = await useEngineStore.getState().readSystemClipboardAndCommit();
       if (res.skipped) {
-        Alert.alert("剪贴板", "当前系统剪贴板为空或已同步。");
+        Alert.alert(t("share:compose.clipboard"), t("share:compose.emptyClipboard"));
       } else {
         onClose();
       }
     } catch (err) {
       Alert.alert(
-        "读取系统剪贴板",
-        err instanceof Error ? err.message : t("shell:unavailable"),
+        t("share:compose.readClipboard"),
+        errorMessage(err),
       );
     } finally {
       setSubmitting(false);
@@ -158,8 +165,8 @@ export function DemoSendSheet({
       }
     } catch (err) {
       Alert.alert(
-        "发送文件",
-        err instanceof Error ? err.message : t("shell:unavailable"),
+        t("share:compose.sendFile"),
+        errorMessage(err),
       );
     } finally {
       setSubmitting(false);
@@ -177,7 +184,7 @@ export function DemoSendSheet({
             fontWeight: "700",
           }}
         >
-          {targetItem ? "转发历史条目到设备" : "发送到本机 / 对端设备"}
+          {targetItem ? t("share:compose.forwardTitle") : t("share:compose.sendTitle")}
         </Text>
 
         {targetItem ? (
@@ -193,10 +200,10 @@ export function DemoSendSheet({
               style={{ color: theme.colors.textPrimary, fontWeight: "600", fontSize: 14 }}
               numberOfLines={3}
             >
-              {targetItem.dataName || targetItem.text || `[${targetItem.type}]`}
+              {targetItem.dataName || targetItem.text || `[${targetType}]`}
             </Text>
             <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
-              {targetItem.type}
+              {targetType}
               {targetItem.size ? ` · ${formatFileSize(targetItem.size)}` : ""}
             </Text>
           </View>
@@ -205,7 +212,7 @@ export function DemoSendSheet({
             testID="send-compose-input"
             value={draftText}
             onChangeText={setDraftText}
-            placeholder="输入要保存或发送的文本内容…"
+            placeholder={t("share:compose.textHint")}
             placeholderTextColor={theme.colors.textSecondary}
             multiline
             style={{
@@ -222,7 +229,7 @@ export function DemoSendSheet({
         {trustedDevices.length > 0 ? (
           <View style={{ gap: 8 }}>
             <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
-              目标设备（可多选；不选则按同步规则发送至全部在线设备）
+              {t("share:compose.targets")}
             </Text>
             {trustedDevices.map((dev) => {
               const selected = selectedDeviceIds.includes(dev.id);
@@ -244,7 +251,7 @@ export function DemoSendSheet({
                     {selected ? " ✓" : ""}
                   </Text>
                   <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
-                    {connected ? "已连接" : "离线 / 待连接"}
+                    {connected ? t("share:compose.connected") : t("share:compose.offline")}
                   </Text>
                 </Pressable>
               );
@@ -252,7 +259,7 @@ export function DemoSendSheet({
           </View>
         ) : (
           <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
-            暂无已配对的在线设备；内容将先保存到本地加密历史。
+            {t("share:compose.noTargets")}
           </Text>
         )}
 
@@ -262,8 +269,8 @@ export function DemoSendSheet({
               testID="send-resend-item"
               title={
                 selectedDeviceIds.length > 0
-                  ? `发送给所选 ${selectedDeviceIds.length} 台设备`
-                  : "发送给所有在线设备"
+                  ? t("share:compose.sendSelected", { count: selectedDeviceIds.length })
+                  : t("share:compose.sendAll")
               }
               variant="filled"
               fullWidth
@@ -276,7 +283,7 @@ export function DemoSendSheet({
             <AppHost matchContents={{ vertical: true }}>
               <AppButton
                 testID="send-commit-text"
-                title="保存并发送文本"
+                title={t("share:compose.commitText")}
                 variant="filled"
                 fullWidth
                 disabled={submitting || !draftText.trim()}
@@ -286,7 +293,7 @@ export function DemoSendSheet({
             <AppHost matchContents={{ vertical: true }}>
               <AppButton
                 testID="send-read-clipboard"
-                title="读取系统剪贴板"
+                title={t("share:compose.readClipboard")}
                 variant="tonal"
                 fullWidth
                 disabled={submitting}
@@ -296,7 +303,7 @@ export function DemoSendSheet({
             <AppHost matchContents={{ vertical: true }}>
               <AppButton
                 testID="send-pick-file"
-                title="选择文件发送"
+                title={t("share:compose.chooseFile")}
                 variant="outlined"
                 fullWidth
                 disabled={submitting}

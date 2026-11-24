@@ -162,6 +162,7 @@ export interface PairingCodeResponse {
 export interface SensitiveTicket {
   ticket: string;
   expires_at_ms: number;
+  qr_png?: string;
 }
 
 export interface EngineOperation {
@@ -182,6 +183,11 @@ export interface EngineOperation {
     | "failed"
     | string;
   error?: EngineErrorPayload;
+  pairing?: {
+    peer_id: string;
+    awaiting_local_approval: boolean;
+    awaiting_remote_approval: boolean;
+  };
 }
 
 export interface HistoryOrigin {

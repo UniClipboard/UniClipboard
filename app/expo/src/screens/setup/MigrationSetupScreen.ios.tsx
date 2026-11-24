@@ -1,4 +1,5 @@
 import { Keyboard, ScrollView, StyleSheet, Text, View, type ColorValue } from "react-native";
+import { useTranslation } from "react-i18next";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   AppAlertDialog,
@@ -34,6 +35,7 @@ function MetricPill({
 }
 
 export function MigrationSetupScreen() {
+  const { t } = useTranslation("settingsStorage");
   const { theme } = useTheme();
   const c = theme.colors;
   const ctrl = useSetupFlowController();
@@ -49,7 +51,7 @@ export function MigrationSetupScreen() {
                 <AppProgressIndicator variant="circular" color={c.accent} />
               </AppHost>
               <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
-                正在准备本地存储…
+                {t("migration.preparing")}
               </Text>
             </View>
           </GlassContainer>
@@ -60,17 +62,17 @@ export function MigrationSetupScreen() {
           <>
             <GlassContainer shape="card" style={styles.card}>
               <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
-                全新空间已就绪
+                {t("migration.ready")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                剪贴板历史、标签和设备信任列表全部保存在本机加密空间。若你曾将旧版 UniClipboard 数据拷贝至“文件”目录，也可手动导入。
+                {t("migration.readyBody")}
               </Text>
             </GlassContainer>
             <View style={styles.actions}>
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-start-clean"
-                  title="开始使用"
+                  title={t("migration.start")}
                   variant="filled"
                   size="large"
                   fullWidth
@@ -81,7 +83,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-choose-custom-folder"
-                  title="手动选择旧版目录"
+                  title={t("migration.choose")}
                   variant="outlined"
                   size="large"
                   fullWidth
@@ -100,14 +102,14 @@ export function MigrationSetupScreen() {
             <GlassContainer shape="card" style={styles.card}>
               <View style={[styles.badge, { backgroundColor: c.accentContainer }]}>
                 <Text style={[styles.badgeText, { color: c.onAccentContainer }]}>
-                  已检测到旧版数据
+                  {t("migration.detected")}
                 </Text>
               </View>
               <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
-                发现可迁移的旧版剪贴板数据
+                {t("migration.detectedTitle")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                首次启动可将旧版文字、图片、文件和标签离线迁移到当前设备。系统不会自动写入当前剪贴板，也不会上传云端。
+                {t("migration.detectedBody")}
               </Text>
               {ctrl.detectedSourcePath ? (
                 <View style={[styles.pathChip, { backgroundColor: c.surfaceHigh }]}>
@@ -122,7 +124,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-start-migration"
-                  title="开始迁移"
+                  title={t("migration.startMigration")}
                   variant="filled"
                   size="large"
                   fullWidth
@@ -133,7 +135,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-change-source"
-                  title="选择其他旧版目录"
+                  title={t("migration.chooseOther")}
                   variant="outlined"
                   size="large"
                   fullWidth
@@ -144,7 +146,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-skip-migration"
-                  title={ctrl.setupEntryMode === "later" ? "暂不迁移，返回" : "暂不迁移"}
+                  title={ctrl.setupEntryMode === "later" ? t("migration.skipReturn") : t("migration.skip")}
                   variant="text"
                   size="large"
                   fullWidth
@@ -161,17 +163,17 @@ export function MigrationSetupScreen() {
           <>
             <GlassContainer shape="card" style={styles.card}>
               <Text style={[styles.cardTitle, { color: c.error }]}>
-                目录中未找到有效的旧版数据
+                {t("migration.invalid")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                所选目录缺少完整的旧版加密库或密钥文件（vault/keyslot.json）。请重新选择包含旧版数据的文件夹，或暂不迁移直接开始使用。
+                {t("migration.invalidBody")}
               </Text>
             </GlassContainer>
             <View style={styles.actions}>
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-reselect-folder"
-                  title="重新选择旧版目录"
+                  title={t("migration.chooseAgain")}
                   variant="filled"
                   size="large"
                   fullWidth
@@ -182,7 +184,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-skip-from-invalid"
-                  title={ctrl.setupEntryMode === "later" ? "暂不迁移，返回" : "暂不迁移"}
+                  title={ctrl.setupEntryMode === "later" ? t("migration.skipReturn") : t("migration.skip")}
                   variant="outlined"
                   size="large"
                   fullWidth
@@ -199,18 +201,18 @@ export function MigrationSetupScreen() {
           <>
             <GlassContainer shape="card" style={styles.card}>
               <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
-                输入旧版加密口令以解锁
+                {t("migration.unlock")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                当前设备钥匙串中未读取到旧版密钥。口令仅用于本次本地解密，不会被保存或上传。
+                {t("migration.unlockBody")}
               </Text>
               <View style={styles.inputWrap}>
                 <AppTextField
                   testID="setup-passphrase-input"
                   value={ctrl.passphrase}
                   onChangeText={ctrl.setPassphrase}
-                  placeholder="请输入旧版加密口令"
-                  label="旧版加密口令"
+                  placeholder={t("migration.passphraseHint")}
+                  label={t("migration.passphrase")}
                   secure
                   fullWidth
                   disabled={ctrl.busy}
@@ -231,7 +233,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-submit-passphrase"
-                  title="确认并开始迁移"
+                  title={t("migration.confirm")}
                   variant="filled"
                   size="large"
                   fullWidth
@@ -245,7 +247,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-back-to-detected"
-                  title="返回"
+                  title={t("migration.back")}
                   variant="outlined"
                   size="large"
                   fullWidth
@@ -256,7 +258,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-skip-from-auth"
-                  title="暂不迁移"
+                  title={t("migration.skip")}
                   variant="text"
                   size="large"
                   fullWidth
@@ -277,17 +279,17 @@ export function MigrationSetupScreen() {
             <GlassContainer shape="card" style={styles.card}>
               <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
                 {isStopping
-                  ? "正在停止迁移…"
+                  ? t("migration.stopping")
                   : isVerifying
-                    ? "正在校验导入结果"
-                    : "正在导入历史记录"}
+                    ? t("migration.verifying")
+                    : t("migration.importing")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
                 {isStopping
-                  ? "已写入本地数据库的记录会安全保留，下次可继续断点导入。"
+                  ? t("migration.stoppingBody")
                   : isVerifying
-                    ? "正在核对导入条目、标签与颜色完整性，请保持应用在前台。"
-                    : "正在离线解密并导入文字、图片、文件与标签，请保持屏幕常亮。"}
+                    ? t("migration.verifyingBody")
+                    : t("migration.importingBody")}
               </Text>
               <View style={styles.progressWrap}>
                 <AppHost matchContents={{ vertical: true }}>
@@ -301,7 +303,7 @@ export function MigrationSetupScreen() {
                 <Text style={[styles.counterText, { color: c.textSecondary }]}>
                   {ctrl.migrationProgress.total > 0
                     ? `${ctrl.migrationProgress.processed} / ${ctrl.migrationProgress.total}`
-                    : `已处理 ${ctrl.migrationProgress.processed}`}
+                    : t("migration.processed", { count: ctrl.migrationProgress.processed })}
                 </Text>
               </View>
             </GlassContainer>
@@ -309,7 +311,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-stop-migration"
-                  title="停止迁移"
+                  title={t("migration.stop")}
                   variant="outlined"
                   size="large"
                   fullWidth
@@ -328,40 +330,40 @@ export function MigrationSetupScreen() {
             <GlassContainer shape="card" style={styles.card}>
               <View style={[styles.badge, { backgroundColor: c.accentContainer }]}>
                 <Text style={[styles.badgeText, { color: c.onAccentContainer }]}>
-                  已完整校验
+                  {t("migration.verified")}
                 </Text>
               </View>
               <Text testID="setup-result-title" style={[styles.cardTitle, { color: c.textPrimary }]}>
-                迁移完成
+                {t("migration.done")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                已将旧版历史记录导入本机，并完成结构与附件校验。
+                {t("migration.doneBody")}
               </Text>
               {report ? (
                 <View style={styles.metricsGrid}>
                   <MetricPill
-                    label="本次新增导入"
+                    label={t("migration.newCount")}
                     value={String(report.imported)}
                     tintColor={c.accent}
                     textColor={c.textSecondary}
                     bgColor={c.surfaceHigh}
                   />
                   <MetricPill
-                    label="此前已导入（跳过）"
+                    label={t("migration.skippedCount")}
                     value={String(report.skipped)}
                     tintColor={c.textPrimary}
                     textColor={c.textSecondary}
                     bgColor={c.surfaceHigh}
                   />
                   <MetricPill
-                    label="校验通过"
+                    label={t("migration.verifiedCount")}
                     value={String(report.verified)}
                     tintColor={c.accent}
                     textColor={c.textSecondary}
                     bgColor={c.surfaceHigh}
                   />
                   <MetricPill
-                    label="标签保留"
+                    label={t("migration.tagsCount")}
                     value={String(report.tags)}
                     tintColor={c.textPrimary}
                     textColor={c.textSecondary}
@@ -374,7 +376,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-enter-history"
-                  title="进入剪贴板历史"
+                  title={t("migration.enter")}
                   variant="filled"
                   size="large"
                   fullWidth
@@ -391,36 +393,36 @@ export function MigrationSetupScreen() {
           <>
             <GlassContainer shape="card" style={styles.card}>
               <Text testID="setup-result-title" style={[styles.cardTitle, { color: c.warning }]}>
-                部分记录未能导入
+                {t("migration.partial")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                已有记录已写入本地历史，但仍有少数条目或附件缺失/校验未通过。你可以重试未成功项，或先进入主界面稍后再试。
+                {t("migration.partialBody")}
               </Text>
               {report ? (
                 <View style={styles.metricsGrid}>
                   <MetricPill
-                    label="本次新增导入"
+                    label={t("migration.newCount")}
                     value={String(report.imported)}
                     tintColor={c.accent}
                     textColor={c.textSecondary}
                     bgColor={c.surfaceHigh}
                   />
                   <MetricPill
-                    label="跳过已导入"
+                    label={t("migration.skippedCount")}
                     value={String(report.skipped)}
                     tintColor={c.textPrimary}
                     textColor={c.textSecondary}
                     bgColor={c.surfaceHigh}
                   />
                   <MetricPill
-                    label="失败条目"
+                    label={t("migration.failedCount")}
                     value={String(report.failed + report.verification_failed)}
                     tintColor={c.error}
                     textColor={c.textSecondary}
                     bgColor={c.surfaceHigh}
                   />
                   <MetricPill
-                    label="缺失附件"
+                    label={t("migration.missingCount")}
                     value={String(report.missing_parts)}
                     tintColor={c.warning}
                     textColor={c.textSecondary}
@@ -433,7 +435,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-retry-partial"
-                  title="重试未成功项"
+                  title={t("migration.retryPartial")}
                   variant="filled"
                   size="large"
                   fullWidth
@@ -444,7 +446,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-enter-after-partial"
-                  title="进入剪贴板历史"
+                  title={t("migration.enter")}
                   variant="outlined"
                   size="large"
                   fullWidth
@@ -461,17 +463,17 @@ export function MigrationSetupScreen() {
           <>
             <GlassContainer shape="card" style={styles.card}>
               <Text testID="setup-result-title" style={[styles.cardTitle, { color: c.textPrimary }]}>
-                已停止迁移
+                {t("migration.stopped")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                已写入的记录会保留在本地历史中（累计新增导入 {ctrl.cumulativeImported} 条），下次启动或点击继续迁移时会自动跳过它们。
+                {t("migration.stoppedBody", { count: ctrl.cumulativeImported })}
               </Text>
             </GlassContainer>
             <View style={styles.actions}>
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-resume-migration"
-                  title="继续迁移"
+                  title={t("migration.resume")}
                   variant="filled"
                   size="large"
                   fullWidth
@@ -482,7 +484,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-skip-after-cancel"
-                  title="暂不迁移，直接进入"
+                  title={t("migration.skipEnter")}
                   variant="outlined"
                   size="large"
                   fullWidth
@@ -499,17 +501,17 @@ export function MigrationSetupScreen() {
           <>
             <GlassContainer shape="card" style={styles.card}>
               <Text testID="setup-result-title" style={[styles.cardTitle, { color: c.warning }]}>
-                检测到后台进程正在占用数据目录
+                {t("migration.conflict")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                为保证数据库写入一致性，离线迁移需要独占目标目录。请等待后台同步任务结束后重试。
+                {t("migration.conflictBody")}
               </Text>
             </GlassContainer>
             <View style={styles.actions}>
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-retry-conflict"
-                  title="重新检查并继续"
+                  title={t("migration.checkRetry")}
                   variant="filled"
                   size="large"
                   fullWidth
@@ -519,7 +521,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-skip-conflict"
-                  title="暂不迁移"
+                  title={t("migration.skip")}
                   variant="outlined"
                   size="large"
                   fullWidth
@@ -536,17 +538,17 @@ export function MigrationSetupScreen() {
           <>
             <GlassContainer shape="card" style={styles.card}>
               <Text testID="setup-result-title" style={[styles.cardTitle, { color: c.error }]}>
-                无法完成迁移
+                {t("migration.failed")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                {ctrl.migrationErrorMessage || "迁移过程中发生错误，请检查目录权限或重试。"}
+                {ctrl.migrationErrorMessage || t("migration.failedBody")}
               </Text>
             </GlassContainer>
             <View style={styles.actions}>
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-retry-failed"
-                  title="重试迁移"
+                  title={t("migration.retry")}
                   variant="filled"
                   size="large"
                   fullWidth
@@ -556,7 +558,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-reselect-failed"
-                  title="选择其他目录"
+                  title={t("migration.another")}
                   variant="outlined"
                   size="large"
                   fullWidth
@@ -566,7 +568,7 @@ export function MigrationSetupScreen() {
               <AppHost matchContents={{ vertical: true }}>
                 <AppButton
                   testID="setup-skip-failed"
-                  title="暂不迁移，直接进入"
+                  title={t("migration.skipEnter")}
                   variant="text"
                   size="large"
                   fullWidth
@@ -592,10 +594,10 @@ export function MigrationSetupScreen() {
         <View style={[styles.hero, isAuthView ? styles.heroCompact : null]}>
           <UnicBrandLogo size={isAuthView ? 56 : 80} borderRadius={isAuthView ? 14 : 20} style={styles.logo} />
           <Text testID="setup-welcome-title" style={[styles.title, { color: c.textPrimary }]}>
-            欢迎使用 UniClipboard
+            {t("migration.welcome")}
           </Text>
           <Text testID="setup-slogan" style={[styles.slogan, { color: c.textSecondary }]}>
-            让每一次复制更有用
+            {t("migration.slogan")}
           </Text>
         </View>
 
@@ -605,11 +607,11 @@ export function MigrationSetupScreen() {
       <AppAlertDialog
         visible={ctrl.confirmSkipVisible}
         standalone
-        title="暂不迁移旧版数据？"
-        message="旧版数据不会被删除。之后你可以随时在“设置 › 存储”中重新启动离线迁移。"
-        confirmLabel="暂不迁移，直接进入"
+        title={t("migration.skipTitle")}
+        message={t("migration.skipBody")}
+        confirmLabel={t("migration.skipEnter")}
         onConfirm={() => void ctrl.confirmSkip()}
-        dismissLabel="取消"
+        dismissLabel={t("migration.cancel")}
         onDismiss={ctrl.dismissSkip}
         onDismissAction={ctrl.dismissSkip}
       />

@@ -36,6 +36,7 @@ import {
 } from "./types";
 
 type NativeEvents = {
+  onIncomingShare: () => void;
   onEngineEvent: (payload: { event: string }) => void;
   onEngineResync: (payload: { reason: string }) => void;
   onMigrationProgress: (payload: MigrationProgress) => void;
@@ -63,7 +64,13 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   reconcileHistoryPreviews(): Promise<void>;
   historyFileMetadata(historyID: string): Promise<string>;
   listHistoryFolder(historyID: string, limit: number): Promise<string>;
+  getBackgroundSyncEnabled(): Promise<boolean>;
+  setBackgroundSyncEnabled(enabled: boolean): Promise<boolean>;
+  listIncomingShares(): Promise<string>;
+  commitIncomingShare(id: string, targets: string): Promise<string>;
+  dismissIncomingShare(id: string): Promise<void>;
   copyPlainText(text: string): Promise<void>;
+  copyPairingTicket(text: string, expiresAtMs: number): Promise<void>;
   pickAndCommitImage(camera: boolean): Promise<string>;
   exportHistoryMedia(historyID: string, action: string): Promise<boolean>;
   shareHistoryMedia(idsJSON: string, text: string | null): Promise<void>;
@@ -185,6 +192,20 @@ async function callVoid(fn: () => Promise<void>): Promise<void> {
 }
 
 export const unicEngineNative = {
+  addIncomingShareListener: (cb: () => void) => {
+    if (!nativeMod) return { remove: () => {} };
+    return nativeMod.addListener("onIncomingShare", cb);
+  },
+  getBackgroundSyncEnabled: () => requireMod().getBackgroundSyncEnabled(),
+  setBackgroundSyncEnabled: (enabled: boolean) => requireMod().setBackgroundSyncEnabled(enabled)
+    .catch((error) => { throw parseEngineError(error); }),
+  listIncomingShares: () => callJSON<Array<{ id: string; kind: "text" | "file"; label: string }>>(
+    () => requireMod().listIncomingShares(),
+  ),
+  commitIncomingShare: (id: string, targets?: string[]) => callJSON<{ history_id?: string; sync_disposition?: string }>(
+    () => requireMod().commitIncomingShare(id, targets ? JSON.stringify(targets) : ""),
+  ),
+  dismissIncomingShare: (id: string) => callVoid(() => requireMod().dismissIncomingShare(id)),
   addEventListener: (cb: (eventJSON: string) => void) => {
     if (!nativeMod) return { remove: () => {} };
     return nativeMod.addListener("onEngineEvent", ({ event }) => cb(event));
@@ -232,6 +253,7 @@ export const unicEngineNative = {
     callJSON<PartDescriptor[] | null>(() => requireMod().historyFileMetadata(id)),
   listHistoryFolder: (id: string) =>
     callJSON<HistoryFolder>(() => requireMod().listHistoryFolder(id, 200)),
+  copyPairingTicket: (text: string, expiresAtMs: number) => callVoid(() => requireMod().copyPairingTicket(text, expiresAtMs)),
   copyPlainText: (text: string) => callVoid(() => requireMod().copyPlainText(text)),
   pickAndCommitImage: (camera: boolean) =>
     callJSON<PickAndCommitFileResult>(() => requireMod().pickAndCommitImage(camera)),

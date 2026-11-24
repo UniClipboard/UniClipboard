@@ -118,5 +118,15 @@
     "folderLoading": "正在加载目录内容…",
     "folderEmpty": "目录为空。",
     "folderTruncated": "仅显示前 200 项。"
+  },
+  "tags": {
+    "pin": "置顶",
+    "unpin": "取消置顶",
+    "edit": "编辑标签",
+    "name": "标签名称",
+    "add": "添加标签",
+    "remove": "移除「{{tag}}」",
+    "filter": "标签",
+    "all": "全部标签"
   }
 }

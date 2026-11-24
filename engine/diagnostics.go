@@ -3,7 +3,10 @@ package engine
 import (
 	"context"
 	"errors"
+	"net"
 	"time"
+
+	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
 type DiagnosticStage string
@@ -69,6 +72,68 @@ func diagnosticOutcome(err error) (DiagnosticResult, Code) {
 		return "cancelled", code
 	}
 	return "failed", code
+}
+
+func receiveFailureOutcome(err error) (DiagnosticResult, Code) {
+	var ee *Error
+	if errors.As(err, &ee) && ee != nil {
+		if ee.Code == CodeCancelled {
+			return "cancelled", CodeCancelled
+		}
+		if ee.Code == CodeLimitExceeded || ee.Code == CodeResourceExhausted || ee.Code == CodePermissionDenied {
+			return "rejected", ee.Code
+		}
+		return "failed", ee.Code
+	}
+	var ne net.Error
+	var re *rpc.Error
+	switch {
+	case err == nil:
+		return "failed", CodeUnavailable
+	case errors.Is(err, context.Canceled):
+		return "cancelled", CodeCancelled
+	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
+		return "failed", CodeTimeout
+	case errors.As(err, &re):
+		switch re.Code {
+		case rpc.CodeCancelled:
+			return "cancelled", CodeCancelled
+		case rpc.CodeTimeout:
+			return "failed", CodeTimeout
+		case rpc.CodeInvalidArgument:
+			return "failed", CodeInvalidArgument
+		case rpc.CodeInvalidState:
+			return "failed", CodeInvalidState
+		case rpc.CodeLimitExceeded:
+			return "rejected", CodeLimitExceeded
+		case rpc.CodeExhausted:
+			return "rejected", CodeResourceExhausted
+		case rpc.CodePermission:
+			return "rejected", CodePermissionDenied
+		case rpc.CodeInternal:
+			return "failed", CodeInternal
+		default:
+			return "failed", CodeUnavailable
+		}
+	default:
+		return "failed", CodeUnavailable
+	}
+}
+
+func (e *Engine) logPipelineFailure(ctx context.Context, stage DiagnosticStage, result DiagnosticResult, backend DiagnosticBackend, kind DiagnosticContentKind, code Code) {
+	if e.log == nil {
+		return
+	}
+	if code == "" {
+		code = CodeInternal
+	}
+	e.log.WarnContext(ctx, "pipeline.failed",
+		"stage", string(stage),
+		"result", string(result),
+		"backend", string(backend),
+		"content_kind", string(kind),
+		"code", string(code),
+	)
 }
 
 func (e *Engine) claimApplyDiagnosticLocked(t *applyTicket, result DiagnosticResult, code Code) *DiagnosticRecord {

@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -60,14 +59,22 @@ func (b *peerProcBackend) OpenReceive(_ context.Context, o rpc.ReceiveOpen) (rpc
 	if !b.syncEnabled(peer) {
 		return discard, nil
 	}
-	if err := checkClipLimits(o.Clip.Parts, b.e); err != nil {
-		return discard, nil
-	}
 	var total int64
 	parts := make([]receivePart, len(o.Clip.Parts))
 	for i, p := range o.Clip.Parts {
 		total += int64(p.Size)
 		parts[i] = receivePart{file: p.Kind == "file", mime: p.MIME, size: int64(p.Size)}
+	}
+	if err := checkClipLimits(o.Clip.Parts, b.e); err != nil {
+		outcome, code := receiveFailureOutcome(err)
+		if outcome == "failed" {
+			outcome = "rejected"
+		}
+		backend := diagnosticBackend(b.id)
+		kind := receivePartsKind(parts)
+		b.e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: backend, ContentKind: kind})
+		b.e.logPipelineFailure(context.Background(), "receive", outcome, backend, kind, code)
+		return discard, nil
 	}
 	adm, ok := b.e.admitReceive(receiveRequest{
 		sourceApplication: o.Clip.SourceApplication, backend: b.id, source: DeviceID(peer), origin: o.Clip.Origin,
@@ -78,14 +85,14 @@ func (b *peerProcBackend) OpenReceive(_ context.Context, o rpc.ReceiveOpen) (rpc
 	}
 	var raw [32]byte
 	if _, err := rand.Read(raw[:]); err != nil {
-		adm.Done(clip.Snapshot{}, "", false)
+		adm.Fail(newErr(CodeInternal, "receive id generation failed"))
 		return discard, rpcErr(rpc.CodeInternal)
 	}
 	id := hex.EncodeToString(raw[:])
 	pr := &pendingRecv{adm: adm, parts: o.Clip.Parts, hash: o.Clip.Hash}
 	pr.timer = time.AfterFunc(rpc.ReceiveOpenTTLMs*time.Millisecond, func() {
 		if b.takeRecv(id) != nil {
-			adm.Done(clip.Snapshot{}, "", false)
+			adm.Fail(newErr(CodeTimeout, "receive grant expired"))
 		}
 	})
 	b.rx.mu.Lock()
@@ -115,10 +122,9 @@ func (b *peerProcBackend) Receive(ctx context.Context, receiveID string, parts p
 	snap, dir, err := b.readClip(ctx, pr, parts)
 	if err == nil && snap.Hash() != pr.hash {
 		err = rpcErr(rpc.CodeInvalidState) // the content is not what its header promised
-		b.e.logf(slog.LevelWarn, "dropped incoming content", "reason", "hash_mismatch")
 	}
 	if err != nil {
-		pr.adm.Done(clip.Snapshot{}, "", false)
+		pr.adm.Fail(err)
 		if dir != "" {
 			_ = os.RemoveAll(dir)
 		}
@@ -172,7 +178,10 @@ func (b *peerProcBackend) readClip(ctx context.Context, pr *pendingRecv, parts p
 		}
 		data, rerr := io.ReadAll(io.LimitReader(body, int64(p.Size)+1))
 		_ = body.Close()
-		if rerr != nil || int64(len(data)) != int64(p.Size) {
+		if rerr != nil {
+			return snap, dir, rerr
+		}
+		if int64(len(data)) != int64(p.Size) {
 			return snap, dir, rpcErr(rpc.CodeInvalidState)
 		}
 		if p.MIME == directory.MIME {

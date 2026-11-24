@@ -35,6 +35,7 @@ type Verified struct {
 type Admission struct {
 	Inbox string
 	Done  func(snap clip.Snapshot, dir string, ok bool)
+	Fail  func(err error)
 }
 
 // Sentinel errors, so that callers can classify failures without matching text.

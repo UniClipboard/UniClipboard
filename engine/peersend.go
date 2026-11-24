@@ -215,12 +215,23 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 					src := &peerSendSource{b: b, v: v, conn: cur.conn, token: cur.token}
 					started := time.Now()
 					err := b.sendOver(ctx, disp, src, cur, v, clip)
-					outcome, code := diagnosticOutcome(err)
-					if ctx.Err() != nil {
-						outcome = "cancelled"
-						code = CodeCancelled
+					var outcome DiagnosticResult
+					var code Code
+					switch {
+					case err == nil:
+						outcome, code = "succeeded", ""
+					case ctx.Err() != nil:
+						outcome, code = "cancelled", CodeCancelled
+					default:
+						e.mu.Lock()
+						fe := e.sendFailure(err)
+						e.mu.Unlock()
+						outcome, code = diagnosticOutcome(fe)
 					}
 					e.diagnostic(ctx, DiagnosticRecord{Stage: "send", Result: outcome, Backend: backend, ContentKind: kind, Code: code, Duration: time.Since(started)})
+					if outcome == "failed" {
+						e.logPipelineFailure(ctx, "send", outcome, backend, kind, code)
+					}
 					unsent := !src.authorized()
 					src.close()
 					if err == nil {

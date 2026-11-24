@@ -130,6 +130,10 @@ func (e *Engine) sendFailure(cause error) *Error {
 		return newErr(CodeResourceExpired, "the content is no longer available")
 	case e.runtime == RuntimeSuspended:
 		return newErr(CodeSuspended, "the host suspended networking during the transfer")
+	case isRPCCode(cause, string(CodeTimeout)), errors.Is(cause, context.DeadlineExceeded):
+		return retryable(newErr(CodeTimeout, "the transfer timed out"))
+	case isRPCCode(cause, string(CodeCancelled)), errors.Is(cause, context.Canceled):
+		return newErr(CodeCancelled, "the transfer was cancelled")
 	case errors.Is(cause, peerbackend.ErrSessionClosed):
 		if e.runtime == RuntimeSuspended {
 			return newErr(CodeSuspended, "the host suspended networking during the transfer")

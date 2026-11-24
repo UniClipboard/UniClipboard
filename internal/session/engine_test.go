@@ -1,14 +1,18 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/syncdiag"
 	"github.com/uniclipboard/unic/internal/wire"
 	"github.com/uniclipboard/unic/plugin"
 	"github.com/uniclipboard/unic/plugin/rpc"
@@ -128,5 +132,122 @@ func TestReceiveIntroductionsUsesLocalSessionAndHonorsSwitch(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+type fakeTimeoutErr struct{}
+
+func (fakeTimeoutErr) Error() string   { return "i/o timeout" }
+func (fakeTimeoutErr) Timeout() bool   { return true }
+func (fakeTimeoutErr) Temporary() bool { return true }
+
+type writeFailConn struct {
+	net.Conn
+	err error
+}
+
+func (c *writeFailConn) Write([]byte) (int, error) { return 0, c.err }
+
+type stubSendSource struct{ data []byte }
+
+func (s stubSendSource) Authorize(context.Context, rpc.Authorize) (rpc.SendGrant, error) {
+	return rpc.SendGrant{GrantID: "g1", StateRevision: 1}, nil
+}
+func (s stubSendSource) OpenPart(context.Context, string, int) (io.ReadCloser, error) {
+	return io.NopCloser(bytes.NewReader(s.data)), nil
+}
+
+type recordingObserver struct {
+	mu      sync.Mutex
+	records []syncdiag.Record
+}
+
+func (o *recordingObserver) SyncEpoch() uint64 { return 1 }
+func (o *recordingObserver) WakeSync()         {}
+func (o *recordingObserver) RecordSync(r syncdiag.Record) {
+	o.mu.Lock()
+	o.records = append(o.records, r)
+	o.mu.Unlock()
+}
+
+func TestSendTimeoutReturnsTimeoutCodeAndSessionReason(t *testing.T) {
+	left, right := net.Pipe()
+	defer func() { _ = left.Close() }()
+	defer func() { _ = right.Close() }()
+
+	obs := &recordingObserver{}
+	b := New(Config{Observer: obs})
+	tok := strings.Repeat("a", 64)
+	fc := &writeFailConn{Conn: left, err: fakeTimeoutErr{}}
+	bc := &bodyDeadlineConn{Conn: fc}
+	s := &session{
+		b: b, r: &runState{ctx: context.Background()},
+		conn: fc, w: wire.NewConn(bc), bodyConn: bc,
+		connID: "c1", token: tok, peerID: "p1",
+		done: make(chan struct{}), exited: make(chan struct{}),
+	}
+	b.sessions["p1"] = s
+
+	err := b.Send(context.Background(), rpc.Send{
+		DispatchID: "d1", OperationID: "op1", PeerID: "p1",
+		ConnectionID: "c1", SessionToken: tok, ContentHandle: "h1",
+		Clip: rpc.Clip{
+			WireID: "w1", Origin: "self", Hash: "abc",
+			Parts: []rpc.ClipPart{{Index: 0, Kind: "file", Name: "big.bin", Size: 4}},
+		},
+	}, stubSendSource{data: []byte("data")})
+
+	var re *rpc.Error
+	if !errors.As(err, &re) || re.Code != rpc.CodeTimeout {
+		t.Fatalf("Send error = %v, want rpc.CodeTimeout", err)
+	}
+	s.endMu.Lock()
+	gotReason := s.endReason
+	s.endMu.Unlock()
+	if gotReason != "timeout" {
+		t.Fatalf("session endReason = %q, want timeout", gotReason)
+	}
+}
+
+type stubPeerReceiver struct {
+	recvErr error
+	called  bool
+}
+
+func (r *stubPeerReceiver) OpenReceive(context.Context, rpc.ReceiveOpen) (rpc.ReceiveGrant, error) {
+	id := "r1"
+	return rpc.ReceiveGrant{Decision: rpc.DecisionAccept, ReceiveID: &id}, nil
+}
+
+func (r *stubPeerReceiver) Receive(context.Context, string, plugin.ReceiveParts) (string, error) {
+	r.called = true
+	return "", r.recvErr
+}
+
+func TestReceivePreservesTimeoutErrorForSessionReason(t *testing.T) {
+	left, right := net.Pipe()
+	defer func() { _ = left.Close() }()
+	defer func() { _ = right.Close() }()
+
+	b := New(Config{})
+	recv := &stubPeerReceiver{recvErr: fakeTimeoutErr{}}
+	b.SetPeerReceiver(recv)
+	bc := &bodyDeadlineConn{Conn: left}
+	s := &session{
+		b: b, r: &runState{ctx: context.Background()},
+		conn: left, w: wire.NewConn(bc), bodyConn: bc,
+		connID: "c1", token: strings.Repeat("b", 64), peerID: "p1",
+		done: make(chan struct{}), exited: make(chan struct{}),
+	}
+	clip := &wire.Clip{
+		T: "clip", ID: "w1", Origin: "p1", Hash: strings.Repeat("a", 64),
+		Parts: []wire.PartMeta{{Kind: "file", Name: "big.bin", Size: 4}},
+	}
+	err := b.receive(s, clip)
+	if !recv.called {
+		t.Fatalf("PeerReceiver.Receive was not called (err=%v)", err)
+	}
+	if got := reason(err); got != "timeout" {
+		t.Fatalf("reason(receive err) = %q (err=%v), want timeout", got, err)
 	}
 }

@@ -45,7 +45,7 @@ paths:
   - e2e/cli/observability_e2e_test.go
   - e2e/cli/sync_observability_e2e_test.go
   - e2e/syncpath
-verified: 52df69cff412983a26b938594c371f6873553e03
+verified: e3731fa4f9ab64e7fa03566bd4d5367099281999
 ---
 # Client logs, metrics, traces and product analytics
 
@@ -56,7 +56,8 @@ Current workspace implementation and acceptance scope are recorded in the [PostH
 
 - `host.Open` constructs diagnostics before `engine.New`. It injects a structured logger and a callback using public Engine types.
 - Engine produces bounded categorical records at observation admission, processor completion, unique submission completion, send queue departure, send completion, receive completion, and apply ticket completion or invalidation.
-- Receive admission records malformed part sizes or mismatched totals as categorical `rejected` / `invalid_argument` outcomes before reserving resources. External channels supply their actual part byte lengths. No rejected bytes, source identity or raw error text enters the record.
+- Receive admission records malformed part sizes, over-limit headers, or mismatched totals as categorical `rejected` outcomes (`invalid_argument`, `limit_exceeded`, `resource_exhausted`) before reserving resources. External channels supply their actual part byte lengths. No rejected bytes, source identity or raw error text enters the record.
+- Receive failures/rejections and failed peer sends emit `WARN` `pipeline.failed` logs using only the allowlisted `stage`, `result`, `backend`, `content_kind`, and `code` attributes. Built-in peer-session body read/write idle timeouts are preserved as `timeout` across session close reasons, Engine diagnostics, and Operation target errors.
 - Idempotent submission waits do not create another commit metric. A send result does not prove receive or apply success.
 - Local logs use an asynchronous 1024-record queue, JSON Lines, private files, 4 MiB segments, a 20 MiB combined bound, and seven-day retention. Filesystem operations use `os.Root` under the profile directory.
 - Local and remote log levels are independent. The socket API and CLI support a per-target override lasting 1..3600 whole seconds. Overrides do not survive restart and do not enable uploads. The CLI command is `unic dev logs level`. When the service is a CLI-temporary `unicd` (`--cli-temporary`), setting an override holds the CLI usage lease until expiry, cancellation, reset, replacement or a failed level query. Query and reset return after their response. `unic dev diagnostics telemetry` reads signal state and dropped-record counters.

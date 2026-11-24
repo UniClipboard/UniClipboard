@@ -15,10 +15,20 @@ import (
 	"testing"
 )
 
-func TestWeTypeImageFileProcessE2E(t *testing.T) {
-	n := newContentNode(t, func(o *Options) { o.Plugins = []PluginInstance{chanInstanceID("unic.wxime")} })
+func TestExternalImageFileProcessE2E(t *testing.T) {
+	n := newContentNode(t, func(o *Options) {
+		instance := chanInstanceID("example.image-files")
+		instance.ImageFilesAsImages = true
+		o.Plugins = []PluginInstance{instance}
+	})
 	start(t, n)
-	addCh(t, n, "unic.wxime")
+	if wanted, err := n.e.WantsClipboardFileImage(bg); err != nil || wanted {
+		t.Fatalf("capture requested without an eligible channel: %v %v", wanted, err)
+	}
+	addCh(t, n, "example.image-files")
+	if wanted, err := n.e.WantsClipboardFileImage(bg); err != nil || !wanted {
+		t.Fatalf("declared capability did not request capture: %v %v", wanted, err)
+	}
 	img := image.NewRGBA(image.Rect(0, 0, 8, 4))
 	img.Set(0, 0, color.Black)
 	var jpg bytes.Buffer
@@ -48,7 +58,7 @@ func TestWeTypeImageFileProcessE2E(t *testing.T) {
 	updateSettings(t, n.e, func(s *Settings) {
 		p := DefaultBackendPolicy()
 		p.Files = false
-		s.BackendPolicies["unic.wxime"] = p
+		s.BackendPolicies["example.image-files"] = p
 	})
 	result := commit("single-jpeg-file", file("screenshot.jpg", jpg.Bytes()))
 	if result.SyncDisposition != SyncQueued {
@@ -136,8 +146,11 @@ func TestWeTypeImageFileProcessE2E(t *testing.T) {
 	updateSettings(t, n.e, func(s *Settings) {
 		p := DefaultBackendPolicy()
 		p.Images = false
-		s.BackendPolicies["unic.wxime"] = p
+		s.BackendPolicies["example.image-files"] = p
 	})
+	if wanted, err := n.e.WantsClipboardFileImage(bg); err != nil || wanted {
+		t.Fatalf("capture requested while image policy was off: %v %v", wanted, err)
+	}
 	if got := commit("images-disabled", file("screenshot.jpg", jpg.Bytes())); got.SyncDisposition != SyncPolicyFilter {
 		t.Fatalf("image policy was bypassed: %+v", got)
 	}

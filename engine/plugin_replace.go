@@ -10,14 +10,15 @@ import (
 )
 
 type externalReplacement struct {
-	id          PluginID
-	old, next   plugin.Plugin
-	oldBackend  *pluginBackend
-	nextBackend *pluginBackend
-	oldSpec     pluginproc.Spec
-	oldOptions  pluginproc.Options
-	oldConfig   plugin.Config
-	newConfig   plugin.Config
+	id                 PluginID
+	old, next          plugin.Plugin
+	oldBackend         *pluginBackend
+	nextBackend        *pluginBackend
+	oldSpec            pluginproc.Spec
+	oldOptions         pluginproc.Options
+	oldConfig          plugin.Config
+	newConfig          plugin.Config
+	imageFilesAsImages bool
 }
 
 // ReplaceExternalPlugins updates active instances of one implementation as a
@@ -72,7 +73,7 @@ func (e *Engine) ReplaceExternalPlugins(ctx context.Context, instances []PluginI
 			return err
 		}
 		change := externalReplacement{id: id, old: old, next: next, oldSpec: oldSpec,
-			oldOptions: oldOptions, oldConfig: oldConfig, newConfig: in.Config}
+			oldOptions: oldOptions, oldConfig: oldConfig, newConfig: in.Config, imageFilesAsImages: in.ImageFilesAsImages}
 		if pp.Spec.ExternalChannels {
 			change.oldBackend = e.channelBackend(id)
 			if change.oldBackend == nil {
@@ -107,7 +108,7 @@ func (e *Engine) ReplaceExternalPlugins(ctx context.Context, instances []PluginI
 		recovered := make([]externalReplacement, 0, len(changes))
 		for _, change := range changes {
 			previous := pluginproc.New(change.oldSpec, change.oldOptions)
-			backend, err := e.startExternalProcess(restoreCtx, change.id, previous, change.oldConfig)
+			backend, err := e.startExternalProcess(restoreCtx, change.id, previous, change.oldConfig, change.oldBackend != nil && change.oldBackend.imageFilesAsImages)
 			if err != nil {
 				_ = previous.Close(restoreCtx)
 				failure = newErr(CodeUnavailable, "plugin update failed and the previous process could not restart")
@@ -121,7 +122,7 @@ func (e *Engine) ReplaceExternalPlugins(ctx context.Context, instances []PluginI
 
 	for i := range changes {
 		change := &changes[i]
-		backend, err := e.startExternalProcess(ctx, change.id, change.next, change.newConfig)
+		backend, err := e.startExternalProcess(ctx, change.id, change.next, change.newConfig, change.imageFilesAsImages)
 		if err != nil {
 			return err
 		}

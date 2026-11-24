@@ -43,6 +43,9 @@ func (m Manifest) validate(installed bool) error {
 		m.SettingsSHA256 != "" && (m.SettingsSchema == "" || !hashPattern.MatchString(m.SettingsSHA256)) {
 		return errors.New("invalid settings schema declaration")
 	}
+	if m.ImageFilesAsImages && (m.Kind != "go" || !m.ExternalChannels || !slices.Contains(m.Capabilities, plugin.CapSyncBackend)) {
+		return errors.New("image file projection requires an external Go sync backend")
+	}
 	platforms := map[string]bool{}
 	for _, a := range m.Artifacts {
 		key := a.GOOS + "/" + a.GOARCH

@@ -14,12 +14,13 @@ import (
 // backends; what it reports is mapped to stable states, and its error text is
 // dropped because it could carry addresses or tokens.
 type pluginBackend struct {
-	e         *Engine
-	id        PluginID
-	kind      TransportKind
-	sb        plugin.SyncBackend
-	spec      plugin.Spec
-	preparing atomic.Bool // reject channel callbacks until live publication
+	e                  *Engine
+	id                 PluginID
+	kind               TransportKind
+	sb                 plugin.SyncBackend
+	spec               plugin.Spec
+	imageFilesAsImages bool
+	preparing          atomic.Bool // reject channel callbacks until live publication
 }
 
 func (b *pluginBackend) ID() PluginID        { return b.id }

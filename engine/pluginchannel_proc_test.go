@@ -53,7 +53,7 @@ func (c *chanHelper) Submit(ctx context.Context, v plugin.SyncView, h plugin.Syn
 	go func() {
 		for _, t := range v.Targets {
 			switch {
-			case envID() == "unic.wxime" && v.Parts[0].MIME == MimePNG:
+			case envID() == "example.image-files" && v.Parts[0].MIME == MimePNG:
 				if err := c.rcv.Receive(context.Background(), t, plugin.Received{Transfer: "x-" + v.ID, View: v.ID,
 					Parts: []plugin.ReceivedPart{{MIME: MimePNG, Data: b}}}); err != nil {
 					h.Report(t, plugin.SyncFailed, err)

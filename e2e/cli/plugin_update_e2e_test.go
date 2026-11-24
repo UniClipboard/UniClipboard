@@ -1,10 +1,13 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,7 +22,9 @@ import (
 
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/clip"
+	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	api "github.com/uniclipboard/unic/internal/localapi"
+	"github.com/uniclipboard/unic/internal/localcontent"
 )
 
 func TestMarketplaceLivePluginUpdate(t *testing.T) {
@@ -77,8 +82,12 @@ sha256 = "%x"
 		responses[path.Join("/github.com/example", repo, "releases/download", version, "plugin.tar.gz")] = asset
 	}
 	for index, commit := range commits {
-		addVersion(index, commit, "live-update", id, "sync_backend", `external_channels = true
-transport_kind = "object_store"`)
+		metadata := `external_channels = true
+transport_kind = "object_store"`
+		if index > 0 {
+			metadata += "\nimage_files_as_images = true"
+		}
+		addVersion(index, commit, "live-update", id, "sync_backend", metadata)
 	}
 	for index, commit := range actionCommits {
 		addVersion(index, commit, "action-update", actionID, "action", `[[actions]]
@@ -108,7 +117,8 @@ post_actions = ["none"]`)
 		t.Fatal(err)
 	}
 	cmd := exec.CommandContext(ctx, filepath.Join(binDir, "unicd"))
-	cmd.Env, cmd.Stderr = n.env(), os.Stderr
+	cmd.Env = slices.DeleteFunc(n.env(), func(value string) bool { return strings.HasPrefix(value, "UNIC_MOCK_CLIPBOARD_DIR=") })
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -120,12 +130,31 @@ post_actions = ["none"]`)
 		time.Sleep(25 * time.Millisecond)
 	}
 	client := api.NewClient(n.sock)
-	install := func(index int) (api.PluginInfo, error) {
-		return client.InstallPlugin(ctx, api.PluginInstallRequest{Repository: repository, Ref: commits[index], Replace: index > 0})
+	var adapterSession string
+	if err := client.AdapterCall(ctx, "", "register", api.AdapterRegistration{}, &adapterSession); err != nil {
+		t.Fatal(err)
 	}
+	defer func() { _ = client.AdapterCall(ctx, adapterSession, "close", nil, nil) }()
+	adapter := &clipboardintegration.Remote{Client: client, Session: adapterSession}
+	checkCapture := func(want bool) {
+		t.Helper()
+		got, err := adapter.WantsClipboardFileImage(ctx)
+		if err != nil || got != want {
+			t.Fatalf("capture interest: got %t, want %t: %v", got, want, err)
+		}
+	}
+	checkCapture(false)
+	install := func(index int) (api.PluginInfo, error) {
+		return client.InstallPlugin(ctx, api.PluginInstallRequest{Repository: repository, Ref: commits[index], Replace: true})
+	}
+	if info, err := install(1); err != nil || info.Configured || info.RunningVersion != "" {
+		t.Fatalf("expected a disabled installation with the capability: %+v: %v", info, err)
+	}
+	checkCapture(false)
 	if _, err := install(0); err != nil {
 		t.Fatal(err)
 	}
+	checkCapture(false)
 	if _, err := client.StartPlugin(ctx, id); err != nil {
 		t.Fatal(err)
 	}
@@ -148,6 +177,7 @@ post_actions = ["none"]`)
 	if err != nil {
 		t.Fatal(err)
 	}
+	checkCapture(false)
 	send := func(requestID string) string {
 		t.Helper()
 		result, err := client.Submit(ctx, api.SubmitInput{RequestID: requestID,
@@ -178,6 +208,40 @@ post_actions = ["none"]`)
 	}
 	checkTargets(interrupted, engine.TargetFailed)
 	checkTargets(send("send-after-update"), engine.TargetSent)
+	checkCapture(true)
+	caps := engine.HostCapabilities{Observe: engine.AbilityAvailable, ReadFiles: true}
+	if err := client.AdapterCall(ctx, adapterSession, "capabilities", caps, nil); err != nil {
+		t.Fatal(err)
+	}
+	const epoch = "image-file-capture"
+	if err := client.AdapterCall(ctx, adapterSession, "observe", engine.Observation{Epoch: epoch, Sequence: 1, Mode: engine.ObserveBaseline}, nil); err != nil {
+		t.Fatal(err)
+	}
+	filePath := filepath.Join(work, "original.png")
+	if err := os.WriteFile(filePath, []byte("different backing bytes"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var pixels bytes.Buffer
+	if err := png.Encode(&pixels, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	input, err := localcontent.Input(clip.Snapshot{
+		Files: []clip.File{{Name: filepath.Base(filePath), Path: filePath}}, FileImagePNG: pixels.Bytes(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := adapter.ImportContent(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var observed engine.ObservationResult
+	if err := client.AdapterCall(ctx, adapterSession, "observe", engine.Observation{
+		Epoch: epoch, Sequence: 2, Mode: engine.ObserveChange, LeaseID: handle.LeaseID,
+	}, &observed); err != nil || observed.OperationID == "" {
+		t.Fatalf("the adapter image did not reach the declared backend: %+v: %v", observed, err)
+	}
+	checkTargets(string(observed.OperationID), engine.TargetSent)
 	checkRunning := func() {
 		t.Helper()
 		list, err := client.Plugins(ctx)
@@ -204,6 +268,7 @@ post_actions = ["none"]`)
 		t.Fatalf("candidate that failed startup was accepted: %+v", info)
 	}
 	checkRunning()
+	checkCapture(true)
 	for instance, existing := range map[string]api.PeerStatus{id: channel, alias: aliasChannel} {
 		restored, err := client.PairChannel(ctx, api.ChannelPairRequest{BackendID: instance, Resume: true})
 		if err != nil || restored.ID != existing.ID {
@@ -246,7 +311,8 @@ post_actions = ["none"]`)
 			"service_pid": cmd.Process.Pid, "installed_commit": updated.Commit, "instances": 2,
 			"running_version": updated.RunningVersion, "channels_preserved": true,
 			"failed_candidate_rejected": true, "action_replaced": true, "restart_required": false,
-			"interrupted_transfers_resolved": true,
+			"interrupted_transfers_resolved":   true,
+			"capability_gated_clipboard_image": true,
 		}, "", "  ")
 		if err != nil {
 			t.Fatal(err)

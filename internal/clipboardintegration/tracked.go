@@ -30,6 +30,12 @@ type TrackedBoard struct {
 
 func NewTrackedBoard(b Board) *TrackedBoard          { return &TrackedBoard{board: b} }
 func (b *TrackedBoard) Read() (clip.Snapshot, error) { return b.board.Read() }
+func (b *TrackedBoard) ReadFileImage(copyID string) []byte {
+	if source, ok := b.board.(interface{ ReadFileImage(string) []byte }); ok {
+		return source.ReadFileImage(copyID)
+	}
+	return nil
+}
 func (b *TrackedBoard) Write(s clip.Snapshot) error {
 	if err := b.board.Write(s); err != nil {
 		return err

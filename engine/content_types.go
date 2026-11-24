@@ -114,7 +114,7 @@ type ContentInput struct {
 	Representations   []RepresentationInput
 	Files             []FileInput
 	// FileImagePNG is a clipboard-supplied image alternative for a single
-	// file. It is retained for eligible live sync and excluded from history.
+	// file. It is retained for eligible external-channel sync and excluded from history.
 	FileImagePNG []byte
 }
 

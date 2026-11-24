@@ -68,6 +68,9 @@ The error is an Engine error with a stable code; platform exception text is excl
 The same session also supports `retain`, `release`, `received`, `dismiss`, `reconcile`, `submit`,
 `apply`, `apply-history`, `report`, `restore-sync`, `path`, and `reference`.
 These methods use the corresponding Engine DTOs and retain the Engine's single application slot.
+`wants-file-image` reports current Engine demand for an optional image representation of a single copied file.
+When the adapter reads that representation, it sends the bytes as `file_image_png` in the `import` request.
+The field is optional and does not change the imported file reference.
 `GET /v1/adapter/content?lease=...&part=...` requires the generation in `X-Unic-Adapter` and streams a leased part.
 Paths and content are available only through explicit requests; state events carry neither.
 

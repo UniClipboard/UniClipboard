@@ -36,9 +36,12 @@ the code and private group context. Existing channels preserve their settings.
 
 `ContentInput.FileImagePNG` optionally carries the clipboard-supplied image
 alternative of a single selected file. Engine copies the bytes under its
-content quota and uses them for the WeType send projection. The alternative
+content quota when an eligible backend declares image file projection. The alternative
 does not appear as a content part or in history. See the
 [external-channel contract](sync-backend-contract.md#6a-外部渠道-profile0009进程外-rpc-子集已实现).
+
+`WantsClipboardFileImage` reports current demand for the optional alternative
+from an eligible automatic clipboard observation.
 
 `ReplaceExternalPlugins` replaces active external Go Action-only plugins or
 external-channel object-store backends of one implementation. The replacement

@@ -34,6 +34,8 @@ type PluginInstance struct {
 	// Disabled keeps the plugin in the list, with its description checked and
 	// its ID reserved, but does not start it or let it see anything.
 	Disabled bool
+	// ImageFilesAsImages opts an external process into PNG projection of one image file.
+	ImageFilesAsImages bool
 	// Events the plugin subscribes to. Processors take clipboard.captured and
 	// clipboard.received (default: both); observers take clipboard.committed,
 	// updated, deleted and expired (default: all four). When the list is not
@@ -183,7 +185,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				}
 				return invalidPlugin(spec.ID, "Init failed")
 			}
-			pb := &pluginBackend{e: e, id: PluginID(id), kind: TransportKind(spec.TransportKind), sb: sb, spec: spec}
+			pb := &pluginBackend{e: e, id: PluginID(id), kind: TransportKind(spec.TransportKind), sb: sb, spec: spec, imageFilesAsImages: in.ImageFilesAsImages}
 			if ra, ok := in.Plugin.(plugin.ReceiverAware); ok && spec.ExternalChannels {
 				ra.SetReceiver(pb)
 			}
@@ -262,6 +264,9 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 		return invalidPlugin(s.ID, "unsupported API version")
 	case s.Version == "" || len(s.Version) > 64:
 		return invalidPlugin(s.ID, "invalid version")
+	}
+	if in.ImageFilesAsImages && (in.Process == nil || !s.ExternalChannels || !slices.Contains(s.Capabilities, plugin.CapSyncBackend)) {
+		return invalidPlugin(s.ID, "image file projection requires an external Go sync backend")
 	}
 	if s.SettingsSHA256 != "" {
 		digest, err := hex.DecodeString(s.SettingsSHA256)

@@ -292,6 +292,11 @@ release artifacts and end-to-end acceptance. A main-repository entry under
 `plugins/examples/` may link to that repository and a compatible immutable
 revision. Do not maintain a second copy of the implementation there.
 
+An installed external Go sync backend with `external_channels = true` may declare
+`image_files_as_images = true` to request host-side PNG projection of a single
+image file. The field is optional and defaults to false. See the
+[external-channel contract](sync-backend-contract.md#6a-外部渠道-profile0009进程外-rpc-子集已实现).
+
 ### Marketplace catalog
 
 The Desktop marketplace reads a version-1 static JSON catalog from

@@ -44,7 +44,7 @@ func (n *Node) replaceInstalledPluginLocked(ctx context.Context, candidate luasc
 		}
 		revisions[id] = revision
 		replacements = append(replacements, engine.PluginInstance{
-			ID: engine.PluginID(id), Config: values, OnError: onError, Events: s.Manifest.Events,
+			ID: engine.PluginID(id), Config: values, OnError: onError, Events: s.Manifest.Events, ImageFilesAsImages: s.Manifest.ImageFilesAsImages,
 			Process: &engine.PluginProcess{Path: s.Executable(), SHA256: s.BinarySHA256, Spec: spec},
 		})
 	}

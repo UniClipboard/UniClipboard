@@ -195,7 +195,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 					return nil, err
 				}
 			}
-			opts.Plugins = append(opts.Plugins, engine.PluginInstance{ID: engine.PluginID(id), Process: pp, Config: values, OnError: onError, Events: s.Manifest.Events})
+			opts.Plugins = append(opts.Plugins, engine.PluginInstance{ID: engine.PluginID(id), Process: pp, Config: values, OnError: onError, Events: s.Manifest.Events, ImageFilesAsImages: s.Manifest.ImageFilesAsImages})
 			n.runningPlugins[id] = s
 		}
 	}

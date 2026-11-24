@@ -273,14 +273,14 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 		pol := e.policyOf(b.ID())
 		var set sendSet
 		var viewErr *Error
-		if wxime := weTypeBackend(b); files && wxime != nil {
+		if backend, ok := b.(*pluginBackend); files && ok && backend.imageFilesAsImages {
 			if pol.Images && len(req.DeviceIDs) == 0 {
-				if len(wxime.enabledChannels()) == 0 {
+				if len(backend.enabledChannels()) == 0 {
 					res.Disposition = BackendNoTargets
 					results = append(results, res)
 					continue
 				}
-				set, viewErr = e.weTypeImageSet(ctx, c)
+				set, viewErr = e.imageFileSendSet(ctx, c)
 			}
 		} else if !files || pol.Files {
 			set = buildSendSet(c, pol)

@@ -32,6 +32,7 @@ type Clipboard struct {
 	epoch       string
 	seq         uint64
 	seen        string // hash of the clipboard as last read
+	seenCopyID  string
 	heldPaths   []string
 	held        engine.LeaseID // lease on the received files now on the clipboard
 	tried       map[engine.ReceiptID]bool
@@ -96,7 +97,7 @@ func (c *Clipboard) rebase(ctx context.Context, snap clip.Snapshot, lease engine
 	if err != nil {
 		return err
 	}
-	c.seen = snap.ObservationHash()
+	c.seen, c.seenCopyID = snap.ObservationHash(), snap.CopyID
 	return nil
 }
 
@@ -128,10 +129,26 @@ func (c *Clipboard) tickLocked(ctx context.Context) {
 		return
 	}
 	h := s.ObservationHash()
-	if h == c.seen {
+	changed := h != c.seen
+	newCopy := s.CopyID != "" && s.CopyID != c.seenCopyID
+	if !changed && !newCopy {
 		return
 	}
-	c.seen = h
+	c.seen, c.seenCopyID = h, s.CopyID
+	if newCopy && len(s.Files) == 1 && !s.Files[0].Directory {
+		source, canRead := c.board.(interface{ ReadFileImage(string) []byte })
+		interest, canAsk := c.e.(interface {
+			WantsClipboardFileImage(context.Context) (bool, error)
+		})
+		if canRead && canAsk {
+			if wanted, err := interest.WantsClipboardFileImage(ctx); err == nil && wanted {
+				s.FileImagePNG = source.ReadFileImage(s.CopyID)
+			}
+		}
+	}
+	if !changed && len(s.FileImagePNG) == 0 {
+		return
+	}
 	lease, err := c.importSnap(ctx, s)
 	if err != nil {
 		c.logf("cannot read the clipboard into the engine: %v", asCode(err))
@@ -299,7 +316,7 @@ func (c *Clipboard) writeTicket(ctx context.Context, tk engine.ApplyTicket) (cli
 		return snap, false
 	}
 	if rerr == nil {
-		c.seen = back.ObservationHash()
+		c.seen, c.seenCopyID = back.ObservationHash(), back.CopyID
 	}
 	// Files stay on the clipboard, so their lease is kept until replaced.
 	old := c.held

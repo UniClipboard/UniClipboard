@@ -123,28 +123,12 @@ func (b *Board) Read() (snapshot clip.Snapshot, err error) {
 			}
 			snapshot.Files = append(snapshot.Files, file)
 		}
-		owner := board
-		fileImage := false
-		if len(snapshot.Files) == 1 && !snapshot.Files[0].Directory &&
-			strings.HasPrefix(mime.TypeByExtension(strings.ToLower(filepath.Ext(snapshot.Files[0].Name))), "image/") {
-			items := send(board, "pasteboardItems")
-			if objc.Send[uint64](items, objc.RegisterName("count")) == 1 {
-				owner = send(items, "objectAtIndex:", uint64(0))
-				fileImage = true
-			}
-		}
-		if len(snapshot.Files) == 0 || fileImage {
+		if len(snapshot.Files) == 0 {
 			for _, format := range contentTypes {
-				if fileImage && format.format != clip.PNG {
-					continue
-				}
 				for _, name := range format.types {
 					typ := nsString(name)
-					data := send(owner, "dataForType:", typ)
+					data := send(board, "dataForType:", typ)
 					if data == 0 {
-						continue
-					}
-					if fileImage && objc.Send[uint64](data, objc.RegisterName("length")) > maxRepresentation {
 						continue
 					}
 					if format.format == clip.Text && name != format.types[0] {
@@ -155,19 +139,12 @@ func (b *Board) Read() (snapshot clip.Snapshot, err error) {
 						rep := send(objc.ID(objc.GetClass("NSBitmapImageRep")), "imageRepWithData:", data)
 						data = send(rep, "representationUsingType:properties:", uint64(4), send(objc.ID(objc.GetClass("NSDictionary")), "dictionary"))
 					}
-					if fileImage && objc.Send[uint64](data, objc.RegisterName("length")) > clip.MaxFileImageBytes {
-						continue
-					}
 					bytes, e := nsBytes(data)
 					if e != nil {
 						return e
 					}
 					if len(bytes) > 0 {
-						if fileImage {
-							snapshot.FileImagePNG = bytes
-						} else {
-							snapshot.Parts = append(snapshot.Parts, clip.Part{Format: format.format, Data: bytes})
-						}
+						snapshot.Parts = append(snapshot.Parts, clip.Part{Format: format.format, Data: bytes})
 						break
 					}
 				}
@@ -182,6 +159,45 @@ func (b *Board) Read() (snapshot clip.Snapshot, err error) {
 		return nil
 	})
 	return
+}
+
+// ReadFileImage reads an image alternate for the unchanged single file copy.
+func (b *Board) ReadFileImage(copyID string) (png []byte) {
+	c := objc.RegisterName("count")
+	length := objc.RegisterName("length")
+	_ = b.use(func(board objc.ID) error {
+		token := changeCount(board)
+		if strconv.FormatUint(token, 10) != copyID {
+			return nil
+		}
+		paths := filePaths(board)
+		items := send(board, "pasteboardItems")
+		if len(paths) != 1 || objc.Send[uint64](items, c) != 1 ||
+			!strings.HasPrefix(mime.TypeByExtension(strings.ToLower(filepath.Ext(paths[0]))), "image/") {
+			return nil
+		}
+		item := send(items, "objectAtIndex:", uint64(0))
+		for _, name := range []string{"public.png", "public.tiff", "NSTIFFPboardType"} {
+			data := send(item, "dataForType:", nsString(name))
+			if data == 0 || objc.Send[uint64](data, length) > maxRepresentation {
+				continue
+			}
+			if name != "public.png" {
+				rep := send(objc.ID(objc.GetClass("NSBitmapImageRep")), "imageRepWithData:", data)
+				data = send(rep, "representationUsingType:properties:", uint64(4), send(objc.ID(objc.GetClass("NSDictionary")), "dictionary"))
+			}
+			if data == 0 || objc.Send[uint64](data, length) > clip.MaxFileImageBytes {
+				continue
+			}
+			value, err := nsBytes(data)
+			if err == nil && len(value) > 0 && changeCount(board) == token {
+				png = value
+				break
+			}
+		}
+		return nil
+	})
+	return png
 }
 
 func (b *Board) Write(snapshot clip.Snapshot) error {

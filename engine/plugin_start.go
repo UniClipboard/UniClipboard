@@ -87,7 +87,7 @@ func (e *Engine) StartExternalPlugin(ctx context.Context, in PluginInstance, pol
 			_ = in.Plugin.Close(context.WithoutCancel(ctx))
 		}
 	}()
-	pb, err := e.startExternalProcess(ctx, id, in.Plugin, in.Config)
+	pb, err := e.startExternalProcess(ctx, id, in.Plugin, in.Config, in.ImageFilesAsImages)
 	if err != nil {
 		return err
 	}
@@ -125,14 +125,14 @@ func (e *Engine) StartExternalPlugin(ctx context.Context, in PluginInstance, pol
 	return nil
 }
 
-func (e *Engine) startExternalProcess(ctx context.Context, id PluginID, p plugin.Plugin, cfg plugin.Config) (*pluginBackend, *Error) {
+func (e *Engine) startExternalProcess(ctx context.Context, id PluginID, p plugin.Plugin, cfg plugin.Config, imageFilesAsImages bool) (*pluginBackend, *Error) {
 	if err := p.Init(ctx, &pluginHost{e: e, id: id}, cfg); err != nil {
 		return nil, newErr(CodeUnavailable, "plugin initialization failed")
 	}
 	var backend *pluginBackend
 	spec := p.Spec()
 	if spec.ExternalChannels {
-		backend = &pluginBackend{e: e, id: id, kind: TransportKind(spec.TransportKind), sb: p.(plugin.SyncBackend), spec: spec}
+		backend = &pluginBackend{e: e, id: id, kind: TransportKind(spec.TransportKind), sb: p.(plugin.SyncBackend), spec: spec, imageFilesAsImages: imageFilesAsImages}
 		backend.preparing.Store(true)
 		p.(plugin.ReceiverAware).SetReceiver(backend)
 	}

@@ -26,7 +26,7 @@ paths:
   - engine/transfer.go
   - engine/submission.go
   - engine/backend.go
-  - engine/wetype_image.go
+  - engine/image_file_sync.go
   - engine/receive.go
   - engine/clipboard.go
   - engine/action.go
@@ -67,10 +67,11 @@ The stage chain is Capture/Receive → Processing → Commit → Sync → Use �
 A live external backend update terminates unfinished targets owned by the old
 process with a failed status. The replacement handles subsequent submissions.
 
-WeType uses the image sync policy for single image file selections. The
-macOS clipboard reader retains an image alternative advertised by the same
-pasteboard item. The WeType send view uses that PNG or converts the file to PNG.
-History stores the original file selection. The
+An external Go backend can opt into single image file projection under the
+image sync policy. The macOS adapter asks Engine for current demand before
+reading the optional image from the same clipboard item. It transfers that
+data through private clipboard import. The send view uses that PNG or
+converts the file to PNG. History stores the original file selection. The
 [external-channel contract](../contracts/sync-backend-contract.md#6a-外部渠道-profile0009进程外-rpc-子集已实现)
 defines the size and format bounds.
 - **Built-in session publication**: The session backend serializes session election, the Engine `connected` callback and local session registration with send-session lookup. A send dispatched while the callback returns waits for registration instead of failing because its newly published session is not yet in the backend map. The publication lock is released before send authorization and body I/O; the backend state mutex is never held across the authority callback. This adds no retry or replay. See the [readiness-race receipt](../exec/tailcat-connected-publication.md).

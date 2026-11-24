@@ -69,12 +69,11 @@ requires the encrypted backup format containing `vault/keyslot.json`. An
 Android Keystore alias, iOS Keychain access group and matching mobile backup
 format for that vault have not been established. The existing passphrase
 path applies to compatible v1 backups. Import of the released mobile history
-and physical-device coverage of both upgrade paths remain open.
+and Keychain-backed upgrade remain open. The iPhone run below exercises the
+passphrase path with a compatible synthetic backup.
 
-Physical-device camera pairing, slow-network pairing, provisioned iOS Share
-Extension acceptance, and physical-device background receive are separate
-from native compilation. The isolated iOS share group and extension need
-provisioning before a physical-device run.
+Physical-device camera pairing, slow-network pairing, iOS Share Extension
+behavior, and physical-device background receive require device evidence.
 
 ## Verification
 
@@ -94,4 +93,77 @@ provisioning before a physical-device run.
   checksum verification passed. The initial source boundary rejected the
   camera dependency. The verifier now permits it only in the pairing
   scanner.
-- The native UI, simulator pairing, and physical-device checks remain open.
+
+## iOS physical-device acceptance
+
+XCUITest ran on an iPhone 16 Pro with iOS 27.3 (24C5037i). The Release build
+used the isolated `app.uniclipboard.shell` identifier with a development
+profile. The app and extension build artifacts compiled for iOS arm64. The
+installed app used the app-only profile because the shell and extension
+profiles did not contain the isolated App Group entitlement.
+
+The first device run used a stale app container path after installation. The
+retry resolved the current path and found that the native settings table
+omitted the local device ID. On-device accessibility data also showed that
+the modal backdrop grouped the controls into a single element. The fixes
+restore the settings subtitle and expose the modal controls individually.
+The bounded runner retry waits for the app process and the actual controls
+while excluding animation-idle notifications from XCTest synchronization.
+
+| Scenario | iPhone result |
+| --- | --- |
+| Local identity and invalid manual input | The device ID appeared and invalid input triggered the device error prompt. |
+| Ticket QR | The app displayed an Engine-generated QR code and removed it when the sheet closed. |
+| Six-digit code failure | The operation row reported a terminal error against the disposable rendezvous endpoint. Stopping observation removed the row. |
+| History pin and tag | The app exposed Unpin and the new tag. SQLite readback confirmed both tags on the fixture text. |
+| Pairing approval and rename | The app displayed fingerprint review for the staged pending peer. It moved the row after confirmation and preserved the edited name after restart. SQLite readback confirmed trusted status and the new name. Two local Engine processes established the staged pending state. |
+| Compatible encrypted backup | The app accepted the passphrase, reported partial import for the deliberately malformed record, and opened History. Four valid records survived retention. |
+
+The first compatible migration fixture used old timestamps. The Engine
+imported the four valid records and then expired them under its default
+history retention. A freshly dated copy went through the same passphrase
+and partial-import screens. SQLite readback from the iPhone confirmed two
+text records, one image record and one file record with `migration` origin.
+
+The final retries corrected the invalid-input message assertion and restored a
+fresh pending peer fixture. The app executable SHA-256 was
+`68dc9e4cede5d1c4de9f23c7f5c669522aecf60021af0fc944fd61b131254265`.
+The JavaScript bundle SHA-256 was
+`002685bdf28df4be9c43acbf2d277ffc95ac4e6254367d1acf4e760a9f6e3a87`.
+The reproducibility archive includes the test source template, build steps,
+source patch and filtered readback. Physical QR scanning and successful
+pairing from a physical phone remain open.
+
+### iOS Share Extension acceptance
+
+The follow-up registered `group.app.uniclipboard.shell.incoming-share` and
+assigned it to the isolated application and its `.Share` extension. A new
+arm64 Release build used development profiles that each contained the exact
+App Group. The final signatures for both bundles included that entitlement.
+The complete signed application installed on the same iPhone.
+
+The original physical run staged a file URL as `shared-file` because the
+provider did not supply a suggested name. The extension now uses the source
+URL to recover the file name and type when the item provider offers a file
+URL. The corrected Release build ran against a new disposable profile.
+
+| System share sample | Readback after reopening the iPhone profile |
+| --- | --- |
+| Text | The saved text matched the 40-byte fixture. |
+| PNG | The record used the image kind and PNG MIME type. Export matched the 359-byte original, including the 32 × 32 dimensions and two sampled pixels. |
+| File | Export retained `m03-physical-share.txt` and matched the 41-byte original. |
+
+The system share sheet opened the isolated extension for each sample. Its
+receiving sheet saved all three through **Save to Local History**. The
+reopened profile showed that sync was enabled and each item had
+`not_requested` sync state and no backend dispatch record.
+
+The first retry updated the fixture app for the iOS 27 scene lifecycle. The
+test then scoped gestures to the system app row and selected the isolated
+app in **More**. The first corrected-build run passed text and staged the
+two remaining shares. The PNG provider offered a synthesized preview name.
+The receive-only retry accepted that preview, saved the PNG and then saved
+the file already queued behind it. The archive includes all run summaries,
+the source patch, fixture and runner sources, both signing checks, and the
+independent profile readback. The final extension executable SHA-256 was
+`26dc05fbdd89ad68a2b699dc92fa4685999147d642270029a9aeca85327888a3`.

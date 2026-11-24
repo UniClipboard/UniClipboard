@@ -256,6 +256,8 @@ History tags use revision-checked updates and Engine tag queries.
 Android SAF copies the selected v1 backup to private cache before passing
 it to the existing migration session. Android share intents and the iOS
 Share Extension stage items for confirmation in the main application.
+The iOS extension uses the file URL to recover the file name and type when
+the share provider offers the payload as a file URL.
 The main application owns the Engine. It uses the same processing path
 for local saves and device-targeted sends. Local saves request no backend
 dispatch. The Android foreground service keeps the app-owned Engine active

@@ -63,17 +63,19 @@ final class ShareViewController: UIViewController {
         let entry: [String: String]
         let types = provider.registeredTypeIdentifiers.compactMap { UTType($0) }
         let concreteFile = types.first { $0.conforms(to: .data) && !$0.conforms(to: .text) && !$0.conforms(to: .url) }
-        if let type = concreteFile {
-          remaining -= try await copy(provider, type: type, to: staging.appendingPathComponent("payload"), limit: remaining)
-          let original = provider.suggestedName ?? "shared-file"
+        let fileType = concreteFile ?? (provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) ? .fileURL : nil)
+        if let type = fileType {
+          let copied = try await copy(provider, type: type, to: staging.appendingPathComponent("payload"), limit: remaining)
+          remaining -= copied.size
+          let sourceExtension = URL(fileURLWithPath: copied.name).pathExtension
+          let payloadType = type == .fileURL ? UTType(filenameExtension: sourceExtension) : type
+          let original = provider.suggestedName.flatMap { $0.isEmpty ? nil : $0 }
+            ?? (type == .fileURL ? copied.name : "shared-file")
           var name = URL(fileURLWithPath: original).lastPathComponent
-          if URL(fileURLWithPath: name).pathExtension.isEmpty, let ext = type.preferredFilenameExtension {
+          if URL(fileURLWithPath: name).pathExtension.isEmpty, let ext = payloadType?.preferredFilenameExtension {
             name += "." + ext
           }
-          entry = ["kind": "file", "name": name, "mime": type.preferredMIMEType ?? "application/octet-stream"]
-        } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-          remaining -= try await copy(provider, type: .fileURL, to: staging.appendingPathComponent("payload"), limit: remaining)
-          entry = ["kind": "file", "name": provider.suggestedName ?? "shared-file", "mime": "application/octet-stream"]
+          entry = ["kind": "file", "name": name, "mime": payloadType?.preferredMIMEType ?? "application/octet-stream"]
         } else if let value = try await loadText(provider), !value.isEmpty {
           let length = value.utf8.count
           guard length <= 256 * 1024 && length <= remaining else { throw CocoaError(.fileWriteOutOfSpace) }
@@ -92,7 +94,7 @@ final class ShareViewController: UIViewController {
     guard saved > 0 else { throw CocoaError(.fileReadUnsupportedScheme) }
   }
 
-  private func copy(_ provider: NSItemProvider, type: UTType, to destination: URL, limit: Int) async throws -> Int {
+  private func copy(_ provider: NSItemProvider, type: UTType, to destination: URL, limit: Int) async throws -> (size: Int, name: String) {
     try await withCheckedThrowingContinuation { continuation in
       let copyFile: (URL?, (any Error)?) -> Void = { url, error in
         do {
@@ -104,7 +106,7 @@ final class ShareViewController: UIViewController {
             throw CocoaError(.fileWriteOutOfSpace)
           }
           try FileManager.default.copyItem(at: url, to: destination)
-          continuation.resume(returning: size)
+          continuation.resume(returning: (size, url.lastPathComponent))
         } catch {
           continuation.resume(throwing: error)
         }

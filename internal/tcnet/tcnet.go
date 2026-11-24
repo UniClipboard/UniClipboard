@@ -36,9 +36,14 @@ type Transport struct {
 	clientKey key.NodePrivate
 
 	mu      sync.Mutex
-	clients map[string]*tailcat.Client
+	clients map[string]*peerClient
 	addr    string
 	creds   credentials
+}
+
+type peerClient struct {
+	client *tailcat.Client
+	users  int // in-flight dials and open connections, guarded by Transport.mu
 }
 
 // New prepares the transport with credentials kept in dir, the backend's own
@@ -48,7 +53,7 @@ type Transport struct {
 // never generated in its place, since that would silently change the address
 // every paired device has stored.
 func New(dir string, logf func(string, ...any)) (*Transport, error) {
-	t := &Transport{dir: dir, logf: logf, clients: map[string]*tailcat.Client{}}
+	t := &Transport{dir: dir, logf: logf, clients: map[string]*peerClient{}}
 	c, err := loadCredentials(dir)
 	if err != nil {
 		return nil, err
@@ -129,11 +134,28 @@ func (t *Transport) Dial(ctx context.Context, addr string) (net.Conn, error) {
 	t.mu.Lock()
 	c := t.clients[addr]
 	if c == nil {
-		c = &tailcat.Client{Server: tailcat.Addr(addr), Key: t.clientKey, Logf: t.logf}
+		c = &peerClient{client: &tailcat.Client{Server: tailcat.Addr(addr), Key: t.clientKey, Logf: t.logf}}
 		t.clients[addr] = c
 	}
+	c.users++
 	t.mu.Unlock()
-	return c.DialTCPPort(ctx, Port)
+	release := func() {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		c.users--
+		if c.users == 0 {
+			// A peer restart can invalidate registration and WireGuard
+			// state. The next dial starts a clean stack with the same key.
+			_ = c.client.Close()
+			delete(t.clients, addr)
+		}
+	}
+	conn, err := c.client.DialTCPPort(ctx, Port)
+	if err != nil {
+		release()
+		return nil, err
+	}
+	return &clientConn{Conn: conn, release: release}, nil
 }
 
 // Binding is the identity protocol's context_binding for connections to the
@@ -148,17 +170,6 @@ func (t *Transport) Binding(addr string) ([]byte, error) {
 	}
 	raw := ci.ServerPublic.Raw32() //nolint:staticcheck // SA1019: no non-deprecated way to get the raw key bytes
 	return append([]byte("unic/tailcat/1\x00"), raw[:]...), nil
-}
-
-// Forget closes the client of a removed peer.
-func (t *Transport) Forget(addr string) {
-	t.mu.Lock()
-	c := t.clients[addr]
-	delete(t.clients, addr)
-	t.mu.Unlock()
-	if c != nil {
-		_ = c.Close()
-	}
 }
 
 func parseNodeKey(text string) (key.NodePrivate, error) {

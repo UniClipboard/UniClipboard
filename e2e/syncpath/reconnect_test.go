@@ -81,7 +81,11 @@ func TestTailcatReconnectAfterListenerRestart(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: dial failed: %T", want, err)
 		}
-		defer c.Close()
+		defer func() {
+			if err := c.Close(); err != nil {
+				t.Errorf("close fixture connection: %T", err)
+			}
+		}()
 		deadline, _ := ctx.Deadline()
 		must(t, c.SetDeadline(deadline))
 		_, err = io.WriteString(c, want)

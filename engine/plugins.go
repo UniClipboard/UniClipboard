@@ -34,6 +34,8 @@ type PluginInstance struct {
 	// Disabled keeps the plugin in the list, with its description checked and
 	// its ID reserved, but does not start it or let it see anything.
 	Disabled bool
+	// ImageFilesAsImages opts an external process into PNG projection of one image file.
+	ImageFilesAsImages bool
 	// Events the plugin subscribes to. Processors take clipboard.captured and
 	// clipboard.received (default: both); observers take clipboard.committed,
 	// updated, deleted and expired (default: all four). When the list is not
@@ -183,7 +185,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				}
 				return invalidPlugin(spec.ID, "Init failed")
 			}
-			pb := &pluginBackend{e: e, id: PluginID(id), kind: TransportKind(spec.TransportKind), sb: sb, spec: spec}
+			pb := &pluginBackend{e: e, id: PluginID(id), kind: TransportKind(spec.TransportKind), sb: sb, spec: spec, imageFilesAsImages: in.ImageFilesAsImages}
 			if ra, ok := in.Plugin.(plugin.ReceiverAware); ok && spec.ExternalChannels {
 				ra.SetReceiver(pb)
 			}
@@ -262,6 +264,9 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 		return invalidPlugin(s.ID, "unsupported API version")
 	case s.Version == "" || len(s.Version) > 64:
 		return invalidPlugin(s.ID, "invalid version")
+	}
+	if in.ImageFilesAsImages && (in.Process == nil || !s.ExternalChannels || !slices.Contains(s.Capabilities, plugin.CapSyncBackend)) {
+		return invalidPlugin(s.ID, "image file projection requires an external Go sync backend")
 	}
 	if s.SettingsSHA256 != "" {
 		digest, err := hex.DecodeString(s.SettingsSHA256)
@@ -422,12 +427,24 @@ func (e *Engine) registerActions(spec plugin.Spec, a plugin.Actor) {
 }
 
 func (e *Engine) bindBackendInstance(id, implementation string, cfg plugin.Config) *Error {
+	binding, err := backendInstanceBinding(id, implementation, cfg)
+	if err != nil {
+		return err
+	}
+	return e.bindBackendInstances([]store.BackendInstance{binding})
+}
+
+func backendInstanceBinding(id, implementation string, cfg plugin.Config) (store.BackendInstance, *Error) {
 	config, err := json.Marshal(cfg)
 	if err != nil {
-		return invalidPlugin(id, "configuration must contain JSON values")
+		return store.BackendInstance{}, invalidPlugin(id, "configuration must contain JSON values")
 	}
 	digest := sha256.Sum256(config)
-	if err := e.st.BindBackendInstance(id, implementation, hex.EncodeToString(digest[:])); err != nil {
+	return store.BackendInstance{ID: id, Implementation: implementation, ConfigHash: hex.EncodeToString(digest[:])}, nil
+}
+
+func (e *Engine) bindBackendInstances(bindings []store.BackendInstance) *Error {
+	if err := e.st.BindBackendInstances(bindings); err != nil {
 		if errors.Is(err, store.ErrDeviceConflict) {
 			return newErr(CodeConflict, "backend implementation changed; create a new instance")
 		}
@@ -448,6 +465,8 @@ func (e *Engine) closePlugins(ctx context.Context) {
 // "unavailable") following repeated crashes. In-process plugins and plugins
 // that are running are not restartable.
 func (e *Engine) RestartPlugin(ctx context.Context, id PluginID) error {
+	e.pluginStartMu.Lock()
+	defer e.pluginStartMu.Unlock()
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
 		return gerr

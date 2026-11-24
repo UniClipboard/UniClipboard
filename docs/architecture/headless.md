@@ -22,7 +22,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: 1cd17c916ea5d3436bebd521293f2827b825a3dd
+verified: ae19fb6990c7efd5bf940c7220ef48ac6f41122d
 ---
 # Headless service and desktop integration
 
@@ -77,6 +77,10 @@ The CLI is organized by user intent. `unic send` (`s`) and `unic recv` (`r`) mov
 The receiver admits the offer through `Engine.AdmitTransfer` before reading data, writes files into a private inbox directory and completes into the ordinary received pipeline. History origin is `external` with plugin ID `unic.transfer`. The transfer never creates a device or trust. The sender keeps its prepared transfer payload in memory. Delivery means that the receiver verified payload hashes and sent a protocol ACK. The ACK precedes receiver file placement and pipeline completion; it does not prove history persistence or system clipboard application. Addresses, tokens, codes and links are never logged.
 
 The plugin manager installs public GitHub Go and Lua plugins from a pinned commit. It prefers a verified release asset and permits a source build only with `--build`. Use `unic plugin list` for installed and active versions, and `unic plugin settings` for revision-checked configuration through the local service. See the [installation contract](../contracts/plugin-contract.md#8-从-github-仓库安装).
+
+The marketplace uses the service installation API to activate eligible Go
+plugin updates in the current service process. The CLI install command updates
+the installation on disk for activation at service startup.
 
 ## On-demand service for CLI commands
 

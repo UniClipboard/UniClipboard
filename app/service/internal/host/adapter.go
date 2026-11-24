@@ -242,15 +242,18 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 					ch <- r
 				}
 			}
+		case "wants-file-image":
+			out, err = n.e.WantsClipboardFileImage(ctx)
 		case "import":
-			var s clip.Snapshot
+			var s api.AdapterImport
 			if decode(&s) {
 				if len(a.leases) >= 128 {
 					err = adapterError(engine.CodeResourceExhausted)
 					break
 				}
 				var input engine.ContentInput
-				input, err = contentInput(s)
+				s.Snapshot.FileImagePNG = s.FileImagePNG
+				input, err = contentInput(s.Snapshot)
 				if err == nil {
 					var h engine.ContentHandle
 					h, err = n.e.ImportContent(ctx, input)

@@ -129,6 +129,24 @@ sync_host.receive 参数只有 receive_id，其 RESPONSE 等所有 part 和 rece
 - Engine 为每个 transfer 保存目标表（≤ 256），全部目标终态或进程退出后清除；进程崩溃时未终态目标按失败结束，重启后重新装载。
 - 真实子进程测试：`engine/pluginchannel_proc_test.go`。P2P 的撤销屏障、`authorize_send`、接收准入与身份方法仍未实现。
 
+An external Go backend can declare `image_files_as_images = true` in its
+host-verified installation manifest. The default is false. For an enabled
+channel of a declaring backend with image sync enabled, Engine projects a
+single image file into one `image/png` representation before
+`backend.submit`. It uses a valid PNG alternative supplied with the clipboard
+file when available. Otherwise it reads the selected file through its existing
+content reference and validates and converts PNG, JPEG, or still WebP input.
+The input and the PNG output each have a 16 MiB cap. The decoded image has a
+16-megapixel cap. Multiple files, directories, and unsupported images produce
+no submission to the opting-in backend. The resulting representation follows image policy.
+The original file remains in local history and retains its file semantics for
+other backends.
+
+The manifest field controls host-side preparation and uses the existing RPC
+representation and handshake. The host requests clipboard-supplied PNG bytes
+only for an eligible automatic file copy and an enabled channel. It discards
+the optional bytes if eligibility or spare content quota is lost before import.
+
 ### Provider pairing and group resolution
 
 An external-channel plugin can implement `plugin.ChannelPairer`. Engine sends

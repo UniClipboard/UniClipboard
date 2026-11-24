@@ -44,8 +44,13 @@ func (r *Remote) ImportContent(ctx context.Context, in engine.ContentInput) (out
 		}
 		s.Files = append(s.Files, clip.File{Name: f.Name, Size: f.Size, Path: ref.PersistentRef()})
 	}
-	err = r.call(ctx, "import", s, &out)
+	err = r.call(ctx, "import", api.AdapterImport{Snapshot: s, FileImagePNG: in.FileImagePNG}, &out)
 	return
+}
+func (r *Remote) WantsClipboardFileImage(ctx context.Context) (bool, error) {
+	var wanted bool
+	err := r.call(ctx, "wants-file-image", nil, &wanted)
+	return wanted, err
 }
 func (r *Remote) ReadContent(ctx context.Context, l engine.LeaseID, p engine.PartID) (io.ReadCloser, error) {
 	return r.Client.AdapterContent(ctx, r.Session, l, p)

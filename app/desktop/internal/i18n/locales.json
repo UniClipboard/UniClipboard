@@ -5537,6 +5537,12 @@
     "pt-BR": "\"%s\" atualizado. Reinicie o aplicativo para aplicar.",
     "ru": "«%s» обновлён. Перезапустите приложение для применения."
   },
+  "已更新「%s」。": {
+    "en": "Updated \"%s\".",
+    "ja": "「%s」を更新しました。",
+    "pt-BR": "\"%s\" atualizado.",
+    "ru": "«%s» обновлён."
+  },
   "已标记卸载「%s」，重启后清理程序文件。": {
     "en": "Marked \"%s\" for uninstall. Program files will be cleaned up after restart.",
     "ja": "「%s」をアンインストール対象にしました。再起動後にファイルが削除されます。",

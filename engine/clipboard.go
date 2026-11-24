@@ -162,7 +162,8 @@ func contentKey(c *contentObj) string {
 	if directoryReference(c) {
 		return snap.Hash() + "/copy/" + c.copyID
 	}
-	return snap.Hash()
+	snap.FileImagePNG = c.fileImagePNG
+	return snap.ObservationHash()
 }
 
 // contentOf finds the content of a lease; an empty lease is an empty clipboard.

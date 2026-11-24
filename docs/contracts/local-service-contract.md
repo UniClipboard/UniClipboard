@@ -68,6 +68,9 @@ The error is an Engine error with a stable code; platform exception text is excl
 The same session also supports `retain`, `release`, `received`, `dismiss`, `reconcile`, `submit`,
 `apply`, `apply-history`, `report`, `restore-sync`, `path`, and `reference`.
 These methods use the corresponding Engine DTOs and retain the Engine's single application slot.
+`wants-file-image` reports current Engine demand for an optional image representation of a single copied file.
+When the adapter reads that representation, it sends the bytes as `file_image_png` in the `import` request.
+The field is optional and does not change the imported file reference.
 `GET /v1/adapter/content?lease=...&part=...` requires the generation in `X-Unic-Adapter` and streams a leased part.
 Paths and content are available only through explicit requests; state events carry neither.
 
@@ -435,7 +438,13 @@ catalog. Both fields use the [plugin icon syntax](plugin-contract.md#display-ico
 The install request is limited to 8192 bytes. Unknown fields, trailing JSON and
 an empty repository are rejected. Boolean options default false. Installation
 uses the existing commit-locked GitHub installer. `enable=true` also updates
-the plugin configuration; a service restart activates the installed version.
+the plugin configuration. The install route with `replace=true` activates a
+verified update within the current service when the active, enabled instances
+and the replacement support the same live-start capability class. A successful
+live update returns the new running version and clears the restart requirement
+for the update. An invalid replacement returns an error and the service
+restores the previous installation and processes. Other installations that
+require activation use the service restart lifecycle.
 For an inactive installed Go Action-only plugin or external-channel backend
 with `live_start: true`, the explicit start route requests activation in the
 current service. It enables the instance, starts the verified process and

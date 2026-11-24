@@ -25,6 +25,13 @@ type AdapterReply struct {
 	Value json.RawMessage `json:"value,omitempty"`
 	Error *engine.Error   `json:"error,omitempty"`
 }
+
+// AdapterImport carries the optional clipboard image only on the private
+// import route. Shared clipboard reads and command results omit it.
+type AdapterImport struct {
+	clip.Snapshot
+	FileImagePNG []byte `json:"file_image_png,omitempty"`
+}
 type DesktopCommand struct {
 	ID        string           `json:"id"`
 	Kind      string           `json:"kind"`

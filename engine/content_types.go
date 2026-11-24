@@ -113,6 +113,9 @@ type ContentInput struct {
 	ObservationKey    string // local copy-action marker; never transmitted
 	Representations   []RepresentationInput
 	Files             []FileInput
+	// FileImagePNG is a clipboard-supplied image alternative for a single
+	// file. It is retained for eligible external-channel sync and excluded from history.
+	FileImagePNG []byte
 }
 
 // DirectorySource supplies a selected directory without exposing host paths.

@@ -266,14 +266,28 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 	host := &dispatchHost{e: e, req: req, hash: hash, c: c}
 	transfer, tsMs := wire.NewID(), time.Now().UnixMilli()
 	manual := req.Origin == OriginExplicit
+	files := hasFiles(c)
 
 	for _, b := range backends {
 		res := BackendSubmissionResult{BackendID: b.ID()}
 		pol := e.policyOf(b.ID())
-		set := buildSendSet(c, pol)
+		var set sendSet
+		var viewErr *Error
+		if backend, ok := b.(*pluginBackend); files && ok && backend.imageFilesAsImages {
+			if pol.Images && len(req.DeviceIDs) == 0 {
+				if len(backend.enabledChannels()) == 0 {
+					res.Disposition = BackendNoTargets
+					results = append(results, res)
+					continue
+				}
+				set, viewErr = e.imageFileSendSet(ctx, c)
+			}
+		} else if !files || pol.Files {
+			set = buildSendSet(c, pol)
+		}
 		switch {
-		case hasFiles(c) && !pol.Files:
-			res.Disposition = BackendPolicyFiltered
+		case viewErr != nil:
+			res.Disposition, res.Error = BackendFailed, viewErr
 		case len(set.parts) == 0:
 			res.Disposition = BackendPolicyFiltered
 		case !manual && fileTooLarge(set, pol.AutoFileMaxBytes):

@@ -128,8 +128,9 @@ before persisting the candidate settings. Other inactive plugins wait for
 the next service start.
 
 For a running Lua instance, the service validates the candidate and completes its Init and Start at a callback boundary. It persists the settings, switches the instance and closes the old Lua state. Failed preparation or persistence preserves the old state and settings. Settings for already running Go plugins are validated by Schema before
-saving and by the plugin at the next service start. Plugin assembly changes
-require a restart outside the explicit live-start operation.
+saving and by the plugin at the next service start. An eligible live version
+update validates the replacement Schema for each active instance before
+stopping the old processes. See the [plugin lifecycle contract](plugin-contract.md#启用升级与卸载).
 
 ## 5. 验收与边界
 

@@ -14,18 +14,22 @@ import (
 // backends; what it reports is mapped to stable states, and its error text is
 // dropped because it could carry addresses or tokens.
 type pluginBackend struct {
-	e         *Engine
-	id        PluginID
-	kind      TransportKind
-	sb        plugin.SyncBackend
-	spec      plugin.Spec
-	preparing atomic.Bool // reject channel callbacks until live publication
+	e                  *Engine
+	id                 PluginID
+	kind               TransportKind
+	sb                 plugin.SyncBackend
+	spec               plugin.Spec
+	imageFilesAsImages bool
+	preparing          atomic.Bool // reject channel callbacks until live publication
 }
 
 func (b *pluginBackend) ID() PluginID        { return b.id }
 func (b *pluginBackend) Kind() TransportKind { return b.kind }
 
 func (b *pluginBackend) Submit(ctx context.Context, v backendView, h backendHost) (bool, *Error) {
+	if b.preparing.Load() {
+		return false, newErr(CodeUnavailable, "the backend is changing versions")
+	}
 	if len(v.devices) > 0 {
 		return false, nil // a device selection addresses peer sessions only
 	}

@@ -47,7 +47,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: f1d1fd63ae8d256411452c529bda6e5582683fd3
+verified: ae19fb6990c7efd5bf940c7220ef48ac6f41122d
 ---
 # Desktop configuration and received files
 
@@ -557,8 +557,12 @@ marketplace and plugin list use quiet 28-DIP toolbar controls for navigation,
 catalog refresh, update checks and the overflow menu.
 
 One-click install and update call `POST /v1/plugins/install`, reusing the
-existing GitHub commit-locked, SHA-256-verified installer (`luascripts.Install`)
-with a three-minute Desktop worker budget. Uninstall (`DELETE /v1/plugins/{id}`)
+existing GitHub commit-locked, SHA-256-verified installer
+with a three-minute Desktop worker budget. Eligible active Go plugins switch
+versions in the current service. The installed and running versions match
+after the update, and Desktop uses the returned restart state for its notice.
+An invalid replacement leaves the previous version selected and running.
+Uninstall (`DELETE /v1/plugins/{id}`)
 and rollback (`POST /v1/plugins/{id}/rollback`) update the immutable
 installation lock and mark restart required while preserving history and local
 configuration. Zero-config plugins omit empty settings sections and display

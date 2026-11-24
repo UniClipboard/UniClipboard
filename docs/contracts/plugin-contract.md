@@ -292,6 +292,11 @@ release artifacts and end-to-end acceptance. A main-repository entry under
 `plugins/examples/` may link to that repository and a compatible immutable
 revision. Do not maintain a second copy of the implementation there.
 
+An installed external Go sync backend with `external_channels = true` may declare
+`image_files_as_images = true` to request host-side PNG projection of a single
+image file. The field is optional and defaults to false. See the
+[external-channel contract](sync-backend-contract.md#6a-外部渠道-profile0009进程外-rpc-子集已实现).
+
 ### Marketplace catalog
 
 The Desktop marketplace reads a version-1 static JSON catalog from
@@ -426,8 +431,14 @@ inactive external Go plugins that declare only Action or an external-channel
 object-store backend. Start preserves the service process and registers the
 plugin only after its verified subprocess is ready. If required settings are
 missing, Start records enablement and the first successful settings save
-activates the plugin. Disable, uninstall, version replacement and rollback
-still follow their existing lifecycle. See the [local service
+activates the plugin. A marketplace update replaces active instances of an
+eligible Go implementation in the same service when both versions support the
+same live-start capability class. The old process releases exclusive state
+before the new process starts. Unfinished transfers from the stopped process
+finish with a failed status. A failed update restores the previous pin and
+restarts the previous process. A backend keeps its channel authorization when
+its effective configuration is unchanged. A changed configuration follows the
+existing instance authorization rules. See the [local service
 contract](local-service-contract.md#marketplace-and-installation-lifecycle).
 
 list 显示 installed/ready、source、configured_enabled、running_version、restart_required，区分磁盘与实际运行状态。Disable and uninstall take effect after restart. The service closes the process, and startup prunes version directories that the current lock and running service no longer reference. Uninstall preserves history and settings.内置 builtin.tailcat 随宿主编译和升级，不经外部安装器安装/卸载，不允许第三方覆盖保留 ID；可禁用，其关联记录保留，全部后端禁用后进入本机模式。
@@ -515,4 +526,4 @@ metadata-only source archives are rejected.
 
 Installation identity (`Spec.ID`) is separate from configured runtime identity (`PluginInstance.ID`). `unic plugin instance add IMPLEMENTATION INSTANCE` creates a disabled alias. The installed implementation must be a Go `sync_backend`; Lua and processor/observer aliases are rejected. An alias cannot shadow an installed implementation or a built-in ID. Configure through `unic plugin settings show|save INSTANCE`, enable through `unic plugin enable INSTANCE`, then restart. `plugins.order` contains runtime IDs and determines processing/start order, not serial network dispatch.
 
-Desktop Plugins exposes the same creation, Schema, enablement and standard sync-policy paths. Instances remain independently visible after disabling. `GET /v1/plugins` reports `implementation_id` separately from `id`; running and configured versions retain their existing restart semantics. Standard policy and global sync updates apply to the running instance set while assembly changes wait for restart. Program identity and settings isolation follow the [assembly contract](backend-migration-contract.md#implementation-and-instance-identity).
+Desktop Plugins exposes the same creation, Schema, enablement and standard sync-policy paths. Instances remain independently visible after disabling. `GET /v1/plugins` reports `implementation_id` separately from `id`. An eligible marketplace update replaces the implementation's active instances together. Standard policy and global sync updates apply to the running instance set. Program identity and settings isolation follow the [assembly contract](backend-migration-contract.md#implementation-and-instance-identity).

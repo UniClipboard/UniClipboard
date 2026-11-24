@@ -38,7 +38,11 @@ type Snapshot struct {
 	CopyID            string                 `json:",omitempty"` // local observation marker, excluded from Hash
 	Parts             []Part
 	Files             []File
+	FileImagePNG      []byte `json:"-"` // host-local image alternative for one selected file
 }
+
+// MaxFileImageBytes bounds the optional encoded clipboard image alternative.
+const MaxFileImageBytes = 16 << 20
 
 // Empty reports whether the snapshot carries nothing.
 func (s Snapshot) Empty() bool { return len(s.Parts) == 0 && len(s.Files) == 0 }
@@ -96,6 +100,9 @@ func (s Snapshot) Summary() string {
 // ObservationHash tracks copy actions without walking directory contents.
 func (s Snapshot) ObservationHash() string {
 	h := s.Hash()
+	if len(s.FileImagePNG) > 0 {
+		return h + "/image/" + fmt.Sprintf("%x", sha256.Sum256(s.FileImagePNG))
+	}
 	for _, f := range s.Files {
 		if f.Directory {
 			return h + "/copy/" + s.CopyID

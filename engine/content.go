@@ -109,6 +109,9 @@ type contentObj struct {
 	owned     int64 // bytes charged to the storage quota
 	dir       string
 	refs      int
+	// Optional clipboard image for an eligible backend send view.
+	fileImagePNG []byte
+
 	// blobs are history blobs this content reads in place; they stay on disk
 	// until the content is freed even if their record is deleted.
 	blobs []string
@@ -317,8 +320,24 @@ func (e *Engine) ImportContent(ctx context.Context, in ContentInput) (ContentHan
 	if !e.reserveStored(owned, false) { // history may give way, received entries are not touched
 		return ContentHandle{}, retryable(newErr(CodeResourceExhausted, "not enough storage for this content"))
 	}
+	var fileImagePNG []byte
+	if len(in.Files) == 1 && len(in.FileImagePNG) > 0 && len(in.FileImagePNG) <= maxImageFileBytes && e.wantsClipboardFileImage() {
+		if _, isDirectory := in.Files[0].Source.(DirectorySource); !isDirectory {
+			if _, err := png.DecodeConfig(bytes.NewReader(in.FileImagePNG)); err == nil {
+				size := int64(len(in.FileImagePNG))
+				cs.mu.Lock()
+				if cs.stored+e.hist.bytes.Load()+e.cachedBytes()+size <= e.res.MaxStoredBytes {
+					cs.stored += size
+					owned += size
+					fileImagePNG = in.FileImagePNG
+				}
+				cs.mu.Unlock()
+			}
+		}
+	}
 
 	c := &contentObj{copyID: in.ObservationKey, source: in.SourceApplication.Clone(), id: ContentID(e.newID()), total: total, owned: owned, refs: 1}
+	c.fileImagePNG = bytes.Clone(fileImagePNG)
 	ok := false
 	defer func() {
 		if !ok {

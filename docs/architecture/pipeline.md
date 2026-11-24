@@ -26,6 +26,7 @@ paths:
   - engine/transfer.go
   - engine/submission.go
   - engine/backend.go
+  - engine/image_file_sync.go
   - engine/receive.go
   - engine/clipboard.go
   - engine/action.go
@@ -47,7 +48,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: 5fe04abc83db1ff76b505e20699bf3c655cb1177
+verified: 9e95b04d3cfd51e9cf3f2a25fd9ffe548bf63758
 ---
 # Clipboard pipeline and local history
 
@@ -62,6 +63,17 @@ The stage chain is Capture/Receive → Processing → Commit → Sync → Use �
 - **Commit**: With persistence enabled, validate size, reserve storage and persist blobs before publishing history and deduplication. Capacity reclamation follows unified cleanup eligibility. Bounded age/count cleanup preserves the newly committed record. Notifications and sync dispatch follow successful commit. Sending failure does not undo history.
 - **Sync**: `dispatchProcessed` checks global and item switches, automatic-sync settings, backend type policy, automatic file thresholds and transfer limits. Only explicit submissions bypass the automatic file threshold. Backends run in ID order and share one Operation. History stores per-backend sync summaries when a backend queues or fails. Restart marks pending summaries interrupted without resending.
 - **Device selection**: `CommitContent.DeviceIDs=nil` selects all eligible targets. A nonempty selection is sorted before request-key construction. Empty, repeated, unknown or revoked IDs return `invalid_argument`. Peer-session backends filter their live targets by the selection. Non-peer backends skip selected-device submissions. Validation loads device records; actual sending still requires an eligible live peer session.
+
+A live external backend update terminates unfinished targets owned by the old
+process with a failed status. The replacement handles subsequent submissions.
+
+An external Go backend can opt into single image file projection under the
+image sync policy. The macOS adapter asks Engine for current demand before
+reading the optional image from the same clipboard item. It transfers that
+data through private clipboard import. The send view uses that PNG or
+converts the file to PNG. History stores the original file selection. The
+[external-channel contract](../contracts/sync-backend-contract.md#6a-外部渠道-profile0009进程外-rpc-子集已实现)
+defines the size and format bounds.
 - **Built-in session publication**: The session backend serializes session election, the Engine `connected` callback and local session registration with send-session lookup. A send dispatched while the callback returns waits for registration instead of failing because its newly published session is not yet in the backend map. The publication lock is released before send authorization and body I/O; the backend state mutex is never held across the authority callback. This adds no retry or replay. See the [readiness-race receipt](../exec/tailcat-connected-publication.md).
 - **Receive**: Admission checks part sizes, policy, deduplication and storage before body delivery. Processing sees only accepted parts. An empty filtered result is dropped without successful deduplication. Received content is never forwarded. Reserve a Received slot before writing history and successful deduplication. The final publication rechecks lifecycle, sync policy and source authorization. Failure removes the new history and deduplication record.
 - **Temporary receive**: `AdmitTransfer` reserves the shared receive path under backend `unic.transfer` and pseudo-channel `transfer`. It creates no stored device or channel. Ephemeral receipts bypass device/channel authorization, but still require active lifecycle, enabled sync, receive policy and storage admission. They use origin `external`, run received processors and do not request automatic clipboard application.

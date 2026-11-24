@@ -2,11 +2,13 @@ package nativeboard
 
 import (
 	"errors"
+	"mime"
 	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -157,6 +159,45 @@ func (b *Board) Read() (snapshot clip.Snapshot, err error) {
 		return nil
 	})
 	return
+}
+
+// ReadFileImage reads an image alternate for the unchanged single file copy.
+func (b *Board) ReadFileImage(copyID string) (png []byte) {
+	c := objc.RegisterName("count")
+	length := objc.RegisterName("length")
+	_ = b.use(func(board objc.ID) error {
+		token := changeCount(board)
+		if strconv.FormatUint(token, 10) != copyID {
+			return nil
+		}
+		paths := filePaths(board)
+		items := send(board, "pasteboardItems")
+		if len(paths) != 1 || objc.Send[uint64](items, c) != 1 ||
+			!strings.HasPrefix(mime.TypeByExtension(strings.ToLower(filepath.Ext(paths[0]))), "image/") {
+			return nil
+		}
+		item := send(items, "objectAtIndex:", uint64(0))
+		for _, name := range []string{"public.png", "public.tiff", "NSTIFFPboardType"} {
+			data := send(item, "dataForType:", nsString(name))
+			if data == 0 || objc.Send[uint64](data, length) > maxRepresentation {
+				continue
+			}
+			if name != "public.png" {
+				rep := send(objc.ID(objc.GetClass("NSBitmapImageRep")), "imageRepWithData:", data)
+				data = send(rep, "representationUsingType:properties:", uint64(4), send(objc.ID(objc.GetClass("NSDictionary")), "dictionary"))
+			}
+			if data == 0 || objc.Send[uint64](data, length) > clip.MaxFileImageBytes {
+				continue
+			}
+			value, err := nsBytes(data)
+			if err == nil && len(value) > 0 && changeCount(board) == token {
+				png = value
+				break
+			}
+		}
+		return nil
+	})
+	return png
 }
 
 func (b *Board) Write(snapshot clip.Snapshot) error {

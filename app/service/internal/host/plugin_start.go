@@ -90,7 +90,7 @@ func (n *Node) activatePluginLocked(ctx context.Context, s luascripts.Script, id
 			return &api.Error{Status: 500, Reason: "unavailable", Message: "could not prepare plugin data directory"}
 		}
 	}
-	in := engine.PluginInstance{ID: engine.PluginID(id), Process: process, Config: values, OnError: onError, Events: s.Manifest.Events}
+	in := engine.PluginInstance{ID: engine.PluginID(id), Process: process, Config: values, OnError: onError, Events: s.Manifest.Events, ImageFilesAsImages: s.Manifest.ImageFilesAsImages}
 	if err := n.e.StartExternalPlugin(ctx, in, n.cfg.Current().BackendPolicy(id), commit); err != nil {
 		if _, ok := err.(*api.Error); ok {
 			return err

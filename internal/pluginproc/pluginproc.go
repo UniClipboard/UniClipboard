@@ -232,6 +232,13 @@ func (p *Proxy) onEvent(ctx context.Context, ev plugin.Event) error {
 
 func (p *Proxy) Spec() plugin.Spec { return p.spec.Expected }
 
+// ReplacementSource returns the immutable launch description and current
+// configuration. Engine uses these to restart the previous executable if a
+// live update fails. The description and configuration are read-only.
+func (p *Proxy) ReplacementSource() (Spec, Options, plugin.Config) {
+	return p.spec, p.opts, p.cfg
+}
+
 func wireSpec(s plugin.Spec) rpc.Spec {
 	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, SettingsSHA256: s.SettingsSHA256, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind, ExternalChannels: s.ExternalChannels, RemoteRevocation: s.RemoteRevocation}
 	for _, a := range s.Actions {
@@ -421,6 +428,7 @@ func (p *Proxy) Close(ctx context.Context) error {
 		}
 	}
 	p.wg.Wait()
+	p.failPendingTransfers()
 	return nil
 }
 
@@ -480,13 +488,14 @@ func (p *Proxy) restart(delay time.Duration) {
 		}
 	}()
 	s, err := p.launch(ctx)
-	defer p.mu.Unlock()
 	if p.state == stClosed {
+		p.mu.Unlock()
 		if err == nil {
-			go p.terminate(s)
+			p.terminate(s)
 		}
 		return
 	}
+	defer p.mu.Unlock()
 	if err != nil {
 		p.failLocked()
 		return
@@ -518,14 +527,15 @@ func (p *Proxy) Restart(ctx context.Context) error {
 	defer p.wg.Done()
 
 	s, err := p.launch(ctx)
-	defer p.mu.Unlock()
-	switch {
-	case p.state == stClosed:
+	if p.state == stClosed {
+		p.mu.Unlock()
 		if err == nil {
-			go p.terminate(s)
+			p.terminate(s)
 		}
 		return rpc.NewError(rpc.CodeInvalidState)
-	case err != nil:
+	}
+	defer p.mu.Unlock()
+	if err != nil {
 		p.state = stUnavailable
 		return err
 	}

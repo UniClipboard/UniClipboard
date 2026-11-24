@@ -1,4 +1,4 @@
 {
-  "en": "Build 7 fixes device reconnection after a paired device restarts by rebuilding the Tailcat tunnel automatically after disconnect. All paired devices must use v2.",
-  "zh": "Build 7 修复了配对设备重启后无法自动重连的问题，断开连接后会自动重建 Tailcat 传输隧道。所有配对设备必须使用 v2。"
+  "en": "Build 8 fixes copying files from macOS Finder so copied files, including multiple selections and long paths, appear in history and sync reliably. It also prevents file copies from reporting errors on external clipboard channels that do not support files. All paired devices must use v2.",
+  "zh": "Build 8 修复了在 macOS 访达中复制文件后无法记录历史和同步的问题，支持多选文件及长路径；同时修复了复制文件时不支持文件的外部剪贴板渠道报错的问题。所有配对设备必须使用 v2。"
 }

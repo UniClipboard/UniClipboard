@@ -82,13 +82,20 @@ def source_identity():
 
 
 initial_source = source_identity()
+registry_lock = threading.Lock()
 packages = {}
+pending_packages = {}
 blobs = {}
 uploads = []
 tag_writes = []
 fail_tag = None
-upload_barrier = threading.Barrier(2, timeout=10)
+upload_barrier = threading.Barrier(3, timeout=10)
 overlap_targets = set()
+overlap_entered = 0
+active_uploads = 0
+max_concurrent_uploads = 0
+delayed_readback = set()
+main_saw_pending = False
 failed_upload = None
 
 
@@ -108,34 +115,37 @@ class Registry(BaseHTTPRequestHandler):
 
     def do_GET(self):
         key = unquote(urlparse(self.path).path.lstrip("/"))
-        if key.startswith("tarballs/"):
-            data = blobs.get(key)
-            self.send(
-                data if data is not None else {},
-                200 if data is not None else 404,
-                binary=data is not None,
-            )
-        elif key.startswith("-/package/") and key.endswith("/dist-tags"):
-            name = key[len("-/package/") : -len("/dist-tags")]
-            self.send(packages.get(name, {}).get("dist-tags", {}))
-        elif key in packages:
-            self.send(packages[key])
-        else:
-            self.send({"error": "not found"}, 404)
+        with registry_lock:
+            if key.startswith("tarballs/"):
+                data = blobs.get(key)
+                status = 200 if data is not None else 404
+                binary = data is not None
+                value = data if data is not None else {}
+            elif key.startswith("-/package/") and key.endswith("/dist-tags"):
+                name = key[len("-/package/") : -len("/dist-tags")]
+                value = copy.deepcopy(packages.get(name, {}).get("dist-tags", {}))
+                status, binary = 200, False
+            elif key in packages:
+                value = copy.deepcopy(packages[key])
+                status, binary = 200, False
+            else:
+                value, status, binary = {"error": "not found"}, 404, False
+        self.send(value, status, binary=binary)
 
     def do_PUT(self):
-        global fail_tag
+        global fail_tag, overlap_entered, active_uploads, max_concurrent_uploads, main_saw_pending
         key = unquote(urlparse(self.path).path.lstrip("/"))
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         if key.startswith("-/package/") and "/dist-tags/" in key:
             name, tag = key[len("-/package/") :].split("/dist-tags/")
-            if fail_tag == tag:
-                fail_tag = None
-                return self.send({"error": "injected tag failure"}, 503)
-            if body not in packages.get(name, {}).get("versions", {}):
-                return self.send({"error": "version missing"}, 404)
-            packages[name]["dist-tags"][tag] = body
-            tag_writes.append((name, tag, body))
+            with registry_lock:
+                if fail_tag == tag:
+                    fail_tag = None
+                    return self.send({"error": "injected tag failure"}, 503)
+                if body not in packages.get(name, {}).get("versions", {}):
+                    return self.send({"error": "version missing"}, 404)
+                packages[name]["dist-tags"][tag] = body
+                tag_writes.append((name, tag, body))
             return self.send({"ok": True})
         if fail_tag == "publish" and key == "@uniclipboard/cli":
             fail_tag = None
@@ -143,28 +153,60 @@ class Registry(BaseHTTPRequestHandler):
         name = body["name"]
         if name == failed_upload:
             return self.send({"error": "injected platform upload failure"}, 403)
-        if name in overlap_targets:
-            upload_barrier.wait()
-        entry = packages.setdefault(
-            name, {"name": name, "versions": {}, "dist-tags": {}}
-        )
-        for version, manifest in body["versions"].items():
-            if version in entry["versions"]:
-                return self.send({"error": "immutable version exists"}, 409)
-            payload = base64.b64decode(
-                next(iter(body["_attachments"].values()))["data"]
-            )
-            integrity = (
-                "sha512-" + base64.b64encode(hashlib.sha512(payload).digest()).decode()
-            )
-            if manifest["dist"]["integrity"] != integrity:
-                return self.send({"error": "integrity mismatch"}, 400)
-            blob_key = f"tarballs/{name}/{version}.tgz"
-            blobs[blob_key] = payload
-            manifest["dist"]["tarball"] = base + "/" + blob_key
-            entry["versions"][version] = manifest
-            uploads.append((name, version))
-        entry["dist-tags"].update(body["dist-tags"])
+        wait_on_barrier = False
+        with registry_lock:
+            if name == "@uniclipboard/cli" and pending_packages:
+                main_saw_pending = True
+            if name in overlap_targets:
+                active_uploads += 1
+                max_concurrent_uploads = max(max_concurrent_uploads, active_uploads)
+                overlap_entered += 1
+                wait_on_barrier = overlap_entered <= upload_barrier.parties
+        try:
+            if wait_on_barrier:
+                upload_barrier.wait()
+            with registry_lock:
+                if name in delayed_readback:
+                    entry = pending_packages.setdefault(
+                        name, {"name": name, "versions": {}, "dist-tags": {}}
+                    )
+                else:
+                    entry = packages.setdefault(
+                        name, {"name": name, "versions": {}, "dist-tags": {}}
+                    )
+                for version, manifest in body["versions"].items():
+                    if version in entry["versions"] or version in packages.get(
+                        name, {}
+                    ).get("versions", {}):
+                        return self.send({"error": "immutable version exists"}, 409)
+                    payload = base64.b64decode(
+                        next(iter(body["_attachments"].values()))["data"]
+                    )
+                    integrity = (
+                        "sha512-"
+                        + base64.b64encode(hashlib.sha512(payload).digest()).decode()
+                    )
+                    if manifest["dist"]["integrity"] != integrity:
+                        return self.send({"error": "integrity mismatch"}, 400)
+                    blob_key = f"tarballs/{name}/{version}.tgz"
+                    blobs[blob_key] = payload
+                    manifest["dist"]["tarball"] = base + "/" + blob_key
+                    entry["versions"][version] = manifest
+                    uploads.append((name, version))
+                entry["dist-tags"].update(body["dist-tags"])
+                if delayed_readback and delayed_readback.issubset(pending_packages):
+                    for pending_name, pending_entry in pending_packages.items():
+                        target_entry = packages.setdefault(
+                            pending_name,
+                            {"name": pending_name, "versions": {}, "dist-tags": {}},
+                        )
+                        target_entry["versions"].update(pending_entry["versions"])
+                        target_entry["dist-tags"].update(pending_entry["dist-tags"])
+                    pending_packages.clear()
+        finally:
+            if name in overlap_targets:
+                with registry_lock:
+                    active_uploads -= 1
         self.send({"ok": True}, 201)
 
 
@@ -320,11 +362,18 @@ try:
             )
             return json.loads(receipt.read_text())
 
-        # Exercise two uploads without claiming native acceptance for a second host.
+        # Exercise four uploads without claiming native acceptance for other hosts.
+        # Keep the first three invisible to read-back until the fourth finishes uploading,
+        # proving slow registry read-back does not occupy upload slots.
         parallel = temp / "parallel"
         parallel.mkdir()
-        targets = ["linux-amd64", "linux-arm64"]
-        names = ["@uniclipboard/cli-linux-x64", "@uniclipboard/cli-linux-arm64"]
+        targets = ["linux-amd64", "linux-arm64", "darwin-amd64", "darwin-arm64"]
+        names = [
+            "@uniclipboard/cli-linux-x64",
+            "@uniclipboard/cli-linux-arm64",
+            "@uniclipboard/cli-darwin-x64",
+            "@uniclipboard/cli-darwin-arm64",
+        ]
         version = "2.0.0-build.1"
         items = []
         for name in [*names, "@uniclipboard/cli"]:
@@ -364,15 +413,20 @@ try:
             )
         )
         overlap_targets.update(names)
+        delayed_readback.update(names)
         result = distribute("publish", parallel_manifest, "alpha")
         check(
-            "platform uploads overlap and finish before the main package",
+            "platform uploads overlap (capped at 3), do not stall on slow read-back, and finish before the main package",
             result["status"] == "available"
+            and max_concurrent_uploads == 3
+            and not main_saw_pending
             and uploads[-1][0] == "@uniclipboard/cli"
             and sorted(name for name, _ in uploads[:-1]) == sorted(names),
         )
         check("publish reuses tags set by npm publish", not tag_writes)
         overlap_targets.clear()
+        delayed_readback.clear()
+        pending_packages.clear()
         packages.clear()
         uploads.clear()
 

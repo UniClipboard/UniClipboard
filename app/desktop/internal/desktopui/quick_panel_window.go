@@ -63,7 +63,7 @@ func (p *quickPanelState) satelliteSize() (width, height int) {
 		height = max(minHeight, min(maxHeight, int(math.Round(float64(qpSatelliteDefaultHeight*scale)))))
 		return width, height
 	}
-	if e.kind == "图片" {
+	if p.quickHasImagePreview(*e) {
 		height = max(minHeight, min(maxHeight, int(math.Round(float64(qpSatelliteImageHeight*scale)))))
 		return width, height
 	}

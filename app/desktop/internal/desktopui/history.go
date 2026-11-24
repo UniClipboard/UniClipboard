@@ -355,6 +355,30 @@ func (d *viewState) isScopeResultTransition(prevScope string) bool {
 	return prevScope != d.liveScopeKey()
 }
 
+func isImageFilename(name string) bool {
+	ext := strings.ToLower(filepath.Ext(strings.TrimSpace(name)))
+	if ext == "" {
+		return false
+	}
+	if strings.HasPrefix(mime.TypeByExtension(ext), "image/") {
+		return true
+	}
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tif", ".tiff":
+		return true
+	default:
+		return false
+	}
+}
+
+func (d *viewState) detailCached(id string) bool {
+	if d.live == nil {
+		return false
+	}
+	_, ok := d.live.details[id]
+	return ok
+}
+
 func (d *viewState) expectImagePreview(v entry) bool {
 	if v.kind == desktopkit.KindImage || v.image != nil {
 		return true
@@ -384,7 +408,7 @@ func (d *viewState) expectImagePreview(v entry) bool {
 	if name == "" || strings.Contains(name, "\n") {
 		return false
 	}
-	return strings.HasPrefix(mime.TypeByExtension(strings.ToLower(filepath.Ext(name))), "image/")
+	return isImageFilename(name)
 }
 
 func (d *viewState) previewTextWhileLoading(v entry) (string, bool) {
@@ -765,6 +789,12 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 				} else if d.live != nil {
 					card.ImageLoading = true
 				}
+			} else if v.kind == desktopkit.KindFile && d.expectImagePreview(entryItem) {
+				if img := d.entryImage(c, entryItem); img != nil {
+					card.Media = func() { ui.Image(c, img).FillWidth().Grow(1).Fit(ui.Cover) }
+				} else if d.live != nil && !d.detailCached(entryItem.id) {
+					card.ImageLoading = true
+				}
 			}
 			cards = append(cards, card)
 		}
@@ -814,6 +844,9 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 			if v.kind == desktopkit.KindImage {
 				row.Image = d.entryImage(c, entryItem)
 				row.ImageLoading = row.Image == nil && d.live != nil
+			} else if v.kind == desktopkit.KindFile && d.expectImagePreview(entryItem) {
+				row.Image = d.entryImage(c, entryItem)
+				row.ImageLoading = row.Image == nil && d.live != nil && !d.detailCached(entryItem.id)
 			}
 			rows = append(rows, row)
 		}

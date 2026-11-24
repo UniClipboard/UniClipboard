@@ -26,6 +26,7 @@ import {
 } from 'lucide-react-native';
 import type { SFSymbol } from 'sf-symbols-typescript';
 import { GlassContainer } from '@/components/ui';
+import { useEngineStore } from '@/engine/store';
 import { useShellStore } from '@/shell/store';
 import { useURLMetadata } from '@/hooks/useURLMetadata';
 import type { HomeController } from '@/screens/useHomeController';
@@ -163,7 +164,14 @@ export function ClipboardDetailPage({ c, item, onClose }: ClipboardDetailPagePro
         <GlassContainer shape="capsule" interactive style={styles.headerPill}>
           <Pressable
             testID="detail-star"
-            onPress={() => void useShellStore.getState().toggleStar(item.profileHash)}
+            onPress={() => {
+              const engineState = useEngineStore.getState();
+              if (engineState.mode === 'live') {
+                void engineState.toggleStar(item.profileHash);
+              } else {
+                void useShellStore.getState().toggleStar(item.profileHash);
+              }
+            }}
             accessibilityRole="button"
             accessibilityLabel={c.t('detail.star')}
             accessibilityState={{ selected: item.starred }}

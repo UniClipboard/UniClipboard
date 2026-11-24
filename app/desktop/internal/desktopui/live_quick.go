@@ -118,7 +118,10 @@ func (p *quickPanelState) quickImageSize(e qpEntry) (float32, float32) {
 }
 func (p *quickPanelState) quickImage(c *ui.Context, e qpEntry) ui.ImageSource {
 	if p.live == nil {
-		return p.previewImage
+		if e.kind == "图片" || qpIsSingleImageFile(e) {
+			return p.previewImage
+		}
+		return nil
 	}
 	for _, v := range p.live.d.entries {
 		if v.id == e.id {
@@ -129,6 +132,35 @@ func (p *quickPanelState) quickImage(c *ui.Context, e qpEntry) ui.ImageSource {
 		}
 	}
 	return nil
+}
+func (p *quickPanelState) quickImageAvailable(e qpEntry) bool {
+	if p.live == nil {
+		return p.previewImage != nil && (e.kind == "图片" || qpIsSingleImageFile(e))
+	}
+	for _, v := range p.live.d.entries {
+		if v.id == e.id {
+			return v.picture != nil || v.image != nil
+		}
+	}
+	return false
+}
+func (p *quickPanelState) quickImageLoading(e qpEntry) bool {
+	if p.live == nil || e.kind != "文件" || e.lost {
+		return false
+	}
+	l := p.live.d.live
+	if _, cached := l.details[e.id]; cached {
+		return false
+	}
+	for _, v := range p.live.d.entries {
+		if v.id == e.id {
+			return p.live.d.expectImagePreview(v)
+		}
+	}
+	return false
+}
+func (p *quickPanelState) quickHasImagePreview(e qpEntry) bool {
+	return e.kind == "图片" || (e.kind == "文件" && (p.quickImageAvailable(e) || p.quickImageLoading(e)))
 }
 func (p *quickPanelState) liveRelaxations() []qpRelaxation {
 	q := p.searchQuery()

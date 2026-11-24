@@ -478,6 +478,64 @@ func qpMarkedSpans(e qpEntry, query string, selected, staleQuery bool, ink, quie
 	}
 	return spans
 }
+func qpSingleFileName(e qpEntry) string {
+	lines := 0
+	name := ""
+	for _, line := range strings.Split(e.text, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			lines++
+			name = trimmed
+		}
+	}
+	if lines > 1 {
+		return ""
+	}
+	if name == "" {
+		name = strings.TrimSpace(e.title)
+	}
+	return name
+}
+
+func qpIsSingleImageFile(e qpEntry) bool {
+	if e.kind != "文件" || e.lost {
+		return false
+	}
+	return isImageFilename(qpSingleFileName(e))
+}
+
+func qpFileExtensionBadge(e qpEntry) string {
+	name := ""
+	for _, line := range strings.Split(e.text, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			name = trimmed
+			break
+		}
+	}
+	if name == "" {
+		name = strings.TrimSpace(e.title)
+	}
+	if i := strings.LastIndexAny(name, `/\`); i >= 0 {
+		name = name[i+1:]
+	}
+	dot := strings.LastIndexByte(name, '.')
+	if dot <= 0 || dot == len(name)-1 {
+		return ""
+	}
+	ext := name[dot+1:]
+	if len(ext) > 5 {
+		return ""
+	}
+	for i := 0; i < len(ext); i++ {
+		b := ext[i]
+		isLetter := (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+		isDigit := b >= '0' && b <= '9'
+		if !isLetter && !isDigit {
+			return ""
+		}
+	}
+	return strings.ToUpper(ext)
+}
+
 func (p *quickPanelState) resultRow(c *ui.Context, k desktopkit.Kit, a qpPalette, i int, e qpEntry, staleQuery bool) ui.Element {
 	selected := i == p.selected && !p.suggestFocused
 	ink, quiet := a.foreground, a.quiet
@@ -493,14 +551,14 @@ func (p *quickPanelState) resultRow(c *ui.Context, k desktopkit.Kit, a qpPalette
 	}
 	b.Children(func() {
 		ui.Row(c).Width(24).Shrink(0).Justify(ui.Center).Children(func() {
-			if e.kind == "图片" {
+			if p.quickHasImagePreview(e) {
 				if img := p.quickImage(c, e); img != nil {
 					ui.Image(c, img).Size(24, 16).Radius(3).Fit(ui.Cover)
 				} else {
 					k.ShimmerBox(c.Key("thumb-skel"), 3).Size(24, 16)
 				}
 			} else {
-				icons := map[string]desktopkit.IconName{"文本": desktopkit.IconList, "代码": desktopkit.IconPackage, "链接": desktopkit.IconGlobe, "文件": desktopkit.IconFile, "富文本": desktopkit.IconList}
+				icons := map[string]desktopkit.IconName{"文本": desktopkit.IconList, "代码": desktopkit.IconPackage, "链接": desktopkit.IconGlobe, "文件": desktopkit.IconFile, "文件夹": desktopkit.IconFolder, "富文本": desktopkit.IconList}
 				k.Icon(c, icons[e.kind], 14).TextColor(quiet)
 			}
 		})
@@ -511,15 +569,14 @@ func (p *quickPanelState) resultRow(c *ui.Context, k desktopkit.Kit, a qpPalette
 		if e.lost {
 			text.Opacity(.5)
 		}
-		if e.kind == "富文本" || e.kind == "文件" {
-			label := e.kind
+		if e.kind == "富文本" || e.kind == "文件" || e.kind == "文件夹" {
+			label := p.tr(e.kind)
 			if e.kind == "文件" {
-				label = "PDF"
-				if e.lost {
-					label = "ZIP"
+				if ext := qpFileExtensionBadge(e); ext != "" {
+					label = ext
 				}
 			}
-			ui.Text(c, p.tr(label)).FontSize(10.5*zoomScale(p.textZoom)).TextColor(quiet).Background(a.muted).Radius(4).Padding(1, 5)
+			ui.Text(c, label).FontSize(10.5*zoomScale(p.textZoom)).TextColor(quiet).Background(a.muted).Radius(4).Padding(1, 5).Shrink(0)
 		}
 		if e.favorite {
 			ui.Text(c, "★").FontSize(12 * zoomScale(p.textZoom)).TextColor(p.colors.Color(c.Theme().Dark, "status-yellow-text"))
@@ -657,8 +714,8 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 		if e == nil {
 			return
 		}
-		if e.kind == "图片" && p.menu == "" {
-			p.imagePreview(c, a, *e)
+		if p.menu == "" && p.quickHasImagePreview(*e) {
+			p.imagePreview(c, k, a, *e)
 			return
 		}
 		title := p.tr(e.kind) + " · " + e.age + p.tr(" · 来自 ") + e.source

@@ -11,6 +11,7 @@ import (
 
 	"github.com/disintegration/imaging"
 	"github.com/egoist/mygo/ui"
+	_ "golang.org/x/image/webp"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
 )

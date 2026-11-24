@@ -50,3 +50,16 @@ __pycache__/
 /task_plan.md
 /progress.md
 /findings.md
+
+# Mobile Go workspace and generated gomobile native artifacts.
+/go.work
+/go.work.sum
+/bindings/.bin/
+/app/expo/modules/unic-engine/ios/Frameworks/
+/app/expo/modules/unic-engine/android/libs/
+/app/expo/modules/unic-engine/android/build/
+/app/expo/modules/unic-engine/android/.gradle/
+/app/expo/modules/unic-engine/android/.cxx/
+/e2e/mobile/node_modules/
+/e2e/mobile/results/
+/e2e/mobile/.e2e/

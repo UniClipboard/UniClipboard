@@ -49,5 +49,9 @@
     "history": "History",
     "cache": "Cache",
     "logs": "Logs"
+  },
+  "migration": {
+    "title": "Migrate history from v1",
+    "description": "Offline import of legacy UniClipboard history, files, and tags"
   }
 }

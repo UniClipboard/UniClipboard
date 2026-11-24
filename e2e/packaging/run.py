@@ -190,6 +190,7 @@ cli_manifest_sha256 = "{lock}"
         if operating_system == "darwin":
             info = plistlib.loads((payload.parent / "Info.plist").read_bytes())
             check("macOS bundle icon declaration", info.get("CFBundleIconFile") == "icon.icns")
+            check("macOS bundle starts without a Dock icon", info.get("LSUIElement") is True)
             icon_root = payload.parent / "Resources"
             icon_names = ("icon.icns",)
         else:

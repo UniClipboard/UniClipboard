@@ -179,7 +179,7 @@ func runGUI(settings *config.Manager) error {
 	if _, err = launchDesktopRole(context.Background(), dir, socket, desktopprocess.Tray, "--background"); err != nil {
 		return err
 	}
-	configureNativeRole(dir, false, settings.Current().Desktop.ColorMode)
+	configureNativeRole(dir, settings.Current().Desktop.ColorMode)
 	defer session.close()
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
 		session.requestQuit(e)
@@ -191,7 +191,12 @@ func runGUI(settings *config.Manager) error {
 		}
 
 	})
-	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { cancel() })
+	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
+		if runtime.GOOS == "darwin" {
+			mygo.App.Dock.Hide()
+		}
+		cancel()
+	})
 	mygo.App.OnWindowAllClosed(func() { mygo.App.Quit() })
 	mygo.App.OnActivate(func(bool) {
 		if g.win != nil {
@@ -249,6 +254,9 @@ func runGUI(settings *config.Manager) error {
 		windowchrome.Configure(&opts, runtime.GOOS, session.windowFrame)
 		if flow.Required() {
 			opts.Width, opts.Height = setupWindowWidth, setupWindowHeight
+		}
+		if runtime.GOOS == "darwin" {
+			mygo.App.Dock.Show()
 		}
 		g.win = mygo.NewWindow(opts)
 		switch runtime.GOOS {

@@ -31,7 +31,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 - `engine.Settings.Validate` validates Engine business settings. `internal/localconfig.Config.Validate` validates host settings and calls it. Engine does not parse TOML or watch configuration files.
 - `app/mac/` 是独立的 Swift Package，保留 SwiftUI 界面与插件设置表单的实验代码，尚未连接 daemon；该客户端路线已取消，停止推进服务接入，现有实验画面不作为最终界面规格。`app/expo/` owns the shared Expo 57 application for Android and iOS, embedding the Go Engine in-process via [`bindings/mobile/`](../../bindings/mobile/engine.go) and the Expo Local Module `app/expo/modules/unic-engine` (with an explicit `"unavailable"` shell fallback when the native module is absent in JS-only runs). `app/android/` and `app/ios/` retain platform guidance only. Every application directory has its own README and AGENTS.md.
 - Before starting the Engine, the Android host registers a Java network interface provider through the mobile binding. Tailcat reads a fresh interface snapshot from this provider because the Android app sandbox restricts Go's direct interface enumeration.
-- CI runs lint, formatting, race checks, all three entry-point builds, and production headless process acceptance. The separate Expo workflow checks TypeScript, prebuild and both native bundles. It does not compile or run native mobile applications or build Swift experiments.
+- CI runs lint, formatting, race checks, all three entry-point builds, and production headless process acceptance. The mobile workflow checks TypeScript, Expo prebuild and both native bundles. It also builds each native mobile application and runs the live Engine flows on an isolated simulator or emulator.
 - Desktop PR CI runs six duration-balanced shards covering all isolated cases, with a thirty-minute limit per job. Ubuntu package bootstrap has a separate five-minute step limit, uses the official HTTPS archive for direct sources and the runner's file-backed mirror list, and bounds APT connection/data waits and retries. See the [Desktop E2E contract](../contracts/desktop-e2e-contract.md).
 
 ## 不变量
@@ -268,12 +268,21 @@ The mobile binding build trims Go source paths and omits Go symbol tables and
 DWARF data from the iOS XCFramework and Android AAR. Native packaging retains
 its own debug symbol settings.
 
+The default Expo build keeps its isolated shell identity. The production
+variant preserves the previous mobile package identities and resolves each
+platform's version independently from `release/products.toml`. The mobile
+binding owns its observability controller and the profile's upload switch.
+See [release construction](releases.md) and [observability](observability.md).
+
 Generated native directories belong under `app/expo/ios` and `app/expo/android`
 and are ignored. `app/ios` and `app/android` are not build inputs. `npm run verify`
 checks source boundaries, TypeScript, pinned navigation patches, Expo prebuild
-and both Metro/Hermes bundles. Physical-device sync soak and production Store
-release workflows remain separate scope. See [the UI shell receipt](../exec/expo-ui-shell.md)
-and [the mobile Engine integration receipt](../exec/0031-mobile-engine-integration.md).
+and both Metro/Hermes bundles. The native live suite covers first install,
+history and search, the device page, and diagnostics. Store candidate
+construction and physical-device sync soak have separate acceptance evidence.
+See [the UI shell receipt](../exec/expo-ui-shell.md),
+[the Engine integration receipt](../exec/0031-mobile-engine-integration.md),
+and [the mobile release preparation receipt](../exec/0031-mobile-m5-receipt.md).
 
 
 ### Resuming a later Desktop migration

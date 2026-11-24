@@ -41,6 +41,13 @@
     "confirmationConfirm": "使用设备直连",
     "updateFailed": "切换同步方式失败"
   },
+  "mobileDiagnostics": {
+    "telemetry": "发送遥测数据",
+    "export": "分享本次运行的脱敏日志",
+    "unavailable": "此构建无法上传遥测数据。",
+    "empty": "暂无诊断日志。",
+    "failed": "无法完成诊断操作。"
+  },
   "category": {
     "network": "高级网络",
     "sync": "同步",

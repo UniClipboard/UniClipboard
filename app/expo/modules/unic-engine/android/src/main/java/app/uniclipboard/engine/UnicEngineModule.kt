@@ -1263,6 +1263,28 @@ class UnicEngineModule : Module() {
       }
     }.runOnQueue(engineScope)
 
+    AsyncFunction("getTelemetryState") { ->
+      val eng = requireEngine()
+      try {
+        eng.telemetryState
+      } catch (error: Exception) {
+        throw moduleException(error)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("setTelemetryEnabled") { enabled: Boolean ->
+      val eng = requireEngine()
+      try {
+        eng.setTelemetryEnabled(enabled)
+      } catch (error: Exception) {
+        throw moduleException(error)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("exportRecentDiagnosticLogs") { ->
+      requireEngine().exportRecentDiagnosticLogs()
+    }.runOnQueue(engineScope)
+
     AsyncFunction("getCapabilities") { ->
       try {
         requireEngine().capabilities

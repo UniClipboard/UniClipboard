@@ -45,6 +45,11 @@ paths:
   - e2e/cli/observability_e2e_test.go
   - e2e/cli/sync_observability_e2e_test.go
   - e2e/syncpath
+  - bindings/mobile/diagnostics.go
+  - bindings/mobile/engine.go
+  - bindings/e2e/mobile-diagnostics
+  - bindings/scripts/build-mobile.sh
+  - app/expo/src/screens/settings/DiagnosticsSettings.tsx
 verified: e3731fa4f9ab64e7fa03566bd4d5367099281999
 ---
 # Client logs, metrics, traces and product analytics
@@ -53,6 +58,18 @@ The UI-free service owns OTLP/HTTP logs, metrics and sampled traces plus PostHog
 Current workspace implementation and acceptance scope are recorded in the [PostHog execution receipt](../exec/0019-posthog-integration.md). Local process evidence and Cloud read-back are recorded separately. The selected Cloud project is US Cloud / UniClipboard (722858).
 
 ## Current behavior
+
+The in-process mobile binding instantiates the same controller per Engine.
+It subscribes to categorical Engine diagnostics, product events and the
+built-in sync collector. The Boolean `mobile-telemetry.json` in the private
+profile holds the upload preference. An absent preference defaults to
+enabled. An unreadable preference disables upload. The native settings page
+shares the recent local worker's redacted JSON records from memory through
+the operating system share sheet. Production binding builds accept the same
+validated PostHog Cloud host and ingestion-only token as service builds.
+Missing deployment metadata leaves local diagnostics active. Mobile emits
+the shared logs, metrics and product-event hooks. Explicit submission span
+creation is still service-owned.
 
 - `host.Open` constructs diagnostics before `engine.New`. It injects a structured logger and a callback using public Engine types.
 - Engine produces bounded categorical records at observation admission, processor completion, unique submission completion, send queue departure, send completion, receive completion, and apply ticket completion or invalidation.

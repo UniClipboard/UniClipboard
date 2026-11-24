@@ -1,21 +1,59 @@
-name: Expo UI shell
+name: Mobile build and acceptance
 
 on:
   pull_request:
     paths:
       - app/expo/**
+      - bindings/**
+      - engine/**
+      - internal/**
+      - go.mod
+      - go.sum
+      - release/products.toml
+      - tools/release/mobile.py
       - .github/workflows/check-expo.yml
   push:
     branches: [main]
     paths:
       - app/expo/**
+      - bindings/**
+      - engine/**
+      - internal/**
+      - go.mod
+      - go.sum
+      - release/products.toml
+      - tools/release/mobile.py
       - .github/workflows/check-expo.yml
+  schedule:
+    - cron: '20 3 * * 2'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  EXPO_NO_TELEMETRY: '1'
+  MAESTRO_CLI_NO_ANALYTICS: '1'
+  MAESTRO_CLI_DISABLE_UPDATE_CHECK: '1'
+
 jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bindings/go.mod
+          cache-dependency-path: |
+            go.sum
+            bindings/go.sum
+      - run: go test -race ./engine -run '^TestPublicEngineHasNoDesktopDependencies$'
+      - working-directory: bindings
+        run: |
+          go test -race ./...
+          go run ./e2e/local-commit
+          go run ./e2e/mobile-diagnostics
+
   native-bundles:
     runs-on: ubuntu-latest
     defaults:
@@ -38,3 +76,90 @@ jobs:
             app/expo/dist/verification/
             app/expo/dist/ios/
             app/expo/dist/android/
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ios
+            runner: xcode-27
+          - platform: android
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 50
+    env:
+      UNIC_MOBILE_RELEASE_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/expo/.nvmrc
+          cache: npm
+          cache-dependency-path: app/expo/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bindings/go.mod
+          cache-dependency-path: |
+            go.sum
+            bindings/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK and emulator
+        if: matrix.platform == 'android'
+        run: |
+          sdkmanager 'ndk;27.1.12297006' 'platforms;android-36' 'build-tools;36.0.0' emulator 'system-images;android-36;google_apis;x86_64'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.1.12297006" >> "$GITHUB_ENV"
+          printf 'no\n' | avdmanager create avd -n unic-ci -k 'system-images;android-36;google_apis;x86_64'
+          sudo chmod a+rw /dev/kvm
+          nohup "$ANDROID_HOME/emulator/emulator" -avd unic-ci -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+      - name: Install pinned Maestro CLI
+        shell: bash
+        run: |
+          base=https://github.com/mobile-dev-inc/Maestro/releases/download/cli-2.10.0
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "$base/maestro.zip"
+          curl -fsSLO "$base/checksums_sha256.txt"
+          grep 'maestro.zip$' checksums_sha256.txt | shasum -a 256 -c
+          unzip -q maestro.zip
+          echo "$RUNNER_TEMP/maestro/bin" >> "$GITHUB_PATH"
+      - run: ./bindings/scripts/build-mobile.sh
+      - working-directory: app/expo
+        run: |
+          npm ci --no-audit --no-fund
+          npx expo prebuild --platform "$UNIC_MOBILE_RELEASE_PLATFORM" --no-install
+      - name: Build and test iOS Simulator
+        if: matrix.platform == 'ios'
+        working-directory: app/expo
+        shell: bash
+        run: |
+          (cd ios && pod install)
+          xcodebuild -workspace ios/UniClipboardUIShell.xcworkspace -scheme UniClipboardUIShell \
+            -configuration Release -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/unic-ios" ARCHS=arm64 CODE_SIGNING_ALLOWED=NO
+          device=$(xcrun simctl list devices available --json | jq -er '[.devices | to_entries[] | select(.key | contains(".iOS-")) | .value[] | select(.isAvailable and .state == "Shutdown" and (.name | startswith("iPhone")))][-1].udid')
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          node e2e/run.mjs --suite live --platform ios --device "$device" \
+            --app "$RUNNER_TEMP/unic-ios/Build/Products/Release-iphonesimulator/UniClipboardUIShell.app"
+      - name: Build and test Android emulator
+        if: matrix.platform == 'android'
+        working-directory: app/expo
+        shell: bash
+        run: |
+          (cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64)
+          for _ in {1..100}; do
+            if [[ $(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r') == 1 ]]; then break; fi
+            sleep 3
+          done
+          test "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = 1
+          adb -s emulator-5554 shell wm dismiss-keyguard
+          node e2e/run.mjs --suite live --platform android --device emulator-5554 \
+            --app android/app/build/outputs/apk/release/app-release.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-native-${{ matrix.platform }}
+          path: app/expo/e2e/results/

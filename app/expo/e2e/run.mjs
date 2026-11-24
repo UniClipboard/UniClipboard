@@ -15,14 +15,14 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 if (args.includes("--help")) {
   console.log(
-    "node e2e/run.mjs --platform ios|android --device SIMULATOR_ID --app /absolute/path/to/App.app|app.apk",
+    "node e2e/run.mjs --platform ios|android --device SIMULATOR_ID --app /absolute/path/to/App.app|app.apk [--suite shell|live]",
   );
   process.exit(0);
 }
 const options = {};
 for (let index = 0; index < args.length; index += 2) {
   if (
-    !["--platform", "--device", "--app"].includes(args[index]) ||
+    !["--platform", "--device", "--app", "--suite"].includes(args[index]) ||
     !args[index + 1]
   )
     throw new Error("Use --help for arguments");
@@ -37,10 +37,12 @@ if (
     "Explicit platform, simulator/emulator ID and app artifact are required",
   );
 const appId = "app.uniclipboard.shell";
+const suite = options.suite ?? "shell";
+if (!["shell", "live"].includes(suite)) throw new Error("Unknown E2E suite");
 const output = join(
   root,
   "e2e/results",
-  new Date().toISOString().replaceAll(/[:.]/g, "-"),
+  `${new Date().toISOString().replaceAll(/[:.]/g, "-")}-${options.platform}-${process.pid}`,
 );
 mkdirSync(output, { recursive: true });
 const receipt = {
@@ -48,15 +50,17 @@ const receipt = {
   platform: options.platform,
   device: options.device,
   appId,
+  suite,
   status: "failed",
   stages: [],
 };
-function command(program, argv, stage) {
+function command(program, argv, stage, input) {
   const result = spawnSync(program, argv, {
     cwd: root,
     encoding: "utf8",
     maxBuffer: 20 * 1024 * 1024,
     timeout: 15 * 60 * 1000,
+    input,
     env: {
       ...process.env,
       MAESTRO_CLI_NO_ANALYTICS: "1",
@@ -149,11 +153,19 @@ try {
       throw new Error("Physical devices are excluded");
     command(
       "adb",
-      ["-s", options.device, "install", "-r", artifact],
+      ["-s", options.device, "install", "-r", "--no-streaming", artifact],
       "install",
     );
   }
-  for (const name of ["shell", "search", "selection"]) {
+  const flows = suite === "live" ? ["live-setup", "live-history", "live-devices-settings"] : ["shell", "search", "selection"];
+  for (const name of flows) {
+    if (name === "live-history") {
+      if (options.platform === "ios") {
+        command("xcrun", ["simctl", "pbcopy", options.device], "seed-clipboard", "Unic Mobile E2E");
+      } else {
+        command("adb", ["-s", options.device, "shell", `am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Unic Mobile E2E' -n ${appId}/.MainActivity`], "seed-share-intent");
+      }
+    }
     const flow = join(root, "e2e/flows", `${name}.yaml`);
     receipt.stages.push({
       name: `${name}-flow`,

@@ -41,6 +41,13 @@
     "confirmationConfirm": "Usar sincronização direta",
     "updateFailed": "Não foi possível alterar o método de sincronização"
   },
+  "mobileDiagnostics": {
+    "telemetry": "Enviar telemetria",
+    "export": "Compartilhar registros anonimizados da sessão",
+    "unavailable": "O envio está indisponível nesta compilação.",
+    "empty": "Ainda não há registros de diagnóstico.",
+    "failed": "Não foi possível concluir a ação de diagnóstico."
+  },
   "category": {
     "network": "Rede avançada",
     "sync": "Sincronização",

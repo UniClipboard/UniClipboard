@@ -41,6 +41,13 @@
     "confirmationConfirm": "Use direct sync",
     "updateFailed": "Failed to change sync method"
   },
+  "mobileDiagnostics": {
+    "telemetry": "Share telemetry",
+    "export": "Share redacted logs from this session",
+    "unavailable": "Upload is unavailable in this build.",
+    "empty": "No diagnostic logs yet.",
+    "failed": "Could not complete the diagnostic action."
+  },
   "category": {
     "network": "Advanced network",
     "sync": "Sync",

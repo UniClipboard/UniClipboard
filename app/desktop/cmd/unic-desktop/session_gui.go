@@ -125,9 +125,7 @@ func (s *desktopSession) start() {
 			s.navigate(s.pendingAction)
 			screen.SetMigrationOpener(s.migrate)
 			screen.SetRestarter(s.restart)
-			st := flow.State()
-			screen.SetV2Announcement(st.V2Announcement, s.dismissV2Announcement)
-			screen.SetDismissedAnnouncements(st.DismissedAnnouncements, s.dismissRemoteAnnouncement)
+			screen.SetDismissedAnnouncements(flow.State().DismissedAnnouncements, s.dismissRemoteAnnouncement)
 			screen.SetQuickPanelOpener(func(string) {
 				nativeAsync(func(ctx context.Context) error {
 					return desktopprocess.Call(ctx, s.dir, desktopprocess.Tray, "open-quick-panel", nil, nil)
@@ -250,18 +248,6 @@ func (s *desktopSession) restart(restartService bool, done func(error)) {
 		if done != nil && s.ctx.Err() == nil {
 			done(err)
 		}
-	}()
-}
-
-func (s *desktopSession) dismissV2Announcement() {
-	s.workers.Add(1)
-	go func() {
-		defer s.workers.Done()
-		flow, err := setupflow.Open(s.dir)
-		if err != nil {
-			return
-		}
-		_ = flow.DismissV2Announcement()
 	}()
 }
 

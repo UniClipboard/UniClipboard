@@ -24,7 +24,6 @@ var ErrTargetBusy = errors.New("migration target is in use")
 type State struct {
 	Complete               bool     `json:"complete"`
 	Source                 string   `json:"source,omitempty"`
-	V2Announcement         bool     `json:"v2_announcement,omitempty"`
 	DismissedAnnouncements []string `json:"dismissed_announcements,omitempty"`
 }
 
@@ -57,9 +56,7 @@ func Open(target string) (*Flow, error) {
 			return nil, errors.New("invalid existing v2 database")
 		}
 		f.state.Complete = true
-	} else if errors.Is(e, os.ErrNotExist) {
-		f.state.V2Announcement = true
-	} else {
+	} else if !errors.Is(e, os.ErrNotExist) {
 		return nil, e
 	}
 	if err = f.save(); err != nil {
@@ -104,18 +101,6 @@ func (f *Flow) Complete() error {
 }
 
 const maxDismissedAnnouncements = 200
-
-// DismissV2Announcement clears the first-install v2 announcement flag and persists it.
-func (f *Flow) DismissV2Announcement() error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if !f.state.V2Announcement {
-		return nil
-	}
-	next := f.state
-	next.V2Announcement = false
-	return f.update(next)
-}
 
 // DismissAnnouncement records a remote FlareRelease announcement ID as dismissed
 // for this profile so it does not reappear in the sidebar across launches.

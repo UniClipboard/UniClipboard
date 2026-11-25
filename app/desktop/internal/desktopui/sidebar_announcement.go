@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	v2AnnouncementURL          = "https://www.uniclipboard.app/blog/v2"
 	announcementRefreshPeriod  = 5 * time.Minute
 	announcementSummaryMaxRune = 84
 )
@@ -22,10 +21,6 @@ const (
 type announcementFetcher func(ctx context.Context, version, channel, locale string) ([]announcements.Announcement, error)
 
 type announcementState struct {
-	v2Open      bool
-	v2Dismissed bool
-	onDismissV2 func()
-
 	remote          []announcements.Announcement
 	remoteLoaded    bool
 	dismissedIDs    map[string]bool
@@ -36,20 +31,14 @@ type announcementState struct {
 	fetchChannel    string
 	lastFetch       time.Time
 
-	displayedKind string // "", "v2", "remote"
+	// displayedItem pins the FlareRelease card currently mounted in the sidebar
+	// so its exit animation finishes cleanly before any next announcement mounts.
+	displayed     bool
 	displayedItem announcements.Announcement
 	cardOpen      bool
 
 	detailOpen bool
 	detailItem announcements.Announcement
-}
-
-// SetV2Announcement configures the first-install v2 feature announcement card
-// displayed on the history sidebar. Call on the view thread before rendering.
-func (s *Desktop) SetV2Announcement(visible bool, onDismiss func()) {
-	s.d.announcement.v2Open = visible
-	s.d.announcement.v2Dismissed = !visible
-	s.d.announcement.onDismissV2 = onDismiss
 }
 
 // SetDismissedAnnouncements restores previously dismissed FlareRelease
@@ -76,17 +65,6 @@ func (s *Desktop) SetRemoteAnnouncements(items []announcements.Announcement) {
 // announcements. Nil uses the production HTTPS FlareRelease endpoint.
 func (s *Desktop) SetAnnouncementFetcher(fetch func(ctx context.Context, version, channel, locale string) ([]announcements.Announcement, error)) {
 	s.d.announcement.fetchRemote = fetch
-}
-
-func (d *viewState) persistV2AnnouncementDismissed() {
-	d.announcement.v2Open = false
-	if d.announcement.v2Dismissed {
-		return
-	}
-	d.announcement.v2Dismissed = true
-	if d.announcement.onDismissV2 != nil {
-		d.announcement.onDismissV2()
-	}
 }
 
 func (d *viewState) persistRemoteAnnouncementDismissed(id string) {
@@ -119,30 +97,27 @@ func (d *viewState) findRemoteAnnouncement(id string) (announcements.Announcemen
 	return announcements.Announcement{}, false
 }
 
-// nextSidebarAnnouncement resolves which announcement should occupy the single
-// sidebar slot: urgent remote (critical/warning) > local first-install v2 >
-// routine remote (info).
-func (d *viewState) nextSidebarAnnouncement() (string, announcements.Announcement) {
-	var firstRemote *announcements.Announcement
+// nextSidebarAnnouncement picks the highest-priority undismissed FlareRelease
+// announcement (critical/warning ahead of info, preserving server order within
+// each tier).
+func (d *viewState) nextSidebarAnnouncement() (announcements.Announcement, bool) {
+	var first *announcements.Announcement
 	for i := range d.announcement.remote {
 		item := &d.announcement.remote[i]
 		if d.isRemoteDismissed(item.ID) {
 			continue
 		}
 		if item.Severity == "critical" || item.Severity == "warning" {
-			return "remote", *item
+			return *item, true
 		}
-		if firstRemote == nil {
-			firstRemote = item
+		if first == nil {
+			first = item
 		}
 	}
-	if d.announcement.v2Open {
-		return "v2", announcements.Announcement{}
+	if first != nil {
+		return *first, true
 	}
-	if firstRemote != nil {
-		return "remote", *firstRemote
-	}
-	return "", announcements.Announcement{}
+	return announcements.Announcement{}, false
 }
 
 func (d *viewState) ensureRemoteAnnouncementsLoaded() {
@@ -195,40 +170,22 @@ func (d *viewState) sidebarAnnouncement(c *ui.Context, k desktopkit.Kit) desktop
 	d.ensureRemoteAnnouncementsLoaded()
 
 	a := &d.announcement
-	switch a.displayedKind {
-	case "":
-		if kind, item := d.nextSidebarAnnouncement(); kind != "" {
-			a.displayedKind = kind
+	if !a.displayed {
+		if item, ok := d.nextSidebarAnnouncement(); ok {
+			a.displayed = true
 			a.displayedItem = item
 			a.cardOpen = true
 		}
-	case "v2":
-		if !a.v2Open {
-			a.cardOpen = false
-		}
-	case "remote":
-		if d.isRemoteDismissed(a.displayedItem.ID) {
-			a.cardOpen = false
-		} else if updated, ok := d.findRemoteAnnouncement(a.displayedItem.ID); ok {
-			a.displayedItem = updated
-		} else {
-			a.cardOpen = false
-		}
+	} else if d.isRemoteDismissed(a.displayedItem.ID) {
+		a.cardOpen = false
+	} else if updated, ok := d.findRemoteAnnouncement(a.displayedItem.ID); ok {
+		a.displayedItem = updated
+	} else {
+		a.cardOpen = false
 	}
 
 	var props desktopkit.AnnouncementProps
-	switch a.displayedKind {
-	case "v2":
-		props = desktopkit.AnnouncementProps{
-			Open:        &a.cardOpen,
-			Title:       d.tr("UniClipboard 2.0 全新发布"),
-			Description: d.tr("探索 2.0 全新功能与体验升级。"),
-			ActionLabel: d.tr("查看功能介绍"),
-			Dismissible: true,
-			CloseLabel:  d.tr("关闭"),
-			IntroDelay:  300 * time.Millisecond,
-		}
-	case "remote":
+	if a.displayed {
 		item := a.displayedItem
 		var icon desktopkit.IconName
 		if item.Severity == "critical" || item.Severity == "warning" {
@@ -248,49 +205,33 @@ func (d *viewState) sidebarAnnouncement(c *ui.Context, k desktopkit.Kit) desktop
 			CloseLabel:  d.tr("关闭"),
 			IntroDelay:  300 * time.Millisecond,
 		}
-	default:
+	} else {
 		closed := false
 		props = desktopkit.AnnouncementProps{Open: &closed}
 	}
 
 	res := k.Announcement(c, props)
-	if res.ActionClicked {
-		switch a.displayedKind {
-		case "v2":
-			if err := d.openExternalURL(v2AnnouncementURL); err != nil {
+	if res.ActionClicked && a.displayed {
+		item := a.displayedItem
+		if item.ActionURL != "" {
+			if err := d.openExternalURL(item.ActionURL); err != nil {
 				d.notice = d.tr("无法打开链接。")
 			} else {
-				d.persistV2AnnouncementDismissed()
+				d.persistRemoteAnnouncementDismissed(item.ID)
 				a.cardOpen = false
 				c.Invalidate()
 			}
-		case "remote":
-			item := a.displayedItem
-			if item.ActionURL != "" {
-				if err := d.openExternalURL(item.ActionURL); err != nil {
-					d.notice = d.tr("无法打开链接。")
-				} else {
-					d.persistRemoteAnnouncementDismissed(item.ID)
-					a.cardOpen = false
-					c.Invalidate()
-				}
-			} else if strings.TrimSpace(item.Content) != "" {
-				a.detailItem = item
-				a.detailOpen = true
-				c.Invalidate()
-			}
+		} else if strings.TrimSpace(item.Content) != "" {
+			a.detailItem = item
+			a.detailOpen = true
+			c.Invalidate()
 		}
 	}
-	if res.Dismissed {
-		switch a.displayedKind {
-		case "v2":
-			d.persistV2AnnouncementDismissed()
-		case "remote":
-			d.persistRemoteAnnouncementDismissed(a.displayedItem.ID)
-		}
+	if res.Dismissed && a.displayed {
+		d.persistRemoteAnnouncementDismissed(a.displayedItem.ID)
 	}
 	if res.Closed {
-		a.displayedKind = ""
+		a.displayed = false
 		a.displayedItem = announcements.Announcement{}
 		c.Invalidate()
 	}
@@ -308,7 +249,7 @@ func (d *viewState) announcementDetailSheet(c *ui.Context, k desktopkit.Kit) {
 		Footer: func() {
 			if item.ID != "" && k.Button(c.Key("dismiss"), d.tr("不再显示"), desktopkit.ButtonProps{Variant: desktopkit.Subtle}).Clicked() {
 				d.persistRemoteAnnouncementDismissed(item.ID)
-				if a.displayedKind == "remote" && a.displayedItem.ID == item.ID {
+				if a.displayed && a.displayedItem.ID == item.ID {
 					a.cardOpen = false
 				}
 				a.detailOpen = false

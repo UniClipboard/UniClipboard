@@ -84,8 +84,7 @@ leading margin and 12-DIP trailing scrollbar lane keep the 4-DIP translucent
 overlay indicator clear of row content and align the 28-DIP quiet chrome toggle
 with the navigation grid. Footer actions stay fixed outside the scroll viewport. An optional announcement
 slot sits directly above the footer divider on the same 12-DIP horizontal grid
-and collapses to zero height when unmounted; it hosts both the offline
-first-install v2 feature announcement card and active FlareRelease
+and collapses to zero height when unmounted; it displays active FlareRelease
 `/announcements` notices (opening `actionUrl` directly when present or a compact
 detail Sheet otherwise, with per-profile dismissed IDs persisted in
 `desktop-setup.json`).

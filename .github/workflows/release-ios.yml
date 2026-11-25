@@ -21,6 +21,7 @@ jobs:
     environment: mobile-ios
     timeout-minutes: 45
     env:
+      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
       EXPO_NO_TELEMETRY: '1'
       UNIC_MOBILE_VARIANT: production
       UNIC_MOBILE_RELEASE_PLATFORM: ios

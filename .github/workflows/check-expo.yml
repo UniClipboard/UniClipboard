@@ -107,6 +107,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Select Xcode 27.0
+        if: matrix.platform == 'ios'
+        run: |
+          xcode_dir=/Applications/Xcode_27.app/Contents/Developer
+          DEVELOPER_DIR="$xcode_dir" xcodebuild -version
+          echo "DEVELOPER_DIR=$xcode_dir" >> "$GITHUB_ENV"
       - name: Set up Android SDK
         if: matrix.platform == 'android'
         uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
@@ -157,6 +163,24 @@ jobs:
             xcrun simctl spawn "$device" log show --last 5m --style compact \
               --predicate 'process == "pasteboardd" OR (process == "UniClipboardUIShell" AND eventMessage CONTAINS[c] "pasteboard")' \
               > e2e/results/ios-pasteboard.log || true
+            {
+              if clipboard=$(xcrun devicectl device pasteboard paste --device "$device" --timeout 15 --quiet); then
+                if [[ "$clipboard" == 'Unic Mobile E2E' ]]; then
+                  echo 'fixture-pasteboard=present'
+                else
+                  echo 'fixture-pasteboard=absent'
+                fi
+              else
+                echo 'fixture-pasteboard=unavailable'
+              fi
+              if container=$(xcrun simctl get_app_container "$device" app.uniclipboard.shell data); then
+                history_db="$container/Library/Application Support/unic-v2/unic.db"
+                if [[ -f "$history_db" ]]; then
+                  sqlite3 -readonly "$history_db" \
+                    "SELECT 'fixture-records=' || COUNT(*) FROM clip_item_parts WHERE CAST(inline AS TEXT) = 'Unic Mobile E2E';" || true
+                fi
+              fi
+            } > e2e/results/ios-history-check.log 2>&1
             exit 1
           fi
       - name: Build Android emulator APK

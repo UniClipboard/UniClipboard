@@ -8,6 +8,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/uniclipboard/unic/engine"
@@ -20,8 +22,9 @@ var ErrTargetBusy = errors.New("migration target is in use")
 
 // State contains navigation intent only. Secrets and migration records stay out.
 type State struct {
-	Complete bool   `json:"complete"`
-	Source   string `json:"source,omitempty"`
+	Complete               bool     `json:"complete"`
+	Source                 string   `json:"source,omitempty"`
+	DismissedAnnouncements []string `json:"dismissed_announcements,omitempty"`
 }
 
 type Flow struct {
@@ -61,8 +64,14 @@ func Open(target string) (*Flow, error) {
 	}
 	return f, nil
 }
-func (f *Flow) path() string   { return filepath.Join(f.target, "desktop-setup.json") }
-func (f *Flow) State() State   { f.mu.Lock(); defer f.mu.Unlock(); return f.state }
+func (f *Flow) path() string { return filepath.Join(f.target, "desktop-setup.json") }
+func (f *Flow) State() State {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	st := f.state
+	st.DismissedAnnouncements = slices.Clone(f.state.DismissedAnnouncements)
+	return st
+}
 func (f *Flow) Required() bool { return !f.State().Complete }
 
 func (f *Flow) SelectSource(source string) error {
@@ -88,6 +97,29 @@ func (f *Flow) Complete() error {
 	defer f.mu.Unlock()
 	next := f.state
 	next.Complete = true
+	return f.update(next)
+}
+
+const maxDismissedAnnouncements = 200
+
+// DismissAnnouncement records a remote FlareRelease announcement ID as dismissed
+// for this profile so it does not reappear in the sidebar across launches.
+func (f *Flow) DismissAnnouncement(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if slices.Contains(f.state.DismissedAnnouncements, id) {
+		return nil
+	}
+	next := f.state
+	ids := append(slices.Clone(f.state.DismissedAnnouncements), id)
+	if len(ids) > maxDismissedAnnouncements {
+		ids = ids[len(ids)-maxDismissedAnnouncements:]
+	}
+	next.DismissedAnnouncements = ids
 	return f.update(next)
 }
 

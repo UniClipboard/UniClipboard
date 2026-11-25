@@ -8489,6 +8489,30 @@
     "pt-BR": "Não foi possível atualizar o status da conexão. Tente novamente.",
     "ru": "Не удалось обновить статус подключения. Повторите попытку."
   },
+  "不再显示": {
+    "en": "Don't show again",
+    "ja": "今後表示しない",
+    "pt-BR": "Não mostrar novamente",
+    "ru": "Больше не показывать"
+  },
+  "重要公告": {
+    "en": "Critical notice",
+    "ja": "重要なお知らせ",
+    "pt-BR": "Aviso crítico",
+    "ru": "Важное уведомление"
+  },
+  "注意事项": {
+    "en": "Notice",
+    "ja": "ご注意",
+    "pt-BR": "Atenção",
+    "ru": "Предупреждение"
+  },
+  "发布公告": {
+    "en": "Announcement",
+    "ja": "お知らせ",
+    "pt-BR": "Anúncio",
+    "ru": "Объявление"
+  },
   "收起搜索": {
     "en": "Close search",
     "ja": "検索を閉じる",

@@ -195,6 +195,7 @@ type viewState struct {
 	dismissedRestart, dismissedCfgErr, dismissedApply                     string
 	openURL                                                               func(string) error
 	openQuickPanel                                                        func()
+	announcement                                                          announcementState
 	quick                                                                 *quickPanelState
 	tags                                                                  []historyTag
 	tagManager                                                            tagManagerState
@@ -254,7 +255,7 @@ func (d *viewState) view(c *ui.Context) {
 			d.sidebarHidden, d.compact = compact, compact
 		}
 		c.OnWindowShortcut(ui.Cmd, ui.KeyQ, mygo.App.Quit)
-		if !d.quickLook && !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" && !d.about.alphaWarningOpen && !d.about.manualUpdateOpen && !d.backup.confirmOpen {
+		if !d.quickLook && !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && !d.announcement.detailOpen && d.deviceTask == "" && d.confirm == "" && !d.about.alphaWarningOpen && !d.about.manualUpdateOpen && !d.backup.confirmOpen {
 			if d.shortcutEditor.id == "" || d.page != "settings" {
 				d.bindKeyboardCommands(c)
 			}
@@ -290,6 +291,7 @@ func (d *viewState) view(c *ui.Context) {
 		d.actionResultDialog(c.Key("action-result"), k)
 		d.confirmDialog(c.Key("confirm"), k)
 		d.aboutDialogs(c.Key("about"), k)
+		d.announcementDetailSheet(c.Key("announcement-detail"), k)
 		d.toasterOverlay(c, k)
 	})
 }

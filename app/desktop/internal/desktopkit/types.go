@@ -48,6 +48,7 @@ const (
 	IconTag          IconName = "tag"
 	IconUnlock       IconName = "unlock"
 	IconUpdate       IconName = "update"
+	IconWarning      IconName = "warning"
 )
 
 // ControlSize is a semantic size step; XLarge is the prominent primary action of an action

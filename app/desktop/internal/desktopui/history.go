@@ -70,6 +70,8 @@ func (d *viewState) sidebar(c *ui.Context, k desktopkit.Kit) {
 		{ID: "library", Items: []desktopkit.SidebarNavItem{{ID: "all", Label: d.tr("全部项目"), Icon: desktopkit.IconHistory, Count: d.historyCountLabel()}, {ID: "pinned", Label: d.tr("已收藏"), Icon: desktopkit.IconPin, Count: favoriteCount}}},
 		{ID: "tags", Title: d.tr("标签"), Items: tags, Action: &desktopkit.NavAction{Label: d.tr("管理标签"), Icon: desktopkit.IconAdd}, More: &desktopkit.NavAction{Label: fmt.Sprintf(d.tr("全部标签 · %d"), len(d.tags))}},
 		{ID: "devices", Title: d.tr("设备"), Items: devices},
+	}, Announcement: func() desktopkit.AnnouncementResult {
+		return d.sidebarAnnouncement(c.Key("sidebar-announcement"), k)
 	}, Footer: []desktopkit.SidebarNavItem{{ID: "manage", Label: d.tr("管理设备…"), Icon: desktopkit.IconDevices}, {ID: "settings", Label: d.tr("设置…"), Icon: desktopkit.IconSettings, ShortcutHint: shortcutHint(overrides, desktopkeys.Settings)}}}).Grow(1)
 	if cmd, _ := d.nav.Command(); cmd == desktopkit.NavSectionAction || cmd == desktopkit.NavMore {
 		d.tagsOpen = true

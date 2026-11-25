@@ -109,3 +109,7 @@ func fdFileStamp(f *os.File) (fileStamp, bool) {
 	}
 	return unixFileStamp(&st)
 }
+
+func isPeerClosedPlatform(err error) bool {
+	return errors.Is(err, unix.ECONNRESET) || errors.Is(err, unix.EPIPE)
+}

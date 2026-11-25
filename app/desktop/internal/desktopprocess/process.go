@@ -67,12 +67,15 @@ type response struct {
 	ErrorCode string          `json:"error_code,omitempty"`
 }
 type Owner struct {
-	info     Info
-	listener net.Listener
-	unlock   func()
-	cancel   context.CancelFunc
-	once     sync.Once
-	workers  sync.WaitGroup
+	info         Info
+	listener     net.Listener
+	closeOnce    sync.Once
+	closeErr     error
+	stopListener func() bool
+	unlock       func()
+	cancel       context.CancelFunc
+	once         sync.Once
+	workers      sync.WaitGroup
 }
 
 func validRole(role Role) bool { return role == Tray || role == GUI || role == QuickPanel }
@@ -328,6 +331,7 @@ func Acquire(ctx context.Context, dir string, role Role, handler Handler) (*Owne
 	}
 	ownerCtx, cancel := context.WithCancel(ctx)
 	owner := &Owner{info: info, listener: ln, unlock: unlock, cancel: cancel}
+	owner.stopListener = context.AfterFunc(ownerCtx, func() { _ = owner.closeListener() })
 	owner.workers.Add(1)
 	go func() {
 		defer owner.workers.Done()
@@ -396,26 +400,43 @@ func Acquire(ctx context.Context, dir string, role Role, handler Handler) (*Owne
 
 // Info identifies this role owner. StartedAt is the role acquisition timestamp.
 func (o *Owner) Info() Info { return o.info }
+func (o *Owner) closeListener() error {
+	o.closeOnce.Do(func() { o.closeErr = o.listener.Close() })
+	return o.closeErr
+}
 func (o *Owner) Close() error {
 	var err error
-	o.once.Do(func() { o.cancel(); err = o.listener.Close(); o.workers.Wait(); o.unlock() })
+	o.once.Do(func() {
+		if o.stopListener != nil {
+			o.stopListener()
+		}
+		err = o.closeListener()
+		o.cancel()
+		o.workers.Wait()
+		o.unlock()
+	})
 	return err
 }
 
 // Call sends one bounded command. The receiver and sender must belong to the same
 // profile and exact executable build. The private endpoint is the access boundary.
 func Call(ctx context.Context, dir string, role Role, command string, payload, result any) error {
+	_, err := callOnce(ctx, dir, role, command, payload, result)
+	return err
+}
+
+func callOnce(ctx context.Context, dir string, role Role, command string, payload, result any) (bool, error) {
 	info, err := identity(dir, role)
 	if err != nil {
-		return err
+		return false, err
 	}
 	root, err := runtimeDir(info.Profile)
 	if err != nil {
-		return err
+		return false, err
 	}
 	conn, err := dial(ctx, root, role)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrUnavailable, err)
+		return false, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
 	defer func() { _ = conn.Close() }()
 	deadline := time.Now().Add(30 * time.Second)
@@ -427,43 +448,63 @@ func Call(ctx context.Context, dir string, role Role, command string, payload, r
 	defer stop()
 	peerPID, err := verifyPeer(conn, false, info)
 	if err != nil {
-		return err
+		return false, err
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return err
+		return true, err
 	}
 	if len(raw) > 1<<19 {
-		return errors.New("desktop IPC payload too large")
+		return true, errors.New("desktop IPC payload too large")
 	}
 	if err := json.NewEncoder(conn).Encode(request{Identity: info, Command: command, Payload: raw}); err != nil {
-		return err
+		return true, err
 	}
 	var reply response
 	if err := json.NewDecoder(io.LimitReader(conn, 1<<20)).Decode(&reply); err != nil {
-		return err
+		return true, err
 	}
 	if !sameIdentity(info, reply.Identity) || reply.Identity.PID != peerPID {
 		if reply.Identity.Profile == info.Profile && reply.Identity.Role == info.Role && samePath(reply.Identity.BinaryPath, info.BinaryPath) && reply.Identity.BinarySHA256 != info.BinarySHA256 && reply.Identity.PID == peerPID {
-			return fmt.Errorf("%w: desktop IPC owner build mismatch", ErrStaleBuild)
+			return false, fmt.Errorf("%w: desktop IPC owner build mismatch", ErrStaleBuild)
 		}
-		return errors.New("desktop IPC owner identity mismatch")
+		return false, errors.New("desktop IPC owner identity mismatch")
 	}
 	if reply.Error != "" {
 		if reply.ErrorCode == "unavailable" {
-			return fmt.Errorf("%w: %s", ErrUnavailable, reply.Error)
+			return true, fmt.Errorf("%w: %s", ErrUnavailable, reply.Error)
 		}
-		return errors.New(reply.Error)
+		return true, errors.New(reply.Error)
 	}
 	if result != nil && len(reply.Result) != 0 {
-		return json.Unmarshal(reply.Result, result)
+		return true, json.Unmarshal(reply.Result, result)
 	}
-	return nil
+	return true, nil
 }
+
+func isPeerClosed(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	return isPeerClosedPlatform(err)
+}
+
 func Probe(ctx context.Context, dir string, role Role) (Info, error) {
-	var result Info
-	err := Call(ctx, dir, role, "__probe", nil, &result)
-	return result, err
+	for {
+		var result Info
+		verified, err := callOnce(ctx, dir, role, "__probe", nil, &result)
+		if err == nil {
+			return result, nil
+		}
+		if !verified || ctx.Err() != nil || !isPeerClosed(err) {
+			return Info{}, err
+		}
+		select {
+		case <-ctx.Done():
+			return Info{}, ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
 }
 
 // RetireStale terminates an orphaned previous-build view role that still owns

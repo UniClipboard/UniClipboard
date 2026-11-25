@@ -121,3 +121,10 @@ func handleFileStamp(handle windows.Handle) (fileStamp, bool) {
 		mtimeNsec: int64(info.LastWriteTime.LowDateTime),
 	}, true
 }
+
+func isPeerClosedPlatform(err error) bool {
+	return errors.Is(err, windows.ERROR_BROKEN_PIPE) ||
+		errors.Is(err, windows.ERROR_NO_DATA) ||
+		errors.Is(err, windows.ERROR_PIPE_NOT_CONNECTED) ||
+		errors.Is(err, windows.WSAECONNRESET)
+}

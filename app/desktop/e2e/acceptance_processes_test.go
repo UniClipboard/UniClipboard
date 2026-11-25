@@ -318,8 +318,13 @@ func scenarioDesktopProcesses(t *testing.T) {
 	if service(home).ID != external.ID {
 		t.Fatal("normal background tray replaced independently running unicd")
 	}
-	checks = append(checks, "explicit normal background launch retains a tray without GUI and reuses an independently running unicd generation")
 	var status map[string]any
+	standby := waitRole(home, "quick-panel")
+	must(t, command(home, "quick-panel", "status", &status))
+	if status["ready"] != true || status["visible"] != false {
+		t.Fatalf("normal background panel is not in standby: %v", status)
+	}
+	checks = append(checks, "normal background launch prepares a hidden panel before the first activation and reuses an independently running unicd generation")
 	must(t, command(home, "tray", "status", &status))
 	for round := 0; round < 3; round++ {
 		must(t, command(home, "tray", "open-gui", nil))
@@ -362,6 +367,9 @@ func scenarioDesktopProcesses(t *testing.T) {
 	gui := waitRole(home, "gui")
 	must(t, command(home, "tray", "open-quick-panel", nil))
 	panel := waitRole(home, "quick-panel")
+	if panel.PID != standby.PID || !panel.StartedAt.Equal(standby.StartedAt) {
+		t.Fatal("first activation did not reuse the standby process")
+	}
 	if panel.PID == gui.PID || panel.PID == tray.PID || panel.PID == external.PID {
 		t.Fatal("quick panel shares another role process")
 	}
@@ -556,7 +564,16 @@ func scenarioDesktopProcesses(t *testing.T) {
 		t.Fatal("expected pending restart requirement after disabling builtin.classify")
 	}
 	must(t, command(ownedHome, "tray", "restart", nil))
-	waitGone(ownedHome, "quick-panel", ownedPanel.PID)
+	exited(t, ownedPanel.PID)
+	restartedPanel := waitRole(ownedHome, "quick-panel")
+	if restartedPanel.PID == ownedPanel.PID || restartedPanel.StartedAt.Equal(ownedPanel.StartedAt) {
+		t.Fatal("full restart kept the previous panel process")
+	}
+	ownedPanel = restartedPanel
+	must(t, command(ownedHome, "quick-panel", "status", &status))
+	if status["ready"] != true || status["visible"] != false {
+		t.Fatalf("full restart did not restore panel standby: %v", status)
+	}
 	exited(t, ownedGUI.PID)
 	exited(t, ownedService.PID)
 	var restartedService servicelifecycle.Instance
@@ -586,10 +603,11 @@ func scenarioDesktopProcesses(t *testing.T) {
 	ownedGUI = restartedGUI
 	ownedService = restartedService
 	services = append(services, ownedService)
-	checks = append(checks, "tray restart closes views, replaces its owned service to clear restart_required, and reopens GUI")
+	checks = append(checks, "tray restart replaces its owned service, clears restart_required, reopens GUI and prepares a fresh hidden panel")
 	must(t, command(ownedHome, "tray", "quit", nil))
 	waitGone(ownedHome, "tray", ownedTray.PID)
 	waitGone(ownedHome, "gui", ownedGUI.PID)
+	waitGone(ownedHome, "quick-panel", ownedPanel.PID)
 	eventually(t, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -1008,8 +1026,10 @@ func scenarioLightweightClose(t *testing.T) {
 	if _, err := probe("gui"); err == nil {
 		t.Fatal("normal background launch created an unwanted GUI process")
 	}
-	if _, err := probe("quick-panel"); err == nil {
-		t.Fatal("normal background launch created an unwanted panel process")
+	waitRole("quick-panel")
+	command("quick-panel", "status", &status)
+	if status["ready"] != true || status["visible"] != false {
+		t.Fatalf("normal background panel is not in standby: %v", status)
 	}
 	sameService()
 	success("unic-desktop")
@@ -1032,7 +1052,7 @@ func scenarioLightweightClose(t *testing.T) {
 		t.Fatal("normal GUI close changed the background tray identity")
 	}
 	sameService()
-	checks = append(checks, "explicit normal background launch retains only tray and service; manual activation shows GUI and normal close preserves tray")
+	checks = append(checks, "explicit normal background launch retains tray, service and hidden panel; manual activation shows GUI and normal close preserves tray")
 	command("tray", "quit", nil)
 	sameService()
 

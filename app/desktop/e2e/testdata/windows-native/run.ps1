@@ -387,7 +387,12 @@ function Launch-BackgroundCoreOnly([string]$TaskProfile,$ExpectedService){
 function Invoke-GUIAbsentHotkey([string]$TaskProfile,$Tray){
     $script:ScenarioStatus.normal_gui_absent_hotkey='RUNNING'
     if($null -ne (Try-Role $TaskProfile 'gui')){throw 'GUI must be absent before independent hotkey test'}
-    if($null -ne (Try-Role $TaskProfile 'quick-panel')){throw 'First-open hotkey test requires no previous panel process'}
+    $panel=Bind-Role $TaskProfile 'quick-panel'
+    $standby=Role $TaskProfile 'quick-panel' 'status'
+    if(-not $standby.ready -or $standby.visible){throw 'Panel role is not in standby before first use'}
+    $endpoint=Join-Path $TaskProfile 'automation-panel.sock'
+    $windows=Invoke-Task $Helper @('rpc','--endpoint',$endpoint,'--method','windows') $TaskProfile|ConvertFrom-Json
+    if(@($windows.windows | Where-Object {$null -ne $_}).Count -ne 0){throw 'Panel standby retained windows before first use'}
     $targetFile=Join-Path $TaskRoot 'target.json'
     $targetTitle='UNIC task '+[Guid]::NewGuid().ToString('N')
     $script:ExternalTarget=Start-TaskProcess (Join-Path $PSHOME 'powershell.exe') @('-NoProfile','-STA','-File',(Join-Path $PSScriptRoot 'target.ps1'),'-ReceiptPath',$targetFile,'-WindowTitle',$targetTitle) ''
@@ -405,8 +410,9 @@ function Invoke-GUIAbsentHotkey([string]$TaskProfile,$Tray){
     [UnicNativeB973]::Hotkey()
     $script:GlobalShortcutStatus='INJECTED_NOT_YET_OBSERVED'
     Event 'native-SendInput' 'Ctrl+Alt+V first panel with no GUI' @{target_pid=$target.pid;target_created_utc=$target.created_utc;target_hwnd=$target.hwnd;gui_absent=$true;panel_first_open=$true;input_replayed=$false}
-    $panel=Bind-Role $TaskProfile 'quick-panel'
-    Save-JSON 'first-hotkey-role-ready.json' @{role=(Role $TaskProfile 'quick-panel' 'status');windows=[UnicNativeB973]::OwnedWindows([int]$panel.pid);foreground_pid=[UnicNativeB973]::Owner([UnicNativeB973]::GetForegroundWindow())}
+    $active=Role $TaskProfile 'quick-panel' 'probe'
+    if($active.pid -ne $panel.pid -or $active.started_at -ne $panel.ipc.started_at){throw 'Hotkey did not reuse the standby process'}
+    Save-JSON 'first-hotkey-role-ready.json' @{standby_pid=$panel.pid;role=(Role $TaskProfile 'quick-panel' 'status');windows=[UnicNativeB973]::OwnedWindows([int]$panel.pid);foreground_pid=[UnicNativeB973]::Owner([UnicNativeB973]::GetForegroundWindow())}
     # native18 returned role.visible=true while its Win32 window stayed hidden.
     # Both actual visibility and foreground ownership remain mandatory here.
     $panelWindow=Find-Window $panel 'unic · 快捷面板' $true
@@ -419,7 +425,10 @@ function Invoke-GUIAbsentHotkey([string]$TaskProfile,$Tray){
     $keyParams=@{window=$content[0].ID;events=@(@{type='key';key='Escape'})}|ConvertTo-Json -Depth 5 -Compress
     $null=Invoke-Task $Helper @('rpc','--endpoint',(Join-Path $TaskProfile 'automation-panel.sock'),'--method','input','--params',$keyParams) $TaskProfile
     Event 'app-scoped-automation' 'Escape dismiss panel' @{window=$content[0].ID;endpoint='automation-panel.sock'}
-    Wait-Until {$status=Role $TaskProfile 'quick-panel' 'status';return -not $status.visible} 'panel dismissal'
+    Wait-Until {
+        $windows=Invoke-Task $Helper @('rpc','--endpoint',$endpoint,'--method','windows') $TaskProfile|ConvertFrom-Json
+        return @($windows.windows | Where-Object {$null -ne $_}).Count -eq 0
+    } 'panel standby windows released'
     Wait-Until {return [UnicNativeB973]::GetForegroundWindow() -eq $targetWindow} 'Escape restored exact task target focus'
     $script:ScenarioStatus.normal_gui_absent_hotkey='PASS'
     return $panel

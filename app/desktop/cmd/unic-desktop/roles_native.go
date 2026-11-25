@@ -278,13 +278,16 @@ func runTray(settings *config.Manager) error {
 			r.state.LoginError = message
 			r.mu.Unlock()
 		}
-		settings.OnChange = func(_, current config.Config, err error) {
+		settings.OnChange = func(previous, current config.Config, err error) {
 			if err == nil {
 				mygo.RunOnMain(func() {
 					mygo.Theme.SetSource(mygo.ThemeSource(current.Desktop.ColorMode))
 					updateTray(current.Desktop)
 				})
 				go apply()
+				if previous.Desktop.Mode != current.Desktop.Mode && current.Desktop.Mode == "normal" {
+					go r.prewarmPanel()
+				}
 			}
 		}
 		go apply()
@@ -435,7 +438,7 @@ func runPanel(settings *config.Manager) error {
 		if useDaemonClipboard {
 			clipboard.daemon = c
 		}
-		panel = desktopui.NewProcessPanel(ctx, c, clipboard, func(action string) {
+		panel = desktopui.NewProcessPanel(ctx, c, clipboard, settings.Current, func(action string) {
 			nativeAsync(func(ctx context.Context) error {
 				return roleCall(ctx, dir, desktopprocess.Tray, "open-gui", action, nil)
 			})

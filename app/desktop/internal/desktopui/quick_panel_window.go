@@ -182,21 +182,23 @@ func openQuickWindow(p *quickPanelState, closed func()) *mygo.Window {
 	if p.live != nil {
 		title = "unic · 快捷面板"
 	}
+	windowZoom := p.windowZoom
+	scale := zoomScale(windowZoom)
 	history := mygo.NewWindow(mygo.WindowOptions{
-		Title: title, Width: qpPanelWidth, Height: qpPanelHeight, UseContentSize: true,
+		Title: title, Width: int(qpPanelWidth * scale), Height: int(qpPanelHeight * scale), UseContentSize: true,
 		Frameless: true, DisableResize: true, AlwaysOnTop: true,
 		Content: ui.View(p.panel),
 	})
-	satellite := mygo.NewFlyout(mygo.FlyoutOptions{
-		Parent: history, Width: qpSatellitePreviewWidth, Height: qpSatelliteDefaultHeight, Hidden: true, Focusable: false,
-		Placement: mygo.PlacementRight, Gap: 8, Shadow: true, CornerRadius: 12,
-		Anchor: mygo.Rectangle{X: 0, Y: 54, Width: qpPanelWidth, Height: 30}, Content: ui.View(p.satellite),
-	})
-	windowZoom := 0
+	var satellite *mygo.Window
+	hideSatellite := func() {
+		p.satelliteWidth, p.satelliteHeight = 0, 0
+		if satellite != nil {
+			satellite.Hide()
+		}
+	}
 	syncWindow := func() {
 		if !p.visible {
-			p.satelliteWidth, p.satelliteHeight = 0, 0
-			satellite.Hide()
+			hideSatellite()
 			history.Hide()
 			return
 		}
@@ -207,8 +209,7 @@ func openQuickWindow(p *quickPanelState, closed func()) *mygo.Window {
 			history.SetContentSize(panelWidth, int(qpPanelHeight*scale))
 		}
 		if p.menu == "" && p.previewEntry() == nil {
-			p.satelliteWidth, p.satelliteHeight = 0, 0
-			satellite.Hide()
+			hideSatellite()
 			return
 		}
 		width, height := p.satelliteSize()
@@ -219,8 +220,17 @@ func openQuickWindow(p *quickPanelState, closed func()) *mygo.Window {
 		}
 		// Use the full parent width so the satellite follows a row vertically
 		// but never overlaps the history panel horizontally.
-		satellite.SetAnchor(mygo.Rectangle{X: 0, Y: int(anchor.Y), Width: panelWidth, Height: int(anchor.H)})
-		satellite.SetSize(width, height)
+		bounds := mygo.Rectangle{X: 0, Y: int(anchor.Y), Width: panelWidth, Height: int(anchor.H)}
+		if satellite == nil {
+			satellite = mygo.NewFlyout(mygo.FlyoutOptions{
+				Parent: history, Width: width, Height: height, Hidden: true, Focusable: false,
+				Placement: mygo.PlacementRight, Gap: 8, Shadow: true, CornerRadius: 12,
+				Anchor: bounds, Content: ui.View(p.satellite),
+			})
+		} else {
+			satellite.SetAnchor(bounds)
+			satellite.SetSize(width, height)
+		}
 		satellite.Invalidate()
 		satellite.ShowInactive()
 	}

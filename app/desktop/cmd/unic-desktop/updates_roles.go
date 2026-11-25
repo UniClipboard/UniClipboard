@@ -5,6 +5,8 @@ import (
 	"io"
 
 	"github.com/egoist/mygo"
+
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 )
 
 // Verify the complete signed archive before retiring other processes. The
@@ -22,14 +24,11 @@ func (s *desktopUpdateSource) Open(ctx context.Context, url string) (io.ReadClos
 	}
 	s.runtime.opening.Lock()
 	defer s.runtime.opening.Unlock()
-	s.runtime.mu.Lock()
-	wasPaused := s.runtime.paused
-	s.runtime.paused = true
-	s.runtime.mu.Unlock()
+	wasPaused := s.runtime.pauseAdmission()
 	if s.runtime.shortcut != nil {
 		s.runtime.shortcut(false)
 	}
-	if err = s.runtime.closeViews(ctx); err == nil {
+	if err = s.runtime.closeViews(ctx, desktopprocess.QuickPanel, desktopprocess.GUI); err == nil {
 		err = s.runtime.pause(false)
 	}
 	if err != nil {

@@ -666,6 +666,8 @@ func (p *quickPanelState) emptyView(c *ui.Context, a qpPalette) {
 	if p.mode == "disconnected" {
 		title = p.tr("同步服务未响应")
 		hint = p.tr("本次唤起期间恢复会自动刷新列表。")
+	} else if p.live != nil && p.live.d.live.readError != "" {
+		title = p.tr(p.live.d.live.readError)
 	} else if p.query != "" {
 		title = p.tr("没有匹配“") + p.query + p.tr("”的内容")
 		hint = p.tr("试试其他关键词或筛选条件")

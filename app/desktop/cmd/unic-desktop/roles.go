@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -93,6 +94,7 @@ type trayRuntime struct {
 	updatePrefs             func(updatePrefsRequest) updateStatus
 	quit                    func()
 	opening                 sync.Mutex
+	panelLaunch             sync.Mutex
 }
 
 func newTrayRuntime(ctx context.Context, cancel context.CancelFunc, settings *config.Manager) (*trayRuntime, error) {
@@ -138,9 +140,6 @@ func (r *trayRuntime) isRetiring() bool {
 	return r.retiring || r.ctx.Err() != nil
 }
 func (r *trayRuntime) start(ctx context.Context, entering bool) error {
-	if r.isRetiring() {
-		return desktopprocess.ErrUnavailable
-	}
 	select {
 	case <-r.nativeReady:
 	case <-ctx.Done():
@@ -148,6 +147,12 @@ func (r *trayRuntime) start(ctx context.Context, entering bool) error {
 	}
 	r.runtimeMu.Lock()
 	defer r.runtimeMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if r.isRetiring() {
+		return desktopprocess.ErrUnavailable
+	}
 	flow, err := setupflow.Open(r.dir)
 	if err != nil {
 		return err
@@ -155,8 +160,15 @@ func (r *trayRuntime) start(ctx context.Context, entering bool) error {
 	if flow.Required() && !entering {
 		return errors.New("desktop setup is required")
 	}
+	r.mu.Lock()
+	paused := r.paused
+	r.mu.Unlock()
+	if paused && !entering {
+		return errors.New("desktop integration is paused")
+	}
 	r.wanted = true
 	if r.adapterCancel != nil {
+		go r.prewarmPanel()
 		return nil
 	}
 	service, err := lifecycle.AcquireService(ctx, r.dir, r.socket, r.executable)
@@ -204,8 +216,38 @@ func (r *trayRuntime) start(ctx context.Context, entering bool) error {
 	if r.shortcut != nil {
 		go func() { state := r.shortcut(false); r.mu.Lock(); r.state.Shortcut = state; r.mu.Unlock() }()
 	}
+	go r.prewarmPanel()
 	return nil
 }
+
+// Prewarming shares the role launch with foreground activation without holding
+// the tray's GUI and target-capture admission lock during process startup.
+func (r *trayRuntime) prewarmPanel() {
+	if !r.panelLaunch.TryLock() {
+		return
+	}
+	defer r.panelLaunch.Unlock()
+	r.mu.Lock()
+	ready := r.state.Ready && !r.paused && !r.retiring
+	r.mu.Unlock()
+	if ready && r.settings.Current().Desktop.Mode == "normal" {
+		if _, err := launchDesktopRole(r.ctx, r.dir, r.socket, desktopprocess.QuickPanel); err != nil && r.ctx.Err() == nil {
+			logHostFailure()
+		}
+	}
+}
+
+// Close admission after an in-progress startup has finished updating readiness.
+func (r *trayRuntime) pauseAdmission() bool {
+	r.runtimeMu.Lock()
+	defer r.runtimeMu.Unlock()
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	wasPaused := r.paused
+	r.paused = true
+	return wasPaused
+}
+
 func (r *trayRuntime) pause(migration bool) error {
 	r.runtimeMu.Lock()
 	defer r.runtimeMu.Unlock()
@@ -296,7 +338,9 @@ func (r *trayRuntime) openPanelFiltered(ctx context.Context, favorites bool) err
 		}
 	}
 	activation.Favorites = favorites
+	r.panelLaunch.Lock()
 	info, err := launchDesktopRole(ctx, r.dir, r.socket, desktopprocess.QuickPanel)
+	r.panelLaunch.Unlock()
 	if err != nil {
 		return err
 	}
@@ -362,22 +406,24 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 	case "open-quick-panel":
 		return nil, r.openPanel(ctx)
 	case "start-runtime":
+		r.opening.Lock()
+		defer r.opening.Unlock()
 		return nil, r.start(ctx, true)
 	case "pause-runtime":
 		// Block every panel entry before stopping integration and saving pending intent.
 		r.opening.Lock()
 		defer r.opening.Unlock()
-		r.mu.Lock()
-		r.paused = true
-		r.mu.Unlock()
+		r.pauseAdmission()
 		if r.shortcut != nil {
 			state := r.shortcut(false)
 			r.mu.Lock()
 			r.state.Shortcut = state
 			r.mu.Unlock()
 		}
-		_ = desktopprocess.Call(ctx, r.dir, desktopprocess.QuickPanel, "quit", nil, nil)
-		err := r.pause(true)
+		err := r.closeViews(ctx, desktopprocess.QuickPanel)
+		if err == nil {
+			err = r.pause(true)
+		}
 		if err == nil {
 			flow, e := setupflow.Open(r.dir)
 			if e == nil {
@@ -599,6 +645,10 @@ func (r remoteClipboard) Matches(mark string) bool {
 
 // closeViews is a shutdown barrier. No PID-only kill is permitted.
 func (r *trayRuntime) closeViews(ctx context.Context, roles ...desktopprocess.Role) error {
+	if slices.Contains(roles, desktopprocess.QuickPanel) {
+		r.panelLaunch.Lock()
+		defer r.panelLaunch.Unlock()
+	}
 	for _, role := range roles {
 		err := desktopprocess.Call(ctx, r.dir, role, "quit", nil, nil)
 		if err != nil && !errors.Is(err, desktopprocess.ErrUnavailable) {

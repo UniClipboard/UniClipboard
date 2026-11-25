@@ -53,8 +53,10 @@ for rel,old,new in [('live.go','func (s *Desktop) View(c *ui.Context) { s.d.view
  if t.count(old)!=1:raise SystemExit('diagnostic seam changed: '+rel)
  f.write_text(t.replace(old,new))
 panel=src/'app/desktop/internal/desktopui/process_panel.go'
-t=panel.read_text();needle='func (p *ProcessPanel) Open(target quickpanel.Target, captureError string) {'
-if t.count(needle)!=1:raise SystemExit('panel diagnostic seam changed')
+t=panel.read_text()
+open_declarations=[line for line in t.splitlines() if line.startswith('func (p *ProcessPanel) Open(') and line.endswith(' {')]
+if len(open_declarations)!=1:raise SystemExit('panel diagnostic seam changed')
+needle=open_declarations[0]
 panel.write_text(t.replace(needle,needle+'\n memorySelectionID=\"\";memorySelectionReported=false'))
 bindir=stage/'bin';bindir.mkdir();env=dict(os.environ,GOOS='windows',GOARCH=a.arch,CGO_ENABLED='0')
 for name,path,tags in [('unic','./app/service/cmd/unic',[]),('unicd','./app/service/cmd/unicd',[]),('unic-desktop','./app/desktop/cmd/unic-desktop',['-tags','desktop_e2e']),('helper','./app/desktop/e2e/testdata/windows-native/helper.go',[])]:

@@ -407,7 +407,7 @@ Lightweight manual launch and GUI-close lifetime
 
 Steps: Keep an independent service running; verify manual close, owned-service detachment, background intent, concurrent reopening and live settings; then run four cold-service background/manual launch races, including observation-triggered manual launches.
 
-Expected: Manual launches show GUI; lightweight close stops all UI while retaining the same unicd PID and generation; an owned service detaches to standalone; explicit lightweight background runs only unicd; normal background retains tray without GUI; concurrent reopening leaves one visible GUI.
+Expected: Manual launches show GUI; lightweight close stops all UI while retaining the same unicd PID and generation; an owned service detaches to standalone; explicit lightweight background runs only unicd; normal background retains tray and a hidden panel without GUI; concurrent reopening leaves one visible GUI.
 
 Forbidden: Treating saved start_in_background as manual-launch intent, leaving a hidden GUI/tray/panel, stopping the independent service, replacing its generation, or reporting process fixtures as native focus evidence. Failure inventory specified before production changes: Manual launch remains service-only or obeys saved background preference; lightweight close retains UI or stops/replaces unicd; an owned daemon exits on owner EOF; reopening reuses an exited GUI; background mode creates unwanted UI; close acknowledgement races with reopening and loses the latest manual intent; live mode/background saves report an obsolete restart requirement or GUI close consumes stale mode; cold background AcquireService releases its launch lock before Detach and a concurrent manual tray rejects that transient desktop-owned service. Background launch note: The --background argument represents explicit login/background intent. Manual launch always has no arguments.
 
@@ -435,7 +435,7 @@ Independent native Desktop windows and process lifetimes
 
 Steps: Record role identities; request the panel through tray IPC; copy real service history through the native panel; close the GUI process; reopen it through tray IPC and inspect the new process and window.
 
-Expected: Every role has a distinct PID; panel Copy writes exact directory-board bytes; panel windows hide while the PID survives; reopening renders real content and satellite; GUI close terminates its process; tray and service remain; tray IPC creates a new native GUI process with retained history.
+Expected: Every role has a distinct PID; panel Copy writes exact directory-board bytes; standby has no windows while the PID survives; reopening renders fresh history and satellite; GUI close terminates its process; tray and service remain; tray IPC creates a new native GUI process with retained history.
 
 Forbidden: System clipboard access, physical input, native tray-click claims, global shortcut claims, hidden resident GUI, shared role PIDs, missing screenshots or missing continuous sampled-window recording.
 
@@ -445,6 +445,7 @@ submit native-role-content 'Desktop independent native process copy'
 ui-wait listItem 'Desktop independent native process copy'
 role-checkpoint started
 screenshot main-started
+role-panel-hidden
 role-open-panel
 ui-wait button '历史：Desktop independent native process copy'
 ui-set textField '搜索快捷面板' 'independent native'
@@ -454,8 +455,10 @@ screenshot independent-panel
 role-panel-copy
 board-equals 'Desktop independent native process copy'
 role-panel-hidden
+submit native-role-standby 'New independent native entry from standby'
 role-open-panel
 ui-wait button '历史：Desktop independent native process copy'
+ui-wait button '历史：New independent native entry from standby'
 role-panel-query 'independent native'
 role-panel-preview
 screenshot recreated-panel
@@ -473,7 +476,7 @@ screenshot recreated-gui
 
 Independent Desktop role processes
 
-Steps: Start normal mode with explicit background intent, verify no initial GUI, reopen and close each UI role, then verify durable state and cleanup. Reject a GUI quit, retry the GUI-only restart, and request a full restart after saving a plugin change.
+Steps: Start normal mode with explicit background intent, verify no initial GUI and a ready hidden panel, then open and close each UI role and verify cleanup. Reject a GUI quit, retry the GUI-only restart, and request a full restart after saving a plugin change.
 
 Expected: Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running. GUI-only restart returns the quit failure and preserves the tray, quick panel and unicd on retry. Full restart replaces the owned unicd and clears the pending configuration.
 

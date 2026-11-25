@@ -4,7 +4,7 @@
 # Steps:
 #   Record role identities; request the panel through tray IPC; copy real service history through the native panel; close the GUI process; reopen it through tray IPC and inspect the new process and window.
 # Expected:
-#   Every role has a distinct PID; panel Copy writes exact directory-board bytes; panel windows hide while the PID survives; reopening renders real content and satellite; GUI close terminates its process; tray and service remain; tray IPC creates a new native GUI process with retained history.
+#   Every role has a distinct PID; panel Copy writes exact directory-board bytes; standby has no windows while the PID survives; reopening renders fresh history and satellite; GUI close terminates its process; tray and service remain; tray IPC creates a new native GUI process with retained history.
 # Forbidden:
 #   System clipboard access, physical input, native tray-click claims, global shortcut claims, hidden resident GUI, shared role PIDs, missing screenshots or missing continuous sampled-window recording.
 
@@ -13,6 +13,7 @@ submit native-role-content 'Desktop independent native process copy'
 ui-wait listItem 'Desktop independent native process copy'
 role-checkpoint started
 screenshot main-started
+role-panel-hidden
 role-open-panel
 ui-wait button '历史：Desktop independent native process copy'
 ui-set textField '搜索快捷面板' 'independent native'
@@ -22,8 +23,10 @@ screenshot independent-panel
 role-panel-copy
 board-equals 'Desktop independent native process copy'
 role-panel-hidden
+submit native-role-standby 'New independent native entry from standby'
 role-open-panel
 ui-wait button '历史：Desktop independent native process copy'
+ui-wait button '历史：New independent native entry from standby'
 role-panel-query 'independent native'
 role-panel-preview
 screenshot recreated-panel

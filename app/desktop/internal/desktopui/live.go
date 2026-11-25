@@ -406,12 +406,31 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 	l.searchCancel = cancel
 	l.key = key
 	l.nextRefresh = time.Now().Add(historyRecoveryInterval)
+	firstPanelPage := l.queryOverride != nil && !wasLoaded && !more && !previous
 	started = true
 	go func() {
-		defer func() { <-l.searchSlots }()
+		defer func() {
+			<-l.searchSlots
+			if firstPanelPage {
+				l.wake()
+			}
+		}()
 		defer cancel()
+		publish := func(apply func()) bool {
+			select {
+			case l.results <- apply:
+				l.wake()
+				return true
+			case <-l.ctx.Done():
+				return false
+			}
+		}
 		apply := func() func() {
-			status, err := l.client.Status(ctx)
+			var status api.Status
+			var err error
+			if !firstPanelPage {
+				status, err = l.client.Status(ctx)
+			}
 			var page api.HistorySearchPage
 			var entries []entry
 			var saved config.State
@@ -423,7 +442,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 			historyChanged := more || previous
 			// Query state was captured on the view thread.
 			historyChanged = historyChanged || invalid
-			if err == nil && !more && !previous {
+			if err == nil && !more && !previous && !firstPanelPage {
 				probe, e := l.client.QueryHistory(ctx, api.HistoryQuery{Limit: 1})
 				err = e
 				historyChanged = historyChanged || probe.Revision != revision || status.ID != serviceID || expired
@@ -463,29 +482,19 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 					v.preview = hit.Preview.Text
 					entries = append(entries, v)
 				}
-				saved, err = l.client.Config(ctx)
-				actions, _ = l.client.Actions(ctx)
-				externalPlugins, _ = l.client.Plugins(ctx)
-				syncBackends, _ = l.client.SyncBackends(ctx)
 			}
-			if err == nil {
-				tags, err = l.client.HistoryTags(ctx)
-			}
-			if err == nil {
-				candidates, err = l.client.Candidates(ctx)
-			}
-			return func() {
+			applyPage := func(err error, statusID string) bool {
 				if generation != l.loadGeneration {
-					return
+					return false
 				}
 				l.loading = false
 				l.stopForegroundLoading()
 				if key != d.liveQueryKey() {
 					l.nextRefresh = time.Time{}
-					return
+					return false
 				}
 				if err != nil {
-					l.connected = status.ID != ""
+					l.connected = statusID != ""
 					l.readError = "无法完成搜索。请稍后重试。"
 					if api.ReasonOf(err) == "invalid_argument" {
 						l.readError = "搜索条件无效或超过限制。"
@@ -495,9 +504,9 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 					if more || previous {
 						l.historyInvalid = true
 					}
-					return
+					return false
 				}
-				l.serviceID = status.ID
+				l.serviceID = statusID
 				l.readError = ""
 				if historyChanged {
 					l.appliedSerial++
@@ -625,6 +634,39 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 						}
 					}
 				}
+				return true
+			}
+			if firstPanelPage {
+				// The panel can show and act on real rows before settings, tags
+				// and device metadata arrive. Keep the page error independent.
+				pageErr := err
+				if !publish(func() { applyPage(pageErr, "") }) || pageErr != nil {
+					return nil
+				}
+				status, err = l.client.Status(ctx)
+			}
+			if err == nil {
+				saved, err = l.client.Config(ctx)
+				actions, _ = l.client.Actions(ctx)
+				externalPlugins, _ = l.client.Plugins(ctx)
+				syncBackends, _ = l.client.SyncBackends(ctx)
+			}
+			if err == nil {
+				tags, err = l.client.HistoryTags(ctx)
+			}
+			if err == nil {
+				candidates, err = l.client.Candidates(ctx)
+			}
+			return func() {
+				if firstPanelPage {
+					if err != nil || generation != l.loadGeneration || key != d.liveQueryKey() || key != l.displayedKey {
+						return
+					}
+					l.appliedSerial++
+					l.serviceID = status.ID
+				} else if !applyPage(err, status.ID) {
+					return
+				}
 				l.connected = true
 				l.config = saved
 				l.actions = actions
@@ -746,10 +788,8 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 				}
 			}
 		}()
-		select {
-		case l.results <- apply:
-			l.wake()
-		case <-l.ctx.Done():
+		if apply != nil {
+			publish(apply)
 		}
 	}()
 

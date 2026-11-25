@@ -83,7 +83,7 @@ jobs:
       matrix:
         include:
           - platform: ios
-            runner: xcode-27
+            runner: macos-26
           - platform: android
             runner: ubuntu-latest
     runs-on: ${{ matrix.runner }}
@@ -107,10 +107,10 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Select Xcode 27.0
+      - name: Select Xcode 26.6
         if: matrix.platform == 'ios'
         run: |
-          xcode_dir=/Applications/Xcode_27.app/Contents/Developer
+          xcode_dir=/Applications/Xcode_26.6.app/Contents/Developer
           DEVELOPER_DIR="$xcode_dir" xcodebuild -version
           echo "DEVELOPER_DIR=$xcode_dir" >> "$GITHUB_ENV"
       - name: Set up Android SDK
@@ -157,7 +157,7 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/unic-ios" ARCHS=arm64 CODE_SIGN_IDENTITY=-
           app="$RUNNER_TEMP/unic-ios/Build/Products/Release-iphonesimulator/UniClipboardUIShell.app"
           codesign --verify --strict "$app"
-          device=$(xcrun simctl create 'UniClipboard CI' com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro com.apple.CoreSimulator.SimRuntime.iOS-27-0)
+          device=$(xcrun simctl create 'UniClipboard CI' com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro com.apple.CoreSimulator.SimRuntime.iOS-26-5)
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
           if ! node e2e/run.mjs --suite live --platform ios --device "$device" \
@@ -166,7 +166,7 @@ jobs:
               --predicate 'process == "pasted" OR subsystem == "com.apple.Pasteboard"' \
               > e2e/results/ios-pasteboard.log || true
             {
-              if clipboard=$(xcrun devicectl device pasteboard paste --device "$device" --timeout 15 --quiet); then
+              if clipboard=$(xcrun simctl pbpaste "$device"); then
                 if [[ "$clipboard" == 'Unic Mobile E2E' ]]; then
                   echo 'fixture-pasteboard=present'
                 else

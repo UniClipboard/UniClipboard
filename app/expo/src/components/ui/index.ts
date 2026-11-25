@@ -37,11 +37,8 @@ export type { AppCardProps } from './AppCard';
 export { AppBottomSheet } from './AppBottomSheet';
 export type { AppBottomSheetProps } from './AppBottomSheet';
 
-export { AppTopSheet } from './AppTopSheet';
-export type { AppTopSheetProps } from './AppTopSheet';
-
-export { SheetPageTransition } from './SheetPageTransition';
-export type { SheetPageTransitionProps } from './SheetPageTransition.types';
+export { IosBottomSheet } from './IosBottomSheet';
+export type { IosBottomSheetProps } from './IosBottomSheet';
 
 export { AppDropdown } from './AppDropdown';
 export type { AppDropdownProps, AppDropdownOption } from './AppDropdown';
@@ -49,19 +46,17 @@ export type { AppDropdownProps, AppDropdownOption } from './AppDropdown';
 export { GlassContainer } from './GlassContainer';
 export type { GlassContainerProps, GlassShape } from './GlassContainer';
 
-export { SheetHeader } from './SheetHeader';
-export type { SheetHeaderProps } from './SheetHeader';
+export { SheetHeader, SheetCircleButton } from './SheetHeader';
+export type { SheetHeaderProps, SheetCircleButtonProps } from './SheetHeader';
 
 export {
   IosSheetPage,
   IosSheetForm,
-  IosSheetScaffold,
   IosPageChromeProvider,
   useIosPageChrome,
 } from './IosSheetPage';
 export type {
   IosSheetPageProps,
   IosSheetFormProps,
-  IosSheetScaffoldProps,
   IosPageChrome,
 } from './IosSheetPage';

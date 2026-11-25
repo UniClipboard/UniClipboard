@@ -131,5 +131,25 @@
     "remove": "Remove “{{tag}}”",
     "filter": "Tags",
     "all": "All tags"
+  },
+  "receiveQueue": {
+    "title": "Received items",
+    "autoApply": "Auto-apply to clipboard",
+    "empty": "No pending received items.",
+    "remoteDevice": "Remote device",
+    "fromSender": "From {{sender}} · {{time}}",
+    "filesCount": "{{count}} files",
+    "imageContent": "Image",
+    "textContent": "Text",
+    "clipboardContent": "Clipboard content",
+    "copyToClipboard": "Copy to clipboard",
+    "dismiss": "Dismiss",
+    "state": {
+      "applied": "Copied to clipboard",
+      "applying": "Applying…",
+      "failed": "Failed",
+      "deferred": "Deferred",
+      "pending": "Pending"
+    }
   }
 }

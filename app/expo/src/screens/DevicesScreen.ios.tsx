@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Image, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, AppState, StyleSheet } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Host, NavigationStack, ZStack } from '@expo/ui/swift-ui';
@@ -8,9 +8,6 @@ import { useTranslation } from 'react-i18next';
 
 import {
   AppAlertDialog,
-  AppBottomSheet,
-  AppButton,
-  AppHost,
   IosPageChromeProvider,
   type IosPageChrome,
 } from '@/components/ui';
@@ -23,29 +20,31 @@ import type {
   EngineOperation,
   SensitiveTicket,
 } from '@/engine/types';
-import { useTheme } from '@/hooks/useTheme';
 import type { RootStackParamList, SpaceDeviceTarget } from '@/navigation/AppNavigator.types';
 import { useHideTabBarOnSubPage } from '@/navigation/ios/useHideTabBarOnSubPage';
 import { showUnavailable } from '@/shell/notice';
 import { useMessageStore } from '@/stores/messageStore';
 import { iosAccentColor } from '@/theme/iosDesignTokens';
-import { PairingScanner } from './PairingScanner';
 import { DeviceDetailSheet } from './ios/devices/DeviceDetailSheet';
 import { DevicesRootPage } from './ios/devices/DevicesRootPage';
+import {
+  CandidateDetailSheet,
+  PairingJoinSheet,
+  PairingTicketSheet,
+} from './ios/devices/PairingSheets';
 import { deviceDisplayName } from './ios/devices/deviceRows';
 
 const fillModifier = frame({ maxWidth: Infinity, maxHeight: Infinity });
 const NAVIGATION_CHROME: IosPageChrome = { kind: 'navigation' };
 
 /**
- * iOS「设备」标签页（对齐 v1 src/screens/ios/DevicesScreen.tsx）。
- * 全屏 SwiftUI Host 内持有 NavigationStack 与所有兄弟 Sheet，接入 v2 Go Engine 配对与设备信任管理。
+ * iOS "Devices" tab.
+ * Full-screen SwiftUI Host owning the `NavigationStack` and all sibling native sheets.
  */
 export function DevicesScreen(_props: SpaceDeviceTarget) {
   const { t } = useTranslation();
   const pair = (key: string, values?: Record<string, string>) =>
     t(`settingsSync:pairing.${key}`, values);
-  const { theme } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const focused = useIsFocused();
 
@@ -59,7 +58,6 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
   const pairingCode = useEngineStore((s) => s.pairingCode);
 
   const [joinMode, setJoinMode] = useState<'manual' | 'scan' | null>(null);
-  const [joinInput, setJoinInput] = useState('');
   const [starting, setStarting] = useState(false);
   const startingRef = useRef(false);
   const operationGeneration = useRef(0);
@@ -91,7 +89,6 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
   useEffect(() => {
     if (focused && mode === 'live') return;
     setJoinMode(null);
-    setJoinInput('');
     closeTicket();
   }, [focused, mode, closeTicket]);
 
@@ -180,7 +177,6 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
     const digits = raw.replace(/\s+/g, '');
     const store = useEngineStore.getState();
     setJoinMode(null);
-    setJoinInput('');
     if (/^\d{3}-?\d{3}$/.test(digits)) {
       void start(() => store.joinByCode(digits));
     } else if (raw.startsWith('unic-pair:')) {
@@ -222,18 +218,6 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
   const operationStatus = operationMessage
     ? t(`errors:engine.${operationMessage}`, { defaultValue: t('errors:engine.internal') })
     : t(`settingsSync:pairing.phase.${phase}`, { defaultValue: pair('phase.resolving') });
-
-  const titleStyle = { color: theme.colors.textPrimary, fontSize: 18, fontWeight: '700' as const };
-  const inputStyle = {
-    borderRadius: 12,
-    padding: 12,
-    backgroundColor: theme.colors.surface,
-    color: theme.colors.textPrimary,
-  };
-  const closeJoin = () => {
-    setJoinMode(null);
-    setJoinInput('');
-  };
 
   return (
     <>
@@ -296,6 +280,49 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
               await run(() => store.unpairDevice(device.id, device.revision));
             }}
           />
+
+          <PairingJoinSheet
+            mode={joinMode}
+            focused={focused}
+            foreground={foreground}
+            starting={starting}
+            onSubmitInput={submit}
+            onClose={() => setJoinMode(null)}
+          />
+
+          <PairingTicketSheet
+            ticket={ticket}
+            focused={focused}
+            foreground={foreground}
+            onCopy={(activeTicket) => {
+              void run(async () => {
+                if (activeTicket.expires_at_ms <= Date.now()) {
+                  closeTicket();
+                  return;
+                }
+                await unicEngineNative.copyPairingTicket(
+                  activeTicket.ticket,
+                  activeTicket.expires_at_ms
+                );
+                Alert.alert(t('errors:copy.copied'));
+              });
+            }}
+            onClose={closeTicket}
+          />
+
+          <CandidateDetailSheet
+            candidate={selectedCandidate}
+            starting={starting}
+            onConnect={(candidate) => {
+              setSelectedCandidate(null);
+              void start(() => store.pairCandidate(candidate));
+            }}
+            onIgnore={(candidate) => {
+              setSelectedCandidate(null);
+              void run(() => store.ignoreCandidate(candidate.device_id, true));
+            }}
+            onClose={() => setSelectedCandidate(null)}
+          />
         </ZStack>
       </Host>
 
@@ -321,123 +348,6 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
         onDismiss={() => setPendingApproveDevice(null)}
         onDismissAction={() => setPendingApproveDevice(null)}
       />
-
-      <AppBottomSheet visible={joinMode !== null} onDismiss={closeJoin}>
-        <View style={{ padding: 16, gap: 12 }}>
-          <Text style={titleStyle}>{pair(joinMode === 'scan' ? 'scan' : 'enterCode')}</Text>
-          {joinMode === 'scan' ? (
-            focused && foreground && <PairingScanner onRead={submit} />
-          ) : (
-            <>
-              <TextInput
-                testID="devices-join-input"
-                value={joinInput}
-                onChangeText={setJoinInput}
-                placeholder={pair('inputHint')}
-                placeholderTextColor={theme.colors.textSecondary}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={inputStyle}
-              />
-              <AppHost matchContents={{ vertical: true }}>
-                <AppButton
-                  testID="devices-join-submit"
-                  title={pair('connect')}
-                  variant="filled"
-                  fullWidth
-                  disabled={starting || !joinInput.trim()}
-                  onPress={() => submit(joinInput)}
-                />
-              </AppHost>
-            </>
-          )}
-          <AppHost matchContents={{ vertical: true }}>
-            <AppButton
-              title={t('common:action.cancel')}
-              variant="text"
-              fullWidth
-              onPress={closeJoin}
-            />
-          </AppHost>
-        </View>
-      </AppBottomSheet>
-
-      <AppBottomSheet visible={ticket !== null && focused && foreground} onDismiss={closeTicket}>
-        {ticket && focused && foreground && (
-          <View style={{ padding: 16, gap: 12 }}>
-            <Text style={titleStyle}>{pair('ticketTitle')}</Text>
-            <Text style={{ color: theme.colors.textPrimary }}>{pair('ticketHelp')}</Text>
-            {ticket.qr_png ? (
-              <Image
-                testID="devices-pairing-qr"
-                accessibilityLabel={pair('ticketTitle')}
-                source={{ uri: `data:image/png;base64,${ticket.qr_png}` }}
-                style={{ width: 260, height: 260, alignSelf: 'center' }}
-              />
-            ) : null}
-            <AppHost matchContents={{ vertical: true }}>
-              <AppButton
-                title={t('common:action.copy')}
-                variant="filled"
-                fullWidth
-                onPress={() =>
-                  void run(async () => {
-                    if (ticket.expires_at_ms <= Date.now()) {
-                      closeTicket();
-                      return;
-                    }
-                    await unicEngineNative.copyPairingTicket(ticket.ticket, ticket.expires_at_ms);
-                    Alert.alert(t('errors:copy.copied'));
-                  })
-                }
-              />
-            </AppHost>
-            <AppHost matchContents={{ vertical: true }}>
-              <AppButton
-                title={t('common:action.close')}
-                variant="text"
-                fullWidth
-                onPress={closeTicket}
-              />
-            </AppHost>
-          </View>
-        )}
-      </AppBottomSheet>
-
-      <AppBottomSheet
-        visible={selectedCandidate !== null}
-        onDismiss={() => setSelectedCandidate(null)}
-      >
-        {selectedCandidate ? (
-          <View style={{ padding: 16, gap: 12 }}>
-            <Text style={titleStyle}>
-              {selectedCandidate.name || selectedCandidate.device_id.slice(0, 8)}
-            </Text>
-            <AppHost matchContents={{ vertical: true }}>
-              <AppButton
-                title={pair('connect')}
-                fullWidth
-                disabled={starting || selectedCandidate.requested}
-                onPress={() => {
-                  setSelectedCandidate(null);
-                  void start(() => store.pairCandidate(selectedCandidate));
-                }}
-              />
-            </AppHost>
-            <AppHost matchContents={{ vertical: true }}>
-              <AppButton
-                title={pair('ignore')}
-                variant="outlined"
-                fullWidth
-                onPress={() => {
-                  setSelectedCandidate(null);
-                  void run(() => store.ignoreCandidate(selectedCandidate.device_id, true));
-                }}
-              />
-            </AppHost>
-          </View>
-        ) : null}
-      </AppBottomSheet>
     </>
   );
 }

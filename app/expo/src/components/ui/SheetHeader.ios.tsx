@@ -1,6 +1,23 @@
 import React from 'react';
-import { HStack, Text as SwiftUIText, Spacer } from '@expo/ui/swift-ui';
-import { font, frame, padding } from '@expo/ui/swift-ui/modifiers';
+import { Button as SwiftUIButton, HStack, Image, Spacer, Text as SwiftUIText } from '@expo/ui/swift-ui';
+import {
+  accessibilityAddTraits,
+  accessibilityLabel as accessibilityLabelModifier,
+  buttonStyle,
+  disabled as disabledModifier,
+  font,
+  frame,
+  glassEffect,
+  layoutPriority,
+  lineLimit,
+  minimumScaleFactor,
+  multilineTextAlignment,
+  padding,
+  truncationMode,
+} from '@expo/ui/swift-ui/modifiers';
+import type { SFSymbol } from 'sf-symbols-typescript';
+
+import { iosColors } from '@/theme/iosDesignTokens';
 
 export interface SheetHeaderProps {
   title: string;
@@ -11,33 +28,80 @@ export interface SheetHeaderProps {
   compactSides?: boolean;
 }
 
-const HEADER_BUTTON_SLOT_COUNT = 2;
+export interface SheetCircleButtonProps {
+  testID?: string;
+  systemName: SFSymbol;
+  onPress: () => void;
+  accessibilityLabel?: string;
+  disabled?: boolean;
+}
+
 const HEADER_BUTTON_SLOT_SIZE = 44;
-const HEADER_SIDE_MIN_WIDTH = HEADER_BUTTON_SLOT_COUNT * HEADER_BUTTON_SLOT_SIZE;
+const HEADER_CIRCLE_BUTTON_SIZE = 34;
+const HEADER_ICON_FALLBACK_COLOR = '#8E8E93';
+
+/** Glass circular header button (close, back, add, ...) for iOS sheet headers. */
+export function SheetCircleButton({
+  testID,
+  systemName,
+  onPress,
+  accessibilityLabel,
+  disabled = false,
+}: SheetCircleButtonProps) {
+  return (
+    <SwiftUIButton
+      testID={testID}
+      onPress={onPress}
+      modifiers={[
+        buttonStyle('plain'),
+        disabledModifier(disabled),
+        frame({ width: HEADER_CIRCLE_BUTTON_SIZE, height: HEADER_CIRCLE_BUTTON_SIZE }),
+        glassEffect({ glass: { variant: 'regular', interactive: true }, shape: 'circle' }),
+        ...(accessibilityLabel ? [accessibilityLabelModifier(accessibilityLabel)] : []),
+      ]}
+    >
+      <Image
+        systemName={systemName}
+        size={15}
+        color={iosColors?.secondaryLabel ?? HEADER_ICON_FALLBACK_COLOR}
+        modifiers={[
+          font({ size: 15, weight: 'semibold' }),
+          frame({ width: HEADER_CIRCLE_BUTTON_SIZE, height: HEADER_CIRCLE_BUTTON_SIZE }),
+        ]}
+      />
+    </SwiftUIButton>
+  );
+}
+
+function slotCount(slots?: [React.ReactNode?, React.ReactNode?]): number {
+  if (!slots) return 0;
+  return slots[1] ? 2 : slots[0] ? 1 : 0;
+}
 
 function orderHeaderButtonSlots(
   slots: [React.ReactNode?, React.ReactNode?],
+  count: number,
   fillFrom: 'leading' | 'trailing'
-): [React.ReactNode?, React.ReactNode?] {
-  if (fillFrom === 'trailing') {
-    return [slots[1], slots[0]];
-  }
-  return slots;
+): React.ReactNode[] {
+  const sliced = slots.slice(0, count);
+  while (sliced.length < count) sliced.push(undefined);
+  return fillFrom === 'trailing' ? sliced.reverse() : sliced;
 }
 
 function renderHeaderButtonSlots(
   slots: [React.ReactNode?, React.ReactNode?],
+  count: number,
   fillFrom: 'leading' | 'trailing'
 ) {
-  const orderedSlots = orderHeaderButtonSlots(slots, fillFrom);
+  const orderedSlots = orderHeaderButtonSlots(slots, count, fillFrom);
 
-  return Array.from({ length: HEADER_BUTTON_SLOT_COUNT }, (_, index) => (
+  return orderedSlots.map((slot, index) => (
     <HStack
       key={`sheet-header-slot-${index}`}
       alignment="center"
       modifiers={[frame({ width: HEADER_BUTTON_SLOT_SIZE, height: HEADER_BUTTON_SLOT_SIZE })]}
     >
-      {orderedSlots[index] ?? <Spacer />}
+      {slot ?? <Spacer />}
     </HStack>
   ));
 }
@@ -53,6 +117,7 @@ function renderAdaptiveHeaderSide(
       modifiers={[
         frame({
           minWidth,
+          minHeight: HEADER_BUTTON_SLOT_SIZE,
           alignment: fillFrom === 'leading' ? 'leading' : 'trailing',
         }),
       ]}
@@ -70,23 +135,41 @@ export function SheetHeader({
   rightSlots,
   compactSides = false,
 }: SheetHeaderProps) {
-  const sideMinWidth = compactSides ? HEADER_BUTTON_SLOT_SIZE : HEADER_SIDE_MIN_WIDTH;
+  const neededSlots = compactSides ? 1 : Math.max(1, slotCount(leftSlots), slotCount(rightSlots));
+  const sideMinWidth = neededSlots * HEADER_BUTTON_SLOT_SIZE;
 
   return (
     <HStack
       alignment="center"
-      modifiers={[frame({ maxWidth: Infinity }), padding({ horizontal: 20, top: 16, bottom: 12 })]}
+      spacing={8}
+      modifiers={[frame({ maxWidth: Infinity }), padding({ horizontal: 16, top: 18, bottom: 10 })]}
     >
       {leftSlots ? (
-        <HStack alignment="center">{renderHeaderButtonSlots(leftSlots, 'leading')}</HStack>
+        <HStack alignment="center" spacing={0}>
+          {renderHeaderButtonSlots(leftSlots, neededSlots, 'leading')}
+        </HStack>
       ) : (
         renderAdaptiveHeaderSide(left, 'leading', sideMinWidth)
       )}
       <Spacer />
-      <SwiftUIText modifiers={[font({ weight: 'bold', size: 17 })]}>{title}</SwiftUIText>
+      <SwiftUIText
+        modifiers={[
+          font({ textStyle: 'headline', weight: 'semibold' }),
+          lineLimit(1),
+          minimumScaleFactor(0.8),
+          truncationMode('tail'),
+          multilineTextAlignment('center'),
+          layoutPriority(1),
+          accessibilityAddTraits(['isHeader']),
+        ]}
+      >
+        {title}
+      </SwiftUIText>
       <Spacer />
       {rightSlots ? (
-        <HStack alignment="center">{renderHeaderButtonSlots(rightSlots, 'trailing')}</HStack>
+        <HStack alignment="center" spacing={0}>
+          {renderHeaderButtonSlots(rightSlots, neededSlots, 'trailing')}
+        </HStack>
       ) : (
         renderAdaptiveHeaderSide(right, 'trailing', sideMinWidth)
       )}

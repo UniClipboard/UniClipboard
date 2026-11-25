@@ -132,5 +132,25 @@
     "remove": "Remover “{{tag}}”",
     "filter": "Etiquetas",
     "all": "Todas as etiquetas"
+  },
+  "receiveQueue": {
+    "title": "Itens recebidos",
+    "autoApply": "Aplicar automaticamente à área de transferência",
+    "empty": "Nenhum item recebido pendente.",
+    "remoteDevice": "Dispositivo remoto",
+    "fromSender": "De {{sender}} · {{time}}",
+    "filesCount": "{{count}} arquivos",
+    "imageContent": "Imagem",
+    "textContent": "Texto",
+    "clipboardContent": "Conteúdo da área de transferência",
+    "copyToClipboard": "Copiar para a área de transferência",
+    "dismiss": "Ignorar",
+    "state": {
+      "applied": "Copiado para a área de transferência",
+      "applying": "Aplicando…",
+      "failed": "Falhou",
+      "deferred": "Adiado",
+      "pending": "Pendente"
+    }
   }
 }

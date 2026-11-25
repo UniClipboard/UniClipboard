@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { DynamicColorIOS } from 'react-native';
 import {
-  BottomSheet,
   Button as SwiftUIButton,
   Capsule,
   Circle,
-  Group,
   HStack,
   Image,
   RoundedRectangle,
@@ -26,21 +24,19 @@ import {
   foregroundStyle,
   frame,
   padding,
-  presentationDetents,
-  presentationDragIndicator,
   shapes,
   strokeBorder,
   tabViewStyle,
 } from '@expo/ui/swift-ui/modifiers';
 import type { SFSymbol } from 'sf-symbols-typescript';
 
-import { IosPageChromeProvider, SheetHeader } from '@/components/ui';
+import { IosBottomSheet, SheetCircleButton, SheetHeader } from '@/components/ui';
 import {
   iosProminentButtonModifiers,
   iosSecondaryButtonModifiers,
 } from '@/components/ui/iosButtonStyles.ios';
 import { iosColors } from '@/theme/iosDesignTokens';
-import { HeaderCircleButton, settingsTileColors } from './common';
+import { settingsTileColors } from './common';
 
 /** Colors shared by the drawings in the illustrated settings guides. */
 export const guideColors = {
@@ -100,109 +96,105 @@ export function SettingsGuideSheet<Step extends string>({
   }, [visible]);
 
   return (
-    <BottomSheet
-      isPresented={visible}
-      onIsPresentedChange={(presented) => {
-        if (!presented) onClose();
-      }}
+    <IosBottomSheet
+      visible={visible}
+      onDismiss={onClose}
+      detents={['large']}
+      backgroundColor={guideColors.sheetBackground}
     >
-      <Group modifiers={[presentationDetents(['large']), presentationDragIndicator('visible')]}>
-        <IosPageChromeProvider value={{ kind: 'sheet' }}>
-          <VStack
-            spacing={0}
+      <VStack
+        spacing={0}
+        modifiers={[
+          frame({ maxWidth: Infinity, maxHeight: Infinity }),
+          background(guideColors.sheetBackground),
+        ]}
+      >
+        <SheetHeader
+          title={title}
+          leftSlots={
+            stepIndex > 0
+              ? [
+                  <SheetCircleButton
+                    key="back"
+                    testID={`${testIDPrefix}-back`}
+                    systemName="chevron.backward"
+                    accessibilityLabel={labels.back}
+                    onPress={() => setStepIndex((current) => Math.max(0, current - 1))}
+                  />,
+                ]
+              : undefined
+          }
+          rightSlots={[
+            <SheetCircleButton
+              key="close"
+              testID={`${testIDPrefix}-close`}
+              systemName="xmark"
+              accessibilityLabel={labels.close}
+              onPress={onClose}
+            />,
+          ]}
+        />
+        <GuideProgress
+          stepIndex={stepIndex}
+          stepCount={steps.length}
+          label={labels.progress(stepIndex + 1, steps.length)}
+        />
+        <TabView
+          selection={String(stepIndex)}
+          onSelectionChange={(value) => setStepIndex(Number(value))}
+          modifiers={[
+            tabViewStyle({ type: 'page', indexDisplayMode: 'never' }),
+            frame({ maxWidth: Infinity, maxHeight: Infinity }),
+            animation(Animation.easeInOut({ duration: 0.3 }), stepIndex),
+          ]}
+        >
+          {steps.map((step, index) => (
+            <TabView.Tab key={step} value={String(index)}>
+              {renderStep(step)}
+            </TabView.Tab>
+          ))}
+        </TabView>
+        <VStack spacing={10} modifiers={[padding({ horizontal: 20, top: 10, bottom: 16 })]}>
+          <SwiftUIButton
+            testID={`${testIDPrefix}-primary`}
+            onPress={primaryAction.onPress}
             modifiers={[
-              frame({ maxWidth: Infinity, maxHeight: Infinity }),
-              background(guideColors.sheetBackground),
+              ...iosProminentButtonModifiers(undefined, { fullWidth: true }),
+              controlSize('large'),
             ]}
           >
-            <SheetHeader
-              title={title}
-              leftSlots={
-                stepIndex > 0
-                  ? [
-                      <HeaderCircleButton
-                        key="back"
-                        testID={`${testIDPrefix}-back`}
-                        systemName="chevron.backward"
-                        accessibilityLabel={labels.back}
-                        onPress={() => setStepIndex((current) => Math.max(0, current - 1))}
-                      />,
-                    ]
-                  : undefined
-              }
-              rightSlots={[
-                <HeaderCircleButton
-                  key="close"
-                  testID={`${testIDPrefix}-close`}
-                  systemName="xmark"
-                  accessibilityLabel={labels.close}
-                  onPress={onClose}
-                />,
-              ]}
-            />
-            <GuideProgress
-              stepIndex={stepIndex}
-              stepCount={steps.length}
-              label={labels.progress(stepIndex + 1, steps.length)}
-            />
-            <TabView
-              selection={String(stepIndex)}
-              onSelectionChange={(value) => setStepIndex(Number(value))}
-              modifiers={[
-                tabViewStyle({ type: 'page', indexDisplayMode: 'never' }),
-                frame({ maxWidth: Infinity, maxHeight: Infinity }),
-                animation(Animation.easeInOut({ duration: 0.3 }), stepIndex),
-              ]}
-            >
-              {steps.map((step, index) => (
-                <TabView.Tab key={step} value={String(index)}>
-                  {renderStep(step)}
-                </TabView.Tab>
-              ))}
-            </TabView>
-            <VStack spacing={10} modifiers={[padding({ horizontal: 20, top: 10, bottom: 16 })]}>
-              <SwiftUIButton
-                testID={`${testIDPrefix}-primary`}
-                onPress={primaryAction.onPress}
-                modifiers={[
-                  ...iosProminentButtonModifiers(undefined, { fullWidth: true }),
-                  controlSize('large'),
-                ]}
-              >
-                <HStack spacing={8} modifiers={[frame({ maxWidth: Infinity })]}>
-                  <Spacer />
-                  <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
-                    {primaryAction.label}
-                  </SwiftUIText>
-                  <Image systemName={primaryAction.systemImage} size={14} />
-                  <Spacer />
-                </HStack>
-              </SwiftUIButton>
-              <SwiftUIButton
-                testID={`${testIDPrefix}-next`}
-                onPress={
-                  isLastStep
-                    ? onClose
-                    : () => setStepIndex((current) => Math.min(steps.length - 1, current + 1))
-                }
-                modifiers={[
-                  ...iosSecondaryButtonModifiers({ fullWidth: true }),
-                  controlSize('large'),
-                ]}
-              >
-                <HStack modifiers={[frame({ maxWidth: Infinity })]}>
-                  <Spacer />
-                  <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
-                    {isLastStep ? labels.done : labels.next}
-                  </SwiftUIText>
-                  <Spacer />
-                </HStack>
-              </SwiftUIButton>
-            </VStack>
-          </VStack>
-        </IosPageChromeProvider>
-      </Group>
-    </BottomSheet>
+            <HStack spacing={8} modifiers={[frame({ maxWidth: Infinity })]}>
+              <Spacer />
+              <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
+                {primaryAction.label}
+              </SwiftUIText>
+              <Image systemName={primaryAction.systemImage} size={14} />
+              <Spacer />
+            </HStack>
+          </SwiftUIButton>
+          <SwiftUIButton
+            testID={`${testIDPrefix}-next`}
+            onPress={
+              isLastStep
+                ? onClose
+                : () => setStepIndex((current) => Math.min(steps.length - 1, current + 1))
+            }
+            modifiers={[
+              ...iosSecondaryButtonModifiers({ fullWidth: true }),
+              controlSize('large'),
+            ]}
+          >
+            <HStack modifiers={[frame({ maxWidth: Infinity })]}>
+              <Spacer />
+              <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
+                {isLastStep ? labels.done : labels.next}
+              </SwiftUIText>
+              <Spacer />
+            </HStack>
+          </SwiftUIButton>
+        </VStack>
+      </VStack>
+    </IosBottomSheet>
   );
 }
 

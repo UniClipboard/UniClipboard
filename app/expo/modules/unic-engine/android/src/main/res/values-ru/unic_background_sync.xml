@@ -1,3 +1,13 @@
 <resources>
   <string name="unic_background_sync">Фоновая синхронизация UniClipboard</string>
+  <string name="unic_background_sync_channel_desc">Поддерживает синхронизацию буфера обмена в фоне</string>
+  <string name="unic_background_sync_running">Фоновая синхронизация активна</string>
+  <string name="unic_background_sync_stopping">Остановка…</string>
+  <string name="unic_background_sync_action_pause">Пауза</string>
+  <string name="unic_background_sync_action_stop">Остановить</string>
+  <string name="unic_background_sync_restart_channel">Уведомления фоновой службы</string>
+  <string name="unic_background_sync_restart_channel_desc">Уведомления при остановке фоновой службы системой</string>
+  <string name="unic_background_sync_restart_title">Фоновая синхронизация остановлена</string>
+  <string name="unic_background_sync_restart_content">Нажмите, чтобы возобновить синхронизацию</string>
+  <string name="unic_background_sync_timeout_content">Android остановил фоновую службу. Нажмите, чтобы возобновить.</string>
 </resources>

@@ -1,3 +1,13 @@
 <resources>
   <string name="unic_background_sync">UniClipboard 后台同步</string>
+  <string name="unic_background_sync_channel_desc">保持剪贴板在后台持续同步</string>
+  <string name="unic_background_sync_running">后台同步运行中</string>
+  <string name="unic_background_sync_stopping">正在停止…</string>
+  <string name="unic_background_sync_action_pause">临时停止</string>
+  <string name="unic_background_sync_action_stop">永久停止</string>
+  <string name="unic_background_sync_restart_channel">后台服务提醒</string>
+  <string name="unic_background_sync_restart_channel_desc">系统终止后台同步服务后的恢复提醒</string>
+  <string name="unic_background_sync_restart_title">后台同步已停止</string>
+  <string name="unic_background_sync_restart_content">点击恢复后台同步</string>
+  <string name="unic_background_sync_timeout_content">系统已停止后台同步，点击重新启动。</string>
 </resources>

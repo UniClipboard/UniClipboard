@@ -398,7 +398,9 @@ async function startLiveEngineAndSubscribe(
 
   const preferences = new Map(await AsyncStorage.multiGet([autoApplyKey, captureKey]));
   const automaticCapture = preferences.get(captureKey) !== "false";
+  const autoApplyReceived = preferences.get(autoApplyKey) === "true";
   await unicEngineNative.setAutomaticCapture(automaticCapture);
+  await unicEngineNative.setAutoApplyReceived(autoApplyReceived);
   const snapshot = await unicEngineNative.initializeEngine();
 
   const subEvt = unicEngineNative.addEventListener((eventJSON) => {
@@ -1009,6 +1011,7 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
 
   setAutoApplyReceived: async (enabled) => {
     await AsyncStorage.setItem(autoApplyKey, String(enabled));
+    await unicEngineNative.setAutoApplyReceived(enabled);
     set({ autoApplyReceived: enabled });
     if (enabled) await get().refreshReceived();
   },

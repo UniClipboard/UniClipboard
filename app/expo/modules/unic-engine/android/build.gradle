@@ -33,6 +33,10 @@ android {
     versionName "0.1.0"
     consumerProguardFiles "${unpackedAarDir}/proguard.txt"
   }
+  buildFeatures {
+    aidl true
+    buildConfig true
+  }
   sourceSets {
     main {
       jniLibs.srcDirs += "${unpackedAarDir}/jni"
@@ -44,6 +48,9 @@ android {
 }
 
 dependencies {
+  def shizukuVersion = "13.1.5"
+  implementation "dev.rikka.shizuku:api:$shizukuVersion"
+  implementation "dev.rikka.shizuku:provider:$shizukuVersion"
   implementation 'androidx.documentfile:documentfile:1.1.0'
   implementation 'com.facebook.react:react-android'
   implementation files(new File(unpackedAarDir, "classes.jar"))

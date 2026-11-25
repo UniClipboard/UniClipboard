@@ -91,7 +91,13 @@ commands. Host readback passed while the app history assertion still
 failed in CI. The flow now seeds and verifies the clipboard after Maestro
 opens the menu. A full build from the rebased source passed this flow on
 the local iOS 27.0 simulator. The app intake and search assertions remain.
-A failed iOS run captures pasteboard diagnostics from that isolated simulator. The
+A failed iOS run captures pasteboard diagnostics from that isolated simulator.
+The [first hosted in-flow attempt](https://github.com/UniClipboard/UniClipboard/actions/runs/45547212385/job/138979594389)
+still failed with Xcode 27.1 after successful fixture write and readback.
+Both iOS workflows now select Xcode 27.0. On failure the acceptance job
+also checks for the synthetic text in the pasteboard and reads its record
+count from the private test database without exporting either content
+store. The
 [next iOS job](https://github.com/UniClipboard/UniClipboard/actions/runs/45534358566/job/138937188768)
 stopped during a lost release-asset connection. Both Maestro downloads now
 use bounded retries and retain the SHA-256 check.

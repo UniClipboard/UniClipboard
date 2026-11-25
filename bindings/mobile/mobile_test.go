@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -936,5 +937,471 @@ func TestSetupFlowCompleteMigrationAndEngineReadbackIntegrity(t *testing.T) {
 	if fixtureTextCount != 2 || taggedFixtureTextCount != 1 || recoveredCount != 1 || imageCount != 1 || fileCount != 1 {
 		t.Fatalf("unexpected item breakdown: fixtureText=%d tagged=%d recovered=%d image=%d file=%d",
 			fixtureTextCount, taggedFixtureTextCount, recoveredCount, imageCount, fileCount)
+	}
+}
+
+func TestApplyWithoutBaselineRepeatedAndFailureRecovery(t *testing.T) {
+	dataDir := filepath.Join(tempDirReal(t), "unic-apply")
+	cfgBytes, _ := json.Marshal(map[string]any{
+		"data_dir":    dataDir,
+		"device_name": "Apply Test",
+		"host_capabilities": map[string]any{
+			"read_formats":  []string{"text/plain", "text/html", "image/png"},
+			"write_formats": []string{"text/plain", "text/html", "image/png"},
+			"read_files":    true,
+			"write_files":   true,
+			"observe":       "permission_required",
+			"apply":         "available",
+		},
+	})
+	eng, err := NewEngine(string(cfgBytes))
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+	defer func() { _ = eng.Close(nil) }()
+	if err := eng.Start(nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	hJSON, err := eng.ImportText("copy-me-without-baseline", "", "")
+	if err != nil {
+		t.Fatalf("ImportText: %v", err)
+	}
+	var h engine.ContentHandle
+	_ = json.Unmarshal([]byte(hJSON), &h)
+	cJSON, err := eng.CommitContent(nil, `{"request_id":"req-apply-1","lease_id":"`+string(h.LeaseID)+`"}`)
+	if err != nil {
+		t.Fatalf("CommitContent: %v", err)
+	}
+	_ = eng.ReleaseContent(string(h.LeaseID))
+	var sub engine.SubmissionResult
+	_ = json.Unmarshal([]byte(cJSON), &sub)
+
+	// 1. Cold start (no ObserveClipboard baseline): repeat BeginApplyHistory + ReportApplyResult + ReleaseContent 20 times.
+	for i := 0; i < 20; i++ {
+		tJSON, err := eng.BeginApplyHistory(string(sub.HistoryID), "", "0", true)
+		if err != nil {
+			t.Fatalf("iteration %d BeginApplyHistory without baseline: %v", i, err)
+		}
+		var tk struct {
+			Token   string `json:"token"`
+			LeaseID string `json:"lease_id"`
+		}
+		_ = json.Unmarshal([]byte(tJSON), &tk)
+		if tk.Token == "" || tk.LeaseID == "" {
+			t.Fatalf("iteration %d invalid ticket: %s", i, tJSON)
+		}
+		if err := eng.ReportApplyResult(`{"token":"` + tk.Token + `","outcome":"applied","epoch":"","sequence":"0"}`); err != nil {
+			_ = eng.ReleaseContent(tk.LeaseID)
+			t.Fatalf("iteration %d ReportApplyResult: %v", i, err)
+		}
+		if err := eng.ReleaseContent(tk.LeaseID); err != nil {
+			t.Fatalf("iteration %d ReleaseContent: %v", i, err)
+		}
+	}
+
+	// 2. Failure path releases ticket slot so subsequent apply succeeds.
+	tJSON, err := eng.BeginApplyHistory(string(sub.HistoryID), "", "0", true)
+	if err != nil {
+		t.Fatalf("BeginApplyHistory before failure: %v", err)
+	}
+	var tkFail struct {
+		Token   string `json:"token"`
+		LeaseID string `json:"lease_id"`
+	}
+	_ = json.Unmarshal([]byte(tJSON), &tkFail)
+	if err := eng.ReportApplyResult(`{"token":"` + tkFail.Token + `","outcome":"failed","error_code":"unavailable"}`); err != nil {
+		t.Fatalf("ReportApplyResult(failed): %v", err)
+	}
+	if err := eng.ReleaseContent(tkFail.LeaseID); err != nil {
+		t.Fatalf("ReleaseContent after failure: %v", err)
+	}
+
+	// 3. After baseline + suspend + resume, Engine clears obs epoch, so empty expectedEpoch works again.
+	if _, err := eng.ObserveClipboard(`{"epoch":"ep-1","sequence":"1","mode":"baseline"}`); err != nil {
+		t.Fatalf("ObserveClipboard baseline: %v", err)
+	}
+	if err := eng.SetRuntimeState("suspended"); err != nil {
+		t.Fatalf("SetRuntimeState(suspended): %v", err)
+	}
+	if err := eng.SetRuntimeState("active"); err != nil {
+		t.Fatalf("SetRuntimeState(active): %v", err)
+	}
+	tJSON2, err := eng.BeginApplyHistory(string(sub.HistoryID), "", "0", true)
+	if err != nil {
+		t.Fatalf("BeginApplyHistory after resume: %v", err)
+	}
+	var tk2 struct {
+		Token   string `json:"token"`
+		LeaseID string `json:"lease_id"`
+	}
+	_ = json.Unmarshal([]byte(tJSON2), &tk2)
+	if err := eng.ReportApplyResult(`{"token":"` + tk2.Token + `","outcome":"applied","epoch":"","sequence":"0"}`); err != nil {
+		t.Fatalf("ReportApplyResult after resume: %v", err)
+	}
+	if err := eng.ReleaseContent(tk2.LeaseID); err != nil {
+		t.Fatalf("ReleaseContent after resume: %v", err)
+	}
+}
+
+func TestM1ContractsBindingSyncReceivedResendFullTextAndPagination(t *testing.T) {
+	root := t.TempDir()
+	caps := map[string]any{
+		"read_formats":  []string{"text/plain", "text/html", "image/png"},
+		"write_formats": []string{"text/plain", "text/html", "image/png"},
+		"read_files":    true,
+		"write_files":   true,
+		"observe":       "available",
+		"apply":         "available",
+	}
+	cfgA, _ := json.Marshal(map[string]any{
+		"data_dir":          filepath.Join(root, "node-a"),
+		"device_name":       "Phone A",
+		"host_capabilities": caps,
+	})
+	cfgB, _ := json.Marshal(map[string]any{
+		"data_dir":          filepath.Join(root, "node-b"),
+		"device_name":       "Phone B",
+		"host_capabilities": caps,
+	})
+
+	engA, err := newEngineWithBackend(string(cfgA), tailcat.NewOn(newLoopbackTransport(t)))
+	if err != nil {
+		t.Fatalf("newEngineWithBackend A: %v", err)
+	}
+	defer func() { _ = engA.Close(nil) }()
+
+	engB, err := newEngineWithBackend(string(cfgB), tailcat.NewOn(newLoopbackTransport(t)))
+	if err != nil {
+		t.Fatalf("newEngineWithBackend B: %v", err)
+	}
+	defer func() { _ = engB.Close(nil) }()
+
+	if err := engA.Start(nil); err != nil {
+		t.Fatalf("Start A: %v", err)
+	}
+	if err := engB.Start(nil); err != nil {
+		t.Fatalf("Start B: %v", err)
+	}
+
+	// 1. GetPairingCode when empty returns exists: false.
+	emptyCodeJSON, err := engA.GetPairingCode()
+	if err != nil {
+		t.Fatalf("GetPairingCode(empty): %v", err)
+	}
+	var codeResp struct {
+		Exists      bool   `json:"exists"`
+		Code        string `json:"code"`
+		ExpiresAtMs int64  `json:"expires_at_ms"`
+	}
+	if err := json.Unmarshal([]byte(emptyCodeJSON), &codeResp); err != nil {
+		t.Fatalf("unmarshal GetPairingCode: %v", err)
+	}
+	if codeResp.Exists || codeResp.Code != "" {
+		t.Fatalf("expected empty pairing code, got %+v", codeResp)
+	}
+
+	// 2. PairCandidate rejects missing request_id / unknown device cleanly.
+	if _, err := engA.PairCandidate(`{"device_id":"unknown","backend_id":"builtin.tailcat"}`); err == nil {
+		t.Fatal("expected error for PairCandidate without request_id")
+	}
+	if _, err := engA.PairCandidate(`{"request_id":"pc-1","device_id":"unknown","backend_id":"builtin.tailcat"}`); err == nil {
+		t.Fatal("expected error for unknown PairCandidate")
+	}
+
+	// 3. Full text (> 10 KB), SearchHistory tail keyword + date/source pushdown, and >120 items pagination on A.
+	largeText := strings.Repeat("alpha beta gamma 0123456789 ", 450) + "TAIL_NEEDLE_987654"
+	if len(largeText) <= 10*1024 {
+		t.Fatalf("expected largeText > 10 KB, got %d", len(largeText))
+	}
+	lhJSON, err := engA.ImportText(largeText, "", "")
+	if err != nil {
+		t.Fatalf("ImportText large: %v", err)
+	}
+	var lh engine.ContentHandle
+	_ = json.Unmarshal([]byte(lhJSON), &lh)
+	lSubJSON, err := engA.CommitContent(nil, `{"request_id":"req-large","lease_id":"`+string(lh.LeaseID)+`"}`)
+	if err != nil {
+		t.Fatalf("CommitContent large: %v", err)
+	}
+	_ = engA.ReleaseContent(string(lh.LeaseID))
+	var lSub engine.SubmissionResult
+	_ = json.Unmarshal([]byte(lSubJSON), &lSub)
+
+	shortPrevJSON, err := engA.ReadHistoryTextPreview(string(lSub.HistoryID), 512)
+	if err != nil {
+		t.Fatalf("ReadHistoryTextPreview: %v", err)
+	}
+	var shortPrev textPreviewDTO
+	_ = json.Unmarshal([]byte(shortPrevJSON), &shortPrev)
+	if !shortPrev.Truncated || strings.Contains(shortPrev.Text, "TAIL_NEEDLE_987654") {
+		t.Fatalf("expected truncated 512B preview without tail needle, got len=%d trunc=%v", len(shortPrev.Text), shortPrev.Truncated)
+	}
+
+	fullPrevJSON, err := engA.ReadHistoryFullText(string(lSub.HistoryID), 0)
+	if err != nil {
+		t.Fatalf("ReadHistoryFullText: %v", err)
+	}
+	var fullPrev textPreviewDTO
+	_ = json.Unmarshal([]byte(fullPrevJSON), &fullPrev)
+	if fullPrev.Truncated || fullPrev.Text != largeText {
+		t.Fatalf("expected full untruncated text len=%d, got len=%d trunc=%v", len(largeText), len(fullPrev.Text), fullPrev.Truncated)
+	}
+
+	nowMs := time.Now().UnixMilli()
+	searchReq, _ := json.Marshal(map[string]any{
+		"query": map[string]any{
+			"text_terms":        []string{"TAIL_NEEDLE_987654"},
+			"sources":           []map[string]any{{"kind": "local"}},
+			"created_from_ms":   nowMs - 60_000,
+			"created_before_ms": nowMs + 60_000,
+		},
+		"limit": 20,
+	})
+	sJSON, err := engA.SearchHistory(nil, string(searchReq))
+	if err != nil {
+		t.Fatalf("SearchHistory tail needle: %v", err)
+	}
+	var sPage engine.HistorySearchPage
+	_ = json.Unmarshal([]byte(sJSON), &sPage)
+	if len(sPage.Hits) != 1 || sPage.Hits[0].Item.ID != lSub.HistoryID {
+		t.Fatalf("expected 1 search hit for tail needle, got %+v", sPage.Hits)
+	}
+
+	// CountHistorySearches returns string-encoded counts.
+	cntJSON, err := engA.CountHistorySearches(nil, `{"queries":[{"text_terms":["TAIL_NEEDLE_987654"]},{"text_terms":["no_such_token_xyz"]}]}`)
+	if err != nil {
+		t.Fatalf("CountHistorySearches: %v", err)
+	}
+	var cntResp struct {
+		Counts []string `json:"counts"`
+	}
+	_ = json.Unmarshal([]byte(cntJSON), &cntResp)
+	if len(cntResp.Counts) != 2 || cntResp.Counts[0] != "1" || cntResp.Counts[1] != "0" {
+		t.Fatalf("unexpected CountHistorySearches response: %s", cntJSON)
+	}
+
+	// 4. Pair A and B, verify SetBindingSync(false/true) with "enabled" JSON field.
+	var snapA, snapB engine.State
+	stA, _ := engA.GetState()
+	stB, _ := engB.GetState()
+	_ = json.Unmarshal([]byte(stA), &snapA)
+	_ = json.Unmarshal([]byte(stB), &snapB)
+
+	tkJSON, err := engA.ExportPairingTicket(nil)
+	if err != nil {
+		t.Fatalf("ExportPairingTicket: %v", err)
+	}
+	var tk struct {
+		Ticket string `json:"ticket"`
+	}
+	_ = json.Unmarshal([]byte(tkJSON), &tk)
+	jReq, _ := json.Marshal(map[string]any{"request_id": "m1-join", "ticket": tk.Ticket})
+	opID, err := engB.JoinByTicket(nil, string(jReq))
+	if err != nil {
+		t.Fatalf("JoinByTicket: %v", err)
+	}
+	eventuallyMobile(t, "m1 join succeeded", func() bool {
+		raw, err := engB.GetOperation(opID)
+		if err != nil {
+			return false
+		}
+		var op engine.Operation
+		_ = json.Unmarshal([]byte(raw), &op)
+		return op.Phase == engine.PhaseSucceeded
+	})
+	approve := func(owner *Engine, peerID engine.DeviceID) engine.Device {
+		var peer engine.Device
+		eventuallyMobile(t, "m1 pending "+string(peerID), func() bool {
+			raw, _ := owner.ListDevices()
+			var ds []engine.Device
+			_ = json.Unmarshal([]byte(raw), &ds)
+			for _, d := range ds {
+				if d.ID == string(peerID) && len(d.Bindings) > 0 {
+					peer = d
+					return true
+				}
+			}
+			return false
+		})
+		bs := make([]map[string]any, len(peer.Bindings))
+		for i, b := range peer.Bindings {
+			bs[i] = map[string]any{"id": b.ID, "expected_revision": b.Revision}
+		}
+		req, _ := json.Marshal(map[string]any{
+			"id":                   peer.ID,
+			"expected_revision":    peer.Revision,
+			"expected_fingerprint": peer.Fingerprint,
+			"bindings":             bs,
+		})
+		out, err := owner.ApproveDevice(string(req))
+		if err != nil {
+			t.Fatalf("ApproveDevice: %v", err)
+		}
+		var approved engine.Device
+		_ = json.Unmarshal([]byte(out), &approved)
+		return approved
+	}
+	approvedBOnA := approve(engA, snapB.Self.ID)
+	approve(engB, snapA.Self.ID)
+
+	eventuallyMobile(t, "m1 peers connected", func() bool {
+		raw, _ := engA.ListDevices()
+		var ds []engine.Device
+		_ = json.Unmarshal([]byte(raw), &ds)
+		for _, d := range ds {
+			if d.ID == string(snapB.Self.ID) {
+				for _, b := range d.Bindings {
+					if b.Connection == engine.Connected {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	})
+
+	// Toggle SetBindingSync false then true using "enabled".
+	binding := approvedBOnA.Bindings[0]
+	pauseReq, _ := json.Marshal(map[string]any{
+		"id":                binding.ID,
+		"expected_revision": binding.Revision,
+		"enabled":           false,
+	})
+	pausedJSON, err := engA.SetBindingSync(string(pauseReq))
+	if err != nil {
+		t.Fatalf("SetBindingSync(false): %v", err)
+	}
+	var pausedBinding engine.DeviceBinding
+	_ = json.Unmarshal([]byte(pausedJSON), &pausedBinding)
+	if pausedBinding.SyncEnabled {
+		t.Fatalf("expected SyncEnabled=false after pause, got %+v", pausedBinding)
+	}
+	resumeReq, _ := json.Marshal(map[string]any{
+		"id":                pausedBinding.ID,
+		"expected_revision": pausedBinding.Revision,
+		"enabled":           true,
+	})
+	resumedJSON, err := engA.SetBindingSync(string(resumeReq))
+	if err != nil {
+		t.Fatalf("SetBindingSync(true): %v", err)
+	}
+	var resumedBinding engine.DeviceBinding
+	_ = json.Unmarshal([]byte(resumedJSON), &resumedBinding)
+	if !resumedBinding.SyncEnabled {
+		t.Fatalf("expected SyncEnabled=true after resume, got %+v", resumedBinding)
+	}
+
+	// 5. Resend existing history item (largeText) from A -> B, verify B receives in ListReceived, applies via BeginApply + ReadLeasedText + ReportApplyResult + ReleaseContent, and dismisses.
+	resendReq, _ := json.Marshal(map[string]any{
+		"request_id": "resend-large-1",
+		"history_id": lSub.HistoryID,
+		"device_ids": []string{string(snapB.Self.ID)},
+	})
+	if _, err := engA.ResendHistoryItem(nil, string(resendReq)); err != nil {
+		t.Fatalf("ResendHistoryItem: %v", err)
+	}
+
+	var recvEntry engine.ReceivedContent
+	eventuallyMobile(t, "B receives resent item in ListReceived", func() bool {
+		raw, err := engB.ListReceived()
+		if err != nil {
+			return false
+		}
+		var rs []engine.ReceivedContent
+		_ = json.Unmarshal([]byte(raw), &rs)
+		if len(rs) > 0 {
+			recvEntry = rs[0]
+			return true
+		}
+		return false
+	})
+
+	applyReq, _ := json.Marshal(map[string]any{
+		"receipt_id":        recvEntry.ReceiptID,
+		"expected_epoch":    "",
+		"expected_sequence": "0",
+	})
+	applyTicketJSON, err := engB.BeginApply(string(applyReq))
+	if err != nil {
+		t.Fatalf("BeginApply on B: %v", err)
+	}
+	var applyTk struct {
+		Token   string `json:"token"`
+		LeaseID string `json:"lease_id"`
+	}
+	_ = json.Unmarshal([]byte(applyTicketJSON), &applyTk)
+	leasedTextJSON, err := engB.ReadLeasedText(applyTk.LeaseID, string(recvEntry.Content.Parts[0].ID), 0)
+	if err != nil {
+		_ = engB.ReleaseContent(applyTk.LeaseID)
+		t.Fatalf("ReadLeasedText on B: %v", err)
+	}
+	var leasedText textPreviewDTO
+	_ = json.Unmarshal([]byte(leasedTextJSON), &leasedText)
+	if leasedText.Text != largeText {
+		_ = engB.ReleaseContent(applyTk.LeaseID)
+		t.Fatalf("resent received text mismatch: got len %d, want %d", len(leasedText.Text), len(largeText))
+	}
+	if err := engB.ReportApplyResult(`{"token":"` + applyTk.Token + `","outcome":"applied","epoch":"","sequence":"0"}`); err != nil {
+		_ = engB.ReleaseContent(applyTk.LeaseID)
+		t.Fatalf("ReportApplyResult on B: %v", err)
+	}
+	if err := engB.ReleaseContent(applyTk.LeaseID); err != nil {
+		t.Fatalf("ReleaseContent on B: %v", err)
+	}
+	if err := engB.DismissReceived(string(recvEntry.ReceiptID)); err != nil {
+		t.Fatalf("DismissReceived on B: %v", err)
+	}
+	afterDismissJSON, err := engB.ListReceived()
+	if err != nil {
+		t.Fatalf("ListReceived after dismiss: %v", err)
+	}
+	if strings.TrimSpace(afterDismissJSON) != "[]" {
+		t.Fatalf("expected empty received list after dismiss, got %s", afterDismissJSON)
+	}
+
+	// 6. Pagination with >120 items on A.
+	for i := 0; i < 125; i++ {
+		ihJSON, err := engA.ImportText(fmt.Sprintf("page-item-%03d", i), "", "")
+		if err != nil {
+			t.Fatalf("ImportText %d: %v", i, err)
+		}
+		var ih engine.ContentHandle
+		_ = json.Unmarshal([]byte(ihJSON), &ih)
+		_, err = engA.CommitContent(nil, fmt.Sprintf(`{"request_id":"req-page-%03d","lease_id":"%s"}`, i, ih.LeaseID))
+		_ = engA.ReleaseContent(string(ih.LeaseID))
+		if err != nil {
+			t.Fatalf("CommitContent %d: %v", i, err)
+		}
+	}
+	seenIDs := map[engine.HistoryID]bool{}
+	cursor := ""
+	pages := 0
+	for {
+		reqObj := map[string]any{"limit": 50}
+		if cursor != "" {
+			reqObj["cursor"] = cursor
+		}
+		reqB, _ := json.Marshal(reqObj)
+		pJSON, err := engA.ListHistory(string(reqB))
+		if err != nil {
+			t.Fatalf("ListHistory page %d: %v", pages, err)
+		}
+		var page engine.HistoryPage
+		_ = json.Unmarshal([]byte(pJSON), &page)
+		pages++
+		for _, it := range page.Items {
+			if seenIDs[it.ID] {
+				t.Fatalf("duplicate item %s across pages", it.ID)
+			}
+			seenIDs[it.ID] = true
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	if pages < 3 || len(seenIDs) < 126 {
+		t.Fatalf("expected >=3 pages and >=126 unique items, got pages=%d items=%d", pages, len(seenIDs))
 	}
 }

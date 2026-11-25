@@ -1,16 +1,29 @@
 export type EngineErrorCode =
   | "invalid_argument"
   | "invalid_state"
+  | "closed"
   | "cancelled"
   | "not_found"
+  | "resource_expired"
   | "conflict"
   | "in_use"
   | "permission_denied"
   | "identity_mismatch"
+  | "protocol_mismatch"
+  | "sync_disabled"
+  | "suspended"
+  | "no_targets"
+  | "limit_exceeded"
+  | "resource_exhausted"
   | "timeout"
   | "unavailable"
-  | "suspended"
   | "unsupported"
+  | "incomplete"
+  | "invalid"
+  | "expired"
+  | "rate_limited"
+  | "resync_required"
+  | "source_changed"
   | "too_large"
   | "busy"
   | "failed"
@@ -140,9 +153,16 @@ export interface PairingCode {
   expires_at_ms: number;
 }
 
+export interface PairingCodeResponse {
+  exists: boolean;
+  code: string;
+  expires_at_ms: number;
+}
+
 export interface SensitiveTicket {
   ticket: string;
   expires_at_ms: number;
+  qr_png?: string;
 }
 
 export interface EngineOperation {
@@ -151,8 +171,23 @@ export interface EngineOperation {
   kind: string;
   created_at_ms: number;
   updated_at_ms: number;
-  phase: "running" | "succeeded" | "completed" | "failed" | string;
+  phase:
+    | "resolving"
+    | "connecting"
+    | "handshaking"
+    | "running"
+    | "queued"
+    | "sending"
+    | "succeeded"
+    | "completed"
+    | "failed"
+    | string;
   error?: EngineErrorPayload;
+  pairing?: {
+    peer_id: string;
+    awaiting_local_approval: boolean;
+    awaiting_remote_approval: boolean;
+  };
 }
 
 export interface HistoryOrigin {
@@ -171,7 +206,7 @@ export interface HistoryPartSummary {
 export interface HistoryItem {
   id: string;
   revision: string;
-  kind: "text" | "html" | "image" | "file" | "mixed" | string;
+  kind: "text" | "html" | "image" | "file" | "files" | "directory" | "directory_reference" | "mixed" | string;
   origin: HistoryOrigin;
   source_application?: { name?: string };
   created_at_ms: number;
@@ -195,10 +230,47 @@ export interface TextPreview {
   truncated: boolean;
 }
 
+export interface PartDescriptor {
+  id: string;
+  kind: "representation" | "file" | string;
+  mime: string;
+  name?: string;
+  size: number;
+  referenced?: boolean;
+}
+
+export interface ContentDescriptor {
+  source_application?: { name?: string };
+  id: string;
+  parts: PartDescriptor[];
+  total_size: number;
+}
+
+export interface ReceivedContent {
+  receipt_id: string;
+  content: ContentDescriptor;
+  peer_id?: string;
+  channel_id?: string;
+  auto_apply?: boolean;
+  received_at_ms: number;
+  expires_at_ms: number;
+  apply_state: "available" | "applying" | "applied" | "failed" | "deferred" | string;
+  history_id?: string;
+}
+
+export interface ActiveApply {
+  kind: "received" | "history" | string;
+  history_id?: string;
+  receipt_id?: string;
+  content_id: string;
+}
+
 export interface ImagePreviewResult {
+  part?: PartDescriptor;
   mime?: string;
   name?: string;
   bytes_written?: number;
+  path?: string;
   uri?: string;
 }
 
@@ -216,6 +288,12 @@ export interface HistorySearchPage {
   history_revision: string;
   evaluated_at_ms: number;
   index_incomplete?: boolean;
+}
+
+export interface HistorySearchCountsResult {
+  counts: number[];
+  history_revision: string;
+  evaluated_at_ms: number;
 }
 
 export interface ActionInfo {
@@ -237,6 +315,8 @@ export interface SubmissionResult {
   request_id: string;
   history_id?: string;
   phase: string;
+  sync_disposition?: string;
+  operation_id?: string;
 }
 
 export interface PickAndCommitFileResult {
@@ -260,19 +340,93 @@ export interface Capabilities {
   restrictions?: string[];
 }
 
+export interface DirectorySyncSettings {
+  automatic: boolean;
+}
+
+export interface SyncSettings {
+  directories: DirectorySyncSettings;
+  enabled: boolean;
+  automatic: boolean;
+  on_restore: boolean;
+  files: boolean;
+  introductions: boolean;
+}
+
+export interface BackendSyncPolicy {
+  text: boolean;
+  images: boolean;
+  files: boolean;
+  auto_file_max_bytes: number;
+}
+
+export interface HistoryCleanupSettings {
+  auto_cleanup: boolean;
+  retention_days: number;
+  max_items: number;
+  excluded_tags: string[];
+}
+
+export interface FileCacheSettings {
+  max_bytes: number;
+}
+
+export interface LimitsSettings {
+  max_file_bytes: number;
+  max_total_bytes: number;
+}
+
+export interface EngineSettings {
+  history: HistoryCleanupSettings;
+  file_cache: FileCacheSettings;
+  device_name: string;
+  rendezvous_url: string;
+  limits: LimitsSettings;
+  sync: SyncSettings;
+  backend_policies: Record<string, BackendSyncPolicy>;
+}
+
+export interface SettingsState {
+  revision: string;
+  value: EngineSettings;
+}
+
+export interface FileCacheState {
+  stored_bytes: number;
+  reserved_bytes: number;
+}
+
+export interface HistoryFolder {
+  entries: Array<{ path: string; directory: boolean; size: number }>;
+  truncated: boolean;
+}
+
 export interface EngineStateSnapshot {
   instance_id: string;
   revision: string;
   lifecycle: string;
   runtime: string;
   self: { id: string; name: string };
-  settings: {
-    device_name?: string;
-    sync?: { auto_sync?: boolean };
-  };
+  settings: SettingsState;
   capabilities: Capabilities;
   devices: EngineDevice[];
   pairing_code: { active: boolean; expires_at_ms?: number };
   operations: EngineOperation[];
+  received: ReceivedContent[];
   history_revision: string;
+  active_apply?: ActiveApply;
+}
+
+export interface ClipboardChangedEvent {
+  changeCount?: number;
+  hasStrings?: boolean;
+  hasImages?: boolean;
+}
+
+export interface EngineEvent {
+  instance_id: string;
+  revision: string;
+  at_ms: number;
+  kind: string;
+  objects?: Array<{ type: string; id: string }>;
 }

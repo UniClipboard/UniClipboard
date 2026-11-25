@@ -89,10 +89,11 @@ const (
 )
 
 type session struct {
-	cmd     *exec.Cmd
-	conn    *rpc.Conn
-	exited  chan struct{}
-	actions sync.Map // run_action request ID -> *collector
+	cmd         *exec.Cmd
+	conn        *rpc.Conn
+	exited      chan struct{}
+	actions     sync.Map // run_action request ID -> *collector
+	enrichments sync.Map // enrich request ID -> *enrichCollector
 }
 
 // Proxy is the engine-facing side of one plugin process.
@@ -157,49 +158,114 @@ func New(spec Spec, opts Options) plugin.Plugin {
 			backM
 		}{p, backM{p}}
 	}
-	proc, act, obs := has(plugin.CapProcessor), has(plugin.CapAction), has(plugin.CapObserver)
-	pm, am, om := procM{p}, actM{p}, obsM{p}
-	switch {
-	case proc && act && obs:
+	proc, act, obs, enr := has(plugin.CapProcessor), has(plugin.CapAction), has(plugin.CapObserver), has(plugin.CapEnricher)
+	pm, am, om, em := procM{p}, actM{p}, obsM{p}, enrichM{p}
+	mask := 0
+	if proc {
+		mask |= 1
+	}
+	if act {
+		mask |= 2
+	}
+	if obs {
+		mask |= 4
+	}
+	if enr {
+		mask |= 8
+	}
+	switch mask {
+	case 1:
+		return struct {
+			*Proxy
+			procM
+		}{p, pm}
+	case 2:
+		return struct {
+			*Proxy
+			actM
+		}{p, am}
+	case 3:
+		return struct {
+			*Proxy
+			procM
+			actM
+		}{p, pm, am}
+	case 4:
+		return struct {
+			*Proxy
+			obsM
+		}{p, om}
+	case 5:
+		return struct {
+			*Proxy
+			procM
+			obsM
+		}{p, pm, om}
+	case 6:
+		return struct {
+			*Proxy
+			actM
+			obsM
+		}{p, am, om}
+	case 7:
 		return struct {
 			*Proxy
 			procM
 			actM
 			obsM
 		}{p, pm, am, om}
-	case proc && act:
+	case 8:
+		return struct {
+			*Proxy
+			enrichM
+		}{p, em}
+	case 9:
+		return struct {
+			*Proxy
+			procM
+			enrichM
+		}{p, pm, em}
+	case 10:
+		return struct {
+			*Proxy
+			actM
+			enrichM
+		}{p, am, em}
+	case 11:
 		return struct {
 			*Proxy
 			procM
 			actM
-		}{p, pm, am}
-	case proc && obs:
+			enrichM
+		}{p, pm, am, em}
+	case 12:
+		return struct {
+			*Proxy
+			obsM
+			enrichM
+		}{p, om, em}
+	case 13:
 		return struct {
 			*Proxy
 			procM
 			obsM
-		}{p, pm, om}
-	case act && obs:
+			enrichM
+		}{p, pm, om, em}
+	case 14:
 		return struct {
 			*Proxy
 			actM
 			obsM
-		}{p, am, om}
-	case proc:
+			enrichM
+		}{p, am, om, em}
+	case 15:
 		return struct {
 			*Proxy
 			procM
-		}{p, pm}
-	case act:
-		return struct {
-			*Proxy
 			actM
-		}{p, am}
-	case obs:
-		return struct {
-			*Proxy
 			obsM
-		}{p, om}
+			enrichM
+		}{p, pm, am, om, em}
 	}
 	return p
 }
@@ -243,6 +309,15 @@ func wireSpec(s plugin.Spec) rpc.Spec {
 	out := rpc.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, SettingsSHA256: s.SettingsSHA256, Capabilities: slices.Clone(s.Capabilities), TransportKind: s.TransportKind, ExternalChannels: s.ExternalChannels, RemoteRevocation: s.RemoteRevocation}
 	for _, a := range s.Actions {
 		out.Actions = append(out.Actions, rpc.ActionSpec{ID: a.ID, Title: a.Title, Accepts: slices.Clone(a.Accepts), Placements: slices.Clone(a.Placements), PostActions: slices.Clone(a.PostActions), TimeoutMS: a.TimeoutMS})
+	}
+	if s.Enricher != nil {
+		out.Enricher = &rpc.EnricherSpec{
+			Accepts:      slices.Clone(s.Enricher.Accepts),
+			RequiredTags: slices.Clone(s.Enricher.RequiredTags),
+			Triggers:     slices.Clone(s.Enricher.Triggers),
+			Annotations:  slices.Clone(s.Enricher.Annotations),
+			TimeoutMS:    s.Enricher.TimeoutMS,
+		}
 	}
 	return out
 }
@@ -561,6 +636,10 @@ func (p *Proxy) handle(s *session, ctx context.Context, c *rpc.Call) (any, error
 		return p.closeActionPart(s, ctx, c)
 	case rpc.MethodOpenActionPart:
 		return p.openActionPart(s, ctx, c)
+	case rpc.MethodCloseEnrichPart:
+		return p.closeEnrichPart(s, ctx, c)
+	case rpc.MethodOpenEnrichPart:
+		return p.openEnrichPart(s, ctx, c)
 	case rpc.MethodStream:
 		return p.openActionStream(s, c)
 	}
@@ -609,6 +688,9 @@ func (p *Proxy) openActionStream(s *session, c *rpc.Call) (any, error) {
 	var d rpc.StreamDesc
 	if err := rpc.Decode(c.Params, &d); err != nil {
 		return nil, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	if d.Purpose == rpc.PurposeEnrichAsset {
+		return p.openEnrichAssetStream(s, c, d)
 	}
 	v, ok := s.actions.Load(c.Parent)
 	if !ok || d.Purpose != rpc.PurposeActionText {

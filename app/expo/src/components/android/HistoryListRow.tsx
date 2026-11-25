@@ -1,3 +1,4 @@
+import { useHistoryImagePreview } from '@/hooks/useHistoryImagePreview';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -354,16 +355,16 @@ function useRowContent(
 
 function RowThumbnail({ item }: { item: ClipboardItem }) {
   const { theme } = useTheme();
-  const [failed, setFailed] = useState(false);
-  const ready = item.isLocalFileReady && item.fileUri && !failed;
+  const preview = useHistoryImagePreview(item);
   return (
     <View style={[styles.thumbnail, { backgroundColor: theme.colors.surfaceHighest }]}>
-      {ready ? (
+      {preview.uri ? (
         <Image
-          source={{ uri: item.fileUri }}
+          key={preview.retry}
+          source={{ uri: preview.uri }}
           style={StyleSheet.absoluteFill}
           resizeMode="cover"
-          onError={() => setFailed(true)}
+          onError={preview.onError}
         />
       ) : (
         <Ionicons name="image-outline" size={20} color={theme.colors.textSecondary} />

@@ -36,8 +36,10 @@ export function AppAlertDialog({
 }: AppAlertDialogProps) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onDismiss}>
-      <Pressable style={styles.backdrop} onPress={onDismiss}>
+      <Pressable accessible={false} style={styles.backdrop} onPress={onDismiss}>
         <Pressable
+          accessible={false}
+          accessibilityViewIsModal
           style={[styles.card, containerColor ? { backgroundColor: containerColor } : null]}
           onPress={() => {}}
         >
@@ -45,11 +47,11 @@ export function AppAlertDialog({
           {message ? <Text style={styles.message}>{message}</Text> : null}
           <View style={styles.actions}>
             {dismissLabel ? (
-              <Pressable style={styles.button} onPress={onDismissAction ?? onDismiss}>
+              <Pressable accessibilityRole="button" style={styles.button} onPress={onDismissAction ?? onDismiss}>
                 <Text style={styles.buttonText}>{dismissLabel}</Text>
               </Pressable>
             ) : null}
-            <Pressable style={styles.button} onPress={onConfirm}>
+            <Pressable accessibilityRole="button" style={styles.button} onPress={onConfirm}>
               <Text style={[styles.buttonText, styles.confirmText]}>{confirmLabel}</Text>
             </Pressable>
           </View>

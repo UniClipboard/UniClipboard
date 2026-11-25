@@ -55,5 +55,31 @@
       "failed": "Send failed",
       "unconfirmed": "Delivery unconfirmed"
     }
+  },
+  "incoming": {
+    "title": "Shared with UniClipboard",
+    "save": "Save on this device",
+    "send": "Send to selected device",
+    "savedWithoutSend": "Saved on this device. Sending did not start.",
+    "sendNotStarted": "Sending did not start.",
+    "notSaved": "The item was not saved to history.",
+    "failed": "Could not process shared content"
+  },
+  "compose": {
+    "clipboard": "Clipboard",
+    "emptyClipboard": "The clipboard is empty or already synced.",
+    "readClipboard": "Read system clipboard",
+    "sendFile": "Send file",
+    "forwardTitle": "Send history item",
+    "sendTitle": "Save or send clipboard content",
+    "textHint": "Enter text to save or send…",
+    "targets": "Choose devices. With none selected, sync settings determine the targets.",
+    "connected": "Connected",
+    "offline": "Offline or connecting",
+    "noTargets": "No paired devices. Content will be saved to this device.",
+    "sendSelected": "Send to selected devices ({{count}})",
+    "sendAll": "Send to all online devices",
+    "commitText": "Save and send text",
+    "chooseFile": "Choose file to send"
   }
 }

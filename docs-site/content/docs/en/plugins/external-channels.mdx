@@ -5,9 +5,7 @@ description: Sync clipboard content with third-party services that do not have a
 
 **External channels** are a special kind of sync target: the other side is not a device running unic, but a third-party service or app (such as a clipboard sync group in an input method). Because they have no unic device keys and cannot verify fingerprints, unic does not treat them as devices and instead manages them separately as "channels".
 
-<Callout type="warn">
-External channels are currently in an early stage: the data model, receive pipeline, local service API, and plugin protocol are implemented, but no official channel backend has been released yet, and the desktop UI does not yet have a full channel management page. The behavior described below reflects what is currently implemented.
-</Callout>
+Install SyncClipboard or the WeType clipboard plugin from the [Plugin Marketplace](./marketplace). After you configure the plugin, open **Devices** in Desktop to view and manage external channels.
 
 ## How They Differ from Devices
 
@@ -22,17 +20,17 @@ In the peer list, channels and devices are displayed together, with details indi
 
 ## Pairing and Enabling
 
-External channels are provided by installed **sync backend plugins** (see [Plugin Marketplace](./marketplace)). After installing and configuring the plugin, pair using the pairing code provided by the third-party service:
+Follow the setup steps in the plugin details. SyncClipboard uses the client credentials configured in the plugin. A WeType shared space uses a code from WeType. In Desktop, open **Settings → Plugins → WeType Clipboard** and follow the prompts to join. For a backend that supports pairing codes, you can also use the CLI:
 
 ```sh
 unic channel pair <backend-instance-id>            # Enter the service's pairing code when prompted
 unic channel pair <backend-instance-id> --resume   # Resume an incomplete pairing
 ```
 
-Enabling a channel authorizes syncing with it; remote approval has already been completed during the third-party service's pairing flow.
+Enable the channel to authorize local sync. If the backend requires remote approval, complete that step in the third-party service.
 
 <Callout type="info">
-Before enabling, note that content sent to an external channel leaves unic's device-to-device link and enters a third-party service. Only text is synced by default; images and files must be enabled separately.
+Content sent to an external channel enters a third-party service. Available content types depend on plugin capabilities and sync settings. SyncClipboard and WeType Clipboard support text and images. Sending a single image file as an image requires plugin support and enabled image sync.
 </Callout>
 
 ## Received Content
@@ -45,7 +43,7 @@ Before enabling, note that content sent to an external channel leaves unic's dev
 ## Disabling and Removing
 
 - **Disable**: Immediately stops sending and receiving on the channel and drops in-flight tasks.
-- **Remove**: Disables the channel and clears locally stored credentials and state.
+- **Remove**: Stops sync and removes the local channel record. The plugin manages provider credentials.
 
 A backend plugin declares whether it supports remote exit (`remote_revocation`). When unsupported, removal **takes effect locally only**—this device remains in the third-party group, and you must remove it in the third-party app. Content already sent cannot be recalled.
 

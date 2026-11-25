@@ -3,6 +3,7 @@ package mobile
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"unicode/utf8"
+
+	"github.com/skip2/go-qrcode"
 
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
@@ -30,6 +33,10 @@ type Engine struct {
 	e            *engine.Engine
 	dataDir      string
 	settingsPath string
+	cacheDir     string
+	settingsMu   sync.Mutex
+	previewMu    sync.Mutex
+	diagnostics  *mobileDiagnostics
 
 	subMu     sync.Mutex
 	sub       *engine.Subscription
@@ -79,16 +86,13 @@ func loadSettingsOrDefault(path string, cfg engineConfigDTO) (engine.Settings, e
 	def := engine.DefaultSettings()
 	raw, err := os.ReadFile(path)
 	if err == nil {
-		var saved engine.Settings
+		saved := def
 		if uerr := json.Unmarshal(raw, &saved); uerr == nil {
 			if saved.Limits.MaxFileBytes == 0 {
 				saved.Limits.MaxFileBytes = def.Limits.MaxFileBytes
 			}
 			if saved.Limits.MaxTotalBytes == 0 {
 				saved.Limits.MaxTotalBytes = def.Limits.MaxTotalBytes
-			}
-			if saved.FileCache.MaxBytes == 0 {
-				saved.FileCache.MaxBytes = def.FileCache.MaxBytes
 			}
 			if saved.DeviceName == "" && strings.TrimSpace(cfg.DeviceName) != "" {
 				saved.DeviceName = strings.TrimSpace(cfg.DeviceName)
@@ -110,7 +114,7 @@ func loadSettingsOrDefault(path string, cfg engineConfigDTO) (engine.Settings, e
 	return def, nil
 }
 
-func saveSettingsAtomic(path string, s engine.Settings) error {
+func saveSettingsAtomic(path string, s any) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -187,6 +191,9 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 	dataDir, _ = resolveDirPath(dataDir)
 
 	cacheDir := cfg.CacheDir
+	if strings.TrimSpace(cacheDir) == "" {
+		cacheDir = filepath.Join(dataDir, "inbox", "file-cache")
+	}
 	if strings.TrimSpace(cacheDir) != "" {
 		if resolved, rerr := resolveDirPath(cacheDir); rerr == nil {
 			cacheDir = resolved
@@ -194,7 +201,10 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 	}
 
 	settingsPath := filepath.Join(dataDir, "mobile-settings.json")
-	settings, _ := loadSettingsOrDefault(settingsPath, cfg)
+	settings, err := loadSettingsOrDefault(settingsPath, cfg)
+	if err != nil {
+		return nil, wrapErr(err)
+	}
 
 	caps := engine.HostCapabilities{
 		Observe: engine.AbilityUnavailable,
@@ -213,11 +223,16 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		return nil, wrapErr(err)
 	}
 
+	diagnostics := newMobileDiagnostics(dataDir)
+	peer.Observe(diagnostics.controller)
 	opts := engine.Options{
 		DataDir:          dataDir,
 		CacheDir:         cacheDir,
 		Settings:         settings,
 		HostCapabilities: caps,
+		Logger:           diagnostics.controller.Logger(),
+		Diagnostics:      diagnostics.controller.Record,
+		ProductEvents:    diagnostics.controller.ProductEvent,
 		Plugins: []engine.PluginInstance{
 			{Plugin: peer, Builtin: true},
 			{Plugin: classifier},
@@ -227,12 +242,16 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 
 	eng, err := engine.New(context.Background(), opts)
 	if err != nil {
+		diagnostics.close(context.Background())
 		return nil, wrapErr(err)
 	}
+	diagnostics.controller.SetSyncCollector(peer.Collect)
 	return &Engine{
 		e:            eng,
 		dataDir:      dataDir,
 		settingsPath: settingsPath,
+		cacheDir:     cacheDir,
+		diagnostics:  diagnostics,
 	}, nil
 }
 
@@ -271,7 +290,9 @@ func (m *Engine) Close(token *CancelToken) error {
 	m.stopSubscription()
 	ctx, cancel := withToken(token)
 	defer cancel()
-	return wrapErr(m.e.Close(ctx))
+	err := m.e.Close(ctx)
+	m.diagnostics.close(ctx)
+	return wrapErr(err)
 }
 
 // SetRuntimeState sets Engine runtime networking permission ("active" or "suspended").
@@ -318,6 +339,8 @@ type updateSettingsDTO struct {
 
 // UpdateSettings validates, updates, and persists Engine settings.
 func (m *Engine) UpdateSettings(reqJSON string) (string, error) {
+	m.settingsMu.Lock()
+	defer m.settingsMu.Unlock()
 	var req updateSettingsDTO
 	if err := json.Unmarshal([]byte(reqJSON), &req); err != nil {
 		return "", wrapErr(errors.New("invalid update settings json"))
@@ -487,6 +510,15 @@ func (m *Engine) RetainHistoryContent(historyID string) (string, error) {
 	return marshalJSON(h)
 }
 
+// RetainHistoryForSend opens a persisted history item for explicit resending while enforcing processor sync policies.
+func (m *Engine) RetainHistoryForSend(historyID string) (string, error) {
+	h, err := m.e.RetainHistoryForSend(context.Background(), engine.HistoryID(historyID))
+	if err != nil {
+		return "", wrapErr(err)
+	}
+	return marshalJSON(h)
+}
+
 // OpenPart opens a leased part for chunked streaming.
 func (m *Engine) OpenPart(leaseID string, partID string) (*ContentStream, error) {
 	r, err := m.e.ReadContent(context.Background(), engine.LeaseID(leaseID), engine.PartID(partID))
@@ -503,6 +535,29 @@ func (m *Engine) ExportPartToFile(leaseID string, partID string, destPath string
 		return 0, err
 	}
 	return st.WriteToFile(destPath)
+}
+
+// ReadLeasedText reads bounded UTF-8 text from an already-leased part without releasing the caller's lease.
+func (m *Engine) ReadLeasedText(leaseID string, partID string, maxBytes int) (string, error) {
+	if maxBytes <= 0 {
+		maxBytes = 2 << 20
+	}
+	if maxBytes > 16<<20 {
+		maxBytes = 16 << 20
+	}
+	rd, err := m.e.ReadContent(context.Background(), engine.LeaseID(leaseID), engine.PartID(partID))
+	if err != nil {
+		return "", wrapErr(err)
+	}
+	text, trunc, readErr := readBoundedUTF8(rd, maxBytes)
+	_ = rd.Close()
+	if readErr != nil {
+		return "", wrapErr(readErr)
+	}
+	return marshalJSON(textPreviewDTO{
+		Text:      text,
+		Truncated: trunc,
+	})
 }
 
 type textPreviewDTO struct {
@@ -564,6 +619,17 @@ func (m *Engine) ReadHistoryTextPreview(historyID string, maxBytes int) (string,
 	return marshalJSON(out)
 }
 
+// ReadHistoryFullText reads on-demand full UTF-8 text (bounded by maxBytes, default 2 MiB, max 16 MiB) and immediately releases its lease.
+func (m *Engine) ReadHistoryFullText(historyID string, maxBytes int) (string, error) {
+	if maxBytes <= 0 {
+		maxBytes = 2 << 20
+	}
+	if maxBytes > 16<<20 {
+		maxBytes = 16 << 20
+	}
+	return m.ReadHistoryTextPreview(historyID, maxBytes)
+}
+
 // ExportHistoryPartToFile exports the first matching part of a history record (by MIME prefix or exact MIME) to destPath and releases its lease.
 func (m *Engine) ExportHistoryPartToFile(historyID string, mimePrefix string, destPath string) (string, error) {
 	h, err := m.e.RetainHistoryContent(context.Background(), engine.HistoryID(historyID))
@@ -612,6 +678,7 @@ type commitReqDTO struct {
 	LeaseID         engine.LeaseID    `json:"lease_id"`
 	BackendIDs      []engine.PluginID `json:"backend_ids,omitempty"`
 	DeviceIDs       []engine.DeviceID `json:"device_ids,omitempty"`
+	LocalOnly       bool              `json:"local_only,omitempty"`
 }
 
 // CommitContent commits leased content through the pipeline and optionally syncs it.
@@ -626,6 +693,41 @@ func (m *Engine) CommitContent(token *CancelToken, reqJSON string) (string, erro
 		CancelOnContext: dto.CancelOnContext,
 		RequestID:       dto.RequestID,
 		LeaseID:         dto.LeaseID,
+		BackendIDs:      dto.BackendIDs,
+		DeviceIDs:       dto.DeviceIDs,
+		LocalOnly:       dto.LocalOnly,
+	})
+	if err != nil {
+		return "", wrapErr(err)
+	}
+	return marshalJSON(res)
+}
+
+type resendHistoryReqDTO struct {
+	CancelOnContext bool              `json:"cancel_on_context"`
+	RequestID       engine.RequestID  `json:"request_id"`
+	HistoryID       engine.HistoryID  `json:"history_id"`
+	BackendIDs      []engine.PluginID `json:"backend_ids,omitempty"`
+	DeviceIDs       []engine.DeviceID `json:"device_ids,omitempty"`
+}
+
+// ResendHistoryItem retains a stored history item for explicit sending, commits it to the selected targets, and unconditionally releases its lease.
+func (m *Engine) ResendHistoryItem(token *CancelToken, reqJSON string) (string, error) {
+	var dto resendHistoryReqDTO
+	if err := json.Unmarshal([]byte(reqJSON), &dto); err != nil {
+		return "", wrapErr(errors.New("invalid resend history request json"))
+	}
+	ctx, cancel := withToken(token)
+	defer cancel()
+	h, err := m.e.RetainHistoryForSend(ctx, dto.HistoryID)
+	if err != nil {
+		return "", wrapErr(err)
+	}
+	defer func() { _ = m.e.ReleaseContent(context.Background(), h.LeaseID) }()
+	res, err := m.e.CommitContent(ctx, engine.CommitRequest{
+		CancelOnContext: dto.CancelOnContext,
+		RequestID:       dto.RequestID,
+		LeaseID:         h.LeaseID,
 		BackendIDs:      dto.BackendIDs,
 		DeviceIDs:       dto.DeviceIDs,
 	})
@@ -795,6 +897,9 @@ func (m *Engine) ListActions() (string, error) {
 	if err != nil {
 		return "", wrapErr(err)
 	}
+	if acts == nil {
+		acts = []engine.ActionInfo{}
+	}
 	return marshalJSON(acts)
 }
 
@@ -953,6 +1058,9 @@ func (m *Engine) ListReceived() (string, error) {
 	if err != nil {
 		return "", wrapErr(err)
 	}
+	if rs == nil {
+		rs = []engine.ReceivedContent{}
+	}
 	return marshalJSON(rs)
 }
 
@@ -1000,7 +1108,14 @@ func (m *Engine) ExportPairingTicket(token *CancelToken) (string, error) {
 	if err != nil {
 		return "", wrapErr(err)
 	}
-	return marshalJSON(t)
+	result := struct {
+		engine.SensitiveTicket
+		QRPNG string `json:"qr_png,omitempty"`
+	}{SensitiveTicket: t}
+	if png, err := qrcode.Encode(t.Ticket, qrcode.Low, 512); err == nil {
+		result.QRPNG = base64.StdEncoding.EncodeToString(png)
+	}
+	return marshalJSON(result)
 }
 
 type joinReqDTO struct {
@@ -1067,6 +1182,9 @@ func (m *Engine) ListDevices() (string, error) {
 	ds, err := m.e.ListDevices(context.Background())
 	if err != nil {
 		return "", wrapErr(err)
+	}
+	if ds == nil {
+		ds = []engine.Device{}
 	}
 	return marshalJSON(ds)
 }
@@ -1164,6 +1282,9 @@ func (m *Engine) ListCandidates() (string, error) {
 	cs, err := m.e.ListCandidates(context.Background())
 	if err != nil {
 		return "", wrapErr(err)
+	}
+	if cs == nil {
+		cs = []engine.Candidate{}
 	}
 	return marshalJSON(cs)
 }

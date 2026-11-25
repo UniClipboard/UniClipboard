@@ -18,9 +18,9 @@ processor 只能改标签、过期、persist、sync，不能改写正文；改�
 
 **外部 Go 插件使用独立可执行程序 + RPC**。宿主传入 `Options.PluginProcesses []PluginProcessSpec`（ID、可执行路径、摘要、API 版本），Engine 启动与管理子进程。路径仅供装配，不进入普通状态与事件。每个 Engine 的每个启用插件各有一个常驻进程，跨处理/发送复用，不编译进宿主，不使用 Go 动态库或全局 init 注册。
 
-Lua 的预算、白名单、失败状态与热替换约束见 [Lua 运行时契约](lua-runtime-contract.md)；上游行为已核实，增强 VM 尚未实现。Lua 返回插件表，由 Engine 内适配器运行。宿主负责文件读取、监听和 TOML 映射；Engine 不依赖桌面文件监听。
+The [Lua runtime contract](lua-runtime-contract.md) defines the enhanced VM's budgets, allowlist, failure states and hot replacement. The Engine adapter runs the plugin table that Lua returns. The host reads and watches files and maps TOML into plugin configuration.
 
-公开 SDK 规划为 `github.com/uniclipboard/unic/plugin`，不依赖 engine；Engine 依赖它的 DTO 和 RPC 客户端。以下是插件进程内部接口，跨 RPC 传请求/响应，不传 Go 指针、interface 或 context：
+The public SDK is `github.com/uniclipboard/unic/plugin`. Engine depends on its DTOs and RPC client. A plugin process exchanges requests and responses over RPC. Go pointers, interfaces and contexts stay inside their process.
 
 ```go
 type Spec struct {
@@ -187,7 +187,7 @@ type SyncBackend interface {
 
 大文件/图片以短期句柄 + 分块二进制 + 窗口流控传输，不整体编码为 JSON/base64。句柄绑定会话与请求，取消/完成/断线即失效；不传本机文件路径。SyncHost 反向调用也须校验能力、会话与授权状态。
 
-核心帧格式、握手、process patch 与流描述已在[RPC 核心协议](plugin-rpc-contract.md) 和机器可读 Schema/向量中定义；编解码器与子进程互操作测试待实现。SyncBackend/SyncHost 业务方法、传输授权票据、状态生效屏障与接收 DTO 已在[同步后端业务契约](sync-backend-contract.md) 定义，实现及互操作测试仍待完成。移动端不默认承诺可启动子进程，运行方式按平台约束另定；不因移动端限制自动退回进程内第三方执行。
+The [core RPC contract](plugin-rpc-contract.md), schema and protocol vectors define framing, handshake, process patches and streams. The codec lives in `plugin/rpc`. The [sync backend contract](sync-backend-contract.md) defines the implemented `peer_sessions` methods, transfer authorization, revocation barriers and receive DTOs. The real Go subprocess tests in `engine/peere2e_test.go` cover pairing, sync and device introduction. Subprocess availability depends on the host platform. Mobile hosts must not load third-party code in-process as a fallback.
 
 ## 7. 最小模板
 
@@ -527,3 +527,19 @@ metadata-only source archives are rejected.
 Installation identity (`Spec.ID`) is separate from configured runtime identity (`PluginInstance.ID`). `unic plugin instance add IMPLEMENTATION INSTANCE` creates a disabled alias. The installed implementation must be a Go `sync_backend`; Lua and processor/observer aliases are rejected. An alias cannot shadow an installed implementation or a built-in ID. Configure through `unic plugin settings show|save INSTANCE`, enable through `unic plugin enable INSTANCE`, then restart. `plugins.order` contains runtime IDs and determines processing/start order, not serial network dispatch.
 
 Desktop Plugins exposes the same creation, Schema, enablement and standard sync-policy paths. Instances remain independently visible after disabling. `GET /v1/plugins` reports `implementation_id` separately from `id`. An eligible marketplace update replaces the implementation's active instances together. Standard policy and global sync updates apply to the running instance set. Program identity and settings isolation follow the [assembly contract](backend-migration-contract.md#implementation-and-instance-identity).
+
+## Asynchronous history enricher
+
+A Go plugin (builtin or external process) may declare capability `enricher` (`plugin.CapEnricher`) to derive searchable text, additional tags, and versioned native preview annotations **after** a history item commits (`persist=true`). Lua plugins do not support `enricher` in API version 1.
+
+Declaring `enricher` requires a non-nil `Spec.Enricher` (and `[enricher]` in `spec.toml`), and vice versa:
+
+- `Accepts`: required, non-empty unique subset of `{text, image, files}`.
+- `RequiredTags`: optional, unique valid tag IDs (at most 16); Engine dispatches only when the committed item holds every required tag (for example `["builtin:link"]`), preventing unnecessary RPC calls or reads.
+- `Triggers`: required, non-empty unique subset of `{on_commit, on_demand, manual}`.
+- `Annotations`: optional, unique versioned annotation type identifiers (at most 16, matching `[a-z][a-z0-9_]*\.v[1-9][0-9]*`, e.g. `link_preview.v1`, `text_overlay.v1`). Every annotation returned by the plugin must belong to its declared set.
+- `TimeoutMS`: `0..120000` milliseconds; zero uses the 15-second default.
+
+`Enrich(ctx, EnrichContext)` receives `Trigger()`, read-only `Item()`, and `ActionSource` (`Parts()`, `OpenPart`) with the same no-host-path, four-concurrent-stream and invocation-scoped lease guarantees as Go Actions. It supplies one bounded `EnrichmentResult` via `SetResult` (`Status` is `"ok"` or `"skipped"`). Enrichers never mutate original content, expiry, or sync policy, never block commit or sync dispatch, and never run when disabled or absent.
+
+External Go plugins declaring only `enricher` (or `action` + `enricher`) support runtime `Start` and live marketplace updates under the same class rules as Action-only plugins; live replacement cancels in-flight enrichments on the old process before switching.

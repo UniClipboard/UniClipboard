@@ -240,6 +240,9 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 	}
 	e.mu.Unlock()
 
+	if req.localOnly {
+		return "", SyncNotRequested, nil, nil, nil
+	}
 	backends := e.selectBackends(req.BackendIDs)
 	all := func(d BackendDisposition) []BackendSubmissionResult {
 		out := make([]BackendSubmissionResult, len(backends))

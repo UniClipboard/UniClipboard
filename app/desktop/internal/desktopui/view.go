@@ -34,6 +34,17 @@ type entry struct {
 	tags                                []string
 	pinned                              bool
 	folder                              *folderInfo
+	linkPreview                         *linkPreviewInfo
+}
+
+// linkPreviewInfo holds the resolved link_preview.v1 annotation and decoded assets.
+type linkPreviewInfo struct {
+	siteName    string
+	title       string
+	description string
+	canonical   string
+	favicon     ui.ImageSource
+	thumbnail   *historyImage
 }
 
 // folderInfo is the display model of a folder entry. Rows exist only for snapshots.

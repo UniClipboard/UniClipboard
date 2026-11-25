@@ -1,3 +1,4 @@
+import { useHistoryImagePreview } from '@/hooks/useHistoryImagePreview';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
@@ -466,42 +467,17 @@ function ImageCardBody({
   isLatest,
   theme,
 }: Pick<CardBodyProps, 'item' | 'kindLabel' | 'relativeTime' | 'isLatest' | 'theme'>) {
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [loadAttempt, setLoadAttempt] = useState(0);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    setLoadFailed(false);
-    setLoadAttempt(0);
-    return () => {
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-      retryTimerRef.current = null;
-    };
-  }, [item.fileUri]);
-
-  const handleImageError = () => {
-    setLoadFailed(true);
-    if (loadAttempt > 0 || retryTimerRef.current) return;
-
-    // Android can report a transient decode error while returning from the system camera.
-    retryTimerRef.current = setTimeout(() => {
-      retryTimerRef.current = null;
-      setLoadAttempt(1);
-      setLoadFailed(false);
-    }, 250);
-  };
-
-  const hasImage = item.isLocalFileReady && item.fileUri && !loadFailed;
+  const preview = useHistoryImagePreview(item);
   return (
     <View style={styles.imageBody}>
       <CheckerboardBackground />
-      {hasImage ? (
+      {preview.uri ? (
         <Image
-          key={`${item.fileUri}:${loadAttempt}`}
-          source={{ uri: item.fileUri }}
+          key={preview.retry}
+          source={{ uri: preview.uri }}
           style={styles.thumbnailImage}
           resizeMode="contain"
-          onError={handleImageError}
+          onError={preview.onError}
         />
       ) : (
         <View style={[styles.imagePlaceholder, { backgroundColor: 'rgba(76,175,80,0.12)' }]}>

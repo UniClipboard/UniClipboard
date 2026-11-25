@@ -18,11 +18,15 @@ cli_artifact_run_id = 45138690798
 update_public_key = "4/pGKRfV8KGneAnMEci+DnpdrnoFLM5uVhDq0Kp/pvk="
 
 [products.android]
-version = "0.1.0"
-build_number = 1
-targets = []
+version = "2.5.0"
+build_number = 205
+targets = ["android-aab"]
+application_id = "app.uniclipboard.android"
+legacy_build_floor = 204
 
 [products.ios]
-version = "0.1.0"
-build_number = 1
-targets = []
+version = "2.5.0"
+build_number = 205
+targets = ["ios-arm64"]
+application_id = "app.uniclipboard.UniClipboard"
+legacy_build_floor = 204

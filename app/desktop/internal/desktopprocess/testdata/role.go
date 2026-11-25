@@ -13,6 +13,8 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 )
 
+var buildTag = "v1"
+
 func main() {
 	role := flag.String("role", "tray", "role")
 	command := flag.String("command", "", "command")
@@ -23,9 +25,19 @@ func main() {
 	if *command != "" {
 		var result any
 		var err error
-		if *command == "status" {
+		switch *command {
+		case "status":
 			result, err = desktopprocess.Probe(ctx, dir, desktopprocess.Role(*role))
-		} else {
+		case "probe-stale":
+			_, perr := desktopprocess.Probe(ctx, dir, desktopprocess.Role(*role))
+			result = map[string]any{"stale": errors.Is(perr, desktopprocess.ErrStaleBuild), "unavailable": errors.Is(perr, desktopprocess.ErrUnavailable), "error": fmt.Sprint(perr), "build": buildTag}
+		case "retire-stale":
+			retired, rerr := desktopprocess.RetireStale(ctx, dir, desktopprocess.Role(*role))
+			result = map[string]any{"retired": retired, "error": "", "build": buildTag}
+			if rerr != nil {
+				result = map[string]any{"retired": retired, "error": rerr.Error(), "build": buildTag}
+			}
+		default:
 			requested := strings.TrimPrefix(*command, "classify-")
 			err = desktopprocess.Call(ctx, dir, desktopprocess.Role(*role), requested, nil, &result)
 			if strings.HasPrefix(*command, "classify-") {

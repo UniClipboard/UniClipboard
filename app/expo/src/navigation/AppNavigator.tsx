@@ -19,6 +19,7 @@ import {
   SafeAreaInsetsContext,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { IncomingShareSheet } from "@/screens/IncomingShareSheet";
 import type { RootStackParamList } from "./AppNavigator.types";
 export type {
   RootStackParamList,
@@ -110,6 +111,7 @@ export function AppNavigator() {
             <Stack.Screen name="SettingsSub" component={SettingsSubScreen} />
           </Stack.Navigator>
         </NavigationContainer>
+        {mode === "live" && <IncomingShareSheet />}
       </SafeAreaInsetsContext.Provider>
     </View>
   );

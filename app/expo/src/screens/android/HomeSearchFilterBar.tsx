@@ -115,6 +115,27 @@ export function HomeSearchFilterBar({ c }: { c: HomeController }) {
             />
           )}
         />
+        {c.availableTags.length > 0 && (
+          <OverflowMenu
+            align="start"
+            items={[
+              { key: 'all-tags', label: t('tags.all'), selected: c.selectedTag === null, onPress: () => c.setSelectedTag(null) },
+              ...c.availableTags.map((value) => ({
+                key: `tag:${value}`, label: value, selected: c.selectedTag === value,
+                onPress: () => c.setSelectedTag(value),
+              })),
+            ]}
+            renderTrigger={(open) => (
+              <FilterChip
+                testID="history-filter-tag"
+                dropdown
+                selected={c.selectedTag !== null}
+                label={c.selectedTag ?? t('tags.filter')}
+                onPress={open}
+              />
+            )}
+          />
+        )}
       </ScrollView>
       {c.hasActiveFilters ? (
         <Pressable

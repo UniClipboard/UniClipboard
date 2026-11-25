@@ -44,9 +44,9 @@ Windows · macOS · Linux · 命令列　|　文字 · 圖片 · 檔案 · 資�
 | 🔍 **快速搜尋** | 輸入關鍵字，或用 `#標籤`、`@裝置`、`/類型` 篩選。幾個月前複製的內容也找得回來。 |
 | 🏷️ **自動分類** | 自動為連結、電子郵件、色碼、版本號、UUID、IP 位址等內容加上標籤，也能新增自己的規則。 |
 | 📁 **檔案與資料夾** | 傳送整個資料夾時完整保留目錄結構，也可以只傳給指定裝置。 |
-| 📮 **免配對傳送** | 執行 `unic send "內容"` 會得到 6 位數取件碼，對方輸入即可接收，用完不留下裝置紀錄。 |
+| 📮 **免配對傳送** | 執行 `unic send "內容"` 會顯示傳輸連結。取件碼可用時，也會顯示 6 位數取件碼。接收方可使用任一方式接收。傳輸不會留下裝置紀錄。 |
 | 🧩 **外掛** | 在設定中一鍵安裝外掛，例如把圖片或檔案轉成分享連結。 |
-| ⌨️ **命令列** | 用 `unic` 在終端機、SSH 和腳本中傳送、接收和查詢歷史。 |
+| ⌨️ **命令列** | 用 `unic` 在終端機、SSH 和指令碼中傳送、接收及篩選歷史清單。 |
 | 🌍 **多語言** | English、简体中文、日本語、Português、Русский，支援淺色與深色模式。 |
 
 <a id="quick-start"></a>
@@ -55,7 +55,7 @@ Windows · macOS · Linux · 命令列　|　文字 · 圖片 · 檔案 · 資�
 
 **1. 執行**
 
-> 正式安裝檔即將推出。目前可以從原始碼執行，只需要安裝 [Go](https://go.dev/dl/)。
+從 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) 下載適合你平台的 v2 桌面預覽版。也可以用下列指令從原始碼執行。
 
 ```sh
 git clone https://github.com/UniClipboard/UniClipboard.git
@@ -76,7 +76,7 @@ make run-desktop
 ```sh
 unic send --to all "Hello"        # 傳送給所有裝置
 unic send --to all -f ./photos    # 傳送檔案或資料夾
-unic send "臨時內容"               # 免配對，產生取件碼
+unic send "臨時內容"               # 免配對，顯示傳輸連結，並在可用時顯示取件碼
 unic recv 482913                  # 用取件碼接收
 unic history list                 # 查看歷史
 ```

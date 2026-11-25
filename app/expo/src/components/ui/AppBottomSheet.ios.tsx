@@ -27,8 +27,13 @@ export function AppBottomSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onDismiss}>
-      <Pressable style={styles.backdrop} onPress={onDismiss}>
-        <Pressable style={styles.sheet} onPress={() => {}}>
+      <Pressable accessible={false} style={styles.backdrop} onPress={onDismiss}>
+        <Pressable
+          accessible={false}
+          accessibilityViewIsModal
+          style={styles.sheet}
+          onPress={() => {}}
+        >
           <BlurView
             intensity={90}
             tint={isDark ? 'systemChromeMaterialDark' : 'systemChromeMaterial'}

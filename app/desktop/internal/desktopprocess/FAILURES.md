@@ -66,3 +66,16 @@ Windows Full01 and Full02 reproduced a registered global shortcut and a live
 panel process whose first native window never became visible. A plain explicit
 Show still consumes the hidden startup policy; it is not evidence of visibility.
 Use a console-free process creation flag without overriding native ShowWindow.
+
+## Stale previous-build view roles after update
+
+If an earlier installation left a `gui` or `quick-panel` process holding the
+profile's role endpoint after an in-place or move-aside executable replacement
+(for example `.unic-desktop.exe.old-<pid>` from `mygo.Updater`), IPC still
+rejects commands and classifies the mismatch as `ErrStaleBuild`. `RetireStale`
+operates only on view roles (`gui`, `quick-panel`), verifies via the live OS
+endpoint peer handle that the listener is a replaced build of this exact
+executable in the same installation directory, terminates only that verified
+process, and waits until the role endpoint becomes `ErrUnavailable`. Live
+current-build roles, the `tray` role, and unrecognized binaries in the same
+directory are never retired.

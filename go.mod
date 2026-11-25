@@ -8,7 +8,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/disintegration/imaging v1.6.2
 	github.com/ebitengine/purego v0.11.1
-	github.com/egoist/mygo v0.8.4-0.20261108082913-9233663736ca
+	github.com/egoist/mygo v0.9.2
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/jezek/xgb v1.3.1

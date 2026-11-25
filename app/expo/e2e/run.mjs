@@ -161,7 +161,11 @@ try {
   for (const name of flows) {
     if (name === "live-history") {
       if (options.platform === "ios") {
-        command("xcrun", ["simctl", "pbcopy", options.device], "seed-clipboard", "Unic Mobile E2E");
+        const fixture = "Unic Mobile E2E";
+        command("xcrun", ["simctl", "pbcopy", options.device], "seed-clipboard", fixture);
+        if (command("xcrun", ["simctl", "pbpaste", options.device], "verify-clipboard") !== fixture) {
+          throw new Error("iOS Simulator pasteboard does not contain the fixture");
+        }
       } else {
         command("adb", ["-s", options.device, "shell", `am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Unic Mobile E2E' -n ${appId}/.MainActivity`], "seed-share-intent");
       }

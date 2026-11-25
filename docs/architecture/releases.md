@@ -50,12 +50,13 @@ Leave `version` empty to release the CLI independently.
 Alpha creates the Desktop CLI lock from the exact accepted CLI manifest.
 An already published CLI build can be recovered from its verified tag and
 immutable assets. Draft recovery still requires the original source and
-metadata. CLI publication and signed Desktop construction run in parallel
-after CLI candidate acceptance. Desktop construction verifies the selected
-CLI manifest, package integrity and shared source compatibility on each target.
+metadata. Signed Desktop construction must succeed before the workflow
+publishes the CLI to npm. Desktop preparation verifies the selected CLI
+manifest, package integrity and shared source compatibility for all six
+targets in one Ubuntu job. Each target repeats the checks during staging.
 The Windows installer lifecycle fixture uses the same lock as the production
 installer and changes only the fixture build number.
-Once both succeed, the workflow publishes the Desktop candidate, stages the
+After npm publication, the workflow publishes the Desktop candidate, stages the
 legacy upgrade after all twelve native receipts pass, and promotes Desktop
 using the channel revision from the staging receipt.
 
@@ -129,7 +130,7 @@ The lifecycle attachment entrypoint verifies the package digest and required obs
 `UNIC_MACOS_SIGNING_IDENTITY` and `UNIC_WINDOWS_CERT_SHA1` let the CLI builder sign executable files before archive hashing and native acceptance.
 Desktop signing first verifies distribution signatures on the locked CLI files and signs only Desktop-owned bytes. Real certificate signing is unverified on this host.
 The Desktop lock selects CLI `2.0.0 (2)` from canonical distribution run [45030337326](https://github.com/UniClipboard/UniClipboard/actions/runs/45030337326) by manifest SHA-256 `19a091d691c8d1ad5ea7bdfb12be39a2e6a2235756a919b7c9f415c4719dd8ec`. Both macOS targets have distribution signatures. All six targets passed the shared configuration, API and service-lifecycle source checks against Desktop. The [previous lock rejection receipt](../exec/baselines/desktop-cli-lock-20261120/receipt.json) records why the earlier candidate was replaced. `fetch-cli --allow-ci` verifies the canonical workflow, clean source, complete target matrix, package digests and macOS signing before acquiring the candidate. The default fetch path requires public immutable release assets.
-`build-desktop.yml` constructs six native targets from that exact lock. Explicit distribution mode imports an ephemeral Apple keychain, signs the Desktop payload, submits a copied bundle to Apple notarization and staples the accepted ticket before final archive hashing, and signs, notarizes and staples the `ULFO` DMG container (`--notarize-container`). Credentials stay in the ephemeral keychain. Cleanup runs after failure as well as success.
+`build-desktop.yml` verifies the exact CLI lock against the selected source before it starts the six native build jobs. A target failure cancels queued and running targets. The workflow requires all six targets to succeed. Explicit distribution mode imports an ephemeral Apple keychain, signs the Desktop payload, submits a copied bundle to Apple notarization and staples the accepted ticket before final archive hashing, and signs, notarizes and staples the `ULFO` DMG container (`--notarize-container`). Credentials stay in the ephemeral keychain. Cleanup runs after failure as well as success.
 Native package smoke keeps version inspection state-free, then explicitly initializes its isolated CLI profile with `unic migrate --initialize-empty --json` before shared-configuration IPC. Discovery HOME, XDG and Windows profile paths remain private. Portable and explicit data directories initialize independently; there is no gate bypass or direct receipt write. Disposable DEB lifecycle acceptance initializes before its first business command and verifies that the receipt survives upgrade and removal.
 
 The primary PR Desktop suite uses the same Ubuntu 24.04 and native GTK 3/indicator runtime baseline as the native Linux acceptance workflow. It installs display/recording tools without the webview-only WebKitGTK stack. The complete canonical suite is partitioned into three disjoint round-robin shards on independent hosted runners. All shards must pass, fail-fast is disabled, and each keeps the thirty-minute job budget. The canonical runner records a separate evidence artifact for each shard; unselected cases remain NOT_RUN in that shard.

@@ -155,6 +155,18 @@ def locked_cli(metadata, manifest_path, target, development):
     return manifest, package, path
 
 
+def check_cli_targets(record, manifest_path):
+    if not record["targets"]:
+        raise ValueError("Desktop metadata has no native targets")
+    for target in record["targets"]:
+        print(f"Checking locked CLI for {target}", flush=True)
+        locked_cli(record, manifest_path, target, False)
+
+
+def check_cli(args):
+    check_cli_targets(cli.metadata(args.metadata, "desktop"), args.cli_manifest)
+
+
 def fetch_cli(args):
     record = cli.metadata(args.metadata, "desktop")
     expected = record.get("cli_manifest_sha256", "")
@@ -176,10 +188,16 @@ def fetch_cli(args):
                 signed=True,
                 desktop_lock=True,
             )
-            locked_cli(record, work / "release-manifest.json", args.target, False)
+            manifest_path = work / "release-manifest.json"
+            if args.target:
+                locked_cli(record, manifest_path, args.target, False)
+            else:
+                check_cli_targets(record, manifest_path)
             work.rename(output)
         print(output / "release-manifest.json")
         return
+    if not args.target:
+        raise ValueError("--target is required for a public CLI download")
     tag = "cli/v" + record["cli_version"] + "-build." + str(record["cli_build_number"])
     base = (
         "https://github.com/UniClipboard/UniClipboard/releases/download/"
@@ -1022,9 +1040,16 @@ def main():
     s = sub.add_parser("accept")
     s.add_argument("--packages", required=True)
     s.add_argument("--receipt", required=True)
+    s = sub.add_parser("check-cli", help="Verify the Desktop CLI lock for all targets")
+    s.add_argument("--metadata", default=str(ROOT / "release/products.toml"))
+    s.add_argument("--cli-manifest", required=True)
     s = sub.add_parser("fetch-cli")
     s.add_argument("--metadata", default=str(ROOT / "release/products.toml"))
-    s.add_argument("--target", required=True, choices=sorted(TARGETS))
+    s.add_argument(
+        "--target",
+        choices=sorted(TARGETS),
+        help="Check all targets if omitted with --allow-ci",
+    )
     s.add_argument("--output", required=True)
     s.add_argument(
         "--allow-ci",
@@ -1061,6 +1086,7 @@ def main():
     args = p.parse_args()
     {
         "accept": accept,
+        "check-cli": check_cli,
         "fetch-cli": fetch_cli,
         "sign": sign,
         "stage": stage,

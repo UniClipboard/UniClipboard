@@ -104,8 +104,12 @@ jobs:
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
   publish:
     name: Publish CLI to npm
-    needs: [plan, resolve, build, stable_draft]
-    if: ${{ !cancelled() && needs.plan.result == 'success' && (needs.stable_draft.result == 'success' || needs.stable_draft.result == 'skipped') && (inputs.candidate_run_id != '' || (needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true'))) }}
+    needs: [plan, resolve, build, stable_draft, desktop_build]
+    if: >-
+      ${{ !cancelled() && needs.plan.result == 'success'
+      && (needs.stable_draft.result == 'success' || needs.stable_draft.result == 'skipped')
+      && (inputs.version == '' || inputs.channel == 'stable' || needs.desktop_build.result == 'success')
+      && (inputs.candidate_run_id != '' || (needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true'))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

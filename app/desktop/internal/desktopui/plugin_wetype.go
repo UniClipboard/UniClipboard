@@ -59,13 +59,13 @@ func (d *viewState) weTypePairingContent(c *ui.Context, k desktopkit.Kit, item a
 		ui.Column(c.Key("pair-form")).Padding(14, 16).Gap(10).Children(func() {
 			k.Text(c.Key("instructions"), d.tr("在微信输入法的跨设备设置中获取配对码。如有提示，请在微信输入法中确认配对。"), secondary)
 			field := k.CodeField(c.Key("code"), desktopkit.CodeFieldProps{
-				Label: d.tr("6 位配对码"), Length: 6, Value: &p.code, Disabled: l.busy || l.loading,
+				Label: d.tr("6 位配对码"), Length: 6, Value: &p.code, Disabled: l.busy,
 			})
 			label := "加入共享空间"
 			if p.busy {
 				label = "正在连接…"
 			}
-			ready := !l.busy && !l.loading && len(p.code) == 6
+			ready := !l.busy && len(p.code) == 6
 			button := k.Button(c.Key("join"), d.tr(label), desktopkit.ButtonProps{
 				Variant: desktopkit.Primary, Disabled: !ready, Busy: p.busy,
 			})
@@ -81,7 +81,7 @@ func (d *viewState) weTypeConnectionOptions(c *ui.Context, k desktopkit.Kit, ite
 	p := &d.pluginSettings.channelPair
 	k.Disclosure(c, d.tr("连接选项"), &p.optionsOpen, func() {
 		if canPair && d.channelForPlugin(item.ID) == nil {
-			if k.Button(c.Key("resume"), d.tr("恢复已有连接"), desktopkit.ButtonProps{Disabled: l.busy || l.loading}).Clicked() {
+			if k.Button(c.Key("resume"), d.tr("恢复已有连接"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
 				d.pairWeType(item.ID, true)
 			}
 		}

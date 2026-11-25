@@ -149,7 +149,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 	k.SettingsGroup(c.Key("external-plugin-control"), desktopkit.SettingsGroupProps{}, func() {
 		if item.LiveStart && item.RunningVersion == "" && !item.NeedsSettings {
 			k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{Label: d.tr("启动")}, nil, func() {
-				if k.Button(c.Key("start"), d.tr("启动"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy || l.loading}).Clicked() {
+				if k.Button(c.Key("start"), d.tr("启动"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy}).Clicked() {
 					d.startExternalPlugin(item.ID)
 				}
 			})
@@ -164,7 +164,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 			Label:       d.tr("启用"),
 			Description: description,
 		}, nil, func() {
-			if k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.busy || l.loading}).Changed() {
+			if k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.busy}).Changed() {
 				d.setExternalPluginEnabled(cfg, item.ID, on)
 			}
 		})

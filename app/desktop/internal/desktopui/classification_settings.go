@@ -26,7 +26,7 @@ func (d *viewState) classificationRules(c *ui.Context, k desktopkit.Kit, cfg con
 	if !slices.Equal(form.saved, instance.Rules) {
 		*form = classificationSettings{saved: instance.Rules}
 	}
-	busy := d.live.busy || d.live.loading
+	busy := d.live.busy
 	defaults := c.Key("default-classification-rules")
 	k.SettingsGroup(defaults, desktopkit.SettingsGroupProps{
 		Title:  d.tr("默认正则规则"),

@@ -105,6 +105,11 @@ does not contain the item yet, selects Upload clipboard, and checks intake
 and search. The fixture is built into the test output and identified by its
 hash. The workflow retains pasteboard diagnostics and the count of matching
 database records on failure. The
+[first hosted UIKit fixture run](https://github.com/UniClipboard/UniClipboard/actions/runs/45563089492/job/139031238322)
+found the fixture and recorded the app's item request. The pasteboard daemon
+requested authorization and returned an error while setting the TCC value to
+limited. The simulator build now uses Xcode's ad hoc signing and verifies the
+app signature before running the same paste scenario. The
 [interrupted asset download](https://github.com/UniClipboard/UniClipboard/actions/runs/45534358566/job/138937188768)
 is handled by bounded retries and the existing Maestro SHA-256 check.
 

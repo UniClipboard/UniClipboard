@@ -100,7 +100,7 @@ unic recv dismiss ID
 |---|---|---|
 | `add` | `add [CODE\|ADDRESS] [--backend INSTANCE]` | 不带参数时显示配对码并保持服务一段有限时间；带参数时向对方发起配对并等待批准 |
 | `addr` | `addr [--backend INSTANCE]` | 打印本机地址。**地址是秘密**，不要公开 |
-| `list` | `list [--json]` | 已配对与等待批准的设备；`--json` 包含路径绑定 ID、版本与同步状态 |
+| `list` | `list [--refresh] [--json]` | 列出已配对与待批准的设备。`--refresh` 先检测连接。`--json` 包含路径绑定 ID、修订号和连接状态。 |
 | `approve` | `approve ID FINGERPRINT` | 核对对方设备显示的指纹后批准 |
 | `reject` | `reject ID` | 拒绝等待中的设备 |
 | `remove` | `remove ID` | 忘记设备并撤销其全部路径 |

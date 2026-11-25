@@ -515,6 +515,14 @@ The single-instance external-process acceptance and remaining contract decision 
 
 `PATCH /v1/bindings/{id}` requires both `revision` and `enabled`. `DELETE /v1/bindings/{id}?revision=N` removes only that path. Both use Engine CAS and revocation barriers; stale revisions return HTTP 409. `unic device list --json` exposes the current path revisions; `unic device path pause|resume|remove BINDING_ID REVISION` submits them. Desktop device details expose the same per-path switch and removal operation. Whole-device removal still revokes every path.
 
+### Device connection refresh
+
+`POST /v1/network/changed` schedules a coalesced Engine network-change check and returns `{"ok":true}` after scheduling. Completion of the request does not confirm that a peer is reachable.
+
+`POST /v1/devices/refresh` accepts an empty body, `{}` or `{"device_id":"..."}`. An omitted or empty ID requests a check across devices. A nonempty ID selects a device. The service returns the refreshed `/v1/status` projection after the bounded check. Desktop exposes both scopes. `unic device list --refresh` uses the all-device scope and accepts `--json`.
+
+The status projection includes per-binding `connection` and, when available, `connection_path`, `latency_ms` and `last_checked_ms`. The transport category is `direct`, `derp`, `peer_relay` or `unknown`. Latency is a measured application round-trip time in milliseconds. The check time uses Unix milliseconds. The fields carry no raw endpoints or credentials.
+
 ### Local external-channel registration
 
 `POST /v1/channels` accepts `{backend_id,name}` on the owner-only service socket.

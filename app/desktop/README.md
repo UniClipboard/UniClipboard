@@ -87,7 +87,7 @@ curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b ./bin "$(cat .gola
 
 ## 第一阶段范围外
 
-Full-text search, fine-grained device policies and native clipboard change notifications remain outside the live desktop binding. One-shot directory transfer is implemented under the [directory contract](../../docs/contracts/directory-contract.md); automatic directory sync defaults off. Device pairing already requires explicit approval.
+The live Desktop binding provides service-backed full-text search in the main history window and Quick Panel. Device pairing requires explicit approval. One-shot directory transfer follows the [directory contract](../../docs/contracts/directory-contract.md), and automatic directory sync defaults off.
 
 
 ## 从本机 UniClipboard v1 迁移
@@ -178,7 +178,7 @@ See [headless architecture](../../docs/architecture/headless.md).
 
 ## Startup and runtime modes
 
-Manual application launch always opens GUI. Normal GUI close keeps tray and unicd; lightweight GUI close leaves only unicd. Explicit `--background` omits GUI after completed setup: normal keeps tray integration; lightweight starts only unicd. Fresh or pending setup opens GUI before runtime admission. The quick panel has its own OS process; it hides between requests and exits with the tray.
+Manual application launch always opens GUI. Normal GUI close keeps tray and unicd; lightweight GUI close leaves only unicd. Explicit `--background` omits GUI after completed setup: normal keeps tray integration; lightweight starts only unicd. Fresh or pending setup opens GUI before runtime admission. In normal mode, the Quick Panel process waits for requests without retaining its native windows. Each activation creates the windows it needs. Closing the panel destroys those windows. The process exits with the tray.
 
 ```toml
 [desktop]

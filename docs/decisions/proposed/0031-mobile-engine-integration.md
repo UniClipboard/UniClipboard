@@ -1,6 +1,6 @@
 # 0031 · 移动端集成 Engine：进程内绑定、Expo 原生宿主与迁移接入
 
-- 状态：已实现核心绑定、Expo 原生宿主、TypeScript 适配与 Setup 界面（`bindings/mobile` `-race` 全通、iOS 模拟器三态启动与 Android Debug APK 编译通过；真机双设备与商店签发待续），回执见 [0031 执行回执](../../exec/0031-mobile-engine-integration.md)
+- Status: Engine bindings, native hosts, the TypeScript adapter and Setup are implemented. See the [integration receipt](../../exec/0031-mobile-engine-integration.md), [iPhone physical-device receipt](../../exec/0031-mobile-m2-receipt.md#ios-physical-device-acceptance) and [release preparation receipt](../../exec/0031-mobile-m5-receipt.md). Two-device physical synchronization and Store rollout remain open.
 - 日期：2026-11-23
 - 关联：[0003 独立 Engine](0003-engine-sdk.md)、[0011 v1 历史迁移](0011-v1-history-migration.md)、[0018 独立构建与发布](0018-independent-product-build-and-release.md)、[0026 桌面首次安装引导与迁移](0026-first-install-setup.md)
 - 落地目标：[仓库布局与依赖边界](../../architecture/overview.md)、[Engine 公共契约](../../contracts/engine-contract.md)、[本机历史契约](../../contracts/history-contract.md)

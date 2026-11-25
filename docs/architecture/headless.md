@@ -22,7 +22,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: cfe629fdd1c51795d5f9fbfe14fb0dff688fb5bd
+verified: f99e90e35f86c5d5fe50c87e04217c415595a93a
 ---
 # Headless service and desktop integration
 
@@ -54,6 +54,7 @@ unic-desktop --role quick-panel --+
 The service accepts explicit text, PNG and file-reference submissions without a clipboard observation epoch.
 Directory snapshot export runs in the CLI and reconstructs independently owned roots under `rN/<original-name>`. It validates manifest bounds and member hashes, preserves empty directories and rejects existing root containers. Failed exports roll back only their newly created containers. See the [directory export contract](../contracts/directory-contract.md#cli-snapshot-export).
 Incoming content remains readable through history or the bounded transient Received list.
+The service also exposes stored history annotations, their assets and explicit enrichment requests through the [local service contract](../contracts/local-service-contract.md#history-annotations-and-enrichment).
 Clipboard ability does not filter headless content reception.
 An Action creates a new item and applies it only when explicitly requested.
 History restore continues to respect `sync.on_restore`.
@@ -65,6 +66,12 @@ Generation expiry releases owned leases and disables clipboard command dispatch.
 The adapter session expires after ten seconds without renewal; the client sends heartbeats every two seconds.
 A local launch key suppresses duplicate startup analytics across ready retries and reconnects. It is not an adapter credential and never enters telemetry.
 A manual no-argument Desktop launch always opens or activates the GUI. In normal mode, closing it terminates only the GUI process and keeps tray integration running. In lightweight mode, closing it also retires tray and quick-panel processes; only unicd remains, without an adapter or hotkey. Explicit application Quit stops UI roles and only a tray-owned service. A borrowed standalone service survives Quit.
+
+### Network change and device refresh
+
+`unicd` watches host interface changes and clock jumps associated with sleep and wake. The macOS tray also sends a native wake notification to the service. The service coalesces these signals before asking Engine to retry disconnected peers and probe existing peer sessions. This work never replays clipboard content.
+
+`unic device list --refresh` requests a bounded connection check before printing the device list. Desktop can request the same check for all devices or one selected device. See the [local service contract](../contracts/local-service-contract.md#device-connection-refresh) for both routes.
 
 ## Command surface and temporary transfer
 

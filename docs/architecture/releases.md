@@ -37,13 +37,15 @@ paths:
   - .github/workflows/release-ios.yml
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: ab7f91a5e70d5894f894e05ecc22e3db35593b83
+verified: 7988ba8d72bbfd4eacb7fd71de41bc23dc41d533
 ---
 # Product builds and CLI releases
 
 ## Current implementation
 
 `release/products.toml` owns the standalone product metadata and declares the joint build targets and Desktop update key. CLI and Desktop have separate build and delivery controllers. A joint workflow coordinates both products. Android and iOS have independent candidate workflows and metadata.
+
+Use the [product manifest](../../release/products.toml) for the build numbers configured at this revision. Use [npm dist-tags](https://www.npmjs.com/package/@uniclipboard/cli) for CLI channel availability and [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) for public Desktop preview installers. A checked-in build number is a build input. A joint release can allocate a higher number.
 
 ### Mobile candidates
 
@@ -330,9 +332,9 @@ The report records source hashes, process observations and assertions. Acceptanc
 
 ## Gaps
 
-The selected next CLI version is `2.0.0 (2)`, encoded as `2.0.0-build.2` on npm. Alpha selects the `alpha` dist-tag. Desktop selects `2.0.0 (3)`; Android and iOS retain independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Historical remote five-target build and package assembly acceptance passed. The six-target CLI matrix has native hosted acceptance. CLI build 2 is selected to include the current shared configuration/API; the execution receipt records its final accepted lock. Workflow authorization remains a publication prerequisite. Public OIDC/provenance and real GitHub release publication remain unverified.
+Stable advancement requires the exact Desktop acceptance and publication receipts described above. Each distribution format has its own availability and acceptance evidence. Native sandbox GUI, package refresh and real-OS clipboard, file and network acceptance remain separate checks. GitCode delivery is deferred.
 
-Desktop staging checks the locked private service configuration/API in addition to executable hashes. macOS signing/notarization, native Windows installer lifecycle, and two-architecture Nix/Flatpak/strict Snap process/IPC acceptance have passed as recorded in the execution receipt. Production delivery requires the durable raw updater key and the numbered public routes. R2/FlareRelease transport and the locked CLI npm availability gate are implemented but have not performed production delivery. Native sandbox GUI, package refresh and real-OS clipboard/file/network acceptance remain open. Android and iOS use the shared Expo UI and embedded Engine under `app/expo`. Production signing, hosted acceptance, Store upload and rollout remain unverified. GitCode is deferred. Decision 0018 remains open while these phases are pending.
+Mobile candidate builds, simulator runs, production signing, Store upload and rollout each have their own acceptance gate. The [mobile release preparation receipt](../exec/0031-mobile-m5-receipt.md) records candidate builds and simulator observations. The [iPhone receipt](../exec/0031-mobile-m2-receipt.md#ios-physical-device-acceptance) records the physical-device scenarios tested so far.
 
 Exact interface requirements are in the [release contract](../contracts/release-contract.md). Process ownership remains in the [headless architecture](headless.md).
 

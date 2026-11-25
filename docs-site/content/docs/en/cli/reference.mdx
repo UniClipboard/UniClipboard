@@ -100,7 +100,7 @@ Requirement: `service`.
 |---|---|---|
 | `add` | `add [CODE\|ADDRESS] [--backend INSTANCE]` | Without arguments, displays a pairing code and keeps the service running for a limited window; with an argument, initiates pairing and waits for approval |
 | `addr` | `addr [--backend INSTANCE]` | Print this device's address. **Addresses are secret**; do not share publicly |
-| `list` | `list [--json]` | Paired and pending devices; `--json` includes path binding IDs, versions, and sync status |
+| `list` | `list [--refresh] [--json]` | List paired and pending devices. Use `--refresh` to check connections first. JSON includes binding IDs, revisions, and connection state. |
 | `approve` | `approve ID FINGERPRINT` | Approve after verifying the fingerprint shown on the peer device |
 | `reject` | `reject ID` | Reject a pending device |
 | `remove` | `remove ID` | Forget a device and revoke all its paths |

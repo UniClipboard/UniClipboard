@@ -47,7 +47,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 9fd186bf06f852ba3dff567fec86fb04988dee33
+verified: f99e90e35f86c5d5fe50c87e04217c415595a93a
 ---
 # Desktop configuration and received files
 
@@ -139,6 +139,8 @@ Direct installations with a configured production update key use mygo's native u
 ## Incremental history browsing
 
 Desktop loads history in 50-entry cursor pages as the list or grid approaches its loaded end. It retains a 500-entry sliding window, bounded cursor checkpoints and one selected detail outside that window. Scrolling toward an evicted newer page reloads it automatically. Stable item keys retain surviving scroll anchors.
+
+Desktop can render a link card from a stored `link_preview.v1` annotation and its assets. It loads these through the local service and can still show the standard link card before an annotation is available. See [history enrichment](pipeline.md#asynchronous-history-enrichment).
 
 Image preview admission occurs before `HistoryContent` can open or materialize a
 response. Each UI process owns one slot through response close and decode completion.
@@ -518,6 +520,8 @@ Device management uses one unified BoardUI presentation for live and preview dat
 The right 380-DIP inspector manages the selected item: the local device displays inline rename (`config.DeviceName`), the local `DeviceID` (never a fabricated pairing fingerprint), and a clickable channel status overview; a trusted device supports revision-checked inline rename (`PATCH /v1/peers/{id}`, clearing to revert to `reported_name`), a top inline pending-path approval card whose rejection removes only the pending binding via `DELETE /v1/bindings/{id}` without unpairing the device, per-path sync switches (`PATCH /v1/bindings/{id}`) and overflow actions (channel policy jump and confirmed path removal), an 8-cell fingerprint grid, a batch pause/resume button shown only when two or more authorized paths exist, and confirmed device removal (`DELETE /v1/peers/{id}?revision=N`); external channels expose name/enable/auto-apply controls (`PATCH /v1/channels/{id}`) and revocation-aware confirmed removal (`DELETE /v1/channels/{id}?revision=N`).
 
 Device invitation and connection tasks select a running peer-sessions channel (hiding the selector when only one channel is running, and replacing the form with plugin-settings guidance when zero are running). External-channel and unsupported object-store types do not enter device pairing. Opening the pairing sheet snapshots existing pending revisions so inline approval switches only for matching new or updated requests. History detail shows each backend's disposition/state/error, so one successful path does not hide another failure.
+
+The device list offers **Refresh Status** for all devices. The selected device offers **Check Connection** where it supports that operation. A binding can show the connection state, transport category, measured round-trip time and last check time when the backend supplies them. On macOS, the active tray also notifies the service when the system wakes. See [device connection refresh](identity-and-trust.md#device-connection-refresh).
 
 `make desktop-e2e CASE=external-sync-workflow` drives the real mygo composition, production service and real external Go fixture processes. It seeds only the verified fixture installation; installation itself is covered by the real CLI GitHub-fixture workflow. It creates/enables a runtime instance through UI, restarts, changes policy, approves a cross-instance pair and checks exact bidirectional text plus per-instance results. Its recording is native application content, not OS clipboard, cross-application paste or user visual approval. See the [workflow receipt](../exec/sync-plugin-workflow.md).
 

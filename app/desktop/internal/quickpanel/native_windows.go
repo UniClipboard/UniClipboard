@@ -17,6 +17,7 @@ var showWindow = user32.NewProc("ShowWindow")
 var getKeyState = user32.NewProc("GetAsyncKeyState")
 var sendInput = user32.NewProc("SendInput")
 var isWindow = user32.NewProc("IsWindow")
+var isIconic = user32.NewProc("IsIconic")
 
 type windowsPlatform struct{}
 
@@ -58,8 +59,10 @@ func (p windowsPlatform) Activate(t Target) error {
 	if err := p.Check(t); err != nil {
 		return err
 	}
-	// SW_RESTORE also restores a minimized target without creating another instance.
-	_, _, _ = showWindow.Call(t.ID, 9)
+	// SW_RESTORE also unmaximizes a window. Use it only to recover a minimized target.
+	if minimized, _, _ := isIconic.Call(t.ID); minimized != 0 {
+		_, _, _ = showWindow.Call(t.ID, windows.SW_RESTORE)
+	}
 	ok, _, _ := setForeground.Call(t.ID)
 	if ok == 0 {
 		return ErrFocus

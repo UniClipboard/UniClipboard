@@ -6,6 +6,7 @@ $form.Text=$WindowTitle
 $form.Width=520
 $form.Height=180
 $form.StartPosition='CenterScreen'
+$form.WindowState=[Windows.Forms.FormWindowState]::Maximized
 $label=New-Object Windows.Forms.Label
 $label.Text='Synthetic task-owned shortcut target. No clipboard integration.'
 $label.AutoSize=$true

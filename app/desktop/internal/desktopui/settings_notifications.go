@@ -221,10 +221,11 @@ func (d *viewState) notificationSettingsContent(c *ui.Context, k desktopkit.Kit,
 
 	desc := d.tr("仅读取当前应用的系统通知状态，不会主动弹窗。点击「发送测试通知」可验证通知送达或触发首次系统授权。")
 	hint := d.tr("如在系统设置中更改了通知权限，请点击刷新以更新状态。")
-	if s.status == "unsupported" {
+	switch s.status {
+	case "unsupported":
 		desc = d.tr("仅打包后的桌面应用支持系统通知；应用内红点与弹窗指引仍会正常显示。")
 		hint = d.tr("当前运行环境不支持原生系统通知。")
-	} else if s.status == "denied" {
+	case "denied":
 		hint = d.tr("系统已关闭本应用通知权限，请在系统设置中重新允许。")
 	}
 

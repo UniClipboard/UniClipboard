@@ -52,9 +52,7 @@
   },
   "migration": {
     "title": "Migrar histórico da v1",
-    "description": "Importação offline de histórico, arquivos e tags da versão antiga"
-  },
-  "migration": {
+    "description": "Importação offline de histórico, arquivos e tags da versão antiga",
     "preparing": "Preparando o armazenamento local…",
     "ready": "Seu novo espaço está pronto",
     "readyBody": "O histórico, as etiquetas e as configurações de confiança ficam neste dispositivo. Selecione uma pasta para importar um backup da versão 1.",

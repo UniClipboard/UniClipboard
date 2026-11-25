@@ -59,6 +59,47 @@ export function AppNavigator() {
     return <MigrationSetupScreen />;
   }
 
+  const navigator = (
+    <>
+      <NavigationContainer
+        theme={{
+          ...base,
+          colors: {
+            ...base.colors,
+            background: theme.colors.background as string,
+            card: theme.colors.surface as string,
+            text: theme.colors.textPrimary as string,
+            primary: theme.colors.accent as string,
+          },
+        }}
+      >
+        <Stack.Navigator
+          initialRouteName="Main"
+          screenOptions={{ headerShown: false }}
+        >
+          <Stack.Screen name="Main" component={MainScreen} />
+          <Stack.Screen
+            name="OnboardingPreview"
+            component={OnboardingPreviewScreen}
+            options={{ presentation: "fullScreenModal" }}
+          />
+          <Stack.Screen
+            name="ConnectionPreview"
+            component={ConnectionPreviewScreen}
+            options={{ presentation: "fullScreenModal" }}
+          />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="SettingsSub" component={SettingsSubScreen} />
+        </Stack.Navigator>
+      </NavigationContainer>
+      {mode === "live" && <IncomingShareSheet />}
+    </>
+  );
+
+  if (mode === "live") {
+    return navigator;
+  }
+
   return (
     <View
       style={{
@@ -67,51 +108,18 @@ export function AppNavigator() {
         backgroundColor: theme.colors.background,
       }}
     >
-      {mode !== "live" ? (
-        <View
-          style={{ padding: 8, backgroundColor: theme.colors.accentContainer }}
+      <View
+        style={{ padding: 8, backgroundColor: theme.colors.accentContainer }}
+      >
+        <Text
+          testID="shell-banner"
+          style={{ color: theme.colors.onAccentContainer, textAlign: "center" }}
         >
-          <Text
-            testID="shell-banner"
-            style={{ color: theme.colors.onAccentContainer, textAlign: "center" }}
-          >
-            {t("shell:banner")}
-          </Text>
-        </View>
-      ) : null}
+          {t("shell:banner")}
+        </Text>
+      </View>
       <SafeAreaInsetsContext.Provider value={{ ...insets, top: 0 }}>
-        <NavigationContainer
-          theme={{
-            ...base,
-            colors: {
-              ...base.colors,
-              background: theme.colors.background as string,
-              card: theme.colors.surface as string,
-              text: theme.colors.textPrimary as string,
-              primary: theme.colors.accent as string,
-            },
-          }}
-        >
-          <Stack.Navigator
-            initialRouteName="Main"
-            screenOptions={{ headerShown: false }}
-          >
-            <Stack.Screen name="Main" component={MainScreen} />
-            <Stack.Screen
-              name="OnboardingPreview"
-              component={OnboardingPreviewScreen}
-              options={{ presentation: "fullScreenModal" }}
-            />
-            <Stack.Screen
-              name="ConnectionPreview"
-              component={ConnectionPreviewScreen}
-              options={{ presentation: "fullScreenModal" }}
-            />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-            <Stack.Screen name="SettingsSub" component={SettingsSubScreen} />
-          </Stack.Navigator>
-        </NavigationContainer>
-        {mode === "live" && <IncomingShareSheet />}
+        {navigator}
       </SafeAreaInsetsContext.Provider>
     </View>
   );

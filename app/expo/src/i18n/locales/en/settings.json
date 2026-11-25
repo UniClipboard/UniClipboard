@@ -68,12 +68,12 @@
       "autoApply": {
         "title": "Auto-write to clipboard",
         "descLan": "When new content arrives from the server, write it to this device clipboard automatically",
-        "descP2p": "When new content arrives from your space, write it to this device clipboard automatically"
+        "descP2p": "When new content arrives from paired devices, write it to this device clipboard automatically"
       },
       "autoPush": {
         "title": "Auto-push clipboard",
         "descLan": "When you copy or use a history item, send it to the current server automatically",
-        "descP2p": "When you copy or use a history item, send it to the other devices in your space automatically"
+        "descP2p": "When you copy content on this device, sync it to your paired devices automatically"
       },
       "footer": "These options control sync direction; Background settings control where it can run",
       "updateFailed": "Update failed"
@@ -95,13 +95,13 @@
   },
   "ios": {
     "sync": {
-      "footer": "When Auto-write is on, new content from your space is written to this device clipboard immediately; when off, it is only highlighted on Home. Auto-push reads every copy, so set Clipboard access to Allow first or iOS will ask each time.",
+      "footer": "When Auto-write is on, new content from paired devices is written to this device clipboard immediately; when off, it is only highlighted on Home. Auto-push reads every copy, so set Clipboard access to Allow first or iOS will ask each time.",
       "autoApply": "Auto-write to clipboard",
       "autoPush": "Auto-push clipboard",
       "sse": "Live push (SSE)"
     },
     "extensions": {
-      "footer": "The keyboard and share extensions let you use UniClip directly in other apps; set clipboard access to Allow to avoid repeated prompts during sync.",
+      "footer": "The share extension lets you send items to UniClipboard directly from the iOS share sheet in other apps.",
       "keyboard": "Keyboard",
       "share": "Share",
       "clipboardAccess": "Clipboard access"
@@ -122,8 +122,8 @@
   "analytics": {
     "sectionTitle": "Privacy",
     "consentTitle": "Share anonymous usage and diagnostics",
-    "consentDescription": "Helps improve UniClip without collecting clipboard contents or names",
-    "footer": "App version, system, region, session, device count, anonymous space grouping, and diagnostic records without contents or names may be sent. Turning this off stops collection and clears pending data.",
+    "consentDescription": "Helps improve UniClipboard without collecting clipboard contents or names",
+    "footer": "App version, system, region, session, paired device count, and diagnostic records without contents or names may be sent. Turning this off stops collection and clears pending data.",
     "reset": "Reset",
     "resetTitle": "Reset statistics identity",
     "resetMessage": "This removes pending statistics and diagnostics and creates a new anonymous identity.",
@@ -143,13 +143,19 @@
     "cleanup": "Clean up history automatically",
     "retention": "Retention in days",
     "excludedTags": "Tags excluded from cleanup",
-    "excludedHint": "Use 0 for no age or item-count limit. Separate custom tags with commas.",
+    "customTags": "Custom tags",
+    "excludedHint": "Separate custom tags with commas. Tagged items are kept during automatic cleanup.",
+    "unlimited": "Unlimited",
+    "daysValue": "{{count}} days",
+    "itemsValue": "{{count}} items",
     "starred": "Favorites",
     "pinned": "Pinned",
-    "max_file_bytes": "Single-file limit (bytes)",
-    "max_total_bytes": "Total content limit (bytes)",
-    "cacheLimit": "File cache quota (bytes)",
+    "max_file_bytes": "Single-file limit",
+    "max_total_bytes": "Total content limit",
+    "cacheLimit": "File cache quota",
     "clearPreviews": "Clear local previews",
+    "sessionLogsSummary": "Redacted diagnostic logs from this session, without clipboard contents",
+    "sessionLogsFooter": "Exports redacted diagnostic records from the current session only. Clipboard contents and credentials are never included.",
     "rendezvous": "Rendezvous URL",
     "default": "Default",
     "resetRendezvous": "Use default rendezvous",

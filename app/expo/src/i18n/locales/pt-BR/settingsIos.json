@@ -12,11 +12,11 @@
     },
     "hero": {
       "title": "Seus clipes onde você digita",
-      "description": "O Teclado UniClip mostra o que você copiou nos seus outros dispositivos. Toque em um clipe para colá-lo em qualquer app."
+      "description": "O Teclado UniClipboard mostra o que você copiou nos seus outros dispositivos. Toque em um clipe para colá-lo em qualquer app."
     },
     "almostThere": {
       "title": "Quase lá",
-      "description": "O Teclado UniClip foi adicionado. Ative o Acesso Total para ele mostrar seus clipes."
+      "description": "O Teclado UniClipboard foi adicionado. Ative o Acesso Total para ele mostrar seus clipes."
     },
     "ready": {
       "title": "Pronto",
@@ -25,21 +25,21 @@
     "setup": {
       "title": "Configuração · {{done}} de 3",
       "add": {
-        "title": "Adicione o Teclado UniClip",
-        "subtitle": "Ajustes › Apps › UniClip › Teclados"
+        "title": "Adicione o Teclado UniClipboard",
+        "subtitle": "Ajustes › Apps › UniClipboard › Teclados"
       },
       "fullAccess": {
         "title": "Permita o Acesso Total",
         "subtitle": "Para mostrar seus clipes sincronizados",
-        "path": "Teclados › Teclado UniClip › Permitir Acesso Total",
-        "readsOnly": "Lê apenas clipes que o UniClip já sincronizou",
+        "path": "Teclados › Teclado UniClipboard › Permitir Acesso Total",
+        "readsOnly": "Lê apenas clipes que o UniClipboard já sincronizou",
         "sendsOnly": "Envia apenas para dispositivos do seu espaço",
         "systemWarning": "O iOS mostra um aviso genérico ao ativar."
       },
       "switch": {
         "title": "Mude para ele uma vez",
         "subtitle": "Confirma que tudo funciona",
-        "instructions": "Toque no campo, mantenha pressionada a tecla de globo e escolha Teclado UniClip.",
+        "instructions": "Toque no campo, mantenha pressionada a tecla de globo e escolha Teclado UniClipboard.",
         "placeholder": "Toque para abrir o teclado",
         "detected": "Detectado, com Acesso Total. Tudo pronto.",
         "stillOffHint": "Se o teclado mostrar “Acesso Total Necessário”, o Acesso Total ainda está desativado."
@@ -50,7 +50,7 @@
     "howToUse": {
       "title": "Como usar",
       "switchTitle": "Trocar de teclado",
-      "switchDescription": "Em qualquer app, mantenha pressionada a tecla de globo e escolha Teclado UniClip.",
+      "switchDescription": "Em qualquer app, mantenha pressionada a tecla de globo e escolha Teclado UniClipboard.",
       "tryLabel": "Experimente aqui",
       "tryPlaceholder": "Toque para abrir o teclado"
     },
@@ -67,14 +67,14 @@
   },
   "share": {
     "title": "Compartilhar",
-    "testMessage": "Teste de compartilhamento do UniClip",
+    "testMessage": "Teste de compartilhamento do UniClipboard",
     "hero": {
       "title": "Envie de qualquer app",
-      "description": "Compartilhe algo e escolha o UniClip. O UniClip abre com o item pronto para você escolher quais dispositivos recebem."
+      "description": "Compartilhe algo e escolha o UniClipboard. O UniClipboard abre com o item pronto para você escolher quais dispositivos recebem."
     },
     "flow": {
       "tapShare": "Toque em Compartilhar",
-      "pickApp": "Escolha o UniClip",
+      "pickApp": "Escolha o UniClipboard",
       "chooseDevices": "Escolha os dispositivos"
     },
     "tryButton": "Experimentar agora",
@@ -87,9 +87,9 @@
     },
     "quickAccess": {
       "title": "Acesso rápido",
-      "footer": "Não há nada para ativar. O UniClip aparece na folha de compartilhamento assim que é instalado.",
+      "footer": "Não há nada para ativar. O UniClipboard aparece na folha de compartilhamento assim que é instalado.",
       "favoritesRow": "Fixar nos Favoritos",
-      "favoritesRowSubtitle": "Deixe o UniClip primeiro na linha de apps · 4 passos"
+      "favoritesRowSubtitle": "Deixe o UniClipboard primeiro na linha de apps · 4 passos"
     },
     "guide": {
       "title": "Fixar nos Favoritos",
@@ -109,12 +109,12 @@
           "description": "Deslize a linha de ícones de apps totalmente para a esquerda e toque em Mais no final."
         },
         "addFavorite": {
-          "title": "Adicione o UniClip aos Favoritos",
-          "description": "Toque em Editar e depois no sinal de mais verde ao lado do UniClip."
+          "title": "Adicione o UniClipboard aos Favoritos",
+          "description": "Toque em Editar e depois no sinal de mais verde ao lado do UniClipboard."
         },
         "moveToTop": {
           "title": "Mova-o para o topo",
-          "description": "Arraste o UniClip pela alça acima dos outros e toque em OK."
+          "description": "Arraste o UniClipboard pela alça acima dos outros e toque em OK."
         }
       },
       "illustration": {
@@ -157,9 +157,9 @@
       "message": "Tente novamente mais tarde."
     },
     "warning": {
-      "engineLogsMissing": "Os registros do Engine não foram encontrados, então o pacote não contém dados do Engine. Reinicie o UniClip e exporte novamente.",
-      "engineLogsUnreadable": "Alguns ou todos os registros do Engine foram encontrados, mas não puderam ser lidos; o pacote pode estar incompleto. Reinicie o UniClip e exporte novamente.",
-      "engineLogsWrittenNotFound": "O Engine informa registros gravados, mas os arquivos não existem no disco. O pacote está incompleto; reinicie o UniClip e exporte novamente.",
+      "engineLogsMissing": "Os registros do Engine não foram encontrados, então o pacote não contém dados do Engine. Reinicie o UniClipboard e exporte novamente.",
+      "engineLogsUnreadable": "Alguns ou todos os registros do Engine foram encontrados, mas não puderam ser lidos; o pacote pode estar incompleto. Reinicie o UniClipboard e exporte novamente.",
+      "engineLogsWrittenNotFound": "O Engine informa registros gravados, mas os arquivos não existem no disco. O pacote está incompleto; reinicie o UniClipboard e exporte novamente.",
       "networkLogsIncomplete": "Os registros de rede podem estar incompletos: alguns arquivos não puderam ser descarregados, lidos ou verificados. Apenas este processo foi descarregado; outros processos, como o teclado, não foram."
     },
     "capture": {

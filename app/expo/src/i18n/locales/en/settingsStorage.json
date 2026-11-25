@@ -52,9 +52,7 @@
   },
   "migration": {
     "title": "Migrate history from v1",
-    "description": "Offline import of legacy UniClipboard history, files, and tags"
-  },
-  "migration": {
+    "description": "Offline import of legacy UniClipboard history, files, and tags",
     "preparing": "Preparing local storage…",
     "ready": "Your new space is ready",
     "readyBody": "History, tags and trust settings stay on this device. Select a folder to import a v1 backup.",

@@ -52,9 +52,7 @@
   },
   "migration": {
     "title": "从 v1 迁移历史记录",
-    "description": "离线导入旧版 UniClipboard 数据库、附件与标签（幂等可续传）"
-  },
-  "migration": {
+    "description": "离线导入旧版 UniClipboard 数据库、附件与标签（幂等可续传）",
     "preparing": "正在准备本地存储…",
     "ready": "全新空间已就绪",
     "readyBody": "历史、标签和信任设置保存在本机。也可选择文件夹导入旧版备份。",

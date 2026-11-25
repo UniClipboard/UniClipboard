@@ -165,3 +165,31 @@ func (n *Node) ListHistoryTags(ctx context.Context) ([]string, error) {
 	tags, err := n.e.ListHistoryTags(ctx)
 	return tags, apiErr0(err)
 }
+
+func (n *Node) HistoryAnnotations(ctx context.Context, id string) ([]engine.HistoryAnnotation, error) {
+	anns, err := n.e.GetHistoryAnnotations(ctx, engine.HistoryID(id))
+	if err != nil {
+		return nil, apiErr(err, false)
+	}
+	if anns == nil {
+		anns = []engine.HistoryAnnotation{}
+	}
+	return anns, nil
+}
+
+func (n *Node) HistoryAnnotationAsset(ctx context.Context, id, pluginID, annType, assetKey string) (api.HistoryAnnotationAsset, error) {
+	r, meta, err := n.e.OpenHistoryAnnotationAsset(ctx, engine.HistoryID(id), engine.PluginID(pluginID), annType, assetKey)
+	if err != nil {
+		return api.HistoryAnnotationAsset{}, apiErr(err, false)
+	}
+	return api.HistoryAnnotationAsset{MIME: meta.MIME, Size: meta.Size, ReadCloser: r}, nil
+}
+
+func (n *Node) EnrichHistory(ctx context.Context, id string, req api.HistoryEnrichInput) error {
+	err := n.e.EnrichHistory(ctx, engine.HistoryEnrichRequest{
+		HistoryID: engine.HistoryID(id),
+		PluginID:  engine.PluginID(req.PluginID),
+		Force:     req.Force,
+	})
+	return apiErr0(err)
+}

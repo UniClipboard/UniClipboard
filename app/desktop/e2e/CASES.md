@@ -318,6 +318,7 @@ ui-click listItem 设置…
 ui-wait listItem 插件
 ui-click listItem 插件
 ui-enabled button '内容分类'
+ui-reveal button 内容分类
 ui-click button 内容分类
 plugin-back-in-toolbar
 screenshot classification-toolbar
@@ -339,6 +340,7 @@ ui-enabled button '返回插件列表'
 ui-click button 返回插件列表
 ui-absent button 返回插件列表
 ui-enabled button '文本工具'
+ui-reveal button 文本工具
 ui-click button 文本工具
 ui-enabled switch '启用文本工具'
 ui-click switch 启用文本工具
@@ -355,6 +357,7 @@ ui-click listItem 设置…
 ui-wait listItem 插件
 ui-click listItem 插件
 ui-enabled button '内容分类'
+ui-reveal button 内容分类
 ui-click button 内容分类
 config-equals plugins.instances.builtin.classify.enabled false
 ui-enabled switch '启用内容分类'
@@ -364,6 +367,7 @@ ui-enabled button '返回插件列表'
 ui-click button 返回插件列表
 ui-absent button 返回插件列表
 ui-enabled button '文本工具'
+ui-reveal button 文本工具
 ui-click button 文本工具
 ui-enabled switch '启用文本工具'
 ui-click switch 启用文本工具
@@ -378,6 +382,7 @@ ui-wait listItem 插件
 ui-click listItem 插件
 screenshot processors-active
 ui-enabled button 文本工具
+ui-reveal button 文本工具
 ui-click button 文本工具
 ui-value popUpButton 处理失败时 '跟随全局（继续处理）'
 config-equals plugins.instances.builtin.text.on_error null

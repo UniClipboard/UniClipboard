@@ -16,6 +16,7 @@ import (
 
 type Model struct {
 	Colors                                                  *boardui.ColorTheme
+	Toasts                                                  *desktopkit.ToastStore
 	WindowControls                                          func(*ui.Context)
 	Stage, Source, Error, Language                          string
 	Detecting, Found, PendingStart, Entering, MigrationOnly bool
@@ -64,6 +65,13 @@ func Render(c *ui.Context, m Model, fields *Fields, a Actions) {
 			ui.Row(c.Key("setup-caption")).Absolute().Top(0).Left(0).Right(0).
 				Height(topBand).AlignItems(ui.Center).Justify(ui.End).DragWindow().
 				Children(func() { m.WindowControls(c) })
+		}
+		if m.Toasts != nil {
+			k.Toaster(c, m.Toasts, desktopkit.ToasterProps{
+				Position:   desktopkit.ToastTopCenter,
+				Label:      tr("通知"),
+				CloseLabel: tr("关闭提示"),
+			})
 		}
 	})
 }
@@ -234,15 +242,20 @@ func tagChip(c *ui.Context, k desktopkit.Kit, color desktopkit.TagColor, label s
 	})
 }
 
-func semanticBanner(c *ui.Context, k desktopkit.Kit, p setupColors, tone desktopkit.NoticeTone, icon desktopkit.IconName, title, body string) ui.Element {
+type setupNoteTone int
+
+const (
+	noteInfo setupNoteTone = iota
+	noteWarning
+)
+
+func setupNoteCard(c *ui.Context, k desktopkit.Kit, p setupColors, tone setupNoteTone, icon desktopkit.IconName, title, body string) ui.Element {
 	bg, border, fg := p.cardSubtle, p.cardBorder, p.textSub
 	titleCol := k.Color("text-primary")
 	switch tone {
-	case desktopkit.ToneWarning:
+	case noteWarning:
 		bg, border, fg, titleCol = p.warnBg, p.warnEdge, p.warnBody, p.warnFg
-	case desktopkit.ToneError:
-		bg, border, fg, titleCol = p.errBg, p.errEdge, p.errFg, p.errFg
-	case desktopkit.ToneInfo:
+	case noteInfo:
 		bg, border, fg, titleCol = p.accentSoft, p.accentEdge, p.accentInk, p.accentInk
 	}
 	return ui.Row(c).FillWidth().Padding(11, 13).Radius(10).Gap(9).AlignItems(ui.Start).Background(bg).Border(1, border).Children(func() {

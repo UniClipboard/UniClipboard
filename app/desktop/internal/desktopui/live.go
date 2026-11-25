@@ -1113,6 +1113,7 @@ func (d *viewState) mutateWithin(work func(context.Context) error, success strin
 			if err != nil {
 				l.message = liveErrorMessage(err)
 				d.notice = "操作失败"
+				d.toastError(d.tr(l.message), desktopkit.ToastOptions{ID: toastIDLiveMessage})
 			} else {
 				l.message = ""
 				d.notice = success
@@ -1168,6 +1169,7 @@ func (d *viewState) deleteLiveEntries(ids []string) {
 			records = append(records, it)
 		} else {
 			d.live.message = "历史已变化。请刷新后重试。"
+			d.toastWarning(d.tr(d.live.message), desktopkit.ToastOptions{ID: toastIDLiveMessage})
 			return
 		}
 	}
@@ -1503,13 +1505,18 @@ func (d *viewState) runHistoryAction(id, key string) {
 	l.invalidateSearch()
 	l.startBusy("正在处理…")
 	l.message = ""
-	d.actionToast = actionToastState{
-		visible: true,
-		running: true,
-		title:   title,
-		message: fmt.Sprintf(d.tr("正在执行「%s」…"), title),
-		tone:    desktopkit.ToneInfo,
-	}
+	d.toasts.Info(fmt.Sprintf(d.tr("正在执行「%s」…"), title), desktopkit.ToastOptions{
+		ID:             toastIDActionRun,
+		Loading:        true,
+		Duration:       desktopkit.ToastPersistent,
+		NonDismissible: true,
+		Actions: []desktopkit.ToastAction{{
+			Label:    d.tr("取消"),
+			Variant:  "secondary",
+			KeepOpen: true,
+			OnClick:  d.cancelRunningAction,
+		}},
+	})
 	actionCtx, actionCancel := context.WithCancel(l.ctx)
 	l.actionCancel = actionCancel
 
@@ -1555,27 +1562,22 @@ func (d *viewState) runHistoryAction(id, key string) {
 					l.message = ""
 					d.notice = ""
 					if wantNotify {
-						d.actionToast = actionToastState{
-							visible:   true,
-							title:     title,
-							message:   fmt.Sprintf(d.tr("已取消「%s」"), title),
-							tone:      desktopkit.ToneWarning,
-							expiresAt: time.Now().Add(3 * time.Second),
-						}
+						d.toasts.Update(toastIDActionRun, fmt.Sprintf(d.tr("已取消「%s」"), title), desktopkit.ToastOptions{
+							Status:   desktopkit.ToastWarning,
+							Duration: 3 * time.Second,
+						})
 					} else {
-						d.actionToast = actionToastState{}
+						d.toastDismiss(toastIDActionRun)
 					}
 					return
 				}
 				l.message = liveErrorMessage(err)
 				d.notice = "操作失败"
-				d.actionToast = actionToastState{
-					visible:   true,
-					title:     title,
-					message:   fmt.Sprintf(d.tr("「%s」执行失败"), title),
-					tone:      desktopkit.ToneError,
-					expiresAt: time.Now().Add(4 * time.Second),
-				}
+				d.toasts.Update(toastIDActionRun, fmt.Sprintf(d.tr("「%s」执行失败"), title), desktopkit.ToastOptions{
+					Description: d.tr(l.message),
+					Status:      desktopkit.ToastError,
+					Duration:    4 * time.Second,
+				})
 				return
 			}
 
@@ -1585,16 +1587,22 @@ func (d *viewState) runHistoryAction(id, key string) {
 			}
 
 			if wantPresent {
-				d.actionToast = actionToastState{}
 				if applyFailed {
 					l.message = ""
 					d.notice = ""
-				} else if wantCopy {
-					l.message = ""
-					d.notice = "已复制"
+					d.toasts.Update(toastIDActionRun, d.tr("已保存到历史，但未能写入剪贴板。"), desktopkit.ToastOptions{
+						Status:   desktopkit.ToastWarning,
+						Duration: 4 * time.Second,
+					})
 				} else {
-					l.message = ""
-					d.notice = ""
+					d.toastDismiss(toastIDActionRun)
+					if wantCopy {
+						l.message = ""
+						d.notice = "已复制"
+					} else {
+						l.message = ""
+						d.notice = ""
+					}
 				}
 				d.actionResult = actionResultState{
 					open:        true,
@@ -1617,13 +1625,10 @@ func (d *viewState) runHistoryAction(id, key string) {
 			if applyFailed {
 				l.message = liveErrorMessage(&api.Error{Reason: "action_apply_failed", Message: "action saved to history"})
 				d.notice = "操作失败"
-				d.actionToast = actionToastState{
-					visible:   true,
-					title:     title,
-					message:   d.tr("已保存到历史，但未能写入剪贴板。"),
-					tone:      desktopkit.ToneWarning,
-					expiresAt: time.Now().Add(4 * time.Second),
-				}
+				d.toasts.Update(toastIDActionRun, d.tr("已保存到历史，但未能写入剪贴板。"), desktopkit.ToastOptions{
+					Status:   desktopkit.ToastWarning,
+					Duration: 4 * time.Second,
+				})
 				return
 			}
 
@@ -1641,15 +1646,12 @@ func (d *viewState) runHistoryAction(id, key string) {
 				if wantCopy {
 					msg = fmt.Sprintf(d.tr("已完成「%s」· 已复制"), title)
 				}
-				d.actionToast = actionToastState{
-					visible:   true,
-					title:     title,
-					message:   msg,
-					tone:      desktopkit.ToneSuccess,
-					expiresAt: time.Now().Add(4 * time.Second),
-				}
+				d.toasts.Update(toastIDActionRun, msg, desktopkit.ToastOptions{
+					Status:   desktopkit.ToastSuccess,
+					Duration: 4 * time.Second,
+				})
 			} else {
-				d.actionToast = actionToastState{}
+				d.toastDismiss(toastIDActionRun)
 			}
 		}
 	}, 5*time.Minute+30*time.Second)
@@ -1657,6 +1659,6 @@ func (d *viewState) runHistoryAction(id, key string) {
 		actionCancel()
 		l.actionCancel = nil
 		l.stopBusy()
-		d.actionToast = actionToastState{}
+		d.toastDismiss(toastIDActionRun)
 	}
 }

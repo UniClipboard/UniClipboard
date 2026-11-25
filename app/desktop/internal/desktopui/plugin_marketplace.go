@@ -34,10 +34,14 @@ func (d *viewState) ensureMarketplaceLoaded(refresh bool) {
 			l.marketplaceLoading = false
 			if err != nil {
 				l.marketplaceError = "未能加载插件市场目录。"
+				d.toastWarning(d.tr(l.marketplaceError), desktopkit.ToastOptions{ID: "marketplace-load"})
 				return
 			}
 			l.marketplaceLoaded = true
 			l.marketplace = cat
+			if cat.Warning != "" {
+				d.toastWarning(cat.Warning, desktopkit.ToastOptions{ID: "marketplace-warning"})
+			}
 			if d.pluginSettings.marketSelected == "" && len(cat.Plugins) > 0 {
 				d.pluginSettings.marketSelected = cat.Plugins[0].ID
 			}
@@ -130,6 +134,7 @@ func (d *viewState) startExternalPlugin(id string) {
 			l.nextRefresh = time.Time{}
 			if err != nil {
 				p.installError = d.tr("启动失败") + " · " + liveErrorMessage(err)
+				d.toastError(p.installError, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 				return
 			}
 			if i := slices.IndexFunc(l.externalPlugins, func(item api.PluginInfo) bool { return item.ID == id }); i >= 0 {
@@ -171,6 +176,7 @@ func (d *viewState) installMarketplacePlugin(req api.PluginInstallRequest, displ
 			p.installingID = ""
 			if err != nil {
 				p.installError = d.tr("安装失败：") + err.Error()
+				d.toastError(p.installError, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 				return
 			}
 			if plugins != nil {
@@ -185,16 +191,22 @@ func (d *viewState) installMarketplacePlugin(req api.PluginInstallRequest, displ
 			}
 			if info.NeedsSettings {
 				p.installNotice = name + " · " + d.tr("需要配置")
+				d.toastInfo(p.installNotice, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 			} else if req.Replace && info.Restart {
 				p.installNotice = fmt.Sprintf(d.tr("已更新「%s」，请重启桌面端生效。"), name)
+				d.toastSuccess(p.installNotice, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 			} else if req.Replace {
 				p.installNotice = fmt.Sprintf(d.tr("已更新「%s」。"), name)
+				d.toastSuccess(p.installNotice, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 			} else if info.LiveStart && !req.Enable {
 				p.installNotice = fmt.Sprintf(d.tr("已安装「%s」。"), name)
+				d.toastSuccess(p.installNotice, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 			} else if req.Enable {
 				p.installNotice = fmt.Sprintf(d.tr("已安装并启用「%s」，请重启桌面端生效。"), name)
+				d.toastSuccess(p.installNotice, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 			} else {
 				p.installNotice = fmt.Sprintf(d.tr("已安装「%s」，点击「启用」后重启生效。"), name)
+				d.toastSuccess(p.installNotice, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 			}
 			p.manualOpen = false
 			p.manualRepo, p.manualRef, p.manualPath = "", "", ""
@@ -228,6 +240,7 @@ func (d *viewState) uninstallExternalPlugin(id, displayName string) {
 			p.uninstallOpen = false
 			if err != nil {
 				p.installError = d.tr("卸载失败：") + err.Error()
+				d.toastError(p.installError, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 				return
 			}
 			if plugins != nil {
@@ -241,6 +254,7 @@ func (d *viewState) uninstallExternalPlugin(id, displayName string) {
 				p.form = nil
 			}
 			p.installNotice = fmt.Sprintf(d.tr("已标记卸载「%s」，重启后清理程序文件。"), displayName)
+			d.toastInfo(p.installNotice, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 		}
 	}) {
 		l.busy = false
@@ -268,12 +282,14 @@ func (d *viewState) rollbackExternalPlugin(id, displayName string) {
 			p.rollbackOpen = false
 			if err != nil {
 				p.installError = d.tr("回滚失败：") + err.Error()
+				d.toastError(p.installError, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 				return
 			}
 			if plugins != nil {
 				l.externalPlugins = plugins
 			}
 			p.installNotice = fmt.Sprintf(d.tr("已回滚「%s」，请重启桌面端生效。"), displayName)
+			d.toastSuccess(p.installNotice, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 		}
 	}) {
 		l.busy = false
@@ -355,16 +371,6 @@ func (d *viewState) pluginsMarketplaceWorkspace(c *ui.Context, k desktopkit.Kit)
 	ui.Column(c.Key("marketplace-workspace")).Grow(1).MinHeight(0).MinWidth(0).Children(func() {
 		// Top search + category chip bar (white surface + 1px bottom border).
 		ui.Column(c.Key("market-header")).Padding(12, 18, 12, 18).Gap(10).Background(deviceToolbarBg(k)).InsetShadow(0, -1, 0, 0, k.Color("separator-border")).Shrink(0).Children(func() {
-			if p.installError != "" {
-				k.InlineNotice(c.Key("m-err"), desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: p.installError})
-			} else if p.installNotice != "" {
-				k.InlineNotice(c.Key("m-ok"), desktopkit.NoticeProps{Tone: desktopkit.ToneInfo, Title: p.installNotice})
-			}
-			if l.marketplaceError != "" {
-				k.InlineNotice(c.Key("m-load-err"), desktopkit.NoticeProps{Tone: desktopkit.ToneWarning, Title: d.tr(l.marketplaceError)})
-			} else if l.marketplace.Warning != "" {
-				k.InlineNotice(c.Key("m-warn"), desktopkit.NoticeProps{Tone: desktopkit.ToneInfo, Title: l.marketplace.Warning})
-			}
 			search := k.SearchField(c.Key("market-search"), desktopkit.SearchFieldProps{
 				Label:       d.tr("搜索插件市场"),
 				Placeholder: d.tr("搜索插件名称、功能或作者"),
@@ -629,9 +635,9 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 				})
 			}
 
-			// Privacy notice.
+			// Privacy note.
 			if entry.Privacy != "" {
-				k.InlineNotice(c.Key("privacy"), desktopkit.NoticeProps{Tone: desktopkit.ToneInfo, Title: d.tr("隐私与安全"), Text: entry.Privacy})
+				subtleInfoCard(c.Key("privacy"), k, d.tr("隐私与安全"), entry.Privacy)
 			}
 
 			// Collapsible technical/source metadata (default collapsed so ordinary users aren't distracted).
@@ -660,10 +666,7 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 
 func (d *viewState) pluginsAdvancedView(c *ui.Context, k desktopkit.Kit, cfg config.Config) {
 	l := d.live
-	k.InlineNotice(c, desktopkit.NoticeProps{
-		Tone:  desktopkit.ToneInfo,
-		Title: d.tr("顺序仅影响同一阶段多个插件的先后；同步始终在本地保存之后执行。"),
-	})
+	subtleInfoCard(c.Key("order-note"), k, "", d.tr("顺序仅影响同一阶段多个插件的先后；同步始终在本地保存之后执行。"))
 
 	// Assemble visible order list from configured order + built-ins.
 	order := slices.Clone(cfg.Plugins.Order)
@@ -728,7 +731,7 @@ func (d *viewState) pluginsAdvancedView(c *ui.Context, k desktopkit.Kit, cfg con
 				{Value: "continue", Label: d.tr("继续处理")},
 				{Value: "block_sync", Label: d.tr("禁止同步此条目")},
 			}
-			if k.Select(c, desktopkit.SelectProps{Label: d.tr("当插件运行出错时"), Value: &policy, Items: items, Disabled: l.busy || l.loading}).Changed {
+			if k.Select(c, desktopkit.SelectProps{Label: d.tr("当插件运行出错时"), Value: &policy, Items: items, Disabled: l.busy}).Changed {
 				cfg.Plugins.OnError = policy
 				d.saveLiveConfig(cfg)
 			}

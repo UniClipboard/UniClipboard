@@ -231,14 +231,13 @@ func (customPreviewOverride) Enrich(_ context.Context, ec plugin.EnrichContext) 
 		SiteName:     "External Override",
 		Title:        "External Plugin Wins",
 	})
-	ec.SetResult(plugin.EnrichmentResult{
+	return ec.SetResult(plugin.EnrichmentResult{
 		Status: plugin.EnrichStatusOK,
 		Annotations: []plugin.EnrichmentAnnotation{{
 			Type:        plugin.AnnotationLinkPreviewV1,
 			PayloadJSON: payload,
 		}},
 	})
-	return nil
 }
 
 func TestExternalEnricherCanOverrideBuiltinPreviewViaOrder(t *testing.T) {

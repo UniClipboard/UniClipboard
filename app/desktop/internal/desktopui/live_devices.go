@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
@@ -229,6 +230,7 @@ func (d *viewState) refreshLiveDevices(deviceID string) {
 			d.refreshingDeviceID = ""
 			if err != nil {
 				l.message = "无法刷新连接状态，请重试。"
+				d.toastWarning(d.tr(l.message), desktopkit.ToastOptions{ID: toastIDLiveMessage})
 			}
 			select {
 			case l.changed <- struct{}{}:

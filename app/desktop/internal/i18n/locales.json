@@ -5255,6 +5255,24 @@
     "pt-BR": "Dispensar notificação",
     "ru": "Закрыть уведомление"
   },
+  "通知": {
+    "en": "Notifications",
+    "ja": "通知",
+    "pt-BR": "Notificações",
+    "ru": "Уведомления"
+  },
+  "配置已导出": {
+    "en": "Configuration exported",
+    "ja": "設定をエクスポートしました",
+    "pt-BR": "Configuração exportada",
+    "ru": "Конфигурация экспортирована"
+  },
+  "日志已导出": {
+    "en": "Logs exported",
+    "ja": "ログをエクスポートしました",
+    "pt-BR": "Logs exportados",
+    "ru": "Журналы экспортированы"
+  },
   "正在执行「%s」…": {
     "en": "Running “%s”…",
     "ja": "「%s」を実行中…",

@@ -28,7 +28,7 @@ func (d *viewState) smartPreviewSettings(c *ui.Context, k desktopkit.Kit, cfg co
 		ps.excludedDraft = strings.Join(s.ExcludedDomains, ", ")
 		ps.excludedError = ""
 	}
-	busy := l.busy || l.loading
+	busy := l.busy
 	enabled := cfg.PluginEnabled(builtinpreview.ID)
 	linkOn := s.LinkPreviewEnabled()
 	favOn := s.FetchFaviconEnabled()

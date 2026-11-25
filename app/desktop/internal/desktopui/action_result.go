@@ -35,16 +35,6 @@ type actionResultState struct {
 	copied      bool
 	applyFailed bool
 	truncated   bool
-	openError   string
-}
-
-type actionToastState struct {
-	visible   bool
-	running   bool
-	title     string
-	message   string
-	tone      desktopkit.NoticeTone
-	expiresAt time.Time
 }
 
 // validHTTPURL returns a trimmed single-line http(s) URL, or "" if raw is not one.
@@ -191,6 +181,7 @@ func (d *viewState) copyHistoryID(id string, onApplied func()) {
 			if err != nil {
 				l.message = liveErrorMessage(err)
 				d.notice = "操作失败"
+				d.toastError(d.tr(l.message), desktopkit.ToastOptions{ID: toastIDLiveMessage})
 				return
 			}
 			l.message = ""
@@ -243,17 +234,6 @@ func (d *viewState) actionResultDialog(c *ui.Context, k desktopkit.Kit) {
 			ui.Row(c.Key("copied-badge")).Padding(6, 10).Radius(8).Gap(6).AlignItems(ui.Center).Background(bg).Children(func() {
 				k.Icon(c.Key("ico"), desktopkit.IconCopy, 13).TextColor(fg)
 				ui.Text(c.Key("txt"), d.tr("已自动复制到剪贴板")).FontSize(12.5).FontWeight(500).TextColor(fg)
-			})
-		} else if d.actionResult.applyFailed {
-			k.InlineNotice(c.Key("apply-warn"), desktopkit.NoticeProps{
-				Tone:  desktopkit.ToneWarning,
-				Title: d.tr("已保存到历史，但未能写入剪贴板。"),
-			})
-		}
-		if d.actionResult.openError != "" {
-			k.InlineNotice(c.Key("open-err"), desktopkit.NoticeProps{
-				Tone:  desktopkit.ToneError,
-				Title: d.actionResult.openError,
 			})
 		}
 		content := d.actionResult.text
@@ -335,9 +315,7 @@ func (d *viewState) actionResultDialog(c *ui.Context, k desktopkit.Kit) {
 					Variant: openVariant,
 				}).Clicked() {
 					if err := d.openExternalURL(d.actionResult.url); err != nil {
-						d.actionResult.openError = d.tr("无法打开链接。")
-					} else {
-						d.actionResult.openError = ""
+						d.toastError(d.tr("无法打开链接。"))
 					}
 				}
 			}
@@ -346,50 +324,4 @@ func (d *viewState) actionResultDialog(c *ui.Context, k desktopkit.Kit) {
 	if !open {
 		d.actionResult = actionResultState{}
 	}
-}
-
-func (d *viewState) actionToastOverlay(c *ui.Context, k desktopkit.Kit) {
-	if !d.actionToast.visible {
-		return
-	}
-	if !d.actionToast.running && !d.actionToast.expiresAt.IsZero() && time.Now().After(d.actionToast.expiresAt) {
-		d.actionToast = actionToastState{}
-		return
-	}
-	border := k.Color("separator-border")
-	ui.Row(c.Key("toast-anchor")).Absolute().Left(0).Right(0).Bottom(18).Justify(ui.Center).PassThrough().Children(func() {
-		pill := ui.Row(c.Key("toast-pill")).Padding(8, 12).Gap(10).Radius(10).AlignItems(ui.Center).
-			Background(k.Color("background-primary-default")).Border(1, border).Role(ui.RoleStatus)
-		pill.Children(func() {
-			switch {
-			case d.actionToast.running:
-				k.Icon(c.Key("ico"), desktopkit.IconRetry, 14).TextColor(k.Color("accent-500"))
-			case d.actionToast.tone == desktopkit.ToneError:
-				ui.Box(c.Key("dot")).Size(8, 8).Radius(4).Background(k.Color("text-error-primary"))
-			case d.actionToast.tone == desktopkit.ToneWarning:
-				ui.Box(c.Key("dot")).Size(8, 8).Radius(4).Background(k.Color("status-orange-text"))
-			default:
-				_, fg := k.TagTint("green")
-				ui.Box(c.Key("dot")).Size(8, 8).Radius(4).Background(fg)
-			}
-			ui.Text(c.Key("msg"), d.actionToast.message).FontSize(13).TextColor(k.Color("text-primary")).SingleLine()
-			if d.actionToast.running {
-				if k.Button(c.Key("cancel-action"), d.tr("取消"), desktopkit.ButtonProps{
-					Size:    desktopkit.SizeSmall,
-					Variant: desktopkit.Subtle,
-				}).Clicked() {
-					d.cancelRunningAction()
-				}
-			} else {
-				if k.Button(c.Key("dismiss-toast"), "", desktopkit.ButtonProps{
-					Icon:    desktopkit.IconDismiss,
-					Label:   d.tr("关闭提示"),
-					Size:    desktopkit.SizeSmall,
-					Variant: desktopkit.Subtle,
-				}).Clicked() {
-					d.actionToast = actionToastState{}
-				}
-			}
-		})
-	})
 }

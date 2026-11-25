@@ -270,21 +270,19 @@ func (d *viewState) aboutContent(c *ui.Context, k desktopkit.Kit) {
 		if k.Button(c.Key("check-update"), d.tr("检查更新"), desktopkit.ButtonProps{Variant: desktopkit.Standard, Size: desktopkit.SizeSmall, Icon: desktopkit.IconUpdate, Disabled: busy}).Clicked() {
 			if d.live == nil {
 				d.about.updateNotice = "当前已是最新版本。"
+				d.toastInfo(d.tr(d.about.updateNotice), desktopkit.ToastOptions{ID: "about-update"})
 			} else if isExternalOwner {
 				d.about.copiedCommand = false
 				d.about.manualUpdateOpen = true
 			} else if !status.Supported || d.about.updateCheck == nil {
 				d.about.updateNotice = "当前开发构建未启用应用内更新。"
+				d.toastInfo(d.tr(d.about.updateNotice), desktopkit.ToastOptions{ID: "about-update"})
 			} else {
 				d.about.updateNotice = ""
 				d.about.updateCheck()
 			}
 		}
 	})
-
-	if d.about.updateNotice != "" {
-		k.InlineNotice(c.Key("update-notice"), desktopkit.NoticeProps{Tone: desktopkit.ToneInfo, Title: d.tr(d.about.updateNotice)})
-	}
 
 	// 2. Update preferences group.
 	k.SettingsGroup(c.Key("updates"), desktopkit.SettingsGroupProps{Title: d.tr("更新")}, func() {
@@ -349,10 +347,7 @@ func (d *viewState) aboutContent(c *ui.Context, k desktopkit.Kit) {
 	})
 
 	if d.live != nil && isExternalOwner {
-		k.InlineNotice(c.Key("external-owner"), desktopkit.NoticeProps{
-			Tone:  desktopkit.ToneInfo,
-			Title: fmt.Sprintf(d.tr("此安装由 %s 管理更新，应用内自动更新已关闭。"), d.ownerDisplayName(status.Owner)),
-		})
+		subtleInfoCard(c.Key("external-owner"), k, "", fmt.Sprintf(d.tr("此安装由 %s 管理更新，应用内自动更新已关闭。"), d.ownerDisplayName(status.Owner)))
 	}
 
 	// 3. Sponsors section.

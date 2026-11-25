@@ -20,6 +20,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useFloatingNavigationClearance } from '@/components/android/floatingNavigationClearance';
 import { unicEngineNative } from '@/engine/nativeModule';
 import { useEngineStore } from '@/engine/store';
+import type { BackgroundSyncStatus } from '@/engine/types';
 import { useTheme } from '@/hooks/useTheme';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
 import {
@@ -101,19 +102,19 @@ export function SettingsScreen() {
       updateSettings: s.updateSettings,
     }))
   );
-  const [backgroundEnabled, setBackgroundEnabled] = useState<boolean | null>(null);
+  const [backgroundStatus, setBackgroundStatus] = useState<BackgroundSyncStatus | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       if (state.mode !== 'live') return;
       let active = true;
       void unicEngineNative
-        .getBackgroundSyncEnabled()
-        .then((enabled) => {
-          if (active) setBackgroundEnabled(enabled);
+        .getBackgroundSyncStatus()
+        .then((next) => {
+          if (active) setBackgroundStatus(next);
         })
         .catch(() => {
-          if (active) setBackgroundEnabled(null);
+          if (active) setBackgroundStatus(null);
         });
       return () => {
         active = false;
@@ -145,10 +146,12 @@ export function SettingsScreen() {
       : t('settings:live.unlimited');
 
   const backgroundSummary =
-    backgroundEnabled === null
+    backgroundStatus === null
       ? undefined
-      : backgroundEnabled
-        ? t('settings:hub.summary.backgroundOn')
+      : backgroundStatus.enabled && !backgroundStatus.temp_disabled
+        ? `${t('settings:hub.summary.backgroundOn')} · ${t(
+            `settingsBackground:advanced.clipboardAccess.method.${backgroundStatus.clipboard_access_method}`
+          )}`
         : t('settings:hub.summary.backgroundOff');
 
   const bindings = state.devices

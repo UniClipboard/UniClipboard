@@ -430,3 +430,41 @@ export interface EngineEvent {
   kind: string;
   objects?: Array<{ type: string; id: string }>;
 }
+
+export type ClipboardAccessMethod = "overlay-polling" | "overlay-event" | "shizuku";
+
+export type BackgroundSyncNetwork = "any" | "wifi";
+
+export interface ClipboardAuthorizationState {
+  status: "ready" | "unavailable" | "unauthorized" | "incompatible";
+  monitoring_status: "ready" | "setup-required";
+  setup_url?: string;
+  setup_command?: string;
+}
+
+export interface BackgroundSyncStatus {
+  enabled: boolean;
+  temp_disabled: boolean;
+  running: boolean;
+  foreground_notification: boolean;
+  background_download: boolean;
+  background_upload: boolean;
+  network: BackgroundSyncNetwork;
+  clipboard_access_method: ClipboardAccessMethod;
+  ignoring_battery_optimizations: boolean;
+  notification_permission_granted: boolean;
+  application_id: string;
+  last_stop_reason?: string;
+  last_stop_at?: number;
+  authorization: ClipboardAuthorizationState;
+}
+
+export interface BackgroundSyncConfigPatch {
+  enabled?: boolean;
+  temp_disabled?: boolean;
+  foreground_notification?: boolean;
+  background_download?: boolean;
+  background_upload?: boolean;
+  network?: BackgroundSyncNetwork;
+  clipboard_access_method?: ClipboardAccessMethod;
+}

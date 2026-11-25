@@ -2,6 +2,8 @@ import { type NativeModule, requireOptionalNativeModule } from "expo";
 import {
   type ActionInfo,
   type ActionResult,
+  type BackgroundSyncConfigPatch,
+  type BackgroundSyncStatus,
   type Capabilities,
   type ClipboardChangedEvent,
   type CustomSourceSelectionResult,
@@ -41,6 +43,7 @@ type NativeEvents = {
   onEngineResync: (payload: { reason: string }) => void;
   onMigrationProgress: (payload: MigrationProgress) => void;
   onClipboardChanged: (payload: ClipboardChangedEvent) => void;
+  onBackgroundSyncStateChanged: (payload: { reason: string }) => void;
 };
 
 export type TelemetryState = { configured_enabled: boolean; effective_enabled: boolean };
@@ -65,12 +68,20 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   updateSettings(reqJSON: string): Promise<string>;
   getFileCacheState(): Promise<string>;
   setAutomaticCapture(enabled: boolean): Promise<void>;
+  setAutoApplyReceived?(enabled: boolean): Promise<void>;
   clearHistoryPreviews(): Promise<void>;
   reconcileHistoryPreviews(): Promise<void>;
   historyFileMetadata(historyID: string): Promise<string>;
   listHistoryFolder(historyID: string, limit: number): Promise<string>;
   getBackgroundSyncEnabled(): Promise<boolean>;
   setBackgroundSyncEnabled(enabled: boolean): Promise<boolean>;
+  getBackgroundSyncStatus?(): Promise<string>;
+  updateBackgroundSyncConfig?(patchJSON: string): Promise<string>;
+  requestIgnoreBatteryOptimizations?(): Promise<boolean>;
+  requestOverlayPermission?(): Promise<boolean>;
+  requestShizukuPermission?(): Promise<boolean>;
+  openShizukuAppOrGuide?(): Promise<boolean>;
+  resolveBackgroundClipboardRestriction?(): Promise<boolean>;
   listIncomingShares(): Promise<string>;
   commitIncomingShare(id: string, targets: string): Promise<string>;
   dismissIncomingShare(id: string): Promise<void>;
@@ -204,6 +215,69 @@ export const unicEngineNative = {
   getBackgroundSyncEnabled: () => requireMod().getBackgroundSyncEnabled(),
   setBackgroundSyncEnabled: (enabled: boolean) => requireMod().setBackgroundSyncEnabled(enabled)
     .catch((error) => { throw parseEngineError(error); }),
+  getBackgroundSyncStatus: () => callJSON<BackgroundSyncStatus>(() => {
+    const mod = requireMod();
+    if (!mod.getBackgroundSyncStatus) {
+      throw new EngineError({ code: "unsupported", message: "background sync status unavailable" });
+    }
+    return mod.getBackgroundSyncStatus();
+  }),
+  updateBackgroundSyncConfig: (patch: BackgroundSyncConfigPatch) => callJSON<BackgroundSyncStatus>(() => {
+    const mod = requireMod();
+    if (!mod.updateBackgroundSyncConfig) {
+      throw new EngineError({ code: "unsupported", message: "background sync config unavailable" });
+    }
+    return mod.updateBackgroundSyncConfig(JSON.stringify(patch));
+  }),
+  requestIgnoreBatteryOptimizations: async (): Promise<boolean> => {
+    const mod = requireMod();
+    if (!mod.requestIgnoreBatteryOptimizations) return false;
+    try {
+      return await mod.requestIgnoreBatteryOptimizations();
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  requestOverlayPermission: async (): Promise<boolean> => {
+    const mod = requireMod();
+    if (!mod.requestOverlayPermission) return false;
+    try {
+      return await mod.requestOverlayPermission();
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  requestShizukuPermission: async (): Promise<boolean> => {
+    const mod = requireMod();
+    if (!mod.requestShizukuPermission) return false;
+    try {
+      return await mod.requestShizukuPermission();
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  openShizukuAppOrGuide: async (): Promise<boolean> => {
+    const mod = requireMod();
+    if (!mod.openShizukuAppOrGuide) return false;
+    try {
+      return await mod.openShizukuAppOrGuide();
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  resolveBackgroundClipboardRestriction: async (): Promise<boolean> => {
+    const mod = requireMod();
+    if (!mod.resolveBackgroundClipboardRestriction) return false;
+    try {
+      return await mod.resolveBackgroundClipboardRestriction();
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  addBackgroundSyncStateListener: (cb: (reason: string) => void) => {
+    if (!nativeMod) return { remove: () => {} };
+    return nativeMod.addListener("onBackgroundSyncStateChanged", ({ reason }) => cb(reason));
+  },
   listIncomingShares: () => callJSON<Array<{ id: string; kind: "text" | "file"; label: string }>>(
     () => requireMod().listIncomingShares(),
   ),
@@ -255,6 +329,12 @@ export const unicEngineNative = {
 
   getFileCacheState: () => callJSON<FileCacheState>(() => requireMod().getFileCacheState()),
   setAutomaticCapture: (enabled: boolean) => callVoid(() => requireMod().setAutomaticCapture(enabled)),
+  setAutoApplyReceived: (enabled: boolean) => callVoid(async () => {
+    const mod = nativeMod;
+    if (mod?.setAutoApplyReceived) {
+      await mod.setAutoApplyReceived(enabled);
+    }
+  }),
   clearHistoryPreviews: () => callVoid(() => requireMod().clearHistoryPreviews()),
   reconcileHistoryPreviews: () => callVoid(() => requireMod().reconcileHistoryPreviews()),
   historyFileMetadata: (id: string) =>

@@ -227,35 +227,23 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 			if len(args) != 0 {
 				return errors.New("role-panel-hidden takes no arguments")
 			}
-			raw, err := s.roleCommand("quick-panel", "probe")
-			if err != nil {
-				return err
-			}
 			var before desktopRoleIdentity
-			if err = json.Unmarshal(raw, &before); err != nil {
+			if err := s.wait(func() bool {
+				raw, err := s.roleCommand("quick-panel", "probe")
+				return err == nil && json.Unmarshal(raw, &before) == nil && before.PID > 0
+			}); err != nil {
 				return err
 			}
 			endpoint := filepath.Join(s.home, "automation-panel.sock")
-			if err = s.wait(func() bool {
+			if err := s.wait(func() bool {
 				var out struct {
-					Windows []struct {
-						Kind    string
-						Visible bool
-					}
+					Windows []json.RawMessage
 				}
-				if s.callAt(s.ctx, endpoint, "windows", nil, &out) != nil || len(out.Windows) == 0 {
-					return false
-				}
-				for _, window := range out.Windows {
-					if window.Visible {
-						return false
-					}
-				}
-				return true
+				return s.callAt(s.ctx, endpoint, "windows", nil, &out) == nil && len(out.Windows) == 0
 			}); err != nil {
-				return fmt.Errorf("panel windows did not hide: %w", err)
+				return fmt.Errorf("panel kept windows in standby: %w", err)
 			}
-			raw, err = s.roleCommand("quick-panel", "probe")
+			raw, err := s.roleCommand("quick-panel", "probe")
 			if err != nil {
 				return err
 			}
@@ -266,7 +254,7 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 			if after.PID != before.PID || after.StartedAt != before.StartedAt {
 				return errors.New("hiding replaced the panel process")
 			}
-			s.result.Assertions = append(s.result.Assertions, "panel windows hide while preserving the role PID")
+			s.result.Assertions = append(s.result.Assertions, "panel standby has no windows and preserves the role PID")
 			return nil
 		},
 		"role-select-gui": func(s *desktopScenario, args []string) error {

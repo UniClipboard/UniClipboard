@@ -4,7 +4,7 @@
 # Steps:
 #   Keep an independent service running; verify manual close, owned-service detachment, background intent, concurrent reopening and live settings; then run four cold-service background/manual launch races, including observation-triggered manual launches.
 # Expected:
-#   Manual launches show GUI; lightweight close stops all UI while retaining the same unicd PID and generation; an owned service detaches to standalone; explicit lightweight background runs only unicd; normal background retains tray without GUI; concurrent reopening leaves one visible GUI.
+#   Manual launches show GUI; lightweight close stops all UI while retaining the same unicd PID and generation; an owned service detaches to standalone; explicit lightweight background runs only unicd; normal background retains tray and a hidden panel without GUI; concurrent reopening leaves one visible GUI.
 # Forbidden:
 #   Treating saved start_in_background as manual-launch intent, leaving a hidden GUI/tray/panel, stopping the independent service, replacing its generation, or reporting process fixtures as native focus evidence.
 # Failure inventory specified before production changes:

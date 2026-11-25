@@ -2,7 +2,7 @@
 # Mode: process
 # Purpose: Normal runtime retains tray and service after GUI close and independently recreates GUI and quick-panel processes.
 # Steps:
-#   Start normal mode with explicit background intent, verify no initial GUI, reopen and close each UI role, then verify durable state and cleanup.
+#   Start normal mode with explicit background intent, verify no initial GUI and a ready hidden panel, then open and close each UI role and verify cleanup.
 #   Reject a GUI quit, retry the GUI-only restart, and request a full restart after saving a plugin change.
 # Expected:
 #   Tray, GUI, quick panel and unicd have independent process identities; tray activation works with unicd already running.

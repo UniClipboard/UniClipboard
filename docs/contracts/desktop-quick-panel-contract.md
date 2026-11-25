@@ -50,7 +50,12 @@ feature is active. macOS requires Accessibility permission. Windows and native
 X11 support the feature. Wayland cannot observe the global modifier gesture.
 
 The quick-panel process registers no global shortcuts and owns no clipboard
-adapter. On macOS the panel calls the adapter in unicd directly for tracked writes and clipboard checks. Other platforms use private tray IPC. The quick-panel process starts on first activation and remains hidden between requests.
+adapter. On macOS the panel calls the adapter in unicd directly for tracked writes and clipboard checks. Other platforms use private tray IPC.
+
+In normal mode, the tray asynchronously prepares a windowless panel process after the Desktop runtime is ready. An activation can join an in-progress start. When the process is unavailable, an activation starts it on demand. Each opening starts a view scope and the first history read while the main window is created. The search field accepts input while history loads. The preview flyout is created when a preview or action menu needs it.
+
+Dismissal destroys both windows, cancels the history view scope, and drops its caches and timers while the process stays ready. A pending paste retains the view only through its focus checks and optional guarded reopen. The next explicit activation starts a new view scope and reads fresh history. Search, filter, selection identity and zoom may survive in process memory. History payloads and target identity are released from the standby state.
+
 Normal GUI close retains the tray. Lightweight close and lightweight login
 keep only unicd. Manual activation reopens the GUI.
 

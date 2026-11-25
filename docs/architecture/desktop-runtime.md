@@ -47,14 +47,14 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: bd7ef9d1983a77f4da3e123e1057afa461bd12dd
+verified: 9fd186bf06f852ba3dff567fec86fb04988dee33
 ---
 # Desktop configuration and received files
 
 The UI-free service loads `config.toml` and exposes the effective saved configuration over its local socket.
 CLI changes and file edits use the same validation and Engine settings.
 
-The independent GUI process uses the production `desktopui` renderer with live service data. While active, the tray process owns global shortcuts, login intent and the service-lifetime pipe. On macOS a bundled service delivers pairing notifications after Desktop opt-in. Other platforms and unbundled macOS services use tray delivery. macOS Desktop opts in the sole native clipboard adapter inside unicd. Other platforms host it in the tray. The quick panel runs in a third Desktop OS process and remains hidden between requests. The separate `unicd` process owns Engine. Manual activation always opens the GUI. Normal GUI close keeps tray and service; lightweight GUI close retires all Desktop roles and leaves only unicd.
+The independent GUI process uses the production `desktopui` renderer with live service data. While active, the tray process owns global shortcuts, login intent and the service-lifetime pipe. On macOS a bundled service delivers pairing notifications after Desktop opt-in. Other platforms and unbundled macOS services use tray delivery. macOS Desktop opts in the sole native clipboard adapter inside unicd. Other platforms host it in the tray. The quick panel runs in a third Desktop OS process with windowless standby. The separate `unicd` process owns Engine. Manual activation always opens the GUI. Normal GUI close keeps tray and service. Lightweight GUI close retires all Desktop roles and leaves only unicd.
 Fresh profiles show first-install setup and optional v1 migration before normal runtime startup. Completed setup and established v2 profiles open history directly. There is no recurring unlock flow. The marker, source detection and exclusive migration lifecycle are described in the [live desktop composition](overview.md#live-desktop-composition).
 Settings > Storage > Migrate from v1 reopens the migration flow. The GUI requests a serialized tray pause. The tray closes its quick panel and unregisters its shortcut. It retires the tray-owned adapter on platforms that use one. It stops and waits for its owned service, including the in-service adapter on macOS, before permitting offline import. The pause and pending setup marker form the migration admission barrier before the GUI shows migration. A marker write failure prevents migration. Cancellation or process exit preserves this pending state; reopening Desktop returns to migration with its selected source. Import completion alone does not complete setup. Explicit entry starts the normal runtime again and persists completion after service readiness. An external target owner blocks import before credential access; it is not automatically stopped by migration.
 General, Sync and Storage controls save through the revision-checked local configuration API.
@@ -166,6 +166,11 @@ lengths keep the bounded fallback. The actual byte limiter and raster check stay
 authoritative when a hint is inaccurate. Neighbor thumbnails keep their streaming
 path. See the [image implementation receipt](../exec/desktop-image-memory.md) and
 [independent quick-panel receipt](../exec/quick-panel-memory.md).
+
+The GUI history list, grid, detail pane and Quick Look use the same bitmap
+paint callback as the Quick Panel. They schedule CPU-pixel release after
+accelerated painting. Software previews reuse their decoded pixels while the
+view owns them. The original bytes still support texture recovery.
 
 Quick-panel reopening invalidates its cleared row projection even when the
 service reuses an unchanged query/revision. It preserves the service cache and
@@ -437,6 +442,8 @@ Unsupported OS paste and semantic classifications remain separate from retrieval
 ## Quick-panel system interaction
 
 The tray captures the external foreground target before starting or activating the independent quick-panel process. It sends the ephemeral target through private Desktop IPC. The quick-panel process owns the target session in `app/desktop/internal/quickpanel`, its history window and its nonfocusable preview. Global shortcuts, tray activation and the Settings button use the same opening path. Repeated activation while visible dismisses the panel without replacing the target.
+
+Normal Desktop startup prepares the panel role asynchronously after the service and tray integration are ready. The standby role keeps its IPC endpoint, event loop and settings watcher. Each activation creates a new history view and begins its first-page read before native window creation. The view publishes the first page before fetching supplementary settings, tags and device metadata. The flyout is created on demand. After a completed dismissal, the role cancels the view context and destroys both windows. It clears the previous view's binding and projected rows after teardown. Paste temporarily hides the windows while the controller completes native focus checks and any guarded reopen. The next opening reads fresh history. See the [standby acceptance plan](../exec/quick-panel-idle-research.md).
 
 Settings > Shortcuts records one or two key combinations and groups actions by
 where they run. Window navigation, history actions and quick-panel actions read

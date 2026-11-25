@@ -10,8 +10,9 @@ type QuickLookProps struct {
 	// CloseLabel is the accessible name of the close button.
 	CloseLabel string
 	// Src is the picture to show (nil draws an empty stage); Alt is its accessible name.
-	Src ui.ImageSource
-	Alt string
+	Src           ui.ImageSource
+	Alt           string
+	ImageDrawOver func(*ui.Painter, ui.Rect)
 	// PreviousLabel / NextLabel name the step buttons ("" hides one); Left / Right arrows step.
 	PreviousLabel, NextLabel string
 	// PrimaryLabel names the main command, e.g. copy and close; Return runs it ("" hides it).
@@ -89,7 +90,10 @@ func (k Kit) QuickLook(c *ui.Context, p QuickLookProps, actions func()) (res Qui
 
 		stage.Children(func() {
 			if p.Src != nil {
-				ui.Image(c, p.Src).Fit(ui.Contain).WidthPercent(100).HeightPercent(100).Label(p.Alt).Radius(6)
+				image := ui.Image(c, p.Src).Fit(ui.Contain).WidthPercent(100).HeightPercent(100).Label(p.Alt).Radius(6)
+				if p.ImageDrawOver != nil {
+					image.DrawOver(p.ImageDrawOver)
+				}
 			}
 			step := func(label string, left bool) bool {
 				b := ui.ButtonBase(c.Key(label)).Label(label).Tooltip(label).Absolute().TopPercent(50).

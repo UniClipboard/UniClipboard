@@ -411,6 +411,9 @@ func (k Kit) l1ListRow(c *ui.Context, r ui.ListRow, it ItemListItem) ui.Element 
 					return
 				}
 				imgEl := ui.Image(c.Key("thumb"), it.Image).Fill().Fit(ui.Cover)
+				if it.ImageDrawOver != nil {
+					imgEl.DrawOver(it.ImageDrawOver)
+				}
 				if alpha < 0.999 {
 					imgEl.Opacity(alpha)
 				}

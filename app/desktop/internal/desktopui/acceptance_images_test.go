@@ -287,11 +287,16 @@ func scenarioImagePreviews(t *testing.T) {
 		return w == 300 && h == 600 && len(l.detailReads) == 0
 	})
 	checks = append(checks, "JPEG EXIF orientation and original dimensions preserved")
-	wait("displayed CPU pixels released", func() bool {
-		view.Advance(20 * time.Millisecond)
-		return d.current().picture.released
-	})
-	checks = append(checks, "displayed image releases CPU pixels on a later view frame")
+	preview := d.current().picture
+	if preview == nil {
+		t.Fatal("selected image has no decoded preview")
+	}
+	view.Advance(20 * time.Millisecond)
+	view.Frame()
+	if d.current().picture != preview || preview.released {
+		t.Fatal("software repaint did not preserve the selected preview and its CPU pixels")
+	}
+	checks = append(checks, "software repaint preserves the selected preview and its CPU pixels")
 	receipt["cached_details"] = len(l.details)
 	receipt["peak_image_body_readers"] = peak.Load()
 	if peak.Load() != 1 {

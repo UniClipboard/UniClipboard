@@ -15,8 +15,8 @@ directory-board override. The nonvisual process fixture stays disabled.
 
 The script launches the real application through LaunchServices, runs native
 event loops and reads app-scoped content-window visibility from mygo automation. Private role IPC supplies close and quit intent.
-It verifies explicit normal background entry without a GUI, normal GUI close,
-lightweight GUI/panel close with same-generation
+It verifies explicit normal background entry with a windowless panel and no GUI,
+normal GUI close, lightweight GUI/panel close with same-generation
 service ownership transfer, explicit lightweight background entry, and pending
 setup admission. It records binary/source hashes, role PIDs, process timestamps,
 service generations and cleanup in `receipt.json` and `SHA256SUMS`.

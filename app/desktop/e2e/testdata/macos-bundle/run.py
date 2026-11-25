@@ -126,7 +126,7 @@ def main():
         finally:
             conn.close()
 
-    def native_window(profile, panel=False):
+    def window_states(profile, panel=False):
         with socket.socket(socket.AF_UNIX) as connection:
             connection.settimeout(4)
             connection.connect(str(profile / ("automation-panel.sock" if panel else "automation.sock")))
@@ -134,8 +134,10 @@ def main():
             stream = connection.makefile("rb")
             response = json.loads(stream.readline())
             assert not response.get("error"), response
-            windows = [w for w in response["result"]["windows"] if w["kind"] == "content" and w["visible"]]
-            return windows
+            return response["result"]["windows"] or []
+
+    def native_window(profile, panel=False):
+        return [w for w in window_states(profile, panel) if w["kind"] == "content" and w["visible"]]
 
     def checkpoint(profile, name):
         roles = {}
@@ -214,6 +216,7 @@ def main():
         wait(lambda: service(background_normal))
         wait(lambda: probe(background_normal, "tray"))
         control(background_normal, "tray", "background")
+        wait(lambda: control(background_normal, "quick-panel", "status")["ready"])
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
             try:
@@ -224,10 +227,11 @@ def main():
                 checkpoint(background_normal, "background-normal-unexpected-gui")
                 raise AssertionError("explicit normal --background unexpectedly created a GUI role")
             time.sleep(0.08)
-        roles, _ = checkpoint(background_normal, "background-normal-tray-service-only")
-        assert set(roles) == {"tray"}
+        roles, _ = checkpoint(background_normal, "background-normal-windowless-panel")
+        assert set(roles) == {"tray", "quick-panel"}
+        assert not window_states(background_normal, panel=True)
         check_dock("background entry", 0)
-        receipt["checks"].append("explicit normal background bundle entry retains tray/service without a GUI role")
+        receipt["checks"].append("explicit normal background bundle entry retains tray, service and windowless panel without a GUI role")
 
         normal = new_profile("normal", "normal")
         launch(normal)

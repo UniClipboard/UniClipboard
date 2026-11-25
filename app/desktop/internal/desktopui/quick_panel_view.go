@@ -552,8 +552,8 @@ func (p *quickPanelState) resultRow(c *ui.Context, k desktopkit.Kit, a qpPalette
 	b.Children(func() {
 		ui.Row(c).Width(24).Shrink(0).Justify(ui.Center).Children(func() {
 			if p.quickHasImagePreview(e) {
-				if img := p.quickImage(c, e); img != nil {
-					ui.Image(c, img).Size(24, 16).Radius(3).Fit(ui.Cover)
+				if img := p.quickImage(e); img.source != nil {
+					img.element(c).Size(24, 16).Radius(3).Fit(ui.Cover)
 				} else {
 					k.ShimmerBox(c.Key("thumb-skel"), 3).Size(24, 16)
 				}
@@ -634,8 +634,8 @@ func (p *quickPanelState) imageGrid(c *ui.Context, k desktopkit.Kit, a qpPalette
 						b.BorderColor(a.primary)
 					}
 					b.Children(func() {
-						if img := p.quickImage(c, e); img != nil {
-							ui.Image(c, img).Fill().Fit(ui.Cover).Radius(5)
+						if img := p.quickImage(e); img.source != nil {
+							img.element(c).Fill().Fit(ui.Cover).Radius(5)
 						} else {
 							k.ShimmerBox(c.Key("img-skel"), 5).Fill()
 						}
@@ -666,6 +666,8 @@ func (p *quickPanelState) emptyView(c *ui.Context, a qpPalette) {
 	if p.mode == "disconnected" {
 		title = p.tr("同步服务未响应")
 		hint = p.tr("本次唤起期间恢复会自动刷新列表。")
+	} else if p.live != nil && p.live.d.live.readError != "" {
+		title = p.tr(p.live.d.live.readError)
 	} else if p.query != "" {
 		title = p.tr("没有匹配“") + p.query + p.tr("”的内容")
 		hint = p.tr("试试其他关键词或筛选条件")
@@ -757,7 +759,7 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 			ui.Column(c).FillWidth().Padding(qpSatelliteBodyPadTop, qpSatelliteBodyPadSide, qpSatelliteBodyPadBot, qpSatelliteBodyPadSide).Gap(qpSatelliteBodyGap).Children(func() {
 				switch e.kind {
 				case "图片":
-					ui.Image(c, p.quickImage(c, *e)).FillWidth().Height(230).Fit(ui.Contain).Label(e.title)
+					p.quickImage(*e).element(c).FillWidth().Height(230).Fit(ui.Contain).Label(e.title)
 				case "富文本":
 					if p.live != nil {
 						ui.Text(c, e.text).FontSize(14 * zoomScale(p.textZoom)).FillWidth().Selectable()

@@ -16,6 +16,7 @@ type quickLive struct {
 	system            *quickpanel.Controller
 	d                 *viewState
 	seen, contentSeen uint64
+	resumeSelection   string
 	root              func(string)
 }
 
@@ -72,6 +73,11 @@ func (q *quickLive) poll(p *quickPanelState) {
 		old := ""
 		if a := p.active(); a != nil {
 			old = a.id
+		} else if resultsChanged {
+			old = q.resumeSelection
+		}
+		if resultsChanged {
+			q.resumeSelection = ""
 		}
 		p.entries = nil
 		for _, v := range d.entries {
@@ -116,22 +122,20 @@ func (p *quickPanelState) quickImageSize(e qpEntry) (float32, float32) {
 	}
 	return ui.ImageSize(p.previewImage)
 }
-func (p *quickPanelState) quickImage(c *ui.Context, e qpEntry) ui.ImageSource {
+
+func (p *quickPanelState) quickImage(e qpEntry) bitmapPreview {
 	if p.live == nil {
 		if e.kind == "图片" || qpIsSingleImageFile(e) {
-			return p.previewImage
+			return bitmapPreview{source: p.previewImage}
 		}
-		return nil
+		return bitmapPreview{}
 	}
 	for _, v := range p.live.d.entries {
 		if v.id == e.id {
-			if v.picture != nil {
-				return v.picture.source(c)
-			}
-			return v.image
+			return v.bitmapPreview()
 		}
 	}
-	return nil
+	return bitmapPreview{}
 }
 func (p *quickPanelState) quickImageAvailable(e qpEntry) bool {
 	if p.live == nil {

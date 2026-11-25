@@ -17,7 +17,7 @@ func (p *quickPanelState) imagePreview(c *ui.Context, k desktopkit.Kit, a qpPale
 		p.imagePan = ui.Point{}
 		p.imageDragging = false
 	}
-	img := p.quickImage(c, e)
+	img := p.quickImage(e)
 	stage := ui.Column(c).FillWidth().Grow(1).MinHeight(0).Clip().Background(a.muted).Label(e.title)
 	bounds := stage.Bounds()
 	width, height := float32(800), float32(500)
@@ -32,7 +32,7 @@ func (p *quickPanelState) imagePreview(c *ui.Context, k desktopkit.Kit, a qpPale
 	}
 	toggle := func() { p.actualSize = !p.actualSize; p.imagePan = ui.Point{}; p.imageDragging = false; p.update() }
 	stage.HandleInput(func(ev ui.InputEvent) bool {
-		if img == nil {
+		if img.source == nil {
 			return false
 		}
 		switch ev.Kind {
@@ -66,14 +66,14 @@ func (p *quickPanelState) imagePreview(c *ui.Context, k desktopkit.Kit, a qpPale
 		return false
 	})
 	stage.Children(func() {
-		if img == nil {
+		if img.source == nil {
 			k.ShimmerBox(c.Key("img-preview-skel"), 0).Fill()
 			return
 		}
 		if p.actualSize {
-			ui.Image(c, img).Size(width, height).Absolute().LeftPercent(50).TopPercent(50).Margin(-height/2+p.imagePan.Y, 0, 0, -width/2+p.imagePan.X)
+			img.element(c).Size(width, height).Absolute().LeftPercent(50).TopPercent(50).Margin(-height/2+p.imagePan.Y, 0, 0, -width/2+p.imagePan.X)
 		} else {
-			ui.Image(c, img).Fill().Fit(ui.Contain).Label(e.title)
+			img.element(c).Fill().Fit(ui.Contain).Label(e.title)
 		}
 		target := float32(0)
 		if stage.Hovered() {

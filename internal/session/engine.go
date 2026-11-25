@@ -245,29 +245,49 @@ func (b *Backend) waitTransport(ctx context.Context) error {
 }
 
 func (b *Backend) serveRun(r *runState) {
-	defer func() {
+	for {
+		if err := b.waitTransport(r.ctx); err != nil {
+			b.mu.Lock()
+			retry := b.run == r && r.ctx.Err() == nil && (b.trReady || b.trUsed)
+			if !retry && b.run == r {
+				r.serving = false
+			}
+			b.mu.Unlock()
+			if retry {
+				continue
+			}
+			return
+		}
+		ln, err := b.cfg.Transport.Listen(r.ctx)
+		if err != nil {
+			b.mu.Lock()
+			if b.run == r {
+				r.serving = false
+			}
+			b.mu.Unlock()
+			return
+		}
+		r.mu.Lock()
+		if r.ctx.Err() != nil {
+			r.mu.Unlock()
+			_ = ln.Close()
+			b.mu.Lock()
+			if b.run == r {
+				r.serving = false
+			}
+			b.mu.Unlock()
+			return
+		}
+		r.ln = ln
+		r.mu.Unlock()
+		b.acceptLoop(r, ln)
 		b.mu.Lock()
 		if b.run == r {
 			r.serving = false
 		}
 		b.mu.Unlock()
-	}()
-	if err := b.waitTransport(r.ctx); err != nil {
 		return
 	}
-	ln, err := b.cfg.Transport.Listen(r.ctx)
-	if err != nil {
-		return
-	}
-	r.mu.Lock()
-	if r.ctx.Err() != nil {
-		r.mu.Unlock()
-		_ = ln.Close()
-		return
-	}
-	r.ln = ln
-	r.mu.Unlock()
-	b.acceptLoop(r, ln)
 }
 
 // down closes the listener, every connection and every goroutine of the run.

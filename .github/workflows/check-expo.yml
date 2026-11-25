@@ -154,12 +154,14 @@ jobs:
           (cd ios && pod install)
           xcodebuild -workspace ios/UniClipboardUIShell.xcworkspace -scheme UniClipboardUIShell \
             -configuration Release -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath "$RUNNER_TEMP/unic-ios" ARCHS=arm64 CODE_SIGNING_ALLOWED=NO
+            -derivedDataPath "$RUNNER_TEMP/unic-ios" ARCHS=arm64 CODE_SIGN_IDENTITY=-
+          app="$RUNNER_TEMP/unic-ios/Build/Products/Release-iphonesimulator/UniClipboardUIShell.app"
+          codesign --verify --strict "$app"
           device=$(xcrun simctl create 'UniClipboard CI' com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro com.apple.CoreSimulator.SimRuntime.iOS-27-0)
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
           if ! node e2e/run.mjs --suite live --platform ios --device "$device" \
-            --app "$RUNNER_TEMP/unic-ios/Build/Products/Release-iphonesimulator/UniClipboardUIShell.app"; then
+            --app "$app"; then
             xcrun simctl spawn "$device" log show --last 5m --info --style compact \
               --predicate 'process == "pasted" OR subsystem == "com.apple.Pasteboard"' \
               > e2e/results/ios-pasteboard.log || true

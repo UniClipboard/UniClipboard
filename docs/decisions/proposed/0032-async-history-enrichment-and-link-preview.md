@@ -1,6 +1,6 @@
 # 0032 · 异步历史富化能力（Enricher）与链接预览首个闭环
 
-- Status: accepted. Engine, RPC, local service and Desktop link previews support the in-repository `unic.linkpreview` plugin. Independent plugin distribution and the OCR follow-up remain open.
+- Status: accepted. Engine, RPC, local service, Desktop link preview UI, and built-in Smart Preview (`builtin.preview`, enabled by default and user-disableable) are implemented. External `enricher` plugin extensibility is verified via `plugins/examples/linkpreview/`. Future built-in preview providers (e.g. verification code preview) and the OCR follow-up remain open.
 - 日期：2026-11-25
 - 关联：[0004 剪贴板流水线与插件](0004-clipboard-pipeline-lua.md)、[0010 插件设置 Schema](0010-plugin-settings-schema.md)、[0027 文叔叔临时分享 Action](0027-wenshushu-share-action.md)、[0028 桌面端在线插件市场](0028-desktop-plugin-marketplace.md)
 - 落地目标：[插件契约](../../contracts/plugin-contract.md)、[插件 RPC 核心协议](../../contracts/plugin-rpc-contract.md)、[本机历史契约](../../contracts/history-contract.md)、[历史搜索契约](../../contracts/history-search-contract.md)、[本地服务契约](../../contracts/local-service-contract.md)、[流水线与本机历史](../../architecture/pipeline.md)
@@ -172,15 +172,17 @@ type EnrichmentAsset struct {
 
 ---
 
-## 首个闭环插件：链接预览（`unic.linkpreview`）
+## 首个闭环插件：内置「智能预览」（`builtin.preview`）与外部扩展开放
 
-### 1. 形态与分发
+### 1. 形态与演进定位
 
-- **独立、显式启用（Opt-in）的外部 Go 插件（先主仓闭环，后拆仓发布）**：
-  - 插件 ID：`unic.linkpreview`；
-  - **闭环阶段**：先在主仓库 `plugins/examples/linkpreview/` 实现可编译的真实外部 Go 进程插件，在单一仓库内直接完成 Engine、RPC、本地服务与桌面 UI 的真实子进程端到端闭环；
-  - **发布阶段**：闭环验收后按 [0027](0027-wenshushu-share-action.md) 与 [插件契约 §8](../../contracts/plugin-contract.md#independent-repository-naming) 拆出独立仓库 `UniClipboard/unic-plugin-linkpreview` 并通过桌面插件市场（[0028](0028-desktop-plugin-marketplace.md)）静态 `registry.json` 分发多平台预编译产物，主仓库 `plugins/examples/linkpreview/` 按约定收敛为文档指引入口，不保留双份实现。
-- **为什么不默认内置自动开启**：自动抓取剪贴板中的 URL 会主动向目标站点发起对外 HTTP 请求（可能触达带 token 的一次性链接、暴露本机公网 IP 或探测局域网服务）。将其作为需要用户明确阅读隐私说明并主动安装/启用的可选插件，最符合隐私最小化原则，同时也端到端验证外部 Go 插件的新 `enricher` RPC 链路。
+- **内置默认开启、用户可关闭的通用预览插件 `builtin.preview`（Smart Preview / 智能预览）**：
+  - 随服务与移动端进程内装配（`internal/plugins/builtinpreview/`），默认开启，用户可在桌面端「设置 → 插件 → 内置功能 → 智能预览」或 `config.toml`（`[plugins.instances."builtin.preview"]`）中一键关闭整项能力，或精细关闭单个子预览（`link_preview`、`fetch_favicon`、`fetch_thumbnail`）并配置 `excluded_domains`。
+  - 内部按模块化 provider 组织：首版提供网页链接预览（`link_preview.v1`，默认抓取 `og:image` / `twitter:image` 封面图与 `favicon`）；未来可持续扩展验证码预览（`otp_preview.v1`）等更多内置预览，而无需拆分碎片化插件。
+- **预览能力同样完全开放给第三方插件**：
+  - `builtin.preview` 与外部 Go 插件完全共享同一套 `CapEnricher` 能力、派生搜索与版本化注解契约（`link_preview.v1` 等），不享有任何私有通道；
+  - 第三方外部 `enricher` 插件既可新增新的预览注解类型，也可通过 `plugins.order` 排在 `builtin.preview` 之前覆盖同类型预览（或在设置中关闭对应内置子预览）；
+  - 仓库内保留 `plugins/examples/linkpreview/`（`unic.linkpreview`）作为外部 Go `enricher` 插件的参考实现与真实子进程 RPC 端到端测试夹具。
 
 ### 2. 抓取策略与安全护栏
 

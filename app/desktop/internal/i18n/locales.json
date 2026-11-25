@@ -8470,5 +8470,95 @@
     "ja": "接続状態を更新できませんでした。もう一度お試しください。",
     "pt-BR": "Não foi possível atualizar o status da conexão. Tente novamente.",
     "ru": "Не удалось обновить статус подключения. Повторите попытку."
+  },
+  "智能预览": {
+    "en": "Smart Preview",
+    "ja": "スマートプレビュー",
+    "pt-BR": "Pré-visualização inteligente",
+    "ru": "Умный предпросмотр"
+  },
+  "为剪贴板内容生成语义预览卡片并写入检索索引，首版支持网页链接预览，后续可扩展验证码等更多预览。": {
+    "en": "Generate rich preview cards and searchable metadata for clipboard items, starting with web link previews and extensible to more preview types.",
+    "ja": "クリップボード項目のリッチプレビューカードと検索用メタデータを自動生成します。現在はWebリンクに対応し、今後さらに拡張可能です。",
+    "pt-BR": "Gere cartões de pré-visualização e metadados pesquisáveis para itens da área de transferência, começando por links da Web e expansível para novos tipos.",
+    "ru": "Создаёт информативные карточки предпросмотра и метаданные для поиска, начиная с веб-ссылок с возможностью расширения."
+  },
+  "异步富化": {
+    "en": "Async enrichment",
+    "ja": "非同期エンリッチメント",
+    "pt-BR": "Enriquecimento assíncrono",
+    "ru": "Асинхронное обогащение"
+  },
+  "启用智能预览": {
+    "en": "Enable Smart Preview",
+    "ja": "スマートプレビューを有効にする",
+    "pt-BR": "Ativar pré-visualização inteligente",
+    "ru": "Включить умный предпросмотр"
+  },
+  "网页链接预览": {
+    "en": "Web link previews",
+    "ja": "Webリンクのプレビュー",
+    "pt-BR": "Pré-visualização de links da Web",
+    "ru": "Предпросмотр веб-ссылок"
+  },
+  "自动抓取网页标题与摘要，并支持按标题和摘要检索。": {
+    "en": "Fetch page titles and summaries automatically so links can be searched by title and description.",
+    "ja": "Webページのタイトルと概要を自動取得し、タイトルや説明文でリンクを検索できるようにします。",
+    "pt-BR": "Busque títulos e resumos automaticamente para pesquisar links por título e descrição.",
+    "ru": "Автоматически загружать заголовки и описания страниц для поиска по ним."
+  },
+  "抓取网站图标": {
+    "en": "Fetch site icons",
+    "ja": "サイトアイコンを取得",
+    "pt-BR": "Buscar ícones de sites",
+    "ru": "Загружать значки сайтов"
+  },
+  "抓取并缓存站点图标用于列表和详情页展示。": {
+    "en": "Fetch and cache favicons for list, grid, and detail previews.",
+    "ja": "リスト、グリッド、詳細プレビュー用にファビコンを取得してキャッシュします。",
+    "pt-BR": "Busque e armazene em cache os ícones de sites para visualização em lista, grade e detalhes.",
+    "ru": "Загружать и кэшировать значки сайтов для списка, сетки и подробного просмотра."
+  },
+  "抓取网页封面图": {
+    "en": "Fetch link cover images",
+    "ja": "カバー画像を取得",
+    "pt-BR": "Buscar imagens de capa",
+    "ru": "Загружать обложки страниц"
+  },
+  "默认抓取网页 og:image 封面图用于链接预览卡片。": {
+    "en": "Fetch og:image preview images for link cards by default.",
+    "ja": "リンクプレビューカード用に og:image カバー画像をデフォルトで取得します。",
+    "pt-BR": "Busque imagens og:image para cartões de link por padrão.",
+    "ru": "По умолчанию загружать изображения og:image для карточек ссылок."
+  },
+  "排除域名": {
+    "en": "Excluded domains",
+    "ja": "除外するドメイン",
+    "pt-BR": "Domínios excluídos",
+    "ru": "Исключённые домены"
+  },
+  "不抓取匹配的域名（支持子域名，多个域名用逗号分隔，回车保存）。": {
+    "en": "Skip matching domains and their subdomains. Separate multiple entries with commas and press Enter to save.",
+    "ja": "一致するドメインとサブドメインを除外します。複数ある場合はカンマ区切りで入力し、Enter で保存します。",
+    "pt-BR": "Ignore os domínios correspondentes e seus subdomínios. Separe vários por vírgula e pressione Enter para salvar.",
+    "ru": "Пропускать указанные домены и их поддомены. Разделяйте запятой и нажмите Enter для сохранения."
+  },
+  "仅处理整段为单个 HTTP/HTTPS 链接的条目，自动拦截本机与内网地址。重启桌面端后生效。": {
+    "en": "Applies only to items containing a single HTTP or HTTPS URL. Local and private network addresses are blocked automatically. Takes effect after restart.",
+    "ja": "単一の HTTP/HTTPS URL のみを含む項目が対象です。ローカルおよびプライベートネットワークのアドレスは自動的にブロックされます。再起動後に適用されます。",
+    "pt-BR": "Aplica-se apenas a itens com um único URL HTTP ou HTTPS. Endereços locais e de rede privada são bloqueados automaticamente. Entra em vigor após reiniciar.",
+    "ru": "Применяется только к записям с одной ссылкой HTTP/HTTPS. Локальные и частные адреса блокируются автоматически. Вступает в силу после перезапуска."
+  },
+  "域名格式无效，请以逗号分隔合法主机名（最多 64 个）。": {
+    "en": "Invalid domain list. Enter up to 64 valid hostnames separated by commas.",
+    "ja": "ドメインの形式が無効です。有効なホスト名をカンマ区切りで最大 64 件まで入力してください。",
+    "pt-BR": "Lista de domínios inválida. Insira até 64 nomes de host válidos separados por vírgulas.",
+    "ru": "Недопустимый список доменов. Укажите до 64 корректных имён хостов через запятую."
+  },
+  "智能预览的异步富化与预览注解能力同时开放给第三方插件；你也可以安装外部预览插件并在高级设置中调整优先级。": {
+    "en": "The same enrichment and preview annotation capabilities are open to third-party plugins. You can install external preview plugins and adjust their priority in Advanced settings.",
+    "ja": "非同期エンリッチメントとプレビュー注釈機能はサードパーティ製プラグインにも開放されています。外部プレビュープラグインをインストールし、詳細設定で優先順位を調整できます。",
+    "pt-BR": "Os mesmos recursos de enriquecimento e anotações de pré-visualização estão abertos a plugins de terceiros. Você pode instalar plugins externos e ajustar a prioridade nas configurações avançadas.",
+    "ru": "Те же возможности обогащения и аннотаций предпросмотра открыты сторонним плагинам. Вы можете установить внешние плагины предпросмотра и настроить их приоритет в расширенных настройках."
   }
 }

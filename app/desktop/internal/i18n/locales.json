@@ -8470,5 +8470,101 @@
     "ja": "接続状態を更新できませんでした。もう一度お試しください。",
     "pt-BR": "Não foi possível atualizar o status da conexão. Tente novamente.",
     "ru": "Не удалось обновить статус подключения. Повторите попытку."
+  },
+  "自定义": {
+    "en": "Custom",
+    "ja": "カスタム",
+    "pt-BR": "Personalizado",
+    "ru": "Настроено"
+  },
+  "全部双向": {
+    "en": "Two-way",
+    "ja": "すべて双方向",
+    "pt-BR": "Bidirecional",
+    "ru": "В обе стороны"
+  },
+  "仅发送": {
+    "en": "Send only",
+    "ja": "送信のみ",
+    "pt-BR": "Somente enviar",
+    "ru": "Только отправка"
+  },
+  "仅接收": {
+    "en": "Receive only",
+    "ja": "受信のみ",
+    "pt-BR": "Somente receber",
+    "ru": "Только прием"
+  },
+  "不同步": {
+    "en": "Do not sync",
+    "ja": "同期しない",
+    "pt-BR": "Não sincronizar",
+    "ru": "Не синхронизировать"
+  },
+  "快捷模式": {
+    "en": "Preset",
+    "ja": "プリセット",
+    "pt-BR": "Predefinição",
+    "ru": "Режим"
+  },
+  "恢复默认策略": {
+    "en": "Reset to default policy",
+    "ja": "デフォルトポリシーに戻す",
+    "pt-BR": "Restaurar política padrão",
+    "ru": "Сбросить политику"
+  },
+  "同步策略已保存": {
+    "en": "Sync policy saved",
+    "ja": "同期ポリシーを保存しました",
+    "pt-BR": "Política de sincronização salva",
+    "ru": "Политика синхронизации сохранена"
+  },
+  "全局文件已关闭": {
+    "en": "File sync off globally",
+    "ja": "グローバルファイル同期がオフ",
+    "pt-BR": "Arquivos desativados globalmente",
+    "ru": "Файлы отключены глобально"
+  },
+  "渠道已关闭": {
+    "en": "Disabled by channel",
+    "ja": "チャネル設定で無効",
+    "pt-BR": "Desativado pelo canal",
+    "ru": "Отключено в канале"
+  },
+  "调整": {
+    "en": "Adjust",
+    "ja": "設定",
+    "pt-BR": "Ajustar",
+    "ru": "Настроить"
+  },
+  "本机 → 对端": {
+    "en": "This device → Peer",
+    "ja": "このデバイス → 相手",
+    "pt-BR": "Este dispositivo → Par",
+    "ru": "Это устройство → Пир"
+  },
+  "对端 → 本机": {
+    "en": "Peer → This device",
+    "ja": "相手 → このデバイス",
+    "pt-BR": "Par → Este dispositivo",
+    "ru": "Пир → Это устройство"
+  },
+  "无": {
+    "en": "None",
+    "ja": "なし",
+    "pt-BR": "Nenhum",
+    "ru": "Нет"
+  },
+  "展开或收起同步策略": {
+    "en": "Expand or collapse sync policy",
+    "ja": "同期ポリシーを展開または折りたたむ",
+    "pt-BR": "Expandir ou recolher política de sincronização",
+    "ru": "Развернуть или свернуть политику синхронизации"
+  },
+  "单路径开关控制是否暂停该路径；下方策略仅控制本机自动同步与接收，手动发送不受限制，修改仅影响新开始的传输。": {
+    "en": "The path switch pauses or resumes this path. The policy below governs automatic sync and receiving on this device; manual sends ignore it, and changes apply only to new transfers.",
+    "ja": "パスのスイッチはこの経路を一時停止または再開します。下のポリシーはこのデバイスの自動同期と受信を制御します（手動送信には適用されず、変更は次の転送から有効になります）。",
+    "pt-BR": "A chave pausa ou retoma este caminho. A política abaixo controla a sincronização automática e o recebimento neste dispositivo; envios manuais a ignoram e as alterações valem apenas para novas transferências.",
+    "ru": "Переключатель приостанавливает или возобновляет этот путь. Политика ниже управляет автосинхронизацией и приемом на этом устройстве; ручная отправка ее игнорирует, а изменения действуют только для новых передач."
   }
 }

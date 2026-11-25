@@ -722,6 +722,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 							implementationID: impl,
 							state:            b.State,
 							syncEnabled:      b.SyncEnabled,
+							policy:           b.Policy.Normalized(),
 							connection:       string(b.Connection),
 							connectionPath:   b.ConnectionPath,
 							latencyMs:        b.LatencyMs,
@@ -915,6 +916,7 @@ func (d *viewState) projectLiveSyncChannels() {
 	}
 	seen := map[string]bool{}
 	channels := make([]syncChannel, 0, len(l.syncBackends)+len(l.externalPlugins)+1)
+	boolOff := func(v *bool) bool { return v != nil && !*v }
 	for _, b := range l.syncBackends {
 		seen[b.ID] = true
 		restart := false
@@ -923,6 +925,7 @@ func (d *viewState) projectLiveSyncChannels() {
 		} else if b.ID == "builtin.tailcat" && !cfg.PluginEnabled("builtin.tailcat") {
 			restart = true
 		}
+		sc := cfg.Plugins.Instances[b.ID].Sync
 		channels = append(channels, syncChannel{
 			id:               b.ID,
 			implementationID: b.ImplementationID,
@@ -931,11 +934,15 @@ func (d *viewState) projectLiveSyncChannels() {
 			pairing:          b.Pairing,
 			externalChannels: b.ExternalChannels,
 			restart:          restart,
-			policy:           syncPolicyLabel(cfg.Plugins.Instances[b.ID].Sync),
+			policy:           syncPolicyLabel(sc),
+			noText:           boolOff(sc.Text),
+			noImages:         boolOff(sc.Images),
+			noFiles:          boolOff(sc.Files),
 		})
 	}
 	if !seen["builtin.tailcat"] {
 		seen["builtin.tailcat"] = true
+		sc := cfg.Plugins.Instances["builtin.tailcat"].Sync
 		channels = append(channels, syncChannel{
 			id:               "builtin.tailcat",
 			implementationID: "builtin.tailcat",
@@ -943,7 +950,10 @@ func (d *viewState) projectLiveSyncChannels() {
 			state:            "disabled",
 			pairing:          true,
 			restart:          cfg.PluginEnabled("builtin.tailcat"),
-			policy:           syncPolicyLabel(cfg.Plugins.Instances["builtin.tailcat"].Sync),
+			policy:           syncPolicyLabel(sc),
+			noText:           boolOff(sc.Text),
+			noImages:         boolOff(sc.Images),
+			noFiles:          boolOff(sc.Files),
 		})
 	}
 	for _, pl := range l.externalPlugins {
@@ -951,6 +961,7 @@ func (d *viewState) projectLiveSyncChannels() {
 			continue
 		}
 		seen[pl.ID] = true
+		sc := cfg.Plugins.Instances[pl.ID].Sync
 		channels = append(channels, syncChannel{
 			id:               pl.ID,
 			implementationID: pl.ImplementationID,
@@ -959,7 +970,10 @@ func (d *viewState) projectLiveSyncChannels() {
 			pairing:          pl.TransportKind == "peer_sessions" && !pl.ExternalChannels,
 			externalChannels: pl.ExternalChannels,
 			restart:          pl.Restart || pl.Configured,
-			policy:           syncPolicyLabel(cfg.Plugins.Instances[pl.ID].Sync),
+			policy:           syncPolicyLabel(sc),
+			noText:           boolOff(sc.Text),
+			noImages:         boolOff(sc.Images),
+			noFiles:          boolOff(sc.Files),
 		})
 	}
 	d.syncChannels = channels

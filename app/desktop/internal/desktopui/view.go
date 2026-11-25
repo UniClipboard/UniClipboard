@@ -76,6 +76,9 @@ type syncChannel struct {
 	externalChannels bool
 	restart          bool
 	policy           string
+	noText           bool
+	noImages         bool
+	noFiles          bool
 }
 
 type deviceBinding struct {
@@ -84,6 +87,7 @@ type deviceBinding struct {
 	implementationID string
 	state            string // authorized, pending
 	syncEnabled      bool
+	policy           engine.BindingSyncPolicy
 	connection       string // connected, connecting, disconnected
 	connectionPath   string // direct, derp, peer_relay, unknown, ""
 	latencyMs        int64
@@ -190,6 +194,7 @@ type viewState struct {
 	entries                                                               []entry
 	syncChannels                                                          []syncChannel
 	devices                                                               []device
+	expandedBindings                                                      map[string]bool
 	refreshingDevices                                                     bool
 	refreshingDeviceID                                                    string
 	channels                                                              []externalChannel

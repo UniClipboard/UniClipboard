@@ -215,7 +215,9 @@ func (d *viewState) sidebarAnnouncement(c *ui.Context, k desktopkit.Kit) desktop
 		item := a.displayedItem
 		if item.ActionURL != "" {
 			if err := d.openExternalURL(item.ActionURL); err != nil {
-				d.notice = d.tr("无法打开链接。")
+				msg := d.tr("无法打开链接。")
+				d.notice = msg
+				d.toastError(msg)
 			} else {
 				d.persistRemoteAnnouncementDismissed(item.ID)
 				a.cardOpen = false
@@ -262,14 +264,14 @@ func (d *viewState) announcementDetailSheet(c *ui.Context, k desktopkit.Kit) {
 	}, func() {
 		ui.Column(c.Key("body")).FillWidth().Gap(12).Children(func() {
 			ui.Row(c.Key("meta")).Gap(8).AlignItems(ui.Center).Children(func() {
-				label, tone := d.tr("发布公告"), desktopkit.ToneInfo
+				label, color := d.tr("发布公告"), desktopkit.TagColor("blue")
 				switch item.Severity {
 				case "critical":
-					label, tone = d.tr("重要公告"), desktopkit.ToneError
+					label, color = d.tr("重要公告"), desktopkit.TagColor("red")
 				case "warning":
-					label, tone = d.tr("注意事项"), desktopkit.ToneWarning
+					label, color = d.tr("注意事项"), desktopkit.TagColor("orange")
 				}
-				k.Tag(c.Key("severity"), label, desktopkit.TagProps{Color: noticeToneColor(tone)})
+				k.Tag(c.Key("severity"), label, desktopkit.TagProps{Color: color})
 				if pub := formatAnnouncementDate(item.PublishedAt); pub != "" {
 					k.Text(c.Key("date"), pub, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary})
 				}
@@ -281,17 +283,6 @@ func (d *viewState) announcementDetailSheet(c *ui.Context, k desktopkit.Kit) {
 	})
 	if done {
 		a.detailOpen = false
-	}
-}
-
-func noticeToneColor(tone desktopkit.NoticeTone) desktopkit.TagColor {
-	switch tone {
-	case desktopkit.ToneError:
-		return "red"
-	case desktopkit.ToneWarning:
-		return "orange"
-	default:
-		return "blue"
 	}
 }
 

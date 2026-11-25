@@ -20,6 +20,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
+	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
@@ -108,7 +109,8 @@ func (m *Manager) State() State {
 	}
 	if m.cur.PluginEnabled("builtin.tailcat") != m.started.PluginEnabled("builtin.tailcat") ||
 		m.cur.PluginEnabled(builtintext.ID) != m.started.PluginEnabled(builtintext.ID) ||
-		m.cur.PluginEnabled(builtinclassify.ID) != m.started.PluginEnabled(builtinclassify.ID) {
+		m.cur.PluginEnabled(builtinclassify.ID) != m.started.PluginEnabled(builtinclassify.ID) ||
+		m.cur.PluginEnabled(builtinpreview.ID) != m.started.PluginEnabled(builtinpreview.ID) {
 		s.RestartRequired = append(s.RestartRequired, "plugins")
 	}
 	if !reflect.DeepEqual(m.cur.processorSettingsKey(), m.started.processorSettingsKey()) {

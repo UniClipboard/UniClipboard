@@ -397,7 +397,7 @@ func TestHistoryActionPostActionsDesktop(t *testing.T) {
 		t.Fatalf("none post_action unexpectedly set Apply=true")
 	}
 	drain(t, d)
-	if d.actionResult.open || d.actionToast.visible || d.notice != "" {
-		t.Fatalf("none post_action left UI side effects: result=%+v toast=%+v notice=%q", d.actionResult, d.actionToast, d.notice)
+	if d.actionResult.open || d.toasts.Len() > 0 || d.notice != "" {
+		t.Fatalf("none post_action left UI side effects: result=%+v toasts=%d notice=%q", d.actionResult, d.toasts.Len(), d.notice)
 	}
 }

@@ -1,6 +1,6 @@
 # 本机历史契约 v0.1
 
-- 状态：已实现并有测试：Engine 历史 API（查询/分页、内容租约、更新/删除、过期与配额、接收列表映射、历史应用），桌面 `/v1/history` 与 `unic history`；SwiftUI 客户端路线已取消，桌面界面采用 mygo + 自定义 UI Kit，原型待定。
+- Engine owns history queries and paging, content leases, updates and deletion, expiry and quotas, received-item mapping, and history application. Desktop uses the local service for history. The CLI provides the `unic history` command group. See [Desktop composition](../architecture/overview.md#live-desktop-composition) and the [history search contract](history-search-contract.md).
 - 日期：2026-11-07。
 - 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[插件契约](plugin-contract.md)。本文是 Engine 公共契约的历史扩展，公开包仍为 `github.com/uniclipboard/unic/engine`。
 
@@ -368,3 +368,19 @@ a deliberately small byte budget exercises the persisted import capacity
 floor. This does not override a user's explicit cleanup policy. The receipt
 records program/source hashes, process peak RSS, reports and private-data
 cleanup. Native credential prompts require separate platform evidence.
+
+## Derived history annotations and assets
+
+Engine owns local-only derived annotations and bounded binary assets produced by enabled `enricher` plugins after commit. Derived annotations never synchronize across devices, never alter committed content or content hashes, and never appear in `ListHistory`, events, logs, errors, or telemetry.
+
+Public Engine methods:
+- `GetHistoryAnnotations(ctx, id HistoryID) ([]HistoryAnnotation, error)`: returns persisted annotations for an existing, non-expired item ordered by configured plugin priority (`plugins.order`), allowing hosts to pick the primary slot per annotation type deterministically.
+- `OpenHistoryAnnotationAsset(ctx, id HistoryID, pluginID PluginID, annType, assetKey string) (io.ReadCloser, HistoryAnnotationAsset, error)`: streams a persisted binary asset while holding a blob reference against concurrent deletion.
+- `EnrichHistory(ctx, req HistoryEnrichRequest) error`: enqueues a high-priority `on_demand` or `manual` enrichment pass for an existing item without blocking on plugin completion.
+
+Storage and bounds:
+- Annotations (`history_annotations`), assets (`history_annotation_assets`), and per-plugin status (`history_enrichments`) cascade-delete with `clip_items(seq)`.
+- Asset bytes live in Engine's private `DataDir/history/` blob store, participate in orphan cleanup, and count toward `MaxStoredBytes` together with stored annotation JSON bytes.
+- Annotation payload JSON is capped at 256 KiB per annotation; aggregate assets per enrichment run are capped at 512 KiB.
+- Standard `link_preview.v1` payload requires valid UTF-8 without control characters, optional `canonical_url` (`http://`/`https://`, ≤ 2048 B), `site_name` (≤ 128 runes), `title` (≤ 256 runes), `description` (≤ 512 runes), at least one non-empty `title` or `description`, optional `favicon` asset (PNG/WebP/JPEG, ≤ 64 KiB), and optional `thumbnail` asset (PNG/WebP/JPEG, ≤ 256 KiB).
+- Successful annotation, tag, or derived search updates increment `HistoryRevision` and emit the standard content-free `history` event so hosts refresh without polling.

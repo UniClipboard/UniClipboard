@@ -22,6 +22,7 @@ import (
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/internal/observability"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
+	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 	"github.com/uniclipboard/unic/internal/session"
@@ -146,6 +147,18 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if c.PluginEnabled(builtintext.ID) {
 		onError, _ := c.ProcessorSettings(builtintext.ID)
 		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: builtintext.New(), OnError: onError})
+	}
+	if c.PluginEnabled(builtinpreview.ID) {
+		settings := c.Plugins.Instances[builtinpreview.ID]
+		var previewCfg builtinpreview.Settings
+		if settings.Preview != nil {
+			previewCfg = *settings.Preview
+		}
+		previewer, err := builtinpreview.New(previewCfg)
+		if err != nil {
+			return nil, err
+		}
+		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: previewer, Builtin: true})
 	}
 	opts.Plugins = append(opts.Plugins, o.Plugins...)
 	if o.LuaDir != "" {

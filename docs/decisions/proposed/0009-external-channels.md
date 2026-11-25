@@ -1,9 +1,8 @@
 # 0009 · 外部渠道：没有 unic 身份证明的第三方对端
 
-- 状态：草案；数据模型、引擎 API、接收路径与桌面 API 已实现（`engine/channels.go`、`unicd` 的 `/v1/channels`），尚无真实后端；首个对象是微信输入法（WeType）剪贴板组，接入方式（wxc 子进程或插件 RPC）另定。
+- Status: the external-channel RPC profile and Desktop channel management are implemented. The [SyncClipboard receipt](../../exec/evidence/syncclipboard/main-integration.json) records marketplace installation and process acceptance. Desktop pairs WeType shared spaces through the [provider pairing RPC](../../contracts/sync-backend-contract.md#provider-pairing-and-group-resolution).
 - 日期：2026-11-08。
 - 依据：[0007 多后端](0007-multiple-sync-backends.md)、[0008 统一设备身份](../archive/0008-device-identity-and-backend-bindings.md)、[身份协议 v1](../../contracts/identity-protocol.md) §7。
-- 产品尚未发布：直接调整接口与存储，不写迁移或兼容分支。
 
 ## 背景
 

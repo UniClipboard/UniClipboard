@@ -468,6 +468,7 @@ func (d *viewState) trySampleCopy() {
 			l.busy = false
 			if err != nil {
 				l.message = "无法创建示例内容，请稍后重试。"
+				d.toastError(d.tr(l.message), desktopkit.ToastOptions{ID: toastIDLiveMessage})
 				return
 			}
 			d.clearAllHistoryFilters()

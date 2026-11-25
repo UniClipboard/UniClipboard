@@ -62,6 +62,15 @@ type ActionSpec struct {
 	TimeoutMS   int64    `json:"timeout_ms,omitempty"`
 }
 
+// EnricherSpec is the wire form of a declared enricher capability.
+type EnricherSpec struct {
+	Accepts      []string `json:"accepts"`
+	RequiredTags []string `json:"required_tags,omitempty"`
+	Triggers     []string `json:"triggers"`
+	Annotations  []string `json:"annotations,omitempty"`
+	TimeoutMS    int64    `json:"timeout_ms,omitempty"`
+}
+
 // Spec is the wire form of a plugin description.
 type Spec struct {
 	ID             string   `json:"id"`
@@ -72,12 +81,13 @@ type Spec struct {
 	TransportKind  string   `json:"transport_kind,omitempty"`
 	// ExternalChannels and RemoteRevocation describe an external-channel sync
 	// backend (decision 0009).
-	ExternalChannels bool         `json:"external_channels,omitempty"`
-	RemoteRevocation bool         `json:"remote_revocation,omitempty"`
-	Actions          []ActionSpec `json:"actions,omitempty"`
+	ExternalChannels bool          `json:"external_channels,omitempty"`
+	RemoteRevocation bool          `json:"remote_revocation,omitempty"`
+	Actions          []ActionSpec  `json:"actions,omitempty"`
+	Enricher         *EnricherSpec `json:"enricher,omitempty"`
 }
 
-// Equal compares ID, version, API, capabilities (as a set) and actions.
+// Equal compares ID, version, API, capabilities (as a set), actions and enricher.
 func (s Spec) Equal(o Spec) bool {
 	if s.ID != o.ID || s.Version != o.Version || s.APIVersion != o.APIVersion || s.SettingsSHA256 != o.SettingsSHA256 || s.TransportKind != o.TransportKind || s.ExternalChannels != o.ExternalChannels || s.RemoteRevocation != o.RemoteRevocation {
 		return false
@@ -89,6 +99,19 @@ func (s Spec) Equal(o Spec) bool {
 	for i, a := range s.Actions {
 		b := o.Actions[i]
 		if a.ID != b.ID || a.Title != b.Title || a.TimeoutMS != b.TimeoutMS || !slices.Equal(a.Accepts, b.Accepts) || !slices.Equal(a.Placements, b.Placements) || !slices.Equal(a.PostActions, b.PostActions) {
+			return false
+		}
+	}
+	if (s.Enricher == nil) != (o.Enricher == nil) {
+		return false
+	}
+	if s.Enricher != nil {
+		a, b := s.Enricher, o.Enricher
+		if a.TimeoutMS != b.TimeoutMS ||
+			!slices.Equal(norm(a.Accepts), norm(b.Accepts)) ||
+			!slices.Equal(norm(a.RequiredTags), norm(b.RequiredTags)) ||
+			!slices.Equal(norm(a.Triggers), norm(b.Triggers)) ||
+			!slices.Equal(norm(a.Annotations), norm(b.Annotations)) {
 			return false
 		}
 	}
@@ -118,6 +141,9 @@ const (
 	MethodRunAction       = "plugin.run_action"
 	MethodOpenActionPart  = "action.open_part"
 	MethodCloseActionPart = "action.close_part"
+	MethodEnrich          = "plugin.enrich"
+	MethodOpenEnrichPart  = "enrich.open_part"
+	MethodCloseEnrichPart = "enrich.close_part"
 	MethodOnEvent         = "plugin.on_event"
 	MethodNotify          = "host.notify"
 
@@ -222,6 +248,9 @@ const (
 	PurposeProcessText = "process_text"
 	PurposeActionText  = "action_text"
 	PurposeActionPart  = "action_part"
+	PurposeEnrichText  = "enrich_text"
+	PurposeEnrichPart  = "enrich_part"
+	PurposeEnrichAsset = "enrich_asset"
 	// Sync backends only.
 	PurposeSyncPart    = "sync_part"    // Engine→plugin, content to send
 	PurposeReceivePart = "receive_part" // plugin→Engine, content that arrived
@@ -427,7 +456,9 @@ func (p Policy) validate() error {
 }
 
 // Validate checks an item snapshot.
-func (i Item) Validate() error {
+func (i Item) Validate() error { return i.validateText(PurposeProcessText) }
+
+func (i Item) validateText(textPurpose string) error {
 	if i.SourceApplication.Validate() != nil {
 		return NewError(CodeInvalidArgument)
 	}
@@ -440,12 +471,12 @@ func (i Item) Validate() error {
 		return protoErr("bad item type")
 	}
 	switch i.Origin.Kind {
-	case "local_system", "remote_device", "action", "explicit", "external":
+	case "local_system", "remote_device", "action", "explicit", "external", "migration":
 	default:
 		return protoErr("bad origin")
 	}
 	if i.Text != nil {
-		if err := i.Text.validate(PurposeProcessText); err != nil {
+		if err := i.Text.validate(textPurpose); err != nil {
 			return err
 		}
 	}

@@ -5,7 +5,10 @@ paths:
   - internal
   - plugin
   - plugins
-  - app/desktop
+  - app/desktop/boardui
+  - app/desktop/cmd
+  - app/desktop/e2e
+  - app/desktop/internal
   - app/service
   - bindings
   - app/expo
@@ -16,7 +19,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: ab7f91a5e70d5894f894e05ecc22e3db35593b83
+verified: 7dfd2fc8b6684bd1d5505aa5596d45cb7a6b12c4
 ---
 # 仓库布局与依赖边界
 
@@ -91,7 +94,7 @@ The history tag registry is shared by sidebar visibility, search candidates, lis
 
 Below 1100 DIP the sidebar uses an overlay. Below 760 DIP history list/detail share one pane. Device management opens as a full-window page (`devices`, sibling to Settings) combining a 2-column device card overview with a right-hand inspector (collapsing to single-pane below 760 DIP) and a focused task Sheet for pairing/adding devices; window-scoped Escape dismisses active menus/dialogs/sheets or inline rename first, steps back from single-pane device detail to the overview, and returns from the overview to history even when no control holds focus. Approving a pending device still requires explicit fingerprint review. The animated sidebar viewport owns clipping while its inner body owns padding, so collapse does not leave a final padding jump.
 
-Application scroll, list and grid factories share centralized indicator policy in `desktopkit/scroll_indicator.go`: show after position changes and hide after 600ms idle; hover alone does not reveal indicators. Each container owns its own state. History list/grid retain a scrollbar gutter, stable IDs and viewport reporting. The 52-DIP history toolbar integrates a centered unified search-and-filter omnibar (`SplitViewProps.SearchCentered`, `TokenSearchFieldProps.Unified`) combining live token search (`#`, `@`, `/`, `on:`, `ext:`), inline removable condition chips and a built-in filter funnel popover with live prospective counts, replacing the former standalone second filter row. Switching between list and grid plays a directional horizontal slide (`±28` DIP, respecting `ReduceMotion`) while smoothly revealing/hiding the compact grid card-size slider. In history list mode, `GroupedList` renders inset rounded rows (`ItemListItem.CardRow`) with soft blue tinted border selection, source application icons with content-kind corner badges (or image thumbnails), deduplicated single-line excerpts, user tags and hover quick copy, paired with a detail pane that shares the semantic link card, 3-column facts strip, subtle micro-slide switch and floating pill dock. In history grid mode, `GroupedGrid` renders semantic source-first cards (origin application icon/name or content-kind fallback, deduplicated short text, inset code/link/file previews, full-bleed image thumbnails, user tags, pinned mark and hover quick actions), and clicking a card opens a floating inset full-height detail card (`8` DIP margin, `12` DIP radius) covering the trailing titlebar band (`SplitViewProps.Drawer`) with layered depth enter/exit motion (exit-retained slide + gentle canvas recede, respecting `ReduceMotion`), a 48-DIP integrated top bar, pager, direction-aware micro-slide content switching, semantic preview, compact facts, tags, delivery status and the floating pill action dock.
+Application scroll, list and grid factories share centralized indicator policy in `desktopkit/scroll_indicator.go`: show after position changes and hide after 600ms idle; hover alone does not reveal indicators. Each container owns its own state. History list/grid retain a scrollbar gutter, stable IDs and viewport reporting. The 52-DIP history toolbar integrates a centered unified search-and-filter omnibar (`SplitViewProps.SearchCentered`, `TokenSearchFieldProps.Unified`) combining live token search (`#`, `@`, `/`, `on:`, `ext:`), inline removable condition chips and a built-in filter funnel popover with live prospective counts, replacing the former standalone second filter row. Toolbar density adapts deterministically to effective available content width (`desktopkit.ToolbarLayout`, accounting for docked sidebar, zoom scale, macOS traffic-light clearance and Windows host caption buttons): compact widths (`< 600` DIP) tighten spacing, hide decorative shortcut pills and compact the single-pane back button; narrow widths (`< 480` DIP) collapse idle search to a compact trigger (or accent active-condition badge) leaving draggable titlebar space, and expand into a full-width search takeover with a collapse button (`收起搜索`) on click, `⌘F`/`Ctrl+F` or filter interaction while preserving host caption controls and collapsing cleanly on empty Escape or outside blur without discarding active filters; ultra-narrow zoomed widths (`< 360` DIP) fold secondary history commands into the overflow menu. Switching between list and grid plays a directional horizontal slide (`±28` DIP, respecting `ReduceMotion`) while smoothly revealing/hiding the compact grid card-size slider. In history list mode, `GroupedList` renders inset rounded rows (`ItemListItem.CardRow`) with soft blue tinted border selection, source application icons with content-kind corner badges (or image thumbnails), deduplicated single-line excerpts, user tags and hover quick copy, paired with a detail pane that shares the semantic link card, 3-column facts strip, subtle micro-slide switch and floating pill dock. In history grid mode, `GroupedGrid` renders semantic source-first cards (origin application icon/name or content-kind fallback, deduplicated short text, inset code/link/file previews, full-bleed image thumbnails, user tags, pinned mark and hover quick actions), and clicking a card opens a floating inset full-height detail card (`8` DIP margin, `12` DIP radius) covering the trailing titlebar band (`SplitViewProps.Drawer`) with layered depth enter/exit motion (exit-retained slide + gentle canvas recede, respecting `ReduceMotion`), a 48-DIP integrated top bar, pager, direction-aware micro-slide content switching, semantic preview, compact facts, tags, delivery status and the floating pill action dock.
 
 The demo contains history list/grid/detail, device management and settings. Its operations remain in memory; it creates no API client, clipboard writer, shortcut registration or persisted settings. The production `unic-desktop` uses the same renderer with its live service binding. Build success alone establishes no native visual or interaction acceptance. See the [demo guide](../../app/desktop/UI-DEMO.md), [component contract](../contracts/boardui-native-contract.md) and [production migration receipt](../exec/boardui-production-migration.md).
 
@@ -171,8 +174,7 @@ View-level E2E verifies mygo input and layout without opening a native app. Nati
 ## 缺口
 
 - The adopted demo supplies desktop composition and interaction. Native visual acceptance and the remaining live capabilities are recorded in the [execution receipt](../exec/desktop-live-data.md).
-- Android、iOS 工程及移动绑定尚未建立；gomobile 接入时需补嵌套模块、工作区和版本标签约定（`bindings/vX.Y.Z`）。
-- 各端原生 CI 尚未建立。随应用工程接入，再实现核心变更验证所有端、应用变更验证对应端的路径分流。
+- Mobile physical-device synchronization, system credential prompts and Store rollout have separate acceptance gates. See the [mobile completion plan](../exec/0031-mobile-completion-plan.md) and [release architecture](releases.md#mobile-candidates).
 
 ## Independent release programs
 

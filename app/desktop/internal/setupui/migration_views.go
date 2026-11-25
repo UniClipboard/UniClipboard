@@ -300,7 +300,7 @@ func renderMigrationWorkspace(c *ui.Context, k desktopkit.Kit, p setupColors, m 
 					renderResultBody(c, k, p, m, tr)
 				}
 				if m.Entering {
-					semanticBanner(c.Key("starting"), k, p, desktopkit.ToneInfo, desktopkit.IconInfo, tr("正在启动应用…"), "")
+					setupNoteCard(c.Key("starting"), k, p, noteInfo, desktopkit.IconInfo, tr("正在启动应用…"), "")
 				}
 			})
 		})
@@ -420,7 +420,7 @@ func renderConfirmBody(c *ui.Context, k desktopkit.Kit, p setupColors, m Model, 
 	})
 
 	// Block 3: Single high-priority amber pre-flight reminder.
-	semanticBanner(c.Key("quit-v1"), k, p, desktopkit.ToneWarning, desktopkit.IconInfo,
+	setupNoteCard(c.Key("quit-v1"), k, p, noteWarning, desktopkit.IconInfo,
 		tr("开始前，请先退出 UniClipboard v1。"),
 		tr("应用不会自动退出旧版进程；若 v1 仍在运行并回收文件，可能导致个别附件缺失。"))
 }
@@ -457,7 +457,7 @@ func renderConflictBody(c *ui.Context, k desktopkit.Kit, p setupColors, tr func(
 				k.Text(c, tr("离线迁移需要独占目标目录锁。请先手动停止正在运行的独立 unic 服务，然后重试。应用不会自动终止独立服务。"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary}).FontSize(12.2)
 			})
 		})
-		semanticBanner(c.Key("no-credential"), k, p, desktopkit.ToneInfo, desktopkit.IconShield,
+		setupNoteCard(c.Key("no-credential"), k, p, noteInfo, desktopkit.IconShield,
 			tr("安全边界"),
 			tr("本次预检在读取系统凭据前已中止，没有读取凭据，也没有导入任何记录。"))
 	})
@@ -714,11 +714,8 @@ func renderResultBody(c *ui.Context, k desktopkit.Kit, p setupColors, m Model, t
 	}
 
 	if m.Report.MissingParts > 0 {
-		semanticBanner(c.Key("missing-note"), k, p, desktopkit.ToneInfo, desktopkit.IconInfo, "",
+		setupNoteCard(c.Key("missing-note"), k, p, noteInfo, desktopkit.IconInfo, "",
 			tr("缺失内容是记录中丢失的图片或文件附件。它与失败记录分开计数。"))
-	}
-	if m.Stage == "failed" && m.Error != "" {
-		semanticBanner(c.Key("result-error"), k, p, desktopkit.ToneError, desktopkit.IconDismiss, "", tr(m.Error))
 	}
 }
 

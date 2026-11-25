@@ -34,6 +34,17 @@ type entry struct {
 	tags                                []string
 	pinned                              bool
 	folder                              *folderInfo
+	linkPreview                         *linkPreviewInfo
+}
+
+// linkPreviewInfo holds the resolved link_preview.v1 annotation and decoded assets.
+type linkPreviewInfo struct {
+	siteName    string
+	title       string
+	description string
+	canonical   string
+	favicon     ui.ImageSource
+	thumbnail   *historyImage
 }
 
 // folderInfo is the display model of a folder entry. Rows exist only for snapshots.
@@ -76,6 +87,9 @@ type syncChannel struct {
 	externalChannels bool
 	restart          bool
 	policy           string
+	noText           bool
+	noImages         bool
+	noFiles          bool
 }
 
 type deviceBinding struct {
@@ -84,6 +98,7 @@ type deviceBinding struct {
 	implementationID string
 	state            string // authorized, pending
 	syncEnabled      bool
+	policy           engine.BindingSyncPolicy
 	connection       string // connected, connecting, disconnected
 	connectionPath   string // direct, derp, peer_relay, unknown, ""
 	latencyMs        int64
@@ -176,10 +191,11 @@ type viewState struct {
 	live                                                                  *liveState
 	tagEditor                                                             tagEditorState
 	actionResult                                                          actionResultState
-	actionToast                                                           actionToastState
-	openURL        func(string) error
-	openQuickPanel func()
-	announcement   announcementState
+	toasts                                                                desktopkit.ToastStore
+	dismissedRestart, dismissedCfgErr, dismissedApply                     string
+	openURL                                                               func(string) error
+	openQuickPanel                                                        func()
+	announcement                                                          announcementState
 	quick                                                                 *quickPanelState
 	tags                                                                  []historyTag
 	tagManager                                                            tagManagerState
@@ -191,6 +207,7 @@ type viewState struct {
 	entries                                                               []entry
 	syncChannels                                                          []syncChannel
 	devices                                                               []device
+	expandedBindings                                                      map[string]bool
 	refreshingDevices                                                     bool
 	refreshingDeviceID                                                    string
 	channels                                                              []externalChannel
@@ -198,6 +215,7 @@ type viewState struct {
 	confirmEntries                                                        []string
 	drawerSwitchDir                                                       int
 	sidebarHidden, detailOpen, inspector, tagsOpen, quickLook, filterOpen bool
+	narrowSearchOpen, wasNarrow                                           bool
 	zoomStep                                                              int
 	shortcutReturnPage                                                    string
 	shortcutEditor                                                        shortcutEditor
@@ -274,7 +292,7 @@ func (d *viewState) view(c *ui.Context) {
 		d.confirmDialog(c.Key("confirm"), k)
 		d.aboutDialogs(c.Key("about"), k)
 		d.announcementDetailSheet(c.Key("announcement-detail"), k)
-		d.actionToastOverlay(c.Key("action-toast"), k)
+		d.toasterOverlay(c, k)
 	})
 }
 

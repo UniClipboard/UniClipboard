@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/boardui"
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/internal/v1migration"
@@ -25,6 +26,7 @@ type Screen struct {
 	flow       *setupflow.Flow
 	model      Model
 	fields     Fields
+	toasts     desktopkit.ToastStore
 	enter      func()
 	cancel     context.CancelFunc
 	results    chan completion
@@ -91,7 +93,12 @@ func (s *Screen) enterApp() {
 	s.enter()
 }
 func (s *Screen) SetLanguage(language string) { s.model.Language = language }
-func (s *Screen) EnterFailed(message string)  { s.model.Entering, s.model.Error = false, message }
+func (s *Screen) EnterFailed(message string) {
+	s.model.Entering, s.model.Error = false, message
+	if message != "" {
+		s.toasts.Error(i18n.Translate(s.model.Language, message), desktopkit.ToastOptions{ID: "setup-error"})
+	}
+}
 func (s *Screen) pick() {
 	if s.cancel != nil || s.model.Detecting || s.model.Entering {
 		return
@@ -99,6 +106,7 @@ func (s *Screen) pick() {
 	selected, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Title: i18n.Translate(s.model.Language, "选择 v1 数据目录"), Directory: true, DefaultPath: s.model.Source})
 	if err != nil {
 		s.model.Error = "无法打开目录选择窗口。请重试。"
+		s.toasts.Error(i18n.Translate(s.model.Language, s.model.Error), desktopkit.ToastOptions{ID: "setup-error"})
 		return
 	}
 	if len(selected) > 0 {
@@ -159,6 +167,7 @@ func (s *Screen) View(c *ui.Context, windowControls func(*ui.Context)) {
 	s.poll()
 	c.After(50 * time.Millisecond)
 	model := s.model
+	model.Toasts = &s.toasts
 	model.WindowControls = windowControls
 	Render(c, model, &s.fields, Actions{
 		Begin: s.begin, Redetect: func() { s.detect("") }, Pick: s.pick,
@@ -202,6 +211,7 @@ func (s *Screen) poll() {
 			s.model.Stage = "conflict"
 		} else if r.err != nil && !errors.Is(r.err, context.Canceled) {
 			s.model.Stage, s.model.Error = "failed", "迁移未完成。请检查数据目录、可用磁盘空间和访问权限，然后重试。"
+			s.toasts.Error(i18n.Translate(s.model.Language, s.model.Error), desktopkit.ToastOptions{ID: "setup-error"})
 		}
 		if s.closeAfter != nil {
 			done := s.closeAfter

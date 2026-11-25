@@ -179,8 +179,9 @@ func scenarioWindowChrome(t *testing.T) {
 						}
 						if !system && title == "全部" {
 							caption, _ := tt.AccessByRole(ui.RoleButton, "最小化")
+							var controls []ui.AccessInfo
 							for _, node := range tt.AccessAll() {
-								if node.Role != ui.RoleSearch && node.Name != "切换收藏" && node.Name != "更多操作" && node.Name != "发送到设备" {
+								if node.Role != ui.RoleSearch && node.Name != "显示方式" && node.Name != "切换收藏" && node.Name != "更多操作" && node.Name != "发送到设备" && node.Name != "动作" && node.Name != "收起搜索" {
 									continue
 								}
 								r := node.Bounds
@@ -189,6 +190,15 @@ func scenarioWindowChrome(t *testing.T) {
 								}
 								if r.W <= 0 || r.X < 0 || r.X+r.W > caption.Bounds.X+.1 {
 									t.Errorf("history control overlaps caption: %s %+v caption=%+v", node.Name, r, caption.Bounds)
+								}
+								controls = append(controls, node)
+							}
+							for i := 0; i < len(controls); i++ {
+								for j := i + 1; j < len(controls); j++ {
+									a, b := controls[i], controls[j]
+									if a.Bounds.X < b.Bounds.X+b.Bounds.W-.1 && b.Bounds.X < a.Bounds.X+a.Bounds.W-.1 {
+										t.Errorf("history controls overlap: %v(%q)=%+v vs %v(%q)=%+v", a.Role, a.Name, a.Bounds, b.Role, b.Name, b.Bounds)
+									}
 								}
 							}
 						}

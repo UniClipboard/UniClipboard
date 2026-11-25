@@ -51,6 +51,7 @@ func (d *viewState) refreshDiagnostics() {
 			if err != nil {
 				s.loaded = false
 				s.err = liveErrorMessage(err)
+				d.toastWarning(d.tr(s.err), desktopkit.ToastOptions{ID: "diagnostics-feedback"})
 				return
 			}
 			s.levels = levels
@@ -61,6 +62,7 @@ func (d *viewState) refreshDiagnostics() {
 	}) {
 		s.busy = false
 		s.err = d.tr("诊断请求未启动，请重试。")
+		d.toastWarning(s.err, desktopkit.ToastOptions{ID: "diagnostics-feedback"})
 	}
 }
 
@@ -85,6 +87,7 @@ func (d *viewState) setDiagnosticsOverride(target string, reset bool) {
 			if err != nil {
 				s.err = liveErrorMessage(err)
 				s.loaded = false
+				d.toastError(d.tr(s.err), desktopkit.ToastOptions{ID: "diagnostics-feedback"})
 				return
 			}
 			s.levels = levels
@@ -95,6 +98,7 @@ func (d *viewState) setDiagnosticsOverride(target string, reset bool) {
 	}) {
 		s.busy = false
 		s.err = d.tr("诊断请求未启动，请重试。")
+		d.toastWarning(s.err, desktopkit.ToastOptions{ID: "diagnostics-feedback"})
 	}
 }
 
@@ -106,6 +110,7 @@ func (d *viewState) runDiagnosticsAction(export bool) {
 	}
 	if (export && s.export == nil) || (!export && s.openLogs == nil) {
 		s.err = d.tr("当前宿主不支持此操作。")
+		d.toastWarning(s.err, desktopkit.ToastOptions{ID: "diagnostics-feedback"})
 		return
 	}
 	s.busy = true
@@ -132,16 +137,20 @@ func (d *viewState) runDiagnosticsAction(export bool) {
 			s.busy = false
 			if err != nil {
 				s.err = d.tr("诊断操作失败，请重试。")
+				d.toastError(s.err, desktopkit.ToastOptions{ID: "diagnostics-feedback"})
 				return
 			}
 			if export {
 				if path == "" {
 					s.notice = d.tr("已取消导出。")
+					d.toastInfo(s.notice, desktopkit.ToastOptions{ID: "diagnostics-feedback"})
 				} else {
 					s.notice = d.tr("日志已导出：") + path
+					d.toastSuccess(d.tr("日志已导出"), desktopkit.ToastOptions{ID: "diagnostics-feedback", Description: path})
 				}
 			} else {
 				s.notice = d.tr("已请求打开日志目录。")
+				d.toastInfo(s.notice, desktopkit.ToastOptions{ID: "diagnostics-feedback"})
 			}
 		}
 		select {
@@ -204,7 +213,7 @@ func (d *viewState) diagnosticsSettings(c *ui.Context, k desktopkit.Kit, cfg *co
 			}
 		})
 		if !cfg.Telemetry.Enabled {
-			settingsStrip(c.Key("master-off"), k, desktopkit.ToneInfo, d.tr("总开关已关闭：以下 4 项信号当前均暂停上传，但你的偏好开关已被保留。"))
+			settingsNoteRow(c.Key("master-off"), k, d.tr("总开关已关闭：以下 4 项信号当前均暂停上传，但你的偏好开关已被保留。"))
 		}
 		signals := []struct {
 			id, label, desc string
@@ -250,7 +259,7 @@ func (d *viewState) diagnosticsSettings(c *ui.Context, k desktopkit.Kit, cfg *co
 		Footer: d.tr("临时调试覆盖仅在服务内存中生效 15 分钟，不改写配置文件，到期后自动恢复已保存等级。"),
 	}, func() {
 		if !s.loaded {
-			settingsStrip(c.Key("levels-unavail"), k, desktopkit.ToneWarning, d.tr("无法读取服务当前有效日志等级，临时调试操作暂不可用。"))
+			settingsNoteRow(c.Key("levels-unavail"), k, d.tr("无法读取服务当前有效日志等级，临时调试操作暂不可用。"))
 		}
 		levelRows := []struct {
 			target, id, label, desc string
@@ -336,11 +345,5 @@ func (d *viewState) diagnosticsSettings(c *ui.Context, k desktopkit.Kit, cfg *co
 				d.runDiagnosticsAction(false)
 			}
 		})
-		if s.err != "" {
-			settingsStrip(c.Key("err"), k, desktopkit.ToneWarning, s.err)
-		}
-		if s.notice != "" {
-			settingsStrip(c.Key("notice"), k, desktopkit.ToneInfo, s.notice)
-		}
 	})
 }

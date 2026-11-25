@@ -11,7 +11,9 @@ import (
 // CloseButtonProps configures the compact circular dismiss button ("2xs", "xs", "sm", "md").
 // Label supplies the mandatory accessible name since there is no visible text.
 type CloseButtonProps struct {
-	Size     string
+	// Size selects one of "2xs", "xs" (default), "sm", or "md".
+	Size string
+	// Label is the required accessible name for the icon-only dismiss control.
 	Label    string
 	Disabled bool
 }
@@ -46,7 +48,7 @@ func (k Kit) CloseButton(c *ui.Context, p CloseButtonProps) ui.Element {
 
 	e := ui.ButtonBase(c).Label(p.Label).Disabled(p.Disabled).DimDisabled(false).
 		Size(m.container, m.container).Shrink(0).Padding(0).Radius(m.container / 2).
-		Justify(ui.Center).AlignItems(ui.Center).
+		Center().
 		Background(k.Color("background-tertiary-default")).
 		FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
 

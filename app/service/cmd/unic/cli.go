@@ -145,8 +145,8 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		return toml.NewEncoder(os.Stdout).Encode(st.Config)
 
 	case "device path":
-		if len(args) != 3 {
-			return errors.New("usage: unic device path pause|resume|remove BINDING_ID REVISION")
+		if len(args) < 3 {
+			return errors.New("usage: unic device path pause|resume|remove|policy BINDING_ID REVISION [--text DIR] [--images DIR] [--files DIR]")
 		}
 		revision, err := strconv.ParseInt(args[2], 10, 64)
 		if err != nil || revision <= 0 {
@@ -154,13 +154,58 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		}
 		switch args[0] {
 		case "pause", "resume":
-			out, err := c.SetBindingSync(short, args[1], api.BindingEdit{Revision: revision, Enabled: args[0] == "resume"})
+			if len(args) != 3 {
+				return errors.New("usage: unic device path pause|resume|remove BINDING_ID REVISION")
+			}
+			en := args[0] == "resume"
+			out, err := c.SetBindingSync(short, args[1], api.BindingEdit{Revision: revision, Enabled: &en})
 			if err != nil {
 				return err
 			}
 			return json.NewEncoder(os.Stdout).Encode(out)
 		case "remove":
+			if len(args) != 3 {
+				return errors.New("usage: unic device path pause|resume|remove BINDING_ID REVISION")
+			}
 			return c.RemoveBinding(short, args[1], revision)
+		case "policy":
+			if len(args) == 3 {
+				return errors.New("usage: unic device path policy BINDING_ID REVISION [--text DIR] [--images DIR] [--files DIR]")
+			}
+			pol := engine.DefaultBindingSyncPolicy()
+			if st, serr := c.Status(short); serr == nil {
+				for _, p := range st.Peers {
+					for _, b := range p.Bindings {
+						if b.ID == args[1] {
+							pol = b.Policy.Normalized()
+						}
+					}
+				}
+			}
+			for i := 3; i < len(args); i += 2 {
+				if i+1 >= len(args) {
+					return errors.New("missing direction value (bidirectional|send_only|receive_only|disabled)")
+				}
+				dir := engine.SyncDirection(args[i+1])
+				if !dir.Valid() {
+					return fmt.Errorf("invalid sync direction %q (want bidirectional|send_only|receive_only|disabled)", args[i+1])
+				}
+				switch args[i] {
+				case "--text":
+					pol.Text = dir
+				case "--images":
+					pol.Images = dir
+				case "--files":
+					pol.Files = dir
+				default:
+					return fmt.Errorf("unknown policy flag %q", args[i])
+				}
+			}
+			out, err := c.SetBindingSync(short, args[1], api.BindingEdit{Revision: revision, Policy: &pol})
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(os.Stdout).Encode(out)
 		}
 		return errors.New("unknown binding action")
 	case "device backends":

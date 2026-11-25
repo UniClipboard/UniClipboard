@@ -23,7 +23,23 @@ type TokenSearchFieldProps struct {
 	Toolbar bool
 	// Unified renders the always-visible U1 centered omnibar combining live token search
 	// with an integrated trailing filter funnel button and quick-filter popover.
-	Unified          bool
+	Unified bool
+	// Compact tightens padding/gaps and hides the decorative shortcut hint pill so the
+	// omnibar stays legible and keeps the filter button unclipped in narrower toolbars.
+	Compact bool
+	// Collapsed renders a compact search trigger (or active search/filter badge pill)
+	// inside the search landmark for narrow toolbars; clicking it invokes OnExpand.
+	Collapsed bool
+	// NarrowTakeover enables Escape-to-collapse when the query and popovers are empty.
+	NarrowTakeover bool
+	// ActiveTooltip overrides the collapsed trigger tooltip while a query or filter is active.
+	ActiveTooltip string
+	// ReturnFocus moves keyboard focus to the collapsed trigger button on this frame.
+	ReturnFocus bool
+	// OnExpand is called when the collapsed search trigger is clicked.
+	OnExpand func()
+	// OnCollapse is called when Escape collapses an empty NarrowTakeover omnibar.
+	OnCollapse       func()
 	Label            string
 	Placeholder      string
 	ExternalShortcut bool
@@ -64,6 +80,7 @@ type TokenSearchFieldProps struct {
 // TokenSearchResult is what TokenSearchField reports for one frame.
 type TokenSearchResult struct {
 	Element, Input ui.Element
+	Focused        bool   // whether the text input holds focus in this frame
 	Edited         bool   // the text changed
 	Submitted      bool   // Return reached the field (OnKey did not prevent it)
 	Selected       int    // index of the suggestion clicked in this frame, -1 for none
@@ -73,8 +90,6 @@ type TokenSearchResult struct {
 
 func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearchResult {
 	pal := k.fldPal()
-	{
-	}
 
 	local := -1
 	hi := p.Highlighted
@@ -84,7 +99,99 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 	res := TokenSearchResult{Selected: -1}
 	hasText := p.Value != nil && *p.Value != ""
 	active := hasText || len(p.Tokens) > 0
-	var in, trigger ui.Element
+	if p.Unified && p.Collapsed {
+		activeCount := p.FilterCount
+		if hasText {
+			activeCount++
+		}
+		hasActive := active || activeCount > 0
+		tip := p.Label
+		if hasActive && p.ActiveTooltip != "" {
+			tip = p.ActiveTooltip
+		} else if p.ShortcutHint != "" && tip != "" {
+			tip += " (" + p.ShortcutHint + ")"
+		}
+		var trigger ui.Element
+		row := ui.Row(c).AlignItems(ui.Center).Shrink(0).Role(ui.RoleSearch)
+		row.Children(func() {
+			b := ui.ButtonBase(c.Key("search-trigger")).Label(p.Label).Tooltip(tip).
+				Disabled(p.Disabled).DimDisabled(false).Shrink(0).
+				AlignItems(ui.Center).Justify(ui.Center).Radius(7).
+				FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
+			trigger = b
+			pressed := !p.Disabled && (b.Pressed() || (b.Focused() && c.KeyDown(ui.KeySpace)))
+			if hasActive {
+				bg := k.Color("accent-500").Alpha(.12)
+				if pressed {
+					bg = k.Color("accent-500").Alpha(.22)
+				} else if b.Hovered() {
+					bg = k.Color("accent-500").Alpha(.18)
+				}
+				b.Height(28).Padding(0, 7).Gap(5).Background(bg).Border(1, k.Color("accent-500").Alpha(.32))
+				ink := k.Color("accent-500")
+				b.Children(func() {
+					if p.Loading {
+						ui.Spinner(c.Key("glyph-spin")).Size(13, 13).TextColor(ink).Shrink(0).AccessHidden(true)
+					} else {
+						k.Icon(c.Key("glyph"), IconSearch, 14).TextColor(ink).Shrink(0).AccessHidden(true)
+					}
+					if activeCount > 0 {
+						ui.Box(c.Key("acnt")).MinWidth(15).Height(15).PaddingX(4).Radius(7.5).Center().
+							Background(ink).AccessHidden(true).Children(func() {
+							ui.Text(c, itoaPos(activeCount)).FontSize(9.5).FontWeight(700).TextColor(k.Color("text-on-accent")).SingleLine()
+						})
+					}
+				})
+			} else {
+				hoverBg := ui.RGB(243, 243, 246)
+				pressBg := ui.RGB(236, 236, 240)
+				if k.Dark {
+					hoverBg = ui.RGBA(255, 255, 255, .06)
+					pressBg = ui.RGBA(255, 255, 255, .10)
+				}
+				ink := k.Color("foreground-icon-secondary")
+				switch {
+				case p.Disabled:
+					b.Opacity(.35)
+				case pressed:
+					b.Background(pressBg)
+					ink = k.Color("foreground-icon-primary")
+				case b.Hovered():
+					b.Background(hoverBg)
+					ink = k.Color("foreground-icon-primary")
+				}
+				b.Size(28, 28)
+				b.Children(func() {
+					if p.Loading {
+						ui.Spinner(c.Key("glyph-spin")).Size(14, 14).TextColor(k.Color("accent-500")).Shrink(0).AccessHidden(true)
+					} else {
+						k.Icon(c.Key("glyph"), IconSearch, 15).TextColor(ink).Shrink(0).AccessHidden(true)
+					}
+				})
+			}
+			scale := float32(1)
+			duration := time.Duration(boardui.Number("return-ms")) * time.Millisecond
+			if pressed && !c.Preferences().ReduceMotion {
+				scale = boardui.Number("press-scale")
+				duration = time.Duration(boardui.Number("press-ms")) * time.Millisecond
+			}
+			if c.Preferences().ReduceMotion {
+				duration = 0
+			}
+			if s := b.AnimateTo("toolbar-press-scale", scale, ui.Animation{Duration: duration, Ease: ui.EaseOut}); s != 1 {
+				b.Scale(s, s)
+			}
+			if b.Clicked() && p.OnExpand != nil {
+				p.OnExpand()
+			}
+		})
+		if p.ReturnFocus {
+			trigger.Focus()
+		}
+		res.Element = row
+		return res
+	}
+	var in, trigger, filterBtn ui.Element
 	row := ui.Row(c).AlignItems(ui.Center).Gap(6).PaddingX(pal.padX).MinWidth(220)
 	disclosure := p.Toolbar && !p.Unified
 	if p.Toolbar {
@@ -107,7 +214,12 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 				}
 			})
 		}
-		row.Grow(1).Height(32).MinWidth(100).MaxWidth(456).Padding(0, 4, 0, 10).Gap(6).Radius(9).Clip()
+		padL := float32(10)
+		gap := float32(6)
+		if p.Compact {
+			padL, gap = 8, 5
+		}
+		row.Grow(1).Height(32).MinWidth(0).MaxWidth(456).Shrink(1).Padding(0, 4, 0, padL).Gap(gap).Radius(9).Clip()
 	} else if disclosure {
 		state = ui.Local(row, "disclosure", func() searchDisclosureState { return searchDisclosureState{Open: active} })
 		if active {
@@ -143,7 +255,11 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 		disabled := p.Disabled || (disclosure && !state.Open)
 		in = fldBareInput(ui.TextInputBase(c.Key("input"), p.Value).Label(p.Label).Disabled(disabled).Role(ui.RoleComboBox), pal, placeholder)
 		if p.Unified {
-			in.MinWidth(44).Grow(1)
+			minIn := float32(44)
+			if p.Compact {
+				minIn = 28
+			}
+			in.MinWidth(minIn).Grow(1)
 		} else {
 			in.MinWidth(64)
 		}
@@ -161,6 +277,9 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 				if !handled && p.Unified && tk.Key == ui.KeyEscape {
 					if p.FilterOpen != nil && *p.FilterOpen {
 						*p.FilterOpen = false
+						handled = true
+					} else if p.NarrowTakeover && p.OnCollapse != nil {
+						p.OnCollapse()
 						handled = true
 					}
 				}
@@ -181,7 +300,7 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 				state.Request = false
 			}
 		}
-		if !active && p.ShortcutHint != "" {
+		if !active && p.ShortcutHint != "" && (!p.Unified || !p.Compact) {
 			if p.Unified {
 				ui.Box(c.Key("hint")).Padding(1.5, 5).Radius(5).Background(k.surfaceSolid()).
 					Border(1, k.Color("separator-border")).Shrink(0).AccessHidden(true).Children(func() {
@@ -208,7 +327,8 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 			fOpen := p.FilterOpen != nil && *p.FilterOpen
 			fActive := p.FilterCount > 0 || fOpen
 			fb := ui.ButtonBase(c.Key("filter-btn")).Label(flbl).Tooltip(flbl).Height(24).MinWidth(24).PaddingX(6).Radius(6).
-				Gap(4).Center().Shrink(0)
+				Gap(4).Center().Shrink(0).KeepFocus()
+			filterBtn = fb
 			fInk := k.Color("text-secondary")
 			if fActive {
 				fb.Background(k.Color("accent-500").Alpha(.12))
@@ -230,6 +350,8 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 				*p.FilterOpen = !*p.FilterOpen
 				if *p.FilterOpen && p.Open != nil {
 					*p.Open = false
+				} else if !*p.FilterOpen && p.NarrowTakeover {
+					in.Focus()
 				}
 			}
 		}
@@ -323,7 +445,14 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 		if showFilter {
 			minWidth = 356
 		}
-		k.fldPopup(panel, pal, max(row.Bounds().W, minWidth))
+		viewW, _ := c.Size()
+		w := max(row.Bounds().W, minWidth)
+		if viewW > 0 {
+			maxW := max(240, viewW-24)
+			w = min(w, maxW)
+			panel.MaxWidth(maxW)
+		}
+		k.fldPopup(panel, pal, w)
 		if showFilter {
 			p.FilterPanel()
 		} else {
@@ -343,6 +472,7 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 		}
 	}
 	res.Element, res.Input = row, in
+	res.Focused = focused || (filterBtn != (ui.Element{}) && (filterBtn.Focused() || filterBtn.Pressed()))
 	res.Edited, res.Submitted = in.Changed(), in.Submitted()
 	return res
 }

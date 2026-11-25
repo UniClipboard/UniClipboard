@@ -78,16 +78,6 @@ const (
 // "" draws neutral.
 type TagColor string
 
-// NoticeTone colours an inline notice.
-type NoticeTone int
-
-const (
-	ToneInfo NoticeTone = iota
-	ToneSuccess
-	ToneWarning
-	ToneError
-)
-
 // StatusTone colours a status mark.
 type StatusTone int
 

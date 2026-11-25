@@ -34,27 +34,31 @@ func settingsPill(c *ui.Context, k desktopkit.Kit, text string, tone desktopkit.
 	})
 }
 
-// settingsStrip renders a calm, padded notice strip inside a SettingsGroup card (.s-strip).
-func settingsStrip(c *ui.Context, k desktopkit.Kit, tone desktopkit.NoticeTone, text string) ui.Element {
-	bg, fg := k.SubtleCardSurface(), k.Color("text-secondary")
-	icon := desktopkit.IconInfo
-	switch tone {
-	case desktopkit.ToneInfo:
-		bg, fg = k.Color("accent-50"), k.Color("accent-600")
-		if k.Dark {
-			fg = k.Color("accent-400")
-		}
-	case desktopkit.ToneWarning:
-		bg, fg = k.Color("status-yellow-background").Alpha(.42), k.Color("status-yellow-text")
-		if k.Dark {
-			bg = k.Color("status-yellow-background").Alpha(.26)
-		}
-	case desktopkit.ToneError:
-		bg, fg = k.Color("background-tertiary-error"), k.Color("text-error-primary")
-	}
-	return ui.Row(c).Padding(9, 16).Gap(8).AlignItems(ui.Center).Background(bg).MinWidth(0).Children(func() {
-		k.Icon(c.Key("icon"), icon, 14).TextColor(fg).Shrink(0)
+// settingsNoteRow renders a quiet, non-alarming contextual note inside a
+// SettingsGroup card (used only for static explanatory notes, never errors or warnings).
+func settingsNoteRow(c *ui.Context, k desktopkit.Kit, text string) ui.Element {
+	fg := k.Color("text-secondary")
+	return ui.Row(c).Padding(9, 16).Gap(8).AlignItems(ui.Center).Background(k.SubtleCardSurface()).MinWidth(0).Children(func() {
+		k.Icon(c.Key("icon"), desktopkit.IconInfo, 14).TextColor(fg).Shrink(0)
 		ui.Text(c.Key("text"), text).FontSize(12).TextColor(fg).Grow(1).MinWidth(0)
+	})
+}
+
+// subtleInfoCard renders a quiet contextual card for static documentation notes
+// (such as plugin privacy details or package-manager update ownership).
+func subtleInfoCard(c *ui.Context, k desktopkit.Kit, title, text string) ui.Element {
+	fg := k.Color("text-secondary")
+	return ui.Row(c).Padding(10, 14).Radius(12).Gap(10).AlignItems(ui.Start).
+		Background(k.SubtleCardSurface()).Border(1, k.Color("separator-border")).MinWidth(0).Children(func() {
+		k.Icon(c.Key("icon"), desktopkit.IconInfo, 15).TextColor(fg).Margin(2, 0, 0).Shrink(0)
+		ui.Column(c.Key("body")).Grow(1).MinWidth(0).Gap(2).Children(func() {
+			if title != "" {
+				k.Text(c.Key("title"), title, desktopkit.TextProps{Role: desktopkit.RoleCallout, Emphasized: true})
+			}
+			if text != "" {
+				k.Text(c.Key("text"), text, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary})
+			}
+		})
 	})
 }
 

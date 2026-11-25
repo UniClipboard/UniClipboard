@@ -2,6 +2,8 @@ package desktopkit
 
 import (
 	"github.com/egoist/mygo/ui"
+
+	"github.com/uniclipboard/unic/app/desktop/boardui"
 )
 
 type TagProps struct {
@@ -64,73 +66,39 @@ func (k Kit) Tag(c *ui.Context, name string, p TagProps) TagResult {
 	return res
 }
 
-type NoticeProps struct {
-	Tone  NoticeTone
-	Title string
-	Text  string
-	// ActionLabel shows a secondary command button.
-	ActionLabel string
-	// ActionIcon optionally prefixes the action button label.
-	ActionIcon IconName
-	// ActionDisabled disables the action button.
-	ActionDisabled bool
-	// ActionBusy shows a busy indicator on the action button and disables activation.
-	ActionBusy bool
-	// DismissLabel shows a close button named by it.
-	DismissLabel string
-}
+// ToastStore, ToastOptions, ToastAction, ToasterProps, ToastStatus, and ToastPosition
+// alias the public BoardUI Toast types for desktopkit callers.
+type (
+	ToastStore    = boardui.ToastStore
+	ToastOptions  = boardui.ToastOptions
+	ToastAction   = boardui.ToastAction
+	ToasterProps  = boardui.ToasterProps
+	ToastStatus   = boardui.NotificationStatus
+	ToastPosition = boardui.NotificationPosition
+)
 
-// NoticeResult reports which button of an InlineNotice fired this frame.
-type NoticeResult struct {
-	ui.Element
-	Acted     bool
-	Dismissed bool
-}
+const (
+	ToastNeutral     = boardui.StatusNeutral
+	ToastInformation = boardui.StatusInformation
+	ToastSuccess     = boardui.StatusSuccess
+	ToastWarning     = boardui.StatusWarning
+	ToastError       = boardui.StatusError
 
-// InlineNotice is a status message pinned in the content, not a floating toast.
-func (k Kit) InlineNotice(c *ui.Context, p NoticeProps) NoticeResult {
-	var bg, iconColor ui.Color
-	glyph := [...]string{ToneInfo: "info", ToneSuccess: "checkCircle", ToneWarning: "warning", ToneError: "xCircle"}[p.Tone]
-	var r, titleSize, textSize float32 = 12, 14, 13
-	titleWeight := 700
-	var textColor ui.Color
-	{
+	ToastPersistent      = boardui.ToastPersistent
+	DefaultToastDuration = boardui.DefaultToastDuration
+	DefaultToastLimit    = boardui.DefaultToastLimit
 
-		bg = k.Color([...]string{ToneInfo: "notification-information-background", ToneSuccess: "notification-success-background",
-			ToneWarning: "status-yellow-background", ToneError: "background-tertiary-error"}[p.Tone])
-		iconColor = k.Color([...]string{ToneInfo: "notification-information-foreground", ToneSuccess: "notification-success-foreground",
-			ToneWarning: "status-yellow-text", ToneError: "text-error-primary"}[p.Tone])
-		textColor = k.Color("text-secondary")
-		if p.Tone == ToneInfo {
-			textColor = k.Color("text-primary")
-		}
-	}
+	ToastTopStart     = boardui.PositionTopStart
+	ToastTopCenter    = boardui.PositionTopCenter
+	ToastTopEnd       = boardui.PositionTopEnd
+	ToastBottomStart  = boardui.PositionBottomStart
+	ToastBottomCenter = boardui.PositionBottomCenter
+	ToastBottomEnd    = boardui.PositionBottomEnd
+)
 
-	var res NoticeResult
-	e := ui.Row(c).Padding(10, 12).Radius(r).Gap(10).AlignItems(ui.Center).Background(bg).Label(p.Title)
-
-	e.Children(func() {
-		k.glyph(c, glyph, 16).TextColor(iconColor).Shrink(0)
-		if p.Text != "" {
-			ui.Text(c, p.Title).FontSize(titleSize).FontWeight(titleWeight).NoWrap().Shrink(0)
-			ui.Text(c, p.Text).FontSize(textSize).TextColor(textColor).Grow(1).MinWidth(0)
-		} else {
-			ui.Text(c, p.Title).FontSize(titleSize).FontWeight(titleWeight).Grow(1).MinWidth(0)
-		}
-		if p.ActionLabel != "" {
-			res.Acted = k.Button(c.Key("action"), p.ActionLabel, ButtonProps{
-				Size:     SizeSmall,
-				Icon:     p.ActionIcon,
-				Disabled: p.ActionDisabled,
-				Busy:     p.ActionBusy,
-			}).Shrink(0).Clicked()
-		}
-		if p.DismissLabel != "" {
-			res.Dismissed = k.RemoveButton(c.Key("dismiss"), p.DismissLabel).Shrink(0).Clicked()
-		}
-	})
-	res.Element = e
-	return res
+// Toaster renders the floating BoardUI Toast stack in a top-level overlay.
+func (k Kit) Toaster(c *ui.Context, store *ToastStore, p ToasterProps) {
+	k.native().Toaster(c, store, p)
 }
 
 func (k Kit) Disclosure(c *ui.Context, label string, open *bool, body func()) ui.Element {

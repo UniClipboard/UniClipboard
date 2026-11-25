@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	"github.com/uniclipboard/unic/plugin"
@@ -61,6 +62,7 @@ func (d *viewState) toggleFavorites(ids []string) {
 		it, ok := d.live.items[id]
 		if !ok {
 			d.live.message = "历史已变化。请刷新后重试。"
+			d.toastWarning(d.tr(d.live.message), desktopkit.ToastOptions{ID: toastIDLiveMessage})
 			return
 		}
 		if slices.Contains(it.Tags, plugin.TagFavorite) != on {

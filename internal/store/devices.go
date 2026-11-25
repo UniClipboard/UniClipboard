@@ -32,6 +32,59 @@ const (
 	BindingAuthorized = "authorized"
 )
 
+// Binding sync direction values (local perspective).
+const (
+	SyncDirectionBidirectional = "bidirectional"
+	SyncDirectionSendOnly      = "send_only"
+	SyncDirectionReceiveOnly   = "receive_only"
+	SyncDirectionDisabled      = "disabled"
+)
+
+// BindingPolicy configures per-content-type automatic sync and receive
+// direction on one device-to-backend-instance binding.
+type BindingPolicy struct {
+	Text   string
+	Images string
+	Files  string
+}
+
+// DefaultBindingPolicy returns the default bidirectional policy for all types.
+func DefaultBindingPolicy() BindingPolicy {
+	return BindingPolicy{
+		Text:   SyncDirectionBidirectional,
+		Images: SyncDirectionBidirectional,
+		Files:  SyncDirectionBidirectional,
+	}
+}
+
+// ValidSyncDirection reports whether dir is one of the finite direction values.
+func ValidSyncDirection(dir string) bool {
+	switch dir {
+	case SyncDirectionBidirectional, SyncDirectionSendOnly, SyncDirectionReceiveOnly, SyncDirectionDisabled:
+		return true
+	}
+	return false
+}
+
+// Valid reports whether every content-type direction is valid.
+func (p BindingPolicy) Valid() bool {
+	return ValidSyncDirection(p.Text) && ValidSyncDirection(p.Images) && ValidSyncDirection(p.Files)
+}
+
+// Normalized fills empty fields with bidirectional.
+func (p BindingPolicy) Normalized() BindingPolicy {
+	if p.Text == "" {
+		p.Text = SyncDirectionBidirectional
+	}
+	if p.Images == "" {
+		p.Images = SyncDirectionBidirectional
+	}
+	if p.Files == "" {
+		p.Files = SyncDirectionBidirectional
+	}
+	return p
+}
+
 const deviceSchema = `CREATE TABLE devices (
   id            TEXT PRIMARY KEY,
   public_key    BLOB NOT NULL UNIQUE,
@@ -49,6 +102,10 @@ CREATE TABLE device_bindings (
   remote_context BLOB NOT NULL DEFAULT x'',  -- repository/account/peer context the authorization was given for
   state          TEXT NOT NULL,
   sync_enabled   INTEGER NOT NULL DEFAULT 1,
+  policy_text    TEXT NOT NULL DEFAULT 'bidirectional',
+  policy_images  TEXT NOT NULL DEFAULT 'bidirectional',
+  policy_files   TEXT NOT NULL DEFAULT 'bidirectional',
+  auth_revision  INTEGER NOT NULL DEFAULT 1, -- incremented only on authorization/pause/context changes
   revision       INTEGER NOT NULL,
   created_ms     INTEGER NOT NULL,
   updated_ms     INTEGER NOT NULL,
@@ -94,6 +151,8 @@ type Binding struct {
 	RemoteContext []byte
 	State         string
 	SyncEnabled   bool
+	Policy        BindingPolicy
+	AuthRevision  int64
 	Revision      int64
 	CreatedMs     int64
 	UpdatedMs     int64
@@ -285,7 +344,7 @@ func (s *Store) ApproveDevice(id string, expected int64, bindings map[string]int
 	if _, err := tx.Exec(`UPDATE devices SET trust='trusted', revision=revision+1, updated_ms=? WHERE id=?`, now, id); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE device_bindings SET state='authorized', revision=revision+1, updated_ms=? WHERE device_id=? AND state='pending'`, now, id); err != nil {
+	if _, err := tx.Exec(`UPDATE device_bindings SET state='authorized', auth_revision=auth_revision+1, revision=revision+1, updated_ms=? WHERE device_id=? AND state='pending'`, now, id); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -317,14 +376,17 @@ func (s *Store) RevokeDevice(id string, expected int64) error {
 	return tx.Commit()
 }
 
-const bindingBase = `id, device_id, instance_id, remote_context, state, sync_enabled, revision, created_ms, updated_ms, last_active_ms, last_error`
+const bindingBase = `id, device_id, instance_id, remote_context, state, sync_enabled, policy_text, policy_images, policy_files, auth_revision, revision, created_ms, updated_ms, last_active_ms, last_error`
 const bindingCols = bindingBase + `, endpoint, ticket`
 
 func scanBinding(r interface{ Scan(...any) error }) (Binding, error) {
 	var b Binding
 	var en, tk int
-	err := r.Scan(&b.ID, &b.DeviceID, &b.InstanceID, &b.RemoteContext, &b.State, &en, &b.Revision, &b.CreatedMs, &b.UpdatedMs, &b.LastActiveMs, &b.LastError, &b.Endpoint, &tk)
+	err := r.Scan(&b.ID, &b.DeviceID, &b.InstanceID, &b.RemoteContext, &b.State, &en,
+		&b.Policy.Text, &b.Policy.Images, &b.Policy.Files, &b.AuthRevision,
+		&b.Revision, &b.CreatedMs, &b.UpdatedMs, &b.LastActiveMs, &b.LastError, &b.Endpoint, &tk)
 	b.SyncEnabled, b.Ticket = en != 0, tk != 0
+	b.Policy = b.Policy.Normalized()
 	return b, err
 }
 
@@ -344,20 +406,24 @@ func (s *Store) AddBinding(id, deviceID, instanceID string, remoteContext []byte
 		return Binding{}, ErrDeviceNotFound
 	}
 	b, err := scanBinding(tx.QueryRow(`SELECT `+bindingCols+` FROM device_bindings WHERE device_id=? AND instance_id=?`, deviceID, instanceID))
+	defPol := DefaultBindingPolicy()
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		b = Binding{ID: id, DeviceID: deviceID, InstanceID: instanceID, RemoteContext: remoteContext, State: BindingPending,
-			SyncEnabled: true, Revision: 1, CreatedMs: now, UpdatedMs: now}
-		if _, err := tx.Exec(`INSERT INTO device_bindings (`+bindingBase+`) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-			b.ID, b.DeviceID, b.InstanceID, b.RemoteContext, b.State, 1, b.Revision, b.CreatedMs, b.UpdatedMs, 0, ""); err != nil {
+			SyncEnabled: true, Policy: defPol, AuthRevision: 1, Revision: 1, CreatedMs: now, UpdatedMs: now}
+		if _, err := tx.Exec(`INSERT INTO device_bindings (`+bindingBase+`) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			b.ID, b.DeviceID, b.InstanceID, b.RemoteContext, b.State, 1,
+			defPol.Text, defPol.Images, defPol.Files, b.AuthRevision,
+			b.Revision, b.CreatedMs, b.UpdatedMs, 0, ""); err != nil {
 			return Binding{}, err
 		}
 	case err != nil:
 		return Binding{}, err
 	case !bytes.Equal(b.RemoteContext, remoteContext):
-		b.RemoteContext, b.State, b.SyncEnabled, b.Revision, b.UpdatedMs, b.LastError = remoteContext, BindingPending, true, b.Revision+1, now, ""
-		if _, err := tx.Exec(`UPDATE device_bindings SET remote_context=?, state=?, sync_enabled=1, revision=?, updated_ms=?, last_error='', ticket=0 WHERE id=?`,
-			b.RemoteContext, b.State, b.Revision, b.UpdatedMs, b.ID); err != nil {
+		b.RemoteContext, b.State, b.SyncEnabled, b.Policy = remoteContext, BindingPending, true, defPol
+		b.AuthRevision, b.Revision, b.UpdatedMs, b.LastError = b.AuthRevision+1, b.Revision+1, now, ""
+		if _, err := tx.Exec(`UPDATE device_bindings SET remote_context=?, state=?, sync_enabled=1, policy_text=?, policy_images=?, policy_files=?, auth_revision=?, revision=?, updated_ms=?, last_error='', ticket=0 WHERE id=?`,
+			b.RemoteContext, b.State, defPol.Text, defPol.Images, defPol.Files, b.AuthRevision, b.Revision, b.UpdatedMs, b.ID); err != nil {
 			return Binding{}, err
 		}
 	}
@@ -415,7 +481,7 @@ func (s *Store) AuthorizeBinding(id string, expected int64) (Binding, error) {
 	if err != nil || d.Trust != TrustTrusted {
 		return Binding{}, fmt.Errorf("store: device is not trusted: %w", ErrDeviceNotFound)
 	}
-	return s.bumpBinding(id, expected, `state = 'authorized'`)
+	return s.bumpBinding(id, expected, `state = 'authorized', auth_revision = auth_revision + 1`)
 }
 
 // SetBindingSync pauses or resumes content sync on one path, by CAS.
@@ -424,7 +490,41 @@ func (s *Store) SetBindingSync(id string, expected int64, enabled bool) (Binding
 	if enabled {
 		v = 1
 	}
-	return s.bumpBinding(id, expected, `sync_enabled = ?`, v)
+	return s.bumpBinding(id, expected, `sync_enabled = ?, auth_revision = auth_revision + 1`, v)
+}
+
+// SetBindingPolicy updates per-type sync directions on one path, by CAS.
+// It does not bump auth_revision so existing live sessions and in-flight
+// transfers remain undisturbed.
+func (s *Store) SetBindingPolicy(id string, expected int64, p BindingPolicy) (Binding, error) {
+	if !p.Valid() {
+		return Binding{}, fmt.Errorf("store: invalid binding policy")
+	}
+	return s.bumpBinding(id, expected, `policy_text = ?, policy_images = ?, policy_files = ?`, p.Text, p.Images, p.Files)
+}
+
+// UpdateBinding atomically updates sync_enabled and/or per-type policy by CAS.
+// auth_revision is bumped only when enabled is supplied.
+func (s *Store) UpdateBinding(id string, expected int64, enabled *bool, policy *BindingPolicy) (Binding, error) {
+	if enabled == nil && policy == nil {
+		return Binding{}, fmt.Errorf("store: empty binding update")
+	}
+	if policy != nil && !policy.Valid() {
+		return Binding{}, fmt.Errorf("store: invalid binding policy")
+	}
+	switch {
+	case enabled != nil && policy != nil:
+		v := 0
+		if *enabled {
+			v = 1
+		}
+		return s.bumpBinding(id, expected, `sync_enabled = ?, policy_text = ?, policy_images = ?, policy_files = ?, auth_revision = auth_revision + 1`,
+			v, policy.Text, policy.Images, policy.Files)
+	case enabled != nil:
+		return s.SetBindingSync(id, expected, *enabled)
+	default:
+		return s.SetBindingPolicy(id, expected, *policy)
+	}
 }
 
 // ReportBinding records activity and a stable, redacted error class. It is a

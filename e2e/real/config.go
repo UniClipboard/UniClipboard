@@ -80,7 +80,7 @@ func readLab(path string) (lab, error) {
 		}
 		seen[v] = true
 		switch v {
-		case "contract", "pairwise", "mesh", "isolation", "directory", "directory-revoke", "directory-crash", "wake-refresh":
+		case "contract", "pairwise", "mesh", "isolation", "directory", "directory-revoke", "directory-crash", "wake-refresh", "binding-policy":
 		default:
 			return c, fmt.Errorf("unknown scenario: %s", v)
 		}

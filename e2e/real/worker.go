@@ -38,6 +38,9 @@ type worker struct {
 	forced                               bool
 	secrets                              [][]byte
 	closed                               bool
+	adapterSession                       string
+	adapterEpoch                         string
+	adapterSeq                           uint64
 }
 
 func workerMain(ctx context.Context, runID, name, controlAddr, tokenFile string) (resultErr error) {
@@ -283,6 +286,7 @@ func (w *worker) stop() error {
 	if w.daemon == nil {
 		return nil
 	}
+	w.closeAdapter()
 	select {
 	case <-w.daemonDone:
 	default:
@@ -852,6 +856,25 @@ func (w *worker) handle(ctx context.Context, r request) (any, error) {
 		}
 		_, err = w.checkedCLI(ctx, "config", "apply", path)
 		return true, err
+	case "observe_auto":
+		v, err := decodeValue[observeAutoRequest](r.Value)
+		if err != nil || v.Fixture == "" {
+			return nil, fmt.Errorf("invalid_request")
+		}
+		return w.observeAuto(ctx, v)
+	case "channel_policy":
+		v, err := decodeValue[channelPolicyRequest](r.Value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid_request")
+		}
+		cfg := fmt.Sprintf("device_name = %q\n[telemetry]\nenabled=false\n[plugins]\nlua=[\"example.lua-sensitive\",\"example.lua-emailtag\"]\n[plugins.instances.\"example.lua-emailtag\".config]\ntag=%q\n[plugins.instances.\"builtin.tailcat\".sync]\ntext=%t\nimages=%t\nfiles=%t\n",
+			"lab-"+w.name, "local-"+w.name, v.Text, v.Images, v.Files)
+		path := filepath.Join(w.root, "channel-policy.toml")
+		if err = os.WriteFile(path, []byte(cfg), 0600); err != nil {
+			return nil, fmt.Errorf("policy_write_failed")
+		}
+		_, err = w.checkedCLI(ctx, "config", "apply", path)
+		return true, err
 	case "notify_network":
 		nctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
@@ -877,4 +900,113 @@ func (w *worker) handle(ctx context.Context, r request) (any, error) {
 	default:
 		return nil, fmt.Errorf("unknown_worker_method")
 	}
+}
+
+func (w *worker) closeAdapter() {
+	if w.adapterSession == "" {
+		return
+	}
+	cctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	_ = w.client.AdapterCall(cctx, w.adapterSession, "close", nil, nil)
+	cancel()
+	w.adapterSession = ""
+	w.adapterEpoch = ""
+	w.adapterSeq = 0
+}
+
+func (w *worker) ensureAdapter(ctx context.Context) error {
+	if w.adapterSession != "" {
+		if err := w.client.AdapterCall(ctx, w.adapterSession, "heartbeat", nil, nil); err == nil {
+			return nil
+		}
+		w.closeAdapter()
+	}
+	var sess string
+	if err := w.client.AdapterCall(ctx, "", "register", api.AdapterRegistration{}, &sess); err != nil {
+		return fmt.Errorf("adapter_register_failed")
+	}
+	caps := engine.HostCapabilities{
+		ReadFormats:  []string{engine.MimeText, engine.MimeHTML, engine.MimePNG},
+		WriteFormats: []string{engine.MimeText, engine.MimeHTML, engine.MimePNG},
+		ReadFiles:    true,
+		WriteFiles:   true,
+		Observe:      engine.AbilityAvailable,
+		Apply:        engine.AbilityAvailable,
+	}
+	if err := w.client.AdapterCall(ctx, sess, "capabilities", caps, nil); err != nil {
+		_ = w.client.AdapterCall(ctx, sess, "close", nil, nil)
+		return fmt.Errorf("adapter_capabilities_failed")
+	}
+	epoch := "e2e-" + sess
+	if err := w.client.AdapterCall(ctx, sess, "observe", engine.Observation{Epoch: epoch, Sequence: 1, Mode: engine.ObserveBaseline}, nil); err != nil {
+		_ = w.client.AdapterCall(ctx, sess, "close", nil, nil)
+		return fmt.Errorf("adapter_baseline_failed")
+	}
+	w.adapterSession = sess
+	w.adapterEpoch = epoch
+	w.adapterSeq = 1
+	return nil
+}
+
+func (w *worker) observeAuto(ctx context.Context, v observeAutoRequest) (observeAutoResult, error) {
+	f, ok := w.fixtures[v.Fixture]
+	if !ok {
+		return observeAutoResult{}, fmt.Errorf("unknown_fixture")
+	}
+	if err := w.ensureAdapter(ctx); err != nil {
+		return observeAutoResult{}, err
+	}
+	var snap clip.Snapshot
+	for i, p := range f.Meta.Parts {
+		if p.Kind == "file" {
+			snap.Files = append(snap.Files, clip.File{Path: f.Paths[i], Name: p.Name, Size: p.Size})
+		} else {
+			data, err := os.ReadFile(f.Paths[i])
+			if err != nil {
+				return observeAutoResult{}, fmt.Errorf("fixture_read_failed")
+			}
+			snap.Parts = append(snap.Parts, clip.Part{Format: p.MIME, Data: data})
+		}
+	}
+	t0 := time.Now()
+	var handle engine.ContentHandle
+	if err := w.client.AdapterCall(ctx, w.adapterSession, "import", api.AdapterImport{Snapshot: snap}, &handle); err != nil {
+		return observeAutoResult{}, fmt.Errorf("adapter_import_failed")
+	}
+	defer func() {
+		rctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = w.client.AdapterCall(rctx, w.adapterSession, "release", handle.LeaseID, nil)
+		cancel()
+	}()
+	w.adapterSeq++
+	var obs engine.ObservationResult
+	if err := w.client.AdapterCall(ctx, w.adapterSession, "observe", engine.Observation{
+		Epoch:    w.adapterEpoch,
+		Sequence: w.adapterSeq,
+		Mode:     engine.ObserveChange,
+		LeaseID:  handle.LeaseID,
+	}, &obs); err != nil {
+		return observeAutoResult{}, fmt.Errorf("adapter_observe_failed")
+	}
+	out := observeAutoResult{
+		Disposition: obs.Disposition,
+		OperationID: obs.OperationID,
+	}
+	if obs.Disposition == engine.DispSubmitted && obs.OperationID != "" {
+		deadline := time.Now().Add(60 * time.Second)
+		for time.Now().Before(deadline) {
+			op, err := w.client.Operation(ctx, string(obs.OperationID))
+			if err == nil && op.Done() {
+				out.Outcome = op.Outcome
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return out, ctx.Err()
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}
+	out.ElapsedMS = float64(time.Since(t0)) / float64(time.Millisecond)
+	return out, nil
 }

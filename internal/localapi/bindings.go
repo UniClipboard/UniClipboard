@@ -9,8 +9,9 @@ import (
 )
 
 type BindingEdit struct {
-	Revision int64 `json:"revision"`
-	Enabled  bool  `json:"enabled"`
+	Revision int64                     `json:"revision"`
+	Enabled  *bool                     `json:"enabled,omitempty"`
+	Policy   *engine.BindingSyncPolicy `json:"policy,omitempty"`
 }
 
 func (c *Client) SetBindingSync(ctx context.Context, id string, in BindingEdit) (out engine.DeviceBinding, err error) {

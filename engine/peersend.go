@@ -166,22 +166,55 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 	if len(targets) == 0 {
 		return false, nil
 	}
-	keys := make([]targetKey, len(targets))
+	type plannedTarget struct {
+		s    session
+		key  targetKey
+		view backendView
+		clip rpc.Clip
+	}
+	planned := make([]plannedTarget, 0, len(targets))
+	files := hasFiles(v.set.c)
+	for _, s := range targets {
+		pv := v
+		if !v.manual {
+			effPol := applyBindingSendPolicy(v.backendPolicy, b.bindingPolicy(s.peerID))
+			var peerSet sendSet
+			if !files || effPol.Files {
+				peerSet = buildSendSet(v.set.c, effPol)
+			}
+			if len(peerSet.parts) == 0 {
+				if v.filtered != nil {
+					*v.filtered = true
+				}
+				continue
+			}
+			pv.set = peerSet
+		}
+		planned = append(planned, plannedTarget{
+			s:    s,
+			key:  targetKey{b.id, TargetDevice, s.peerID},
+			view: pv,
+			clip: b.clipOf(pv),
+		})
+	}
+	if len(planned) == 0 {
+		return false, nil
+	}
+	keys := make([]targetKey, len(planned))
 	ctxSubmission := v.workContext
-	for i, s := range targets {
-		keys[i] = targetKey{b.id, TargetDevice, s.peerID}
+	for i, pt := range planned {
+		keys[i] = pt.key
 	}
 	if rerr := h.Register(keys); rerr != nil {
 		return false, rerr
 	}
-	clip := b.clipOf(v)
 	e.mu.Lock()
 	rc := e.sendCtx
 	e.mu.Unlock()
-	for i, s := range targets {
-		k, s := keys[i], s
+	for _, pt := range planned {
+		k, s, pv, clip := pt.key, pt.s, pt.view, pt.clip
 		queued := time.Now()
-		kind := diagnosticKind(v.set.c)
+		kind := diagnosticKind(pv.set.c)
 		backend := diagnosticBackend(b.id)
 		emitQueue := func(result DiagnosticResult) {
 			code := Code("")
@@ -212,9 +245,9 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 				// surviving session instead of failing.
 				cur := s
 				for attempt := 0; ; attempt++ {
-					src := &peerSendSource{b: b, v: v, conn: cur.conn, token: cur.token}
+					src := &peerSendSource{b: b, v: pv, conn: cur.conn, token: cur.token}
 					started := time.Now()
-					err := b.sendOver(ctx, disp, src, cur, v, clip)
+					err := b.sendOver(ctx, disp, src, cur, pv, clip)
 					var outcome DiagnosticResult
 					var code Code
 					switch {
@@ -341,6 +374,9 @@ func (s *peerSendSource) Authorize(ctx context.Context, a rpc.Authorize) (rpc.Se
 		return rpc.SendGrant{}, rpc.NewError("sync_disabled")
 	}
 	sy := e.policyOf(b.id)
+	if !s.v.manual {
+		sy = applyBindingSendPolicy(sy, b.bindingPolicy(peer))
+	}
 	for _, p := range s.v.set.parts {
 		if !syncAllowsPart(p, sy) {
 			return rpc.SendGrant{}, rpc.NewError("sync_disabled")

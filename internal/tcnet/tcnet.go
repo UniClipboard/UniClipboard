@@ -9,6 +9,7 @@ package tcnet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -32,8 +33,10 @@ type Transport struct {
 	dir          string
 	logf         func(string, ...any)
 
-	srv       *tailcat.Server
-	clientKey key.NodePrivate
+	startCtx    context.Context
+	startCancel context.CancelFunc
+	srv         *tailcat.Server
+	clientKey   key.NodePrivate
 
 	mu      sync.Mutex
 	clients map[string]*peerClient
@@ -53,7 +56,8 @@ type peerClient struct {
 // never generated in its place, since that would silently change the address
 // every paired device has stored.
 func New(dir string, logf func(string, ...any)) (*Transport, error) {
-	t := &Transport{dir: dir, logf: logf, clients: map[string]*peerClient{}}
+	startCtx, startCancel := context.WithCancel(context.Background())
+	t := &Transport{dir: dir, logf: logf, startCtx: startCtx, startCancel: startCancel, clients: map[string]*peerClient{}}
 	c, err := loadCredentials(dir)
 	if err != nil {
 		return nil, err
@@ -84,39 +88,74 @@ func New(dir string, logf func(string, ...any)) (*Transport, error) {
 }
 
 // Start brings the tunnel endpoint up and records the address peers use.
+// DERP region discovery runs outside statusMu with a cancellable context so
+// Close can abort startup promptly without racing tailcat.Server.Start/Close.
 func (t *Transport) Start() error {
+	t.statusMu.Lock()
+	if t.statusClosed {
+		t.statusMu.Unlock()
+		return errors.New("start tailcat: transport closed")
+	}
+	needRegion := t.srv.Region == nil
+	t.statusMu.Unlock()
+
+	var expanded *tailcat.ConnInfo
+	if needRegion {
+		ci := &tailcat.ConnInfo{RegionID: -1}
+		if err := ci.Expand(t.startCtx, tailcat.ExpandForServer); err != nil {
+			return fmt.Errorf("start tailcat: %w", err)
+		}
+		expanded = ci
+	}
+
+	t.statusMu.Lock()
+	if t.statusClosed {
+		t.statusMu.Unlock()
+		return errors.New("start tailcat: transport closed")
+	}
+	if t.srv.Region == nil && expanded != nil && len(expanded.Region) > 0 {
+		t.srv.Region = expanded.Region[0]
+	}
 	if err := t.srv.Start(); err != nil {
+		t.statusMu.Unlock()
 		return fmt.Errorf("start tailcat: %w", err)
 	}
-	t.statusMu.Lock()
-	t.statusReady = !t.statusClosed
-	t.statusMu.Unlock()
 	addr := string(t.srv.TailcatAddr())
+	t.statusReady = true
+	t.statusMu.Unlock()
+
 	t.mu.Lock()
 	t.addr = addr
-	t.mu.Unlock()
-	t.mu.Lock()
-	defer t.mu.Unlock()
 	if t.creds.Addr == addr {
+		t.mu.Unlock()
 		return nil
 	}
 	c := t.creds
 	c.Addr = addr
 	if err := saveCredentials(t.dir, c); err != nil {
+		t.mu.Unlock()
 		return err
 	}
 	t.creds = c
+	t.mu.Unlock()
 	return nil
 }
 
 func (t *Transport) Close() error {
+	t.startCancel()
 	t.statusMu.Lock()
 	defer t.statusMu.Unlock()
 	t.statusClosed = true
+	t.statusReady = false
 	return t.srv.Close()
 }
 
 func (t *Transport) Listen(ctx context.Context) (net.Listener, error) {
+	t.statusMu.Lock()
+	defer t.statusMu.Unlock()
+	if t.statusClosed || !t.statusReady {
+		return nil, errors.New("listen tailcat: transport not started or closed")
+	}
 	return t.srv.Listen(ctx, "tcp", fmt.Sprintf(":%d", Port))
 }
 

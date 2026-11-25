@@ -48,6 +48,7 @@ const (
 	IconTag          IconName = "tag"
 	IconUnlock       IconName = "unlock"
 	IconUpdate       IconName = "update"
+	IconWarning      IconName = "warning"
 )
 
 // ControlSize is a semantic size step; XLarge is the prominent primary action of an action
@@ -76,16 +77,6 @@ const (
 // TagColor is a palette name ("orange","blue","green","purple","gray") or a custom "#rrggbb";
 // "" draws neutral.
 type TagColor string
-
-// NoticeTone colours an inline notice.
-type NoticeTone int
-
-const (
-	ToneInfo NoticeTone = iota
-	ToneSuccess
-	ToneWarning
-	ToneError
-)
 
 // StatusTone colours a status mark.
 type StatusTone int

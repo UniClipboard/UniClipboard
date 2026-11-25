@@ -8,34 +8,35 @@ import (
 
 func scenarioCompositionTagNoticeDisclosure(t *testing.T) {
 	layEach(t, func(t *testing.T, k Kit) {
-		var removed, acted, notAct, dismissed int
+		var removed, acted, toastActed, dismissed int
 		open := false
+		var toasts ToastStore
+		toasts.Warning("Restart needed", ToastOptions{
+			ID:       "restart",
+			Duration: ToastPersistent,
+			Actions: []ToastAction{
+				{Label: "Restart now", KeepOpen: true, OnClick: func() { toastActed++ }},
+				{Label: "Busy restart", Busy: true, Disabled: true, OnClick: func() { toastActed++ }},
+			},
+			OnDismiss: func() { dismissed++ },
+		})
+		toasts.Error("Sync failed", ToastOptions{
+			ID:          "err",
+			Description: "Please retry",
+			Duration:    ToastPersistent,
+		})
 		view := func(c *ui.Context) {
 			k.Apply(c)
-			ui.Column(c).Padding(20).Gap(8).Children(func() {
+			ui.Column(c).Fill().Padding(20).Gap(8).Children(func() {
 				if k.Tag(c.Key("t1"), "fin", TagProps{Color: "blue", RemoveLabel: "Remove fin"}).Removed {
 					removed++
 				}
 				if k.Tag(c.Key("t2"), "dock", TagProps{Color: "green", Partial: true, Detail: "2/3", ActionLabel: "Add dock"}).Activated {
 					acted++
 				}
-				for _, tone := range []NoticeTone{ToneInfo, ToneSuccess, ToneWarning, ToneError} {
-					r := k.InlineNotice(c.Key("n"+string(rune('a'+tone))), NoticeProps{Tone: tone, Title: "T", Text: "body", ActionLabel: "Act", DismissLabel: "Close"})
-					if r.Acted {
-						notAct++
-					}
-					if r.Dismissed {
-						dismissed++
-					}
-				}
-				if k.InlineNotice(c.Key("title-only"), NoticeProps{Tone: ToneWarning, Title: "Restart needed", ActionLabel: "Restart now", ActionIcon: IconRetry}).Acted {
-					notAct++
-				}
-				if k.InlineNotice(c.Key("busy-action"), NoticeProps{Tone: ToneWarning, Title: "Restarting", ActionLabel: "Busy restart", ActionBusy: true, ActionDisabled: true}).Acted {
-					notAct++
-				}
 				k.Disclosure(c.Key("d"), "More", &open, func() { ui.Text(c, "Hidden body") })
 			})
+			k.Toaster(c, &toasts, ToasterProps{CloseLabel: "Close"})
 		}
 		tt := compositionTester(t, view, 600, 700)
 		if err := tt.Click("Remove fin"); err != nil || removed != 1 {
@@ -54,18 +55,18 @@ func scenarioCompositionTagNoticeDisclosure(t *testing.T) {
 		if !tt.HasText("Hidden body") {
 			t.Fatal("body not shown")
 		}
-		_ = tt.Click("Act")
-		_ = tt.Click("Close")
-		beforeTitleOnly := notAct
-		if err := tt.Click("Restart now"); err != nil || notAct != beforeTitleOnly+1 {
-			t.Fatalf("title-only notice action: %v %d", err, notAct)
+		if !tt.HasText("Restart needed") || !tt.HasText("Sync failed") {
+			t.Fatalf("toasts not shown: %v", tt.Texts())
+		}
+		if err := tt.Click("Restart now"); err != nil || toastActed != 1 {
+			t.Fatalf("toast action: %v %d", err, toastActed)
 		}
 		_ = tt.Click("Busy restart")
-		if notAct != beforeTitleOnly+1 {
-			t.Fatalf("disabled/busy notice action fired: %d", notAct)
+		if toastActed != 1 {
+			t.Fatalf("disabled/busy toast action fired: %d", toastActed)
 		}
-		if notAct == 0 || dismissed == 0 {
-			t.Fatalf("notice buttons: %d %d", notAct, dismissed)
+		if err := tt.Click("Close"); err != nil || dismissed != 1 {
+			t.Fatalf("toast close: %v %d", err, dismissed)
 		}
 	})
 }

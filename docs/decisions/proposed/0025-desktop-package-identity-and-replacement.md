@@ -1,6 +1,6 @@
 # 0025: Desktop package identity and replacement
 
-- Status: Accepted; runtime/construction implemented and native v2 lifecycle partially accepted. Production activation and real v1 replacement acceptance remain pending.
+- Status: accepted. Runtime and package construction are implemented. The [Windows ARM64 receipt](../../exec/0018-unsigned-windows-acceptance.md#observed-acceptance) records isolated replacement of an official v1 installation. Acceptance for other platforms and formats follows the [release gates](../../architecture/releases.md).
 - Date: 2026-11-13.
 - Execution plan: [v2 package channel parity](../../exec/0018-v2-package-channel-plan.md).
 - Requirements: [release contract](../../contracts/release-contract.md#desktop-installation-identity-and-update-ownership).

@@ -1,4 +1,4 @@
-# Expo mobile UI shell
+# UniClipboard mobile application
 
 This directory owns the shared Android and iOS Expo application. It imports the
 mobile presentation from [UniClipboard/UniClip](https://github.com/UniClipboard/UniClip)
@@ -44,13 +44,46 @@ npm run android -- --device <device-id>
 `npm run prebuild` generates the ignored `ios/` and `android/` directories under
 this directory. The sibling `app/ios` and `app/android` directories are not build
 inputs. The shell uses the isolated identifier `app.uniclipboard.shell` on both
-platforms. It does not share App Groups, keychain groups or URL schemes with the
-production mobile application. No signing or release workflow is migrated.
+platforms. Its Share Extension uses the separate
+`group.app.uniclipboard.shell.incoming-share` App Group. A physical-device
+build requires provisioning for the shell and its `.Share` extension. It
+uses separate signing and storage from the released mobile app.
+
+For Store builds set `UNIC_MOBILE_VARIANT=production` and set
+`UNIC_MOBILE_RELEASE_PLATFORM` to `ios` or `android` for both binding
+generation and Expo prebuild. The production variant uses the existing
+UniClipboard application identifiers and the selected platform's independent
+version and build number from `release/products.toml`. Expo resolves that
+metadata with Python 3.11 or later. The iOS application and its share
+extension use `group.app.uniclipboard.UniClipboard.incoming-share`. The
+Android production prebuild emits an unsigned Release configuration for
+the Store signing workflow. The default development prebuild keeps its
+existing debug signing and isolated identifiers.
 
 The source's pinned `react-native-screens` search-tab and animation patches remain
 mandatory. `npm ci` applies them and fails on a dependency mismatch. The two
 Xcode 27 plugins retain the source's Scene lifecycle and Pod deployment-target
 adaptation. `expo-system-ui` enables Android theme handling.
+
+## Live settings and media
+
+Settings read the active Engine revision and persist changes to the current
+profile. Storage shows managed file-cache usage, clears local image previews
+and opens v1 migration. Clipboard access shows the host's effective abilities
+and the restrictions reported by the Engine.
+
+History details can export images and files, open HTTP(S) links and invoke the
+system share sheet. The plus menu opens the platform camera, photo picker or
+document picker. The directory viewer lists up to 200 entries.
+
+Run the [settings and media process E2E](../../docs/exec/0031-mobile-m2-receipt.md)
+against a disposable profile before native interaction acceptance.
+
+Settings > Diagnostic logs controls the local profile's telemetry preference
+and shares up to 64 already-redacted JSON log records from the current
+process. The upload switch defaults on and persists independently of Engine
+settings. A build without deployment metadata reports upload as unavailable.
+See the [observability architecture](../../docs/architecture/observability.md).
 
 ## Bundle acceptance
 

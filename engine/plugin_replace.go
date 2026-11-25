@@ -96,6 +96,9 @@ func (e *Engine) ReplaceExternalPlugins(ctx context.Context, instances []PluginI
 		if change.oldBackend != nil {
 			change.oldBackend.preparing.Store(true)
 		}
+		if oldEnr := e.findEnricher(change.id); oldEnr != nil {
+			oldEnr.cancelAll()
+		}
 		_ = change.old.Close(restoreCtx)
 	}
 	defer func() {
@@ -157,7 +160,13 @@ func (e *Engine) publishExternalReplacements(changes []externalReplacement) {
 			change.nextBackend.preparing.Store(false)
 		} else {
 			e.actions = slices.DeleteFunc(e.actions, func(a *pipelineAction) bool { return a.plugin.id == change.id })
-			e.registerActions(change.next.Spec(), change.next.(plugin.Actor))
+			if a, ok := change.next.(plugin.Actor); ok {
+				e.registerActions(change.next.Spec(), a)
+			}
+			e.enrichers = slices.DeleteFunc(e.enrichers, func(pe *pipelineEnricher) bool { return pe.id == change.id })
+			if enr, ok := change.next.(plugin.Enricher); ok {
+				e.registerEnricher(change.next.Spec(), enr)
+			}
 		}
 	}
 	if len(changes) > 0 {

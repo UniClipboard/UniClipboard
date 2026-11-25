@@ -100,7 +100,7 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				_ = p.Close(context.WithoutCancel(ctx))
 			}
 			e.stopObservers()
-			e.processors, e.actions = nil, nil
+			e.processors, e.actions, e.enrichers = nil, nil, nil
 		}
 	}()
 	for _, in := range list {
@@ -267,6 +267,8 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 		return invalidPlugin(s.ID, "invalid ID")
 	case s.ID == string(BackendTailcat) && !in.Builtin:
 		return invalidPlugin(s.ID, "builtin.tailcat is reserved")
+	case s.ID == "builtin.preview" && !in.Builtin:
+		return invalidPlugin(s.ID, "builtin.preview is reserved")
 	case s.APIVersion != 1:
 		return invalidPlugin(s.ID, "unsupported API version")
 	case s.Version == "" || len(s.Version) > 64:
@@ -281,7 +283,7 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 			return invalidPlugin(s.ID, "invalid settings schema digest")
 		}
 	}
-	var proc, act, obs, backend bool
+	var proc, act, obs, backend, enr bool
 	for _, c := range s.Capabilities {
 		switch c {
 		case plugin.CapSyncBackend:
@@ -292,6 +294,8 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 			proc = true
 		case plugin.CapAction:
 			act = true
+		case plugin.CapEnricher:
+			enr = true
 		default:
 			return invalidPlugin(s.ID, "unsupported capability")
 		}
@@ -304,6 +308,17 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 	}
 	if _, ok := in.Plugin.(plugin.Actor); act != ok {
 		return invalidPlugin(s.ID, "capability action does not match the implementation")
+	}
+	if _, ok := in.Plugin.(plugin.Enricher); enr != ok {
+		return invalidPlugin(s.ID, "capability enricher does not match the implementation")
+	}
+	if enr != (s.Enricher != nil) {
+		return invalidPlugin(s.ID, "enricher spec must be declared exactly when the plugin has the enricher capability")
+	}
+	if s.Enricher != nil {
+		if verr := validateEnricherSpec(s.ID, *s.Enricher); verr != nil {
+			return verr
+		}
 	}
 	if !backend && (s.ExternalChannels || s.RemoteRevocation) {
 		return invalidPlugin(s.ID, "only sync backends declare channels")
@@ -423,6 +438,60 @@ func (e *Engine) registerPlugin(in PluginInstance, spec plugin.Spec) {
 	if a, ok := in.Plugin.(plugin.Actor); ok {
 		e.registerActions(spec, a)
 	}
+	if enr, ok := in.Plugin.(plugin.Enricher); ok {
+		e.registerEnricher(spec, enr)
+	}
+}
+
+func validateEnricherSpec(id string, es plugin.EnricherSpec) *Error {
+	if es.TimeoutMS < 0 || es.TimeoutMS > rpc.MaxEnrichTimeoutMs {
+		return invalidPlugin(id, "enricher timeout is outside 0..120000ms")
+	}
+	if len(es.Accepts) == 0 || len(es.Accepts) > 3 {
+		return invalidPlugin(id, "invalid enricher accepts")
+	}
+	seenAccept := map[string]bool{}
+	for _, k := range es.Accepts {
+		if (k != "text" && k != "image" && k != "files") || seenAccept[k] {
+			return invalidPlugin(id, "invalid or repeated enricher input type")
+		}
+		seenAccept[k] = true
+	}
+	if len(es.Triggers) == 0 || len(es.Triggers) > 3 {
+		return invalidPlugin(id, "invalid enricher triggers")
+	}
+	seenTrig := map[string]bool{}
+	for _, t := range es.Triggers {
+		if (t != plugin.EnrichTriggerOnCommit && t != plugin.EnrichTriggerOnDemand && t != plugin.EnrichTriggerManual) || seenTrig[t] {
+			return invalidPlugin(id, "invalid or repeated enricher trigger")
+		}
+		seenTrig[t] = true
+	}
+	if len(es.RequiredTags) > 16 {
+		return invalidPlugin(id, "too many enricher required tags")
+	}
+	seenTag := map[string]bool{}
+	for _, t := range es.RequiredTags {
+		if t == "" || len(t) > rpc.MaxTagBytes || !utf8.ValidString(t) || seenTag[t] {
+			return invalidPlugin(id, "invalid or repeated enricher required tag")
+		}
+		seenTag[t] = true
+	}
+	if len(es.Annotations) > 16 {
+		return invalidPlugin(id, "too many enricher annotation types")
+	}
+	seenAnn := map[string]bool{}
+	for _, a := range es.Annotations {
+		if !rpc.ValidAnnotationType(a) || seenAnn[a] {
+			return invalidPlugin(id, "invalid or repeated enricher annotation type")
+		}
+		seenAnn[a] = true
+	}
+	return nil
+}
+
+func (e *Engine) registerEnricher(spec plugin.Spec, enr plugin.Enricher) {
+	e.enrichers = append(e.enrichers, newPipelineEnricher(spec, enr))
 }
 
 func (e *Engine) registerActions(spec plugin.Spec, a plugin.Actor) {

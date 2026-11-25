@@ -120,7 +120,7 @@ func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 					Icon:     desktopkit.IconBack,
 					Label:    label,
 					Tooltip:  label,
-					Disabled: d.live.busy || d.live.loading,
+					Disabled: d.live.busy,
 				}).Clicked() {
 					d.pluginSettings.id = ""
 					d.pluginSettings.view = ""

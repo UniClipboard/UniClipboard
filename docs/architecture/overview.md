@@ -5,7 +5,10 @@ paths:
   - internal
   - plugin
   - plugins
-  - app/desktop
+  - app/desktop/boardui
+  - app/desktop/cmd
+  - app/desktop/e2e
+  - app/desktop/internal
   - app/service
   - bindings
   - app/expo
@@ -16,7 +19,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: 9fd186bf06f852ba3dff567fec86fb04988dee33
+verified: 5581c52d46bc1ba9b97f0428e7ebb5b36d569035
 ---
 # 仓库布局与依赖边界
 
@@ -31,7 +34,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 - `engine.Settings.Validate` validates Engine business settings. `internal/localconfig.Config.Validate` validates host settings and calls it. Engine does not parse TOML or watch configuration files.
 - `app/mac/` 是独立的 Swift Package，保留 SwiftUI 界面与插件设置表单的实验代码，尚未连接 daemon；该客户端路线已取消，停止推进服务接入，现有实验画面不作为最终界面规格。`app/expo/` owns the shared Expo 57 application for Android and iOS, embedding the Go Engine in-process via [`bindings/mobile/`](../../bindings/mobile/engine.go) and the Expo Local Module `app/expo/modules/unic-engine` (with an explicit `"unavailable"` shell fallback when the native module is absent in JS-only runs). `app/android/` and `app/ios/` retain platform guidance only. Every application directory has its own README and AGENTS.md.
 - Before starting the Engine, the Android host registers a Java network interface provider through the mobile binding. Tailcat reads a fresh interface snapshot from this provider because the Android app sandbox restricts Go's direct interface enumeration.
-- CI runs lint, formatting, race checks, all three entry-point builds, and production headless process acceptance. The separate Expo workflow checks TypeScript, prebuild and both native bundles. It does not compile or run native mobile applications or build Swift experiments.
+- CI runs lint, formatting, race checks, all three entry-point builds, and production headless process acceptance. The mobile workflow checks TypeScript, Expo prebuild and both native bundles. It also builds each native mobile application and runs the live Engine flows on an isolated simulator or emulator.
 - Desktop PR CI runs six duration-balanced shards covering all isolated cases, with a thirty-minute limit per job. Ubuntu package bootstrap has a separate five-minute step limit, uses the official HTTPS archive for direct sources and the runner's file-backed mirror list, and bounds APT connection/data waits and retries. See the [Desktop E2E contract](../contracts/desktop-e2e-contract.md).
 
 ## 不变量
@@ -91,7 +94,7 @@ The history tag registry is shared by sidebar visibility, search candidates, lis
 
 Below 1100 DIP the sidebar uses an overlay. Below 760 DIP history list/detail share one pane. Device management opens as a full-window page (`devices`, sibling to Settings) combining a 2-column device card overview with a right-hand inspector (collapsing to single-pane below 760 DIP) and a focused task Sheet for pairing/adding devices; window-scoped Escape dismisses active menus/dialogs/sheets or inline rename first, steps back from single-pane device detail to the overview, and returns from the overview to history even when no control holds focus. Approving a pending device still requires explicit fingerprint review. The animated sidebar viewport owns clipping while its inner body owns padding, so collapse does not leave a final padding jump.
 
-Application scroll, list and grid factories share centralized indicator policy in `desktopkit/scroll_indicator.go`: show after position changes and hide after 600ms idle; hover alone does not reveal indicators. Each container owns its own state. History list/grid retain a scrollbar gutter, stable IDs and viewport reporting. The 52-DIP history toolbar integrates a centered unified search-and-filter omnibar (`SplitViewProps.SearchCentered`, `TokenSearchFieldProps.Unified`) combining live token search (`#`, `@`, `/`, `on:`, `ext:`), inline removable condition chips and a built-in filter funnel popover with live prospective counts, replacing the former standalone second filter row. Switching between list and grid plays a directional horizontal slide (`±28` DIP, respecting `ReduceMotion`) while smoothly revealing/hiding the compact grid card-size slider. In history list mode, `GroupedList` renders inset rounded rows (`ItemListItem.CardRow`) with soft blue tinted border selection, source application icons with content-kind corner badges (or image thumbnails), deduplicated single-line excerpts, user tags and hover quick copy, paired with a detail pane that shares the semantic link card, 3-column facts strip, subtle micro-slide switch and floating pill dock. In history grid mode, `GroupedGrid` renders semantic source-first cards (origin application icon/name or content-kind fallback, deduplicated short text, inset code/link/file previews, full-bleed image thumbnails, user tags, pinned mark and hover quick actions), and clicking a card opens a floating inset full-height detail card (`8` DIP margin, `12` DIP radius) covering the trailing titlebar band (`SplitViewProps.Drawer`) with layered depth enter/exit motion (exit-retained slide + gentle canvas recede, respecting `ReduceMotion`), a 48-DIP integrated top bar, pager, direction-aware micro-slide content switching, semantic preview, compact facts, tags, delivery status and the floating pill action dock.
+Application scroll, list and grid factories share centralized indicator policy in `desktopkit/scroll_indicator.go`: show after position changes and hide after 600ms idle; hover alone does not reveal indicators. Each container owns its own state. History list/grid retain a scrollbar gutter, stable IDs and viewport reporting. The 52-DIP history toolbar integrates a centered unified search-and-filter omnibar (`SplitViewProps.SearchCentered`, `TokenSearchFieldProps.Unified`) combining live token search (`#`, `@`, `/`, `on:`, `ext:`), inline removable condition chips and a built-in filter funnel popover with live prospective counts, replacing the former standalone second filter row. Toolbar density adapts deterministically to effective available content width (`desktopkit.ToolbarLayout`, accounting for docked sidebar, zoom scale, macOS traffic-light clearance and Windows host caption buttons): compact widths (`< 600` DIP) tighten spacing, hide decorative shortcut pills and compact the single-pane back button; narrow widths (`< 480` DIP) collapse idle search to a compact trigger (or accent active-condition badge) leaving draggable titlebar space, and expand into a full-width search takeover with a collapse button (`收起搜索`) on click, `⌘F`/`Ctrl+F` or filter interaction while preserving host caption controls and collapsing cleanly on empty Escape or outside blur without discarding active filters; ultra-narrow zoomed widths (`< 360` DIP) fold secondary history commands into the overflow menu. Switching between list and grid plays a directional horizontal slide (`±28` DIP, respecting `ReduceMotion`) while smoothly revealing/hiding the compact grid card-size slider. In history list mode, `GroupedList` renders inset rounded rows (`ItemListItem.CardRow`) with soft blue tinted border selection, source application icons with content-kind corner badges (or image thumbnails), deduplicated single-line excerpts, user tags and hover quick copy, paired with a detail pane that shares the semantic link card, 3-column facts strip, subtle micro-slide switch and floating pill dock. In history grid mode, `GroupedGrid` renders semantic source-first cards (origin application icon/name or content-kind fallback, deduplicated short text, inset code/link/file previews, full-bleed image thumbnails, user tags, pinned mark and hover quick actions), and clicking a card opens a floating inset full-height detail card (`8` DIP margin, `12` DIP radius) covering the trailing titlebar band (`SplitViewProps.Drawer`) with layered depth enter/exit motion (exit-retained slide + gentle canvas recede, respecting `ReduceMotion`), a 48-DIP integrated top bar, pager, direction-aware micro-slide content switching, semantic preview, compact facts, tags, delivery status and the floating pill action dock.
 
 The demo contains history list/grid/detail, device management and settings. Its operations remain in memory; it creates no API client, clipboard writer, shortcut registration or persisted settings. The production `unic-desktop` uses the same renderer with its live service binding. Build success alone establishes no native visual or interaction acceptance. See the [demo guide](../../app/desktop/UI-DEMO.md), [component contract](../contracts/boardui-native-contract.md) and [production migration receipt](../exec/boardui-production-migration.md).
 
@@ -171,8 +174,7 @@ View-level E2E verifies mygo input and layout without opening a native app. Nati
 ## 缺口
 
 - The adopted demo supplies desktop composition and interaction. Native visual acceptance and the remaining live capabilities are recorded in the [execution receipt](../exec/desktop-live-data.md).
-- Android、iOS 工程及移动绑定尚未建立；gomobile 接入时需补嵌套模块、工作区和版本标签约定（`bindings/vX.Y.Z`）。
-- 各端原生 CI 尚未建立。随应用工程接入，再实现核心变更验证所有端、应用变更验证对应端的路径分流。
+- Mobile physical-device synchronization, system credential prompts and Store rollout have separate acceptance gates. See the [mobile completion plan](../exec/0031-mobile-completion-plan.md) and [release architecture](releases.md#mobile-candidates).
 
 ## Independent release programs
 
@@ -228,12 +230,64 @@ actions and streaming file commits. When the native `UnicEngine` module is not
 loaded (JS-only/shell runs), `useEngineStore` explicitly enters `mode: "unavailable"`
 and retains the in-memory `src/shell` presentation with explicit unavailable notices.
 
+Live settings use the Engine's revision-checked settings API. The mobile
+binding saves the effective Engine settings in the profile. The host stores
+automatic clipboard detection and automatic application separately. Android
+observes clipboard changes only while the app can read the clipboard. iOS
+offers an explicit read after detecting a change. Storage settings report
+Engine file-cache usage and clear only the host's image previews.
+
+The history views obtain file names through short-lived content leases. The
+native hosts import camera and photo selections as PNG representations. The
+photo and document exporters stream the saved parts with their original bytes.
+System sharing uses native share sheets. Directory details show up to 200
+entries from the stored snapshot or the direct children of a live reference.
+
+The client coalesces Engine events by kind. History, device and status reads
+run independently. Startup, foreground reconciliation and resync refresh all
+collections. Image previews use a private cache limited to 120 files and
+100 MiB. Reconciliation removes previews for deleted or expired history.
+See the [mobile settings and media receipt](../exec/0031-mobile-m2-receipt.md).
+
+The device screen reads pairing operations on Engine operation events,
+resync, and foreground reconciliation. Both peers compare the shared
+fingerprint before approval. The local device row displays the Engine
+device ID. The ticket view clears on close, expiry and backgrounding.
+History tags use revision-checked updates and Engine tag queries.
+
+Android SAF copies the selected v1 backup to private cache before passing
+it to the existing migration session. Android share intents and the iOS
+Share Extension stage items for confirmation in the main application.
+The iOS extension uses the file URL to recover the file name and type when
+the share provider offers the payload as a file URL.
+The main application owns the Engine. It uses the same processing path
+for local saves and device-targeted sends. Local saves request no backend
+dispatch. The Android foreground service keeps the app-owned Engine active
+while the service runs. Clipboard observation still requires the foreground
+conditions reported by the host.
+
+The mobile binding build trims Go source paths and omits Go symbol tables and
+DWARF data from the iOS XCFramework and Android AAR. Native packaging retains
+its own debug symbol settings. Android x86-64 uses an NDK-built SQLite driver
+with FTS5 because the Go-translated Linux driver invokes a disallowed syscall
+on that ABI. The binding build enables FTS5 with the `sqlite_fts5` tag. The
+store and backup reader retain the same schema and connection policies.
+
+The default Expo build keeps its isolated shell identity. The production
+variant preserves the previous mobile package identities and resolves each
+platform's version independently from `release/products.toml`. The mobile
+binding owns its observability controller and the profile's upload switch.
+See [release construction](releases.md) and [observability](observability.md).
+
 Generated native directories belong under `app/expo/ios` and `app/expo/android`
 and are ignored. `app/ios` and `app/android` are not build inputs. `npm run verify`
 checks source boundaries, TypeScript, pinned navigation patches, Expo prebuild
-and both Metro/Hermes bundles. Physical-device sync soak and production Store
-release workflows remain separate scope. See [the UI shell receipt](../exec/expo-ui-shell.md)
-and [the mobile Engine integration receipt](../exec/0031-mobile-engine-integration.md).
+and both Metro/Hermes bundles. The native live suite covers first install,
+history and search, the device page, and diagnostics. Store candidate
+construction and physical-device sync soak have separate acceptance evidence.
+See [the UI shell receipt](../exec/expo-ui-shell.md),
+[the Engine integration receipt](../exec/0031-mobile-engine-integration.md),
+and [the mobile release preparation receipt](../exec/0031-mobile-m5-receipt.md).
 
 
 ### Resuming a later Desktop migration

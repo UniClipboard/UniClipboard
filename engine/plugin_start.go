@@ -13,11 +13,18 @@ import (
 // SupportsLivePluginStart reports whether an external process can be added
 // without rebuilding the Engine's processing chain or peer session registry.
 func SupportsLivePluginStart(spec plugin.Spec) bool {
-	if len(spec.Capabilities) != 1 {
+	if len(spec.Capabilities) == 0 {
 		return false
 	}
-	return spec.Capabilities[0] == plugin.CapAction ||
-		spec.Capabilities[0] == plugin.CapSyncBackend && spec.ExternalChannels && spec.TransportKind == plugin.TransportObjectStore
+	if len(spec.Capabilities) == 1 && spec.Capabilities[0] == plugin.CapSyncBackend {
+		return spec.ExternalChannels && spec.TransportKind == plugin.TransportObjectStore
+	}
+	for _, c := range spec.Capabilities {
+		if c != plugin.CapAction && c != plugin.CapEnricher {
+			return false
+		}
+	}
+	return true
 }
 
 // StartExternalPlugin adds an inactive external Go Action or external-channel
@@ -111,7 +118,12 @@ func (e *Engine) StartExternalPlugin(ctx context.Context, in PluginInstance, pol
 	e.plugins = append(e.plugins, in.Plugin)
 	e.pluginInstances[id] = in.Plugin
 	if pb == nil {
-		e.registerActions(spec, in.Plugin.(plugin.Actor))
+		if a, ok := in.Plugin.(plugin.Actor); ok {
+			e.registerActions(spec, a)
+		}
+		if enr, ok := in.Plugin.(plugin.Enricher); ok {
+			e.registerEnricher(spec, enr)
+		}
 		e.commitLocked(EventCapabilities)
 	} else {
 		e.instLocks = append(e.instLocks, lock)

@@ -3,6 +3,9 @@ import { Alert, BackHandler } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
+import { openWebLink, shareHistoryItems } from "@/engine/historyActions";
+import { unicEngineNative } from "@/engine/nativeModule";
+import { useMessageStore } from "@/stores/messageStore";
 import { useEngineStore } from "@/engine/store";
 import { useTheme } from "@/hooks/useTheme";
 import { useHistoryDisplaySettings } from "@/hooks/useHistoryDisplaySettings";
@@ -21,17 +24,17 @@ import {
 import { useShellStore } from "@/shell/store";
 import { showUnavailable } from "@/shell/notice";
 
-function mapDisplayKindToSearchType(kind: DisplayKind | undefined): string | null {
-  switch (kind) {
-    case "text":
-      return "text";
-    case "image":
-      return "image";
-    case "file":
-      return "files";
-    default:
-      return null;
+function filterLiveItems(
+  records: ClipboardItem[],
+  selectedFilterKinds: DisplayKind[],
+): ClipboardItem[] {
+  // Engine already owns keyword search (over full text beyond 512B), date range,
+  // source filtering, and coarse type filtering. Only narrow client-side when
+  // the user explicitly selected the URL sub-kind (which Engine stores as text).
+  if (selectedFilterKinds.includes("url") && !selectedFilterKinds.includes("text")) {
+    return records.filter((item) => getDisplayKind(item.type, item.text) === "url");
   }
+  return records;
 }
 
 export function useHomeController(
@@ -43,12 +46,16 @@ export function useHomeController(
   const insets = useSafeAreaInsets();
   const engineMode = useEngineStore((s) => s.mode);
   const engineRecords = useEngineStore((s) => s.records);
+  const availableTags = useEngineStore((s) => s.availableTags);
   const engineActions = useEngineStore((s) => s.actions);
+  const engineReceived = useEngineStore((s) => s.received);
   const shellRecords = useShellStore((s) => s.records);
   const records = engineMode === "live" ? engineRecords : shellRecords;
   const [selectedIds, setSelectedIds] = useState(new Set<string>());
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [tagEditID, setTagEditID] = useState<string | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedFilterKinds, setSelectedFilterKinds] = useState<DisplayKind[]>(
     [],
@@ -68,6 +75,11 @@ export function useHomeController(
   const [wordPickerTarget, setWordPickerTarget] =
     useState<WordPickerOverlayProps | null>(null);
   const [sendToVisible, setSendToVisible] = useState(false);
+  const [sendTargetItem, setSendTargetItem] = useState<ClipboardItem | null>(
+    null,
+  );
+  const [sendDraftText, setSendDraftText] = useState<string | null>(null);
+  const [receiveResultsOpen, setReceiveResultsOpen] = useState(false);
   const listRef = useRef<AnimatedCardGridHandle>(null);
   const {
     historyLayout,
@@ -91,8 +103,11 @@ export function useHomeController(
     ],
   );
   const items = useMemo(
-    () => records.filter((item) => matchesHistoryFilter(item, filter)),
-    [records, filter],
+    () =>
+      engineMode === "live"
+        ? filterLiveItems(records, selectedFilterKinds)
+        : records.filter((item) => matchesHistoryFilter(item, filter)),
+    [engineMode, records, selectedFilterKinds, filter],
   );
   const detailItem =
     records.find((item) => item.profileHash === detailId) ?? null;
@@ -125,6 +140,7 @@ export function useHomeController(
   }, [clearSelection]);
   const handleClearFilters = useCallback(() => {
     setSelectedFilterKinds([]);
+    setSelectedTag(null);
     setSelectedDateFilter("all");
     setSelectedSourceFilter("all");
   }, []);
@@ -142,11 +158,21 @@ export function useHomeController(
     [],
   );
   const closeDetailPage = useCallback(() => setDetailPageId(null), []);
-  const openSendTo = useCallback(
-    (_item?: ClipboardItem) => setSendToVisible(true),
-    [],
-  );
-  const closeSendTo = useCallback(() => setSendToVisible(false), []);
+  const openSendTo = useCallback((item?: ClipboardItem) => {
+    setSendDraftText(null);
+    setSendTargetItem(item ?? null);
+    setSendToVisible(true);
+  }, []);
+  const openSendToText = useCallback((text?: string) => {
+    setSendTargetItem(null);
+    setSendDraftText(typeof text === "string" ? text : null);
+    setSendToVisible(true);
+  }, []);
+  const closeSendTo = useCallback(() => {
+    setSendToVisible(false);
+    setSendTargetItem(null);
+    setSendDraftText(null);
+  }, []);
   const handleContextDismiss = useCallback(() => setContextTarget(null), []);
   const handleItemDelete = useCallback(
     (item: ClipboardItem) => {
@@ -187,29 +213,100 @@ export function useHomeController(
       setContextTarget({ item, anchor }),
     [],
   );
+  const runHistoryAction = useCallback(
+    (action: () => Promise<unknown>) => {
+      if (engineMode !== "live") {
+        showUnavailable();
+        return;
+      }
+      void action().catch((error: unknown) => Alert.alert(
+        t("history:media.actionFailed"),
+        error instanceof Error ? error.message : undefined,
+      ));
+    },
+    [engineMode, t],
+  );
+  const saveHistoryMedia = useCallback((item: ClipboardItem, destination: "photos" | "files") => {
+    runHistoryAction(async () => {
+      const saved = await unicEngineNative.exportHistoryMedia(item.profileHash, destination);
+      if (saved) useMessageStore.getState().showMessage(t("history:media.saved"), "success");
+    });
+  }, [runHistoryAction, t]);
+
   const makeActionGroups = useCallback(
     (item: ClipboardItem, kind: DisplayKind, anchor: CardAnchorRect | null) => {
       const baseGroups = buildActionMenuGroups(item, kind, {
         onCopy: () => void handleItemCopy(item),
-        onCopyPlainText: () => void handleItemCopy(item),
-        onSelectText: () =>
-          setWordPickerTarget({
-            text: item.text,
-            anchor,
-            deviceName: item.deviceName,
-            onDismiss: () => setWordPickerTarget(null),
-          }),
-        onOpenInBrowser: showUnavailable,
-        onSaveImage: showUnavailable,
-        onSaveFile: showUnavailable,
+        onCopyPlainText: () => runHistoryAction(async () => {
+          const text = await unicEngineNative.readHistoryFullText(item.profileHash);
+          if (text.truncated) throw new Error(t("history:media.textTooLong"));
+          await unicEngineNative.copyPlainText(text.text);
+          useMessageStore.getState().showMessage(t("history:wordPicker.copied"), "success");
+        }),
+        onSelectText: () => {
+          if (engineMode === "live" && item.type === "Text") {
+            void useEngineStore
+              .getState()
+              .readHistoryFullText(item.profileHash)
+              .then((fullText) => {
+                setWordPickerTarget({
+                  text: fullText || item.text,
+                  anchor,
+                  deviceName: item.deviceName,
+                  onDismiss: () => setWordPickerTarget(null),
+                });
+              })
+              .catch(() => {
+                setWordPickerTarget({
+                  text: item.text,
+                  anchor,
+                  deviceName: item.deviceName,
+                  onDismiss: () => setWordPickerTarget(null),
+                });
+              });
+          } else {
+            setWordPickerTarget({
+              text: item.text,
+              anchor,
+              deviceName: item.deviceName,
+              onDismiss: () => setWordPickerTarget(null),
+            });
+          }
+        },
+        onOpenInBrowser: () => runHistoryAction(async () => {
+          const text = await unicEngineNative.readHistoryFullText(item.profileHash);
+          if (text.truncated) throw new Error(t("history:media.textTooLong"));
+          await openWebLink(text.text);
+        }),
+        onSaveImage: () => saveHistoryMedia(item, "photos"),
+        onSaveFile: () => saveHistoryMedia(item, "files"),
         onResend: () => openSendTo(item),
-        onShare: () => openSendTo(item),
+        onShare: () => runHistoryAction(() => shareHistoryItems([item])),
         onSelect: () => {
           setIsSelectMode(true);
           setSelectedIds(new Set([item.profileHash]));
         },
         onDelete: () => handleItemDelete(item),
       });
+      if (engineMode === "live") {
+        baseGroups.push([{
+          key: "togglePin",
+          label: t(item.pinned ? "history:tags.unpin" : "history:tags.pin"),
+          icon: "pin-outline",
+          onPress: () => runHistoryAction(() => useEngineStore.getState().togglePin(item.profileHash)),
+        }, {
+          key: "editTags",
+          label: t("history:tags.edit"),
+          icon: "pricetag-outline",
+          onPress: () => setTagEditID(item.profileHash),
+        }]);
+        baseGroups.push([{
+          key: "sendTo",
+          label: t("detail.sendTo"),
+          icon: "paper-plane-outline",
+          onPress: () => openSendTo(item),
+        }]);
+      }
       if (engineMode === "live" && (kind === "text" || kind === "url")) {
         const textActions = engineActions
           .filter((act) => act.accepts?.includes("text"))
@@ -233,7 +330,7 @@ export function useHomeController(
       }
       return baseGroups;
     },
-    [engineMode, engineActions, handleItemCopy, handleItemDelete, openSendTo, t],
+    [engineMode, engineActions, handleItemCopy, handleItemDelete, runHistoryAction, saveHistoryMedia, openSendTo, t],
   );
   const actionMenuGroups = useMemo(
     () =>
@@ -298,14 +395,22 @@ export function useHomeController(
   );
   useEffect(() => {
     if (engineMode !== "live") return;
-    const engineType =
-      selectedFilterKinds.length === 1
-        ? mapDisplayKindToSearchType(selectedFilterKinds[0])
-        : null;
-    void useEngineStore
-      .getState()
-      .setQueryFilters(isSearching ? searchText : "", [], engineType);
-  }, [engineMode, isSearching, searchText, selectedFilterKinds]);
+    void useEngineStore.getState().setQueryFilters({
+      text: isSearching ? searchText : "",
+      tags: selectedTag ? [selectedTag] : [],
+      kinds: selectedFilterKinds,
+      dateFilter: selectedDateFilter,
+      sourceFilter: selectedSourceFilter,
+    });
+  }, [
+    engineMode,
+    isSearching,
+    searchText,
+    selectedTag,
+    selectedFilterKinds,
+    selectedDateFilter,
+    selectedSourceFilter,
+  ]);
 
   const emptyContent = {
     icon: "search-outline" as const,
@@ -320,6 +425,11 @@ export function useHomeController(
     onOpenSettings,
     items,
     baseItems: records,
+    availableTags,
+    selectedTag,
+    setSelectedTag,
+    tagEditItem: records.find((item) => item.profileHash === tagEditID) ?? null,
+    closeTagEditor: () => setTagEditID(null),
     filter,
     resultCount: items.length,
     isHistoryLoading: false,
@@ -361,6 +471,7 @@ export function useHomeController(
     setSelectedSourceFilter,
     hasActiveFilters:
       selectedFilterKinds.length > 0 ||
+      selectedTag !== null ||
       selectedDateFilter !== "all" ||
       selectedSourceFilter !== "all",
     handleSelectFilterKind: (kind: DisplayKind | null) =>
@@ -387,19 +498,26 @@ export function useHomeController(
         .refreshAll()
         .finally(() => setRefreshing(false));
     },
-    loadMoreItems: () => {},
+    loadMoreItems: () => {
+      if (engineMode === "live") {
+        void useEngineStore.getState().loadMoreItems();
+      }
+    },
     reportVisibleHistoryItems: (_items: ClipboardItem[]) => {},
     handleBatchCopy: () => {
-      if (engineMode !== "live" || selectedIds.size === 0) {
-        showUnavailable();
-        return;
-      }
-      const firstId = [...selectedIds][0];
-      void useEngineStore.getState().applyToClipboard(firstId);
+      const first = items.find((it) => selectedIds.has(it.profileHash));
+      if (!first) return;
+      void handleItemCopy(first);
       exitSelectMode();
     },
-    handleBatchShare: () => setSendToVisible(true),
-    handleBatchSendTo: () => setSendToVisible(true),
+    handleBatchShare: () => {
+      const selected = items.filter((item) => selectedIds.has(item.profileHash));
+      if (selected.length > 0) runHistoryAction(() => shareHistoryItems(selected));
+    },
+    handleBatchSendTo: () => {
+      const first = items.find((it) => selectedIds.has(it.profileHash));
+      openSendTo(first);
+    },
     handleBatchDelete: () => {
       if (engineMode === "live") {
         void useEngineStore.getState().deleteHistoryItems([...selectedIds]);
@@ -410,40 +528,37 @@ export function useHomeController(
     },
     showAddMenu,
     setShowAddMenu,
-    handleTakePhoto: showUnavailable,
-    handleUploadImage: () => {
-      if (engineMode !== "live") {
-        showUnavailable();
-        return;
-      }
+    handleTakePhoto: () => {
       setShowAddMenu(false);
-      void useEngineStore.getState().pickAndCommitFile();
+      runHistoryAction(() => unicEngineNative.pickAndCommitImage(true));
+    },
+    handleUploadImage: () => {
+      setShowAddMenu(false);
+      runHistoryAction(() => unicEngineNative.pickAndCommitImage(false));
     },
     handleUploadFile: () => {
-      if (engineMode !== "live") {
-        showUnavailable();
-        return;
-      }
       setShowAddMenu(false);
-      void useEngineStore.getState().pickAndCommitFile();
+      runHistoryAction(() => useEngineStore.getState().pickAndCommitFile());
     },
     handleUpload: () => {
-      if (engineMode !== "live") {
-        showUnavailable();
-        return;
-      }
       setShowAddMenu(false);
-      setSendToVisible(true);
+      runHistoryAction(() => useEngineStore.getState().readSystemClipboardAndCommit());
     },
     handleSyncHistory: () => {
+      runHistoryAction(() => useEngineStore.getState().readSystemClipboardAndCommit());
+    },
+    receiveEntryCount: engineMode === "live" ? engineReceived.length : 0,
+    receiveResultsOpen,
+    setReceiveResultsOpen: (open: boolean) => {
       if (engineMode !== "live") {
         showUnavailable();
         return;
       }
-      void useEngineStore.getState().readSystemClipboardAndCommit();
+      if (open) {
+        void useEngineStore.getState().refreshReceived();
+      }
+      setReceiveResultsOpen(open);
     },
-    receiveEntryCount: 0,
-    setReceiveResultsOpen: (_open: boolean) => showUnavailable(),
     wordPickerTarget,
     setWordPickerTarget,
     contextItem,
@@ -458,9 +573,11 @@ export function useHomeController(
     openDetailPage,
     closeDetailPage,
     sendToVisible,
+    sendTargetItem,
+    sendDraftText,
     openSendTo,
     closeSendTo,
-    openSendToText: () => setSendToVisible(true),
+    openSendToText,
   };
 }
 export type HomeController = ReturnType<typeof useHomeController>;

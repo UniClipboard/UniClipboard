@@ -1,7 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useEngineStore } from "@/engine/store";
 import { useTheme } from "@/hooks/useTheme";
 import { useAppLanguage } from "@/i18n/useAppLanguage";
 import { useShellStore } from "./store";
@@ -39,10 +38,6 @@ export function useShellSettingGroups(
 ): ShellGroup[] {
   const { t } = useTranslation();
   const state = useShellStore();
-  const engineMode = useEngineStore((s) => s.mode);
-  const engineRecords = useEngineStore((s) => s.records);
-  const capabilities = useEngineStore((s) => s.capabilities);
-  const beginLaterMigration = useEngineStore((s) => s.beginLaterMigration);
   const { themeMode, setThemeMode } = useTheme();
   const { preference, setLanguage } = useAppLanguage();
   const navigation =
@@ -171,39 +166,18 @@ export function useShellSettingGroups(
         ],
       },
     ];
-  if (page === "storage") {
-    const live = engineMode === "live";
-    return [
-      {
-        rows: [
-          {
-            id: "storage-count",
-            title: t("settings:category.history"),
-            value: String(live ? engineRecords.length : state.records.length),
-          },
-          ...(live
-            ? [
-                {
-                  id: "storage-migrate-v1",
-                  title: t("settingsStorage:migration.title"),
-                  description: t("settingsStorage:migration.description"),
-                  onPress: () => void beginLaterMigration(),
-                },
-              ]
-            : [
-                {
-                  id: "storage-reset",
-                  title: t("shell:reset"),
-                  onPress: state.resetHistory,
-                },
-              ]),
-        ],
-        footer: live
-          ? `${t("settingsStorage:migration.description")} (${capabilities?.effective.observe ?? "available"})`
-          : t("shell:localOnly"),
-      },
-    ];
-  }
+  if (page === "storage")
+    return [{
+      footer: t("shell:localOnly"),
+      rows: [
+        {
+          id: "storage-count",
+          title: t("settings:category.history"),
+          value: String(state.records.length),
+        },
+        { id: "storage-reset", title: t("shell:reset"), onPress: state.resetHistory },
+      ],
+    }];
   if (page === "about")
     return [
       {

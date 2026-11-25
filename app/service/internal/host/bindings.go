@@ -8,7 +8,12 @@ import (
 )
 
 func (n *Node) SetBindingSync(ctx context.Context, id string, in api.BindingEdit) (engine.DeviceBinding, error) {
-	out, err := n.e.SetBindingSync(ctx, engine.SetBindingSyncRequest{ID: id, ExpectedRevision: in.Revision, Enabled: in.Enabled})
+	out, err := n.e.UpdateBinding(ctx, engine.UpdateBindingRequest{
+		ID:               id,
+		ExpectedRevision: in.Revision,
+		Enabled:          in.Enabled,
+		Policy:           in.Policy,
+	})
 	return out, apiErr0(err)
 }
 func (n *Node) RemoveBinding(ctx context.Context, id string, revision int64) error {

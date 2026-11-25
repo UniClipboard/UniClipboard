@@ -51,6 +51,13 @@ type GridItem struct {
 	Highlight []string
 	// Media 构建图片主体（如缩略图元素）。
 	Media func()
+	// Optional enriched link preview fields (from link_preview.v1).
+	LinkSite          string
+	LinkTitle         string
+	LinkDescription   string
+	LinkFavicon       ui.ImageSource
+	LinkImage         ui.ImageSource
+	LinkImageDrawOver func(*ui.Painter, ui.Rect)
 	// ImageLoading draws a BoardUI shimmer placeholder while the grid image thumbnail
 	// is still decoding and Media is nil.
 	ImageLoading bool
@@ -509,17 +516,68 @@ func (k Kit) gridSemanticBody(c *ui.Context, it GridItem) {
 			})
 		case KindLink:
 			host, path := splitLinkPreview(it.Text)
+			siteLabel := it.LinkSite
+			if siteLabel == "" {
+				siteLabel = host
+			}
+			cardTitle := it.LinkTitle
+			if cardTitle == "" && it.Title != "" && it.Title != it.Text {
+				cardTitle = it.Title
+			}
 			linkCard := ui.Column(c.Key("link")).Grow(1).MinHeight(0).Radius(8).Clip().
-				Background(k.Color("background-secondary-default")).Border(1, k.Color("separator-border")).
-				Padding(8, 10).Justify(ui.SpaceBetween).Gap(3)
-			linkCard.Children(func() {
-				if host != "" {
+				Background(k.Color("background-secondary-default")).Border(1, k.Color("separator-border"))
+			if it.LinkImage != nil {
+				linkCard.Children(func() {
+					imgBox := ui.Box(c.Key("og")).FillWidth().Grow(1).MinHeight(0).Clip().
+						BorderWidth(0, 0, 1, 0).BorderColor(k.Color("separator-border"))
+					imgBox.Children(func() {
+						imgEl := ui.Image(c.Key("og-img"), it.LinkImage).Fill().Fit(ui.Cover).Label(cardTitle)
+						if it.LinkImageDrawOver != nil {
+							imgEl.DrawOver(it.LinkImageDrawOver)
+						}
+					})
+					ui.Column(c.Key("og-meta")).Padding(6, 8).Gap(2).Shrink(0).Children(func() {
+						if cardTitle != "" {
+							k.HighlightedText(c.Key("t"), cardTitle, it.Highlight, HighlightTextProps{
+								FontSize:   11.5,
+								FontWeight: 600,
+								TextColor:  k.Color("text-primary"),
+								SingleLine: true,
+							})
+						}
+						if siteLabel != "" || it.LinkFavicon != nil {
+							bg, fg := k.gridKindTint(KindLink)
+							ui.Row(c.Key("host")).Gap(5).AlignItems(ui.Center).Children(func() {
+								if it.LinkFavicon != nil {
+									ui.Image(c.Key("fav"), it.LinkFavicon).Size(12, 12).Radius(3).Shrink(0).Fit(ui.Contain).Label(siteLabel)
+								} else {
+									ui.Box(c.Key("fav")).Size(13, 13).Radius(3.5).Background(bg).Center().Shrink(0).Children(func() {
+										k.Icon(c, IconLink, 8.5).TextColor(fg)
+									})
+								}
+								k.HighlightedText(c.Key("h"), siteLabel, it.Highlight, HighlightTextProps{
+									FontSize:   10.5,
+									TextColor:  k.Color("text-tertiary"),
+									SingleLine: true,
+								}).MinWidth(0)
+							})
+						}
+					})
+				})
+				break
+			}
+			linkCard.Padding(8, 10).Justify(ui.SpaceBetween).Gap(3).Children(func() {
+				if siteLabel != "" || it.LinkFavicon != nil {
 					bg, fg := k.gridKindTint(KindLink)
 					ui.Row(c.Key("host")).Gap(6).AlignItems(ui.Center).Children(func() {
-						ui.Box(c.Key("fav")).Size(15, 15).Radius(4).Background(bg).Center().Shrink(0).Children(func() {
-							k.Icon(c, IconLink, 9.5).TextColor(fg)
-						})
-						k.HighlightedText(c.Key("h"), host, it.Highlight, HighlightTextProps{
+						if it.LinkFavicon != nil {
+							ui.Image(c.Key("fav"), it.LinkFavicon).Size(15, 15).Radius(4).Shrink(0).Fit(ui.Contain).Label(siteLabel)
+						} else {
+							ui.Box(c.Key("fav")).Size(15, 15).Radius(4).Background(bg).Center().Shrink(0).Children(func() {
+								k.Icon(c, IconLink, 9.5).TextColor(fg)
+							})
+						}
+						k.HighlightedText(c.Key("h"), siteLabel, it.Highlight, HighlightTextProps{
 							FontSize:   11,
 							FontWeight: 600,
 							TextColor:  fg,
@@ -527,22 +585,27 @@ func (k Kit) gridSemanticBody(c *ui.Context, it GridItem) {
 						}).MinWidth(0)
 					})
 				}
-				if it.Title != "" && it.Title != it.Text {
-					k.HighlightedText(c.Key("t"), it.Title, it.Highlight, HighlightTextProps{
+				if cardTitle != "" {
+					k.HighlightedText(c.Key("t"), cardTitle, it.Highlight, HighlightTextProps{
 						FontSize:   12.5,
 						FontWeight: 600,
 						TextColor:  k.Color("text-primary"),
 						SingleLine: true,
 					})
 				}
-				urlText := path
+				urlText := it.LinkDescription
+				mono := false
 				if urlText == "" {
-					urlText = it.Text
+					mono = true
+					urlText = path
+					if urlText == "" {
+						urlText = it.Text
+					}
 				}
 				k.HighlightedText(c.Key("u"), urlText, it.Highlight, HighlightTextProps{
 					FontSize:   10.5,
 					TextColor:  k.Color("text-tertiary"),
-					Monospace:  true,
+					Monospace:  mono,
 					SingleLine: true,
 				})
 			})

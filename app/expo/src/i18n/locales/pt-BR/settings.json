@@ -41,7 +41,15 @@
     "confirmationConfirm": "Usar sincronização direta",
     "updateFailed": "Não foi possível alterar o método de sincronização"
   },
+  "mobileDiagnostics": {
+    "telemetry": "Enviar telemetria",
+    "export": "Compartilhar registros anonimizados da sessão",
+    "unavailable": "O envio está indisponível nesta compilação.",
+    "empty": "Ainda não há registros de diagnóstico.",
+    "failed": "Não foi possível concluir a ação de diagnóstico."
+  },
   "category": {
+    "network": "Rede avançada",
     "sync": "Sincronização",
     "about": "Sobre",
     "other": "Outros",
@@ -60,12 +68,12 @@
       "autoApply": {
         "title": "Gravar automaticamente na área de transferência",
         "descLan": "Gravar automaticamente no clipboard deste dispositivo o conteúdo novo recebido do servidor",
-        "descP2p": "Gravar automaticamente no clipboard deste dispositivo o conteúdo novo recebido do espaço"
+        "descP2p": "Gravar automaticamente no clipboard deste dispositivo o conteúdo novo recebido dos dispositivos pareados"
       },
       "autoPush": {
         "title": "Enviar automaticamente a área de transferência",
         "descLan": "Enviar automaticamente cópias e itens do histórico ao servidor atual",
-        "descP2p": "Enviar automaticamente cópias e itens do histórico aos outros dispositivos do espaço"
+        "descP2p": "Enviar automaticamente cópias deste dispositivo aos dispositivos pareados"
       },
       "footer": "Estas opções controlam a direção da sincronização; as configurações de segundo plano controlam onde ela pode ser executada",
       "updateFailed": "Falha na atualização"
@@ -88,13 +96,13 @@
   },
   "ios": {
     "sync": {
-      "footer": "Com a gravação automática ativada, o conteúdo novo do espaço é gravado imediatamente no clipboard deste dispositivo; quando desativada, ele só é destacado na tela inicial. O envio automático lê cada cópia; defina primeiro Acesso à área de transferência como Permitir, ou o iOS perguntará toda vez.",
+      "footer": "Com a gravação automática ativada, o conteúdo novo dos dispositivos pareados é gravado imediatamente no clipboard deste dispositivo; quando desativada, ele só é destacado na tela inicial. O envio automático lê cada cópia; defina primeiro Acesso à área de transferência como Permitir, ou o iOS perguntará toda vez.",
       "autoApply": "Gravar automaticamente na área de transferência",
       "autoPush": "Enviar automaticamente a área de transferência",
       "sse": "Envio ao vivo (SSE)"
     },
     "extensions": {
-      "footer": "As extensões de teclado e compartilhamento permitem usar o UniClip diretamente em outros apps; defina o acesso à área de transferência como Permitir para evitar solicitações repetidas durante a sincronização.",
+      "footer": "A extensão de compartilhamento permite enviar itens ao UniClipboard diretamente pelo menu Compartilhar de outros apps.",
       "keyboard": "Teclado",
       "share": "Compartilhar",
       "clipboardAccess": "Acesso à área de transferência"
@@ -115,13 +123,59 @@
   "analytics": {
     "sectionTitle": "Privacidade",
     "consentTitle": "Compartilhar uso e diagnósticos anônimos",
-    "consentDescription": "Ajuda a melhorar o UniClip sem coletar conteúdo da área de transferência ou nomes",
-    "footer": "Podem ser enviados versão do app, sistema, região, sessão, número de dispositivos, grupo anônimo do espaço e diagnósticos sem conteúdos ou nomes. Desativar interrompe a coleta e remove os dados pendentes.",
+    "consentDescription": "Ajuda a melhorar o UniClipboard sem coletar conteúdo da área de transferência ou nomes",
+    "footer": "Podem ser enviados versão do app, sistema, região, sessão, número de dispositivos pareados e diagnósticos sem conteúdos ou nomes. Desativar interrompe a coleta e remove os dados pendentes.",
     "reset": "Redefinir",
     "resetTitle": "Redefinir identidade estatística",
     "resetMessage": "As estatísticas e os diagnósticos pendentes serão removidos e uma nova identidade anônima será criada.",
     "resetConfirm": "Redefinir identidade",
     "resetDone": "Identidade estatística redefinida",
     "error": "Não foi possível atualizar as configurações de estatísticas"
+  },
+  "live": {
+    "deviceName": "Nome do dispositivo",
+    "syncEnabled": "Ativar sincronização",
+    "syncAutomatic": "Sincronizar novos conteúdos automaticamente",
+    "syncRestore": "Sincronizar itens restaurados",
+    "syncFiles": "Sincronizar arquivos",
+    "syncIntroductions": "Recomendar dispositivos",
+    "capture": "Detectar alterações na área de transferência",
+    "captureHint": "No iOS, confirme antes de ler o novo conteúdo detectado.",
+    "cleanup": "Limpar histórico automaticamente",
+    "retention": "Retenção em dias",
+    "excludedTags": "Etiquetas excluídas da limpeza",
+    "customTags": "Etiquetas personalizadas",
+    "excludedHint": "Separe as etiquetas personalizadas com vírgulas. Itens marcados são preservados na limpeza automática.",
+    "unlimited": "Sem limite",
+    "daysValue": "{{count}} dias",
+    "itemsValue": "{{count}} itens",
+    "starred": "Favoritos",
+    "pinned": "Fixados",
+    "max_file_bytes": "Limite por arquivo",
+    "max_total_bytes": "Limite de conteúdo total",
+    "cacheLimit": "Limite de cache de arquivos",
+    "clearPreviews": "Limpar prévias locais",
+    "sessionLogsSummary": "Logs de diagnóstico anonimizados desta sessão, sem conteúdo do clipboard",
+    "sessionLogsFooter": "Exporta apenas registros de diagnóstico anonimizados da sessão atual, sem conteúdo da área de transferência ou credenciais.",
+    "rendezvous": "URL do serviço de pareamento",
+    "default": "Padrão",
+    "resetRendezvous": "Restaurar URL de pareamento padrão",
+    "runtime": "Atividade de rede",
+    "tailcat": "Conexões Tailcat",
+    "connected": "{{connected}} de {{total}} conectados",
+    "observe": "Ler área de transferência",
+    "apply": "Gravar na área de transferência",
+    "integer": "Digite um número inteiro não negativo.",
+    "loading": "Carregando configurações do Engine…",
+    "status": {
+      "available": "Disponível",
+      "permission_required": "Permissão necessária",
+      "unavailable": "Indisponível",
+      "unsupported": "Sem suporte",
+      "active": "Ativa",
+      "suspended": "Suspensa",
+      "sync_disabled": "Sincronização desativada",
+      "not_running": "Engine parado"
+    }
   }
 }

@@ -251,3 +251,149 @@ func TestReceivePreservesTimeoutErrorForSessionReason(t *testing.T) {
 		t.Fatalf("reason(receive err) = %q (err=%v), want timeout", got, err)
 	}
 }
+
+type gatedTransport struct {
+	mu       sync.Mutex
+	startCh  chan error
+	starts   int
+	listens  int
+	closed   bool
+	addr     string
+	listenCh chan struct{}
+}
+
+func (g *gatedTransport) Start() error {
+	g.mu.Lock()
+	g.starts++
+	ch := g.startCh
+	g.mu.Unlock()
+	err := <-ch
+	if err == nil {
+		g.mu.Lock()
+		g.addr = "127.0.0.1:9999"
+		g.mu.Unlock()
+	}
+	return err
+}
+
+func (g *gatedTransport) Close() error {
+	g.mu.Lock()
+	g.closed = true
+	g.mu.Unlock()
+	return nil
+}
+
+func (g *gatedTransport) Listen(ctx context.Context) (net.Listener, error) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
+	}
+	g.mu.Lock()
+	g.listens++
+	g.addr = ln.Addr().String()
+	ch := g.listenCh
+	g.mu.Unlock()
+	if ch != nil {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+	return ln, nil
+}
+
+func (g *gatedTransport) Dial(ctx context.Context, addr string) (net.Conn, error) {
+	return nil, errors.New("unused")
+}
+
+func (g *gatedTransport) Addr() string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.addr
+}
+
+func (g *gatedTransport) Binding(string) ([]byte, error) { return []byte("bind"), nil }
+
+func TestApplyStateStartsTransportAsynchronously(t *testing.T) {
+	tr := &gatedTransport{
+		startCh:  make(chan error, 1),
+		listenCh: make(chan struct{}, 2),
+	}
+	b := New(Config{Transport: tr})
+	if err := b.Bind(context.Background(), rpc.Bind{BindingID: "b1", SelfID: "self", SelfName: "self", WireVersion: 1, BackendID: "builtin.tailcat", TransportKind: "peer_sessions"}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Close(context.Background()) }()
+
+	// ApplyState(active) must return immediately even while Transport.Start is blocked.
+	start := time.Now()
+	if err := b.ApplyState(context.Background(), rpc.SyncState{BackendID: "builtin.tailcat", BindingID: "b1", Runtime: "active", Revision: 1}); err != nil {
+		t.Fatalf("ApplyState: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("ApplyState blocked for %v while Transport.Start was pending", elapsed)
+	}
+
+	// PairingAddress respects caller cancellation while Transport.Start is pending.
+	cancelCtx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	if _, err := b.PairingAddress(cancelCtx, "export"); err == nil {
+		t.Fatal("expected cancelled PairingAddress while Transport.Start is blocked")
+	}
+
+	// PairingAddress waits for Transport.Start and succeeds once it completes.
+	addrCh := make(chan string, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		addr, err := b.PairingAddress(context.Background(), "export")
+		addrCh <- addr
+		errCh <- err
+	}()
+	tr.startCh <- nil
+	if err := <-errCh; err != nil {
+		t.Fatalf("PairingAddress after start: %v", err)
+	}
+	if got := <-addrCh; got == "" {
+		t.Fatal("expected non-empty pairing address")
+	}
+	select {
+	case <-tr.listenCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("listener did not start after Transport.Start succeeded")
+	}
+}
+
+func TestApplyStateRetriesAfterAsyncTransportStartFailure(t *testing.T) {
+	tr := &gatedTransport{
+		startCh:  make(chan error, 2),
+		listenCh: make(chan struct{}, 2),
+	}
+	b := New(Config{Transport: tr})
+	if err := b.Bind(context.Background(), rpc.Bind{BindingID: "b1", SelfID: "self", SelfName: "self", WireVersion: 1, BackendID: "builtin.tailcat", TransportKind: "peer_sessions"}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Close(context.Background()) }()
+
+	tr.startCh <- errors.New("temporary network failure")
+	if err := b.ApplyState(context.Background(), rpc.SyncState{BackendID: "builtin.tailcat", BindingID: "b1", Runtime: "active", Revision: 1}); err != nil {
+		t.Fatalf("ApplyState #1: %v", err)
+	}
+	// Wait for the first Start attempt to complete and fail.
+	if _, err := b.PairingAddress(context.Background(), "export"); err == nil {
+		t.Fatal("expected PairingAddress to fail after failed Transport.Start")
+	}
+
+	// A later active ApplyState must retry Transport.Start and bring up the listener.
+	tr.startCh <- nil
+	if err := b.ApplyState(context.Background(), rpc.SyncState{BackendID: "builtin.tailcat", BindingID: "b1", Runtime: "active", Revision: 2, NetworkGeneration: 1}); err != nil {
+		t.Fatalf("ApplyState #2: %v", err)
+	}
+	select {
+	case <-tr.listenCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("listener did not start on retry after failed Transport.Start")
+	}
+	if addr, err := b.PairingAddress(context.Background(), "export"); err != nil || addr == "" {
+		t.Fatalf("PairingAddress after retry = (%q, %v)", addr, err)
+	}
+}

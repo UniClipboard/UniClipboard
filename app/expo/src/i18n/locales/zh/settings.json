@@ -41,7 +41,15 @@
     "confirmationConfirm": "使用设备直连",
     "updateFailed": "切换同步方式失败"
   },
+  "mobileDiagnostics": {
+    "telemetry": "发送遥测数据",
+    "export": "分享本次运行的脱敏日志",
+    "unavailable": "此构建无法上传遥测数据。",
+    "empty": "暂无诊断日志。",
+    "failed": "无法完成诊断操作。"
+  },
   "category": {
+    "network": "高级网络",
     "sync": "同步",
     "about": "关于",
     "other": "其他",
@@ -60,12 +68,12 @@
       "autoApply": {
         "title": "自动写入本机剪贴板",
         "descLan": "服务器有新内容时，自动写入本机系统剪贴板",
-        "descP2p": "空间中有新内容时，自动写入本机系统剪贴板"
+        "descP2p": "已配对设备发来新内容时，自动写入本机系统剪贴板"
       },
       "autoPush": {
         "title": "自动推送本机剪贴板",
         "descLan": "本机复制内容或使用历史记录后，自动发送到当前服务器",
-        "descP2p": "本机复制内容或使用历史记录后，自动发送到空间中的其他设备"
+        "descP2p": "本机复制内容后，自动同步到已配对设备"
       },
       "footer": "以上选项控制同步方向；后台执行能力由“后台运行”设置单独控制",
       "updateFailed": "设置失败"
@@ -87,13 +95,13 @@
   },
   "ios": {
     "sync": {
-      "footer": "开启自动写入后，空间中的新内容会立即写入本机剪贴板；关闭后，内容只会在首页提示。自动推送会读取每次复制的内容，建议先在「剪贴板访问权限」中设为「允许」，否则 iOS 每次都会弹窗询问。",
+      "footer": "开启自动写入后，来自已配对设备的新内容会立即写入本机剪贴板；关闭后，仅在首页提示。自动推送会读取每次复制的内容，建议先在「剪贴板访问权限」中设为「允许」，以免 iOS 反复弹窗询问。",
       "autoApply": "自动写入本机剪贴板",
       "autoPush": "自动推送本机剪贴板",
       "sse": "实时推送 (SSE)"
     },
     "extensions": {
-      "footer": "键盘和分享扩展让你在其他 App 里直接使用 UniClip；剪贴板访问设为「允许」可避免同步时反复弹窗。",
+      "footer": "分享扩展让你在其他 App 中直接通过系统分享面板将内容发送到 UniClipboard。",
       "keyboard": "键盘",
       "share": "分享",
       "clipboardAccess": "剪贴板访问权限"
@@ -114,13 +122,59 @@
   "analytics": {
     "sectionTitle": "隐私",
     "consentTitle": "分享匿名使用与诊断数据",
-    "consentDescription": "帮助改进 UniClip，不收集剪贴板内容或名称",
-    "footer": "可能发送应用版本、系统、地区、会话、设备数量、匿名空间分组，以及不含内容或名称的诊断记录。关闭后停止发送并清除待发送数据。",
+    "consentDescription": "帮助改进 UniClipboard，不收集剪贴板内容或名称",
+    "footer": "可能发送应用版本、系统、地区、会话、已配对设备数量，以及不含剪贴板内容或名称的诊断记录。关闭后停止发送并清除待发送数据。",
     "reset": "重置",
     "resetTitle": "重置统计身份",
     "resetMessage": "这会删除待发送的统计和诊断数据，并创建新的匿名身份。",
     "resetConfirm": "重置身份",
     "resetDone": "统计身份已重置",
     "error": "无法更新统计设置"
+  },
+  "live": {
+    "deviceName": "设备名称",
+    "syncEnabled": "启用同步",
+    "syncAutomatic": "自动同步新剪贴板内容",
+    "syncRestore": "同步恢复的历史内容",
+    "syncFiles": "同步文件",
+    "syncIntroductions": "推荐设备",
+    "capture": "检测剪贴板变化",
+    "captureHint": "在 iOS 上，确认后才读取检测到的剪贴板内容。",
+    "cleanup": "自动清理历史",
+    "retention": "保留天数",
+    "excludedTags": "清理时排除的标签",
+    "customTags": "自定义标签",
+    "excludedHint": "自定义标签用逗号分隔，带有这些标签的记录不会被自动清理。",
+    "unlimited": "不限",
+    "daysValue": "{{count}} 天",
+    "itemsValue": "{{count}} 条",
+    "starred": "收藏",
+    "pinned": "置顶",
+    "max_file_bytes": "单文件上限",
+    "max_total_bytes": "内容总量上限",
+    "cacheLimit": "文件缓存配额",
+    "clearPreviews": "清理本地预览",
+    "sessionLogsSummary": "本次运行的脱敏诊断日志，不含剪贴板内容",
+    "sessionLogsFooter": "仅导出本次运行中已脱敏的诊断日志记录，不包含任何剪贴板内容或凭据。",
+    "rendezvous": "配对服务 URL",
+    "default": "默认",
+    "resetRendezvous": "恢复默认配对服务",
+    "runtime": "网络活动",
+    "tailcat": "Tailcat 连接",
+    "connected": "已连接 {{connected}} 台，共 {{total}} 台",
+    "observe": "读取剪贴板",
+    "apply": "写入剪贴板",
+    "integer": "请输入非负整数。",
+    "loading": "正在加载 Engine 设置…",
+    "status": {
+      "available": "可用",
+      "permission_required": "需要权限",
+      "unavailable": "不可用",
+      "unsupported": "不支持",
+      "active": "运行中",
+      "suspended": "已暂停",
+      "sync_disabled": "同步已关闭",
+      "not_running": "Engine 已停止"
+    }
   }
 }

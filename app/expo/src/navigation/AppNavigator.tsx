@@ -5,8 +5,9 @@ import {
   DarkTheme,
 } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
+import { M3IconButton } from "@/components/android/M3IconButton";
 import { useEngineStore } from "@/engine/store";
 import { useTheme } from "@/hooks/useTheme";
 import { MigrationSetupScreen } from "@/screens/setup/MigrationSetupScreen";
@@ -19,7 +20,8 @@ import {
   SafeAreaInsetsContext,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import type { RootStackParamList } from "./AppNavigator.types";
+import { IncomingShareSheet } from "@/screens/IncomingShareSheet";
+import type { RootStackParamList, SettingsSubSection } from "./AppNavigator.types";
 export type {
   RootStackParamList,
   SettingsSubSection,
@@ -58,6 +60,98 @@ export function AppNavigator() {
     return <MigrationSetupScreen />;
   }
 
+  const subScreenTitle = (section: SettingsSubSection) =>
+    section === "clipboard"
+      ? t("settings:ios.extensions.clipboardAccess")
+      : section === "keyboard" || section === "share"
+        ? t(`settings:ios.extensions.${section}`)
+        : t(`settings:category.${section}`, { defaultValue: section });
+
+  const isAndroid = Platform.OS === "android";
+
+  const navigator = (
+    <>
+      <NavigationContainer
+        theme={{
+          ...base,
+          colors: {
+            ...base.colors,
+            background: theme.colors.background as string,
+            card: theme.colors.surface as string,
+            text: theme.colors.textPrimary as string,
+            primary: theme.colors.accent as string,
+          },
+        }}
+      >
+        <Stack.Navigator
+          initialRouteName="Main"
+          screenOptions={{ headerShown: false }}
+        >
+          <Stack.Screen name="Main" component={MainScreen} />
+          <Stack.Screen
+            name="OnboardingPreview"
+            component={OnboardingPreviewScreen}
+            options={{ presentation: "fullScreenModal" }}
+          />
+          <Stack.Screen
+            name="ConnectionPreview"
+            component={ConnectionPreviewScreen}
+            options={{ presentation: "fullScreenModal" }}
+          />
+          <Stack.Screen
+            name="Settings"
+            component={SettingsScreen}
+            options={
+              isAndroid
+                ? {
+                    headerShown: true,
+                    title: t("common:action.settings"),
+                    presentation: "card",
+                    animation: "slide_from_right",
+                    headerStyle: { backgroundColor: theme.colors.background as string },
+                    headerShadowVisible: false,
+                    headerTintColor: theme.colors.textPrimary as string,
+                  }
+                : undefined
+            }
+          />
+          <Stack.Screen
+            name="SettingsSub"
+            component={SettingsSubScreen}
+            options={
+              isAndroid
+                ? ({ navigation, route }) => ({
+                    headerShown: true,
+                    title: subScreenTitle(route.params.section),
+                    presentation: "card",
+                    animation: "slide_from_right",
+                    headerStyle: { backgroundColor: theme.colors.background as string },
+                    headerShadowVisible: false,
+                    headerTintColor: theme.colors.textPrimary as string,
+                    headerLeft: () => (
+                      <M3IconButton
+                        testID="settings-back"
+                        icon="arrow-back"
+                        accessibilityLabel={t("common:action.back")}
+                        onPress={() => navigation.goBack()}
+                        colors={theme.colors}
+                        iconColor={theme.colors.textPrimary}
+                      />
+                    ),
+                  })
+                : undefined
+            }
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+      {mode === "live" && <IncomingShareSheet />}
+    </>
+  );
+
+  if (mode === "live") {
+    return navigator;
+  }
+
   return (
     <View
       style={{
@@ -66,50 +160,18 @@ export function AppNavigator() {
         backgroundColor: theme.colors.background,
       }}
     >
-      {mode !== "live" ? (
-        <View
-          style={{ padding: 8, backgroundColor: theme.colors.accentContainer }}
+      <View
+        style={{ padding: 8, backgroundColor: theme.colors.accentContainer }}
+      >
+        <Text
+          testID="shell-banner"
+          style={{ color: theme.colors.onAccentContainer, textAlign: "center" }}
         >
-          <Text
-            testID="shell-banner"
-            style={{ color: theme.colors.onAccentContainer, textAlign: "center" }}
-          >
-            {t("shell:banner")}
-          </Text>
-        </View>
-      ) : null}
+          {t("shell:banner")}
+        </Text>
+      </View>
       <SafeAreaInsetsContext.Provider value={{ ...insets, top: 0 }}>
-        <NavigationContainer
-          theme={{
-            ...base,
-            colors: {
-              ...base.colors,
-              background: theme.colors.background as string,
-              card: theme.colors.surface as string,
-              text: theme.colors.textPrimary as string,
-              primary: theme.colors.accent as string,
-            },
-          }}
-        >
-          <Stack.Navigator
-            initialRouteName="Main"
-            screenOptions={{ headerShown: false }}
-          >
-            <Stack.Screen name="Main" component={MainScreen} />
-            <Stack.Screen
-              name="OnboardingPreview"
-              component={OnboardingPreviewScreen}
-              options={{ presentation: "fullScreenModal" }}
-            />
-            <Stack.Screen
-              name="ConnectionPreview"
-              component={ConnectionPreviewScreen}
-              options={{ presentation: "fullScreenModal" }}
-            />
-            <Stack.Screen name="Settings" component={SettingsScreen} />
-            <Stack.Screen name="SettingsSub" component={SettingsSubScreen} />
-          </Stack.Navigator>
-        </NavigationContainer>
+        {navigator}
       </SafeAreaInsetsContext.Provider>
     </View>
   );

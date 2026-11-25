@@ -81,6 +81,12 @@ Scenario selection is a set. Execution order is contract, pairwise, mesh, then i
 - `mesh`: start and mutually pair all nodes. Each sender submits once per payload/repetition. Every other node must receive exactly one matching record. Each receiver contributes its own sample. Samples share a case ID and a last-receiver latency estimate. For exactly two nodes, mesh also supplies the isolated pairwise baseline instead of repeating identical work.
 - `isolation`: seed durable history, stop/restart all services, assert unchanged device identities/trust/history without repairing lost trust, stop one node, verify surviving-node transfers, recover without offline replay, transfer new content, and revoke one relationship while other nodes remain usable.
 - `wake-refresh`: verify production `unic device list --refresh` (`direct` / `derp` / `peer_relay` path classification, RTT, timestamp, and endpoint redaction) on both sides plus baseline transfer. When paired with a `parallels` VM node, also executes `prlctl pause`/`resume` fault injection to verify half-open zombie detection on `POST /v1/network/changed`, >25s freeze auto-recovery, brief-freeze wake warmup without session drop, and verified first-copy transfers.
+- `binding-policy`: real cross-OS per-device × per-channel `BindingSyncPolicy` matrix (`e2e/real/lab.parallels-policy.example.toml` pairs local macOS with a Parallels `Windows 11` VM). Pairs two nodes over real Tailcat, exercises both automatic clipboard observations (via production `/v1/adapter` import + observe) and explicit manual sends (`unic send`) across text, PNG images, and files, and verifies:
+  1. Asymmetric per-type directions (`text=send_only`, `images=receive_only`, `files=disabled`), stale CAS revision rejection, and live session preservation on policy edits (next-transfer-only);
+  2. One-way pipe (`host=send_only` + `peer=receive_only`) delivering auto text/image/file forward while blocking reverse auto transfers;
+  3. All-disabled binding preset (`disabled` on all types) blocking auto transfers while allowing explicit manual `unic send` bypass;
+  4. Upper-layer channel policy ceiling (`[sync.backends."builtin.tailcat".policy] images = false`) overriding binding `bidirectional` for images while keeping text flowing;
+  5. Master path switch (`unic device path pause` / `resume`) blocking both automatic and explicit sends until resumed.
 
 Pairing always compares the two independently returned fingerprints before either approval. Introductions do not substitute for approval and do not forward content.
 

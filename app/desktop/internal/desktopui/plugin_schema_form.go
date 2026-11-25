@@ -149,7 +149,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 	k.SettingsGroup(c.Key("external-plugin-control"), desktopkit.SettingsGroupProps{}, func() {
 		if item.LiveStart && item.RunningVersion == "" && !item.NeedsSettings {
 			k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{Label: d.tr("启动")}, nil, func() {
-				if k.Button(c.Key("start"), d.tr("启动"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy || l.loading}).Clicked() {
+				if k.Button(c.Key("start"), d.tr("启动"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy}).Clicked() {
 					d.startExternalPlugin(item.ID)
 				}
 			})
@@ -164,7 +164,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 			Label:       d.tr("启用"),
 			Description: description,
 		}, nil, func() {
-			if k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.busy || l.loading}).Changed() {
+			if k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.busy}).Changed() {
 				d.setExternalPluginEnabled(cfg, item.ID, on)
 			}
 		})
@@ -203,7 +203,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 			})
 		}
 		if cat.Privacy != "" {
-			k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneInfo, Title: d.tr("隐私与安全"), Text: cat.Privacy})
+			subtleInfoCard(c.Key("privacy"), k, d.tr("隐私与安全"), cat.Privacy)
 		}
 	}
 
@@ -229,9 +229,6 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 			d.refreshPluginForm(item.ID, p.form, nil)
 		}
 		f := p.form
-		if f.message != "" {
-			k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: d.tr(f.message)})
-		}
 		if !f.ready {
 			if k.Button(c.Key("load-plugin-settings"), d.tr("重试"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
 				d.refreshPluginForm(item.ID, f, nil)
@@ -249,6 +246,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 					raw, err := json.Marshal(f.values)
 					if err != nil || len(raw) > settings.MaxConfigBytes {
 						f.message = "插件设置超过大小限制。"
+						d.toastError(d.tr(f.message), desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 						return
 					}
 					d.refreshPluginForm(item.ID, f, &api.PluginSettingsEdit{Revision: f.state.Revision, Values: raw})
@@ -366,6 +364,7 @@ func (d *viewState) refreshPluginForm(id string, f *pluginSettingsForm, edit *ap
 				if api.ReasonOf(err) == "conflict" {
 					f.message = "数据已变化。请刷新后重试。"
 				}
+				d.toastError(d.tr(f.message), desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 			}
 		}
 	}) {

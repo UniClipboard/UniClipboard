@@ -28,7 +28,7 @@ Replay with `UNIC_ROLE_E2E=1 go test -race ./app/desktop/internal/desktopprocess
 - GREEN: three independent OS processes answer private IPC; a duplicate owner exits; GUI crash releases its kernel lock; a recreated GUI has a new PID while tray retains its PID; explicit close removes role endpoints; the forged executable is rejected by OS peer verification.
 - The role receipt includes PID, role-acquisition time, profile and executable path/hash. Role-acquisition time is not a claimed kernel process-creation timestamp.
 - Unix checks the peer UID/PID through the existing `peercred` dependency. Linux resolves `/proc/<pid>/exe`; macOS resolves `proc_pidpath`. Windows resolves named-pipe client/server PID and `QueryFullProcessImageName`.
-- A running process caches its first executable hash and refuses IPC after its installed executable changes. New processes cannot silently adopt an old executable generation.
+- A running process caches its first executable hash alongside its OS file identity (device/volume, inode/file index, size, timestamps), re-hashing whenever metadata changes, and refuses IPC after its installed executable changes. New processes cannot silently adopt an old executable generation.
 - Windows pipes restrict the DACL to the current user. The existing pipe library rejects remote clients. Unix sockets use a hashed profile endpoint inside a private, owner-checked `/tmp/unic-desktop-<uid>` directory to stay within macOS socket path limits.
 - macOS process execution with race instrumentation passed. Windows amd64 and Linux amd64 compilation passed. `go vet` and repository-pinned golangci-lint passed.
 - Native Windows/macOS/Linux tray interaction, OS focus, global shortcuts and paste are outside this fixture.
@@ -66,3 +66,16 @@ Windows Full01 and Full02 reproduced a registered global shortcut and a live
 panel process whose first native window never became visible. A plain explicit
 Show still consumes the hidden startup policy; it is not evidence of visibility.
 Use a console-free process creation flag without overriding native ShowWindow.
+
+## Stale previous-build view roles after update
+
+If an earlier installation left a `gui` or `quick-panel` process holding the
+profile's role endpoint after an in-place or move-aside executable replacement
+(for example `.unic-desktop.exe.old-<pid>` from `mygo.Updater`), IPC still
+rejects commands and classifies the mismatch as `ErrStaleBuild`. `RetireStale`
+operates only on view roles (`gui`, `quick-panel`), verifies via the live OS
+endpoint peer handle that the listener is a replaced build of this exact
+executable in the same installation directory, terminates only that verified
+process, and waits until the role endpoint becomes `ErrUnavailable`. Live
+current-build roles, the `tray` role, and unrecognized binaries in the same
+directory are never retired.

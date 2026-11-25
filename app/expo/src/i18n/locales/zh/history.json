@@ -106,5 +106,27 @@
     "list": "列表",
     "compact": "紧凑列表",
     "grid": "网格"
+  },
+  "media": {
+    "clipboardChanged": "读取新剪贴板内容",
+    "invalidLink": "需要有效的 HTTP 或 HTTPS 链接。",
+    "textTooLong": "文本太长，无法完成此操作。",
+    "actionFailed": "操作失败",
+    "saved": "已保存",
+    "folderContents": "目录内容",
+    "folderUnavailable": "目录内容不可用。",
+    "folderLoading": "正在加载目录内容…",
+    "folderEmpty": "目录为空。",
+    "folderTruncated": "仅显示前 200 项。"
+  },
+  "tags": {
+    "pin": "置顶",
+    "unpin": "取消置顶",
+    "edit": "编辑标签",
+    "name": "标签名称",
+    "add": "添加标签",
+    "remove": "移除「{{tag}}」",
+    "filter": "标签",
+    "all": "全部标签"
   }
 }

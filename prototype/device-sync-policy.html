@@ -1,0 +1,1676 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<title>UniClipboard · 设备同步路径策略原型（BoardUI v2）</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+:root {
+  /* BoardUI v2 Light Surface Hierarchy (aligned with prototype/devices.html & desktopkit) */
+  --bg-canvas-outer: #e7e7eb;
+  --bg-toolbar: #ffffff;
+  --bg-canvas: #f5f5f7;
+  --bg-inspector: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #fafafa;
+  --bg-inspector-card: #f7f7f9;
+  --bg-inspector-card-hover: #f0f0f3;
+  --bg-inset: #f2f2f5;
+  --bg-inset-on-subtle: #ffffff;
+  --bg-sheet: #ffffff;
+  --bg-primary: #ffffff;
+  --bg-primary-hover: #f5f5f7;
+  --bg-secondary: #f5f5f7;
+  --bg-secondary-hover: #ebebee;
+  --bg-tertiary: #ebebee;
+
+  --sep: #e6e6e9;
+  --card-border: #e5e5e8;
+  --border-btn: #dfdfe4;
+  --border-hover: #c8c8cf;
+  --text-primary: #0a0a0a;
+  --text-secondary: #6b6b70;
+  --text-tertiary: #9a9aa0;
+  --icon-primary: #141416;
+  --icon-secondary: #6b6b70;
+  --icon-tertiary: #9a9aa0;
+
+  --accent-50: #f2f7ff;
+  --accent-100: #dbeafe;
+  --accent-200: #c2dcff;
+  --accent-400: #3392ff;
+  --accent-500: #2b7fff;
+  --accent-600: #155dfc;
+
+  --success-bg: #eaf9d0;
+  --success-fg: #365900;
+  --success-dot: #5ea500;
+  --warn-pill-bg: #fef3c7;
+  --warn-pill-fg: #92400e;
+  --info-bg: #e0edff;
+  --info-fg: #155dfc;
+  --err-bg: #ffe4e6;
+  --err-fg: #d91445;
+
+  --warn-bg: #fffbeb;
+  --warn-fg: #92400e;
+  --warn-border: #fde68a;
+  --err-border: #fecdd3;
+  --destructive: #c41022;
+  --destructive-bg-hover: #fff1f2;
+
+  --seg-bg: #ececf0;
+  --seg-sel: #ffffff;
+  --sw-off: #dcdce0;
+  --sw-on-start: #2273ff;
+  --sw-on-end: #144be9;
+  --shadow-window: 0 24px 64px rgba(0, 0, 0, .13), 0 0 0 1px rgba(0, 0, 0, .06);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .035);
+  --shadow-popover: 0 10px 28px rgba(0, 0, 0, .12), 0 0 0 1px var(--sep);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .04);
+  --scrim: rgba(0, 0, 0, .34);
+
+  /* Policy Direction Tints */
+  --dir-bi-bg: #e0edff;
+  --dir-bi-fg: #155dfc;
+  --dir-send-bg: #e8f6ec;
+  --dir-send-fg: #166534;
+  --dir-recv-bg: #f3e8ff;
+  --dir-recv-fg: #6b21a8;
+  --dir-off-bg: #ebebee;
+  --dir-off-fg: #6b6b70;
+}
+
+[data-theme="dark"] {
+  --bg-canvas-outer: #09090b;
+  --bg-toolbar: #1d1d20;
+  --bg-canvas: #141416;
+  --bg-inspector: #1b1b1e;
+  --bg-card: #222226;
+  --bg-card-hover: #29292e;
+  --bg-inspector-card: #242428;
+  --bg-inspector-card-hover: #2c2c31;
+  --bg-inset: #19191c;
+  --bg-inset-on-subtle: #1b1b1f;
+  --bg-sheet: #202024;
+  --bg-primary: #26262a;
+  --bg-primary-hover: #2f2f35;
+  --bg-secondary: #1b1b1e;
+  --bg-secondary-hover: #27272c;
+  --bg-tertiary: #2c2c31;
+
+  --sep: #2c2c31;
+  --card-border: rgba(255, 255, 255, .085);
+  --border-btn: rgba(255, 255, 255, .12);
+  --border-hover: rgba(255, 255, 255, .22);
+  --text-primary: #f5f5f7;
+  --text-secondary: #9c9ca4;
+  --text-tertiary: #6c6c74;
+  --icon-primary: #f5f5f7;
+  --icon-secondary: #9c9ca4;
+  --icon-tertiary: #63636a;
+
+  --accent-50: rgba(43, 127, 255, .12);
+  --accent-100: rgba(43, 127, 255, .20);
+  --accent-200: rgba(51, 146, 255, .34);
+  --accent-400: #4da0ff;
+  --accent-500: #2b7fff;
+  --accent-600: #4da0ff;
+
+  --success-bg: rgba(74, 140, 20, .28);
+  --success-fg: #b8ee62;
+  --success-dot: #a3e635;
+  --warn-pill-bg: rgba(245, 158, 11, .20);
+  --warn-pill-fg: #fcd34d;
+  --info-bg: rgba(43, 127, 255, .20);
+  --info-fg: #8ec5ff;
+  --err-bg: rgba(236, 0, 63, .22);
+  --err-fg: #fda4af;
+
+  --warn-bg: rgba(245, 158, 11, .11);
+  --warn-fg: #fcd34d;
+  --warn-border: rgba(245, 158, 11, .28);
+  --err-border: rgba(255, 100, 103, .30);
+  --destructive: #ff7376;
+  --destructive-bg-hover: rgba(220, 38, 38, .18);
+
+  --seg-bg: #161619;
+  --seg-sel: #2c2c32;
+  --sw-off: #3a3a40;
+  --shadow-window: 0 28px 80px rgba(0, 0, 0, .65), 0 0 0 1px rgba(255, 255, 255, .09);
+  --shadow-card: none;
+  --shadow-popover: 0 14px 36px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .11);
+  --shadow-xs: none;
+  --scrim: rgba(0, 0, 0, .60);
+
+  --dir-bi-bg: rgba(43, 127, 255, .20);
+  --dir-bi-fg: #8ec5ff;
+  --dir-send-bg: rgba(34, 197, 94, .18);
+  --dir-send-fg: #86efac;
+  --dir-recv-bg: rgba(168, 85, 247, .22);
+  --dir-recv-fg: #d8b4fe;
+  --dir-off-bg: #2c2c31;
+  --dir-off-fg: #9c9ca4;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: var(--bg-canvas-outer);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 18px 20px;
+  gap: 10px;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+
+/* ---- Prototype Control Bar ---- */
+.proto-bar {
+  width: 100%;
+  max-width: 1180px;
+  background: var(--bg-toolbar);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 8px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  box-shadow: var(--shadow-xs);
+  font-size: 12px;
+}
+.proto-tag {
+  font-weight: 600;
+  color: var(--accent-600);
+  background: var(--accent-50);
+  border: 1px solid var(--accent-200);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+.proto-group { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.proto-pills { display: inline-flex; background: var(--bg-secondary); padding: 2px; border-radius: 8px; border: 1px solid var(--sep); gap: 2px; }
+.proto-pills button {
+  border: 0; background: transparent; padding: 3px 9px; border-radius: 6px;
+  font-size: 11.5px; color: var(--text-secondary); transition: .15s;
+}
+.proto-pills button.active {
+  background: var(--bg-primary); color: var(--text-primary); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+}
+.proto-check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; color: var(--text-primary); font-size: 12px; }
+.proto-div { width: 1px; height: 16px; background: var(--sep); }
+.proto-spacer { flex: 1; }
+
+/* ---- Desktop Window Frame ---- */
+.window-stage {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  justify-content: center;
+  align-items: stretch;
+}
+.app-window {
+  width: 1140px;
+  max-width: 100%;
+  height: min(780px, calc(100vh - 104px));
+  min-height: 560px;
+  background: var(--bg-canvas);
+  border-radius: 14px;
+  box-shadow: var(--shadow-window);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  transition: width .22s cubic-bezier(.32, .72, 0, 1);
+}
+.app-window.compact { width: 900px; }
+.app-window.narrow { width: 660px; }
+
+/* ---- Top 52 DIP Toolbar ---- */
+.toolbar {
+  height: 52px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px 0 16px;
+  background: var(--bg-toolbar);
+  border-bottom: 1px solid var(--sep);
+  user-select: none;
+}
+.traffic-lights { display: flex; align-items: center; gap: 7px; margin-right: 6px; flex: none; }
+.tl { width: 12px; height: 12px; border-radius: 50%; }
+.tl.r { background: #ff5f57; }
+.tl.y { background: #febc2e; }
+.tl.g { background: #28c840; }
+.tb-back {
+  height: 28px; padding: 0 8px; border-radius: 7px; border: 0; background: transparent;
+  display: inline-flex; align-items: center; gap: 4px; color: var(--text-primary);
+  font-size: 13px; transition: background .12s;
+}
+.tb-back:hover { background: var(--bg-secondary-hover); }
+.tb-sep { width: 1px; height: 16px; background: var(--sep); flex: none; }
+.tb-title { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+.tb-spacer { flex: 1; }
+
+/* ---- Status Pill ---- */
+.pill {
+  height: 22px; padding: 0 8px; border-radius: 11px;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 500; white-space: nowrap; flex: none;
+}
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.pill.pos { background: var(--success-bg); color: var(--success-fg); }
+.pill.pos .dot { background: var(--success-dot); }
+.pill.warn { background: var(--warn-pill-bg); color: var(--warn-pill-fg); }
+.pill.warn .dot { background: var(--warn-pill-fg); }
+.pill.info { background: var(--info-bg); color: var(--info-fg); }
+.pill.info .dot { background: var(--accent-500); }
+.pill.neu { background: var(--bg-tertiary); color: var(--text-secondary); }
+.pill.neu .dot { background: var(--text-tertiary); }
+
+/* ---- Buttons ---- */
+.btn {
+  height: 30px; padding: 0 11px; border-radius: 8px;
+  border: 1px solid var(--border-btn);
+  background: var(--bg-primary); color: var(--text-primary);
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  font-size: 12.5px; font-weight: 500; white-space: nowrap;
+  transition: transform .08s, background .12s, border-color .12s, opacity .12s;
+  box-shadow: var(--shadow-xs);
+}
+.btn:hover:not(:disabled) { background: var(--bg-primary-hover); border-color: var(--border-hover); }
+.btn:active:not(:disabled) { transform: scale(.98); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.sm { height: 28px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
+.btn.xs { height: 24px; padding: 0 8px; font-size: 11.5px; border-radius: 6px; }
+.btn.pri { background: var(--accent-500); border-color: var(--accent-500); color: #fff; box-shadow: none; }
+.btn.pri:hover:not(:disabled) { background: var(--accent-600); border-color: var(--accent-600); }
+.btn.subtle { background: transparent; border-color: transparent; box-shadow: none; color: var(--text-secondary); }
+.btn.subtle:hover:not(:disabled) { background: var(--bg-secondary-hover); color: var(--text-primary); }
+.btn.link { background: transparent; border-color: transparent; box-shadow: none; color: var(--accent-600); padding: 0 3px; height: auto; font-weight: 500; font-size: 11.5px; }
+.btn.link:hover:not(:disabled) { text-decoration: underline; }
+.btn.danger { color: var(--destructive); border-color: var(--border-btn); background: var(--bg-primary); }
+.btn.danger:hover:not(:disabled) { background: var(--destructive-bg-hover); border-color: var(--err-border); }
+.btn.danger-solid { background: #dc2626; border-color: #dc2626; color: #fff; box-shadow: none; }
+.btn.icon-only { width: 26px; height: 26px; padding: 0; border-radius: 7px; }
+
+/* ---- Body Split ---- */
+.body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.canvas {
+  flex: 1; min-width: 0; overflow-y: auto;
+  padding: 18px 22px 28px;
+  background: var(--bg-canvas);
+  display: flex; flex-direction: column; gap: 16px;
+}
+.inspector {
+  width: 400px; flex: none;
+  background: var(--bg-inspector);
+  border-left: 1px solid var(--sep);
+  overflow-y: auto;
+  padding: 18px 18px 28px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.app-window.narrow .inspector { width: 100%; border-left: 0; }
+
+/* ---- Sync Channels Strip ---- */
+.backend-strip {
+  background: var(--bg-card); border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-card); border-radius: 12px;
+  padding: 10px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.strip-label {
+  font-size: 11.5px; font-weight: 600; color: var(--text-secondary);
+  display: inline-flex; align-items: center; gap: 5px; flex: none; margin-right: 2px;
+}
+.chip-list { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.be-chip {
+  height: 24px; padding: 0 9px; border-radius: 999px;
+  border: 1px solid var(--card-border); background: var(--bg-inset); color: var(--text-primary);
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
+  transition: border-color .12s, background .12s;
+}
+.be-chip:hover { border-color: var(--border-hover); background: var(--bg-secondary-hover); }
+.be-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success-dot); }
+.be-chip .meta { font-size: 11px; color: var(--text-secondary); font-weight: 400; }
+
+/* ---- Notice Banner ---- */
+.notice {
+  border-radius: 11px; padding: 10px 12px;
+  display: flex; align-items: center; gap: 10px;
+  font-size: 12px; border: 1px solid transparent;
+}
+.notice.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-fg); }
+.notice.info { background: var(--accent-50); border-color: var(--accent-200); color: var(--text-primary); }
+.notice-body { flex: 1; min-width: 0; }
+.notice-title { font-weight: 600; font-size: 12.5px; }
+.notice-sub { font-size: 11.5px; opacity: .9; margin-top: 1px; }
+
+/* ---- Section Headings ---- */
+.sec { display: flex; flex-direction: column; gap: 9px; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sec-title { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.sec-hint { font-size: 11.5px; color: var(--text-tertiary); }
+
+/* ---- Icon Tile ---- */
+.icon-tile {
+  width: 34px; height: 34px; border-radius: 9px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-inset); border: 1px solid var(--card-border); color: var(--icon-primary);
+}
+.inspector .icon-tile { background: var(--bg-inset-on-subtle); }
+.icon-tile.lg { width: 42px; height: 42px; border-radius: 11px; }
+.icon-tile.accent { background: var(--accent-50); border-color: var(--accent-400); color: var(--accent-500); }
+
+/* ---- Aligned 2-Column Device Grid ---- */
+.dev-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+}
+.app-window.compact .dev-grid,
+.app-window.narrow .dev-grid { grid-template-columns: 1fr; }
+
+.dev-card {
+  background: var(--bg-card); border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-card); border-radius: 13px;
+  padding: 13px 14px; display: flex; flex-direction: column; gap: 11px;
+  cursor: pointer; transition: border-color .12s, background .12s, opacity .12s;
+  min-width: 0;
+}
+.dev-card:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
+.dev-card.selected { border: 1.5px solid var(--accent-500); padding: 12.5px 13.5px; }
+.dev-card.dim { opacity: .78; }
+.dev-card.dim.selected { opacity: 1; }
+.dev-card-top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.dev-card-info { flex: 1; min-width: 0; }
+.dev-card-name { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dev-card-sub { font-size: 11.5px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.dev-card-div { height: 1px; background: var(--sep); }
+.dev-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; }
+.dev-card-paths { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; display: flex; align-items: center; gap: 5px; }
+.dev-card-time { color: var(--text-tertiary); flex: none; }
+
+/* ---- Grouped List Box ---- */
+.group-box {
+  background: var(--bg-card); border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-card); border-radius: 12px; overflow: visible;
+}
+.inspector .group-box { background: var(--bg-inspector-card); box-shadow: none; }
+.list-row {
+  padding: 10px 13px; display: flex; align-items: center; gap: 10px;
+  cursor: pointer; transition: background .1s;
+}
+.list-row:first-child { border-radius: 11px 11px 0 0; }
+.list-row:last-child { border-radius: 0 0 11px 11px; }
+.list-row:only-child { border-radius: 11px; }
+.list-row + .list-row { border-top: 1px solid var(--sep); }
+.list-row:hover { background: var(--bg-card-hover); }
+.list-row.selected { background: var(--accent-50); }
+.list-row-meta { flex: 1; min-width: 0; }
+.list-row-title { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.list-row-sub { font-size: 11.5px; color: var(--text-secondary); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.tag-badge {
+  font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 5px;
+  background: var(--info-bg); color: var(--info-fg); flex: none; white-space: nowrap;
+}
+.tag-badge.neu { background: var(--bg-tertiary); color: var(--text-secondary); }
+.tag-badge.warn { background: var(--warn-pill-bg); color: var(--warn-pill-fg); }
+.tag-badge.send { background: var(--dir-send-bg); color: var(--dir-send-fg); }
+.tag-badge.recv { background: var(--dir-recv-bg); color: var(--dir-recv-fg); }
+
+/* ---- Inspector Hero ---- */
+.hero-card {
+  background: var(--bg-inspector-card); border: 1px solid var(--card-border);
+  border-radius: 12px; padding: 13px 14px; display: flex; align-items: center; gap: 12px;
+}
+.hero-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.hero-name-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.hero-name { font-size: 14.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-sub { font-size: 11.5px; color: var(--text-secondary); }
+
+/* ---- Switch ---- */
+.switch {
+  width: 34px; height: 20px; border-radius: 10px; border: 0; padding: 2px;
+  background: var(--sw-off); position: relative; flex: none; transition: background .16s ease;
+}
+.switch::after {
+  content: ""; display: block; width: 16px; height: 16px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+  transform: translateX(0); transition: transform .16s cubic-bezier(.32, .72, 0, 1);
+}
+.switch.on { background: linear-gradient(180deg, var(--sw-on-start), var(--sw-on-end)); }
+.switch.on::after { transform: translateX(14px); }
+.switch:disabled { opacity: .4; cursor: not-allowed; }
+
+/* ---- Per-Device Sync Path Policy Card (NEW!) ---- */
+.path-card {
+  display: flex;
+  flex-direction: column;
+}
+.path-card + .path-card {
+  border-top: 1px solid var(--sep);
+}
+.path-head {
+  padding: 11px 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+.path-head-clickable {
+  flex: 1; min-width: 0;
+  display: flex; align-items: flex-start; gap: 8px;
+  cursor: pointer; user-select: none;
+}
+.path-chevron {
+  width: 18px; height: 18px; margin-top: 2px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--icon-tertiary); border-radius: 4px;
+  transition: transform .16s ease, color .12s;
+}
+.path-card.expanded .path-chevron { transform: rotate(90deg); color: var(--icon-secondary); }
+.path-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.path-title { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.path-sub { font-size: 11.5px; color: var(--text-secondary); }
+.path-summary-line {
+  margin-top: 3px;
+  display: flex; align-items: center; gap: 5px; flex-wrap: wrap;
+}
+.mini-chip {
+  font-size: 10.5px; font-weight: 500;
+  padding: 1px 6px; border-radius: 5px;
+  display: inline-flex; align-items: center; gap: 3px;
+  border: 1px solid transparent;
+}
+.mini-chip.bi { background: var(--dir-bi-bg); color: var(--dir-bi-fg); }
+.mini-chip.send { background: var(--dir-send-bg); color: var(--dir-send-fg); }
+.mini-chip.recv { background: var(--dir-recv-bg); color: var(--dir-recv-fg); }
+.mini-chip.off { background: var(--dir-off-bg); color: var(--dir-off-fg); }
+.mini-chip.locked { background: var(--warn-pill-bg); color: var(--warn-pill-fg); }
+
+.path-actions { display: flex; align-items: center; gap: 5px; flex: none; position: relative; }
+
+/* Expanded Policy Body */
+.policy-panel {
+  border-top: 1px dashed var(--sep);
+  padding: 11px 13px 12px;
+  background: var(--bg-inset-on-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.path-card:last-child .policy-panel {
+  border-radius: 0 0 11px 11px;
+}
+.policy-panel.paused {
+  opacity: .56;
+}
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.preset-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.preset-pills {
+  display: inline-flex;
+  background: var(--seg-bg);
+  padding: 2px;
+  border-radius: 7px;
+  gap: 2px;
+}
+.preset-pills button {
+  border: 0; background: transparent;
+  padding: 3px 7px; border-radius: 5px;
+  font-size: 11px; font-weight: 500; color: var(--text-secondary);
+  transition: .12s; white-space: nowrap;
+}
+.preset-pills button:hover:not(:disabled) { color: var(--text-primary); }
+.preset-pills button.active {
+  background: var(--seg-sel); color: var(--text-primary); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .09);
+}
+.preset-pills button:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Per-Type Direction Matrix (Model A) */
+.type-matrix {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.type-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 30px;
+}
+.type-meta {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.type-icon {
+  width: 24px; height: 24px; border-radius: 6px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-inset); color: var(--icon-secondary);
+  border: 1px solid var(--card-border);
+}
+.type-name { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.type-hint { font-size: 10.5px; color: var(--text-tertiary); }
+
+.dir-seg {
+  display: inline-grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--seg-bg);
+  padding: 2px;
+  border-radius: 8px;
+  gap: 2px;
+  flex: none;
+}
+.dir-seg button {
+  border: 0; background: transparent;
+  height: 24px; padding: 0 7px; border-radius: 6px;
+  font-size: 11px; font-weight: 500; color: var(--text-secondary);
+  display: inline-flex; align-items: center; justify-content: center; gap: 2px;
+  white-space: nowrap; transition: .12s;
+}
+.dir-seg button:hover:not(:disabled) { color: var(--text-primary); }
+.dir-seg button.active {
+  background: var(--seg-sel);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .10);
+  font-weight: 600;
+}
+.dir-seg button.active.d-bi { color: var(--dir-bi-fg); }
+.dir-seg button.active.d-send { color: var(--dir-send-fg); }
+.dir-seg button.active.d-recv { color: var(--dir-recv-fg); }
+.dir-seg button.active.d-off { color: var(--text-secondary); }
+.dir-seg button:disabled { opacity: .4; cursor: not-allowed; }
+
+.ceiling-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 8px; border-radius: 7px;
+  background: var(--warn-bg); border: 1px solid var(--warn-border);
+  color: var(--warn-fg); font-size: 11px; font-weight: 500;
+}
+
+/* Unified Direction + Type Toggles (Model B) */
+.model-b-dir {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--seg-bg);
+  padding: 3px;
+  border-radius: 9px;
+  gap: 2px;
+}
+.model-b-dir button {
+  border: 0; background: transparent;
+  height: 28px; border-radius: 6px;
+  font-size: 11.5px; font-weight: 500; color: var(--text-secondary);
+  display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+}
+.model-b-dir button.active {
+  background: var(--seg-sel); color: var(--text-primary); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .10);
+}
+.model-b-dir button.active.d-bi { color: var(--dir-bi-fg); }
+.model-b-dir button.active.d-send { color: var(--dir-send-fg); }
+.model-b-dir button.active.d-recv { color: var(--dir-recv-fg); }
+.model-b-types {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+.type-toggle-card {
+  border: 1px solid var(--card-border);
+  background: var(--bg-inspector-card);
+  border-radius: 9px;
+  padding: 8px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+  user-select: none;
+}
+.type-toggle-card:hover:not(.disabled) { border-color: var(--border-hover); }
+.type-toggle-card.on {
+  border-color: var(--accent-400);
+  background: var(--accent-50);
+}
+.type-toggle-card.disabled { opacity: .5; cursor: not-allowed; }
+.type-toggle-top { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.type-toggle-check {
+  width: 15px; height: 15px; border-radius: 4px;
+  border: 1.5px solid var(--border-hover);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; color: #fff;
+}
+.type-toggle-card.on .type-toggle-check {
+  background: var(--accent-500); border-color: var(--accent-500);
+}
+
+/* Effective Transfer Preview */
+.flow-preview {
+  background: var(--bg-inspector-card);
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+}
+.flow-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.flow-dir { color: var(--text-secondary); font-weight: 500; display: inline-flex; align-items: center; gap: 5px; }
+.flow-badges { display: inline-flex; align-items: center; gap: 4px; }
+.flow-ok { padding: 1px 6px; border-radius: 4px; background: var(--success-bg); color: var(--success-fg); font-weight: 600; }
+.flow-no { padding: 1px 6px; border-radius: 4px; background: var(--bg-tertiary); color: var(--text-tertiary); text-decoration: line-through; }
+
+.policy-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 11px; color: var(--text-tertiary);
+}
+
+/* ---- Popover ---- */
+.popover {
+  position: absolute; top: 30px; right: 0; z-index: 30;
+  min-width: 178px; padding: 4px;
+  background: var(--bg-sheet); border-radius: 10px;
+  box-shadow: var(--shadow-popover);
+  display: flex; flex-direction: column; gap: 1px;
+}
+.popover button {
+  width: 100%; border: 0; background: transparent; text-align: left;
+  padding: 7px 10px; border-radius: 7px; font-size: 12px;
+  display: flex; align-items: center; gap: 7px; color: var(--text-primary);
+}
+.popover button:hover { background: var(--bg-secondary-hover); }
+.popover button.danger { color: var(--destructive); }
+.popover button.danger:hover { background: var(--destructive-bg-hover); }
+
+/* ---- Fingerprint Grid ---- */
+.fp-box {
+  background: var(--bg-inspector-card); border: 1px solid var(--card-border);
+  border-radius: 12px; padding: 11px;
+}
+.fp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.fp-cell {
+  height: 30px; border-radius: 7px;
+  background: var(--bg-inset-on-subtle); border: 1px solid var(--card-border);
+  display: flex; align-items: center; justify-content: center;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px; font-weight: 600; letter-spacing: .04em;
+}
+
+/* ---- Toast ---- */
+.toast-wrap {
+  position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+  z-index: 60; pointer-events: none;
+}
+.toast {
+  background: #18181b; color: #fafafa; padding: 8px 14px; border-radius: 10px;
+  font-size: 12px; font-weight: 500; box-shadow: 0 10px 28px rgba(0, 0, 0, .28);
+  white-space: nowrap;
+}
+[data-theme="dark"] .toast { background: #fafafa; color: #0a0a0a; }
+
+.row-gap { display: flex; align-items: center; gap: 8px; }
+.row-end { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.footnote { font-size: 11.5px; color: var(--text-secondary); line-height: 1.5; }
+.grow { flex: 1; min-width: 0; }
+</style>
+</head>
+<body>
+
+<!-- Prototype Controls -->
+<div class="proto-bar">
+  <span class="proto-tag">同步策略原型 · BoardUI v2</span>
+
+  <div class="proto-group">
+    <span>交互方案</span>
+    <div class="proto-pills" id="modelPills">
+      <button data-model="matrix" class="active">方案 A · 分类型独立方向（推荐）</button>
+      <button data-model="unified">方案 B · 统一方向 + 类型开关</button>
+    </div>
+  </div>
+
+  <div class="proto-group">
+    <span>场景</span>
+    <div class="proto-pills" id="presetPills">
+      <button data-preset="screenshot" class="active">3 台设备（当前截图）</button>
+      <button data-preset="multi">多渠道多设备</button>
+    </div>
+  </div>
+
+  <div class="proto-div"></div>
+
+  <div class="proto-group" title="模拟上层策略收紧时，设备路径不能突破上层权限">
+    <span>上层策略</span>
+    <label class="proto-check"><input type="checkbox" id="chkGlobalSync" checked> 全局同步</label>
+    <label class="proto-check"><input type="checkbox" id="chkGlobalFiles" checked> 全局文件</label>
+    <label class="proto-check"><input type="checkbox" id="chkTcImages" checked> Tailcat 图片</label>
+    <label class="proto-check"><input type="checkbox" id="chkTcFiles" checked> Tailcat 文件</label>
+  </div>
+
+  <div class="proto-spacer"></div>
+
+  <div class="proto-pills" id="widthPills">
+    <button data-width="wide" class="active">宽屏</button>
+    <button data-width="compact">紧凑</button>
+    <button data-width="narrow">单栏</button>
+  </div>
+  <div class="proto-pills" id="themePills">
+    <button data-theme="light" class="active">浅色</button>
+    <button data-theme="dark">深色</button>
+  </div>
+  <button class="btn xs" id="btnReset">重置</button>
+</div>
+
+<!-- Simulated Desktop Window -->
+<div class="window-stage">
+  <div class="app-window" id="appWindow"></div>
+</div>
+
+<script>
+const IC = {
+  back: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>`,
+  add: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  desktop: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>`,
+  laptop: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10H4V6z"/><path d="M2 18h20"/></svg>`,
+  phone: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2"/></svg>`,
+  chat: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8.5 8.5 0 0 1-8.5 8.5c-1.4 0-2.7-.3-3.9-.9L3 21l1.4-5.1A8.5 8.5 0 1 1 21 12z"/></svg>`,
+  edit: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>`,
+  copy: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+  retry: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>`,
+  more: `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>`,
+  trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>`,
+  settings: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 .99-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51.99H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  plug: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 0 1-12 0V8Z"/></svg>`,
+  chev: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>`,
+  text: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7V4h16v3M9 20h6M12 4v16"/></svg>`,
+  image: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>`,
+  file: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`,
+  lock: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  alert: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></svg>`,
+  reset: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>`
+};
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+
+// Direction values: "bi" | "send" | "recv" | "off"
+const DIR_META = {
+  bi:   { label: "双向", short: "双向", arrow: "⇄", cls: "d-bi", chip: "bi" },
+  send: { label: "仅发", short: "仅发", arrow: "→", cls: "d-send", chip: "send" },
+  recv: { label: "仅收", short: "仅收", arrow: "←", cls: "d-recv", chip: "recv" },
+  off:  { label: "关闭", short: "关闭", arrow: "✕", cls: "d-off", chip: "off" }
+};
+
+const TYPES = [
+  { key: "text",   label: "文字", hint: "文本 / HTML", icon: IC.text },
+  { key: "images", label: "图片", hint: "PNG / 截图",  icon: IC.image },
+  { key: "files",  label: "文件", hint: "文件 / 目录", icon: IC.file }
+];
+
+function backendDisplayName(id) {
+  if (id === "builtin.tailcat") return "Tailcat 同步";
+  if (id === "e2e.work") return "局域网直连";
+  return id;
+}
+
+function buildPreset(name) {
+  const backends = name === "multi"
+    ? [
+        { id: "builtin.tailcat", impl: "builtin.tailcat", state: "running", external: false, policy: { text: true, images: true, files: true } },
+        { id: "e2e.work", impl: "acme.lan-sync", state: "running", external: false, policy: { text: true, images: true, files: false } },
+        { id: "unic.wxime", impl: "unic.wxime", state: "running", external: true, policy: { text: true, images: true, files: false } }
+      ]
+    : [
+        { id: "builtin.tailcat", impl: "builtin.tailcat", state: "running", external: false, policy: { text: true, images: true, files: true } },
+        { id: "unic.wxime", impl: "unic.wxime", state: "running", external: true, policy: { text: true, images: true, files: false } }
+      ];
+
+  const devices = name === "multi"
+    ? [
+        {
+          id: "d-m02",
+          name: "M02 Physical",
+          icon: "desktop",
+          fingerprint: "BE67 5F51 6005 18C8 1D3B BFEE DA2E 8F2B",
+          lastSeen: "今天 13:18",
+          bindings: [
+            {
+              id: "b-m02-tc", instanceId: "builtin.tailcat", impl: "builtin.tailcat",
+              syncEnabled: true, connection: "connected", path: "直连", latencyMs: 6, lastActive: "今天 13:18",
+              // Per-type directions (Model A) & unified fallback (Model B)
+              policy: { text: "bi", images: "send", files: "off" },
+              unified: { dir: "bi", text: true, images: true, files: false }
+            },
+            {
+              id: "b-m02-lan", instanceId: "e2e.work", impl: "acme.lan-sync",
+              syncEnabled: true, connection: "disconnected", path: "", latencyMs: 0, lastActive: "昨天 19:40",
+              policy: { text: "bi", images: "bi", files: "bi" },
+              unified: { dir: "bi", text: true, images: true, files: true }
+            }
+          ]
+        },
+        {
+          id: "d-mini",
+          name: "Mac-mini.local",
+          icon: "desktop",
+          fingerprint: "8A42 7C91 2F60 B3D8 41E5 9A0C 7D12 5F3E",
+          lastSeen: "今天 10:57",
+          bindings: [
+            {
+              id: "b-mini-tc", instanceId: "builtin.tailcat", impl: "builtin.tailcat",
+              syncEnabled: true, connection: "connected", path: "中继", latencyMs: 38, lastActive: "今天 10:57",
+              policy: { text: "bi", images: "bi", files: "bi" },
+              unified: { dir: "bi", text: true, images: true, files: true }
+            }
+          ]
+        },
+        {
+          id: "d-phone",
+          name: "Pixel 9 Pro",
+          icon: "phone",
+          fingerprint: "5D08 AA13 7E42 9B6C F1D4 30E7 82A5 C619",
+          lastSeen: "3 小时前",
+          bindings: [
+            {
+              id: "b-phone-tc", instanceId: "builtin.tailcat", impl: "builtin.tailcat",
+              syncEnabled: true, connection: "disconnected", path: "", latencyMs: 0, lastActive: "3 小时前",
+              policy: { text: "recv", images: "recv", files: "off" },
+              unified: { dir: "recv", text: true, images: true, files: false }
+            }
+          ]
+        }
+      ]
+    : [
+        {
+          id: "d-mini",
+          name: "Mac-mini.local",
+          icon: "desktop",
+          fingerprint: "8A42 7C91 2F60 B3D8 41E5 9A0C 7D12 5F3E",
+          lastSeen: "今天 10:57",
+          bindings: [
+            {
+              id: "b-mini-tc", instanceId: "builtin.tailcat", impl: "builtin.tailcat",
+              syncEnabled: true, connection: "disconnected", path: "", latencyMs: 0, lastActive: "今天 10:57",
+              policy: { text: "bi", images: "bi", files: "bi" },
+              unified: { dir: "bi", text: true, images: true, files: true }
+            }
+          ]
+        },
+        {
+          id: "d-m02",
+          name: "M02 Physical",
+          icon: "desktop",
+          fingerprint: "BE67 5F51 6005 18C8 1D3B BFEE DA2E 8F2B",
+          lastSeen: "今天 13:18",
+          bindings: [
+            {
+              id: "b-m02-tc", instanceId: "builtin.tailcat", impl: "builtin.tailcat",
+              syncEnabled: true, connection: "disconnected", path: "", latencyMs: 0, lastActive: "今天 13:18",
+              policy: { text: "bi", images: "send", files: "off" },
+              unified: { dir: "send", text: true, images: true, files: false }
+            }
+          ]
+        }
+      ];
+
+  return {
+    preset: name,
+    model: "matrix", // "matrix" (A) | "unified" (B)
+    globalSync: true,
+    globalFiles: true,
+    local: { id: "local", name: "LNG-8XN9C54", icon: "desktop", deviceId: "m7x4q9k2p8n3v5w1r6y0t2h8c4" },
+    backends,
+    devices,
+    channels: [{ id: "ch-wetype", name: "WeType", backendId: "unic.wxime", enabled: true, autoApply: true }],
+    candidates: [{ id: "cand-1", name: "MARKEA46", introducer: "Mac-mini.local", backendId: "builtin.tailcat", icon: "desktop" }],
+    selected: "d-m02",
+    expandedBindings: { "b-m02-tc": true, "b-mini-tc": true, "b-phone-tc": true },
+    openMenuBindingId: null,
+    narrowDetailOpen: false,
+    toast: null
+  };
+}
+
+let S = buildPreset("screenshot");
+let viewportMode = "wide";
+let toastTimer = null;
+
+function showToast(msg) {
+  S.toast = msg;
+  clearTimeout(toastTimer);
+  render();
+  toastTimer = setTimeout(() => { S.toast = null; render(); }, 2400);
+}
+
+// Compute effective ceiling from Global & Channel policy (0007 invariant: lower layer cannot exceed upper layer)
+function ceilingFor(instanceId, typeKey) {
+  if (!S.globalSync) return { allowed: false, reason: "全局同步已关闭" };
+  if (typeKey === "files" && !S.globalFiles) return { allowed: false, reason: "全局文件同步已关闭" };
+  const be = S.backends.find(x => x.id === instanceId);
+  if (be && !be.policy[typeKey]) {
+    return { allowed: false, reason: `${backendDisplayName(instanceId)} 渠道已关闭` };
+  }
+  return { allowed: true, reason: "" };
+}
+
+// Compute effective send/recv flags for a binding under current UI model
+function effectiveBinding(b) {
+  const out = {};
+  for (const t of TYPES) {
+    const ceil = ceilingFor(b.instanceId, t.key);
+    let desired = "off";
+    if (b.syncEnabled) {
+      if (S.model === "matrix") {
+        desired = b.policy[t.key];
+      } else {
+        desired = b.unified[t.key] ? b.unified.dir : "off";
+      }
+    }
+    const effDir = ceil.allowed ? desired : "off";
+    out[t.key] = {
+      desired,
+      effDir,
+      send: effDir === "bi" || effDir === "send",
+      recv: effDir === "bi" || effDir === "recv",
+      locked: !ceil.allowed,
+      lockReason: ceil.reason
+    };
+  }
+  return out;
+}
+
+function isDefaultBindingPolicy(b) {
+  if (!b.syncEnabled) return false;
+  if (S.model === "matrix") {
+    return b.policy.text === "bi" && b.policy.images === "bi" && b.policy.files === "bi";
+  }
+  return b.unified.dir === "bi" && b.unified.text && b.unified.images && b.unified.files;
+}
+
+function bindingSummaryTags(b) {
+  if (!b.syncEnabled) return [{ text: "已暂停", cls: "off" }];
+  const eff = effectiveBinding(b);
+  const dirs = TYPES.map(t => eff[t.key].effDir);
+  if (dirs.every(d => d === "off")) return [{ text: "不同步", cls: "off" }];
+  if (dirs.every(d => d === "bi")) return [{ text: "全部双向 ⇄", cls: "bi" }];
+  if (dirs.every(d => d === "send")) return [{ text: "全部仅发送 →", cls: "send" }];
+  if (dirs.every(d => d === "recv")) return [{ text: "全部仅接收 ←", cls: "recv" }];
+  // Mixed summary chips
+  return TYPES.map(t => {
+    const info = eff[t.key];
+    if (info.locked) return { text: `${t.label} 受限`, cls: "locked" };
+    const dm = DIR_META[info.effDir];
+    return { text: `${t.label} ${dm.short}`, cls: dm.chip };
+  });
+}
+
+function cardBindingFootLabel(b) {
+  const name = backendDisplayName(b.instanceId);
+  if (!b.syncEnabled) return `${name}（暂停）`;
+  const eff = effectiveBinding(b);
+  const dirs = TYPES.map(t => eff[t.key].effDir);
+  if (dirs.every(d => d === "bi")) return name;
+  if (dirs.every(d => d === "off")) return `${name}（不同步）`;
+  if (dirs.every(d => d === "send")) return `${name}（仅发送）`;
+  if (dirs.every(d => d === "recv")) return `${name}（仅接收）`;
+  const activeTypes = TYPES.filter(t => eff[t.key].effDir !== "off").map(t => t.label);
+  const nonOffDirs = new Set(dirs.filter(d => d !== "off"));
+  if (nonOffDirs.size === 1) {
+    const d = [...nonOffDirs][0];
+    return `${name}（${activeTypes.join("/")} · ${DIR_META[d].short}）`;
+  }
+  return `${name}（自定义策略）`;
+}
+
+function deviceAggregateStatus(d) {
+  const enabled = d.bindings.filter(b => b.syncEnabled);
+  if (enabled.length === 0) return { text: "已暂停", tone: "neu", online: false };
+  const connected = enabled.filter(b => b.connection === "connected");
+  if (connected.length > 0) {
+    if (d.bindings.length > 1 && connected.length < d.bindings.length) {
+      return { text: `在线 · ${connected.length}/${d.bindings.length}`, tone: "pos", online: true };
+    }
+    return { text: connected[0].path ? `在线 · ${connected[0].path}` : "在线", tone: "pos", online: true };
+  }
+  return { text: "离线", tone: "neu", online: false };
+}
+
+function renderPill(text, tone) {
+  return `<span class="pill ${tone}"><span class="dot"></span>${esc(text)}</span>`;
+}
+
+function renderCanvas() {
+  const runningCount = S.backends.filter(b => b.state === "running").length;
+  const localFoot = `${runningCount} 个同步渠道运行中 · ${S.backends.map(b => backendDisplayName(b.id)).slice(0, 2).join("、")}`;
+
+  return `
+    <div class="canvas">
+      <div class="backend-strip">
+        <span class="strip-label">${IC.plug} 同步渠道</span>
+        <div class="chip-list">
+          ${S.backends.map(b => {
+            const disabledTypes = TYPES.filter(t => !b.policy[t.key]).map(t => t.label);
+            const meta = b.external ? "第三方" : (disabledTypes.length ? `已关${disabledTypes.join("/")}` : "");
+            return `
+              <button class="be-chip" data-act="jump-plugin" data-id="${esc(b.id)}">
+                <span class="dot"></span>
+                <span>${esc(backendDisplayName(b.id))}</span>
+                ${meta ? `<span class="meta">· ${esc(meta)}</span>` : ""}
+              </button>
+            `;
+          }).join("")}
+        </div>
+        <button class="btn xs subtle" data-act="jump-plugin" data-id="">管理同步渠道</button>
+      </div>
+
+      ${!S.globalSync ? `
+        <div class="notice warn">
+          ${IC.alert}
+          <div class="notice-body">
+            <div class="notice-title">全局同步已关闭</div>
+            <div class="notice-sub">所有同步渠道与设备路径当前不传输剪贴板内容，下层设备策略暂不生效。</div>
+          </div>
+          <button class="btn sm" data-act="enable-global">开启同步</button>
+        </div>
+      ` : ""}
+
+      <div class="sec">
+        <div class="sec-head">
+          <span class="sec-title">我的设备</span>
+          <span class="sec-hint">点击卡片在右侧管理同步路径、独立策略与安全信息</span>
+        </div>
+        <div class="dev-grid">
+          <div class="dev-card ${S.selected === "local" ? "selected" : ""}" data-act="select" data-id="local">
+            <div class="dev-card-top">
+              <div class="icon-tile">${IC[S.local.icon]}</div>
+              <div class="dev-card-info">
+                <div class="dev-card-name">${esc(S.local.name)}</div>
+                <div class="dev-card-sub">当前设备</div>
+              </div>
+              ${renderPill("本机", "pos")}
+            </div>
+            <div class="dev-card-div"></div>
+            <div class="dev-card-foot">
+              <span class="dev-card-paths">${esc(localFoot)}</span>
+              <span class="dev-card-time">端到端加密</span>
+            </div>
+          </div>
+
+          ${S.devices.map(d => {
+            const st = deviceAggregateStatus(d);
+            const hasCustom = d.bindings.some(b => !isDefaultBindingPolicy(b));
+            const footText = d.bindings.map(cardBindingFootLabel).join(" · ");
+            return `
+              <div class="dev-card ${S.selected === d.id ? "selected" : ""} ${!st.online ? "dim" : ""}" data-act="select" data-id="${esc(d.id)}">
+                <div class="dev-card-top">
+                  <div class="icon-tile">${IC[d.icon] || IC.desktop}</div>
+                  <div class="dev-card-info">
+                    <div class="dev-card-name">${esc(d.name)}</div>
+                    <div class="dev-card-sub">${d.bindings.length === 1 ? esc(backendDisplayName(d.bindings[0].instanceId)) : `${d.bindings.length} 条同步路径`}</div>
+                  </div>
+                  ${renderPill(st.text, st.tone)}
+                </div>
+                <div class="dev-card-div"></div>
+                <div class="dev-card-foot">
+                  <span class="dev-card-paths">
+                    <span style="overflow:hidden;text-overflow:ellipsis">${esc(footText)}</span>
+                    ${hasCustom ? `<span class="tag-badge">已自定义</span>` : ""}
+                  </span>
+                  <span class="dev-card-time">${esc(d.lastSeen)}</span>
+                </div>
+              </div>
+            `;
+          }).join("")}
+        </div>
+      </div>
+
+      ${S.channels.length ? `
+        <div class="sec">
+          <div class="sec-head">
+            <span class="sec-title">外部渠道 (${S.channels.length})</span>
+            <span class="sec-hint">第三方对端 · 无设备指纹</span>
+          </div>
+          <div class="group-box">
+            ${S.channels.map(ch => `
+              <div class="list-row" data-act="toast" data-msg="外部渠道使用独立渠道控制面板">
+                <div class="icon-tile">${IC.chat}</div>
+                <div class="list-row-meta">
+                  <div class="list-row-title">${esc(ch.name)} <span class="tag-badge neu">外部渠道</span></div>
+                  <div class="list-row-sub">${esc(ch.backendId)} · 自动写入剪贴板</div>
+                </div>
+                ${renderPill("已启用", "pos")}
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      ` : ""}
+
+      ${S.candidates.length ? `
+        <div class="sec">
+          <div class="sec-head">
+            <span class="sec-title">可能认识 (${S.candidates.length})</span>
+            <span class="sec-hint">由已信任设备介绍 · 仍需双方批准</span>
+          </div>
+          <div class="group-box">
+            ${S.candidates.map(cd => `
+              <div class="list-row" data-act="toast" data-msg="介绍候选需双方批准后方可配置路径策略">
+                <div class="icon-tile accent">${IC[cd.icon]}</div>
+                <div class="list-row-meta">
+                  <div class="list-row-title">${esc(cd.name)}</div>
+                  <div class="list-row-sub">由 ${esc(cd.introducer)} 介绍 · ${esc(backendDisplayName(cd.backendId))}</div>
+                </div>
+                <button class="btn xs">忽略</button>
+                <button class="btn xs pri">连接</button>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+function renderPolicyPanel(d, b) {
+  const eff = effectiveBinding(b);
+  const paused = !b.syncEnabled || !S.globalSync;
+  const presetState = (() => {
+    if (!b.syncEnabled) return "off";
+    if (S.model === "matrix") {
+      const vals = [b.policy.text, b.policy.images, b.policy.files];
+      if (vals.every(v => v === "bi")) return "bi";
+      if (vals.every(v => v === "send")) return "send";
+      if (vals.every(v => v === "recv")) return "recv";
+      if (vals.every(v => v === "off")) return "off";
+      return "custom";
+    }
+    return b.unified.dir;
+  })();
+
+  const modelAControls = `
+    <div class="preset-row">
+      <span class="preset-label">快捷模式</span>
+      <div class="preset-pills">
+        ${[
+          { id: "bi",   label: "全部双向" },
+          { id: "send", label: "仅发送" },
+          { id: "recv", label: "仅接收" },
+          { id: "off",  label: "不同步" }
+        ].map(p => `
+          <button class="${presetState === p.id ? "active" : ""}" data-act="apply-preset" data-dev="${esc(d.id)}" data-bid="${esc(b.id)}" data-dir="${p.id}" ${!S.globalSync ? "disabled" : ""}>${p.label}</button>
+        `).join("")}
+      </div>
+    </div>
+
+    <div class="type-matrix">
+      ${TYPES.map(t => {
+        const info = eff[t.key];
+        const val = b.policy[t.key];
+        return `
+          <div class="type-row">
+            <div class="type-meta">
+              <span class="type-icon">${t.icon}</span>
+              <div>
+                <div class="type-name">${t.label}</div>
+                <div class="type-hint">${t.hint}</div>
+              </div>
+            </div>
+            ${info.locked ? `
+              <span class="ceiling-pill" title="上层策略限制：无法在单设备路径突破开启">
+                ${IC.lock} ${esc(info.lockReason)}
+                <button class="btn link" data-act="jump-plugin" data-id="${esc(b.instanceId)}">调整</button>
+              </span>
+            ` : `
+              <div class="dir-seg" role="radiogroup" aria-label="${t.label}同步方向">
+                ${["bi", "send", "recv", "off"].map(dk => {
+                  const dm = DIR_META[dk];
+                  const active = b.syncEnabled && val === dk;
+                  return `
+                    <button class="${active ? `active ${dm.cls}` : ""}"
+                      data-act="set-type-dir"
+                      data-dev="${esc(d.id)}"
+                      data-bid="${esc(b.id)}"
+                      data-type="${t.key}"
+                      data-dir="${dk}"
+                      ${paused ? "disabled" : ""}
+                      title="${t.label}：${dm.label}">
+                      ${dm.label}
+                    </button>
+                  `;
+                }).join("")}
+              </div>
+            `}
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+
+  const modelBControls = `
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div class="preset-row">
+        <span class="preset-label">同步方向（本机视角）</span>
+        ${!isDefaultBindingPolicy(b) ? `<button class="btn link" data-act="reset-policy" data-dev="${esc(d.id)}" data-bid="${esc(b.id)}">恢复默认</button>` : ""}
+      </div>
+      <div class="model-b-dir">
+        ${[
+          { id: "bi",   label: "双向 ⇄" },
+          { id: "send", label: "仅发送 →" },
+          { id: "recv", label: "仅接收 ←" },
+          { id: "off",  label: "不同步" }
+        ].map(opt => `
+          <button class="${b.syncEnabled && b.unified.dir === opt.id ? `active ${DIR_META[opt.id].cls}` : ""}"
+            data-act="set-unified-dir" data-dev="${esc(d.id)}" data-bid="${esc(b.id)}" data-dir="${opt.id}"
+            ${!S.globalSync ? "disabled" : ""}>
+            ${opt.label}
+          </button>
+        `).join("")}
+      </div>
+
+      <div class="preset-label" style="margin-top:2px">允许同步的内容类型</div>
+      <div class="model-b-types">
+        ${TYPES.map(t => {
+          const info = eff[t.key];
+          const offByDir = !b.syncEnabled || b.unified.dir === "off";
+          const disabled = info.locked || offByDir || !S.globalSync;
+          const on = !disabled && b.unified[t.key];
+          return `
+            <div class="type-toggle-card ${on ? "on" : ""} ${disabled ? "disabled" : ""}"
+              ${disabled ? "" : `data-act="toggle-unified-type" data-dev="${esc(d.id)}" data-bid="${esc(b.id)}" data-type="${t.key}"`}
+              title="${info.locked ? esc(info.lockReason) : `切换${t.label}同步`}">
+              <div class="type-toggle-top">
+                <span style="display:inline-flex;align-items:center;gap:5px;font-weight:600;font-size:12px">
+                  ${t.icon} ${t.label}
+                </span>
+                <span class="type-toggle-check">${on ? "✓" : ""}</span>
+              </div>
+              <div class="type-hint">${info.locked ? "受上层禁用" : t.hint}</div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+
+  const sendAllowed = TYPES.filter(t => eff[t.key].send);
+  const recvAllowed = TYPES.filter(t => eff[t.key].recv);
+
+  return `
+    <div class="policy-panel ${paused ? "paused" : ""}">
+      ${S.model === "matrix" ? modelAControls : modelBControls}
+
+      <div class="flow-preview">
+        <div class="flow-row">
+          <span class="flow-dir">本机 → ${esc(d.name)}</span>
+          <span class="flow-badges">
+            ${TYPES.map(t => `<span class="${eff[t.key].send ? "flow-ok" : "flow-no"}">${t.label}</span>`).join("")}
+          </span>
+        </div>
+        <div class="flow-row">
+          <span class="flow-dir">${esc(d.name)} → 本机</span>
+          <span class="flow-badges">
+            ${TYPES.map(t => `<span class="${eff[t.key].recv ? "flow-ok" : "flow-no"}">${t.label}</span>`).join("")}
+          </span>
+        </div>
+      </div>
+
+      <div class="policy-foot">
+        <span>仅作用于本机一侧与自动同步；手动发送不受限制，修改仅影响新传输</span>
+        ${!isDefaultBindingPolicy(b) && S.model === "matrix"
+          ? `<button class="btn link" data-act="reset-policy" data-dev="${esc(d.id)}" data-bid="${esc(b.id)}">${IC.reset} 恢复默认</button>`
+          : ""}
+      </div>
+    </div>
+  `;
+}
+
+function renderInspector() {
+  if (S.selected === "local") {
+    return `
+      <div class="inspector">
+        <div class="hero-card">
+          <div class="icon-tile lg">${IC[S.local.icon]}</div>
+          <div class="hero-meta">
+            <div class="hero-name-row"><span class="hero-name">${esc(S.local.name)}</span></div>
+            <div class="hero-sub">当前设备</div>
+            <div style="margin-top:2px">${renderPill("本机", "pos")}</div>
+          </div>
+        </div>
+        <div class="notice info">
+          <div class="notice-body">
+            <div class="notice-title">选择任意远端设备以配置独立策略</div>
+            <div class="notice-sub">例如点击左侧「M02 Physical」或「Mac-mini.local」，在右侧按同步渠道单独控制文字、图片、文件的双向 / 单向 / 不同步策略。</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  const d = S.devices.find(x => x.id === S.selected) || S.devices[0];
+  if (!d) return `<div class="inspector"></div>`;
+  const st = deviceAggregateStatus(d);
+
+  return `
+    <div class="inspector">
+      <div class="hero-card">
+        <div class="icon-tile lg">${IC[d.icon] || IC.desktop}</div>
+        <div class="hero-meta">
+          <div class="hero-name-row">
+            <span class="hero-name">${esc(d.name)}</span>
+            <button class="btn subtle icon-only" data-act="toast" data-msg="重命名设备备注名">${IC.edit}</button>
+          </div>
+          <div class="row-gap" style="margin-top:2px">
+            ${renderPill(st.text, st.tone)}
+            <span class="footnote">最近活动 ${esc(d.lastSeen)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head">
+          <span class="sec-title">同步路径与策略 (${d.bindings.length})</span>
+          <div class="row-gap" style="gap:4px">
+            <button class="btn xs subtle" data-act="toast" data-msg="已触发连接检测">${IC.retry} 检测连接</button>
+            <button class="btn xs subtle" data-act="toast" data-msg="打开添加同步路径弹窗">${IC.add} 添加路径</button>
+          </div>
+        </div>
+
+        <div class="group-box">
+          ${d.bindings.map(b => {
+            const expanded = !!S.expandedBindings[b.id];
+            const connText = !b.syncEnabled
+              ? "已暂停"
+              : (b.connection === "connected" ? `已连接${b.path ? ` · ${b.path}` : ""}${b.latencyMs ? ` · ${b.latencyMs} ms` : ""}` : "未连接");
+            const tags = bindingSummaryTags(b);
+            const menuOpen = S.openMenuBindingId === b.id;
+            return `
+              <div class="path-card ${expanded ? "expanded" : ""}">
+                <div class="path-head">
+                  <div class="path-head-clickable" data-act="toggle-expand" data-bid="${esc(b.id)}">
+                    <span class="path-chevron">${IC.chev}</span>
+                    <div class="path-info">
+                      <div class="path-title">
+                        <span>${esc(backendDisplayName(b.instanceId))}</span>
+                        ${!isDefaultBindingPolicy(b) && b.syncEnabled ? `<span class="tag-badge">自定义</span>` : ""}
+                      </div>
+                      <div class="path-sub">${esc(b.impl)} · ${esc(connText)} · ${esc(b.lastActive)}</div>
+                      ${!expanded ? `
+                        <div class="path-summary-line">
+                          ${tags.map(tg => `<span class="mini-chip ${tg.cls}">${esc(tg.text)}</span>`).join("")}
+                        </div>
+                      ` : ""}
+                    </div>
+                  </div>
+                  <div class="path-actions">
+                    <button class="switch ${b.syncEnabled ? "on" : ""}" data-act="toggle-binding" data-dev="${esc(d.id)}" data-bid="${esc(b.id)}" title="${b.syncEnabled ? "暂停此路径" : "启用此路径"}"></button>
+                    <button class="btn subtle icon-only" data-act="toggle-menu" data-bid="${esc(b.id)}" title="更多操作">${IC.more}</button>
+                    ${menuOpen ? `
+                      <div class="popover">
+                        <button data-act="reset-policy" data-dev="${esc(d.id)}" data-bid="${esc(b.id)}">${IC.reset} 恢复渠道默认策略</button>
+                        <button data-act="jump-plugin" data-id="${esc(b.instanceId)}">${IC.settings} 查看渠道全局策略…</button>
+                        <button class="danger" data-act="toast" data-msg="将弹出移除路径确认框">${IC.trash} 移除此路径</button>
+                      </div>
+                    ` : ""}
+                  </div>
+                </div>
+                ${expanded ? renderPolicyPanel(d, b) : ""}
+              </div>
+            `;
+          }).join("")}
+        </div>
+        <div class="footnote">可为每台设备的每条同步渠道独立设置内容类型与方向（双向 / 仅发 / 仅收 / 关闭）；自动文件大小阈值仍在插件设置中按渠道统一管理。</div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head">
+          <span class="sec-title">安全核对（设备指纹）</span>
+          <button class="btn xs subtle" data-act="copy-fp" data-val="${esc(d.fingerprint)}">${IC.copy} 复制</button>
+        </div>
+        <div class="fp-box">
+          <div class="fp-grid">
+            ${d.fingerprint.split(/\s+/).map(g => `<div class="fp-cell">${esc(g)}</div>`).join("")}
+          </div>
+        </div>
+      </div>
+
+      <div class="row-end" style="margin-top:2px">
+        <button class="btn sm danger-solid" data-act="toast" data-msg="将弹出移除设备确认框">${IC.trash} 移除设备</button>
+      </div>
+    </div>
+  `;
+}
+
+function render() {
+  const win = document.getElementById("appWindow");
+  win.className = "app-window" + (viewportMode === "compact" ? " compact" : viewportMode === "narrow" ? " narrow" : "");
+  const onlinePeers = S.devices.filter(d => deviceAggregateStatus(d).online).length;
+  const totalDevices = S.devices.length + 1;
+  const isNarrow = viewportMode === "narrow";
+
+  win.innerHTML = `
+    <div class="toolbar">
+      <div class="traffic-lights"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span></div>
+      ${isNarrow && S.narrowDetailOpen
+        ? `<button class="tb-back" data-act="narrow-back">${IC.back} 设备</button>`
+        : `<button class="tb-back" data-act="toast" data-msg="返回历史记录主视图">${IC.back} 返回历史</button>`}
+      <span class="tb-sep"></span>
+      <span class="tb-title">设备管理</span>
+      ${!S.globalSync
+        ? renderPill("全局同步已关闭", "warn")
+        : renderPill(`${onlinePeers} 台在线 · 共 ${totalDevices} 台`, "pos")}
+      <span class="tb-spacer"></span>
+      <button class="btn sm pri" data-act="toast" data-msg="打开添加设备配对面板">${IC.add} 添加设备</button>
+    </div>
+    <div class="body">
+      ${(!isNarrow || !S.narrowDetailOpen) ? renderCanvas() : ""}
+      ${(!isNarrow || S.narrowDetailOpen) ? renderInspector() : ""}
+    </div>
+    ${S.toast ? `<div class="toast-wrap"><div class="toast">${esc(S.toast)}</div></div>` : ""}
+  `;
+}
+
+function findBinding(devId, bid) {
+  const d = S.devices.find(x => x.id === devId);
+  const b = d && d.bindings.find(x => x.id === bid);
+  return { d, b };
+}
+
+document.getElementById("appWindow").addEventListener("click", e => {
+  const el = e.target.closest("[data-act]");
+  if (!el) {
+    if (S.openMenuBindingId) { S.openMenuBindingId = null; render(); }
+    return;
+  }
+  const act = el.dataset.act;
+  if (act !== "toggle-menu" && S.openMenuBindingId) {
+    S.openMenuBindingId = null;
+  }
+  switch (act) {
+    case "select":
+      S.selected = el.dataset.id;
+      S.narrowDetailOpen = true;
+      render();
+      break;
+    case "narrow-back":
+      S.narrowDetailOpen = false;
+      render();
+      break;
+    case "enable-global":
+      S.globalSync = true;
+      document.getElementById("chkGlobalSync").checked = true;
+      showToast("已开启全局同步");
+      break;
+    case "toggle-expand":
+      S.expandedBindings[el.dataset.bid] = !S.expandedBindings[el.dataset.bid];
+      render();
+      break;
+    case "toggle-menu":
+      e.stopPropagation();
+      S.openMenuBindingId = S.openMenuBindingId === el.dataset.bid ? null : el.dataset.bid;
+      render();
+      break;
+    case "toggle-binding": {
+      const { b } = findBinding(el.dataset.dev, el.dataset.bid);
+      if (b) {
+        b.syncEnabled = !b.syncEnabled;
+        showToast(b.syncEnabled ? `已恢复 ${backendDisplayName(b.instanceId)} 路径` : `已暂停 ${backendDisplayName(b.instanceId)} 路径`);
+      }
+      break;
+    }
+    case "apply-preset": {
+      const { b } = findBinding(el.dataset.dev, el.dataset.bid);
+      const dir = el.dataset.dir;
+      if (b) {
+        if (dir === "off") {
+          b.policy = { text: "off", images: "off", files: "off" };
+          b.syncEnabled = false;
+          showToast("已设为不同步（暂停此路径）");
+        } else {
+          b.syncEnabled = true;
+          b.policy = { text: dir, images: dir, files: dir };
+          showToast(`已切换为「全部${DIR_META[dir].label}」`);
+        }
+      }
+      break;
+    }
+    case "set-type-dir": {
+      const { b } = findBinding(el.dataset.dev, el.dataset.bid);
+      if (b) {
+        b.syncEnabled = true;
+        b.policy[el.dataset.type] = el.dataset.dir;
+        const tLabel = TYPES.find(t => t.key === el.dataset.type)?.label || "";
+        showToast(`${tLabel}策略已设为「${DIR_META[el.dataset.dir].label}」`);
+      }
+      break;
+    }
+    case "set-unified-dir": {
+      const { b } = findBinding(el.dataset.dev, el.dataset.bid);
+      const dir = el.dataset.dir;
+      if (b) {
+        b.unified.dir = dir;
+        b.syncEnabled = dir !== "off";
+        showToast(`路径方向已设为「${dir === "off" ? "不同步" : DIR_META[dir].label}」`);
+      }
+      break;
+    }
+    case "toggle-unified-type": {
+      const { b } = findBinding(el.dataset.dev, el.dataset.bid);
+      if (b) {
+        b.unified[el.dataset.type] = !b.unified[el.dataset.type];
+        const tLabel = TYPES.find(t => t.key === el.dataset.type)?.label || "";
+        showToast(`${tLabel}已${b.unified[el.dataset.type] ? "开启" : "关闭"}`);
+      }
+      break;
+    }
+    case "reset-policy": {
+      const { b } = findBinding(el.dataset.dev, el.dataset.bid);
+      if (b) {
+        b.syncEnabled = true;
+        b.policy = { text: "bi", images: "bi", files: "bi" };
+        b.unified = { dir: "bi", text: true, images: true, files: true };
+        showToast("已恢复为渠道默认策略（全部双向）");
+      }
+      break;
+    }
+    case "jump-plugin":
+      showToast(el.dataset.id ? `跳转至：设置 → 插件 → ${backendDisplayName(el.dataset.id)}` : "跳转至：设置 → 插件");
+      break;
+    case "copy-fp":
+      if (navigator.clipboard) navigator.clipboard.writeText(el.dataset.val).catch(() => {});
+      showToast("已复制设备指纹");
+      break;
+    case "toast":
+      showToast(el.dataset.msg || "演示操作");
+      break;
+  }
+});
+
+// Top bar controls
+document.getElementById("modelPills").addEventListener("click", e => {
+  const b = e.target.closest("button[data-model]");
+  if (!b) return;
+  document.querySelectorAll("#modelPills button").forEach(x => x.classList.toggle("active", x === b));
+  S.model = b.dataset.model;
+  render();
+});
+document.getElementById("presetPills").addEventListener("click", e => {
+  const b = e.target.closest("button[data-preset]");
+  if (!b) return;
+  document.querySelectorAll("#presetPills button").forEach(x => x.classList.toggle("active", x === b));
+  const curModel = S.model;
+  S = buildPreset(b.dataset.preset);
+  S.model = curModel;
+  syncCheckboxesFromState();
+  render();
+});
+document.getElementById("widthPills").addEventListener("click", e => {
+  const b = e.target.closest("button[data-width]");
+  if (!b) return;
+  document.querySelectorAll("#widthPills button").forEach(x => x.classList.toggle("active", x === b));
+  viewportMode = b.dataset.width;
+  if (viewportMode !== "narrow") S.narrowDetailOpen = false;
+  render();
+});
+document.getElementById("themePills").addEventListener("click", e => {
+  const b = e.target.closest("button[data-theme]");
+  if (!b) return;
+  document.querySelectorAll("#themePills button").forEach(x => x.classList.toggle("active", x === b));
+  document.documentElement.setAttribute("data-theme", b.dataset.theme);
+});
+
+function syncCheckboxesFromState() {
+  const tc = S.backends.find(x => x.id === "builtin.tailcat");
+  document.getElementById("chkGlobalSync").checked = S.globalSync;
+  document.getElementById("chkGlobalFiles").checked = S.globalFiles;
+  document.getElementById("chkTcImages").checked = tc ? tc.policy.images : true;
+  document.getElementById("chkTcFiles").checked = tc ? tc.policy.files : true;
+}
+
+document.getElementById("chkGlobalSync").addEventListener("change", e => { S.globalSync = e.target.checked; render(); });
+document.getElementById("chkGlobalFiles").addEventListener("change", e => { S.globalFiles = e.target.checked; render(); });
+document.getElementById("chkTcImages").addEventListener("change", e => {
+  const tc = S.backends.find(x => x.id === "builtin.tailcat");
+  if (tc) tc.policy.images = e.target.checked;
+  render();
+});
+document.getElementById("chkTcFiles").addEventListener("change", e => {
+  const tc = S.backends.find(x => x.id === "builtin.tailcat");
+  if (tc) tc.policy.files = e.target.checked;
+  render();
+});
+document.getElementById("btnReset").addEventListener("click", () => {
+  const curModel = S.model;
+  S = buildPreset(S.preset);
+  S.model = curModel;
+  syncCheckboxesFromState();
+  render();
+});
+
+render();
+</script>
+</body>
+</html>

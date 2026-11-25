@@ -540,7 +540,15 @@ The single-instance external-process acceptance and remaining contract decision 
 
 `DELETE /v1/peers/{id}` accepts an optional `?revision=N` query parameter. When present, `N` must be a positive integer (otherwise HTTP 400 `invalid_argument`) and revocation uses Engine `UnpairDevice` CAS, returning HTTP 409 (`conflict`) without unpairing on a stale revision or HTTP 404 (`not_found`) for an unknown peer. When omitted, the route retains whole-device unpairing against the current revision.
 
-`PATCH /v1/bindings/{id}` requires both `revision` and `enabled`. `DELETE /v1/bindings/{id}?revision=N` removes only that path. Both use Engine CAS and revocation barriers; stale revisions return HTTP 409. `unic device list --json` exposes the current path revisions; `unic device path pause|resume|remove BINDING_ID REVISION` submits them. Desktop device details expose the same per-path switch and removal operation. Whole-device removal still revokes every path.
+`PATCH /v1/bindings/{id}` requires `revision` and at least one of `enabled` (path master switch) or `policy` (`{text, images, files}`, each one of `bidirectional`, `send_only`, `receive_only`, `disabled`). Changing `enabled` uses Engine CAS and revocation barriers; changing only `policy` uses Engine CAS without dropping live sessions or in-flight transfers and affects only subsequent automatic sends and receives (explicit sends ignore per-binding automatic policy). `DELETE /v1/bindings/{id}?revision=N` removes only that path. Stale revisions return HTTP 409. `unic device list --json` exposes current path revisions and policies; `unic device path pause|resume|remove BINDING_ID REVISION` and `unic device path policy BINDING_ID REVISION [--text DIR] [--images DIR] [--files DIR]` submit them. Desktop device details expose the same per-path switch, per-type direction policy controls and removal operation. Whole-device removal still revokes every path.
+
+### Device connection refresh
+
+`POST /v1/network/changed` schedules a coalesced Engine network-change check and returns `{"ok":true}` after scheduling. Completion of the request does not confirm that a peer is reachable.
+
+`POST /v1/devices/refresh` accepts an empty body, `{}` or `{"device_id":"..."}`. An omitted or empty ID requests a check across devices. A nonempty ID selects a device. The service returns the refreshed `/v1/status` projection after the bounded check. Desktop exposes both scopes. `unic device list --refresh` uses the all-device scope and accepts `--json`.
+
+The status projection includes per-binding `connection` and, when available, `connection_path`, `latency_ms` and `last_checked_ms`. The transport category is `direct`, `derp`, `peer_relay` or `unknown`. Latency is a measured application round-trip time in milliseconds. The check time uses Unix milliseconds. The fields carry no raw endpoints or credentials.
 
 ### Local external-channel registration
 
@@ -551,3 +559,15 @@ idempotent by instance and registration name until removal.
 `unic device channel-add INSTANCE NAME` uses this route.
 `unic device channel pause|resume|remove ID REVISION` uses the existing
 revision-checked update and removal routes. Channel IDs carry no device trust.
+
+## History annotations and enrichment
+
+| Method and path | Request | Result |
+|---|---|---|
+| `GET /v1/history/{id}/annotations` | None | `HistoryAnnotation[]` ordered by plugin priority |
+| `GET /v1/history/{id}/annotations/{plugin}/{type}/assets/{key}` | None | Binary asset stream with stored `Content-Type` |
+| `POST /v1/history/{id}/enrich` | `{plugin_id?, force?}` (≤ 4 KiB) | `{queued:true}` |
+
+Missing or expired history items return HTTP 404 (`not_found`). Asset reads share the existing local content stream pool and never expose filesystem paths. Annotation payloads and asset bytes never enter service logs, events, or telemetry.
+
+External Go plugins declaring only `enricher` (or `action` + `enricher`) also report `live_start: true` and support runtime `POST /v1/plugins/{id}/start` and live marketplace updates without restarting the service.

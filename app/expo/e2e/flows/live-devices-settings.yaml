@@ -1,0 +1,57 @@
+appId: app.uniclipboard.shell
+name: Live Engine devices and diagnostics
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - stopApp
+      - launchApp
+- assertNotVisible:
+    id: setup-start-clean
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: "Devices|设备"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: main-tab-Devices
+- assertVisible:
+    id: devices-local-identity
+- assertVisible:
+    id: devices-join
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: "Settings|设置"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: main-tab-Preferences
+- scrollUntilVisible:
+    element:
+      id: diagnostics
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: diagnostics
+- extendedWaitUntil:
+    visible:
+      id: diagnostics-telemetry
+    timeout: 20000
+- tapOn:
+    id: diagnostics-telemetry
+    point: "91%,50%"
+- assertVisible:
+    id: diagnostics-telemetry
+    checked: false
+- assertVisible:
+    id: diagnostics-export
+- takeScreenshot: live-diagnostics

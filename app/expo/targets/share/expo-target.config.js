@@ -1,0 +1,11 @@
+module.exports = (config) => ({
+  type: "share",
+  name: "UniClipboardShare",
+  displayName: "UniClipboard",
+  bundleIdentifier: ".Share",
+  deploymentTarget: "17.0",
+  exportJs: false,
+  entitlements: {
+    "com.apple.security.application-groups": config.ios.entitlements["com.apple.security.application-groups"],
+  },
+});

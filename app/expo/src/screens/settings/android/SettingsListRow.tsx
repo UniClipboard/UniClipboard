@@ -46,6 +46,7 @@ export type SettingsListRowTrailing =
   | 'none'
   | { action: string; chevron?: boolean }
   | { pill: string }
+  | { text: string; color?: string; chevron?: boolean }
   | { value: string };
 
 /** `warning`:需要用户处理的状态行,整行换成 warningContainer 底色。 */
@@ -144,6 +145,20 @@ export const SettingsListRow = memo(function SettingsListRow({
               </ComposeText>
             </Box>
           </Surface>
+        </ListItem.TrailingContent>
+      ) : typeof trailing === 'object' && 'text' in trailing ? (
+        <ListItem.TrailingContent>
+          <Row verticalAlignment="center">
+            <ComposeText
+              color={trailing.color ?? colors.onSurfaceVariant}
+              style={ACTION_STYLE}
+            >
+              {trailing.text}
+            </ComposeText>
+            {trailing.chevron ? (
+              <Icon source={ICONS.chevron} size={20} tint={colors.onSurfaceVariant} />
+            ) : null}
+          </Row>
         </ListItem.TrailingContent>
       ) : typeof trailing === 'object' ? (
         <ListItem.TrailingContent>

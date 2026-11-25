@@ -722,6 +722,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 							implementationID: impl,
 							state:            b.State,
 							syncEnabled:      b.SyncEnabled,
+							policy:           b.Policy.Normalized(),
 							connection:       string(b.Connection),
 							connectionPath:   b.ConnectionPath,
 							latencyMs:        b.LatencyMs,
@@ -915,6 +916,7 @@ func (d *viewState) projectLiveSyncChannels() {
 	}
 	seen := map[string]bool{}
 	channels := make([]syncChannel, 0, len(l.syncBackends)+len(l.externalPlugins)+1)
+	boolOff := func(v *bool) bool { return v != nil && !*v }
 	for _, b := range l.syncBackends {
 		seen[b.ID] = true
 		restart := false
@@ -923,6 +925,7 @@ func (d *viewState) projectLiveSyncChannels() {
 		} else if b.ID == "builtin.tailcat" && !cfg.PluginEnabled("builtin.tailcat") {
 			restart = true
 		}
+		sc := cfg.Plugins.Instances[b.ID].Sync
 		channels = append(channels, syncChannel{
 			id:               b.ID,
 			implementationID: b.ImplementationID,
@@ -931,11 +934,15 @@ func (d *viewState) projectLiveSyncChannels() {
 			pairing:          b.Pairing,
 			externalChannels: b.ExternalChannels,
 			restart:          restart,
-			policy:           syncPolicyLabel(cfg.Plugins.Instances[b.ID].Sync),
+			policy:           syncPolicyLabel(sc),
+			noText:           boolOff(sc.Text),
+			noImages:         boolOff(sc.Images),
+			noFiles:          boolOff(sc.Files),
 		})
 	}
 	if !seen["builtin.tailcat"] {
 		seen["builtin.tailcat"] = true
+		sc := cfg.Plugins.Instances["builtin.tailcat"].Sync
 		channels = append(channels, syncChannel{
 			id:               "builtin.tailcat",
 			implementationID: "builtin.tailcat",
@@ -943,7 +950,10 @@ func (d *viewState) projectLiveSyncChannels() {
 			state:            "disabled",
 			pairing:          true,
 			restart:          cfg.PluginEnabled("builtin.tailcat"),
-			policy:           syncPolicyLabel(cfg.Plugins.Instances["builtin.tailcat"].Sync),
+			policy:           syncPolicyLabel(sc),
+			noText:           boolOff(sc.Text),
+			noImages:         boolOff(sc.Images),
+			noFiles:          boolOff(sc.Files),
 		})
 	}
 	for _, pl := range l.externalPlugins {
@@ -951,6 +961,7 @@ func (d *viewState) projectLiveSyncChannels() {
 			continue
 		}
 		seen[pl.ID] = true
+		sc := cfg.Plugins.Instances[pl.ID].Sync
 		channels = append(channels, syncChannel{
 			id:               pl.ID,
 			implementationID: pl.ImplementationID,
@@ -959,7 +970,10 @@ func (d *viewState) projectLiveSyncChannels() {
 			pairing:          pl.TransportKind == "peer_sessions" && !pl.ExternalChannels,
 			externalChannels: pl.ExternalChannels,
 			restart:          pl.Restart || pl.Configured,
-			policy:           syncPolicyLabel(cfg.Plugins.Instances[pl.ID].Sync),
+			policy:           syncPolicyLabel(sc),
+			noText:           boolOff(sc.Text),
+			noImages:         boolOff(sc.Images),
+			noFiles:          boolOff(sc.Files),
 		})
 	}
 	d.syncChannels = channels
@@ -1099,6 +1113,7 @@ func (d *viewState) mutateWithin(work func(context.Context) error, success strin
 			if err != nil {
 				l.message = liveErrorMessage(err)
 				d.notice = "操作失败"
+				d.toastError(d.tr(l.message), desktopkit.ToastOptions{ID: toastIDLiveMessage})
 			} else {
 				l.message = ""
 				d.notice = success
@@ -1154,6 +1169,7 @@ func (d *viewState) deleteLiveEntries(ids []string) {
 			records = append(records, it)
 		} else {
 			d.live.message = "历史已变化。请刷新后重试。"
+			d.toastWarning(d.tr(d.live.message), desktopkit.ToastOptions{ID: toastIDLiveMessage})
 			return
 		}
 	}
@@ -1441,6 +1457,8 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 			parsed := richtext.ParseHTML(v.text)
 			v.rich = richtext.NewDocument(parsed)
 			v.text = parsed.PlainText()
+		} else if slices.Contains(it.Tags, plugin.TagLink) {
+			v.linkPreview = loadLinkPreview(ctx, client, id, edge)
 		}
 		v.title = shortText(strings.TrimSpace(v.text), 90)
 		v.generatedTitle = false
@@ -1487,13 +1505,18 @@ func (d *viewState) runHistoryAction(id, key string) {
 	l.invalidateSearch()
 	l.startBusy("正在处理…")
 	l.message = ""
-	d.actionToast = actionToastState{
-		visible: true,
-		running: true,
-		title:   title,
-		message: fmt.Sprintf(d.tr("正在执行「%s」…"), title),
-		tone:    desktopkit.ToneInfo,
-	}
+	d.toasts.Info(fmt.Sprintf(d.tr("正在执行「%s」…"), title), desktopkit.ToastOptions{
+		ID:             toastIDActionRun,
+		Loading:        true,
+		Duration:       desktopkit.ToastPersistent,
+		NonDismissible: true,
+		Actions: []desktopkit.ToastAction{{
+			Label:    d.tr("取消"),
+			Variant:  "secondary",
+			KeepOpen: true,
+			OnClick:  d.cancelRunningAction,
+		}},
+	})
 	actionCtx, actionCancel := context.WithCancel(l.ctx)
 	l.actionCancel = actionCancel
 
@@ -1539,27 +1562,22 @@ func (d *viewState) runHistoryAction(id, key string) {
 					l.message = ""
 					d.notice = ""
 					if wantNotify {
-						d.actionToast = actionToastState{
-							visible:   true,
-							title:     title,
-							message:   fmt.Sprintf(d.tr("已取消「%s」"), title),
-							tone:      desktopkit.ToneWarning,
-							expiresAt: time.Now().Add(3 * time.Second),
-						}
+						d.toasts.Update(toastIDActionRun, fmt.Sprintf(d.tr("已取消「%s」"), title), desktopkit.ToastOptions{
+							Status:   desktopkit.ToastWarning,
+							Duration: 3 * time.Second,
+						})
 					} else {
-						d.actionToast = actionToastState{}
+						d.toastDismiss(toastIDActionRun)
 					}
 					return
 				}
 				l.message = liveErrorMessage(err)
 				d.notice = "操作失败"
-				d.actionToast = actionToastState{
-					visible:   true,
-					title:     title,
-					message:   fmt.Sprintf(d.tr("「%s」执行失败"), title),
-					tone:      desktopkit.ToneError,
-					expiresAt: time.Now().Add(4 * time.Second),
-				}
+				d.toasts.Update(toastIDActionRun, fmt.Sprintf(d.tr("「%s」执行失败"), title), desktopkit.ToastOptions{
+					Description: d.tr(l.message),
+					Status:      desktopkit.ToastError,
+					Duration:    4 * time.Second,
+				})
 				return
 			}
 
@@ -1569,16 +1587,22 @@ func (d *viewState) runHistoryAction(id, key string) {
 			}
 
 			if wantPresent {
-				d.actionToast = actionToastState{}
 				if applyFailed {
 					l.message = ""
 					d.notice = ""
-				} else if wantCopy {
-					l.message = ""
-					d.notice = "已复制"
+					d.toasts.Update(toastIDActionRun, d.tr("已保存到历史，但未能写入剪贴板。"), desktopkit.ToastOptions{
+						Status:   desktopkit.ToastWarning,
+						Duration: 4 * time.Second,
+					})
 				} else {
-					l.message = ""
-					d.notice = ""
+					d.toastDismiss(toastIDActionRun)
+					if wantCopy {
+						l.message = ""
+						d.notice = "已复制"
+					} else {
+						l.message = ""
+						d.notice = ""
+					}
 				}
 				d.actionResult = actionResultState{
 					open:        true,
@@ -1601,13 +1625,10 @@ func (d *viewState) runHistoryAction(id, key string) {
 			if applyFailed {
 				l.message = liveErrorMessage(&api.Error{Reason: "action_apply_failed", Message: "action saved to history"})
 				d.notice = "操作失败"
-				d.actionToast = actionToastState{
-					visible:   true,
-					title:     title,
-					message:   d.tr("已保存到历史，但未能写入剪贴板。"),
-					tone:      desktopkit.ToneWarning,
-					expiresAt: time.Now().Add(4 * time.Second),
-				}
+				d.toasts.Update(toastIDActionRun, d.tr("已保存到历史，但未能写入剪贴板。"), desktopkit.ToastOptions{
+					Status:   desktopkit.ToastWarning,
+					Duration: 4 * time.Second,
+				})
 				return
 			}
 
@@ -1625,15 +1646,12 @@ func (d *viewState) runHistoryAction(id, key string) {
 				if wantCopy {
 					msg = fmt.Sprintf(d.tr("已完成「%s」· 已复制"), title)
 				}
-				d.actionToast = actionToastState{
-					visible:   true,
-					title:     title,
-					message:   msg,
-					tone:      desktopkit.ToneSuccess,
-					expiresAt: time.Now().Add(4 * time.Second),
-				}
+				d.toasts.Update(toastIDActionRun, msg, desktopkit.ToastOptions{
+					Status:   desktopkit.ToastSuccess,
+					Duration: 4 * time.Second,
+				})
 			} else {
-				d.actionToast = actionToastState{}
+				d.toastDismiss(toastIDActionRun)
 			}
 		}
 	}, 5*time.Minute+30*time.Second)
@@ -1641,6 +1659,6 @@ func (d *viewState) runHistoryAction(id, key string) {
 		actionCancel()
 		l.actionCancel = nil
 		l.stopBusy()
-		d.actionToast = actionToastState{}
+		d.toastDismiss(toastIDActionRun)
 	}
 }

@@ -79,9 +79,9 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [token-search](#token-search) | view | Composite search prefixes, counts, completion, literal input, caret handling and Escape. |
 | [toolbar-alignment](#toolbar-alignment) | view | Toolbar containment and menu alignment across supported widths, themes, scales and layouts, including light-theme control pixel contrast. |
 | [toolbar-bounds-dark-1100](#toolbar-bounds-dark-1100) | native | Keep unified production history controls within the toolbar at 1100x720. |
-| [toolbar-bounds-dark-600](#toolbar-bounds-dark-600) | native | Keep unified production history controls within the toolbar at 600x480. |
+| [toolbar-bounds-dark-600](#toolbar-bounds-dark-600) | native | Keep responsive narrow production history controls within the toolbar at 600x480 without overlap. |
 | [toolbar-bounds-light-1100](#toolbar-bounds-light-1100) | native | Keep unified production history controls within the toolbar at 1100x720. |
-| [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep unified production history controls within the toolbar at 600x480. |
+| [toolbar-bounds-light-600](#toolbar-bounds-light-600) | native | Keep responsive narrow production history controls within the toolbar at 600x480 without overlap. |
 | [tray-icon-settings](#tray-icon-settings) | view | Match v1 glyph/cat defaults, settings selection and immediate image delivery. |
 | [unified-scrollbars](#unified-scrollbars) | view | Scrollbar visibility during hover, scroll, idle and nested preview interaction. |
 | [wetype-pairing](#wetype-pairing) | view | Join the first shared space with a six-digit code using the installed default plugin instance. |
@@ -320,6 +320,7 @@ ui-click listItem 设置…
 ui-wait listItem 插件
 ui-click listItem 插件
 ui-enabled button '内容分类'
+ui-reveal button 内容分类
 ui-click button 内容分类
 plugin-back-in-toolbar
 screenshot classification-toolbar
@@ -341,6 +342,7 @@ ui-enabled button '返回插件列表'
 ui-click button 返回插件列表
 ui-absent button 返回插件列表
 ui-enabled button '文本工具'
+ui-reveal button 文本工具
 ui-click button 文本工具
 ui-enabled switch '启用文本工具'
 ui-click switch 启用文本工具
@@ -357,6 +359,7 @@ ui-click listItem 设置…
 ui-wait listItem 插件
 ui-click listItem 插件
 ui-enabled button '内容分类'
+ui-reveal button 内容分类
 ui-click button 内容分类
 config-equals plugins.instances.builtin.classify.enabled false
 ui-enabled switch '启用内容分类'
@@ -366,6 +369,7 @@ ui-enabled button '返回插件列表'
 ui-click button 返回插件列表
 ui-absent button 返回插件列表
 ui-enabled button '文本工具'
+ui-reveal button 文本工具
 ui-click button 文本工具
 ui-enabled switch '启用文本工具'
 ui-click switch 启用文本工具
@@ -380,6 +384,7 @@ ui-wait listItem 插件
 ui-click listItem 插件
 screenshot processors-active
 ui-enabled button 文本工具
+ui-reveal button 文本工具
 ui-click button 文本工具
 ui-value popUpButton 处理失败时 '跟随全局（继续处理）'
 config-equals plugins.instances.builtin.text.on_error null
@@ -1848,9 +1853,9 @@ ui-key Escape
 
 Native toolbar bounds at 600 points in dark mode
 
-Steps: Start an isolated production desktop; focus the always-visible search, edit and clear its query, switch layouts and open the command menu.
+Steps: Start an isolated production desktop; expand or focus search, edit and clear its query, collapse back to idle, switch layouts and open the command menu.
 
-Expected: Every toolbar control remains inside the band; search and menus remain usable.
+Expected: Every toolbar control remains inside the band without overlap; narrow search takeover, clear/collapse, layout switch and menus remain usable.
 
 Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
 
@@ -1860,7 +1865,8 @@ submit entry 'Toolbar bounds evidence'
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
 screenshot idle
-ui-click comboBox '搜索历史'
+[!linux] ui-click button '搜索历史'
+[linux] ui-click comboBox '搜索历史'
 ui-wait comboBox '搜索历史'
 ui-toolbar-contained
 ui-set comboBox '搜索历史' bounds
@@ -1916,9 +1922,9 @@ ui-key Escape
 
 Native toolbar bounds at 600 points in light mode
 
-Steps: Start an isolated production desktop; focus the always-visible search, edit and clear its query, switch layouts and open the command menu.
+Steps: Start an isolated production desktop; expand or focus search, edit and clear its query, collapse back to idle, switch layouts and open the command menu.
 
-Expected: Every toolbar control remains inside the band; search and menus remain usable.
+Expected: Every toolbar control remains inside the band without overlap; narrow search takeover, clear/collapse, layout switch and menus remain usable.
 
 Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
 
@@ -1928,7 +1934,8 @@ submit entry 'Toolbar bounds evidence'
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
 screenshot idle
-ui-click comboBox '搜索历史'
+[!linux] ui-click button '搜索历史'
+[linux] ui-click comboBox '搜索历史'
 ui-wait comboBox '搜索历史'
 ui-toolbar-contained
 ui-set comboBox '搜索历史' bounds

@@ -2,23 +2,35 @@ import { type NativeModule, requireOptionalNativeModule } from "expo";
 import {
   type ActionInfo,
   type ActionResult,
+  type BackgroundSyncConfigPatch,
+  type BackgroundSyncStatus,
   type Capabilities,
+  type ClipboardChangedEvent,
   type CustomSourceSelectionResult,
+  type DeviceBinding,
   EngineError,
   type EngineCandidate,
   type EngineDevice,
   type EngineErrorPayload,
   type EngineOperation,
+  type EngineSettings,
+  type FileCacheState,
+  type HistoryFolder,
+  type PartDescriptor,
   type EngineStateSnapshot,
   type HistoryItem,
   type HistoryPage,
+  type HistorySearchCountsResult,
   type HistorySearchPage,
   type ImagePreviewResult,
   type MigrationProgress,
   type MigrationRunResult,
   type PairingCode,
+  type PairingCodeResponse,
   type PickAndCommitFileResult,
+  type ReceivedContent,
   type SensitiveTicket,
+  type SettingsState,
   type SetupFlowState,
   type SourceDetectionResult,
   type SubmissionResult,
@@ -26,10 +38,15 @@ import {
 } from "./types";
 
 type NativeEvents = {
+  onIncomingShare: () => void;
   onEngineEvent: (payload: { event: string }) => void;
   onEngineResync: (payload: { reason: string }) => void;
   onMigrationProgress: (payload: MigrationProgress) => void;
+  onClipboardChanged: (payload: ClipboardChangedEvent) => void;
+  onBackgroundSyncStateChanged: (payload: { reason: string }) => void;
 };
+
+export type TelemetryState = { configured_enabled: boolean; effective_enabled: boolean };
 
 declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   openSetupFlow(): Promise<string>;
@@ -44,12 +61,40 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   initializeEngine(deviceName: string | null): Promise<string>;
   shutdownEngine(): Promise<void>;
   getState(): Promise<string>;
+  getTelemetryState(): Promise<string>;
+  setTelemetryEnabled(enabled: boolean): Promise<string>;
+  exportRecentDiagnosticLogs(): Promise<string>;
   getCapabilities(): Promise<string>;
   updateSettings(reqJSON: string): Promise<string>;
+  getFileCacheState(): Promise<string>;
+  setAutomaticCapture(enabled: boolean): Promise<void>;
+  setAutoApplyReceived?(enabled: boolean): Promise<void>;
+  clearHistoryPreviews(): Promise<void>;
+  reconcileHistoryPreviews(): Promise<void>;
+  historyFileMetadata(historyID: string): Promise<string>;
+  listHistoryFolder(historyID: string, limit: number): Promise<string>;
+  getBackgroundSyncEnabled(): Promise<boolean>;
+  setBackgroundSyncEnabled(enabled: boolean): Promise<boolean>;
+  getBackgroundSyncStatus?(): Promise<string>;
+  updateBackgroundSyncConfig?(patchJSON: string): Promise<string>;
+  requestIgnoreBatteryOptimizations?(): Promise<boolean>;
+  requestOverlayPermission?(): Promise<boolean>;
+  requestShizukuPermission?(): Promise<boolean>;
+  openShizukuAppOrGuide?(): Promise<boolean>;
+  resolveBackgroundClipboardRestriction?(): Promise<boolean>;
+  listIncomingShares(): Promise<string>;
+  commitIncomingShare(id: string, targets: string): Promise<string>;
+  dismissIncomingShare(id: string): Promise<void>;
+  copyPlainText(text: string): Promise<void>;
+  copyPairingTicket(text: string, expiresAtMs: number): Promise<void>;
+  pickAndCommitImage(camera: boolean): Promise<string>;
+  exportHistoryMedia(historyID: string, action: string): Promise<boolean>;
+  shareHistoryMedia(idsJSON: string, text: string | null): Promise<void>;
 
   listHistory(reqJSON: string): Promise<string>;
   getHistoryItem(historyID: string): Promise<string>;
   readHistoryTextPreview(historyID: string, maxBytes: number): Promise<string>;
+  readHistoryFullText(historyID: string, maxBytes: number): Promise<string>;
   exportHistoryImagePreview(historyID: string): Promise<string>;
   updateHistoryItem(reqJSON: string): Promise<string>;
   deleteHistoryItem(historyID: string, expectedRevision: string): Promise<void>;
@@ -58,6 +103,10 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   countHistorySearches(reqJSON: string): Promise<string>;
   commitText(text: string, deviceIdsJson: string | null): Promise<string>;
   pickAndCommitFile(deviceIdsJson: string | null): Promise<string>;
+  resendHistoryItem(reqJSON: string): Promise<string>;
+  listReceived(): Promise<string>;
+  dismissReceived(receiptID: string): Promise<void>;
+  applyReceivedToClipboard(receiptID: string): Promise<string>;
   applyHistoryToClipboard(historyID: string): Promise<string>;
   readSystemClipboardAndCommit(): Promise<string>;
 
@@ -159,6 +208,83 @@ async function callVoid(fn: () => Promise<void>): Promise<void> {
 }
 
 export const unicEngineNative = {
+  addIncomingShareListener: (cb: () => void) => {
+    if (!nativeMod) return { remove: () => {} };
+    return nativeMod.addListener("onIncomingShare", cb);
+  },
+  getBackgroundSyncEnabled: () => requireMod().getBackgroundSyncEnabled(),
+  setBackgroundSyncEnabled: (enabled: boolean) => requireMod().setBackgroundSyncEnabled(enabled)
+    .catch((error) => { throw parseEngineError(error); }),
+  getBackgroundSyncStatus: () => callJSON<BackgroundSyncStatus>(() => {
+    const mod = requireMod();
+    if (!mod.getBackgroundSyncStatus) {
+      throw new EngineError({ code: "unsupported", message: "background sync status unavailable" });
+    }
+    return mod.getBackgroundSyncStatus();
+  }),
+  updateBackgroundSyncConfig: (patch: BackgroundSyncConfigPatch) => callJSON<BackgroundSyncStatus>(() => {
+    const mod = requireMod();
+    if (!mod.updateBackgroundSyncConfig) {
+      throw new EngineError({ code: "unsupported", message: "background sync config unavailable" });
+    }
+    return mod.updateBackgroundSyncConfig(JSON.stringify(patch));
+  }),
+  requestIgnoreBatteryOptimizations: async (): Promise<boolean> => {
+    const mod = requireMod();
+    if (!mod.requestIgnoreBatteryOptimizations) return false;
+    try {
+      return await mod.requestIgnoreBatteryOptimizations();
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  requestOverlayPermission: async (): Promise<boolean> => {
+    const mod = requireMod();
+    if (!mod.requestOverlayPermission) return false;
+    try {
+      return await mod.requestOverlayPermission();
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  requestShizukuPermission: async (): Promise<boolean> => {
+    const mod = requireMod();
+    if (!mod.requestShizukuPermission) return false;
+    try {
+      return await mod.requestShizukuPermission();
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  openShizukuAppOrGuide: async (): Promise<boolean> => {
+    const mod = requireMod();
+    if (!mod.openShizukuAppOrGuide) return false;
+    try {
+      return await mod.openShizukuAppOrGuide();
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  resolveBackgroundClipboardRestriction: async (): Promise<boolean> => {
+    const mod = requireMod();
+    if (!mod.resolveBackgroundClipboardRestriction) return false;
+    try {
+      return await mod.resolveBackgroundClipboardRestriction();
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  addBackgroundSyncStateListener: (cb: (reason: string) => void) => {
+    if (!nativeMod) return { remove: () => {} };
+    return nativeMod.addListener("onBackgroundSyncStateChanged", ({ reason }) => cb(reason));
+  },
+  listIncomingShares: () => callJSON<Array<{ id: string; kind: "text" | "file"; label: string }>>(
+    () => requireMod().listIncomingShares(),
+  ),
+  commitIncomingShare: (id: string, targets?: string[]) => callJSON<{ history_id?: string; sync_disposition?: string }>(
+    () => requireMod().commitIncomingShare(id, targets ? JSON.stringify(targets) : ""),
+  ),
+  dismissIncomingShare: (id: string) => callVoid(() => requireMod().dismissIncomingShare(id)),
   addEventListener: (cb: (eventJSON: string) => void) => {
     if (!nativeMod) return { remove: () => {} };
     return nativeMod.addListener("onEngineEvent", ({ event }) => cb(event));
@@ -170,6 +296,10 @@ export const unicEngineNative = {
   addMigrationProgressListener: (cb: (progress: MigrationProgress) => void) => {
     if (!nativeMod) return { remove: () => {} };
     return nativeMod.addListener("onMigrationProgress", cb);
+  },
+  addClipboardChangedListener: (cb: (payload: ClipboardChangedEvent) => void) => {
+    if (!nativeMod) return { remove: () => {} };
+    return nativeMod.addListener("onClipboardChanged", cb);
   },
 
   openSetupFlow: () => callJSON<SetupFlowState>(() => requireMod().openSetupFlow()),
@@ -190,9 +320,40 @@ export const unicEngineNative = {
     callJSON<EngineStateSnapshot>(() => requireMod().initializeEngine(deviceName ?? null)),
   shutdownEngine: () => callVoid(() => requireMod().shutdownEngine()),
   getState: () => callJSON<EngineStateSnapshot>(() => requireMod().getState()),
+  getTelemetryState: () => callJSON<TelemetryState>(() => requireMod().getTelemetryState()),
+  setTelemetryEnabled: (enabled: boolean) => callJSON<TelemetryState>(() => requireMod().setTelemetryEnabled(enabled)),
+  exportRecentDiagnosticLogs: () => callString(() => requireMod().exportRecentDiagnosticLogs()),
   getCapabilities: () => callJSON<Capabilities>(() => requireMod().getCapabilities()),
-  updateSettings: (settings: Record<string, unknown>) =>
-    callJSON<EngineStateSnapshot>(() => requireMod().updateSettings(JSON.stringify(settings))),
+  updateSettings: (req: { expected_revision: string; value: EngineSettings }) =>
+    callJSON<SettingsState>(() => requireMod().updateSettings(JSON.stringify(req))),
+
+  getFileCacheState: () => callJSON<FileCacheState>(() => requireMod().getFileCacheState()),
+  setAutomaticCapture: (enabled: boolean) => callVoid(() => requireMod().setAutomaticCapture(enabled)),
+  setAutoApplyReceived: (enabled: boolean) => callVoid(async () => {
+    const mod = nativeMod;
+    if (mod?.setAutoApplyReceived) {
+      await mod.setAutoApplyReceived(enabled);
+    }
+  }),
+  clearHistoryPreviews: () => callVoid(() => requireMod().clearHistoryPreviews()),
+  reconcileHistoryPreviews: () => callVoid(() => requireMod().reconcileHistoryPreviews()),
+  historyFileMetadata: (id: string) =>
+    callJSON<PartDescriptor[] | null>(() => requireMod().historyFileMetadata(id)),
+  listHistoryFolder: (id: string) =>
+    callJSON<HistoryFolder>(() => requireMod().listHistoryFolder(id, 200)),
+  copyPairingTicket: (text: string, expiresAtMs: number) => callVoid(() => requireMod().copyPairingTicket(text, expiresAtMs)),
+  copyPlainText: (text: string) => callVoid(() => requireMod().copyPlainText(text)),
+  pickAndCommitImage: (camera: boolean) =>
+    callJSON<PickAndCommitFileResult>(() => requireMod().pickAndCommitImage(camera)),
+  exportHistoryMedia: async (id: string, action: "photos" | "files") => {
+    try {
+      return await requireMod().exportHistoryMedia(id, action);
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
+  shareHistoryMedia: (ids: string[], text?: string) =>
+    callVoid(() => requireMod().shareHistoryMedia(JSON.stringify(ids), text ?? null)),
 
   listHistory: (req: { limit?: number; cursor?: string; filter?: Record<string, unknown> } = {}) =>
     callJSON<HistoryPage>(() => requireMod().listHistory(JSON.stringify(req))),
@@ -200,8 +361,18 @@ export const unicEngineNative = {
     callJSON<HistoryItem>(() => requireMod().getHistoryItem(historyID)),
   readHistoryTextPreview: (historyID: string, maxBytes = 512) =>
     callJSON<TextPreview>(() => requireMod().readHistoryTextPreview(historyID, maxBytes)),
-  exportHistoryImagePreview: (historyID: string) =>
-    callJSON<ImagePreviewResult>(() => requireMod().exportHistoryImagePreview(historyID)),
+  readHistoryFullText: (historyID: string, maxBytes = 2_097_152) =>
+    callJSON<TextPreview>(() => requireMod().readHistoryFullText(historyID, maxBytes)),
+  exportHistoryImagePreview: async (historyID: string): Promise<ImagePreviewResult> => {
+    const raw = await callJSON<ImagePreviewResult>(() =>
+      requireMod().exportHistoryImagePreview(historyID),
+    );
+    return {
+      ...raw,
+      mime: raw.part?.mime ?? raw.mime,
+      name: raw.part?.name ?? raw.name,
+    };
+  },
   updateHistoryItem: (req: { id: string; expected_revision: string; tags?: string[] }) =>
     callJSON<HistoryItem>(() => requireMod().updateHistoryItem(JSON.stringify(req))),
   deleteHistoryItem: (historyID: string, expectedRevision: string) =>
@@ -209,8 +380,20 @@ export const unicEngineNative = {
   listHistoryTags: () => callJSON<string[]>(() => requireMod().listHistoryTags()),
   searchHistory: (req: { query: Record<string, unknown>; cursor?: string; limit?: number }) =>
     callJSON<HistorySearchPage>(() => requireMod().searchHistory(JSON.stringify(req))),
-  countHistorySearches: (queries: Array<Record<string, unknown>>) =>
-    callJSON<{ counts: number[] }>(() => requireMod().countHistorySearches(JSON.stringify({ queries }))),
+  countHistorySearches: async (
+    queries: Array<Record<string, unknown>>,
+  ): Promise<HistorySearchCountsResult> => {
+    const raw = await callJSON<{
+      counts: Array<string | number>;
+      history_revision: string;
+      evaluated_at_ms: number;
+    }>(() => requireMod().countHistorySearches(JSON.stringify({ queries })));
+    return {
+      counts: (raw.counts ?? []).map((c) => Number(c) || 0),
+      history_revision: raw.history_revision,
+      evaluated_at_ms: raw.evaluated_at_ms,
+    };
+  },
   commitText: (text: string, deviceIds?: string[]) =>
     callJSON<SubmissionResult>(() =>
       requireMod().commitText(text, deviceIds && deviceIds.length > 0 ? JSON.stringify(deviceIds) : null),
@@ -221,6 +404,17 @@ export const unicEngineNative = {
         deviceIds && deviceIds.length > 0 ? JSON.stringify(deviceIds) : null,
       ),
     ),
+  resendHistoryItem: (req: {
+    request_id: string;
+    history_id: string;
+    device_ids?: string[];
+    backend_ids?: string[];
+  }) => callJSON<SubmissionResult>(() => requireMod().resendHistoryItem(JSON.stringify(req))),
+  listReceived: () => callJSON<ReceivedContent[]>(() => requireMod().listReceived()),
+  dismissReceived: (receiptID: string) =>
+    callVoid(() => requireMod().dismissReceived(receiptID)),
+  applyReceivedToClipboard: (receiptID: string) =>
+    callJSON<{ applied: boolean }>(() => requireMod().applyReceivedToClipboard(receiptID)),
   applyHistoryToClipboard: (historyID: string) =>
     callJSON<{ applied: boolean }>(() => requireMod().applyHistoryToClipboard(historyID)),
   readSystemClipboardAndCommit: () =>
@@ -233,7 +427,13 @@ export const unicEngineNative = {
     callJSON<ActionResult>(() => requireMod().runAction(JSON.stringify(req))),
 
   createPairingCode: () => callJSON<PairingCode>(() => requireMod().createPairingCode()),
-  getPairingCode: () => callJSON<PairingCode | null>(() => requireMod().getPairingCode()),
+  getPairingCode: async (): Promise<PairingCode | null> => {
+    const raw = await callJSON<PairingCodeResponse>(() => requireMod().getPairingCode());
+    if (!raw || !raw.exists || !raw.code) {
+      return null;
+    }
+    return { code: raw.code, expires_at_ms: raw.expires_at_ms };
+  },
   cancelPairingCode: () => callVoid(() => requireMod().cancelPairingCode()),
   exportPairingTicket: () => callJSON<SensitiveTicket>(() => requireMod().exportPairingTicket()),
   joinByCode: (req: { request_id: string; code: string; backend_id?: string }) =>
@@ -250,13 +450,13 @@ export const unicEngineNative = {
   }) => callJSON<EngineDevice>(() => requireMod().approveDevice(JSON.stringify(req))),
   renameDevice: (req: { id: string; expected_revision: number; name: string }) =>
     callJSON<EngineDevice>(() => requireMod().renameDevice(JSON.stringify(req))),
-  setBindingSync: (req: { id: string; expected_revision: number; sync_enabled: boolean }) =>
-    callJSON<unknown>(() => requireMod().setBindingSync(JSON.stringify(req))),
+  setBindingSync: (req: { id: string; expected_revision: number; enabled: boolean }) =>
+    callJSON<DeviceBinding>(() => requireMod().setBindingSync(JSON.stringify(req))),
   unpairDevice: (deviceID: string, expectedRevision: number) =>
     callVoid(() => requireMod().unpairDevice(deviceID, expectedRevision)),
   listCandidates: () => callJSON<EngineCandidate[]>(() => requireMod().listCandidates()),
-  pairCandidate: (req: { device_id: string; backend_id: string; name?: string }) =>
-    callJSON<EngineOperation>(() => requireMod().pairCandidate(JSON.stringify(req))),
+  pairCandidate: (req: { request_id: string; device_id: string; backend_id: string }) =>
+    callString(() => requireMod().pairCandidate(JSON.stringify(req))),
   ignoreCandidate: (deviceID: string, ignored: boolean) =>
     callVoid(() => requireMod().ignoreCandidate(deviceID, ignored)),
 };

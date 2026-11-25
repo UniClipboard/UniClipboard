@@ -33,6 +33,106 @@ const (
 	BindingAuthorized = "authorized"
 )
 
+// SyncDirection controls automatic send and receive permission for one content
+// category on a device-to-backend binding, from the local device's perspective.
+type SyncDirection string
+
+const (
+	SyncDirectionBidirectional SyncDirection = "bidirectional"
+	SyncDirectionSendOnly      SyncDirection = "send_only"
+	SyncDirectionReceiveOnly   SyncDirection = "receive_only"
+	SyncDirectionDisabled      SyncDirection = "disabled"
+)
+
+// Valid reports whether d is a known SyncDirection value.
+func (d SyncDirection) Valid() bool {
+	switch d {
+	case SyncDirectionBidirectional, SyncDirectionSendOnly, SyncDirectionReceiveOnly, SyncDirectionDisabled:
+		return true
+	}
+	return false
+}
+
+// AllowsSend reports whether automatic sends to the peer are permitted.
+func (d SyncDirection) AllowsSend() bool {
+	return d == SyncDirectionBidirectional || d == SyncDirectionSendOnly
+}
+
+// AllowsReceive reports whether receives from the peer are permitted.
+func (d SyncDirection) AllowsReceive() bool {
+	return d == SyncDirectionBidirectional || d == SyncDirectionReceiveOnly
+}
+
+// BindingSyncPolicy configures per-content-type direction on one binding.
+// It can only narrow the parent backend instance policy, governs automatic
+// sends and receives, and is bypassed by explicit manual sends.
+type BindingSyncPolicy struct {
+	Text   SyncDirection `json:"text"`
+	Images SyncDirection `json:"images"`
+	Files  SyncDirection `json:"files"`
+}
+
+// DefaultBindingSyncPolicy returns bidirectional policy for all content types.
+func DefaultBindingSyncPolicy() BindingSyncPolicy {
+	return BindingSyncPolicy{
+		Text:   SyncDirectionBidirectional,
+		Images: SyncDirectionBidirectional,
+		Files:  SyncDirectionBidirectional,
+	}
+}
+
+// Valid reports whether every field carries a valid SyncDirection.
+func (p BindingSyncPolicy) Valid() bool {
+	return p.Text.Valid() && p.Images.Valid() && p.Files.Valid()
+}
+
+// Normalized replaces empty fields with bidirectional.
+func (p BindingSyncPolicy) Normalized() BindingSyncPolicy {
+	if p.Text == "" {
+		p.Text = SyncDirectionBidirectional
+	}
+	if p.Images == "" {
+		p.Images = SyncDirectionBidirectional
+	}
+	if p.Files == "" {
+		p.Files = SyncDirectionBidirectional
+	}
+	return p
+}
+
+func fromStoreBindingPolicy(p store.BindingPolicy) BindingSyncPolicy {
+	p = p.Normalized()
+	return BindingSyncPolicy{
+		Text:   SyncDirection(p.Text),
+		Images: SyncDirection(p.Images),
+		Files:  SyncDirection(p.Files),
+	}
+}
+
+func toStoreBindingPolicy(p BindingSyncPolicy) store.BindingPolicy {
+	return store.BindingPolicy{
+		Text:   string(p.Text),
+		Images: string(p.Images),
+		Files:  string(p.Files),
+	}
+}
+
+func applyBindingSendPolicy(backend BackendSyncPolicy, binding BindingSyncPolicy) BackendSyncPolicy {
+	binding = binding.Normalized()
+	backend.Text = backend.Text && binding.Text.AllowsSend()
+	backend.Images = backend.Images && binding.Images.AllowsSend()
+	backend.Files = backend.Files && binding.Files.AllowsSend()
+	return backend
+}
+
+func applyBindingReceivePolicy(backend BackendSyncPolicy, binding BindingSyncPolicy) BackendSyncPolicy {
+	binding = binding.Normalized()
+	backend.Text = backend.Text && binding.Text.AllowsReceive()
+	backend.Images = backend.Images && binding.Images.AllowsReceive()
+	backend.Files = backend.Files && binding.Files.AllowsReceive()
+	return backend
+}
+
 // Device is one entry of the unified device list. The ID is derived from the
 // device's public key and is not the legacy DeviceID of the tailcat session
 // layer.
@@ -58,13 +158,14 @@ func (d Device) DisplayName() string {
 // DeviceBinding is one device-to-backend-instance path. It carries no address,
 // credential or remote context.
 type DeviceBinding struct {
-	ID           string `json:"id"`
-	InstanceID   string `json:"instance_id"`
-	State        string `json:"state"`
-	SyncEnabled  bool   `json:"sync_enabled"`
-	Revision     int64  `json:"revision"`
-	LastActiveMs int64  `json:"last_active_ms,omitempty"`
-	LastError    string `json:"last_error,omitempty"` // a stable class, never raw backend text
+	ID           string            `json:"id"`
+	InstanceID   string            `json:"instance_id"`
+	State        string            `json:"state"`
+	SyncEnabled  bool              `json:"sync_enabled"`
+	Policy       BindingSyncPolicy `json:"policy"`
+	Revision     int64             `json:"revision"`
+	LastActiveMs int64             `json:"last_active_ms,omitempty"`
+	LastError    string            `json:"last_error,omitempty"` // a stable class, never raw backend text
 	// Connection is the live link on this path right now.
 	Connection Connection `json:"connection"`
 	// ConnectionPath is the finite transport path classification when known:
@@ -106,6 +207,22 @@ type SetBindingSyncRequest struct {
 	ID               string
 	ExpectedRevision int64
 	Enabled          bool
+}
+
+// SetBindingPolicyRequest updates per-type sync directions on one path.
+// It affects only subsequent new automatic sends and receives.
+type SetBindingPolicyRequest struct {
+	ID               string
+	ExpectedRevision int64
+	Policy           BindingSyncPolicy
+}
+
+// UpdateBindingRequest atomically updates sync_enabled and/or policy on one path.
+type UpdateBindingRequest struct {
+	ID               string
+	ExpectedRevision int64
+	Enabled          *bool
+	Policy           *BindingSyncPolicy
 }
 
 // UnpairDeviceRequest ends trust in a device and removes every path to it.
@@ -169,6 +286,7 @@ func (e *Engine) toBindingWithLinks(b store.Binding, links map[PluginID]map[stri
 		}
 	}
 	return DeviceBinding{ID: b.ID, InstanceID: b.InstanceID, State: b.State, SyncEnabled: b.SyncEnabled,
+		Policy:   fromStoreBindingPolicy(b.Policy),
 		Revision: b.Revision, LastActiveMs: b.LastActiveMs, LastError: b.LastError, Connection: conn,
 		ConnectionPath: path, LatencyMs: latencyMs, LastCheckedMs: checkedMs, Ticket: b.Ticket}
 }
@@ -357,19 +475,49 @@ func normFingerprint(s string) string {
 
 // AuthorizeBinding lets one path of a trusted device carry content.
 func (e *Engine) AuthorizeBinding(ctx context.Context, req BindingRequest) (DeviceBinding, error) {
-	return e.bindingOp(ctx, req.ID, req.ExpectedRevision, func() (store.Binding, error) {
+	return e.bindingOp(ctx, req.ID, req.ExpectedRevision, true, func() (store.Binding, error) {
 		return e.st.AuthorizeBinding(req.ID, req.ExpectedRevision)
 	})
 }
 
 // SetBindingSync pauses or resumes content sync on one path only.
 func (e *Engine) SetBindingSync(ctx context.Context, req SetBindingSyncRequest) (DeviceBinding, error) {
-	return e.bindingOp(ctx, req.ID, req.ExpectedRevision, func() (store.Binding, error) {
+	return e.bindingOp(ctx, req.ID, req.ExpectedRevision, true, func() (store.Binding, error) {
 		return e.st.SetBindingSync(req.ID, req.ExpectedRevision, req.Enabled)
 	})
 }
 
-func (e *Engine) bindingOp(ctx context.Context, id string, rev int64, do func() (store.Binding, error)) (DeviceBinding, error) {
+// SetBindingPolicy updates per-type automatic sync and receive directions on one
+// path. It does not close live sessions or cancel in-flight transfers.
+func (e *Engine) SetBindingPolicy(ctx context.Context, req SetBindingPolicyRequest) (DeviceBinding, error) {
+	if !req.Policy.Valid() {
+		return DeviceBinding{}, newErr(CodeInvalidArgument, "valid text, images and files sync directions are required")
+	}
+	return e.bindingOp(ctx, req.ID, req.ExpectedRevision, false, func() (store.Binding, error) {
+		return e.st.SetBindingPolicy(req.ID, req.ExpectedRevision, toStoreBindingPolicy(req.Policy))
+	})
+}
+
+// UpdateBinding atomically updates sync_enabled and/or per-type policy by CAS.
+// Live sessions are reconciled only when Enabled is modified.
+func (e *Engine) UpdateBinding(ctx context.Context, req UpdateBindingRequest) (DeviceBinding, error) {
+	if req.Enabled == nil && req.Policy == nil {
+		return DeviceBinding{}, newErr(CodeInvalidArgument, "enabled or policy is required")
+	}
+	var sp *store.BindingPolicy
+	if req.Policy != nil {
+		if !req.Policy.Valid() {
+			return DeviceBinding{}, newErr(CodeInvalidArgument, "valid text, images and files sync directions are required")
+		}
+		p := toStoreBindingPolicy(*req.Policy)
+		sp = &p
+	}
+	return e.bindingOp(ctx, req.ID, req.ExpectedRevision, req.Enabled != nil, func() (store.Binding, error) {
+		return e.st.UpdateBinding(req.ID, req.ExpectedRevision, req.Enabled, sp)
+	})
+}
+
+func (e *Engine) bindingOp(ctx context.Context, id string, rev int64, reconcile bool, do func() (store.Binding, error)) (DeviceBinding, error) {
 	release, gerr := e.historyGate(ctx, true, false)
 	if gerr != nil {
 		return DeviceBinding{}, gerr
@@ -382,7 +530,9 @@ func (e *Engine) bindingOp(ctx context.Context, id string, rev int64, do func() 
 	if err != nil {
 		return DeviceBinding{}, deviceStoreErr(err)
 	}
-	e.reconcile()
+	if reconcile {
+		e.reconcile()
+	}
 	e.deviceChanged(b.DeviceID)
 	return e.toBinding(b), nil
 }

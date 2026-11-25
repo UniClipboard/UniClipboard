@@ -45,6 +45,11 @@ func (d *viewState) refreshStorageUsage() {
 			d.storage.loading = false
 			if err != nil {
 				d.storage.message = "无法刷新缓存用量。请重试。"
+				msg := d.tr(d.storage.message)
+				if d.storage.loaded {
+					msg += " " + d.tr("下方显示上次成功读取的用量。")
+				}
+				d.toastWarning(msg, desktopkit.ToastOptions{ID: "storage-usage"})
 				return
 			}
 			held := 0
@@ -61,6 +66,7 @@ func (d *viewState) refreshStorageUsage() {
 	}, 5*time.Second) {
 		d.storage.loading = false
 		d.storage.message = "无法刷新缓存用量。请重试。"
+		d.toastWarning(d.tr(d.storage.message), desktopkit.ToastOptions{ID: "storage-usage"})
 	}
 }
 
@@ -77,11 +83,13 @@ func (d *viewState) openStorageDirectory() {
 			d.storage.opening = false
 			if err != nil {
 				d.storage.openMessage = "无法打开数据目录。请重试。"
+				d.toastError(d.tr(d.storage.openMessage), desktopkit.ToastOptions{ID: "storage-open"})
 			}
 		}
 	}) {
 		d.storage.opening = false
 		d.storage.openMessage = "无法打开数据目录。请重试。"
+		d.toastError(d.tr(d.storage.openMessage), desktopkit.ToastOptions{ID: "storage-open"})
 	}
 }
 
@@ -109,14 +117,6 @@ func (d *viewState) storageCacheGroup(c *ui.Context, k desktopkit.Kit, cfg *conf
 		},
 		Footer: d.tr("仅统计应用管理的接收文件缓存账本；不包含 SQLite 数据库、日志、自定义接收目录或其他用户文件。"),
 	}, func() {
-		if s.message != "" {
-			msg := d.tr(s.message)
-			if s.loaded {
-				msg += " " + d.tr("下方显示上次成功读取的用量。")
-			}
-			settingsStrip(c.Key("read-error"), k, desktopkit.ToneWarning, msg)
-		}
-
 		// Visual quota meter + 4-column metric strip.
 		ui.Column(c.Key("meter-block")).Padding(14, 16).Gap(10).MinWidth(0).Children(func() {
 			if s.loaded {
@@ -172,7 +172,7 @@ func (d *viewState) storageCacheGroup(c *ui.Context, k desktopkit.Kit, cfg *conf
 		})
 
 		if s.loaded && s.customDestination {
-			settingsStrip(c.Key("custom"), k, desktopkit.ToneInfo, d.tr("当前使用自定义接收目录。该目录由用户管理，不计入上方默认缓存用量。"))
+			settingsNoteRow(c.Key("custom"), k, d.tr("当前使用自定义接收目录。该目录由用户管理，不计入上方默认缓存用量。"))
 		}
 
 		// Quota selector inside the same cache card.
@@ -236,9 +236,6 @@ func (d *viewState) storageLocalDataGroup(c *ui.Context, k desktopkit.Kit) {
 				d.openStorageDirectory()
 			}
 		})
-		if s.openMessage != "" {
-			settingsStrip(c.Key("open-error"), k, desktopkit.ToneWarning, d.tr(s.openMessage))
-		}
 		if l.openMigration != nil {
 			k.SettingsRow(c.Key("migration"), desktopkit.SettingsRowProps{
 				Label:       d.tr("从 v1 迁移"),

@@ -37,6 +37,7 @@ type desktopSession struct {
 	runtime           *desktopRuntime
 	starting, closing bool
 	message           string
+	toasts            desktopkit.ToastStore
 	pendingAction     string
 	workers           sync.WaitGroup
 }
@@ -61,29 +62,27 @@ func (s *desktopSession) view(c *ui.Context) {
 		return
 	}
 	if s.runtime != nil {
-		if s.message == "" {
-			s.runtime.screen.View(c)
-		} else {
-			k := desktopkit.For(c.Theme().Dark)
-			ui.Column(c).Fill().Children(func() {
-				k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: i18n.Translate(s.settings.Current().Desktop.Language, s.message)})
-				ui.Column(c).Grow(1).MinHeight(0).Children(func() { s.runtime.screen.View(c) })
-			})
-		}
+		s.runtime.screen.View(c)
 		return
 	}
+	lang := s.settings.Current().Desktop.Language
 	k := desktopkit.For(c.Theme().Dark)
 	k.UiRoot(c, func() {
 		ui.Column(c).Fill().Padding(40).Gap(12).Center().Children(func() {
 			if s.message == "" {
 				ui.Spinner(c)
-				k.Text(c, i18n.Translate(s.settings.Current().Desktop.Language, "正在准备应用…"), desktopkit.TextProps{})
+				k.Text(c, i18n.Translate(lang, "正在准备应用…"), desktopkit.TextProps{})
 			} else {
-				k.InlineNotice(c, desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: i18n.Translate(s.settings.Current().Desktop.Language, s.message)})
-				if k.Button(c, i18n.Translate(s.settings.Current().Desktop.Language, "重试"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: s.starting}).Clicked() {
+				k.Text(c, i18n.Translate(lang, s.message), desktopkit.TextProps{Tone: desktopkit.ToneSecondary})
+				if k.Button(c, i18n.Translate(lang, "重试"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: s.starting}).Clicked() {
 					s.start()
 				}
 			}
+		})
+		k.Toaster(c, &s.toasts, desktopkit.ToasterProps{
+			Position:   desktopkit.ToastTopCenter,
+			Label:      i18n.Translate(lang, "通知"),
+			CloseLabel: i18n.Translate(lang, "关闭提示"),
 		})
 	})
 }
@@ -92,6 +91,7 @@ func (s *desktopSession) start() {
 		return
 	}
 	s.starting, s.message = true, ""
+	s.toasts.Dismiss("startup-error")
 	s.workers.Add(1)
 	go func() {
 		defer s.workers.Done()
@@ -111,6 +111,7 @@ func (s *desktopSession) start() {
 				s.startFailed()
 				return
 			}
+			wasSetup := s.setup != nil
 			s.flow = flow
 			s.setup = nil
 			ctx, cancel := context.WithCancel(s.ctx)
@@ -125,6 +126,7 @@ func (s *desktopSession) start() {
 			s.navigate(s.pendingAction)
 			screen.SetMigrationOpener(s.migrate)
 			screen.SetRestarter(s.restart)
+			screen.SetDismissedAnnouncements(flow.State().DismissedAnnouncements, s.dismissRemoteAnnouncement)
 			screen.SetQuickPanelOpener(func(string) {
 				nativeAsync(func(ctx context.Context) error {
 					return desktopprocess.Call(ctx, s.dir, desktopprocess.Tray, "open-quick-panel", nil, nil)
@@ -184,8 +186,10 @@ func (s *desktopSession) start() {
 				})
 			})
 			go s.followHost(ctx)
-			s.g.win.SetMinimumSize(600, 480)
-			resizeContentCentered(s.g.win, desktopWindowWidth, desktopWindowHeight)
+			if wasSetup {
+				s.g.win.SetMinimumSize(600, 480)
+				resizeContentCentered(s.g.win, desktopWindowWidth, desktopWindowHeight)
+			}
 			s.g.win.Invalidate()
 		})
 	}()
@@ -224,6 +228,12 @@ func (s *desktopSession) startFailed() {
 	s.message = "无法启动应用。请检查数据目录和后台服务，然后重试。"
 	if s.setup != nil {
 		s.setup.EnterFailed(s.message)
+	} else {
+		lang := s.settings.Current().Desktop.Language
+		s.toasts.Error(i18n.Translate(lang, s.message), desktopkit.ToastOptions{
+			ID:       "startup-error",
+			Duration: desktopkit.ToastPersistent,
+		})
 	}
 	s.g.win.Invalidate()
 }
@@ -250,6 +260,18 @@ func (s *desktopSession) restart(restartService bool, done func(error)) {
 	}()
 }
 
+func (s *desktopSession) dismissRemoteAnnouncement(id string) {
+	s.workers.Add(1)
+	go func() {
+		defer s.workers.Done()
+		flow, err := setupflow.Open(s.dir)
+		if err != nil {
+			return
+		}
+		_ = flow.DismissAnnouncement(id)
+	}()
+}
+
 func (s *desktopSession) migrate() {
 	if s.starting || s.runtime == nil {
 		return
@@ -266,13 +288,15 @@ func (s *desktopSession) migrate() {
 				return
 			}
 			if err != nil {
-				s.message = "无法停止当前后台服务。请退出独立服务后重试迁移。"
+				msg := "无法停止当前后台服务。请退出独立服务后重试迁移。"
+				s.runtime.screen.ShowErrorToast(i18n.Translate(s.settings.Current().Desktop.Language, msg))
 				s.g.win.Invalidate()
 				return
 			}
 			flow, flowErr := setupflow.Open(s.dir)
 			if flowErr != nil {
-				s.message = "无法读取引导状态。请重试。"
+				msg := "无法读取引导状态。请重试。"
+				s.runtime.screen.ShowErrorToast(i18n.Translate(s.settings.Current().Desktop.Language, msg))
 				s.g.win.Invalidate()
 				return
 			}

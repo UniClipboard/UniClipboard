@@ -1,0 +1,13 @@
+<resources>
+  <string name="unic_background_sync">Sincronização em segundo plano do UniClipboard</string>
+  <string name="unic_background_sync_channel_desc">Mantém a sincronização da área de transferência em segundo plano</string>
+  <string name="unic_background_sync_running">Sincronização em segundo plano ativa</string>
+  <string name="unic_background_sync_stopping">Parando…</string>
+  <string name="unic_background_sync_action_pause">Pausar</string>
+  <string name="unic_background_sync_action_stop">Parar</string>
+  <string name="unic_background_sync_restart_channel">Alertas do serviço em segundo plano</string>
+  <string name="unic_background_sync_restart_channel_desc">Alertas quando o Android interrompe o serviço em segundo plano</string>
+  <string name="unic_background_sync_restart_title">Sincronização em segundo plano parada</string>
+  <string name="unic_background_sync_restart_content">Toque para retomar a sincronização</string>
+  <string name="unic_background_sync_timeout_content">O Android parou o serviço em segundo plano. Toque para retomar.</string>
+</resources>

@@ -51,5 +51,21 @@
   "log": {
     "noFilesToExport": "No log files to export",
     "storagePermissionDenied": "Storage permission not granted"
+  },
+  "engine": {
+    "invalid_argument": "Check the pairing code or ticket.",
+    "expired": "The pairing code or ticket expired.",
+    "not_found": "The device could not be found.",
+    "timeout": "The connection timed out.",
+    "rate_limited": "Pairing requests are temporarily limited.",
+    "identity_mismatch": "The device identity did not match.",
+    "permission_denied": "Permission was denied.",
+    "unavailable": "The device or network is unavailable.",
+    "protocol_mismatch": "The devices use incompatible protocol versions.",
+    "conflict": "The data changed. Review it and try again.",
+    "cancelled": "The operation was cancelled.",
+    "internal": "The operation could not be completed.",
+    "invalid": "Check the pairing code or ticket.",
+    "resource_expired": "The pairing code or ticket expired."
   }
 }

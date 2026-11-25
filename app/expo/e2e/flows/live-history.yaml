@@ -1,0 +1,51 @@
+appId: app.uniclipboard.shell
+name: Live Engine history intake and search
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - launchApp:
+          appId: app.uniclipboard.e2e.clipboard
+      - assertVisible: Clipboard fixture ready
+      - launchApp:
+          appId: app.uniclipboard.shell
+      - assertNotVisible: ".*Unic Mobile E2E.*"
+      - tapOn:
+          id: home-add-menu
+      - tapOn: "Upload clipboard|上传剪贴板"
+      - tapOn:
+          text: "Allow Paste|允许粘贴"
+          optional: true
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: incoming-share-save
+          timeout: 25000
+      - tapOn:
+          id: incoming-share-save
+- extendedWaitUntil:
+    visible: ".*Unic Mobile E2E.*"
+    timeout: 25000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn: "Search.*|搜索.*"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: history-search-open
+- tapOn:
+    id: history-search-input
+- inputText: "Unic Mobile E2E"
+- extendedWaitUntil:
+    visible:
+      id: "history-card-.*"
+    timeout: 20000
+- takeScreenshot: live-history-search

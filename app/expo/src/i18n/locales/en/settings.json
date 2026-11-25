@@ -41,7 +41,15 @@
     "confirmationConfirm": "Use direct sync",
     "updateFailed": "Failed to change sync method"
   },
+  "mobileDiagnostics": {
+    "telemetry": "Share telemetry",
+    "export": "Share redacted logs from this session",
+    "unavailable": "Upload is unavailable in this build.",
+    "empty": "No diagnostic logs yet.",
+    "failed": "Could not complete the diagnostic action."
+  },
   "category": {
+    "network": "Advanced network",
     "sync": "Sync",
     "about": "About",
     "other": "Other",
@@ -60,12 +68,12 @@
       "autoApply": {
         "title": "Auto-write to clipboard",
         "descLan": "When new content arrives from the server, write it to this device clipboard automatically",
-        "descP2p": "When new content arrives from your space, write it to this device clipboard automatically"
+        "descP2p": "When new content arrives from paired devices, write it to this device clipboard automatically"
       },
       "autoPush": {
         "title": "Auto-push clipboard",
         "descLan": "When you copy or use a history item, send it to the current server automatically",
-        "descP2p": "When you copy or use a history item, send it to the other devices in your space automatically"
+        "descP2p": "When you copy content on this device, sync it to your paired devices automatically"
       },
       "footer": "These options control sync direction; Background settings control where it can run",
       "updateFailed": "Update failed"
@@ -87,13 +95,13 @@
   },
   "ios": {
     "sync": {
-      "footer": "When Auto-write is on, new content from your space is written to this device clipboard immediately; when off, it is only highlighted on Home. Auto-push reads every copy, so set Clipboard access to Allow first or iOS will ask each time.",
+      "footer": "When Auto-write is on, new content from paired devices is written to this device clipboard immediately; when off, it is only highlighted on Home. Auto-push reads every copy, so set Clipboard access to Allow first or iOS will ask each time.",
       "autoApply": "Auto-write to clipboard",
       "autoPush": "Auto-push clipboard",
       "sse": "Live push (SSE)"
     },
     "extensions": {
-      "footer": "The keyboard and share extensions let you use UniClip directly in other apps; set clipboard access to Allow to avoid repeated prompts during sync.",
+      "footer": "The share extension lets you send items to UniClipboard directly from the iOS share sheet in other apps.",
       "keyboard": "Keyboard",
       "share": "Share",
       "clipboardAccess": "Clipboard access"
@@ -114,13 +122,59 @@
   "analytics": {
     "sectionTitle": "Privacy",
     "consentTitle": "Share anonymous usage and diagnostics",
-    "consentDescription": "Helps improve UniClip without collecting clipboard contents or names",
-    "footer": "App version, system, region, session, device count, anonymous space grouping, and diagnostic records without contents or names may be sent. Turning this off stops collection and clears pending data.",
+    "consentDescription": "Helps improve UniClipboard without collecting clipboard contents or names",
+    "footer": "App version, system, region, session, paired device count, and diagnostic records without contents or names may be sent. Turning this off stops collection and clears pending data.",
     "reset": "Reset",
     "resetTitle": "Reset statistics identity",
     "resetMessage": "This removes pending statistics and diagnostics and creates a new anonymous identity.",
     "resetConfirm": "Reset identity",
     "resetDone": "Statistics identity reset",
     "error": "Could not update statistics settings"
+  },
+  "live": {
+    "deviceName": "Device name",
+    "syncEnabled": "Enable sync",
+    "syncAutomatic": "Sync new clipboard content automatically",
+    "syncRestore": "Sync restored history",
+    "syncFiles": "Sync files",
+    "syncIntroductions": "Recommend devices",
+    "capture": "Detect clipboard changes",
+    "captureHint": "On iOS, confirm before reading a detected clipboard change.",
+    "cleanup": "Clean up history automatically",
+    "retention": "Retention in days",
+    "excludedTags": "Tags excluded from cleanup",
+    "customTags": "Custom tags",
+    "excludedHint": "Separate custom tags with commas. Tagged items are kept during automatic cleanup.",
+    "unlimited": "Unlimited",
+    "daysValue": "{{count}} days",
+    "itemsValue": "{{count}} items",
+    "starred": "Favorites",
+    "pinned": "Pinned",
+    "max_file_bytes": "Single-file limit",
+    "max_total_bytes": "Total content limit",
+    "cacheLimit": "File cache quota",
+    "clearPreviews": "Clear local previews",
+    "sessionLogsSummary": "Redacted diagnostic logs from this session, without clipboard contents",
+    "sessionLogsFooter": "Exports redacted diagnostic records from the current session only. Clipboard contents and credentials are never included.",
+    "rendezvous": "Rendezvous URL",
+    "default": "Default",
+    "resetRendezvous": "Use default rendezvous",
+    "runtime": "Network activity",
+    "tailcat": "Tailcat connections",
+    "connected": "{{connected}} of {{total}} connected",
+    "observe": "Read clipboard",
+    "apply": "Write clipboard",
+    "integer": "Enter a nonnegative whole number.",
+    "loading": "Loading Engine settings…",
+    "status": {
+      "available": "Available",
+      "permission_required": "Permission required",
+      "unavailable": "Unavailable",
+      "unsupported": "Unsupported",
+      "active": "Active",
+      "suspended": "Suspended",
+      "sync_disabled": "Sync is off",
+      "not_running": "Engine is stopped"
+    }
   }
 }

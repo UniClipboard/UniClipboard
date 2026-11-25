@@ -55,7 +55,9 @@ Both the marketplace and the CLI use the same installer:
 4. All downloads and builds happen in a temporary directory and are swapped in atomically only after all checks pass; on failure, the existing version and configuration are preserved.
 5. **Newly installed plugins are disabled by default**. Enabling, disabling, uninstalling, and rolling back take effect after restarting the `unicd` service.
 
-For Go plugins that provide only Actions or external channel backends, the desktop app offers a **Start** action to run them without restarting the service; if required settings are missing, saving the settings for the first time starts them automatically.
+Desktop offers a **Start** action for eligible Go plugins. This includes Action-only plugins, history enrichers, plugins combining Actions and enrichment, and external-channel backends. If required settings are missing, the first valid settings save starts the plugin.
+
+The Marketplace can update an active plugin in the current service process when both versions support the same live-start capability class. If the update fails, the service restores the previous version. The plugin details show whether a restart is required.
 
 Installing, uninstalling, or rolling back never deletes your clipboard history or plugin settings.
 

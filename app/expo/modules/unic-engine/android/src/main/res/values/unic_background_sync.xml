@@ -1,0 +1,13 @@
+<resources>
+  <string name="unic_background_sync">UniClipboard background sync</string>
+  <string name="unic_background_sync_channel_desc">Keeps clipboard sync running in the background</string>
+  <string name="unic_background_sync_running">Background sync active</string>
+  <string name="unic_background_sync_stopping">Stopping…</string>
+  <string name="unic_background_sync_action_pause">Pause</string>
+  <string name="unic_background_sync_action_stop">Stop</string>
+  <string name="unic_background_sync_restart_channel">Background service alerts</string>
+  <string name="unic_background_sync_restart_channel_desc">Alerts when Android stops the background sync service</string>
+  <string name="unic_background_sync_restart_title">Background sync paused</string>
+  <string name="unic_background_sync_restart_content">Tap to resume background sync</string>
+  <string name="unic_background_sync_timeout_content">Android stopped background sync. Tap to resume.</string>
+</resources>

@@ -52,6 +52,9 @@ type SidebarNavSection struct {
 type SidebarNavProps struct {
 	Label    string
 	Sections []SidebarNavSection
+	// Announcement renders an optional card pinned above the fixed footer,
+	// outside the scroll viewport and aligned to the 12-DIP sidebar grid.
+	Announcement func() AnnouncementResult
 	// Footer 固定在底部（如设置），与其他条目一样选中。
 	Footer  []SidebarNavItem
 	Compact bool
@@ -238,6 +241,14 @@ func (k Kit) SidebarNav(c *ui.Context, st *NavState, p SidebarNavProps) ui.Eleme
 				k.navSection(c, st, s, lk)
 			}
 		})
+		if p.Announcement != nil {
+			slot := ui.Column(c.Key("announcement-slot")).Shrink(0).Padding(0, 12, 0, 0)
+			slot.Children(func() {
+				if res := p.Announcement(); res.Present {
+					res.Margin(8, 0, 4, 0)
+				}
+			})
+		}
 		if len(p.Footer) > 0 {
 			ui.Box(c).Height(1).Shrink(0).Background(k.Color("separator-border")).Margin(6, 12, 6, 0)
 			foot := ui.Column(c).Gap(2).Shrink(0).Padding(0, 12, 0, 0)

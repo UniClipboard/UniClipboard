@@ -187,7 +187,7 @@ func runDesktop(args []string) error {
 		trayArgs = append(trayArgs, "--background")
 	}
 	for {
-		if _, err = launchDesktopRole(ctx, dir, socket, desktopprocess.Tray, trayArgs...); err != nil {
+		if _, err = launchDesktopRoleWithEnv(ctx, dir, socket, desktopprocess.Tray, []string{"UNIC_DESKTOP_LAUNCHER_STARTUP=1"}, trayArgs...); err != nil {
 			return err
 		}
 		err = desktopprocess.Call(ctx, dir, desktopprocess.Tray, startupCommand, nil, nil)

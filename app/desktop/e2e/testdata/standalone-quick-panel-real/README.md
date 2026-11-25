@@ -1,6 +1,6 @@
-# Standalone Quick Panel Real-VM E2E Suite (0032)
+# Standalone Quick Panel Real-VM E2E Suite (0033)
 
-Checked-in end-to-end verification drivers for Decision `0032` (Standalone Quick Panel) and Wayland automatic paste across all four real desktop environments. Each driver runs the untouched production `unic`, `unicd`, and `unic-desktop` binaries inside an isolated VM with host clipboard sharing disabled, private `UNIC_HOME`/`UNIC_SOCK`/`XDG_*` directories, real OS clipboard servers, real external target editors, and real physical/compositor input, writing a `manifest.json` receipt and `SHA256SUMS`.
+Checked-in end-to-end verification drivers for Decision `0033` (Standalone Quick Panel) and Wayland automatic paste across all four real desktop environments. Each driver runs the untouched production `unic`, `unicd`, and `unic-desktop` binaries inside an isolated VM with host clipboard sharing disabled, private `UNIC_HOME`/`UNIC_SOCK`/`XDG_*` directories, real OS clipboard servers, real external target editors, and real physical/compositor input, writing a `manifest.json` receipt and `SHA256SUMS`.
 
 ## Suites
 

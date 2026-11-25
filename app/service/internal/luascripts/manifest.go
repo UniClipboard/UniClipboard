@@ -80,8 +80,8 @@ func (m Manifest) validKind(installed bool) bool {
 	switch m.Kind {
 	case "lua":
 		return localPath(m.Entry) && m.Module == "" && m.Package == "" && len(m.Artifacts) == 0 &&
-			m.TransportKind == "" && !m.ExternalChannels && !m.RemoteRevocation &&
-			!slices.Contains(m.Capabilities, plugin.CapSyncBackend)
+			m.TransportKind == "" && !m.ExternalChannels && !m.RemoteRevocation && m.Enricher == nil &&
+			!slices.Contains(m.Capabilities, plugin.CapSyncBackend) && !slices.Contains(m.Capabilities, plugin.CapEnricher)
 	case "go":
 		return installed && m.Entry == "" && m.Module != "" &&
 			(m.Package == "." || strings.HasPrefix(m.Package, "./") && localPath(strings.TrimPrefix(m.Package, "./")))
@@ -92,5 +92,5 @@ func (m Manifest) validKind(installed bool) bool {
 
 func (m Manifest) PluginSpec() plugin.Spec {
 	return plugin.Spec{ID: m.ID, Version: m.Version, APIVersion: m.APIVersion, Capabilities: m.Capabilities,
-		SettingsSHA256: m.SettingsSHA256, Actions: m.Actions, TransportKind: m.TransportKind, ExternalChannels: m.ExternalChannels, RemoteRevocation: m.RemoteRevocation}
+		SettingsSHA256: m.SettingsSHA256, Actions: m.Actions, Enricher: m.Enricher, TransportKind: m.TransportKind, ExternalChannels: m.ExternalChannels, RemoteRevocation: m.RemoteRevocation}
 }

@@ -18,7 +18,7 @@ var iconGlyph = map[IconName]string{
 	IconPackage: "box", IconPhone: "phone", IconPin: "pin", IconQuickPanel: "flash", IconRemove: "minus",
 	IconRetry: "retry", IconSearch: "search", IconSend: "arrowRight", IconSettings: "gear",
 	IconShield: "shield", IconSidebar: "sidebar", IconSun: "sun", IconTag: "tag",
-	IconUnlock: "lockOpen", IconUpdate: "arrowUpCircle",
+	IconUnlock: "lockOpen", IconUpdate: "arrowUpCircle", IconWarning: "warning",
 }
 
 var iconOnce sync.Once

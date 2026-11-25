@@ -1,6 +1,6 @@
 import { type ClipboardContentType } from "@/types/api";
 import { type ClipboardItem, HistorySyncStatus } from "@/types/clipboard";
-import type { EngineDevice, HistoryItem, ImagePreviewResult, TextPreview } from "./types";
+import type { EngineDevice, HistoryItem, ImagePreviewResult, PartDescriptor, TextPreview } from "./types";
 
 function mapKindToContentType(item: HistoryItem): ClipboardContentType {
   switch (item.kind) {
@@ -27,25 +27,22 @@ export function mapEngineHistoryItem(
   preview?: TextPreview,
   imagePreview?: ImagePreviewResult,
   fallbackSearchText?: string,
+  files?: PartDescriptor[],
 ): ClipboardItem {
   const type = mapKindToContentType(item);
   const fileParts = item.parts.filter((p) => p.kind === "file");
-  const primaryName =
-    imagePreview?.name ||
-    (type === "Image"
-      ? "Image"
-      : fileParts.length > 1
-        ? `${fileParts.length} files`
-        : fileParts.length === 1
-          ? "File"
-          : undefined);
+  const isFolder = item.kind === "directory" || item.kind === "directory_reference";
+  const primaryName = imagePreview?.part?.name || files?.[0]?.name;
+  const title = primaryName && fileParts.length > 1
+    ? `${primaryName} (+${fileParts.length - 1})`
+    : primaryName;
 
   const displayText =
-    preview?.text && preview.text.length > 0
-      ? preview.text
-      : fallbackSearchText && fallbackSearchText.length > 0
-        ? fallbackSearchText
-        : primaryName ?? (type === "Text" ? "" : `[${type}]`);
+    fallbackSearchText && fallbackSearchText.length > 0
+      ? fallbackSearchText
+      : preview?.text && preview.text.length > 0
+        ? preview.text
+        : title ?? (type === "Text" ? "" : `[${type}]`);
 
   const tags = item.tags ?? [];
   const originDeviceName =
@@ -62,7 +59,9 @@ export function mapEngineHistoryItem(
     text: displayText,
     profileHash: item.id,
     hasData: type !== "Text" || Boolean(preview?.html),
-    dataName: primaryName,
+    dataName: title,
+    fileName: primaryName,
+    isFolder,
     size: item.total_bytes || undefined,
     timestamp: item.created_at_ms,
     lastModified: item.updated_at_ms,
@@ -72,16 +71,20 @@ export function mapEngineHistoryItem(
     incarnationId: item.revision,
     starred: tags.includes("starred"),
     pinned: tags.includes("pinned"),
+    tags,
     isDeleted: false,
     isLocalFileReady: item.parts.some((p) => p.available),
     syncStatus:
-      item.sync_state === "synced"
+      item.sync_state === "sent" || item.sync_state === "synced"
         ? HistorySyncStatus.Synced
         : item.sync_state === "pending"
           ? HistorySyncStatus.NeedSync
           : HistorySyncStatus.LocalOnly,
     fileUri: imagePreview?.uri,
-    from: item.origin.kind === "remote_device" ? "remote" : undefined,
+    from:
+      item.origin.kind === "remote_device" || item.origin.kind === "external"
+        ? "server"
+        : undefined,
   };
 }
 

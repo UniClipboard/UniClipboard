@@ -11,7 +11,7 @@ import { createTheme, type Theme, type ThemeMode } from '@/theme';
 
 
 
-const THEME_STORAGE_KEY = '@uniclipboard-shell:theme_mode';
+const THEME_STORAGE_KEY = 'unic.theme-mode';
 
 interface ThemeContextValue {
   theme: Theme;
@@ -56,7 +56,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
 
   const loadPersistedSettings = async () => {
     try {
-      const savedMode = await AsyncStorage.getItem(THEME_STORAGE_KEY);
+      const savedMode = await AsyncStorage.getItem(THEME_STORAGE_KEY) ??
+        await AsyncStorage.getItem('@uniclipboard-shell:theme_mode');
       if (savedMode && ['light', 'dark', 'auto'].includes(savedMode)) {
         setThemeModeState(savedMode as ThemeMode);
       }

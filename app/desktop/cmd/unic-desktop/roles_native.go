@@ -64,6 +64,8 @@ func runNativeRole(role desktopprocess.Role, settings *config.Manager) error {
 	}
 }
 func runTray(settings *config.Manager) error {
+	launcherStartup := os.Getenv("UNIC_DESKTOP_LAUNCHER_STARTUP") == "1"
+	_ = os.Unsetenv("UNIC_DESKTOP_LAUNCHER_STARTUP")
 	ctx, cancel := roleContext()
 	defer cancel()
 	r, err := newTrayRuntime(ctx, cancel, settings)
@@ -306,18 +308,21 @@ func runTray(settings *config.Manager) error {
 		if !useDaemonClipboard {
 			go notifyPending(ctx, r.socket, func() string { return settings.Current().Desktop.Language })
 		}
-		// Relaunch preserves the original tray intent. A background tray must
-		// not create GUI before the no-role launcher can deliver its request.
-		go func() {
-			command := "startup"
-			if desktopLaunchBackground {
-				command = "background"
-			}
-			_, err := r.handler(ctx, command, nil)
-			if err != nil {
-				logHostFailure()
-			}
-		}()
+		// Relaunch (e.g. from mygo.Updater) preserves the original tray intent.
+		// When spawned by the no-role launcher, that launcher delivers the
+		// startup/background command directly, so skip duplicating it here.
+		if !launcherStartup {
+			go func() {
+				command := "startup"
+				if desktopLaunchBackground {
+					command = "background"
+				}
+				_, err := r.handler(ctx, command, nil)
+				if err != nil {
+					logHostFailure()
+				}
+			}()
+		}
 
 		go r.supervise()
 		go func() { <-ctx.Done(); mygo.App.Quit() }()

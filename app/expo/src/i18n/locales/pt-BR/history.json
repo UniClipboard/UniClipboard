@@ -110,5 +110,27 @@
     "list": "Lista",
     "compact": "Lista compacta",
     "grid": "Grade"
+  },
+  "media": {
+    "clipboardChanged": "Ler novo conteúdo da área de transferência",
+    "invalidLink": "É necessário um link HTTP ou HTTPS válido.",
+    "textTooLong": "O texto é longo demais para esta ação.",
+    "actionFailed": "Não foi possível concluir a ação",
+    "saved": "Salvo",
+    "folderContents": "Conteúdo da pasta",
+    "folderUnavailable": "Conteúdo da pasta indisponível.",
+    "folderLoading": "Carregando conteúdo da pasta…",
+    "folderEmpty": "A pasta está vazia.",
+    "folderTruncated": "Mostrando os primeiros 200 itens."
+  },
+  "tags": {
+    "pin": "Fixar",
+    "unpin": "Desafixar",
+    "edit": "Editar etiquetas",
+    "name": "Nome da etiqueta",
+    "add": "Adicionar etiqueta",
+    "remove": "Remover “{{tag}}”",
+    "filter": "Etiquetas",
+    "all": "Todas as etiquetas"
   }
 }

@@ -159,10 +159,10 @@ export function MainScreen() {
           />
         )}
       </Tab.Screen>
-      <Tab.Screen name="Devices" options={{ title: t('nav.devices') }}>
+      <Tab.Screen name="Devices" options={{ title: t('nav.devices'), headerShown: true }}>
         {({ route }) => <DevicesDestination route={route} navigationBarShown={floatingNavShown} />}
       </Tab.Screen>
-      <Tab.Screen name="Preferences" options={{ title: t('nav.settings') }}>
+      <Tab.Screen name="Preferences" options={{ title: t('nav.settings'), headerShown: true }}>
         {() => <PreferencesDestination navigationBarShown={floatingNavShown} />}
       </Tab.Screen>
     </Tab.Navigator>

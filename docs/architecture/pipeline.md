@@ -32,6 +32,8 @@ paths:
   - engine/clipboard.go
   - engine/action.go
   - engine/history.go
+  - engine/enrich.go
+  - engine/enrich_types.go
   - engine/history_search.go
   - engine/history_search_types.go
   - engine/history_cleanup.go
@@ -44,12 +46,14 @@ paths:
   - engine/observers.go
   - plugin/plugin.go
   - internal/store/history.go
+  - internal/store/annotations.go
   - internal/store/search.go
   - internal/store/store.go
+  - internal/sqldb
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: 3380264590399f38f68a9ac9790902d7ad3babf7
+verified: 5581c52d46bc1ba9b97f0428e7ebb5b36d569035
 ---
 # Clipboard pipeline and local history
 
@@ -86,9 +90,10 @@ defines the size and format bounds.
 - **History**: SQLite records and private blobs belong to Engine. Host-managed files remain external references. Stable IDs, pagination, edits, leases, expiry and apply follow the [history contract](../contracts/history-contract.md). Cleanup defaults to enabled, 180 days, unlimited eligible records and no excluded tags. The startup history byte budget is 4 GiB. Live history settings affect existing records. Tag exclusions protect records and managed files. Explicit item expiry is independent. The service exposes `/v1/history*` and `unic history`.
 - **Notifications**: Observers receive content-free events and cannot mutate content. Each observer has a 64-entry queue that drops the newest event when full and a 200 ms callback budget. Delivery is lossy. Successful capacity eviction emits `clipboard.deleted` once per deleted history ID.
 
-The service can activate an installed Go Action-only plugin or external-channel
-backend at runtime. Engine assembles the verified child process before
-registering its Actions or publishing the backend and its policy. An inactive,
+The service can activate eligible Go plugins at runtime. The eligible classes
+are Action, Enricher, Action plus Enricher, and external-channel backend.
+Engine assembles the verified child process before registering its capabilities
+or publishing the backend and its policy. An inactive,
 enabled instance can activate when the user saves its required settings.
 External Go plugin subprocesses receive a minimal allowlisted environment
 (`UNIC_PLUGIN_PROTOCOL`, `UNIC_PLUGIN_DIR`, OS temporary-directory and Windows
@@ -192,14 +197,18 @@ Service routes live in `app/service/internal/server/`; CLI handling lives in `ap
 
 ## Explicit history search
 
-Engine persists derived search documents and readiness state with each history record in the same transaction.
-Both normal pipeline commits and offline imports use this path. Missing derived state is repaired from persisted representations and basenames on open.
-Documents contain committed text or an HTML-text fallback and individual file basenames. Search does not open file bodies, walk directories, fetch URLs or perform OCR.
+Engine persists base search documents and readiness state with each history record in the same transaction.
+Both normal pipeline commits and offline imports use this path. Startup can repair missing base documents from persisted representations and basenames.
+Base documents contain committed text or an HTML-text fallback and individual file basenames. Search reads the stored index.
 A case-sensitive FTS5 trigram index accelerates normalized substring matching; canonical `instr` checks decide membership. One- and two-rune terms use exact substring scans.
 Delete cascades remove search documents and their FTS postings. Query-time expiry prevents stale hits before physical cleanup.
-A separate bounded SQLite reader serves search/count/catalogue work without holding the existing writer connection.
+A separate bounded SQLite reader serves search/count/catalogue work without holding the existing writer connection. `internal/sqldb` selects the platform SQLite driver. Android x86-64 uses NDK-built SQLite with FTS5 and the same search connection policies.
 Index quota or extraction failure preserves history and reports an incomplete index for content-dependent queries. Ordinary metadata browsing remains available.
 The [search contract](../contracts/history-search-contract.md) defines the public methods and resource limits. The [execution receipt](../exec/desktop-search-implementation.md) separates process evidence from native UI acceptance.
+
+### Asynchronous history enrichment
+
+Eligible Go enrichers run through a bounded Engine queue after history commits. They can add local annotations, tags and derived search documents. The original content and base search readiness are independent of enrichment results. Hosts retrieve annotations and assets through the [local service](../contracts/local-service-contract.md#history-annotations-and-enrichment). See the [history contract](../contracts/history-contract.md#derived-history-annotations-and-assets) for ownership and bounds.
 
 ## Directory references and one-shot transfer
 

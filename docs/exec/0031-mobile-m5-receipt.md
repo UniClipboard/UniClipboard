@@ -64,13 +64,21 @@ and a stable connection. Each attempt writes a separate receipt. The
 [first delayed-start job](https://github.com/UniClipboard/UniClipboard/actions/runs/45534772791/job/138938562133)
 could not locate its virtual device. The job now creates the virtual
 device before compilation, verifies it is discoverable, and uses the
-same explicit virtual-device directory when it starts the emulator.
+same explicit virtual-device directory when it starts the emulator. The
+[next run](https://github.com/UniClipboard/UniClipboard/actions/runs/45537027573/job/138946015405)
+passed emulator startup and showed Setup. The app left the foreground
+after the Setup action. The test now captures Android's crash buffer and
+the app's process-exit records on failure.
 
 The first [hosted iOS run](https://github.com/UniClipboard/UniClipboard/actions/runs/45530292519/job/138923618609)
 passed setup on iPhone Duo and failed its clipboard history assertion. The
 same local live suite passed on an iPhone 17 Pro simulator with iOS 27.0.
-CI now creates that simulator explicitly. The suite checks the pasteboard
-fixture before starting the history flow. The
+CI now creates that simulator explicitly. The
+[first pinned-simulator run with a complete fixture setup](https://github.com/UniClipboard/UniClipboard/actions/runs/45534772791/job/138938562176)
+read the fixture back through simctl, then failed the same app history
+assertion. On iOS 27 the fixture now uses CoreDevice's device pasteboard
+commands. The test still asserts app intake and search. A failed iOS run
+captures pasteboard diagnostics from that isolated simulator. The
 [next iOS job](https://github.com/UniClipboard/UniClipboard/actions/runs/45534358566/job/138937188768)
 stopped during a lost release-asset connection. Both Maestro downloads now
 use bounded retries and retain the SHA-256 check.

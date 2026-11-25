@@ -152,8 +152,13 @@ jobs:
           device=$(xcrun simctl create 'UniClipboard CI' com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro com.apple.CoreSimulator.SimRuntime.iOS-27-0)
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
-          node e2e/run.mjs --suite live --platform ios --device "$device" \
-            --app "$RUNNER_TEMP/unic-ios/Build/Products/Release-iphonesimulator/UniClipboardUIShell.app"
+          if ! node e2e/run.mjs --suite live --platform ios --device "$device" \
+            --app "$RUNNER_TEMP/unic-ios/Build/Products/Release-iphonesimulator/UniClipboardUIShell.app"; then
+            xcrun simctl spawn "$device" log show --last 5m --style compact \
+              --predicate 'process == "pasteboardd" OR (process == "UniClipboardUIShell" AND eventMessage CONTAINS[c] "pasteboard")' \
+              > e2e/results/ios-pasteboard.log || true
+            exit 1
+          fi
       - name: Build Android emulator APK
         if: matrix.platform == 'android'
         working-directory: app/expo/android
@@ -192,13 +197,22 @@ jobs:
               --app android/app/build/outputs/apk/release/app-release.apk
           }
 
+          record_android_exit() {
+            timeout 15s adb -s emulator-5554 logcat -d -b crash > "e2e/results/android-crash-$1.log" || true
+            timeout 15s adb -s emulator-5554 shell dumpsys activity exit-info app.uniclipboard.shell \
+              > "e2e/results/android-exit-$1.log" || true
+          }
+
           wait_for_emulator
           adb -s emulator-5554 shell wm dismiss-keyguard
           if run_live; then exit 0; fi
+          record_android_exit first
           grep -rqE --include=maestro.log 'CommandFailed: Command failed \(host:transport:emulator-5554\): device offline' e2e/results
           echo 'Maestro lost its ADB connection. Retrying once after the emulator reconnects.'
           wait_for_emulator
-          run_live
+          if run_live; then exit 0; fi
+          record_android_exit retry
+          exit 1
       - uses: actions/upload-artifact@v4
         if: always()
         with:

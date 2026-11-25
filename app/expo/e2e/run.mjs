@@ -108,17 +108,19 @@ try {
   );
   const maestro = process.env.MAESTRO_BIN ?? "maestro";
   receipt.maestro = command(maestro, ["--version"], "maestro-version");
+  let iosRuntimeMajor;
   if (options.platform === "ios") {
     if (!artifact.endsWith(".app"))
       throw new Error("Expected a Simulator .app");
     const devices = JSON.parse(
       command("xcrun", ["simctl", "list", "devices", "--json"], "device-list"),
     );
-    const device = Object.values(devices.devices)
-      .flat()
-      .find((item) => item.udid === options.device);
-    if (!device || device.state !== "Booted")
+    const runtime = Object.keys(devices.devices).find((key) =>
+      devices.devices[key].some((item) => item.udid === options.device && item.state === "Booted"),
+    );
+    if (!runtime)
       throw new Error("Select an already booted iOS Simulator");
+    iosRuntimeMajor = Number(runtime.match(/\.iOS-(\d+)/)?.[1]);
     const actual = command(
       "/usr/libexec/PlistBuddy",
       ["-c", "Print :CFBundleIdentifier", join(artifact, "Info.plist")],
@@ -162,8 +164,17 @@ try {
     if (name === "live-history") {
       if (options.platform === "ios") {
         const fixture = "Unic Mobile E2E";
-        command("xcrun", ["simctl", "pbcopy", options.device], "seed-clipboard", fixture);
-        if (command("xcrun", ["simctl", "pbpaste", options.device], "verify-clipboard") !== fixture) {
+        let clipboardText;
+        if (iosRuntimeMajor >= 27) {
+          const pasteboard = ["devicectl", "device", "pasteboard"];
+          const target = ["--device", options.device, "--timeout", "45", "--quiet"];
+          command("xcrun", [...pasteboard, "copy", ...target], "seed-clipboard", fixture);
+          clipboardText = command("xcrun", [...pasteboard, "paste", ...target], "verify-clipboard");
+        } else {
+          command("xcrun", ["simctl", "pbcopy", options.device], "seed-clipboard", fixture);
+          clipboardText = command("xcrun", ["simctl", "pbpaste", options.device], "verify-clipboard");
+        }
+        if (clipboardText !== fixture) {
           throw new Error("iOS Simulator pasteboard does not contain the fixture");
         }
       } else {

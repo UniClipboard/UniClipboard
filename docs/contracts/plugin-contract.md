@@ -527,3 +527,19 @@ metadata-only source archives are rejected.
 Installation identity (`Spec.ID`) is separate from configured runtime identity (`PluginInstance.ID`). `unic plugin instance add IMPLEMENTATION INSTANCE` creates a disabled alias. The installed implementation must be a Go `sync_backend`; Lua and processor/observer aliases are rejected. An alias cannot shadow an installed implementation or a built-in ID. Configure through `unic plugin settings show|save INSTANCE`, enable through `unic plugin enable INSTANCE`, then restart. `plugins.order` contains runtime IDs and determines processing/start order, not serial network dispatch.
 
 Desktop Plugins exposes the same creation, Schema, enablement and standard sync-policy paths. Instances remain independently visible after disabling. `GET /v1/plugins` reports `implementation_id` separately from `id`. An eligible marketplace update replaces the implementation's active instances together. Standard policy and global sync updates apply to the running instance set. Program identity and settings isolation follow the [assembly contract](backend-migration-contract.md#implementation-and-instance-identity).
+
+## Asynchronous history enricher
+
+A Go plugin (builtin or external process) may declare capability `enricher` (`plugin.CapEnricher`) to derive searchable text, additional tags, and versioned native preview annotations **after** a history item commits (`persist=true`). Lua plugins do not support `enricher` in API version 1.
+
+Declaring `enricher` requires a non-nil `Spec.Enricher` (and `[enricher]` in `spec.toml`), and vice versa:
+
+- `Accepts`: required, non-empty unique subset of `{text, image, files}`.
+- `RequiredTags`: optional, unique valid tag IDs (at most 16); Engine dispatches only when the committed item holds every required tag (for example `["builtin:link"]`), preventing unnecessary RPC calls or reads.
+- `Triggers`: required, non-empty unique subset of `{on_commit, on_demand, manual}`.
+- `Annotations`: optional, unique versioned annotation type identifiers (at most 16, matching `[a-z][a-z0-9_]*\.v[1-9][0-9]*`, e.g. `link_preview.v1`, `text_overlay.v1`). Every annotation returned by the plugin must belong to its declared set.
+- `TimeoutMS`: `0..120000` milliseconds; zero uses the 15-second default.
+
+`Enrich(ctx, EnrichContext)` receives `Trigger()`, read-only `Item()`, and `ActionSource` (`Parts()`, `OpenPart`) with the same no-host-path, four-concurrent-stream and invocation-scoped lease guarantees as Go Actions. It supplies one bounded `EnrichmentResult` via `SetResult` (`Status` is `"ok"` or `"skipped"`). Enrichers never mutate original content, expiry, or sync policy, never block commit or sync dispatch, and never run when disabled or absent.
+
+External Go plugins declaring only `enricher` (or `action` + `enricher`) support runtime `Start` and live marketplace updates under the same class rules as Action-only plugins; live replacement cancels in-flight enrichments on the old process before switching.

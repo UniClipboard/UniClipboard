@@ -19,6 +19,27 @@ const (
 	// CapSyncBackend carries clipboard content between devices. Declaring it
 	// needs a TransportKind; the engine loads such plugins from P5 on.
 	CapSyncBackend = "sync_backend"
+	// CapEnricher asynchronously derives searchable text, tags and versioned
+	// preview annotations after a history item commits.
+	CapEnricher = "enricher"
+)
+
+// Enricher trigger sources.
+const (
+	EnrichTriggerOnCommit = "on_commit"
+	EnrichTriggerOnDemand = "on_demand"
+	EnrichTriggerManual   = "manual"
+)
+
+// Enricher completion statuses.
+const (
+	EnrichStatusOK      = "ok"
+	EnrichStatusSkipped = "skipped"
+)
+
+// Standard versioned preview annotation types.
+const (
+	AnnotationLinkPreviewV1 = "link_preview.v1"
 )
 
 // Transport kinds of a sync backend.
@@ -55,6 +76,8 @@ type Spec struct {
 	// TransportKind is for sync backends only; other plugins leave it empty.
 	TransportKind string
 	Actions       []ActionSpec // only with CapAction
+	// Enricher describes post-commit async enrichment; only with CapEnricher.
+	Enricher *EnricherSpec
 	// ExternalChannels (sync backends only) says the backend's peers are
 	// external channels (decision 0009), not unic devices: no key, no
 	// fingerprint, authorized by being enabled. Its targets are channel IDs
@@ -137,6 +160,70 @@ type Observer interface {
 type Actor interface {
 	Plugin
 	Run(context.Context, ActionContext) error
+}
+
+// EnricherSpec declares what committed items an enricher processes and what
+// annotation types it may emit.
+type EnricherSpec struct {
+	Accepts      []string `json:"accepts" toml:"accepts"`
+	RequiredTags []string `json:"required_tags,omitempty" toml:"required_tags"`
+	Triggers     []string `json:"triggers" toml:"triggers"`
+	Annotations  []string `json:"annotations,omitempty" toml:"annotations"`
+	TimeoutMS    int64    `json:"timeout_ms,omitempty" toml:"timeout_ms"` // zero: 15s; maximum: 120000
+}
+
+// Enricher derives searchable text, optional tags and versioned preview
+// annotations asynchronously after commit.
+type Enricher interface {
+	Plugin
+	Enrich(context.Context, EnrichContext) error
+}
+
+// EnrichContext provides read-only access to the committed item and collects
+// one bounded enrichment result.
+type EnrichContext interface {
+	Trigger() string
+	Item() Item
+	ActionSource
+	SetResult(EnrichmentResult) error
+}
+
+// EnrichmentResult is the bounded derived output of one enricher invocation.
+type EnrichmentResult struct {
+	Status      string
+	SearchDocs  []EnrichmentSearchDoc
+	AddTags     []string
+	Annotations []EnrichmentAnnotation
+}
+
+// EnrichmentSearchDoc contributes derived UTF-8 text to history search.
+type EnrichmentSearchDoc struct {
+	Kind string
+	Text string
+}
+
+// EnrichmentAnnotation holds one versioned JSON payload and optional bounded assets.
+type EnrichmentAnnotation struct {
+	Type        string
+	PayloadJSON []byte
+	Assets      []EnrichmentAsset
+}
+
+// EnrichmentAsset is one bounded binary attachment referenced by an annotation.
+type EnrichmentAsset struct {
+	Key  string
+	MIME string
+	Data []byte
+}
+
+// LinkPreviewV1 is the canonical JSON payload for annotation type "link_preview.v1".
+type LinkPreviewV1 struct {
+	CanonicalURL string `json:"canonical_url,omitempty"`
+	SiteName     string `json:"site_name,omitempty"`
+	Title        string `json:"title,omitempty"`
+	Description  string `json:"description,omitempty"`
+	FaviconAsset string `json:"favicon_asset,omitempty"`
+	ImageAsset   string `json:"image_asset,omitempty"`
 }
 
 type Origin struct {

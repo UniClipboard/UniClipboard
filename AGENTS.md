@@ -61,6 +61,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0029](docs/decisions/proposed/0029-extensible-sync-backend-integration.md) | Extensible sync backend integration | Initial independent SyncClipboard text and image slice implemented. Generic management, file streaming, and Engine-owned one-hop forwarding remain pending. |
 | [0030](docs/decisions/proposed/0030-plugin-display-i18n.md) | Plugin display text i18n | Implemented; optional manifest `name`/`summary` and `[i18n.<lang>]`, Schema `x-unic-ui.i18n`; Desktop resolves by UI language with default fallback. Action titles and marketplace entries stay single-language. Native visual acceptance pending. |
 | [0031](docs/decisions/proposed/0031-mobile-engine-integration.md) | 移动端集成 Engine：进程内绑定、Expo 原生宿主与迁移接入 | Implemented for `bindings/mobile`, `app/expo/modules/unic-engine`, TypeScript Engine client and iOS/Android Setup UI; `bindings` race tests, iOS Simulator 3-state launch and Android Debug APK passed (receipt: [0031-mobile-engine-integration](docs/exec/0031-mobile-engine-integration.md)); physical-device pairing/keychain/background acceptance pending |
+| [0032](docs/decisions/proposed/0032-async-history-enrichment-and-link-preview.md) | 异步历史富化能力（Enricher）与链接预览首个闭环 | 已采纳，待契约修订与实现；定义 commit 后异步 `enricher` 能力、派生搜索文档（与基础搜索就绪态解耦）及版本化原生预览注解；先在 `plugins/examples/linkpreview/` 实现外部 Go 插件 `unic.linkpreview`（`link_preview.v1`，默认抓 `og:image`）完成闭环，验收后再拆独立仓发布，后续图片 OCR（`text_overlay.v1`）复用同一底座 |
 
 ### 接口契约（`docs/contracts/`）
 

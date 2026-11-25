@@ -165,3 +165,12 @@ The ledger uses at most `MaxStreams + MaxRequests + 1` ranges from the negotiate
 quotas; excessive sparse IDs return `resource_exhausted` before credit is granted.
 Sequential streams occupy one range. No per-Actor or per-method ordering gate
 is required.
+
+## Asynchronous history enricher RPC
+
+Handshake `Spec` adds optional `enricher` (`{accepts, required_tags?, triggers, annotations?, timeout_ms?}`), which participates in `Spec.Equal` validation against the manifest.
+
+- **`plugin.enrich`** (Engine → plugin): requires `enricher` capability after `Start`. Params carry `{trigger, generation, item, parts?}` where `item.text` uses stream purpose `enrich_text` (when present) and `parts` uses the same `{mime,file,name,size}` descriptors as `plugin.run_action`.
+- **`enrich.open_part` / `enrich.close_part`** (plugin → Engine): nested under a live `plugin.enrich` root, using stream purpose `enrich_part` with the exact same one-open-per-index, max-four-live-streams, early-release and lease-revocation semantics as `action.open_part` / `action.close_part`.
+- **Result & binary assets**: before returning the `plugin.enrich` response, the plugin opens one reverse `stream.open` per non-empty attachment with purpose `enrich_asset` rooted at the `plugin.enrich` request (subject to per-asset and 512 KiB aggregate bounds). The final result `{generation, status, search_docs?, add_tags?, annotations?}` references those completed streams by `StreamDesc`; any unconsumed, oversized, or uncompleted asset stream fails the enrichment call without leaving persisted state.
+- `plugin.enrich` executes independently of the synchronous `plugin.process` / `plugin.run_action` gate so network or model latency cannot stall foreground clipboard processing; concurrency per plugin is bounded by the Engine enrichment scheduler.

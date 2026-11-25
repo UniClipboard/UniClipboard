@@ -1,0 +1,31 @@
+manifest_version = 1
+id = "unic.linkpreview"
+version = "0.1.0"
+api_version = 1
+kind = "go"
+module = "github.com/uniclipboard/unic"
+package = "./plugins/examples/linkpreview"
+capabilities = ["enricher"]
+icon = "link"
+name = "链接预览"
+summary = "自动抓取复制的网页链接标题、简介、站点图标与封面图，支持按网页标题检索。"
+settings_schema = "settings.schema.json"
+settings_sha256 = "a58b9be4f48e09096112dccc9b42c84d756cf6697544dd995d8a611996fc7d5c"
+
+[i18n.en]
+name = "Link Preview"
+summary = "Fetch webpage title, summary, site icon, and OpenGraph cover image for copied URLs and make them searchable."
+
+[enricher]
+accepts = ["text"]
+required_tags = ["builtin:link"]
+triggers = ["on_commit", "on_demand", "manual"]
+annotations = ["link_preview.v1"]
+timeout_ms = 15000
+
+[config]
+auto_fetch = true
+fetch_favicon = true
+fetch_thumbnail = true
+request_timeout_sec = 8
+excluded_domains = []

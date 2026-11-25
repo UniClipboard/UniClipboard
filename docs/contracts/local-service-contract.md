@@ -524,3 +524,15 @@ idempotent by instance and registration name until removal.
 `unic device channel-add INSTANCE NAME` uses this route.
 `unic device channel pause|resume|remove ID REVISION` uses the existing
 revision-checked update and removal routes. Channel IDs carry no device trust.
+
+## History annotations and enrichment
+
+| Method and path | Request | Result |
+|---|---|---|
+| `GET /v1/history/{id}/annotations` | None | `HistoryAnnotation[]` ordered by plugin priority |
+| `GET /v1/history/{id}/annotations/{plugin}/{type}/assets/{key}` | None | Binary asset stream with stored `Content-Type` |
+| `POST /v1/history/{id}/enrich` | `{plugin_id?, force?}` (≤ 4 KiB) | `{queued:true}` |
+
+Missing or expired history items return HTTP 404 (`not_found`). Asset reads share the existing local content stream pool and never expose filesystem paths. Annotation payloads and asset bytes never enter service logs, events, or telemetry.
+
+External Go plugins declaring only `enricher` (or `action` + `enricher`) also report `live_start: true` and support runtime `POST /v1/plugins/{id}/start` and live marketplace updates without restarting the service.

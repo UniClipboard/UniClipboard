@@ -822,6 +822,11 @@ func (c *controller) runScenarios(ctx context.Context) error {
 			return err
 		}
 	}
+	if enabled["binding-policy"] {
+		if err := c.bindingPolicyMatrix(ctx); err != nil {
+			return err
+		}
+	}
 	if enabled["isolation"] {
 		return c.isolation(ctx)
 	}

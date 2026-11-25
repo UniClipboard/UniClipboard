@@ -108,3 +108,20 @@ type logsResult struct {
 type waitRequest struct {
 	TimeoutSeconds int `json:"timeout_seconds"`
 }
+
+type observeAutoRequest struct {
+	Fixture string `json:"fixture"`
+}
+
+type observeAutoResult struct {
+	Disposition engine.Disposition `json:"disposition"`
+	OperationID engine.OperationID `json:"operation_id,omitempty"`
+	Outcome     engine.Outcome     `json:"outcome,omitempty"`
+	ElapsedMS   float64            `json:"elapsed_ms"`
+}
+
+type channelPolicyRequest struct {
+	Text   bool `json:"text"`
+	Images bool `json:"images"`
+	Files  bool `json:"files"`
+}

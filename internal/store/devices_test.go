@@ -178,3 +178,57 @@ func TestApproveDeviceRollsBackAfterWriteFailure(t *testing.T) {
 		t.Fatalf("partial approval: %+v %+v", got, path)
 	}
 }
+
+func TestBindingPolicyCASAndAuthRevisionIsolation(t *testing.T) {
+	s, _ := openTemp(t)
+	d, _ := s.AddDevice("dev-p", key(7), "Peer")
+	_, _ = s.TrustDevice(d.ID, d.Revision)
+	b, err := s.AddBinding("bp-1", d.ID, "builtin.tailcat", []byte("ctx"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Policy != DefaultBindingPolicy() || b.AuthRevision != 1 {
+		t.Fatalf("initial binding = %+v", b)
+	}
+	a, err := s.AuthorizeBinding(b.ID, b.Revision)
+	if err != nil || a.AuthRevision != 2 || a.Revision != 2 {
+		t.Fatalf("authorized = %+v, err=%v", a, err)
+	}
+
+	// Updating per-type policy bumps revision for CAS, but keeps auth_revision unchanged.
+	want := BindingPolicy{Text: SyncDirectionSendOnly, Images: SyncDirectionReceiveOnly, Files: SyncDirectionDisabled}
+	p, err := s.SetBindingPolicy(a.ID, a.Revision, want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Policy != want || p.Revision != a.Revision+1 || p.AuthRevision != a.AuthRevision {
+		t.Fatalf("after SetBindingPolicy: got=%+v, want policy=%+v rev=%d authRev=%d", p, want, a.Revision+1, a.AuthRevision)
+	}
+	// Stale revision conflicts; invalid direction fails.
+	if _, err := s.SetBindingPolicy(a.ID, a.Revision, want); !errors.Is(err, ErrBindingConflict) {
+		t.Fatalf("stale SetBindingPolicy err = %v, want ErrBindingConflict", err)
+	}
+	if _, err := s.SetBindingPolicy(a.ID, p.Revision, BindingPolicy{Text: "bogus", Images: SyncDirectionBidirectional, Files: SyncDirectionBidirectional}); err == nil {
+		t.Fatal("accepted invalid sync direction")
+	}
+
+	// Pausing via SetBindingSync DOES bump auth_revision and preserves policy.
+	paused, err := s.SetBindingSync(a.ID, p.Revision, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if paused.SyncEnabled || paused.Policy != want || paused.AuthRevision != p.AuthRevision+1 {
+		t.Fatalf("after SetBindingSync: %+v", paused)
+	}
+
+	// Atomic UpdateBinding with enabled=true + policy resets policy and bumps auth_revision once.
+	en := true
+	def := DefaultBindingPolicy()
+	resumed, err := s.UpdateBinding(a.ID, paused.Revision, &en, &def)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resumed.SyncEnabled || resumed.Policy != def || resumed.Revision != paused.Revision+1 || resumed.AuthRevision != paused.AuthRevision+1 {
+		t.Fatalf("after UpdateBinding: %+v", resumed)
+	}
+}

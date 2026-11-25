@@ -1,0 +1,18 @@
+version = 1
+
+[nodes.mac]
+transport = "local"
+
+[nodes.windows]
+transport = "parallels"
+vm = "Windows 11"
+
+[suite]
+topology = "mesh"
+repetitions = 1
+receive_timeout_seconds = 60
+scenarios = ["binding-policy"]
+text_bytes = [96]
+png_pixels = [32]
+file_bytes = [4096]
+html_bytes = []

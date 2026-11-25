@@ -135,7 +135,7 @@ func (b *peerProcBackend) snapshot() (rpc.SyncState, error) {
 				continue
 			}
 			st.Peers = append(st.Peers, rpc.StatePeer{ID: d.ID, Name: clipName(Device{Name: d.Name, ReportedName: d.ReportedName}.DisplayName(), maxStateName),
-				Address: string(bd.Endpoint), TrustRevision: rpc.U64(d.Revision + bd.Revision)})
+				Address: string(bd.Endpoint), TrustRevision: rpc.U64(d.Revision + bd.AuthRevision)})
 		}
 	}
 	rs, err := e.st.RevokedDevices()

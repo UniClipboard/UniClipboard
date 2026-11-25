@@ -1,5 +1,6 @@
-import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { once } from "node:events";
 import {
   mkdirSync,
   readFileSync,
@@ -8,6 +9,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -55,29 +57,48 @@ const receipt = {
   stages: [],
 };
 function command(program, argv, stage, input) {
-  const result = spawnSync(program, argv, {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer: 20 * 1024 * 1024,
-    timeout: 15 * 60 * 1000,
-    input,
-    env: {
-      ...process.env,
-      MAESTRO_CLI_NO_ANALYTICS: "1",
-      MAESTRO_CLI_DISABLE_UPDATE_CHECK: "1",
-    },
+  return new Promise((resolveCommand, rejectCommand) => {
+    const child = execFile(program, argv, {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 15 * 60 * 1000,
+      env: {
+        ...process.env,
+        MAESTRO_CLI_NO_ANALYTICS: "1",
+        MAESTRO_CLI_DISABLE_UPDATE_CHECK: "1",
+      },
+    }, (error, stdout, stderr) => {
+      try {
+        writeFileSync(join(output, `${stage}.log`), stdout + stderr);
+        receipt.stages.push({
+          name: stage,
+          exitCode: error ? (typeof error.code === "number" ? error.code : null) : 0,
+          error: error?.message,
+        });
+        if (error) rejectCommand(new Error(`${stage} failed`));
+        else resolveCommand(stdout.trim());
+      } catch (logError) {
+        rejectCommand(logError);
+      }
+    });
+    child.stdin.on("error", () => {});
+    child.stdin.end(input);
   });
-  writeFileSync(
-    join(output, `${stage}.log`),
-    `${result.stdout ?? ""}${result.stderr ?? ""}`,
-  );
-  receipt.stages.push({
-    name: stage,
-    exitCode: result.status,
-    error: result.error?.message,
-  });
-  if (result.status !== 0) throw new Error(`${stage} failed`);
-  return result.stdout.trim();
+}
+async function seedIOSClipboard(runtimeMajor) {
+  const fixture = "Unic Mobile E2E";
+  let clipboardText;
+  if (runtimeMajor >= 27) {
+    const pasteboard = ["devicectl", "device", "pasteboard"];
+    const target = ["--device", options.device, "--timeout", "45", "--quiet"];
+    await command("xcrun", [...pasteboard, "copy", ...target], "seed-clipboard", fixture);
+    clipboardText = await command("xcrun", [...pasteboard, "paste", ...target], "verify-clipboard");
+  } else {
+    await command("xcrun", ["simctl", "pbcopy", options.device], "seed-clipboard", fixture);
+    clipboardText = await command("xcrun", ["simctl", "pbpaste", options.device], "verify-clipboard");
+  }
+  if (clipboardText !== fixture) throw new Error("iOS Simulator pasteboard does not contain the fixture");
 }
 const hash = (data) => createHash("sha256").update(data).digest("hex");
 function treeHash(path) {
@@ -107,13 +128,13 @@ try {
     readFileSync(join(root, "package-lock.json")),
   );
   const maestro = process.env.MAESTRO_BIN ?? "maestro";
-  receipt.maestro = command(maestro, ["--version"], "maestro-version");
+  receipt.maestro = await command(maestro, ["--version"], "maestro-version");
   let iosRuntimeMajor;
   if (options.platform === "ios") {
     if (!artifact.endsWith(".app"))
       throw new Error("Expected a Simulator .app");
     const devices = JSON.parse(
-      command("xcrun", ["simctl", "list", "devices", "--json"], "device-list"),
+      await command("xcrun", ["simctl", "list", "devices", "--json"], "device-list"),
     );
     const runtime = Object.keys(devices.devices).find((key) =>
       devices.devices[key].some((item) => item.udid === options.device && item.state === "Booted"),
@@ -121,14 +142,14 @@ try {
     if (!runtime)
       throw new Error("Select an already booted iOS Simulator");
     iosRuntimeMajor = Number(runtime.match(/\.iOS-(\d+)/)?.[1]);
-    const actual = command(
+    const actual = await command(
       "/usr/libexec/PlistBuddy",
       ["-c", "Print :CFBundleIdentifier", join(artifact, "Info.plist")],
       "artifact-id",
     );
     if (actual !== appId)
       throw new Error("Artifact is not the isolated UI shell");
-    command(
+    await command(
       "xcrun",
       ["simctl", "install", options.device, artifact],
       "install",
@@ -138,7 +159,7 @@ try {
       throw new Error(
         "Expected an APK and an explicit Android emulator serial",
       );
-    const actual = command(
+    const actual = await command(
       process.env.APKANALYZER_BIN ?? "apkanalyzer",
       ["manifest", "application-id", artifact],
       "artifact-id",
@@ -146,14 +167,14 @@ try {
     if (actual !== appId)
       throw new Error("Artifact is not the isolated UI shell");
     if (
-      command(
+      await command(
         "adb",
         ["-s", options.device, "shell", "getprop", "ro.kernel.qemu"],
         "emulator-check",
       ) !== "1"
     )
       throw new Error("Physical devices are excluded");
-    command(
+    await command(
       "adb",
       ["-s", options.device, "install", "-r", "--no-streaming", artifact],
       "install",
@@ -164,55 +185,64 @@ try {
     if (options.platform === "android" && (name === "live-setup" || name === "live-devices-settings")) {
       const shell = ["-s", options.device, "shell"];
       if (name === "live-setup") {
-        const cleared = command("adb", [...shell, "pm", "clear", appId], "clear-profile");
+        const cleared = await command("adb", [...shell, "pm", "clear", appId], "clear-profile");
         if (cleared !== "Success") throw new Error("Android Emulator could not clear the test profile");
       } else {
-        command("adb", [...shell, "am", "force-stop", appId], "stop-app");
+        await command("adb", [...shell, "am", "force-stop", appId], "stop-app");
       }
-      const launch = command("adb", [...shell, "am", "start", "-W", "-n", appId + "/.MainActivity"], name + "-launch");
+      const launch = await command("adb", [...shell, "am", "start", "-W", "-n", appId + "/.MainActivity"], name + "-launch");
       if (!/^Status: ok$/m.test(launch)) throw new Error("Android Emulator could not start the test app");
     }
-    if (name === "live-history") {
-      if (options.platform === "ios") {
-        const fixture = "Unic Mobile E2E";
-        let clipboardText;
-        if (iosRuntimeMajor >= 27) {
-          const pasteboard = ["devicectl", "device", "pasteboard"];
-          const target = ["--device", options.device, "--timeout", "45", "--quiet"];
-          command("xcrun", [...pasteboard, "copy", ...target], "seed-clipboard", fixture);
-          clipboardText = command("xcrun", [...pasteboard, "paste", ...target], "verify-clipboard");
-        } else {
-          command("xcrun", ["simctl", "pbcopy", options.device], "seed-clipboard", fixture);
-          clipboardText = command("xcrun", ["simctl", "pbpaste", options.device], "verify-clipboard");
+    let pasteboardServer;
+    const parameters = [];
+    if (name === "live-history" && options.platform === "ios") {
+      const fixturePath = "/" + randomUUID();
+      pasteboardServer = createServer(async (request, response) => {
+        if (request.method !== "POST" || request.url !== fixturePath) {
+          response.writeHead(404).end();
+          return;
         }
-        if (clipboardText !== fixture) {
-          throw new Error("iOS Simulator pasteboard does not contain the fixture");
+        try {
+          await seedIOSClipboard(iosRuntimeMajor);
+          response.writeHead(204).end();
+        } catch (error) {
+          response.writeHead(500).end(error.message);
         }
-      } else {
-        command("adb", ["-s", options.device, "shell", `am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Unic Mobile E2E' -n ${appId}/.MainActivity`], "seed-share-intent");
-      }
+      });
+      const listening = once(pasteboardServer, "listening");
+      pasteboardServer.listen(0, "127.0.0.1");
+      await listening;
+      parameters.push("--env", `PASTEBOARD_FIXTURE_URL=http://127.0.0.1:${pasteboardServer.address().port}${fixturePath}`);
+    } else if (name === "live-history") {
+      await command("adb", ["-s", options.device, "shell", `am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Unic Mobile E2E' -n ${appId}/.MainActivity`], "seed-share-intent");
     }
     const flow = join(root, "e2e/flows", `${name}.yaml`);
     receipt.stages.push({
       name: `${name}-flow`,
       sha256: hash(readFileSync(flow)),
     });
-    command(
-      maestro,
-      [
-        "--device",
-        options.device,
-        "test",
-        flow,
-        "--format",
-        "junit",
-        "--output",
-        join(output, `${name}.xml`),
-        "--test-output-dir",
-        join(output, name),
-      ],
-      name,
-    );
+    try {
+      await command(
+        maestro,
+        [
+          "--device",
+          options.device,
+          "test",
+          flow,
+          ...parameters,
+          "--format",
+          "junit",
+          "--output",
+          join(output, `${name}.xml`),
+          "--test-output-dir",
+          join(output, name),
+        ],
+        name,
+      );
+    } finally {
+      pasteboardServer?.close();
+      pasteboardServer?.closeAllConnections();
+    }
   }
   receipt.status = "passed";
 } catch (error) {

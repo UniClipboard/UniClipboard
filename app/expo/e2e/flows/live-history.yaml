@@ -7,6 +7,8 @@ name: Live Engine history intake and search
     commands:
       - tapOn:
           id: home-add-menu
+      - evalScript: '${output.pasteboardStatus = http.post(PASTEBOARD_FIXTURE_URL, { body: "" }).status}'
+      - assertTrue: ${output.pasteboardStatus == 204}
       - tapOn: "Upload clipboard|上传剪贴板"
       - tapOn:
           text: "Allow Paste|允许粘贴"

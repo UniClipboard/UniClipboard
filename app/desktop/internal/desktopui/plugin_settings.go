@@ -236,7 +236,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	instance := cfg.Plugins.Instances[p.id]
 	toggle := func(id, label, desc string, on *bool) {
 		k.SettingsRow(c.Key(id), desktopkit.SettingsRowProps{Label: d.tr(label), Description: d.tr(desc)}, nil, func() {
-			if k.Switch(c, on, desktopkit.SwitchProps{Label: d.tr(label), Disabled: l.busy || l.loading}).Changed() {
+			if k.Switch(c, on, desktopkit.SwitchProps{Label: d.tr(label), Disabled: l.busy}).Changed() {
 				changed = true
 			}
 		})
@@ -270,7 +270,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 				{Value: "continue", Label: d.tr("继续处理")},
 				{Value: "block_sync", Label: d.tr("禁止同步此条目")},
 			}
-			if k.Select(c, desktopkit.SelectProps{Label: d.tr("处理失败时"), Value: &policy, Items: items, Disabled: l.busy || l.loading}).Changed {
+			if k.Select(c, desktopkit.SelectProps{Label: d.tr("处理失败时"), Value: &policy, Items: items, Disabled: l.busy}).Changed {
 				instance.OnError = policy
 				if policy == "inherit" {
 					instance.OnError = ""
@@ -470,7 +470,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 								}
 							}
 							on := item.Configured
-							if k.Switch(c.Key("enable-"+item.ID), &on, desktopkit.SwitchProps{Label: d.tr("启用") + displayName, Disabled: l.busy || l.loading}).Changed() {
+							if k.Switch(c.Key("enable-"+item.ID), &on, desktopkit.SwitchProps{Label: d.tr("启用") + displayName, Disabled: l.busy}).Changed() {
 								d.setExternalPluginEnabled(*cfg, item.ID, on)
 							}
 						})
@@ -502,13 +502,13 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 					if entry.id == "builtin.tailcat" {
 						icon = desktopkit.IconSettings
 					}
-					if k.Button(c.Key("open-"+entry.id), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: icon, Label: d.tr(entry.name), Tooltip: d.tr(entry.name), Disabled: l.busy || l.loading}).Clicked() {
+					if k.Button(c.Key("open-"+entry.id), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: icon, Label: d.tr(entry.name), Tooltip: d.tr(entry.name), Disabled: l.busy}).Clicked() {
 						p.id = entry.id
 						p.view = ""
 						p.form = nil
 					}
 					on := cfg.PluginEnabled(entry.id)
-					if k.Switch(c.Key("enable-"+entry.id), &on, desktopkit.SwitchProps{Label: d.tr("启用") + d.tr(entry.name), Disabled: l.busy || l.loading}).Changed() {
+					if k.Switch(c.Key("enable-"+entry.id), &on, desktopkit.SwitchProps{Label: d.tr("启用") + d.tr(entry.name), Disabled: l.busy}).Changed() {
 						instance := cfg.Plugins.Instances[entry.id]
 						instance.Enabled = &on
 						cfg.Plugins.Instances[entry.id] = instance
@@ -527,7 +527,7 @@ func (d *viewState) syncPluginPolicy(c *ui.Context, k desktopkit.Kit, id string,
 	changed := false
 	toggle := func(key, label, desc string, on *bool) {
 		k.SettingsRow(c.Key(key), desktopkit.SettingsRowProps{Label: d.tr(label), Description: d.tr(desc)}, nil, func() {
-			if k.Switch(c, on, desktopkit.SwitchProps{Label: d.tr(label), Disabled: l.busy || l.loading}).Changed() {
+			if k.Switch(c, on, desktopkit.SwitchProps{Label: d.tr(label), Disabled: l.busy}).Changed() {
 				changed = true
 			}
 		})
@@ -558,7 +558,7 @@ func (d *viewState) syncPluginPolicy(c *ui.Context, k desktopkit.Kit, id string,
 			instance.Sync.Files = &files
 		}
 		k.SettingsRow(c.Key("threshold"), desktopkit.SettingsRowProps{Label: d.tr("自动文件传输阈值（MB）"), Description: d.tr("0 表示不增加限制。逐个文件检查。任一文件超限时跳过整次自动发送。主动发送不受此阈值限制。") + " " + d.tr("输入后按回车保存。")}, nil, func() {
-			field := k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("自动文件传输阈值（MB）"), Value: &p.threshold, Disabled: l.busy || l.loading, Error: d.tr(p.thresholdError)})
+			field := k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("自动文件传输阈值（MB）"), Value: &p.threshold, Disabled: l.busy, Error: d.tr(p.thresholdError)})
 			if field.Submitted && !l.busy {
 				value, err := strconv.ParseInt(strings.TrimSpace(p.threshold), 10, 64)
 				if err != nil || value < 0 || value > 4096 {

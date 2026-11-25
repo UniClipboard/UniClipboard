@@ -191,7 +191,7 @@ func (d *viewState) syncRestartToast(active, restartService bool, key, title str
 func (d *viewState) toasterOverlay(c *ui.Context, k desktopkit.Kit) {
 	d.syncStateToasts()
 	k.Toaster(c, &d.toasts, desktopkit.ToasterProps{
-		Position:   desktopkit.ToastBottomEnd,
+		Position:   desktopkit.ToastBottomCenter,
 		Limit:      desktopkit.DefaultToastLimit,
 		Duration:   desktopkit.DefaultToastDuration,
 		Label:      d.tr("通知"),

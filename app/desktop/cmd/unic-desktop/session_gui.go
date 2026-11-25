@@ -80,7 +80,7 @@ func (s *desktopSession) view(c *ui.Context) {
 			}
 		})
 		k.Toaster(c, &s.toasts, desktopkit.ToasterProps{
-			Position:   desktopkit.ToastBottomEnd,
+			Position:   desktopkit.ToastTopCenter,
 			Label:      i18n.Translate(lang, "通知"),
 			CloseLabel: i18n.Translate(lang, "关闭提示"),
 		})

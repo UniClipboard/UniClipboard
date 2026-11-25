@@ -141,3 +141,133 @@ func TestDesktopToastOverlayDoesNotShiftLayoutAndDismisses(t *testing.T) {
 		}
 	}
 }
+
+func TestToastClearOfPluginsSettingsControls(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	d := newDemo("settings", "light")
+	d.settings.Value = "plugins"
+	d.live = &liveState{
+		ctx:               ctx,
+		cancel:            cancel,
+		client:            api.NewClient(filepath.Join(t.TempDir(), "unused.sock")),
+		loaded:            true,
+		loading:           true,
+		nextRefresh:       time.Now().Add(time.Hour),
+		results:           make(chan func(), 32),
+		jobs:              make(chan func(context.Context) func(), 16),
+		items:             map[string]api.HistoryItem{},
+		details:           map[string]entry{},
+		pending:           map[string]api.PendingPeer{},
+		config:            config.State{Revision: "rev-1", Config: config.Default(), RestartRequired: []string{"plugins"}},
+		restartApp:        func(bool, func(error)) {},
+		marketplaceLoaded: true,
+	}
+	screen := &Desktop{d: d}
+
+	rectsOverlap := func(a, b ui.Rect) bool {
+		return a.X < b.X+b.W && a.X+a.W > b.X && a.Y < b.Y+b.H && a.Y+a.H > b.Y
+	}
+
+	// 1. Plugins list view at Linux CI geometry (1100x720 and compact 1000x640).
+	for _, size := range [][2]int{{1100, 720}, {1000, 640}} {
+		tt := ui.NewTesterWith(screen.View, size[0], size[1], ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true}})
+		toastRegion, ok := tt.AccessByRole(ui.RoleRegion, "通知")
+		if !ok {
+			t.Fatalf("size=%v missing toast region", size)
+		}
+		for _, target := range []struct {
+			role  ui.Role
+			label string
+		}{
+			{ui.RoleButton, "文本工具"},
+			{ui.RoleSwitch, "启用文本工具"},
+			{ui.RoleButton, "内容分类"},
+			{ui.RoleSwitch, "启用内容分类"},
+		} {
+			ctrl, ok := tt.AccessByRole(target.role, target.label)
+			if !ok {
+				t.Fatalf("size=%v missing %s", size, target.label)
+			}
+			if rectsOverlap(toastRegion.Bounds, ctrl.Bounds) {
+				t.Fatalf("size=%v toast %+v overlaps %q %+v", size, toastRegion.Bounds, target.label, ctrl.Bounds)
+			}
+		}
+	}
+
+	// 2. Plugin detail view: back button, enable switch, and failure policy select trigger must be clear.
+	d.pluginSettings.id = "builtin.text"
+	tt := ui.NewTesterWith(screen.View, 1100, 720, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true}})
+	toastRegion, ok := tt.AccessByRole(ui.RoleRegion, "通知")
+	if !ok {
+		t.Fatal("detail view missing toast region")
+	}
+	for _, target := range []struct {
+		role  ui.Role
+		label string
+	}{
+		{ui.RoleButton, "返回插件列表"},
+		{ui.RoleSwitch, "启用文本工具"},
+		{ui.RolePopUpButton, "处理失败时"},
+	} {
+		ctrl, ok := tt.AccessByRole(target.role, target.label)
+		if !ok {
+			t.Fatalf("detail view missing %s", target.label)
+		}
+		if rectsOverlap(toastRegion.Bounds, ctrl.Bounds) {
+			t.Fatalf("detail view toast %+v overlaps %q %+v", toastRegion.Bounds, target.label, ctrl.Bounds)
+		}
+	}
+
+	// 3. Open the failure policy Select while the restart toast is visible AND a
+	// background history refresh (l.loading) starts mid-interaction; the menu
+	// options must remain clear of the toast and choosing "继续处理" must save.
+	d.live.loading = false
+	d.live.busy = false
+	d.live.config.Config.Plugins.Instances = map[string]config.Instance{
+		"builtin.text": {OnError: "block_sync"},
+	}
+	tt = ui.NewTesterWith(screen.View, 1100, 720, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true, TextScale: 1}})
+	tt.Frame()
+	trigger, ok := tt.AccessByRole(ui.RolePopUpButton, "处理失败时")
+	if !ok {
+		t.Fatal("missing trigger")
+	}
+	tx, ty := trigger.Bounds.X+trigger.Bounds.W/2, trigger.Bounds.Y+trigger.Bounds.H/2
+	tt.Press(tx, ty)
+	tt.Release(tx, ty)
+	toastRegion, ok = tt.AccessByRole(ui.RoleRegion, "通知")
+	if !ok {
+		t.Fatal("detail open-menu view missing toast region")
+	}
+	for _, n := range tt.AccessAll() {
+		if n.Role == ui.RoleOption && !n.Offscreen && rectsOverlap(toastRegion.Bounds, n.Bounds) {
+			t.Fatalf("toast %+v overlaps open select option %q %+v", toastRegion.Bounds, n.Name, n.Bounds)
+		}
+	}
+	// Simulate a background SSE refresh (e.g. config watcher reload) starting
+	// right before the user clicks an option in the already-open Select menu.
+	d.live.loading = true
+	if err := boarduiChooseMenu(tt, "继续处理"); err != nil {
+		t.Fatalf("boarduiChooseMenu: %v", err)
+	}
+	if !d.live.busy {
+		t.Fatalf("clicking 继续处理 during background loading did not trigger saveLiveConfig (toast=%+v trigger=%+v)", toastRegion.Bounds, trigger.Bounds)
+	}
+
+	// 4. History page: bottom-center toast must stay clear of top toolbar / search box.
+	d.page = "history"
+	d.live.busy = false
+	tt = ui.NewTesterWith(screen.View, 1100, 720, ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true, TextScale: 1}})
+	tt.Frame()
+	toastRegion, ok = tt.AccessByRole(ui.RoleRegion, "通知")
+	if !ok {
+		t.Fatal("history view missing toast region")
+	}
+	if search, ok := tt.AccessByRole(ui.RoleSearch, ""); !ok {
+		t.Fatal("history view missing search box")
+	} else if rectsOverlap(toastRegion.Bounds, search.Bounds) {
+		t.Fatalf("history toast %+v overlaps search box %+v", toastRegion.Bounds, search.Bounds)
+	}
+}

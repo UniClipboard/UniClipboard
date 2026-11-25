@@ -68,7 +68,7 @@ func Render(c *ui.Context, m Model, fields *Fields, a Actions) {
 		}
 		if m.Toasts != nil {
 			k.Toaster(c, m.Toasts, desktopkit.ToasterProps{
-				Position:   desktopkit.ToastBottomEnd,
+				Position:   desktopkit.ToastTopCenter,
 				Label:      tr("通知"),
 				CloseLabel: tr("关闭提示"),
 			})

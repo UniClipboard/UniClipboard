@@ -731,7 +731,7 @@ func (d *viewState) pluginsAdvancedView(c *ui.Context, k desktopkit.Kit, cfg con
 				{Value: "continue", Label: d.tr("继续处理")},
 				{Value: "block_sync", Label: d.tr("禁止同步此条目")},
 			}
-			if k.Select(c, desktopkit.SelectProps{Label: d.tr("当插件运行出错时"), Value: &policy, Items: items, Disabled: l.busy || l.loading}).Changed {
+			if k.Select(c, desktopkit.SelectProps{Label: d.tr("当插件运行出错时"), Value: &policy, Items: items, Disabled: l.busy}).Changed {
 				cfg.Plugins.OnError = policy
 				d.saveLiveConfig(cfg)
 			}

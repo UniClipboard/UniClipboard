@@ -579,14 +579,18 @@ func (k Kit) Toaster(c *ui.Context, store *ToastStore, p ToasterProps) {
 						ShowBar:        timed,
 					})
 					if !reduceMotion {
+						enterY, exitY := float32(12), float32(8)
+						if pos == PositionTopStart || pos == PositionTopCenter || pos == PositionTopEnd {
+							enterY, exitY = -12, -8
+						}
 						res.Transition(ui.ElementTransition{
 							Duration:     250 * time.Millisecond,
 							ExitDuration: 180 * time.Millisecond,
 							Position:     true,
 							Ease:         ui.EaseOut,
 							ExitEase:     ui.EaseOut,
-							Enter:        &ui.Motion{Opacity: 0, Y: 12, Scale: 0.97, Blur: 4},
-							Exit:         &ui.Motion{Opacity: 0, Y: 8, Scale: 0.96, Blur: 3},
+							Enter:        &ui.Motion{Opacity: 0, Y: enterY, Scale: 0.97, Blur: 4},
+							Exit:         &ui.Motion{Opacity: 0, Y: exitY, Scale: 0.96, Blur: 3},
 						})
 					}
 					if res.Hovered() || res.FocusWithin() {

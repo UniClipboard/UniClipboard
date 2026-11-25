@@ -5,5 +5,5 @@
   "type": "module",
   "scripts": {"dev": "vite --host 127.0.0.1 --port 4177 --strictPort", "build": "vite build"},
   "dependencies": {"react": "19.2.4", "react-dom": "19.2.4", "react-aria-components": "1.17.0", "@remixicon/react": "4.9.0", "tailwind-merge": "3.6.0", "motion": "12.42.2", "@internationalized/date": "3.12.1", "recharts": "3.9.2"},
-  "devDependencies": {"vite": "7.3.0", "@tailwindcss/vite": "4.1.18", "tailwindcss": "4.1.18", "typescript": "5.9.3"}
+  "devDependencies": {"vite": "7.3.8", "@tailwindcss/vite": "4.1.18", "tailwindcss": "4.1.18", "typescript": "5.9.3"}
 }

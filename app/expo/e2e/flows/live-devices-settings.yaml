@@ -1,8 +1,12 @@
 appId: app.uniclipboard.shell
 name: Live Engine devices and diagnostics
 ---
-- stopApp
-- launchApp
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - stopApp
+      - launchApp
 - assertNotVisible:
     id: setup-start-clean
 - runFlow:

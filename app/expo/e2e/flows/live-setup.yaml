@@ -1,8 +1,12 @@
 appId: app.uniclipboard.shell
 name: Live Engine first install
 ---
-- launchApp:
-    clearState: true
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - launchApp:
+          clearState: true
 - extendedWaitUntil:
     visible:
       id: setup-start-clean

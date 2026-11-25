@@ -161,6 +161,17 @@ try {
   }
   const flows = suite === "live" ? ["live-setup", "live-history", "live-devices-settings"] : ["shell", "search", "selection"];
   for (const name of flows) {
+    if (options.platform === "android" && (name === "live-setup" || name === "live-devices-settings")) {
+      const shell = ["-s", options.device, "shell"];
+      if (name === "live-setup") {
+        const cleared = command("adb", [...shell, "pm", "clear", appId], "clear-profile");
+        if (cleared !== "Success") throw new Error("Android Emulator could not clear the test profile");
+      } else {
+        command("adb", [...shell, "am", "force-stop", appId], "stop-app");
+      }
+      const launch = command("adb", [...shell, "am", "start", "-W", "-n", appId + "/.MainActivity"], name + "-launch");
+      if (!/^Status: ok$/m.test(launch)) throw new Error("Android Emulator could not start the test app");
+    }
     if (name === "live-history") {
       if (options.platform === "ios") {
         const fixture = "Unic Mobile E2E";

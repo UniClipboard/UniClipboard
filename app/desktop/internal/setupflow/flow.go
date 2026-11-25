@@ -8,6 +8,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/uniclipboard/unic/engine"
@@ -20,8 +22,10 @@ var ErrTargetBusy = errors.New("migration target is in use")
 
 // State contains navigation intent only. Secrets and migration records stay out.
 type State struct {
-	Complete bool   `json:"complete"`
-	Source   string `json:"source,omitempty"`
+	Complete               bool     `json:"complete"`
+	Source                 string   `json:"source,omitempty"`
+	V2Announcement         bool     `json:"v2_announcement,omitempty"`
+	DismissedAnnouncements []string `json:"dismissed_announcements,omitempty"`
 }
 
 type Flow struct {
@@ -53,7 +57,9 @@ func Open(target string) (*Flow, error) {
 			return nil, errors.New("invalid existing v2 database")
 		}
 		f.state.Complete = true
-	} else if !errors.Is(e, os.ErrNotExist) {
+	} else if errors.Is(e, os.ErrNotExist) {
+		f.state.V2Announcement = true
+	} else {
 		return nil, e
 	}
 	if err = f.save(); err != nil {
@@ -62,7 +68,13 @@ func Open(target string) (*Flow, error) {
 	return f, nil
 }
 func (f *Flow) path() string   { return filepath.Join(f.target, "desktop-setup.json") }
-func (f *Flow) State() State   { f.mu.Lock(); defer f.mu.Unlock(); return f.state }
+func (f *Flow) State() State {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	st := f.state
+	st.DismissedAnnouncements = slices.Clone(f.state.DismissedAnnouncements)
+	return st
+}
 func (f *Flow) Required() bool { return !f.State().Complete }
 
 func (f *Flow) SelectSource(source string) error {
@@ -88,6 +100,41 @@ func (f *Flow) Complete() error {
 	defer f.mu.Unlock()
 	next := f.state
 	next.Complete = true
+	return f.update(next)
+}
+
+const maxDismissedAnnouncements = 200
+
+// DismissV2Announcement clears the first-install v2 announcement flag and persists it.
+func (f *Flow) DismissV2Announcement() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.state.V2Announcement {
+		return nil
+	}
+	next := f.state
+	next.V2Announcement = false
+	return f.update(next)
+}
+
+// DismissAnnouncement records a remote FlareRelease announcement ID as dismissed
+// for this profile so it does not reappear in the sidebar across launches.
+func (f *Flow) DismissAnnouncement(id string) error {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if slices.Contains(f.state.DismissedAnnouncements, id) {
+		return nil
+	}
+	next := f.state
+	ids := append(slices.Clone(f.state.DismissedAnnouncements), id)
+	if len(ids) > maxDismissedAnnouncements {
+		ids = ids[len(ids)-maxDismissedAnnouncements:]
+	}
+	next.DismissedAnnouncements = ids
 	return f.update(next)
 }
 

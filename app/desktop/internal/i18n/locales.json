@@ -8470,5 +8470,47 @@
     "ja": "接続状態を更新できませんでした。もう一度お試しください。",
     "pt-BR": "Não foi possível atualizar o status da conexão. Tente novamente.",
     "ru": "Не удалось обновить статус подключения. Повторите попытку."
+  },
+  "UniClipboard 2.0 全新发布": {
+    "en": "What's new in 2.0",
+    "ja": "UniClipboard 2.0 の新機能",
+    "pt-BR": "Novidades da versão 2.0",
+    "ru": "Что нового в версии 2.0"
+  },
+  "探索 2.0 全新功能与体验升级。": {
+    "en": "Explore the new features and improvements in 2.0.",
+    "ja": "2.0 の新機能と改善点をご紹介します。",
+    "pt-BR": "Conheça os novos recursos e melhorias da versão 2.0.",
+    "ru": "Узнайте о новых возможностях и улучшениях версии 2.0."
+  },
+  "查看功能介绍": {
+    "en": "Read what's new",
+    "ja": "詳しく見る",
+    "pt-BR": "Ver novidades",
+    "ru": "Подробнее"
+  },
+  "不再显示": {
+    "en": "Don't show again",
+    "ja": "今後表示しない",
+    "pt-BR": "Não mostrar novamente",
+    "ru": "Больше не показывать"
+  },
+  "重要公告": {
+    "en": "Critical notice",
+    "ja": "重要なお知らせ",
+    "pt-BR": "Aviso crítico",
+    "ru": "Важное уведомление"
+  },
+  "注意事项": {
+    "en": "Notice",
+    "ja": "ご注意",
+    "pt-BR": "Atenção",
+    "ru": "Предупреждение"
+  },
+  "发布公告": {
+    "en": "Announcement",
+    "ja": "お知らせ",
+    "pt-BR": "Anúncio",
+    "ru": "Объявление"
   }
 }

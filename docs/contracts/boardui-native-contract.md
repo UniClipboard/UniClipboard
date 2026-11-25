@@ -36,6 +36,8 @@ The caller owns validation, persistence, requests, cancellation and stale-result
 - Switch accepts a caller-owned boolean and supports the inspected source md pill/rectangle presentation, disabled state and an optionally hidden visible caption. Checkbox accepts a boolean or the explicit three-state entry point; md/sm, mixed state, disabled state and label ownership are explicit.
 - Slider accepts one caller-owned numeric value, bounded range and step. It is a single horizontal-thumb interface with source value-bubble presentation. Range and RTL slider interfaces are not claimed.
 - SegmentedControl accepts one caller-owned value and stable items, with solid/plain presentation. Native focus groups own arrows/Home/End/Tab and native buttons own Enter/Space. Arrow focus alone does not commit or clear selection. Disabled items remain noninteractive.
+- CloseButton implements the pinned circular dismiss button in `2xs`/`xs`/`sm`/`md` sizes with exact per-size diagonal strokes and a mandatory accessible label.
+- Announcement implements the pinned sidebar announcement card (20-DIP leading icon defaulting to `RiShieldStarFill`, `body-medium` title, optional `body-2-medium` description, optional full-width `secondary`/`small` CTA button, optional top-right `xs` CloseButton, optional `IntroDelay` entrance and 250ms blur/scale/fade exit respecting reduced motion). Callers own persistence and external URL navigation.
 
 New control implementation is not automatic visual acceptance. Each added state set requires its own actual-React/native comparison and behavior evidence. Application search, code/combobox fields, lists/tables, settings/status/tag views, menus, sheets and previews are explicit `desktopkit`/`desktopui` compositions, not claims that all similarly named official catalogue APIs have been ported.
 
@@ -80,7 +82,13 @@ mode) paired with primary ink and an accent leading icon, keeping tag swatches
 legible and remaining distinct from the neutral hover wash. A symmetric 12-DIP
 leading margin and 12-DIP trailing scrollbar lane keep the 4-DIP translucent
 overlay indicator clear of row content and align the 28-DIP quiet chrome toggle
-with the navigation grid. Footer actions stay fixed outside the scroll viewport.
+with the navigation grid. Footer actions stay fixed outside the scroll viewport. An optional announcement
+slot sits directly above the footer divider on the same 12-DIP horizontal grid
+and collapses to zero height when unmounted; it hosts both the offline
+first-install v2 feature announcement card and active FlareRelease
+`/announcements` notices (opening `actionUrl` directly when present or a compact
+detail Sheet otherwise, with per-profile dismissed IDs persisted in
+`desktop-setup.json`).
 Application rows are 30 DIP with 13-DIP `body-2` typography, 16-DIP icons (8-DIP
 circular swatches for tags), 8-DIP icon/label gaps, 2-DIP intra-section gaps and
 14-DIP section separation. Text, Images and Files appear in the sidebar by default.
@@ -88,4 +96,4 @@ Other built-in tags are opt-in from the tag manager. Sidebar tag rows omit redun
 prefixes. Section commands are quiet 24-DIP buttons aligned visually with row
 counts; More is a 26-DIP secondary row aligned with navigation labels.
 This is an application composition, not a claim that the full official dashboard
-sidebar (team/user/announcement/badges) has been ported.
+sidebar (team/user/badges) has been ported.

@@ -50,7 +50,7 @@ paths:
   - bindings/e2e/mobile-diagnostics
   - bindings/scripts/build-mobile.sh
   - app/expo/src/screens/settings/DiagnosticsSettings.tsx
-verified: cabd08a4ca721f77b774cdb323b7da333ce3a578
+verified: f7bfc9cb93772ccad56e8ed3c120ab7baa98303d
 ---
 # Client logs, metrics, traces and product analytics
 

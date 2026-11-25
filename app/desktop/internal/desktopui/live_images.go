@@ -28,19 +28,36 @@ type historyImage struct {
 	released      bool
 }
 
-// Release on a later frame: the preceding frame has already rendered. mygo
-// keeps encoded data and recreates pixels after texture loss or CPU rendering.
 func (p *historyImage) source(c *ui.Context) ui.ImageSource {
 	if !p.released {
-		if p.firstFrame.IsZero() {
-			p.firstFrame = c.Now()
-			c.After(time.Millisecond)
-		} else if !p.firstFrame.Equal(c.Now()) {
-			p.bitmap.ReleasePixels()
-			p.released = true
-		}
+		p.releaseAfterFrame(c.Now(), c.After)
 	}
 	return p.bitmap
+}
+
+// Release on a later frame so the preceding frame can upload the pixels.
+// mygo retains the encoded data for texture recovery.
+func (p *historyImage) releaseAfterFrame(now time.Time, after func(time.Duration)) {
+	if p.firstFrame.IsZero() {
+		p.firstFrame = now
+		after(time.Millisecond)
+	} else if !p.firstFrame.Equal(now) {
+		p.bitmap.ReleasePixels()
+		p.released = true
+	}
+}
+
+func (p *historyImage) afterAcceleratedPaint(paint *ui.Painter, _ ui.Rect) {
+	if p.released {
+		return
+	}
+	if !paint.Accelerated() {
+		// Software drawing still needs the pixels. Releasing them here would
+		// cause mygo to decode the same image again.
+		p.firstFrame = time.Time{}
+		return
+	}
+	p.releaseAfterFrame(paint.Now(), paint.After)
 }
 
 func thumbnailEdge(count int) int {

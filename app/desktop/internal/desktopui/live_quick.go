@@ -122,22 +122,36 @@ func (p *quickPanelState) quickImageSize(e qpEntry) (float32, float32) {
 	}
 	return ui.ImageSize(p.previewImage)
 }
-func (p *quickPanelState) quickImage(c *ui.Context, e qpEntry) ui.ImageSource {
+
+type quickImage struct {
+	source  ui.ImageSource
+	history *historyImage
+}
+
+func (image quickImage) element(c *ui.Context) ui.Element {
+	element := ui.Image(c, image.source)
+	if image.history != nil && !image.history.released {
+		return element.DrawOver(image.history.afterAcceleratedPaint)
+	}
+	return element
+}
+
+func (p *quickPanelState) quickImage(e qpEntry) quickImage {
 	if p.live == nil {
 		if e.kind == "图片" || qpIsSingleImageFile(e) {
-			return p.previewImage
+			return quickImage{source: p.previewImage}
 		}
-		return nil
+		return quickImage{}
 	}
 	for _, v := range p.live.d.entries {
 		if v.id == e.id {
 			if v.picture != nil {
-				return v.picture.source(c)
+				return quickImage{source: v.picture.bitmap, history: v.picture}
 			}
-			return v.image
+			return quickImage{source: v.image}
 		}
 	}
-	return nil
+	return quickImage{}
 }
 func (p *quickPanelState) quickImageAvailable(e qpEntry) bool {
 	if p.live == nil {

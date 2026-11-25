@@ -167,6 +167,10 @@ authoritative when a hint is inaccurate. Neighbor thumbnails keep their streamin
 path. See the [image implementation receipt](../exec/desktop-image-memory.md) and
 [independent quick-panel receipt](../exec/quick-panel-memory.md).
 
+Quick Panel bitmap drawing schedules CPU-pixel release after accelerated
+painting. Software previews reuse their decoded pixels while the view owns
+them. The original bytes still support texture recovery.
+
 Quick-panel reopening invalidates its cleared row projection even when the
 service reuses an unchanged query/revision. It preserves the service cache and
 reconstructs the real result list and satellite instead of an empty panel.

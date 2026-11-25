@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/skip2/go-qrcode"
+
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"

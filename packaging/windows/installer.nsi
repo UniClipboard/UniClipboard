@@ -168,6 +168,27 @@ Function ${UN}StopRunningProcesses
                 ${OrIf} $4 == "$R5\unic.exe"
                   StrCpy $7 1
                 ${EndIf}
+                ${If} $7 == 0
+                  StrLen $0 "$R5\.unic-desktop.exe.old-"
+                  StrCpy $1 $4 $0
+                  ${If} $1 == "$R5\.unic-desktop.exe.old-"
+                    StrCpy $7 1
+                  ${EndIf}
+                ${EndIf}
+                ${If} $7 == 0
+                  StrLen $0 "$R5\.unicd.exe.old-"
+                  StrCpy $1 $4 $0
+                  ${If} $1 == "$R5\.unicd.exe.old-"
+                    StrCpy $7 1
+                  ${EndIf}
+                ${EndIf}
+                ${If} $7 == 0
+                  StrLen $0 "$R5\.unic.exe.old-"
+                  StrCpy $1 $4 $0
+                  ${If} $1 == "$R5\.unic.exe.old-"
+                    StrCpy $7 1
+                  ${EndIf}
+                ${EndIf}
                 !if ${INCLUDE_LEGACY} == 1
                   ${If} $4 == "$R5\UniClipboard.exe"
                   ${OrIf} $4 == "$R5\uniclipd.exe"

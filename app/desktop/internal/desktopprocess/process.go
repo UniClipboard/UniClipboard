@@ -31,6 +31,7 @@ const (
 
 var ErrRunning = errors.New("desktop role already running")
 var ErrUnavailable = errors.New("desktop role unavailable")
+var ErrStaleBuild = errors.New("desktop role belongs to a previous build")
 
 type Info struct {
 	Role         Role      `json:"role"`
@@ -139,19 +140,101 @@ func selfExecutable() (string, string, error) {
 	return self.path, self.hash, nil
 }
 func verifyPeer(conn net.Conn, server bool, expected Info) (int, error) {
-	path, pid, err := peerExecutable(conn, server)
+	rawPath, pid, err := peerExecutable(conn, server)
 	if err != nil {
 		return 0, errors.New("desktop IPC peer executable unavailable")
 	}
-	path, err = filepath.EvalSymlinks(path)
+	path, err := filepath.EvalSymlinks(rawPath)
 	if err != nil || !samePath(path, expected.BinaryPath) {
+		if !server && isReplacedExecutable(rawPath, expected.BinaryPath) {
+			return 0, fmt.Errorf("%w: desktop IPC peer executable replaced", ErrStaleBuild)
+		}
 		return 0, errors.New("desktop IPC peer executable mismatch")
 	}
 	hash, err := fileHash(path)
 	if err != nil || hash != expected.BinarySHA256 {
+		if !server {
+			return 0, fmt.Errorf("%w: desktop IPC peer build mismatch", ErrStaleBuild)
+		}
 		return 0, errors.New("desktop IPC peer build mismatch")
 	}
 	return pid, nil
+}
+
+func canonicalPeerPath(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	dir := filepath.Dir(path)
+	if resolvedDir, err := filepath.EvalSymlinks(dir); err == nil {
+		return filepath.Join(resolvedDir, filepath.Base(path))
+	}
+	return filepath.Clean(path)
+}
+
+func isMovedAsideName(peerBase, expectedBase string) bool {
+	prefix := "." + expectedBase + ".old-"
+	if len(peerBase) <= len(prefix) || !samePath(peerBase[:len(prefix)], prefix) {
+		return false
+	}
+	for i := len(prefix); i < len(peerBase); i++ {
+		if peerBase[i] < '0' || peerBase[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// isReplacedExecutable reports whether peerPath is a previous build of
+// expectedPath that an in-place or staged updater moved aside or unlinked.
+// Unrecognized executables in the same directory return false.
+func isReplacedExecutable(peerPath, expectedPath string) bool {
+	if peerPath == "" || expectedPath == "" {
+		return false
+	}
+	expected := canonicalPeerPath(expectedPath)
+	if trimmed, ok := strings.CutSuffix(peerPath, " (deleted)"); ok {
+		if samePath(canonicalPeerPath(trimmed), expected) {
+			return true
+		}
+	}
+	peer := canonicalPeerPath(peerPath)
+	if samePath(filepath.Dir(peer), filepath.Dir(expected)) {
+		if isMovedAsideName(filepath.Base(peer), filepath.Base(expected)) {
+			return true
+		}
+	}
+	// macOS staged updates move <App>.app into .<App>.app.update-<id>/old
+	// beside the bundle while old child roles may still be running.
+	if macOSBundleOldExecutable(peer, expected) {
+		return true
+	}
+	return false
+}
+
+func macOSBundleOldExecutable(peer, expected string) bool {
+	if !samePath(filepath.Base(peer), filepath.Base(expected)) {
+		return false
+	}
+	// Expected: <parent>/<Name>.app/Contents/MacOS/<bin>
+	macOSDir := filepath.Dir(expected)
+	contentsDir := filepath.Dir(macOSDir)
+	bundleDir := filepath.Dir(contentsDir)
+	if filepath.Base(macOSDir) != "MacOS" || filepath.Base(contentsDir) != "Contents" || !strings.HasSuffix(bundleDir, ".app") {
+		return false
+	}
+	peerMacOS := filepath.Dir(peer)
+	peerContents := filepath.Dir(peerMacOS)
+	peerOld := filepath.Dir(peerContents)
+	peerWork := filepath.Dir(peerOld)
+	if filepath.Base(peerMacOS) != "MacOS" || filepath.Base(peerContents) != "Contents" || filepath.Base(peerOld) != "old" {
+		return false
+	}
+	if !samePath(filepath.Dir(peerWork), filepath.Dir(bundleDir)) {
+		return false
+	}
+	prefix := "." + filepath.Base(bundleDir) + ".update-"
+	return strings.HasPrefix(filepath.Base(peerWork), prefix) && len(filepath.Base(peerWork)) > len(prefix)
 }
 func sameIdentity(a, b Info) bool {
 	return a.Profile == b.Profile && a.Role == b.Role && samePath(a.BinaryPath, b.BinaryPath) && a.BinarySHA256 == b.BinarySHA256
@@ -318,6 +401,9 @@ func Call(ctx context.Context, dir string, role Role, command string, payload, r
 		return err
 	}
 	if !sameIdentity(info, reply.Identity) || reply.Identity.PID != peerPID {
+		if reply.Identity.Profile == info.Profile && reply.Identity.Role == info.Role && samePath(reply.Identity.BinaryPath, info.BinaryPath) && reply.Identity.BinarySHA256 != info.BinarySHA256 && reply.Identity.PID == peerPID {
+			return fmt.Errorf("%w: desktop IPC owner build mismatch", ErrStaleBuild)
+		}
 		return errors.New("desktop IPC owner identity mismatch")
 	}
 	if reply.Error != "" {
@@ -335,6 +421,42 @@ func Probe(ctx context.Context, dir string, role Role) (Info, error) {
 	var result Info
 	err := Call(ctx, dir, role, "__probe", nil, &result)
 	return result, err
+}
+
+// RetireStale terminates an orphaned previous-build view role that still owns
+// this profile's private IPC endpoint after an executable replacement. It
+// refuses unrecognized executables and never touches a live current-build role.
+func RetireStale(ctx context.Context, dir string, role Role) (bool, error) {
+	if role != GUI && role != QuickPanel {
+		return false, errors.New("stale retirement is limited to view roles")
+	}
+	info, err := identity(dir, role)
+	if err != nil {
+		return false, err
+	}
+	root, err := runtimeDir(info.Profile)
+	if err != nil {
+		return false, err
+	}
+	conn, err := dial(ctx, root, role)
+	if err != nil {
+		return false, nil
+	}
+	retired, err := retireStalePeer(ctx, conn, root, info)
+	_ = conn.Close()
+	if err != nil || !retired {
+		return retired, err
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	err = servicelaunch.Wait(waitCtx, func() (bool, error) {
+		_, probeErr := Probe(waitCtx, dir, role)
+		if errors.Is(probeErr, ErrUnavailable) {
+			return true, nil
+		}
+		return false, nil
+	})
+	return err == nil, err
 }
 
 // Launch starts the same installed executable in a detached role. Concurrent

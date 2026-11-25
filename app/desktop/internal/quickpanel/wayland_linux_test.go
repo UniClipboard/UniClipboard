@@ -119,7 +119,7 @@ func TestWaylandVirtualKeyboardWireProtocol(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen unix: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	type keyEvent struct {
 		key   uint32

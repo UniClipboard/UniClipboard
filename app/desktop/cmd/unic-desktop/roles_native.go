@@ -39,9 +39,6 @@ func configureNativeRole(dir string, colorMode string) {
 		mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory)
 	}
 }
-func roleCall(ctx context.Context, dir string, role desktopprocess.Role, command string, payload any, result any) error {
-	return desktopprocess.Call(ctx, dir, role, command, payload, result)
-}
 func nativeAsync(work func(context.Context) error) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)

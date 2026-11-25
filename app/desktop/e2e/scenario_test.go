@@ -1002,11 +1002,13 @@ func (s *desktopScenario) stopApp() error {
 		if s.standaloneDaemon != nil && s.standaloneDaemon.Process != nil {
 			_ = s.standaloneDaemon.Process.Signal(syscall.SIGTERM)
 			select {
-			case <-s.standaloneDaemonDone:
+			case err := <-s.standaloneDaemonDone:
+				_ = err
 			case <-time.After(8 * time.Second):
 				_ = s.standaloneDaemon.Process.Kill()
 				select {
-				case <-s.standaloneDaemonDone:
+				case err := <-s.standaloneDaemonDone:
+					_ = err
 				case <-time.After(3 * time.Second):
 					cleanupErr = errors.Join(cleanupErr, errors.New("standalone unicd did not exit"))
 				}

@@ -104,9 +104,9 @@ func loadSystemXKBKeymap() []byte {
 		xkbContextNew         func(uint32) uintptr
 		xkbContextUnref       func(uintptr)
 		xkbKeymapNewFromNames func(uintptr, uintptr, uint32) uintptr
-		xkbKeymapGetAsString  func(uintptr, uint32) uintptr
+		xkbKeymapGetAsString  func(uintptr, uint32) *byte
 		xkbKeymapUnref        func(uintptr)
-		libcFree              func(uintptr)
+		libcFree              func(*byte)
 	)
 	purego.RegisterLibFunc(&xkbContextNew, libXKB, "xkb_context_new")
 	purego.RegisterLibFunc(&xkbContextUnref, libXKB, "xkb_context_unref")
@@ -130,7 +130,7 @@ func loadSystemXKBKeymap() []byte {
 	defer xkbKeymapUnref(km)
 
 	ptr := xkbKeymapGetAsString(km, 1) // XKB_KEYMAP_FORMAT_TEXT_V1
-	if ptr == 0 {
+	if ptr == nil {
 		return nil
 	}
 	if libcFree != nil {
@@ -138,7 +138,7 @@ func loadSystemXKBKeymap() []byte {
 	}
 	// Copy NUL-terminated C string up to 1 MiB safety cap.
 	const maxKeymap = 1 << 20
-	raw := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), maxKeymap)
+	raw := unsafe.Slice(ptr, maxKeymap)
 	for i, b := range raw {
 		if b == 0 {
 			out := make([]byte, i+1)
@@ -239,7 +239,7 @@ func (b *waylandVirtualKeyboardBackend) PasteCtrlV() error {
 	if err != nil {
 		return ErrInput
 	}
-	defer keymapFile.Close()
+	defer func() { _ = keymapFile.Close() }()
 	rights := syscall.UnixRights(int(keymapFile.Fd()))
 	if err := conn.send(vkID, vkOpKeymap, encodeU32s(vkKeymapFormat, uint32(len(keymapData))), rights); err != nil {
 		return ErrInput

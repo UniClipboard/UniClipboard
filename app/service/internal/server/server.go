@@ -24,6 +24,7 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("POST /v1/adapter", boundedRequests(adapterHandler(b), 8))
 	mux.HandleFunc("GET /v1/adapter/content", adapterContentHandler(b))
+	panelApplyRoutes(mux, b)
 	diagnosticRoutes(mux, b)
 	headlessRoutes(mux, b)
 	transferRoutes(mux, b)

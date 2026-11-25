@@ -24,6 +24,7 @@ import (
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
+	"github.com/uniclipboard/unic/internal/servicelifecycle"
 	"github.com/uniclipboard/unic/internal/session"
 	"github.com/uniclipboard/unic/plugin"
 )
@@ -52,6 +53,9 @@ type Options struct {
 	LuaDir string
 	// Observability supplies host-only test intervals or controlled credentials.
 	Observability observability.Options
+	// ServiceInfo reports the live service generation and mode from unicd.
+	// When nil (in-process tests), Open synthesizes a standalone generation.
+	ServiceInfo func() servicelifecycle.Instance
 }
 
 // Node owns Engine, local sessions and configuration. It implements
@@ -71,6 +75,7 @@ type Node struct {
 	customReceive bool
 	customNet     bool
 	wake          wakeState
+	serviceInfo   func() servicelifecycle.Instance
 
 	dataDir          string
 	luaDir           string
@@ -105,7 +110,24 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}
 	// Install the notification after Node exists. Its hub is allocated before
 	// Engine.New, so diagnostics may report initialization without a GUI.
-	n := &Node{peer: peer, dataDir: o.Dir, customNet: o.Transport != nil}
+	serviceInfo := o.ServiceInfo
+	if serviceInfo == nil {
+		dir := o.Dir
+		if abs, err := filepath.Abs(dir); err == nil {
+			dir = abs
+		}
+		if canon, err := filepath.EvalSymlinks(dir); err == nil {
+			dir = canon
+		}
+		defaultInst := servicelifecycle.Instance{
+			ID:        randomID() + randomID()[:8],
+			PID:       os.Getpid(),
+			Directory: dir,
+			Mode:      servicelifecycle.ModeStandalone,
+		}
+		serviceInfo = func() servicelifecycle.Instance { return defaultInst }
+	}
+	n := &Node{peer: peer, dataDir: o.Dir, customNet: o.Transport != nil, serviceInfo: serviceInfo}
 	obsOpts.Changed = func() { n.hub.emit(api.Event{Kind: "diagnostics"}) }
 	diagnostics := observability.New(obsOpts)
 	n.diagnostics = diagnostics

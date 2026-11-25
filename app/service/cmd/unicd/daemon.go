@@ -58,7 +58,7 @@ func runDaemon(mode servicelifecycle.Mode) error {
 	case servicelifecycle.ModeCLITemporary:
 		go lifecycle.WatchInitialOwner(os.Stdin)
 	}
-	options := host.Options{Dir: dir, Settings: settings, LuaDir: luaDir, Observability: observability.ReleaseOptions(settings.Current().Telemetry.Endpoint)}
+	options := host.Options{Dir: dir, Settings: settings, LuaDir: luaDir, Observability: observability.ReleaseOptions(settings.Current().Telemetry.Endpoint), ServiceInfo: lifecycle.Info}
 	if err := configureDaemon(&options); err != nil {
 		return err
 	}

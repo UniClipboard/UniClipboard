@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/uniclipboard/unic/internal/clip"
@@ -138,4 +139,36 @@ func (d Dir) waitDirectoryApply() error {
 		time.Sleep(5 * time.Millisecond)
 	}
 	return errors.New("fixture directory apply gate expired")
+}
+
+// WatchChanges notifies fn whenever the directory clipboard content changes.
+// It is used only in isolated desktop_e2e runs while a panel file lease is held
+// and stops immediately when the returned stop function is called.
+func (d Dir) WatchChanges(fn func()) func() {
+	done := make(chan struct{})
+	var once sync.Once
+	stop := func() { once.Do(func() { close(done) }) }
+	initial, _ := d.Read()
+	last := initial.ObservationHash()
+	go func() {
+		ticker := time.NewTicker(80 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				cur, err := d.Read()
+				if err != nil {
+					continue
+				}
+				h := cur.ObservationHash()
+				if h != last {
+					last = h
+					fn()
+				}
+			}
+		}
+	}()
+	return stop
 }

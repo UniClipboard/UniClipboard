@@ -7,7 +7,7 @@ import (
 )
 
 const annotationSchema = `
-CREATE TABLE history_enrichments (
+CREATE TABLE IF NOT EXISTS history_enrichments (
   item_seq       INTEGER NOT NULL REFERENCES clip_items (seq) ON DELETE CASCADE,
   plugin_id      TEXT NOT NULL,
   plugin_version TEXT NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE history_enrichments (
   updated_ms     INTEGER NOT NULL,
   PRIMARY KEY (item_seq, plugin_id)
 ) WITHOUT ROWID;
-CREATE TABLE history_annotations (
+CREATE TABLE IF NOT EXISTS history_annotations (
   id             INTEGER PRIMARY KEY AUTOINCREMENT,
   item_seq       INTEGER NOT NULL REFERENCES clip_items (seq) ON DELETE CASCADE,
   plugin_id      TEXT NOT NULL,
@@ -26,8 +26,8 @@ CREATE TABLE history_annotations (
   updated_ms     INTEGER NOT NULL,
   UNIQUE (item_seq, plugin_id, ann_type)
 );
-CREATE INDEX history_annotations_item ON history_annotations (item_seq);
-CREATE TABLE history_annotation_assets (
+CREATE INDEX IF NOT EXISTS history_annotations_item ON history_annotations (item_seq);
+CREATE TABLE IF NOT EXISTS history_annotation_assets (
   annotation_id INTEGER NOT NULL REFERENCES history_annotations (id) ON DELETE CASCADE,
   asset_key     TEXT NOT NULL,
   mime          TEXT NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE history_annotation_assets (
   byte_size     INTEGER NOT NULL,
   PRIMARY KEY (annotation_id, asset_key)
 ) WITHOUT ROWID;
-CREATE INDEX history_annotation_assets_blob ON history_annotation_assets (blob) WHERE blob <> '';
+CREATE INDEX IF NOT EXISTS history_annotation_assets_blob ON history_annotation_assets (blob) WHERE blob <> '';
 `
 
 type EnrichmentRecord struct {

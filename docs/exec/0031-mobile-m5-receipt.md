@@ -108,12 +108,18 @@ database records on failure. The
 [first hosted UIKit fixture run](https://github.com/UniClipboard/UniClipboard/actions/runs/45563089492/job/139031238322)
 found the fixture and recorded the app's item request. The pasteboard daemon
 requested authorization and returned an error while setting the TCC value to
-limited. The simulator build now uses Xcode's ad hoc signing and verifies the
-app signature before running the same paste scenario. The
+limited. The [signed iOS 27 retry](https://github.com/UniClipboard/UniClipboard/actions/runs/45573274337/job/139064884617)
+reproduced the failure with the fixture present and no matching history
+record. A locally signed build passed all live flows on iOS 26.3 and 27.0.
+Hosted acceptance uses Xcode 26.6 and iOS 26.5 within the
+[Expo SDK build support range](https://docs.expo.dev/versions/latest/#support-for-android-and-ios-versions).
+It verifies the simulator app signature and runs the same cross-application
+paste, history intake and search scenario. The
 [interrupted asset download](https://github.com/UniClipboard/UniClipboard/actions/runs/45534358566/job/138937188768)
 is handled by bounded retries and the existing Maestro SHA-256 check.
 
-The iOS workflows use the [GitHub-hosted Xcode 27 image](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md).
+The iOS acceptance workflow uses the [GitHub-hosted macOS 26 image](https://github.com/actions/runner-images/blob/main/images/macos/macos-26-arm64-Readme.md).
+The iOS Store workflow uses the [GitHub-hosted Xcode 27 image](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md).
 
 The `mobile-ios` environment supplies the Apple Distribution PKCS#12 file,
 its password, and distinct App Store profiles for the app and share target.

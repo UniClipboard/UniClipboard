@@ -38,6 +38,9 @@ on:
       distribution:
         type: boolean
         default: false
+      joint:
+        type: boolean
+        default: false
     secrets:
       POSTHOG_PROJECT_KEY:
         required: false
@@ -48,6 +51,8 @@ on:
 permissions:
   contents: read
   actions: read
+env:
+  CLI_METADATA: ${{ inputs.joint && 'dist/joint-plan/products.toml' || 'release/products.toml' }}
 jobs:
   prepare:
     if: ${{ !inputs.desktop_only && !inputs.sandbox_run_id && !inputs.native_gui && (!inputs.test_target || inputs.test_target == 'none') }}
@@ -59,12 +64,18 @@ jobs:
         with:
           ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: inputs.joint
+        with:
+          name: joint-release-plan
+          path: dist/joint-plan
       - id: targets
         env:
           EXPECTED_SHA: ${{ inputs.source_sha }}
         run: |
           test -z "$EXPECTED_SHA" || test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
-          echo "matrix=$(python3 tools/release/release.py matrix)" >> "$GITHUB_OUTPUT"
+          matrix=$(python3 tools/release/release.py matrix --metadata "$CLI_METADATA")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
   targets:
     needs: prepare
     timeout-minutes: 30
@@ -77,6 +88,11 @@ jobs:
         with:
           ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: inputs.joint
+        with:
+          name: joint-release-plan
+          path: dist/joint-plan
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -97,7 +113,7 @@ jobs:
           CGO_ENABLED: '0'
           UNIC_POSTHOG_HOST: ${{ inputs.distribution && vars.POSTHOG_HOST || '' }}
           UNIC_POSTHOG_PROJECT_TOKEN: ${{ inputs.distribution && secrets.POSTHOG_PROJECT_KEY || '' }}
-        run: go run ./tools/package -product cli -output dist/cli
+        run: go run ./tools/package -product cli -metadata "$CLI_METADATA" -output dist/cli
       - name: Native executable identity acceptance
         run: python tools/release/release.py smoke --directory dist/cli
       - name: Production headless E2E
@@ -112,6 +128,16 @@ jobs:
       - name: CLI release and v1 upgrade process E2E
         if: matrix.target == 'linux-amd64'
         run: python3 e2e/release/run.py
+      - name: Joint release planning and acceptance process E2E
+        if: matrix.target == 'linux-amd64'
+        run: python3 e2e/release/joint_acceptance.py
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && matrix.target == 'linux-amd64' }}
+        with:
+          name: joint-release-process-acceptance
+          path: .cache/joint-release-e2e/
+          include-hidden-files: true
+          if-no-files-found: warn
       - uses: actions/upload-artifact@v4
         if: ${{ always() && matrix.target == 'linux-amd64' }}
         with:
@@ -139,6 +165,11 @@ jobs:
         with:
           ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: inputs.joint
+        with:
+          name: joint-release-plan
+          path: dist/joint-plan
       - uses: actions/setup-node@v6
         with:
           node-version: '22.23.4'
@@ -155,7 +186,7 @@ jobs:
           pattern: cli-*
           path: dist/targets
       - name: Assemble exact npm package set
-        run: python3 tools/release/release.py assemble --input dist/targets --output dist/npm
+        run: python3 tools/release/release.py assemble --metadata "$CLI_METADATA" --input dist/targets --output dist/npm
       - uses: actions/upload-artifact@v4
         with:
           name: cli-npm-candidate

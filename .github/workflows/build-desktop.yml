@@ -38,9 +38,13 @@ on:
 permissions:
   contents: read
   actions: read
+env:
+  DESKTOP_METADATA: ${{ inputs.joint && 'dist/cli-input/products.toml' || 'release/products.toml' }}
 jobs:
   prepare:
+    name: Verify six-target CLI lock
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
@@ -50,27 +54,46 @@ jobs:
         with:
           ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
+      - name: Verify source revision
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha || github.sha }}
+        run: test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - id: matrix
+      - uses: actions/download-artifact@v4
+        if: inputs.joint
+        with:
+          name: joint-desktop-cli
+          path: dist/cli-input
+      - name: Check the joint CLI lock
+        if: inputs.joint
+        run: python3 tools/package/desktop.py check-cli --metadata "$DESKTOP_METADATA" --cli-manifest dist/cli-input/release-manifest.json
+      - name: Fetch and check the standalone CLI lock
+        if: '!inputs.joint'
         env:
-          EXPECTED_SHA: ${{ inputs.source_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/package/desktop.py fetch-cli --allow-ci --metadata "$DESKTOP_METADATA" --output dist/cli-input
+      - uses: actions/upload-artifact@v4
+        if: '!inputs.joint'
+        with:
+          name: locked-cli-for-desktop
+          path: dist/cli-input/
+          compression-level: 0
+          overwrite: true
+          if-no-files-found: error
+      - id: matrix
         run: |
-          test -z "$EXPECTED_SHA" || test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
-          echo "matrix=$(python3 tools/release/release.py matrix --product desktop)" >> "$GITHUB_OUTPUT"
-          python3 - <<'PY'
-          import tomllib, re
-          p = tomllib.load(open('release/products.toml', 'rb'))['products']['desktop']
-          assert re.fullmatch('[a-f0-9]{64}', p['cli_manifest_sha256']), 'Select an accepted immutable CLI lock before building Desktop'
-          PY
+          matrix=$(python3 tools/release/release.py matrix --product desktop --metadata "$DESKTOP_METADATA")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
   targets:
     needs: prepare
     timeout-minutes: 40
-    env:
-      DESKTOP_METADATA: ${{ inputs.joint && 'dist/cli-input/products.toml' || 'release/products.toml' }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     runs-on: ${{ matrix.runner }}
     steps:
@@ -91,16 +114,9 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         run: python3 tools/package/signing.py keychain --path "$RUNNER_TEMP/unic-desktop.keychain-db" --env-output "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
-        if: inputs.joint
         with:
-          name: joint-desktop-cli
+          name: ${{ inputs.joint && 'joint-desktop-cli' || 'locked-cli-for-desktop' }}
           path: dist/cli-input
-      - name: Fetch exact accepted CLI files
-        if: '!inputs.joint'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python tools/package/desktop.py fetch-cli --allow-ci --target '${{ matrix.target }}' --output dist/cli-input
       - name: Stage and inspect native Desktop
         shell: bash
         run: |

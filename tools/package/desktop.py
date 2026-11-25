@@ -90,14 +90,11 @@ def fresh_output(path):
     return path
 
 
-def locked_cli(metadata, manifest_path, target, development):
-    manifest = cli.validate_manifest(manifest_path)
-    if (sha(manifest_path), manifest["version"], manifest["build_number"]) != (
-        metadata.get("cli_manifest_sha256"),
-        metadata.get("cli_version"),
-        metadata.get("cli_build_number"),
-    ):
-        raise ValueError("Desktop CLI lock mismatch")
+class SharedSourceMismatch(ValueError):
+    """The bundled service needs a fresh CLI build for this Desktop source."""
+
+
+def check_cli_source(manifest, target, development=False):
     if not development and manifest.get("source_clean") is not True:
         raise ValueError("locked CLI source is not clean")
     if target not in manifest["targets"] or len(manifest["targets"]) != len(
@@ -137,9 +134,21 @@ def locked_cli(metadata, manifest_path, target, development):
         path = Path(filename.strip())
         relative = path.relative_to(ROOT).as_posix()
         if native.get("source_sha256", {}).get(relative) != sha(path):
-            raise ValueError(
+            raise SharedSourceMismatch(
                 "locked CLI shared configuration/API mismatch: " + relative
             )
+    return native
+
+
+def locked_cli(metadata, manifest_path, target, development):
+    manifest = cli.validate_manifest(manifest_path)
+    if (sha(manifest_path), manifest["version"], manifest["build_number"]) != (
+        metadata.get("cli_manifest_sha256"),
+        metadata.get("cli_version"),
+        metadata.get("cli_build_number"),
+    ):
+        raise ValueError("Desktop CLI lock mismatch")
+    native = check_cli_source(manifest, target, development)
     package = next(p for p in manifest["packages"] if p.get("target") == target)
     path = cli.checked_file(
         Path(manifest_path).parent, package["file"], package["sha256"]
@@ -153,6 +162,18 @@ def locked_cli(metadata, manifest_path, target, development):
     ):
         raise ValueError("CLI package integrity or target mismatch")
     return manifest, package, path
+
+
+def check_cli_targets(record, manifest_path):
+    if not record["targets"]:
+        raise ValueError("Desktop metadata has no native targets")
+    for target in record["targets"]:
+        print(f"Checking locked CLI for {target}", flush=True)
+        locked_cli(record, manifest_path, target, False)
+
+
+def check_cli(args):
+    check_cli_targets(cli.metadata(args.metadata, "desktop"), args.cli_manifest)
 
 
 def fetch_cli(args):
@@ -176,10 +197,16 @@ def fetch_cli(args):
                 signed=True,
                 desktop_lock=True,
             )
-            locked_cli(record, work / "release-manifest.json", args.target, False)
+            manifest_path = work / "release-manifest.json"
+            if args.target:
+                locked_cli(record, manifest_path, args.target, False)
+            else:
+                check_cli_targets(record, manifest_path)
             work.rename(output)
         print(output / "release-manifest.json")
         return
+    if not args.target:
+        raise ValueError("--target is required for a public CLI download")
     tag = "cli/v" + record["cli_version"] + "-build." + str(record["cli_build_number"])
     base = (
         "https://github.com/UniClipboard/UniClipboard/releases/download/"
@@ -1022,9 +1049,16 @@ def main():
     s = sub.add_parser("accept")
     s.add_argument("--packages", required=True)
     s.add_argument("--receipt", required=True)
+    s = sub.add_parser("check-cli", help="Verify the Desktop CLI lock for all targets")
+    s.add_argument("--metadata", default=str(ROOT / "release/products.toml"))
+    s.add_argument("--cli-manifest", required=True)
     s = sub.add_parser("fetch-cli")
     s.add_argument("--metadata", default=str(ROOT / "release/products.toml"))
-    s.add_argument("--target", required=True, choices=sorted(TARGETS))
+    s.add_argument(
+        "--target",
+        choices=sorted(TARGETS),
+        help="Check all targets if omitted with --allow-ci",
+    )
     s.add_argument("--output", required=True)
     s.add_argument(
         "--allow-ci",
@@ -1061,6 +1095,7 @@ def main():
     args = p.parse_args()
     {
         "accept": accept,
+        "check-cli": check_cli,
         "fetch-cli": fetch_cli,
         "sign": sign,
         "stage": stage,

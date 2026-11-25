@@ -63,7 +63,7 @@ class GitHub:
         return None
 
 
-def page(m, cli, notes, channel, previous, generated):
+def page(m, cli, notes, channel, previous, generated, template):
     tag = f"desktop/v{m['version']}-build.{m['build_number']}"
     download = WEB + "/releases/download/" + quote(tag, safe="") + "/"
     rows = ["| Platform | Architecture | Download |", "| --- | --- | --- |"]
@@ -136,7 +136,7 @@ def page(m, cli, notes, channel, previous, generated):
         "CLI_SHA256": m["cli_manifest_sha256"],
         "NEW_CONTRIBUTORS_SECTION": contributors,
     }
-    text = TEMPLATE.read_text(encoding="utf-8")
+    text = template
     for key, value in values.items():
         text = text.replace("{{" + key + "}}", value)
     if re.search(r"{{[A-Z_]+}}", text):
@@ -196,8 +196,9 @@ def bundle(args):
         if args.generated_notes
         else ""
     )
+    template = args.template.read_text(encoding="utf-8")
     bodies = {
-        c: page(m, cli, notes, c, args.previous_tag, generated)
+        c: page(m, cli, notes, c, args.previous_tag, generated, template)
         for c in ("alpha", "stable")
     }
     write(output / "release-notes.md", bodies[args.channel])
@@ -449,6 +450,7 @@ def main():
     p.add_argument("operation", choices=["preview", "draft", "publish"])
     for name in ["manifest", "cli-manifest", "notes", "output"]:
         p.add_argument("--" + name, required=True)
+    p.add_argument("--template", type=Path, default=TEMPLATE)
     p.add_argument("--channel", choices=["alpha", "stable"], default="alpha")
     p.add_argument("--previous-tag", default="")
     p.add_argument("--generated-notes", default="")

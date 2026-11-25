@@ -25,47 +25,65 @@ paths:
   - .github/workflows/package-acceptance.yml
   - .github/workflows/pr-checks.yml
   - .github/workflows/release-desktop.yml
+  - .github/workflows/record-desktop-acceptance.yml
   - .github/workflows/prepare-legacy-desktop-alpha.yml
   - .github/workflows/native-desktop-acceptance.yml
   - app/desktop/e2e/run.py
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: 1801bcd5fe52b4f6739f3ff4f059a9e7cf880b9a
+verified: fba9253c8446ba090ee04002942e923151734116
 ---
 # Product builds and CLI releases
 
 ## Current implementation
 
-`release/products.toml` owns product versions and build numbers. CLI and Desktop have separate build and delivery controllers. A joint workflow coordinates both products. Android and iOS records reserve independent metadata. These records do not establish release support.
+`release/products.toml` owns the standalone product metadata and declares the joint build targets and Desktop update key. CLI and Desktop have separate build and delivery controllers. A joint workflow coordinates both products. Android and iOS records reserve independent metadata. These records do not establish release support.
 
 ### Joint CLI and Desktop delivery
 
 Run **Release CLI and Desktop** from the selected release source. Supply
-`channel` and `version`. The version must match both product records in
-`release/products.toml`. Each product reads its own build number from that file.
-The entry uses `release-cli.yml` to retain the npm trusted publishing identity.
-Leave `version` empty to release the CLI independently.
+`channel` and `version`. The entry uses `release-cli.yml` to retain the npm
+trusted publishing identity. Leave `version` empty to release the CLI
+independently.
 
-Alpha creates the Desktop CLI lock from the exact accepted CLI manifest.
-An already published CLI build can be recovered from its verified tag and
-immutable assets. Draft recovery still requires the original source and
-metadata. CLI publication and signed Desktop construction run in parallel
-after CLI candidate acceptance. Desktop construction verifies the selected
-CLI manifest, package integrity and shared source compatibility on each target.
+Alpha records the source SHA, selected CLI and Desktop build number in a
+create-only Git tag under `joint-release/alpha/`. The planner allocates new
+numbers above existing product tags, draft GitHub releases, previous
+reservations and, for CLI, every published npm platform version. The configured
+number is a floor for that version. A retry restores the saved plan. The plan
+supplies metadata to the build jobs without editing the checkout.
+
+The planner checks the newest eligible published CLI against all six Desktop
+targets. It pins the exact compatible CLI manifest or reserves a new CLI build
+from the selected source when shared source hashes differ. Recovery verifies
+the pinned digest or the original source and generated metadata. Signed
+Desktop construction must succeed before the workflow publishes the CLI to
+npm. Desktop preparation checks the CLI lock, package integrity and shared
+source again before starting native jobs. Each target also checks those inputs
+during staging.
 The Windows installer lifecycle fixture uses the same lock as the production
 installer and changes only the fixture build number.
-Once both succeed, the workflow publishes the Desktop candidate, stages the
+After npm publication, the workflow publishes the Desktop candidate, stages the
 legacy upgrade after all twelve native receipts pass, and promotes Desktop
-using the channel revision from the staging receipt.
+using the channel revision from the staging receipt. The verified Alpha
+selection is stored under `joint-release/published/`.
 
-Stable requires `desktop_candidate_run_id` and `stable_acceptance` for that
-exact Desktop candidate and source. Desktop must lock the CLI build selected
-for npm `latest`. The workflow verifies native receipts before Desktop
-publication and checks the exact CLI manifest before CLI publication.
-Desktop promotion reads the current revision and checks it when changing the
-channel. Joint promotion rejects a downgrade and verifies the public feed
-when the requested build is already selected.
+After native acceptance, run **Record Desktop native acceptance** with the
+exact Alpha build identity and the three platform receipts. The workflow
+checks the catalogue digest and every package hash, GUI result and lifecycle
+result. It stores the verified receipts under `joint-release/accepted/`.
+The workflow can also register a previously published build that still
+matches the public Alpha feed and its six updater hashes.
+
+Stable chooses the highest accepted Desktop build for the requested version.
+It pins that selection for the run and checks the public origin receipt,
+GitHub attachments, native receipts and exact published npm integrity before
+promotion. It fails when there is no accepted candidate. The workflow promotes
+the existing npm versions to `latest` and uses the original Desktop catalogue,
+release notes and signed assets to advance the Stable feed. It verifies both
+channels after changing them. Desktop promotion uses a channel revision and
+rejects a downgrade.
 
 The same Actions run displays CLI construction and publication, Desktop
 construction and publication, legacy acceptance and Desktop promotion.
@@ -129,7 +147,7 @@ The lifecycle attachment entrypoint verifies the package digest and required obs
 `UNIC_MACOS_SIGNING_IDENTITY` and `UNIC_WINDOWS_CERT_SHA1` let the CLI builder sign executable files before archive hashing and native acceptance.
 Desktop signing first verifies distribution signatures on the locked CLI files and signs only Desktop-owned bytes. Real certificate signing is unverified on this host.
 The Desktop lock selects CLI `2.0.0 (2)` from canonical distribution run [45030337326](https://github.com/UniClipboard/UniClipboard/actions/runs/45030337326) by manifest SHA-256 `19a091d691c8d1ad5ea7bdfb12be39a2e6a2235756a919b7c9f415c4719dd8ec`. Both macOS targets have distribution signatures. All six targets passed the shared configuration, API and service-lifecycle source checks against Desktop. The [previous lock rejection receipt](../exec/baselines/desktop-cli-lock-20261120/receipt.json) records why the earlier candidate was replaced. `fetch-cli --allow-ci` verifies the canonical workflow, clean source, complete target matrix, package digests and macOS signing before acquiring the candidate. The default fetch path requires public immutable release assets.
-`build-desktop.yml` constructs six native targets from that exact lock. Explicit distribution mode imports an ephemeral Apple keychain, signs the Desktop payload, submits a copied bundle to Apple notarization and staples the accepted ticket before final archive hashing, and signs, notarizes and staples the `ULFO` DMG container (`--notarize-container`). Credentials stay in the ephemeral keychain. Cleanup runs after failure as well as success.
+`build-desktop.yml` verifies the exact CLI lock against the selected source before it starts the six native build jobs. A target failure cancels queued and running targets. The workflow requires all six targets to succeed. Explicit distribution mode imports an ephemeral Apple keychain, signs the Desktop payload, submits a copied bundle to Apple notarization and staples the accepted ticket before final archive hashing, and signs, notarizes and staples the `ULFO` DMG container (`--notarize-container`). Credentials stay in the ephemeral keychain. Cleanup runs after failure as well as success.
 Native package smoke keeps version inspection state-free, then explicitly initializes its isolated CLI profile with `unic migrate --initialize-empty --json` before shared-configuration IPC. Discovery HOME, XDG and Windows profile paths remain private. Portable and explicit data directories initialize independently; there is no gate bypass or direct receipt write. Disposable DEB lifecycle acceptance initializes before its first business command and verifies that the receipt survives upgrade and removal.
 
 The primary PR Desktop suite uses the same Ubuntu 24.04 and native GTK 3/indicator runtime baseline as the native Linux acceptance workflow. It installs display/recording tools without the webview-only WebKitGTK stack. The complete canonical suite is partitioned into three disjoint round-robin shards on independent hosted runners. All shards must pass, fail-fast is disabled, and each keeps the thirty-minute job budget. The canonical runner records a separate evidence artifact for each shard; unselected cases remain NOT_RUN in that shard.

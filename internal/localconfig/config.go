@@ -21,6 +21,7 @@ import (
 	"github.com/uniclipboard/unic/internal/desktopkeys"
 	"github.com/uniclipboard/unic/internal/observability"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
+	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
@@ -165,6 +166,8 @@ type Instance struct {
 	// These settings belong to the built-in content classifier.
 	Rules               []builtinclassify.Rule `toml:"rules,omitempty" json:"rules,omitempty"`
 	DisabledDefaultTags []string               `toml:"disabled_default_tags,omitempty" json:"disabled_default_tags,omitempty"`
+	// Preview belongs to the built-in Smart Preview enricher ("builtin.preview").
+	Preview *builtinpreview.Settings `toml:"preview,omitempty" json:"preview,omitempty"`
 }
 
 // PluginImplementation resolves a local instance to its installed program.
@@ -214,12 +217,22 @@ func (c Config) ExternalPlugins() []string {
 // fixes at startup, for the plugins that run.
 func (c Config) processorSettingsKey() map[string]Instance {
 	out := map[string]Instance{}
-	ids := append([]string{builtinclassify.ID, builtintext.ID}, c.ExternalPlugins()...)
+	ids := append([]string{builtinclassify.ID, builtintext.ID, builtinpreview.ID}, c.ExternalPlugins()...)
 	for _, id := range ids {
 		oe, cfg := c.ProcessorSettings(id)
 		in := c.Plugins.Instances[id]
 		if len(in.Rules) == 0 {
 			in.Rules = nil
+		}
+		var preview *builtinpreview.Settings
+		if id == builtinpreview.ID {
+			oe = ""
+			var s builtinpreview.Settings
+			if in.Preview != nil {
+				s = *in.Preview
+			}
+			norm := s.Normalized()
+			preview = &norm
 		}
 		out[id] = Instance{
 			Implementation:      in.Implementation,
@@ -227,6 +240,7 @@ func (c Config) processorSettingsKey() map[string]Instance {
 			Config:              cfg,
 			Rules:               in.Rules,
 			DisabledDefaultTags: slices.Sorted(slices.Values(in.DisabledDefaultTags)),
+			Preview:             preview,
 		}
 	}
 	return out
@@ -414,6 +428,14 @@ func (c Config) Validate() error {
 				return fmt.Errorf("plugins.instances.%q: %w", id, err)
 			}
 		}
+		if in.Preview != nil {
+			if id != builtinpreview.ID {
+				return fmt.Errorf("plugins.instances.%q: this plugin takes no preview settings", id)
+			}
+			if err := in.Preview.Validate(); err != nil {
+				return fmt.Errorf("plugins.instances.%q: %w", id, err)
+			}
+		}
 		if in.Config != nil && !lua[id] && !dormantExternalPlugin(id, in) {
 			return fmt.Errorf("plugins.instances.%q: this plugin takes no config", id)
 		}
@@ -432,6 +454,13 @@ func (c Config) Validate() error {
 		case builtintext.ID, builtinclassify.ID:
 			if in.Sync != (BackendSync{}) {
 				return fmt.Errorf("plugins.instances.%q: this plugin has no sync settings", id)
+			}
+		case builtinpreview.ID:
+			if in.Sync != (BackendSync{}) {
+				return fmt.Errorf("plugins.instances.%q: this plugin has no sync settings", id)
+			}
+			if in.OnError != "" {
+				return fmt.Errorf("plugins.instances.%q: an enricher is not a processor", id)
 			}
 		default:
 			if !dormantExternalPlugin(id, in) {
@@ -576,6 +605,19 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # adds tags; it never changes what you copied. Needs a restart of unicd.
 # [plugins.instances."builtin.text"]
 # enabled = true
+
+# builtin.preview ("Smart Preview") asynchronously enriches committed history
+# items with structured preview annotations and derived search text (starting
+# with web link previews). External enricher plugins use the same capability
+# contract and can override or extend previews via plugins.order. Needs a restart.
+# [plugins.instances."builtin.preview"]
+# enabled = true
+# [plugins.instances."builtin.preview".preview]
+# link_preview = true      # fetch title/summary for standalone HTTP(S) URLs
+# fetch_favicon = true     # fetch and cache site icon
+# fetch_thumbnail = true   # fetch and cache og:image / twitter:image cover
+# request_timeout_sec = 8  # 2..15 seconds per page fetch
+# excluded_domains = []    # e.g. ["intranet.example", "corp.local"]
 
 # GitHub plugins use order = ["owner.plugin"]. Changes require a restart.
 # Lua plugins you installed under $UNIC_HOME/plugins/lua/<name>/ (a spec.toml

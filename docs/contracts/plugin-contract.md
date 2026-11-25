@@ -543,3 +543,14 @@ Declaring `enricher` requires a non-nil `Spec.Enricher` (and `[enricher]` in `sp
 `Enrich(ctx, EnrichContext)` receives `Trigger()`, read-only `Item()`, and `ActionSource` (`Parts()`, `OpenPart`) with the same no-host-path, four-concurrent-stream and invocation-scoped lease guarantees as Go Actions. It supplies one bounded `EnrichmentResult` via `SetResult` (`Status` is `"ok"` or `"skipped"`). Enrichers never mutate original content, expiry, or sync policy, never block commit or sync dispatch, and never run when disabled or absent.
 
 External Go plugins declaring only `enricher` (or `action` + `enricher`) support runtime `Start` and live marketplace updates under the same class rules as Action-only plugins; live replacement cancels in-flight enrichments on the old process before switching.
+
+### Built-in Smart Preview (`builtin.preview`)
+
+`builtin.preview` (display name: Smart Preview / 智能预览) is a reserved built-in Go `enricher` assembled by the service and mobile hosts (`internal/plugins/builtinpreview/`). It ships enabled by default and can be disabled wholly via `plugins.instances."builtin.preview".enabled = false` or tuned per sub-preview under `[plugins.instances."builtin.preview".preview]` (`link_preview`, `fetch_favicon`, `fetch_thumbnail`, `request_timeout_sec`, `excluded_domains`). Changes apply after restart.
+
+`builtin.preview` uses the exact same `CapEnricher`, derived search document, and versioned annotation contracts as external plugins:
+
+- Its first built-in provider produces `link_preview.v1` annotations (with `og:image` thumbnail and favicon fetching enabled by default, bounded HTML/image decoding, and mandatory loopback/private-network SSRF blocking).
+- Future built-in preview providers (such as verification code previews) extend `builtin.preview` internally while keeping the same capability open to third-party plugins.
+- External `enricher` plugins may provide new preview annotation types or override `builtin.preview` for the same annotation type by appearing ahead of `builtin.preview` in `plugins.order` (or when `builtin.preview` / its sub-preview is disabled).
+- When `builtin.preview` is disabled, Engine runs no enrichment and performs zero outbound network requests for it.

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, StyleSheet } from 'react-native';
+import { Alert, AppState, Linking, StyleSheet } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Host, NavigationStack, ZStack } from '@expo/ui/swift-ui';
@@ -57,7 +57,8 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
   const candidates = useEngineStore((s) => s.candidates);
   const pairingCode = useEngineStore((s) => s.pairingCode);
 
-  const [joinMode, setJoinMode] = useState<'manual' | 'scan' | null>(null);
+  const [manualJoinOpen, setManualJoinOpen] = useState(false);
+  const scanningRef = useRef(false);
   const [starting, setStarting] = useState(false);
   const startingRef = useRef(false);
   const operationGeneration = useRef(0);
@@ -88,7 +89,7 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
 
   useEffect(() => {
     if (focused && mode === 'live') return;
-    setJoinMode(null);
+    setManualJoinOpen(false);
     closeTicket();
   }, [focused, mode, closeTicket]);
 
@@ -176,13 +177,39 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
     const raw = input.trim();
     const digits = raw.replace(/\s+/g, '');
     const store = useEngineStore.getState();
-    setJoinMode(null);
+    setManualJoinOpen(false);
     if (/^\d{3}-?\d{3}$/.test(digits)) {
       void start(() => store.joinByCode(digits));
     } else if (raw.startsWith('unic-pair:')) {
       void start(() => store.joinByTicket(raw));
     } else {
       Alert.alert(pair('actionFailed'), pair('invalidInput'));
+    }
+  };
+
+  const handleScanJoin = async () => {
+    if (scanningRef.current) return;
+    scanningRef.current = true;
+    try {
+      const scanned = await unicEngineNative.scanQRCode(
+        t('common:action.cancel'),
+        t('settingsSync:lan.qr.hint')
+      );
+      if (scanned) submit(scanned);
+    } catch (error) {
+      const parsed = parseEngineError(error);
+      if (parsed.code === 'permission_denied') {
+        Alert.alert(t('settingsSync:lan.qr.permissionTitle'), pair('cameraPermission'), [
+          { text: t('common:action.cancel'), style: 'cancel' },
+          { text: pair('openSettings'), onPress: () => void Linking.openSettings() },
+        ]);
+      } else if (parsed.code === 'unsupported') {
+        Alert.alert(pair('actionFailed'), t('home:toast.cameraUnavailable'));
+      } else {
+        Alert.alert(pair('actionFailed'), errorText(error));
+      }
+    } finally {
+      scanningRef.current = false;
     }
   };
 
@@ -244,8 +271,8 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
                 }}
                 onCreatePairingCode={() => void run(store.createPairingCode)}
                 onCancelPairingCode={() => void run(store.cancelPairingCode)}
-                onOpenManualJoin={() => setJoinMode('manual')}
-                onOpenScanJoin={() => setJoinMode('scan')}
+                onOpenManualJoin={() => setManualJoinOpen(true)}
+                onOpenScanJoin={() => void handleScanJoin()}
                 onExportTicket={() => void exportTicket()}
                 onStopWaiting={() => {
                   operationGeneration.current++;
@@ -282,12 +309,10 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
           />
 
           <PairingJoinSheet
-            mode={joinMode}
-            focused={focused}
-            foreground={foreground}
+            visible={manualJoinOpen}
             starting={starting}
             onSubmitInput={submit}
-            onClose={() => setJoinMode(null)}
+            onClose={() => setManualJoinOpen(false)}
           />
 
           <PairingTicketSheet

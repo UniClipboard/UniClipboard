@@ -88,6 +88,7 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   copyPlainText(text: string): Promise<void>;
   copyPairingTicket(text: string, expiresAtMs: number): Promise<void>;
   pickAndCommitImage(camera: boolean): Promise<string>;
+  scanQRCode?(cancelLabel: string, hint: string): Promise<string | null>;
   exportHistoryMedia(historyID: string, action: string): Promise<boolean>;
   shareHistoryMedia(idsJSON: string, text: string | null): Promise<void>;
 
@@ -345,6 +346,17 @@ export const unicEngineNative = {
   copyPlainText: (text: string) => callVoid(() => requireMod().copyPlainText(text)),
   pickAndCommitImage: (camera: boolean) =>
     callJSON<PickAndCommitFileResult>(() => requireMod().pickAndCommitImage(camera)),
+  scanQRCode: async (cancelLabel: string, hint: string): Promise<string | null> => {
+    const mod = requireMod();
+    if (!mod.scanQRCode) {
+      throw new EngineError({ code: "unsupported", message: "native QR scanner unavailable" });
+    }
+    try {
+      return await mod.scanQRCode(cancelLabel, hint);
+    } catch (err) {
+      throw parseEngineError(err);
+    }
+  },
   exportHistoryMedia: async (id: string, action: "photos" | "files") => {
     try {
       return await requireMod().exportHistoryMedia(id, action);

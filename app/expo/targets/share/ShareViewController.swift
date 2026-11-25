@@ -24,7 +24,12 @@ final class ShareViewController: UIViewController {
     staging = true
     Task {
       do {
-        try await stage(context)
+        guard let extensionID = Bundle.main.bundleIdentifier, extensionID.hasSuffix(".Share") else {
+          throw CocoaError(.fileNoSuchFile)
+        }
+        let hostBundleID = String(extensionID.dropLast(".Share".count))
+        try await stage(context, hostBundleID: hostBundleID)
+        await openHost(bundleID: hostBundleID)
         context.completeRequest(returningItems: nil)
       } catch {
         context.cancelRequest(withError: error)
@@ -34,10 +39,18 @@ final class ShareViewController: UIViewController {
 
   private var staging = false
 
-  private func stage(_ context: NSExtensionContext) async throws {
+  private func openHost(bundleID: String) async {
+    // Expo registers the app's bundle identifier as a URL scheme for each build variant.
+    guard let url = URL(string: "\(bundleID)://share"),
+          let application = sequence(first: self as UIResponder, next: \.next)
+            .first(where: { $0 is UIApplication }) as? UIApplication else { return }
+    // The queued items remain available if iOS declines to open the app.
+    _ = await application.open(url)
+  }
+
+  private func stage(_ context: NSExtensionContext, hostBundleID: String) async throws {
     let fs = FileManager.default
-    guard let extensionID = Bundle.main.bundleIdentifier, extensionID.hasSuffix(".Share"),
-          let group = fs.containerURL(forSecurityApplicationGroupIdentifier: "group." + extensionID.dropLast(6) + ".incoming-share")
+    guard let group = fs.containerURL(forSecurityApplicationGroupIdentifier: "group.\(hostBundleID).incoming-share")
     else {
       throw CocoaError(.fileNoSuchFile)
     }

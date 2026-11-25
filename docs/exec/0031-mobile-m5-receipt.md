@@ -60,7 +60,11 @@ Two [hosted](https://github.com/UniClipboard/UniClipboard/actions/runs/455307645
 built the APK and lost the ADB transport during the first Maestro launch.
 The Android job now builds before starting the emulator, retains emulator
 logs, and retries the suite once only after the recorded transport failure
-and a stable connection. Each attempt writes a separate receipt.
+and a stable connection. Each attempt writes a separate receipt. The
+[first delayed-start job](https://github.com/UniClipboard/UniClipboard/actions/runs/45534772791/job/138938562133)
+could not locate its virtual device. The job now creates the virtual
+device before compilation, verifies it is discoverable, and uses the
+same explicit virtual-device directory when it starts the emulator.
 
 The first [hosted iOS run](https://github.com/UniClipboard/UniClipboard/actions/runs/45530292519/job/138923618609)
 passed setup on iPhone Duo and failed its clipboard history assertion. The

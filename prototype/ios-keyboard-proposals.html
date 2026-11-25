@@ -1,0 +1,2213 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>unic · iOS 键盘扩展 UI 设计方案原型 (4 组发散方案)</title>
+<!--
+  Interactive HTML prototype workbench exploring 4 divergent iOS Keyboard Extension
+  UI/UX paradigms for UniClipboard v2 (iOS 26 Liquid Glass + unic monochrome ink).
+  Self-contained, zero external assets. Open directly in any modern browser.
+-->
+<style>
+  /* ======================== Design Tokens ======================== */
+  :root {
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+    --font-mono: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+    /* Workbench Chrome */
+    --stage-bg: #e9ecf2;
+    --stage-dot: rgba(21, 23, 28, 0.06);
+    --bar-bg: rgba(255, 255, 255, 0.86);
+    --bar-border: rgba(15, 23, 42, 0.09);
+    --bar-text: #15171c;
+    --bar-muted: #5d6676;
+    --bar-faint: #8c95a6;
+    --bar-surface: #f1f3f7;
+    --bar-surface-hover: #e6e9f0;
+    --panel-bg: #ffffff;
+    --panel-shadow: 0 20px 50px -16px rgba(15, 23, 42, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+
+    /* iOS Semantic Tokens (from iosDesignTokens.ts) */
+    --ios-bg: #ffffff;
+    --ios-grouped-bg: #f2f2f7;
+    --ios-chat-bg: #f2f3f7;
+    --ios-card: #ffffff;
+    --ios-card-elevated: #ffffff;
+    --ios-card-subtle: rgba(255, 255, 255, 0.78);
+    --ios-kb-tray: #d5d8df;
+    --ios-kb-tray-glass: linear-gradient(180deg, rgba(235, 238, 245, 0.86) 0%, rgba(218, 222, 232, 0.94) 100%);
+    --ios-key-bg: #ffffff;
+    --ios-key-muted: rgba(255, 255, 255, 0.62);
+    --ios-key-shadow: 0 1px 0 rgba(0, 0, 0, 0.22), 0 1px 2px rgba(0, 0, 0, 0.06);
+    --ios-key-active: #e5e8ef;
+
+    --ios-label: #000000;
+    --ios-secondary: rgba(60, 60, 67, 0.64);
+    --ios-tertiary: rgba(60, 60, 67, 0.36);
+    --ios-fill: rgba(120, 120, 128, 0.14);
+    --ios-fill-strong: rgba(120, 120, 128, 0.22);
+    --ios-sep: rgba(60, 60, 67, 0.14);
+
+    /* unic v2 Monochrome Ink Accent */
+    --accent: #15171c;
+    --on-accent: #ffffff;
+
+    /* Kind Tints */
+    --tint-text: #007aff;
+    --tint-url: #0ea5e9;
+    --tint-image: #34c759;
+    --tint-otp: #af52de;
+    --tint-pin: #ff9500;
+    --tint-red: #ff3b30;
+
+    /* Liquid Glass */
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-bg-strong: rgba(255, 255, 255, 0.88);
+    --glass-border: rgba(255, 255, 255, 0.82);
+    --glass-stroke: rgba(0, 0, 0, 0.07);
+    --glass-shadow: 0 6px 18px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  [data-theme="dark"] {
+    --stage-bg: #0b0c0f;
+    --stage-dot: rgba(255, 255, 255, 0.045);
+    --bar-bg: rgba(20, 22, 27, 0.88);
+    --bar-border: rgba(255, 255, 255, 0.09);
+    --bar-text: #f2f4f8;
+    --bar-muted: #98a1b2;
+    --bar-faint: #646d7e;
+    --bar-surface: #1d2027;
+    --bar-surface-hover: #282c36;
+    --panel-bg: #15171c;
+    --panel-shadow: 0 24px 60px -14px rgba(0, 0, 0, 0.7), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+
+    --ios-bg: #000000;
+    --ios-grouped-bg: #000000;
+    --ios-chat-bg: #0b0b0e;
+    --ios-card: #1c1c1e;
+    --ios-card-elevated: #2c2c2e;
+    --ios-card-subtle: rgba(44, 44, 46, 0.78);
+    --ios-kb-tray: #1b1b1e;
+    --ios-kb-tray-glass: linear-gradient(180deg, rgba(32, 32, 36, 0.92) 0%, rgba(20, 20, 23, 0.97) 100%);
+    --ios-key-bg: #3a3a3d;
+    --ios-key-muted: rgba(255, 255, 255, 0.14);
+    --ios-key-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+    --ios-key-active: #505055;
+
+    --ios-label: #ffffff;
+    --ios-secondary: rgba(235, 235, 245, 0.64);
+    --ios-tertiary: rgba(235, 235, 245, 0.34);
+    --ios-fill: rgba(120, 120, 128, 0.28);
+    --ios-fill-strong: rgba(120, 120, 128, 0.42);
+    --ios-sep: rgba(255, 255, 255, 0.11);
+
+    --accent: #f4f2ee;
+    --on-accent: #15171c;
+
+    --tint-text: #0a84ff;
+    --tint-url: #38bdf8;
+    --tint-image: #30d158;
+    --tint-otp: #bf5af2;
+    --tint-pin: #ff9f0a;
+    --tint-red: #ff453a;
+
+    --glass-bg: rgba(44, 44, 48, 0.72);
+    --glass-bg-strong: rgba(52, 52, 56, 0.88);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-stroke: rgba(255, 255, 255, 0.1);
+    --glass-shadow: 0 8px 22px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--font-sans);
+    background-color: var(--stage-bg);
+    background-image: radial-gradient(var(--stage-dot) 1px, transparent 1px);
+    background-size: 20px 20px;
+    color: var(--bar-text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button {
+    font-family: inherit;
+    border: none;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  /* ======================== Workbench Header ======================== */
+  .topbar {
+    position: sticky; top: 0; z-index: 60;
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    background: var(--bar-bg);
+    border-bottom: 1px solid var(--bar-border);
+    padding: 10px 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    flex-wrap: wrap;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--accent); color: var(--on-accent);
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 13px; letter-spacing: -0.02em;
+  }
+  .brand-title { font-size: 14px; font-weight: 650; letter-spacing: -0.01em; }
+  .brand-sub { font-size: 11.5px; color: var(--bar-muted); }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .seg-group {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: var(--bar-surface);
+    padding: 3px; border-radius: 10px;
+    border: 1px solid var(--bar-border);
+  }
+  .seg-btn {
+    padding: 5px 10px; border-radius: 7px;
+    font-size: 12px; font-weight: 550; color: var(--bar-muted);
+    transition: all 0.16s ease;
+    white-space: nowrap;
+  }
+  .seg-btn:hover { color: var(--bar-text); }
+  .seg-btn.active {
+    background: var(--panel-bg);
+    color: var(--bar-text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+  .action-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 11px; border-radius: 9px;
+    font-size: 12px; font-weight: 550;
+    background: var(--bar-surface); color: var(--bar-text);
+    border: 1px solid var(--bar-border);
+    transition: all 0.15s ease;
+  }
+  .action-chip:hover { background: var(--bar-surface-hover); }
+  .action-chip.primary {
+    background: var(--accent); color: var(--on-accent); border-color: transparent;
+  }
+  .action-chip.primary:hover { opacity: 0.9; }
+
+  /* ======================== Main Layouts ======================== */
+  .stage {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 24px 20px 56px;
+  }
+
+  /* Interactive Focus View */
+  .focus-grid {
+    display: grid;
+    grid-template-columns: 422px minmax(340px, 1fr);
+    gap: 28px;
+    align-items: start;
+    justify-content: center;
+  }
+  @media (max-width: 960px) {
+    .focus-grid { grid-template-columns: 1fr; justify-items: center; }
+  }
+
+  /* Proposal Switcher Strip */
+  .proposal-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 22px;
+  }
+  @media (max-width: 920px) {
+    .proposal-tabs { grid-template-columns: repeat(2, 1fr); }
+  }
+  .proposal-tab {
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--panel-bg);
+    border: 1.5px solid var(--bar-border);
+    transition: all 0.18s ease;
+    position: relative;
+  }
+  .proposal-tab:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px -10px rgba(15, 23, 42, 0.16);
+  }
+  .proposal-tab.active {
+    border-color: var(--accent);
+    box-shadow: 0 12px 26px -12px rgba(15, 23, 42, 0.22);
+  }
+  .ptab-top {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    margin-bottom: 4px;
+  }
+  .ptab-code {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    padding: 2px 7px; border-radius: 99px;
+    background: var(--bar-surface); color: var(--bar-muted);
+  }
+  .proposal-tab.active .ptab-code {
+    background: var(--accent); color: var(--on-accent);
+  }
+  .ptab-tag { font-size: 11px; color: var(--bar-faint); font-weight: 500; }
+  .ptab-name { font-size: 14px; font-weight: 650; color: var(--bar-text); margin-bottom: 2px; }
+  .ptab-desc { font-size: 12px; color: var(--bar-muted); line-height: 1.4; }
+
+  /* ======================== iPhone 16 Pro Frame ======================== */
+  .iphone-shell {
+    width: 417px;
+    padding: 12px;
+    border-radius: 54px;
+    background: #141518;
+    box-shadow:
+      0 32px 72px -18px rgba(0, 0, 0, 0.38),
+      0 0 0 1.5px rgba(255, 255, 255, 0.14) inset,
+      0 0 0 3px #2a2d34;
+    position: relative;
+    user-select: none;
+  }
+  .iphone-screen {
+    width: 393px;
+    height: 760px;
+    border-radius: 42px;
+    overflow: hidden;
+    background: var(--ios-chat-bg);
+    display: flex; flex-direction: column;
+    position: relative;
+  }
+
+  /* iOS Status Bar */
+  .ios-statusbar {
+    height: 48px;
+    padding: 14px 26px 0;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 14px; font-weight: 650; color: var(--ios-label);
+    background: var(--ios-bg);
+    position: relative;
+    flex-shrink: 0;
+  }
+  .dynamic-island {
+    position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+    width: 114px; height: 30px; border-radius: 20px; background: #000;
+  }
+  .status-icons { display: flex; align-items: center; gap: 5px; }
+
+  /* Simulated Host App (Chat App) */
+  .host-nav {
+    height: 44px; padding: 0 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--ios-bg);
+    border-bottom: 0.5px solid var(--ios-sep);
+    flex-shrink: 0;
+  }
+  .host-nav-title { text-align: center; }
+  .host-nav-name { font-size: 15px; font-weight: 650; color: var(--ios-label); line-height: 1.15; }
+  .host-nav-sub { font-size: 11px; color: var(--ios-secondary); }
+  .host-nav-btn {
+    font-size: 13px; color: var(--tint-text); font-weight: 500;
+    display: inline-flex; align-items: center; gap: 3px;
+  }
+
+  .chat-stream {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+    background: var(--ios-chat-bg);
+  }
+  .chat-stream::-webkit-scrollbar { display: none; }
+  .chat-time {
+    align-self: center; font-size: 11px; color: var(--ios-tertiary);
+    margin: 2px 0 4px;
+  }
+  .bubble {
+    max-width: 78%;
+    padding: 8px 12px;
+    border-radius: 17px;
+    font-size: 14px; line-height: 1.42;
+    word-break: break-word;
+    animation: bubbleIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(6px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .bubble.them {
+    align-self: flex-start;
+    background: var(--ios-card);
+    color: var(--ios-label);
+    border-bottom-left-radius: 5px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+  .bubble.me {
+    align-self: flex-end;
+    background: #007aff;
+    color: #ffffff;
+    border-bottom-right-radius: 5px;
+  }
+  .bubble.img-bubble {
+    padding: 4px; background: var(--ios-card);
+    border: 0.5px solid var(--ios-sep);
+  }
+  .bubble.img-bubble .bubble-img-cap {
+    font-size: 11px; color: var(--ios-secondary);
+    padding: 4px 6px 2px; display: flex; justify-content: space-between;
+  }
+
+  /* Host Composer Input Bar */
+  .composer-bar {
+    padding: 8px 10px;
+    background: var(--ios-bg);
+    border-top: 0.5px solid var(--ios-sep);
+    display: flex; align-items: flex-end; gap: 8px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .composer-input-wrap {
+    flex: 1;
+    min-height: 36px; max-height: 76px;
+    border-radius: 18px;
+    background: var(--ios-grouped-bg);
+    border: 0.5px solid var(--ios-sep);
+    padding: 7px 12px;
+    display: flex; align-items: center; gap: 6px;
+    overflow-y: auto;
+    cursor: text;
+  }
+  .composer-text {
+    font-size: 14px; line-height: 1.35; color: var(--ios-label);
+    white-space: pre-wrap; word-break: break-word; flex: 1;
+  }
+  .composer-placeholder {
+    color: var(--ios-tertiary); font-size: 14px;
+  }
+  .caret {
+    display: inline-block; width: 2px; height: 16px;
+    background: #007aff; vertical-align: -3px; border-radius: 1px;
+    animation: blink 1.05s steps(1) infinite;
+    margin-left: 1px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .composer-send {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: #007aff; color: #fff;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    transition: transform 0.12s ease, opacity 0.15s;
+  }
+  .composer-send:disabled { opacity: 0.35; cursor: default; }
+  .composer-send:active:not(:disabled) { transform: scale(0.92); }
+
+  /* Simulated Paste Banner (when image is copied to UIPasteboard) */
+  .paste-callout {
+    position: absolute; left: 16px; bottom: 48px; z-index: 25;
+    display: flex; align-items: center; gap: 8px;
+    background: #1c1c1e; color: #fff;
+    padding: 7px 12px; border-radius: 12px;
+    font-size: 12.5px; font-weight: 550;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
+    animation: popUp 0.18s ease;
+  }
+  [data-theme="dark"] .paste-callout {
+    background: #f2f2f7; color: #15171c;
+  }
+  .paste-callout-btn {
+    padding: 3px 9px; border-radius: 7px;
+    background: #007aff; color: #fff;
+    font-size: 12px; font-weight: 600;
+  }
+  @keyframes popUp {
+    from { opacity: 0; transform: translateY(6px) scale(0.96); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* ======================== Keyboard Host Container ======================== */
+  .kb-host {
+    background: var(--ios-kb-tray-glass);
+    backdrop-filter: blur(26px) saturate(180%);
+    -webkit-backdrop-filter: blur(26px) saturate(180%);
+    border-top: 0.5px solid var(--ios-sep);
+    position: relative;
+    flex-shrink: 0;
+    display: flex; flex-direction: column;
+  }
+  .kb-viewport {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* System Bottom Globe + Dictation Bar (Face ID iPhone) */
+  .ios-bottom-dock {
+    height: 46px;
+    padding: 4px 24px 8px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: relative;
+  }
+  .dock-sys-btn {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: grid; place-items: center;
+    color: var(--ios-secondary);
+    transition: background 0.14s ease, color 0.14s ease;
+  }
+  .dock-sys-btn:hover { background: var(--ios-fill); color: var(--ios-label); }
+  .home-indicator {
+    position: absolute; left: 50%; bottom: 7px; transform: translateX(-50%);
+    width: 134px; height: 5px; border-radius: 99px;
+    background: var(--ios-label); opacity: 0.85;
+  }
+
+  /* Keyboard Floating HUD Toast */
+  .kb-hud {
+    position: absolute; left: 50%; top: 8px; transform: translateX(-50%);
+    z-index: 30;
+    padding: 5px 12px; border-radius: 99px;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 11.5px; font-weight: 600; letter-spacing: -0.01em;
+    display: inline-flex; align-items: center; gap: 5px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+    pointer-events: none;
+    animation: hudIn 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+    white-space: nowrap;
+  }
+  @keyframes hudIn {
+    from { opacity: 0; transform: translate(-50%, -6px) scale(0.95); }
+    to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  }
+
+  /* Globe Switcher Popover */
+  .globe-popover {
+    position: absolute; left: 16px; bottom: 48px; z-index: 35;
+    width: 218px;
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(24px);
+    border: 0.5px solid var(--glass-stroke);
+    border-radius: 14px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+    overflow: hidden;
+    animation: popUp 0.16s ease;
+  }
+  .globe-item {
+    padding: 10px 14px; font-size: 13px; color: var(--ios-label);
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 0.5px solid var(--ios-sep);
+  }
+  .globe-item:last-child { border-bottom: none; }
+  .globe-item.selected { font-weight: 650; }
+
+  /* ======================== Shared Keycap & State Styles ======================== */
+  .kb-key {
+    height: 38px; border-radius: 10px;
+    background: var(--ios-key-bg);
+    color: var(--ios-label);
+    box-shadow: var(--ios-key-shadow);
+    font-size: 13.5px; font-weight: 500;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    transition: transform 0.08s ease, background 0.1s ease;
+  }
+  .kb-key:active { transform: scale(0.96); background: var(--ios-key-active); }
+  .kb-key.muted {
+    background: var(--ios-key-muted);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+    color: var(--ios-label);
+  }
+  .kb-key.ink {
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 600;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+  }
+  .kb-key.ink:active { opacity: 0.88; }
+  .kb-key.glass {
+    background: var(--glass-bg);
+    border: 0.5px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: 99px;
+  }
+  .kb-key.blue {
+    background: #007aff; color: #fff; font-weight: 600;
+    box-shadow: 0 2px 6px rgba(0, 122, 255, 0.32);
+  }
+
+  /* Empty / Gate / Syncing State inside Keyboard */
+  .kb-state-box {
+    height: 100%;
+    padding: 16px 20px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; gap: 8px;
+  }
+  .kb-state-icon {
+    width: 42px; height: 42px; border-radius: 14px;
+    background: var(--glass-bg-strong);
+    border: 0.5px solid var(--glass-stroke);
+    box-shadow: var(--glass-shadow);
+    display: grid; place-items: center;
+    color: var(--ios-label);
+  }
+  .kb-state-title { font-size: 14.5px; font-weight: 650; color: var(--ios-label); }
+  .kb-state-desc {
+    font-size: 12px; color: var(--ios-secondary); line-height: 1.45; max-width: 290px;
+  }
+  .kb-state-cta {
+    margin-top: 4px;
+    padding: 8px 16px; border-radius: 99px;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 12.5px; font-weight: 600;
+  }
+  .kb-privacy-row {
+    display: flex; gap: 10px; font-size: 11px; color: var(--ios-secondary); margin-top: 2px;
+  }
+
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 0.85s linear infinite; }
+
+  /* Kind badges & Thumbnails */
+  .kind-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .kind-text { color: var(--tint-text); }
+  .kind-url { color: var(--tint-url); }
+  .kind-image { color: var(--tint-image); }
+  .kind-otp { color: var(--tint-otp); }
+
+  .thumb-art {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+
+  /* ======================================================================
+     PROPOSAL A: 置顶聚焦 · Hero + Stream
+     ====================================================================== */
+  .kb-a { height: 292px; display: flex; flex-direction: column; padding: 8px 10px 6px; gap: 7px; }
+
+  .a-hero {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 11px;
+    border-radius: 15px;
+    background: var(--accent);
+    color: var(--on-accent);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+    cursor: pointer;
+    transition: transform 0.1s ease;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .a-hero:active { transform: scale(0.985); }
+  .a-hero-badge {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: rgba(255, 255, 255, 0.14);
+    display: grid; place-items: center; flex-shrink: 0;
+  }
+  [data-theme="dark"] .a-hero-badge { background: rgba(21, 23, 28, 0.12); }
+  .a-hero-body { flex: 1; min-width: 0; }
+  .a-hero-meta {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10.5px; opacity: 0.72; margin-bottom: 2px;
+  }
+  .a-hero-live {
+    width: 5px; height: 5px; border-radius: 50%; background: #34c759;
+  }
+  .a-hero-text {
+    font-size: 13.5px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .a-hero-text.otp {
+    font-family: var(--font-mono); font-size: 16px; letter-spacing: 0.12em;
+  }
+  .a-hero-cta {
+    padding: 5px 11px; border-radius: 99px;
+    background: var(--on-accent); color: var(--accent);
+    font-size: 11.5px; font-weight: 700; flex-shrink: 0;
+  }
+
+  .a-stream {
+    flex: 1; overflow-y: auto;
+    background: var(--glass-bg);
+    border: 0.5px solid var(--glass-stroke);
+    border-radius: 14px;
+    padding: 3px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .a-stream::-webkit-scrollbar { display: none; }
+  .a-row {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 9px; border-radius: 10px;
+    transition: background 0.12s ease, transform 0.08s ease;
+    cursor: pointer; text-align: left;
+  }
+  .a-row:hover { background: var(--ios-fill); }
+  .a-row:active { transform: scale(0.99); background: var(--ios-fill-strong); }
+  .a-row-bar {
+    width: 3px; height: 24px; border-radius: 99px; flex-shrink: 0;
+  }
+  .a-row-thumb {
+    width: 32px; height: 32px; border-radius: 7px; overflow: hidden; flex-shrink: 0;
+    border: 0.5px solid var(--ios-sep);
+  }
+  .a-row-main { flex: 1; min-width: 0; }
+  .a-row-title {
+    font-size: 13px; font-weight: 500; color: var(--ios-label);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .a-row-sub {
+    font-size: 10.5px; color: var(--ios-secondary);
+    display: flex; align-items: center; gap: 6px; margin-top: 1px;
+  }
+  .a-row-pin { color: var(--tint-pin); font-size: 10px; }
+
+  .a-footer {
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  }
+  .a-filter-pills {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: var(--ios-fill); padding: 2px; border-radius: 10px; height: 36px;
+  }
+  .a-fpill {
+    padding: 0 8px; height: 32px; border-radius: 8px;
+    font-size: 11.5px; font-weight: 550; color: var(--ios-secondary);
+    transition: all 0.14s ease;
+  }
+  .a-fpill.active {
+    background: var(--ios-key-bg); color: var(--ios-label);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+  .a-keys { flex: 1; display: flex; gap: 5px; }
+  .a-keys .kb-key { height: 36px; }
+
+  /* ======================================================================
+     PROPOSAL B: 灵感网格 · Adaptive Bento Masonry
+     ====================================================================== */
+  .kb-b { height: 298px; display: flex; flex-direction: column; padding: 7px 10px 6px; gap: 7px; }
+
+  .b-topbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    flex-shrink: 0;
+  }
+  .b-chips {
+    display: flex; align-items: center; gap: 5px; overflow-x: auto; flex: 1;
+  }
+  .b-chips::-webkit-scrollbar { display: none; }
+  .b-chip {
+    padding: 5px 10px; border-radius: 99px;
+    font-size: 11.5px; font-weight: 600;
+    background: var(--glass-bg);
+    color: var(--ios-secondary);
+    border: 0.5px solid var(--glass-stroke);
+    white-space: nowrap;
+    transition: all 0.14s ease;
+  }
+  .b-chip.active {
+    background: var(--accent); color: var(--on-accent); border-color: transparent;
+  }
+  .b-sync-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 5px 9px; border-radius: 99px;
+    background: var(--glass-bg); border: 0.5px solid var(--glass-stroke);
+    font-size: 11px; font-weight: 550; color: var(--ios-secondary);
+    flex-shrink: 0;
+  }
+  .b-sync-pill:active { transform: scale(0.95); }
+
+  .b-grid {
+    flex: 1; overflow-y: auto;
+    display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: 8px; align-content: start;
+    padding: 1px 1px 4px;
+  }
+  .b-grid::-webkit-scrollbar { display: none; }
+  .b-card {
+    height: 86px; border-radius: 15px;
+    background: var(--ios-card);
+    border: 0.5px solid var(--ios-sep);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.045);
+    padding: 9px 10px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    text-align: left; cursor: pointer; position: relative; overflow: hidden;
+    transition: transform 0.1s ease, box-shadow 0.12s ease;
+  }
+  .b-card:active { transform: scale(0.965); }
+  .b-card.is-image { padding: 0; }
+  .b-card.is-otp {
+    background: linear-gradient(135deg, rgba(175, 82, 222, 0.13), var(--ios-card) 68%);
+    border-color: rgba(175, 82, 222, 0.28);
+  }
+  .b-card-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 4px;
+    font-size: 10.5px; color: var(--ios-secondary);
+  }
+  .b-card-kind {
+    display: inline-flex; align-items: center; gap: 4px; font-weight: 600;
+  }
+  .b-card-body {
+    font-size: 12.5px; line-height: 1.32; color: var(--ios-label);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    font-weight: 500;
+  }
+  .b-card-otp-num {
+    font-family: var(--font-mono); font-size: 20px; font-weight: 750;
+    letter-spacing: 0.1em; color: var(--ios-label);
+  }
+  .b-card-foot {
+    font-size: 10px; color: var(--ios-tertiary);
+    display: flex; align-items: center; justify-content: space-between;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .b-card-domain {
+    color: var(--tint-url); font-weight: 550;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .b-img-overlay {
+    position: absolute; inset: auto 0 0 0;
+    padding: 14px 8px 6px;
+    background: linear-gradient(to top, rgba(0,0,0,0.62), transparent);
+    color: #fff; font-size: 10px; font-weight: 600;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .b-img-pill {
+    position: absolute; top: 6px; right: 6px;
+    padding: 2px 6px; border-radius: 99px;
+    background: rgba(0,0,0,0.48); backdrop-filter: blur(8px);
+    color: #fff; font-size: 9.5px; font-weight: 600;
+  }
+
+  .b-keyrow {
+    display: grid; grid-template-columns: 44px 1fr 48px 76px;
+    gap: 6px; flex-shrink: 0;
+  }
+
+  /* ======================================================================
+     PROPOSAL C: 单手效率舱 · Thumb-Arc Command Deck
+     ====================================================================== */
+  .kb-c { height: 294px; display: flex; flex-direction: column; padding: 7px 8px 6px; gap: 6px; }
+  .c-main { flex: 1; min-height: 0; display: flex; gap: 7px; }
+
+  .c-rail {
+    width: 44px; flex-shrink: 0;
+    background: var(--glass-bg);
+    border: 0.5px solid var(--glass-stroke);
+    border-radius: 14px;
+    padding: 4px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+  }
+  .c-rail-btn {
+    width: 36px; height: 36px; border-radius: 10px;
+    display: grid; place-items: center;
+    color: var(--ios-secondary); position: relative;
+    transition: all 0.14s ease;
+  }
+  .c-rail-btn:hover { background: var(--ios-fill); }
+  .c-rail-btn.active {
+    background: var(--accent); color: var(--on-accent);
+  }
+  .c-rail-spacer { flex: 1; }
+  .c-rail-dot {
+    position: absolute; top: 6px; right: 6px;
+    width: 6px; height: 6px; border-radius: 50%; background: #34c759;
+  }
+
+  .c-feed {
+    flex: 1; min-width: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px;
+    padding-right: 1px;
+  }
+  .c-feed::-webkit-scrollbar { display: none; }
+  .c-item {
+    display: flex; align-items: stretch;
+    background: var(--ios-card);
+    border: 0.5px solid var(--ios-sep);
+    border-radius: 13px;
+    overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+    flex-shrink: 0;
+  }
+  .c-item-tap {
+    flex: 1; min-width: 0; padding: 8px 10px;
+    display: flex; align-items: center; gap: 9px;
+    text-align: left;
+    transition: background 0.1s ease;
+  }
+  .c-item-tap:active { background: var(--ios-fill); }
+  .c-item-body { flex: 1; min-width: 0; }
+  .c-item-text {
+    font-size: 13px; font-weight: 500; color: var(--ios-label);
+    line-height: 1.32;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .c-item-text.otp { font-family: var(--font-mono); font-weight: 700; font-size: 14.5px; letter-spacing: 0.08em; }
+  .c-item-meta {
+    font-size: 10.5px; color: var(--ios-secondary); margin-top: 2px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .c-quick-send {
+    width: 48px; flex-shrink: 0;
+    border-left: 0.5px solid var(--ios-sep);
+    background: var(--ios-fill);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    font-size: 9.5px; font-weight: 650; color: var(--ios-label);
+    transition: background 0.12s ease;
+  }
+  .c-quick-send:hover { background: var(--ios-fill-strong); }
+  .c-quick-send:active { background: var(--accent); color: var(--on-accent); }
+
+  .c-editbar {
+    display: grid; grid-template-columns: 58px 1fr 72px 54px;
+    gap: 6px; flex-shrink: 0;
+  }
+  .c-editbar .kb-key { height: 37px; font-size: 12.5px; }
+
+  /* ======================================================================
+     PROPOSAL D: 原生液态玻璃 · iOS 26 Liquid Glass Sheet
+     ====================================================================== */
+  .kb-d { height: 294px; display: flex; flex-direction: column; padding: 8px 0 6px; gap: 7px; }
+
+  .d-header {
+    padding: 0 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    flex-shrink: 0;
+  }
+  .d-presence {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 550; color: var(--ios-secondary);
+    padding: 4px 8px; border-radius: 99px;
+    background: var(--glass-bg); border: 0.5px solid var(--glass-border);
+  }
+  .d-seg {
+    display: inline-flex; padding: 2px; border-radius: 99px;
+    background: var(--ios-fill);
+    border: 0.5px solid var(--glass-stroke);
+  }
+  .d-seg-btn {
+    padding: 4px 11px; border-radius: 99px;
+    font-size: 11.5px; font-weight: 600; color: var(--ios-secondary);
+    transition: all 0.16s ease;
+  }
+  .d-seg-btn.active {
+    background: var(--ios-card); color: var(--ios-label);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  }
+  .d-icon-btn {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--glass-bg); border: 0.5px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    display: grid; place-items: center; color: var(--ios-label);
+  }
+  .d-icon-btn:active { transform: scale(0.92); }
+
+  /* Quick-Tap Micro Chips */
+  .d-quickstrip {
+    display: flex; gap: 6px; overflow-x: auto; padding: 0 12px;
+    flex-shrink: 0;
+  }
+  .d-quickstrip::-webkit-scrollbar { display: none; }
+  .d-qchip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 10px; border-radius: 99px;
+    background: var(--glass-bg-strong);
+    border: 0.5px solid var(--glass-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    font-size: 11.5px; font-weight: 550; color: var(--ios-label);
+    white-space: nowrap; max-width: 175px;
+    transition: transform 0.1s ease;
+  }
+  .d-qchip:active { transform: scale(0.95); }
+  .d-qchip span { overflow: hidden; text-overflow: ellipsis; }
+
+  /* 2-Row Horizontal Flowing Glass Deck */
+  .d-deck {
+    flex: 1; overflow-x: auto; overflow-y: hidden;
+    padding: 2px 12px;
+    display: grid;
+    grid-template-rows: repeat(2, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: 162px;
+    gap: 8px;
+  }
+  .d-deck::-webkit-scrollbar { display: none; }
+  .d-card {
+    border-radius: 16px;
+    background: var(--glass-bg-strong);
+    border: 0.5px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    padding: 8px 10px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    text-align: left; cursor: pointer; position: relative; overflow: hidden;
+    transition: transform 0.1s ease;
+  }
+  .d-card:active { transform: scale(0.96); }
+  .d-card.span2 { grid-row: span 2; padding: 0; }
+  .d-card-top {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 10px; color: var(--ios-secondary);
+  }
+  .d-card-txt {
+    font-size: 12.5px; font-weight: 500; color: var(--ios-label); line-height: 1.28;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .d-card-txt.otp { font-family: var(--font-mono); font-size: 15px; font-weight: 700; letter-spacing: 0.08em; }
+
+  .d-footer {
+    padding: 0 10px;
+    display: grid; grid-template-columns: 1fr 48px 78px;
+    gap: 7px; flex-shrink: 0;
+  }
+  .d-footer .kb-key { border-radius: 99px; height: 37px; }
+
+  /* ======================== Spec / Rationale Panel ======================== */
+  .spec-card {
+    background: var(--panel-bg);
+    border-radius: 20px;
+    padding: 22px 24px;
+    box-shadow: var(--panel-shadow);
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .spec-header {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    padding-bottom: 14px; border-bottom: 1px solid var(--bar-border);
+  }
+  .spec-eyebrow {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--bar-faint); margin-bottom: 4px;
+  }
+  .spec-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .spec-tagline { font-size: 13.5px; color: var(--bar-muted); line-height: 1.5; margin: 0; }
+
+  .metric-row {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+  .metric-box {
+    background: var(--bar-surface);
+    border-radius: 12px; padding: 10px 12px;
+    border: 1px solid var(--bar-border);
+  }
+  .metric-label { font-size: 11px; color: var(--bar-muted); margin-bottom: 3px; }
+  .metric-val { font-size: 14px; font-weight: 700; color: var(--bar-text); }
+
+  .spec-section h3 {
+    font-size: 12.5px; font-weight: 700; color: var(--bar-text);
+    margin: 0 0 8px; display: flex; align-items: center; gap: 6px;
+  }
+  .spec-list {
+    margin: 0; padding-left: 16px;
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 13px; color: var(--bar-muted); line-height: 1.5;
+  }
+  .spec-list strong { color: var(--bar-text); font-weight: 600; }
+
+  .v1-diff {
+    background: var(--bar-surface);
+    border: 1px solid var(--bar-border);
+    border-radius: 13px; padding: 12px 14px;
+    font-size: 12.5px; color: var(--bar-muted); line-height: 1.55;
+  }
+  .v1-diff-title {
+    font-weight: 700; color: var(--bar-text); margin-bottom: 5px; font-size: 12.5px;
+  }
+
+  .try-hints {
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .try-pill {
+    font-size: 11.5px; padding: 4px 10px; border-radius: 99px;
+    background: var(--bar-surface); color: var(--bar-muted);
+    border: 1px solid var(--bar-border);
+  }
+
+  /* ======================== Gallery Compare View ======================== */
+  .gallery-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(393px, 430px));
+    gap: 24px;
+    justify-content: center;
+  }
+  @media (max-width: 900px) {
+    .gallery-grid { grid-template-columns: minmax(340px, 417px); }
+  }
+  .gallery-card {
+    background: var(--panel-bg);
+    border-radius: 24px;
+    padding: 16px;
+    box-shadow: var(--panel-shadow);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .gallery-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .gallery-title-wrap h2 { margin: 0; font-size: 15.5px; font-weight: 700; }
+  .gallery-title-wrap p { margin: 2px 0 0; font-size: 12px; color: var(--bar-muted); }
+  .gallery-phone-crop {
+    width: 100%;
+    border-radius: 22px;
+    overflow: hidden;
+    border: 1px solid var(--bar-border);
+    box-shadow: 0 8px 24px -10px rgba(0,0,0,0.18);
+  }
+  .gallery-mini-input {
+    background: var(--ios-bg);
+    padding: 8px 12px;
+    border-bottom: 0.5px solid var(--ios-sep);
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 12px; color: var(--ios-secondary);
+  }
+  .gallery-mini-text {
+    color: var(--ios-label); font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px;
+  }
+
+  /* Comparison Matrix */
+  .matrix-wrap {
+    margin-top: 28px;
+    background: var(--panel-bg);
+    border-radius: 20px;
+    padding: 20px 22px;
+    box-shadow: var(--panel-shadow);
+    overflow-x: auto;
+  }
+  .matrix-wrap h3 { margin: 0 0 12px; font-size: 15px; font-weight: 700; }
+  table.matrix {
+    width: 100%; border-collapse: collapse; font-size: 12.5px;
+  }
+  table.matrix th, table.matrix td {
+    text-align: left; padding: 10px 12px;
+    border-bottom: 1px solid var(--bar-border);
+  }
+  table.matrix th { color: var(--bar-muted); font-weight: 650; white-space: nowrap; }
+  table.matrix td { color: var(--bar-text); line-height: 1.45; }
+  table.matrix tr:last-child td { border-bottom: none; }
+  .v1-row td { color: var(--bar-muted); background: var(--bar-surface); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">U</div>
+    <div>
+      <div class="brand-title">UniClipboard · iOS 键盘扩展 UI 方案探索</div>
+      <div class="brand-sub">4 套全新交互范式原型 · 点击键盘卡片可直接输入到模拟对话中</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg-group" id="view-switch">
+      <button class="seg-btn active" data-view="focus">单方案沉浸交互</button>
+      <button class="seg-btn" data-view="gallery">四方案并排对比</button>
+    </div>
+
+    <div class="seg-group" id="state-switch">
+      <button class="seg-btn active" data-state="normal">正常态</button>
+      <button class="seg-btn" data-state="syncing">同步中</button>
+      <button class="seg-btn" data-state="gate">未开完全访问</button>
+      <button class="seg-btn" data-state="empty">空记录</button>
+    </div>
+
+    <button class="action-chip" id="btn-sim-clip" title="模拟从 MacBook 新复制了一条内容并同步到 iPhone">
+      <span>＋ 模拟 Mac 新复制</span>
+    </button>
+
+    <button class="action-chip" id="btn-theme">
+      <span id="theme-label">深色模式</span>
+    </button>
+  </div>
+</header>
+
+<main class="stage" id="app"></main>
+
+<script>
+/* ======================== Inline Artwork (No External Assets) ======================== */
+const IMG_DESIGN = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="55%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="200" fill="url(#g1)"/>
+  <circle cx="255" cy="48" r="76" fill="url(#g2)" opacity="0.28"/>
+  <rect x="24" y="26" width="176" height="114" rx="14" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.22)"/>
+  <rect x="40" y="44" width="66" height="10" rx="5" fill="#fff" opacity="0.85"/>
+  <rect x="40" y="64" width="136" height="7" rx="3.5" fill="#fff" opacity="0.35"/>
+  <rect x="40" y="79" width="112" height="7" rx="3.5" fill="#fff" opacity="0.35"/>
+  <rect x="40" y="102" width="52" height="22" rx="11" fill="#38bdf8"/>
+  <rect x="100" y="102" width="52" height="22" rx="11" fill="rgba(255,255,255,0.18)"/>
+  <rect x="166" y="88" width="130" height="86" rx="14" fill="rgba(15,23,42,0.78)" stroke="rgba(255,255,255,0.2)"/>
+  <path d="M184 150 L212 122 L234 138 L266 108 L280 124" fill="none" stroke="#34d399" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="266" cy="108" r="4.5" fill="#34d399"/>
+</svg>`)}`;
+
+const IMG_SUNSET = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#312e81"/>
+      <stop offset="48%" stop-color="#db2777"/>
+      <stop offset="100%" stop-color="#fb923c"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="200" fill="url(#sky)"/>
+  <circle cx="220" cy="108" r="34" fill="#fde68a" opacity="0.92"/>
+  <path d="M0 148 Q75 112 145 142 T320 132 L320 200 L0 200 Z" fill="#1e1b4b" opacity="0.72"/>
+  <path d="M0 164 Q100 138 205 162 T320 154 L320 200 L0 200 Z" fill="#0f172a"/>
+</svg>`)}`;
+
+/* ======================== Inline Crisp SF-like Icons ======================== */
+const ICONS = {
+  text: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M4 7h16M4 12h12M4 17h9"/></svg>`,
+  url: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l2.92-2.92a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-2.92 2.92a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+  image: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-4.5-4.5L7 20"/></svg>`,
+  otp: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2.5"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
+  pin: `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 3a1 1 0 0 1 .7.3l4 4a1 1 0 0 1-.2 1.6l-3.1 1.5-2.5 2.5.4 3.4a1 1 0 0 1-1.7.8L10 13.5 5.7 17.8a1 1 0 1 1-1.4-1.4L8.5 12 4.9 8.4a1 1 0 0 1 .8-1.7l3.4.4 2.5-2.5 1.5-3.1A1 1 0 0 1 14 1h2z"/></svg>`,
+  refresh: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>`,
+  backspace: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><path d="m18 9-6 6M12 9l6 6"/></svg>`,
+  globe: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5c2.8 2.8 4.2 6 4.2 9.5s-1.4 6.7-4.2 9.5M12 2.5C9.2 5.3 7.8 8.5 7.8 12s1.4 6.7 4.2 9.5"/></svg>`,
+  mic: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>`,
+  send: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>`,
+  undo: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>`,
+  shield: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>`,
+  tray: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7"/><path d="M4 13h4l2 3h4l2-3h4v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-5z"/></svg>`,
+  grid: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.8"/><rect x="14" y="3" width="7" height="7" rx="1.8"/><rect x="3" y="14" width="7" height="7" rx="1.8"/><rect x="14" y="14" width="7" height="7" rx="1.8"/></svg>`,
+  check: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+  bolt: `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>`,
+};
+
+/* ======================== Sample Clipboard Data ======================== */
+const INITIAL_CLIPS = [
+  {
+    id: "c1", kind: "otp", pinned: false,
+    title: "849201",
+    insertText: "849201",
+    subtitle: "GitHub 登录验证码 · 5 分钟内有效",
+    device: "MacBook Pro", time: "刚刚",
+  },
+  {
+    id: "c2", kind: "url", pinned: false,
+    title: "UNI-418 · iOS 键盘扩展设计评审",
+    insertText: "https://linear.app/unic/issue/UNI-418",
+    domain: "linear.app",
+    subtitle: "linear.app/unic/issue/UNI-418",
+    device: "MacBook Pro", time: "2分钟前",
+  },
+  {
+    id: "c3", kind: "image", pinned: false,
+    title: "UI 原型截图.png",
+    meta: "1280 × 860 · PNG",
+    thumb: IMG_DESIGN,
+    device: "MacBook Pro", time: "5分钟前",
+  },
+  {
+    id: "c4", kind: "text", pinned: true,
+    title: "上海市静安区南京西路 1266 号恒隆广场 1 期 28F",
+    insertText: "上海市静安区南京西路 1266 号恒隆广场 1 期 28F",
+    subtitle: "常用收件地址",
+    device: "iPhone", time: "已置顶",
+  },
+  {
+    id: "c5", kind: "text", pinned: false,
+    title: "go test -race ./engine/... -run TestSync",
+    insertText: "go test -race ./engine/... -run TestSync",
+    subtitle: "终端命令 · 40 字",
+    device: "MacBook Pro", time: "12分钟前",
+  },
+  {
+    id: "c6", kind: "text", pinned: true,
+    title: "明天的设计评审改到下午 3:30，先过四个键盘方案的交互细节再定稿。",
+    insertText: "明天的设计评审改到下午 3:30，先过四个键盘方案的交互细节再定稿。",
+    subtitle: "常用回复 · 31 字",
+    device: "iPad Pro", time: "28分钟前",
+  },
+  {
+    id: "c7", kind: "image", pinned: false,
+    title: "晚霞实拍.heic",
+    meta: "4032 × 3024 · HEIC",
+    thumb: IMG_SUNSET,
+    device: "iPhone", time: "1小时前",
+  },
+  {
+    id: "c8", kind: "url", pinned: false,
+    title: "Keyboards | Apple Human Interface Guidelines",
+    insertText: "https://developer.apple.com/design/human-interface-guidelines/keyboards",
+    domain: "developer.apple.com",
+    subtitle: "developer.apple.com/design/.../keyboards",
+    device: "MacBook Pro", time: "2小时前",
+  },
+];
+
+const SIMULATED_INCOMING = [
+  {
+    kind: "text", title: "已发到 Figma，直接点开第二页看新键盘尺寸标注。",
+    insertText: "已发到 Figma，直接点开第二页看新键盘尺寸标注。",
+    subtitle: "刚从 Mac 同步", device: "MacBook Pro", time: "刚刚",
+  },
+  {
+    kind: "otp", title: "317094",
+    insertText: "317094",
+    subtitle: "Apple ID 双重认证码", device: "MacBook Pro", time: "刚刚",
+  },
+  {
+    kind: "url", title: "UniClipboard v2 Release Notes · PR #342",
+    insertText: "https://github.com/UniClipboard/unic/pull/342",
+    domain: "github.com",
+    subtitle: "github.com/UniClipboard/unic/pull/342", device: "MacBook Pro", time: "刚刚",
+  },
+];
+
+/* ======================== Proposal Metadata & Design Specs ======================== */
+const PROPOSALS = {
+  A: {
+    code: "方案 A",
+    shortTag: "二八效率法则",
+    name: "置顶聚焦 · Hero + Stream",
+    subtitle: "最新一条强置顶一键填入 + 下方纵向紧凑历史流",
+    thesis: "80% 切换剪贴板键盘的场景，只是为了粘贴「刚刚在电脑上复制的那 1 条」。把最新内容升级为顶部深色墨水焦点栏，其余历史改为符合单手阅读习惯的纵向紧凑列表。",
+    metrics: [
+      { label: "首屏可见条目", value: "5 条" },
+      { label: "核心操作步数", value: "1 步直达" },
+      { label: "键盘高度", value: "292 pt" },
+    ],
+    highlights: [
+      "<strong>顶部焦点卡（Hero Strip）</strong>：使用 unic v2 单色墨（#15171C / #F4F2EE）高亮最新同步条目，若是验证码自动等宽放大，右侧独立「填入」胶囊零犹豫触发。",
+      "<strong>纵向列表替代横滑卡片</strong>：一屏多出 2 倍信息密度，长文本、网址与图片小缩略图一目了然，天然顺应拇指上下滑动惯性。",
+      "<strong>底部一体化控制栏</strong>：左侧「全部 / 置顶 / 图片」紧凑切换，右侧紧凑「空格 / 退格 / 发送」，彻底消灭旧版空荡的顶部栏。",
+    ],
+    vsV1: "旧版顶栏左右各孤零零放一个圆按钮、中间大片留白；横滑大方块每屏只能看到 2.2 条。方案 A 将“最新同步”与“历史查找”分层，首屏信息量翻倍且视觉重心极稳。",
+    tradeoffs: "图文混排时图片缩略图偏小（32×32），如果用户高频挑选相册/截图发送，方案 B 或 D 的图片预览面积更友好。",
+  },
+  B: {
+    code: "方案 B",
+    shortTag: "主 App 视觉延续",
+    name: "灵感网格 · Adaptive Bento",
+    subtitle: "双列自适应视觉看板，图文/链接/验证码各具版式",
+    thesis: "延续 unic iOS 主应用的双列卡片美学，但抛弃旧版千篇一律的 152×164 僵硬方块——升级为高密度双列 Bento 网格，让不同内容类型拥有专属的视觉指纹。",
+    metrics: [
+      { label: "首屏可见条目", value: "4–6 条" },
+      { label: "图片预览体验", value: "大缩略图" },
+      { label: "键盘高度", value: "298 pt" },
+    ],
+    highlights: [
+      "<strong>内容感知版式（Content-Aware Cards）</strong>：验证码带淡紫渐变与大号等宽数字；链接展示 unic Smart Preview 标题与域名色标；图片铺满卡片并标注分辨率与「复制」徽标。",
+      "<strong>真实顶部分类胶囊 + 同步状态药丸</strong>：取消旧版令人误解的“放大镜切换筛选”，直接平铺「全部 / 置顶 / 文本 / 链接 / 图片」，右上角轻触即可手动刷新同步。",
+      "<strong>无遮挡轻量反馈</strong>：点击不再用不透明白底+大绿勾盖住整张卡片，改为微缩放 + 顶部胶囊 HUD 提示，连续点选多条内容时不打断视线。",
+    ],
+    vsV1: "相比旧版单行横滑，双列纵向 Bento 网格在同样高度内同时展示 4~6 条记录，既保住了图片与链接的视觉愉悦感，又大幅减少了查找翻页次数。",
+    tradeoffs: "双列单卡片宽度约 182pt，超长单行命令或长段文字需要截断为 2 行预览。",
+  },
+  C: {
+    code: "方案 C",
+    shortTag: "单手高频聊天",
+    name: "单手效率舱 · Command Deck",
+    subtitle: "左侧垂直分类轨 + 右侧「插入 / 插入并发送」双速行 + 撤销键",
+    thesis: "为微信、Slack、验证码登录等高频“切键盘 → 粘贴 → 发送”场景而生。把低频分类收进左侧 44pt 垂直工具轨，将主视野和右手拇指热区彻底留给内容与一键发送。",
+    metrics: [
+      { label: "首屏可见条目", value: "4 条 + 双操作" },
+      { label: "粘贴并发送", value: "1 步完成" },
+      { label: "键盘高度", value: "294 pt" },
+    ],
+    highlights: [
+      "<strong>单行双速操作（Tap vs Quick-Send）</strong>：点卡片左侧「填入输入框」继续编辑；点右侧独立「发 ↗」热区直接「插入 + 触发回车发送」，验证码和回复链接 1 次点击闭环。",
+      "<strong>左侧常驻垂直分类轨</strong>：无需顶部再占一行 40pt 高度！全部、置顶、链接、图片、刷新永远 1 Tap 可达，底部绿点实时反映同步状态。",
+      "<strong>底部「撤销上次插入」键</strong>：剪贴板键盘最怕误点插错一整段文字——底部左侧常驻「撤销」，误触一键撤回整段，无需狂按退格键。",
+    ],
+    vsV1: "旧版点卡片只能插入，必须再挪手指去点发送；点错了只能长按退格逐字删。方案 C 从真实单手聊天动线出发，是操作效率最激进的方案。",
+    tradeoffs: "左右分区信息结构相对工具感更强，需要用户花 3 秒建立“点主体填入 / 点右侧直发”的肌肉记忆。",
+  },
+  D: {
+    code: "方案 D",
+    shortTag: "iOS 26 原生美学",
+    name: "原生液态玻璃 · Liquid Glass",
+    subtitle: "顶部玻璃分段 + 短内容微芯片 + Emoji 式双行横滑卡片",
+    thesis: "“如果 Apple 亲自为 iOS 26 设计剪贴板键盘会是什么样？”极致克制的 Liquid Glass 层次、全胶囊键帽，并创新组合「顶部短芯片 + 双行横滑卡片」，兼顾极速短内容与自然横滑手感。",
+    metrics: [
+      { label: "首屏可见条目", value: "3 芯片 + 4 卡" },
+      { label: "视觉契合度", value: "iOS 26 原生" },
+      { label: "键盘高度", value: "294 pt" },
+    ],
+    highlights: [
+      "<strong>快捷微芯片行（Quick-Tap Strip）</strong>：自动提炼验证码、短网址、置顶短语为单行玻璃药丸，不占卡片空间，指尖轻点即填。",
+      "<strong>双行横滑流（2-Row Staggered Deck）</strong>：复刻原生 Emoji 键盘的横向轻扫肌肉记忆，但采用双行排布——图片自动跨两行大尺寸展示，文本与链接紧凑排两行，一屏可见 4~5 项。",
+      "<strong>全胶囊 Liquid Glass 键帽</strong>：与 iOS 26 系统悬浮视觉一脉相承，顶部仅保留设备在线脉冲 + 「最近 / 置顶 / 媒体」玻璃分段控件。",
+    ],
+    vsV1: "旧版也是横滑但只有笨重的单行，且顶部浪费高度、按键还是旧版 iOS 15 直角灰色风。方案 D 保留了横滑的轻盈感，却在信息密度与 iOS 26 质感上实现了跨代跃升。",
+    tradeoffs: "图片跨两行与文本双行混排时，需要精细控制横滑对齐与加载节奏，Swift UIKit `UICollectionViewCompositionalLayout` 可原生高效实现。",
+  },
+};
+
+/* ======================== App State ======================== */
+const state = {
+  view: "focus",          // "focus" | "gallery"
+  proposal: "A",          // "A" | "B" | "C" | "D"
+  kbState: "normal",      // "normal" | "syncing" | "gate" | "empty"
+  theme: "light",
+  clips: INITIAL_CLIPS.map(c => ({ ...c })),
+  simIndex: 0,
+  filters: { A: "all", B: "all", C: "all", D: "recent" },
+  inputText: "",
+  lastInsertedLen: 0,
+  copiedImage: null,
+  hud: null,
+  hudTimer: null,
+  globeOpen: false,
+  messages: [
+    { from: "them", text: "刚发你的验证码和评审链接收到了吗？直接贴这里就行" },
+    { from: "me", text: "收到，我切 UniClipboard 键盘直接贴给你 👇" },
+  ],
+};
+
+let deleteTimer = null;
+let deleteInterval = null;
+
+/* ======================== Helpers ======================== */
+function esc(s = "") {
+  return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+}
+
+function showHud(text, icon = "check") {
+  state.hud = { text, icon };
+  clearTimeout(state.hudTimer);
+  render();
+  state.hudTimer = setTimeout(() => {
+    state.hud = null;
+    render();
+  }, 1500);
+}
+
+function filterClips(proposalKey) {
+  const f = state.filters[proposalKey];
+  return state.clips.filter(c => {
+    if (f === "all" || f === "recent") return true;
+    if (f === "pinned") return c.pinned;
+    if (f === "text") return c.kind === "text" || c.kind === "otp";
+    if (f === "url") return c.kind === "url";
+    if (f === "image" || f === "media") return c.kind === "image";
+    return true;
+  });
+}
+
+function insertClip(clipId, andSend = false) {
+  const clip = state.clips.find(c => c.id === clipId);
+  if (!clip) return;
+  if (clip.kind === "image") {
+    state.copiedImage = clip;
+    showHud("已复制图片 · 点按输入框粘贴", "image");
+    return;
+  }
+  const text = clip.insertText || clip.title;
+  if (andSend) {
+    const outgoing = (state.inputText + text).trim();
+    if (outgoing) {
+      state.messages.push({ from: "me", text: outgoing });
+      state.inputText = "";
+      state.lastInsertedLen = 0;
+      showHud("已插入并发送", "bolt");
+      scrollChatBottom();
+    }
+    return;
+  }
+  state.inputText += text;
+  state.lastInsertedLen = text.length;
+  showHud(clip.kind === "otp" ? "已填入验证码" : "已插入", "check");
+}
+
+function sendCurrentInput() {
+  const val = state.inputText.trim();
+  if (!val) {
+    showHud("已插入换行", "check");
+    return;
+  }
+  state.messages.push({ from: "me", text: val });
+  state.inputText = "";
+  state.lastInsertedLen = 0;
+  render();
+  scrollChatBottom();
+}
+
+function pasteCopiedImage() {
+  if (!state.copiedImage) return;
+  state.messages.push({ from: "me", image: state.copiedImage });
+  state.copiedImage = null;
+  render();
+  scrollChatBottom();
+}
+
+function undoLastInsert() {
+  if (state.lastInsertedLen > 0 && state.inputText.length >= state.lastInsertedLen) {
+    state.inputText = state.inputText.slice(0, -state.lastInsertedLen);
+    state.lastInsertedLen = 0;
+    showHud("已撤销上次插入", "undo");
+  } else if (state.inputText.length > 0) {
+    state.inputText = "";
+    showHud("已清空输入", "undo");
+  } else {
+    showHud("暂无可撤销内容", "undo");
+  }
+}
+
+function backspaceOnce() {
+  if (state.inputText.length > 0) {
+    state.inputText = [...state.inputText].slice(0, -1).join("");
+    state.lastInsertedLen = Math.max(0, state.lastInsertedLen - 1);
+    render();
+  }
+}
+
+function triggerManualRefresh() {
+  if (state.kbState === "gate") return;
+  const prev = state.kbState;
+  state.kbState = "syncing";
+  render();
+  setTimeout(() => {
+    state.kbState = prev === "syncing" ? "normal" : prev;
+    showHud("已与 MacBook Pro 同步", "check");
+  }, 750);
+}
+
+function scrollChatBottom() {
+  requestAnimationFrame(() => {
+    const el = document.querySelector(".chat-stream");
+    if (el) el.scrollTop = el.scrollHeight;
+  });
+}
+
+function kindColor(kind) {
+  if (kind === "otp") return "var(--tint-otp)";
+  if (kind === "url") return "var(--tint-url)";
+  if (kind === "image") return "var(--tint-image)";
+  return "var(--tint-text)";
+}
+
+function kindLabel(kind) {
+  if (kind === "otp") return "验证码";
+  if (kind === "url") return "链接";
+  if (kind === "image") return "图片";
+  return "文本";
+}
+
+/* ======================== Non-Normal Keyboard States ======================== */
+function renderNonNormalBody(proposalKey) {
+  if (state.kbState === "gate") {
+    return `
+      <div class="kb-state-box">
+        <div class="kb-state-icon">${ICONS.shield}</div>
+        <div class="kb-state-title">需要「允许完全访问」</div>
+        <div class="kb-state-desc">开启后才能在键盘里读取 UniClipboard 同步记录。仅用于本机及你信任的设备间同步。</div>
+        <div class="kb-privacy-row">
+          <span>• 不上传按键输入</span>
+          <span>• 仅读取已同步内容</span>
+        </div>
+        <button class="kb-state-cta" data-action="open-settings">前往系统设置 ›</button>
+      </div>`;
+  }
+  if (state.kbState === "syncing") {
+    return `
+      <div class="kb-state-box">
+        <div class="kb-state-icon"><span class="spin" style="display:inline-flex">${ICONS.refresh}</span></div>
+        <div class="kb-state-title">正在同步剪贴板…</div>
+        <div class="kb-state-desc">正在通过 App Group 与局域网节点拉取最新剪贴记录</div>
+      </div>`;
+  }
+  return `
+    <div class="kb-state-box">
+      <div class="kb-state-icon">${ICONS.tray}</div>
+      <div class="kb-state-title">暂无剪贴板记录</div>
+      <div class="kb-state-desc">在 Mac、Windows 或本机复制文本、链接或图片后，会第一时间出现在这里。</div>
+      <button class="kb-state-cta" data-action="sim-clip">＋ 模拟新同步一条</button>
+    </div>`;
+}
+
+/* ======================== Proposal A Renderer ======================== */
+function renderKeyboardA(inGallery = false) {
+  const f = state.filters.A;
+  const list = filterClips("A");
+  const isNormal = state.kbState === "normal" && list.length > 0;
+  const hero = list[0];
+  const rest = list.slice(1);
+
+  return `
+    <div class="kb-a" data-kb="A">
+      ${!isNormal ? `<div style="flex:1">${renderNonNormalBody("A")}</div>` : `
+        <div class="a-hero" data-clip="${hero.id}">
+          <div class="a-hero-badge">
+            ${hero.kind === "image"
+              ? `<img src="${hero.thumb}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`
+              : ICONS[hero.kind]}
+          </div>
+          <div class="a-hero-body">
+            <div class="a-hero-meta">
+              <span class="a-hero-live"></span>
+              <span>最新 · ${esc(hero.device)} · ${esc(hero.time)}</span>
+            </div>
+            <div class="a-hero-text ${hero.kind === "otp" ? "otp" : ""}">${esc(hero.title)}</div>
+          </div>
+          <div class="a-hero-cta">${hero.kind === "image" ? "复制" : "填入"}</div>
+        </div>
+
+        <div class="a-stream">
+          ${rest.map(c => `
+            <button class="a-row" data-clip="${c.id}">
+              ${c.kind === "image"
+                ? `<div class="a-row-thumb"><img class="thumb-art" src="${c.thumb}" alt=""></div>`
+                : `<div class="a-row-bar" style="background:${kindColor(c.kind)}"></div>`}
+              <div class="a-row-main">
+                <div class="a-row-title">${esc(c.title)}</div>
+                <div class="a-row-sub">
+                  <span>${esc(kindLabel(c.kind))}</span>
+                  <span>·</span>
+                  <span>${esc(c.device)}</span>
+                  <span>·</span>
+                  <span>${esc(c.time)}</span>
+                  ${c.pinned ? `<span class="a-row-pin">★ 置顶</span>` : ""}
+                </div>
+              </div>
+            </button>
+          `).join("")}
+        </div>
+      `}
+
+      ${state.kbState === "gate" ? "" : `
+        <div class="a-footer">
+          <div class="a-filter-pills">
+            ${[["all","全部"],["pinned","置顶"],["image","图片"]].map(([k, lbl]) => `
+              <button class="a-fpill ${f === k ? "active" : ""}" data-filter-kb="A" data-filter-val="${k}">${lbl}</button>
+            `).join("")}
+          </div>
+          <div class="a-keys">
+            <button class="kb-key" style="flex:1" data-action="space">空格</button>
+            <button class="kb-key muted" style="width:42px" data-action="backspace">${ICONS.backspace}</button>
+            <button class="kb-key ink" style="width:58px" data-action="return">发送</button>
+          </div>
+        </div>
+      `}
+    </div>`;
+}
+
+/* ======================== Proposal B Renderer ======================== */
+function renderKeyboardB() {
+  const f = state.filters.B;
+  const list = filterClips("B");
+  const isNormal = state.kbState === "normal";
+
+  return `
+    <div class="kb-b" data-kb="B">
+      <div class="b-topbar">
+        <div class="b-chips">
+          ${[["all","全部"],["pinned","置顶"],["text","文本"],["url","链接"],["image","图片"]].map(([k, lbl]) => `
+            <button class="b-chip ${f === k ? "active" : ""}" data-filter-kb="B" data-filter-val="${k}">${lbl}</button>
+          `).join("")}
+        </div>
+        <button class="b-sync-pill" data-action="refresh" title="刷新同步">
+          <span class="${state.kbState === "syncing" ? "spin" : ""}" style="display:inline-flex">${ICONS.refresh}</span>
+          <span>同步</span>
+        </button>
+      </div>
+
+      ${(!isNormal || list.length === 0) ? `<div style="flex:1">${renderNonNormalBody("B")}</div>` : `
+        <div class="b-grid">
+          ${list.map(c => {
+            if (c.kind === "image") {
+              return `
+                <button class="b-card is-image" data-clip="${c.id}">
+                  <img class="thumb-art" src="${c.thumb}" alt="">
+                  <span class="b-img-pill">点按复制</span>
+                  <div class="b-img-overlay">
+                    <span>${esc(c.device)}</span>
+                    <span>${esc(c.time)}</span>
+                  </div>
+                </button>`;
+            }
+            if (c.kind === "otp") {
+              return `
+                <button class="b-card is-otp" data-clip="${c.id}">
+                  <div class="b-card-head">
+                    <span class="b-card-kind kind-otp">${ICONS.otp} 验证码</span>
+                    <span>${esc(c.time)}</span>
+                  </div>
+                  <div class="b-card-otp-num">${esc(c.title.slice(0,3) + " " + c.title.slice(3))}</div>
+                  <div class="b-card-foot">
+                    <span>${esc(c.device)}</span>
+                    <span style="color:var(--tint-otp);font-weight:600">一键填入</span>
+                  </div>
+                </button>`;
+            }
+            return `
+              <button class="b-card" data-clip="${c.id}">
+                <div class="b-card-head">
+                  <span class="b-card-kind kind-${c.kind}">
+                    ${ICONS[c.kind]} ${esc(kindLabel(c.kind))}
+                  </span>
+                  <span>${c.pinned ? "★ " : ""}${esc(c.time)}</span>
+                </div>
+                <div class="b-card-body">${esc(c.title)}</div>
+                <div class="b-card-foot">
+                  ${c.kind === "url"
+                    ? `<span class="b-card-domain">${esc(c.domain)}</span>`
+                    : `<span>${esc(c.device)}</span>`}
+                </div>
+              </button>`;
+          }).join("")}
+        </div>
+      `}
+
+      ${state.kbState === "gate" ? "" : `
+        <div class="b-keyrow">
+          <button class="kb-key muted" data-action="undo" title="撤销上次插入">${ICONS.undo}</button>
+          <button class="kb-key" data-action="space">空格</button>
+          <button class="kb-key muted" data-action="backspace">${ICONS.backspace}</button>
+          <button class="kb-key ink" data-action="return">发送</button>
+        </div>
+      `}
+    </div>`;
+}
+
+/* ======================== Proposal C Renderer ======================== */
+function renderKeyboardC() {
+  const f = state.filters.C;
+  const list = filterClips("C");
+  const isNormal = state.kbState === "normal";
+
+  const railItems = [
+    ["all", ICONS.grid, "全部"],
+    ["pinned", ICONS.pin, "置顶"],
+    ["url", ICONS.url, "链接"],
+    ["image", ICONS.image, "图片"],
+  ];
+
+  return `
+    <div class="kb-c" data-kb="C">
+      <div class="c-main">
+        <div class="c-rail">
+          ${railItems.map(([k, icon, tip]) => `
+            <button class="c-rail-btn ${f === k ? "active" : ""}" data-filter-kb="C" data-filter-val="${k}" title="${tip}">
+              ${icon}
+            </button>
+          `).join("")}
+          <div class="c-rail-spacer"></div>
+          <button class="c-rail-btn" data-action="refresh" title="刷新同步">
+            <span class="${state.kbState === "syncing" ? "spin" : ""}" style="display:inline-flex">${ICONS.refresh}</span>
+            ${state.kbState === "normal" ? `<span class="c-rail-dot"></span>` : ""}
+          </button>
+        </div>
+
+        ${(!isNormal || list.length === 0) ? `<div style="flex:1">${renderNonNormalBody("C")}</div>` : `
+          <div class="c-feed">
+            ${list.map(c => `
+              <div class="c-item">
+                <button class="c-item-tap" data-clip="${c.id}">
+                  ${c.kind === "image"
+                    ? `<div class="a-row-thumb" style="width:40px;height:40px"><img class="thumb-art" src="${c.thumb}" alt=""></div>`
+                    : `<div class="a-row-bar" style="height:28px;background:${kindColor(c.kind)}"></div>`}
+                  <div class="c-item-body">
+                    <div class="c-item-text ${c.kind === "otp" ? "otp" : ""}">${esc(c.title)}</div>
+                    <div class="c-item-meta">
+                      <span>${esc(c.device)}</span>
+                      <span>·</span>
+                      <span>${esc(c.time)}</span>
+                      ${c.pinned ? `<span style="color:var(--tint-pin)">★</span>` : ""}
+                    </div>
+                  </div>
+                </button>
+                ${c.kind === "image"
+                  ? `<button class="c-quick-send" data-clip="${c.id}">
+                      ${ICONS.image}
+                      <span>复制</span>
+                    </button>`
+                  : `<button class="c-quick-send" data-clip-send="${c.id}" title="一键插入并发送">
+                      ${ICONS.send}
+                      <span>直发</span>
+                    </button>`}
+              </div>
+            `).join("")}
+          </div>
+        `}
+      </div>
+
+      ${state.kbState === "gate" ? "" : `
+        <div class="c-editbar">
+          <button class="kb-key muted" data-action="undo">${ICONS.undo}<span>撤销</span></button>
+          <button class="kb-key" data-action="space">空格</button>
+          <button class="kb-key ink" data-action="return">发送</button>
+          <button class="kb-key muted" data-action="backspace">${ICONS.backspace}</button>
+        </div>
+      `}
+    </div>`;
+}
+
+/* ======================== Proposal D Renderer ======================== */
+function renderKeyboardD() {
+  const f = state.filters.D;
+  const list = filterClips("D");
+  const isNormal = state.kbState === "normal";
+
+  // Quick-tap micro chips: OTPs, pinned snippets, short domains
+  const quickChips = state.clips.filter(c => c.kind === "otp" || c.pinned || c.kind === "url").slice(0, 4);
+
+  return `
+    <div class="kb-d" data-kb="D">
+      <div class="d-header">
+        <div class="d-presence">
+          <span class="kind-dot" style="background:#34c759"></span>
+          <span>2 台在线</span>
+        </div>
+        <div class="d-seg">
+          ${[["recent","最近"],["pinned","置顶"],["media","媒体"]].map(([k, lbl]) => `
+            <button class="d-seg-btn ${f === k ? "active" : ""}" data-filter-kb="D" data-filter-val="${k}">${lbl}</button>
+          `).join("")}
+        </div>
+        <button class="d-icon-btn" data-action="refresh" title="刷新同步">
+          <span class="${state.kbState === "syncing" ? "spin" : ""}" style="display:inline-flex">${ICONS.refresh}</span>
+        </button>
+      </div>
+
+      ${(!isNormal || list.length === 0) ? `<div style="flex:1">${renderNonNormalBody("D")}</div>` : `
+        <div class="d-quickstrip">
+          ${quickChips.map(c => `
+            <button class="d-qchip" data-clip="${c.id}">
+              <span class="kind-${c.kind}" style="display:inline-flex">${ICONS[c.kind]}</span>
+              <span>${esc(c.kind === "url" ? c.domain : c.title)}</span>
+            </button>
+          `).join("")}
+        </div>
+
+        <div class="d-deck">
+          ${list.map(c => {
+            if (c.kind === "image") {
+              return `
+                <button class="d-card span2" data-clip="${c.id}">
+                  <img class="thumb-art" src="${c.thumb}" alt="">
+                  <span class="b-img-pill">点按复制</span>
+                  <div class="b-img-overlay">
+                    <span>${esc(c.title)}</span>
+                  </div>
+                </button>`;
+            }
+            return `
+              <button class="d-card" data-clip="${c.id}">
+                <div class="d-card-top">
+                  <span class="b-card-kind kind-${c.kind}">${ICONS[c.kind]} ${esc(kindLabel(c.kind))}</span>
+                  <span>${esc(c.time)}</span>
+                </div>
+                <div class="d-card-txt ${c.kind === "otp" ? "otp" : ""}">${esc(c.title)}</div>
+              </button>`;
+          }).join("")}
+        </div>
+      `}
+
+      ${state.kbState === "gate" ? "" : `
+        <div class="d-footer">
+          <button class="kb-key glass" data-action="space">空格</button>
+          <button class="kb-key glass" data-action="backspace">${ICONS.backspace}</button>
+          <button class="kb-key ink" data-action="return">发送</button>
+        </div>
+      `}
+    </div>`;
+}
+
+function renderKeyboardByKey(key) {
+  if (key === "A") return renderKeyboardA();
+  if (key === "B") return renderKeyboardB();
+  if (key === "C") return renderKeyboardC();
+  return renderKeyboardD();
+}
+
+/* ======================== Bottom iOS System Dock ======================== */
+function renderSystemDock(showGlobePopover = false) {
+  return `
+    <div class="ios-bottom-dock">
+      <button class="dock-sys-btn" data-action="globe" title="切换输入法">${ICONS.globe}</button>
+      <div class="home-indicator"></div>
+      <button class="dock-sys-btn" data-action="mic" title="系统听写">${ICONS.mic}</button>
+      ${showGlobePopover && state.globeOpen ? `
+        <div class="globe-popover">
+          <div class="globe-item"><span>简体中文（拼音）</span></div>
+          <div class="globe-item"><span>English (US)</span></div>
+          <div class="globe-item selected"><span>UniClipboard Keyboard</span><span>✓</span></div>
+        </div>` : ""}
+    </div>`;
+}
+
+/* ======================== Focus Interactive View ======================== */
+function renderFocusView() {
+  const p = PROPOSALS[state.proposal];
+
+  const tabsHtml = `
+    <div class="proposal-tabs">
+      ${Object.entries(PROPOSALS).map(([k, item]) => `
+        <button class="proposal-tab ${state.proposal === k ? "active" : ""}" data-select-proposal="${k}">
+          <div class="ptab-top">
+            <span class="ptab-code">${item.code}</span>
+            <span class="ptab-tag">${item.shortTag}</span>
+          </div>
+          <div class="ptab-name">${item.name}</div>
+          <div class="ptab-desc">${item.subtitle}</div>
+        </button>
+      `).join("")}
+    </div>`;
+
+  const chatHtml = state.messages.map(m => {
+    if (m.image) {
+      return `
+        <div class="bubble me img-bubble">
+          <img src="${m.image.thumb}" style="width:180px;height:112px;border-radius:13px;display:block;object-fit:cover" alt="">
+          <div class="bubble-img-cap">
+            <span>${esc(m.image.title)}</span>
+            <span>${esc(m.image.meta)}</span>
+          </div>
+        </div>`;
+    }
+    return `<div class="bubble ${m.from}">${esc(m.text)}</div>`;
+  }).join("");
+
+  const phoneHtml = `
+    <div class="iphone-shell">
+      <div class="iphone-screen">
+        <div class="ios-statusbar">
+          <span>23:25</span>
+          <div class="dynamic-island"></div>
+          <div class="status-icons">
+            <svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+            <svg width="22" height="11" viewBox="0 0 26 12" fill="none"><rect x="0.8" y="0.8" width="21" height="10.4" rx="2.6" stroke="currentColor" stroke-width="1.3"/><rect x="2.6" y="2.6" width="16" height="6.8" rx="1.4" fill="currentColor"/><path d="M23.5 4v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+
+        <div class="host-nav">
+          <span class="host-nav-btn">‹ 返回</span>
+          <div class="host-nav-title">
+            <div class="host-nav-name">设计评审群 (4)</div>
+            <div class="host-nav-sub">模拟宿主 App · 可实时输入发送</div>
+          </div>
+          <button class="host-nav-btn" data-action="clear-input" style="font-size:12px">清空</button>
+        </div>
+
+        <div class="chat-stream">
+          <div class="chat-time">今天 23:22</div>
+          ${chatHtml}
+        </div>
+
+        <div class="composer-bar">
+          ${state.copiedImage ? `
+            <div class="paste-callout">
+              <span>剪贴板有图片「${esc(state.copiedImage.title)}」</span>
+              <button class="paste-callout-btn" data-action="paste-img">粘贴发送</button>
+            </div>` : ""}
+          <div class="composer-input-wrap" data-action="focus-input">
+            ${state.inputText
+              ? `<div class="composer-text">${esc(state.inputText)}<span class="caret"></span></div>`
+              : `<div class="composer-placeholder">点下方键盘卡片即可填入内容<span class="caret"></span></div>`}
+          </div>
+          <button class="composer-send" data-action="return" ${state.inputText.trim() ? "" : "disabled"} title="发送">
+            ${ICONS.send}
+          </button>
+        </div>
+
+        <div class="kb-host">
+          <div class="kb-viewport">
+            ${state.hud ? `<div class="kb-hud">${ICONS[state.hud.icon] || ""}<span>${esc(state.hud.text)}</span></div>` : ""}
+            ${renderKeyboardByKey(state.proposal)}
+          </div>
+          ${renderSystemDock(true)}
+        </div>
+      </div>
+    </div>`;
+
+  const specHtml = `
+    <aside class="spec-card">
+      <div class="spec-header">
+        <div>
+          <div class="spec-eyebrow">${p.code} · ${p.shortTag}</div>
+          <h1 class="spec-title">${p.name}</h1>
+          <p class="spec-tagline">${p.thesis}</p>
+        </div>
+      </div>
+
+      <div class="metric-row">
+        ${p.metrics.map(m => `
+          <div class="metric-box">
+            <div class="metric-label">${m.label}</div>
+            <div class="metric-val">${m.value}</div>
+          </div>
+        `).join("")}
+      </div>
+
+      <div class="spec-section">
+        <h3>核心信息架构与交互亮点</h3>
+        <ul class="spec-list">
+          ${p.highlights.map(h => `<li>${h}</li>`).join("")}
+        </ul>
+      </div>
+
+      <div class="v1-diff">
+        <div class="v1-diff-title">对比原仓库旧版 UI（UniClip v1）的本质突破</div>
+        <div>${p.vsV1}</div>
+      </div>
+
+      <div class="spec-section">
+        <h3>权衡与 iOS 工程落地备注</h3>
+        <div style="font-size:13px;color:var(--bar-muted);line-height:1.55">
+          ${p.tradeoffs}
+          <br><br>
+          <strong>技术合规提醒：</strong>四套方案均遵循 <code>0031</code> 架构边界——键盘扩展不启动第二个 Go Engine，仅读取主 App 写入 App Group 的轻量只读快照（与缩略图缓存），内存稳定控制在 iOS 扩展安全阈值内；点击图片写入 <code>UIPasteboard</code> 并给出明确“点按粘贴”引导。
+        </div>
+      </div>
+
+      <div class="spec-section">
+        <h3>试试这些交互</h3>
+        <div class="try-hints">
+          <span class="try-pill">点击验证码 / 文本 / 链接直接插入</span>
+          <span class="try-pill">点击图片触发模拟系统粘贴气泡</span>
+          <span class="try-pill">长按退格键连续删除</span>
+          <span class="try-pill">点顶部「模拟 Mac 新复制」看实时更新</span>
+          <span class="try-pill">切换浅色/深色与 4 种系统状态</span>
+        </div>
+      </div>
+    </aside>`;
+
+  return `${tabsHtml}<div class="focus-grid">${phoneHtml}${specHtml}</div>`;
+}
+
+/* ======================== Gallery Side-by-Side View ======================== */
+function renderGalleryView() {
+  const cards = Object.entries(PROPOSALS).map(([k, p]) => `
+    <section class="gallery-card">
+      <div class="gallery-head">
+        <div class="gallery-title-wrap">
+          <h2>${p.code} · ${p.name}</h2>
+          <p>${p.subtitle}</p>
+        </div>
+        <button class="action-chip primary" data-open-focus="${k}">深度体验 →</button>
+      </div>
+      <div class="gallery-phone-crop">
+        <div class="gallery-mini-input">
+          <span class="gallery-mini-text">${state.inputText ? esc(state.inputText) : "点按任意条目测试输入效果…"}</span>
+          <span style="color:#007aff;font-weight:600">iPhone 393pt</span>
+        </div>
+        <div class="kb-host">
+          <div class="kb-viewport">
+            ${renderKeyboardByKey(k)}
+          </div>
+          ${renderSystemDock(false)}
+        </div>
+      </div>
+    </section>
+  `).join("");
+
+  const matrix = `
+    <div class="matrix-wrap">
+      <h3>4 套新方案 vs 原版（UniClip v1）设计维度对比</h3>
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>方案</th>
+            <th>核心布局范式</th>
+            <th>首屏可见密度</th>
+            <th>图片体验</th>
+            <th>核心杀手锏</th>
+            <th>最适合谁</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="v1-row">
+            <td><strong>原版（旧）</strong></td>
+            <td>顶栏双孤立按钮 + 单行横滑大方块</td>
+            <td>~2.2 条</td>
+            <td>中等（方块全幅）</td>
+            <td>结构简单</td>
+            <td>—（顶栏浪费、找历史需频滑）</td>
+          </tr>
+          <tr>
+            <td><strong>方案 A · 置顶聚焦</strong></td>
+            <td>深色最新焦点卡 + 纵向紧凑列表</td>
+            <td>5 条（1 焦点 + 4 列表）</td>
+            <td>轻量小缩略图</td>
+            <td>最新跨端剪贴 0 思考一键填入</td>
+            <td>电脑复制→手机粘贴高频用户</td>
+          </tr>
+          <tr>
+            <td><strong>方案 B · 灵感网格</strong></td>
+            <td>顶部分类胶囊 + 双列自适应 Bento 网格</td>
+            <td>4–6 条</td>
+            <td>优秀（卡片大预览）</td>
+            <td>内容感知版式，与主 App 高度统一</td>
+            <td>图文/链接混用、注重视觉辨识度</td>
+          </tr>
+          <tr>
+            <td><strong>方案 C · 单手效率舱</strong></td>
+            <td>左侧垂直工具轨 + 纵向双速操作流</td>
+            <td>4 条 + 直发按钮</td>
+            <td>中等缩略图</td>
+            <td>「一键直发」+「撤销上次插入」</td>
+            <td>微信/IM 高频回复与单手操作党</td>
+          </tr>
+          <tr>
+            <td><strong>方案 D · 原生液态玻璃</strong></td>
+            <td>玻璃分段 + 快捷微芯片 + 双行横滑流</td>
+            <td>3 芯片 + 4–5 卡</td>
+            <td>极佳（跨两行大卡）</td>
+            <td>iOS 26 原生质感 + 短内容微芯片</td>
+            <td>追求极致 Apple 原生融合感</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>`;
+
+  return `<div class="gallery-grid">${cards}</div>${matrix}`;
+}
+
+/* ======================== Main Render & Event Delegation ======================== */
+function render() {
+  document.documentElement.setAttribute("data-theme", state.theme);
+  document.getElementById("theme-label").textContent = state.theme === "light" ? "深色模式" : "浅色模式";
+
+  document.querySelectorAll("#view-switch .seg-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.view === state.view);
+  });
+  document.querySelectorAll("#state-switch .seg-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.state === state.kbState);
+  });
+
+  const app = document.getElementById("app");
+  app.innerHTML = state.view === "focus" ? renderFocusView() : renderGalleryView();
+}
+
+// Workbench topbar bindings
+document.getElementById("view-switch").addEventListener("click", e => {
+  const btn = e.target.closest("[data-view]");
+  if (!btn) return;
+  state.view = btn.dataset.view;
+  state.globeOpen = false;
+  render();
+});
+
+document.getElementById("state-switch").addEventListener("click", e => {
+  const btn = e.target.closest("[data-state]");
+  if (!btn) return;
+  state.kbState = btn.dataset.state;
+  render();
+});
+
+document.getElementById("btn-theme").addEventListener("click", () => {
+  state.theme = state.theme === "light" ? "dark" : "light";
+  render();
+});
+
+document.getElementById("btn-sim-clip").addEventListener("click", () => {
+  const tpl = SIMULATED_INCOMING[state.simIndex % SIMULATED_INCOMING.length];
+  state.simIndex += 1;
+  state.clips.unshift({
+    id: "sim_" + Date.now(),
+    pinned: false,
+    ...tpl,
+  });
+  state.kbState = "normal";
+  showHud("收到 MacBook Pro 新剪贴", "bolt");
+});
+
+// Delegated clicks inside #app
+document.getElementById("app").addEventListener("click", e => {
+  const propBtn = e.target.closest("[data-select-proposal]");
+  if (propBtn) {
+    state.proposal = propBtn.dataset.selectProposal;
+    state.globeOpen = false;
+    render();
+    return;
+  }
+
+  const openFocus = e.target.closest("[data-open-focus]");
+  if (openFocus) {
+    state.proposal = openFocus.dataset.openFocus;
+    state.view = "focus";
+    render();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+
+  const filterBtn = e.target.closest("[data-filter-kb]");
+  if (filterBtn) {
+    state.filters[filterBtn.dataset.filterKb] = filterBtn.dataset.filterVal;
+    render();
+    return;
+  }
+
+  const clipSendBtn = e.target.closest("[data-clip-send]");
+  if (clipSendBtn) {
+    insertClip(clipSendBtn.dataset.clipSend, true);
+    return;
+  }
+
+  const clipBtn = e.target.closest("[data-clip]");
+  if (clipBtn) {
+    insertClip(clipBtn.dataset.clip, false);
+    return;
+  }
+
+  const actBtn = e.target.closest("[data-action]");
+  if (actBtn) {
+    const act = actBtn.dataset.action;
+    if (act === "space") {
+      state.inputText += " ";
+      state.lastInsertedLen = 1;
+      render();
+    } else if (act === "return") {
+      sendCurrentInput();
+    } else if (act === "undo") {
+      undoLastInsert();
+    } else if (act === "refresh") {
+      triggerManualRefresh();
+    } else if (act === "paste-img") {
+      pasteCopiedImage();
+    } else if (act === "clear-input") {
+      state.inputText = "";
+      state.copiedImage = null;
+      render();
+    } else if (act === "globe") {
+      state.globeOpen = !state.globeOpen;
+      render();
+    } else if (act === "mic") {
+      showHud("系统听写按钮（由 iOS 托管）", "check");
+    } else if (act === "open-settings") {
+      state.kbState = "normal";
+      showHud("模拟已开启完全访问", "check");
+    } else if (act === "sim-clip") {
+      document.getElementById("btn-sim-clip").click();
+    }
+    return;
+  }
+
+  if (state.globeOpen && !e.target.closest(".globe-popover")) {
+    state.globeOpen = false;
+    render();
+  }
+});
+
+// Accelerating hold-to-delete for Backspace
+function stopBackspaceRepeat() {
+  clearTimeout(deleteTimer);
+  clearInterval(deleteInterval);
+  deleteTimer = null;
+  deleteInterval = null;
+}
+
+document.getElementById("app").addEventListener("pointerdown", e => {
+  const bs = e.target.closest('[data-action="backspace"]');
+  if (!bs) return;
+  backspaceOnce();
+  deleteTimer = setTimeout(() => {
+    deleteInterval = setInterval(backspaceOnce, 75);
+  }, 420);
+});
+window.addEventListener("pointerup", stopBackspaceRepeat);
+window.addEventListener("pointercancel", stopBackspaceRepeat);
+
+render();
+</script>
+</body>
+</html>

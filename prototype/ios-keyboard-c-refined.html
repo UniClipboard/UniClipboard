@@ -1,0 +1,1664 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>unic · iOS 键盘扩展最终原型（C1 精简定稿版）</title>
+<!--
+  Finalized C1 iOS Keyboard Extension prototype for UniClipboard v2.
+  Locked decisions:
+  - Left 48pt Liquid Glass vertical tool rail (全部 / 置顶 / 链接 / 图片 / 同步)
+  - Full-width single-tap cards (Quick-Send / 直发 removed for zero mis-taps & max readability)
+  - #1 Latest subtle spotlight + OTP clean 6-digit formatting & extraction
+  - Adaptive 2-column visual image grid when switching to Image category
+  - Long-press (or right-click) in-keyboard Liquid Glass preview & pin overlay
+  - Bottom edit bar: Stateful multi-step Undo / Space / Host-adaptive Return / Accelerating Backspace
+-->
+<style>
+  :root {
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+    --font-mono: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+    /* Workbench */
+    --stage-bg: #eaedf3;
+    --stage-dot: rgba(21, 23, 28, 0.055);
+    --bar-bg: rgba(255, 255, 255, 0.86);
+    --bar-border: rgba(15, 23, 42, 0.09);
+    --bar-text: #15171c;
+    --bar-muted: #5d6676;
+    --bar-faint: #8b94a5;
+    --bar-surface: #f2f4f8;
+    --bar-surface-hover: #e7ebf2;
+    --panel-bg: #ffffff;
+    --panel-shadow: 0 22px 52px -18px rgba(15, 23, 42, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+
+    /* iOS 26 Liquid Glass & Semantic Colors */
+    --ios-bg: #ffffff;
+    --ios-grouped: #f2f2f7;
+    --ios-chat-bg: #f3f4f8;
+    --ios-card: rgba(255, 255, 255, 0.94);
+    --ios-card-solid: #ffffff;
+    --ios-kb-bg: linear-gradient(180deg, rgba(235, 238, 245, 0.9) 0%, rgba(220, 224, 234, 0.96) 100%);
+    --ios-rail-bg: rgba(255, 255, 255, 0.66);
+    --ios-key-bg: rgba(255, 255, 255, 0.95);
+    --ios-key-muted: rgba(255, 255, 255, 0.58);
+    --ios-key-active: #e3e7f0;
+    --ios-key-shadow: 0 1px 0 rgba(0, 0, 0, 0.18), 0 1px 2px rgba(0, 0, 0, 0.05);
+
+    --ios-label: #0b0c0e;
+    --ios-secondary: rgba(60, 60, 67, 0.64);
+    --ios-tertiary: rgba(60, 60, 67, 0.36);
+    --ios-fill: rgba(120, 120, 128, 0.12);
+    --ios-fill-strong: rgba(120, 120, 128, 0.21);
+    --ios-sep: rgba(60, 60, 67, 0.12);
+
+    /* unic v2 Monochrome Ink Accent */
+    --accent: #15171c;
+    --on-accent: #ffffff;
+
+    /* Kind Tints */
+    --tint-text: #007aff;
+    --tint-url: #0284c7;
+    --tint-image: #248a3d;
+    --tint-otp: #9333ea;
+    --tint-pin: #f59e0b;
+    --tint-green: #34c759;
+    --tint-orange: #ff9500;
+
+    /* Liquid Glass Specular */
+    --glass-bg: rgba(255, 255, 255, 0.76);
+    --glass-bg-strong: rgba(255, 255, 255, 0.94);
+    --glass-border: rgba(255, 255, 255, 0.88);
+    --glass-stroke: rgba(15, 23, 42, 0.08);
+    --glass-shadow: 0 4px 14px rgba(15, 23, 42, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    --spotlight-ring: rgba(21, 23, 28, 0.18);
+    --spotlight-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.99) 0%, rgba(246, 248, 253, 0.96) 100%);
+    --otp-bg: linear-gradient(135deg, rgba(147, 51, 234, 0.09) 0%, rgba(255, 255, 255, 0.97) 60%);
+  }
+
+  [data-theme="dark"] {
+    --stage-bg: #0a0b0e;
+    --stage-dot: rgba(255, 255, 255, 0.045);
+    --bar-bg: rgba(18, 20, 25, 0.88);
+    --bar-border: rgba(255, 255, 255, 0.09);
+    --bar-text: #f3f4f8;
+    --bar-muted: #98a2b3;
+    --bar-faint: #646e80;
+    --bar-surface: #1b1e25;
+    --bar-surface-hover: #252933;
+    --panel-bg: #14161b;
+    --panel-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.75), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+
+    --ios-bg: #000000;
+    --ios-grouped: #111114;
+    --ios-chat-bg: #0a0a0d;
+    --ios-card: rgba(40, 40, 45, 0.92);
+    --ios-card-solid: #242428;
+    --ios-kb-bg: linear-gradient(180deg, rgba(30, 30, 35, 0.94) 0%, rgba(19, 19, 22, 0.98) 100%);
+    --ios-rail-bg: rgba(44, 44, 48, 0.66);
+    --ios-key-bg: #3b3b40;
+    --ios-key-muted: rgba(255, 255, 255, 0.13);
+    --ios-key-active: #505056;
+    --ios-key-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+
+    --ios-label: #ffffff;
+    --ios-secondary: rgba(235, 235, 245, 0.64);
+    --ios-tertiary: rgba(235, 235, 245, 0.34);
+    --ios-fill: rgba(120, 120, 128, 0.24);
+    --ios-fill-strong: rgba(120, 120, 128, 0.38);
+    --ios-sep: rgba(255, 255, 255, 0.1);
+
+    --accent: #f4f2ee;
+    --on-accent: #15171c;
+
+    --tint-text: #0a84ff;
+    --tint-url: #38bdf8;
+    --tint-image: #30d158;
+    --tint-otp: #c084fc;
+    --tint-pin: #fbbf24;
+    --tint-green: #30d158;
+    --tint-orange: #ff9f0a;
+
+    --glass-bg: rgba(44, 44, 48, 0.74);
+    --glass-bg-strong: rgba(50, 50, 56, 0.95);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-stroke: rgba(255, 255, 255, 0.1);
+    --glass-shadow: 0 6px 20px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.11);
+    --spotlight-ring: rgba(244, 242, 238, 0.24);
+    --spotlight-bg: linear-gradient(135deg, rgba(52, 52, 58, 0.96) 0%, rgba(38, 38, 43, 0.96) 100%);
+    --otp-bg: linear-gradient(135deg, rgba(192, 132, 252, 0.16) 0%, rgba(44, 44, 48, 0.96) 64%);
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--font-sans);
+    background-color: var(--stage-bg);
+    background-image: radial-gradient(var(--stage-dot) 1px, transparent 1px);
+    background-size: 20px 20px;
+    color: var(--bar-text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; border: none; background: none; color: inherit; cursor: pointer; padding: 0; }
+
+  /* ======================== Workbench Top Bar ======================== */
+  .topbar {
+    position: sticky; top: 0; z-index: 60;
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    background: var(--bar-bg);
+    border-bottom: 1px solid var(--bar-border);
+    padding: 10px 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: var(--accent); color: var(--on-accent);
+    display: grid; place-items: center;
+    font-weight: 750; font-size: 13px; letter-spacing: -0.02em;
+  }
+  .brand-title { font-size: 14px; font-weight: 700; letter-spacing: -0.015em; }
+  .brand-sub { font-size: 11.5px; color: var(--bar-muted); }
+
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .seg-group {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: var(--bar-surface);
+    padding: 3px; border-radius: 10px;
+    border: 1px solid var(--bar-border);
+  }
+  .seg-btn {
+    padding: 5px 10px; border-radius: 7px;
+    font-size: 12px; font-weight: 550; color: var(--bar-muted);
+    transition: all 0.15s ease; white-space: nowrap;
+  }
+  .seg-btn:hover { color: var(--bar-text); }
+  .seg-btn.active {
+    background: var(--panel-bg); color: var(--bar-text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+  .action-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 11px; border-radius: 9px;
+    font-size: 12px; font-weight: 600;
+    background: var(--bar-surface); color: var(--bar-text);
+    border: 1px solid var(--bar-border);
+    transition: background 0.14s ease;
+  }
+  .action-chip:hover { background: var(--bar-surface-hover); }
+
+  /* ======================== Stage Layout ======================== */
+  .stage {
+    max-width: 1320px; margin: 0 auto;
+    padding: 26px 20px 56px;
+  }
+  .main-grid {
+    display: grid;
+    grid-template-columns: 422px minmax(360px, 1fr);
+    gap: 30px; align-items: start; justify-content: center;
+  }
+  @media (max-width: 960px) { .main-grid { grid-template-columns: 1fr; justify-items: center; } }
+
+  /* ======================== iPhone 16 Pro Shell ======================== */
+  .iphone-shell {
+    width: 417px; padding: 12px; border-radius: 54px;
+    background: #141519;
+    box-shadow:
+      0 34px 76px -20px rgba(0, 0, 0, 0.4),
+      0 0 0 1.5px rgba(255, 255, 255, 0.14) inset,
+      0 0 0 3px #2b2e36;
+    user-select: none;
+  }
+  .iphone-screen {
+    width: 393px; height: 774px; border-radius: 42px;
+    overflow: hidden; background: var(--ios-chat-bg);
+    display: flex; flex-direction: column; position: relative;
+  }
+  .ios-statusbar {
+    height: 48px; padding: 14px 26px 0;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 14px; font-weight: 650; color: var(--ios-label);
+    background: var(--ios-bg); position: relative; flex-shrink: 0;
+  }
+  .dynamic-island {
+    position: absolute; left: 50%; top: 10px; transform: translateX(-50%);
+    width: 114px; height: 30px; border-radius: 20px; background: #000;
+  }
+
+  /* Host App Area */
+  .host-nav {
+    height: 44px; padding: 0 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--ios-bg); border-bottom: 0.5px solid var(--ios-sep); flex-shrink: 0;
+  }
+  .host-nav-title { text-align: center; }
+  .host-nav-name { font-size: 15px; font-weight: 650; color: var(--ios-label); line-height: 1.15; }
+  .host-nav-sub { font-size: 10.5px; color: var(--ios-secondary); }
+  .host-nav-btn { font-size: 13px; color: var(--tint-text); font-weight: 500; }
+
+  .host-body {
+    flex: 1; overflow-y: auto; padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+    background: var(--ios-chat-bg);
+  }
+  .host-body::-webkit-scrollbar { display: none; }
+  .chat-time { align-self: center; font-size: 11px; color: var(--ios-tertiary); margin: 2px 0; }
+  .bubble {
+    max-width: 80%; padding: 8px 12px; border-radius: 17px;
+    font-size: 14px; line-height: 1.42; word-break: break-word;
+    animation: bubbleIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes bubbleIn {
+    from { opacity: 0; transform: translateY(6px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .bubble.them {
+    align-self: flex-start; background: var(--ios-card-solid); color: var(--ios-label);
+    border-bottom-left-radius: 5px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+  .bubble.me {
+    align-self: flex-end; background: #007aff; color: #fff; border-bottom-right-radius: 5px;
+  }
+  .bubble.img-bubble { padding: 4px; background: var(--ios-card-solid); border: 0.5px solid var(--ios-sep); }
+  .bubble-img-cap {
+    font-size: 10.5px; color: var(--ios-secondary); padding: 4px 6px 2px;
+    display: flex; justify-content: space-between;
+  }
+
+  .note-paper {
+    background: var(--ios-bg); border-radius: 16px; padding: 14px;
+    border: 0.5px solid var(--ios-sep); flex: 1; display: flex; flex-direction: column; gap: 8px;
+  }
+  .note-h1 { font-size: 17px; font-weight: 700; color: var(--ios-label); }
+  .note-p {
+    font-size: 14px; line-height: 1.55; color: var(--ios-label);
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .safari-card {
+    background: var(--ios-card-solid); border-radius: 16px; padding: 14px;
+    border: 0.5px solid var(--ios-sep);
+  }
+  .safari-domain { font-size: 12px; color: var(--tint-url); font-weight: 600; margin-bottom: 4px; }
+  .safari-title { font-size: 15px; font-weight: 650; color: var(--ios-label); margin-bottom: 6px; }
+  .safari-desc { font-size: 12.5px; color: var(--ios-secondary); line-height: 1.48; }
+
+  /* Composer Bar */
+  .composer-bar {
+    padding: 8px 10px; background: var(--ios-bg);
+    border-top: 0.5px solid var(--ios-sep);
+    display: flex; align-items: flex-end; gap: 8px; flex-shrink: 0; position: relative;
+  }
+  .composer-input-wrap {
+    flex: 1; min-height: 36px; max-height: 76px; border-radius: 18px;
+    background: var(--ios-grouped); border: 0.5px solid var(--ios-sep);
+    padding: 7px 12px; display: flex; align-items: center; overflow-y: auto;
+  }
+  .composer-text {
+    font-size: 14px; line-height: 1.35; color: var(--ios-label);
+    white-space: pre-wrap; word-break: break-word; flex: 1;
+  }
+  .composer-placeholder { color: var(--ios-tertiary); font-size: 13.5px; }
+  .caret {
+    display: inline-block; width: 2px; height: 15px; background: #007aff;
+    vertical-align: -2px; border-radius: 1px; animation: blink 1.05s steps(1) infinite; margin-left: 1px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .composer-send {
+    height: 32px; padding: 0 11px; border-radius: 99px;
+    background: #007aff; color: #fff; font-size: 12.5px; font-weight: 650;
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    flex-shrink: 0; transition: transform 0.1s ease, opacity 0.15s;
+  }
+  .composer-send:disabled { opacity: 0.35; cursor: default; }
+  .composer-send:active:not(:disabled) { transform: scale(0.94); }
+
+  .paste-callout {
+    position: absolute; left: 14px; bottom: 48px; z-index: 28;
+    display: flex; align-items: center; gap: 8px;
+    background: var(--accent); color: var(--on-accent);
+    padding: 7px 11px; border-radius: 12px;
+    font-size: 12px; font-weight: 550;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.28);
+    animation: popUp 0.18s ease;
+  }
+  .paste-callout-btn {
+    padding: 3px 9px; border-radius: 7px;
+    background: #007aff; color: #fff; font-size: 11.5px; font-weight: 650;
+  }
+  @keyframes popUp {
+    from { opacity: 0; transform: translateY(6px) scale(0.96); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* ======================================================================
+     FINALIZED C1 KEYBOARD SURFACE (NO QUICK-SEND)
+     ====================================================================== */
+  .kb-host {
+    background: var(--ios-kb-bg);
+    backdrop-filter: blur(28px) saturate(185%);
+    -webkit-backdrop-filter: blur(28px) saturate(185%);
+    border-top: 0.5px solid var(--ios-sep);
+    position: relative; flex-shrink: 0;
+    display: flex; flex-direction: column;
+  }
+
+  .kb-c-wrap {
+    height: 302px;
+    display: flex; flex-direction: column;
+    padding: 8px 8px 5px;
+    gap: 7px;
+    position: relative;
+  }
+
+  .c-body {
+    flex: 1; min-height: 0;
+    display: flex; gap: 7px;
+  }
+
+  /* ---- Left 48pt Liquid Glass Tool Rail ---- */
+  .c-rail {
+    width: 48px; flex-shrink: 0;
+    background: var(--ios-rail-bg);
+    border: 0.5px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: 16px;
+    padding: 4px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+  }
+  .c-rail-btn {
+    width: 40px; height: 39px; border-radius: 11px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5px;
+    color: var(--ios-secondary); position: relative;
+    transition: all 0.14s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .c-rail-btn:hover { background: var(--ios-fill); color: var(--ios-label); }
+  .c-rail-btn:active { transform: scale(0.93); }
+  .c-rail-btn.active {
+    background: var(--accent); color: var(--on-accent);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16);
+  }
+  .c-rail-lbl {
+    font-size: 9px; font-weight: 650; line-height: 1; letter-spacing: -0.01em;
+    opacity: 0.86;
+  }
+  .c-rail-btn.active .c-rail-lbl { opacity: 1; }
+  .c-rail-spacer { flex: 1; }
+  .c-rail-sep { width: 24px; height: 0.5px; background: var(--ios-sep); margin: 1px 0; }
+  .c-sync-dot {
+    position: absolute; top: 6px; right: 6px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--tint-green);
+    box-shadow: 0 0 0 1.5px var(--ios-card-solid);
+  }
+  .c-sync-dot.err { background: var(--tint-orange); }
+  .c-rail-count {
+    position: absolute; top: 3px; right: 3px;
+    min-width: 13px; height: 13px; padding: 0 3px; border-radius: 99px;
+    background: var(--tint-pin); color: #fff;
+    font-size: 8.5px; font-weight: 750; display: grid; place-items: center;
+  }
+  .c-rail-btn.active .c-rail-count { background: var(--on-accent); color: var(--accent); }
+
+  /* ---- Full-Width Unified Single-Tap Feed ---- */
+  .c-canvas {
+    flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative;
+  }
+  .c-feed {
+    flex: 1; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 1px 1px 4px;
+  }
+  .c-feed::-webkit-scrollbar { display: none; }
+
+  .c-row {
+    width: 100%;
+    display: flex; align-items: center; gap: 9px;
+    background: var(--ios-card);
+    border: 0.5px solid var(--glass-stroke);
+    box-shadow: 0 1.5px 5px rgba(15, 23, 42, 0.045), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    border-radius: 14px;
+    padding: 8px 11px 8px 9px;
+    text-align: left;
+    position: relative;
+    transition: transform 0.1s ease, background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+    flex-shrink: 0;
+  }
+  [data-theme="dark"] .c-row {
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  .c-row:active { transform: scale(0.982); background: var(--ios-fill); }
+  .c-row.is-latest {
+    background: var(--spotlight-bg);
+    border: 1px solid var(--spotlight-ring);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  }
+  .c-row.is-otp {
+    background: var(--otp-bg);
+    border-color: rgba(147, 51, 234, 0.28);
+  }
+  .c-row.just-acted {
+    border-color: var(--tint-green);
+    box-shadow: 0 0 0 1.5px rgba(52, 199, 89, 0.25);
+  }
+  .c-row.new-arrival {
+    animation: slideDrop 0.28s cubic-bezier(0.2, 0.85, 0.25, 1);
+  }
+  @keyframes slideDrop {
+    from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* Semantic Left Accent / Media Thumb */
+  .c-kind-pill {
+    width: 3px; align-self: stretch; min-height: 30px; border-radius: 99px; flex-shrink: 0;
+  }
+  .c-media-thumb {
+    width: 62px; height: 44px; border-radius: 9px; overflow: hidden; flex-shrink: 0;
+    border: 0.5px solid var(--ios-sep); position: relative;
+  }
+  .c-media-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .c-text-col { flex: 1; min-width: 0; }
+  .c-meta-line {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10px; color: var(--ios-secondary); margin-bottom: 2px;
+  }
+  .c-latest-tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 5.5px; border-radius: 99px;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 9px; font-weight: 700; letter-spacing: 0.01em;
+  }
+  .c-otp-tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 1px 5.5px; border-radius: 99px;
+    background: rgba(147, 51, 234, 0.14); color: var(--tint-otp);
+    font-size: 9px; font-weight: 700;
+  }
+  .c-domain-tag {
+    color: var(--tint-url); font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 135px;
+  }
+  .c-pin-star { color: var(--tint-pin); font-size: 10px; }
+
+  .c-title {
+    font-size: 13px; font-weight: 520; color: var(--ios-label); line-height: 1.34;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .c-title.single { -webkit-line-clamp: 1; }
+  .c-title.otp-code {
+    font-family: var(--font-mono); font-size: 18px; font-weight: 750;
+    letter-spacing: 0.14em; line-height: 1.15;
+  }
+  .c-sub-hint {
+    font-size: 10.5px; color: var(--ios-tertiary); margin-top: 1.5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* Quiet transient checkmark (only appears briefly right after tap) */
+  .c-acted-badge {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--tint-green); color: #fff;
+    display: grid; place-items: center; flex-shrink: 0;
+    animation: popCheck 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  }
+  @keyframes popCheck {
+    from { opacity: 0; transform: scale(0.6); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  /* Adaptive 2-Column Image Grid when rail === "image" */
+  .c-img-grid {
+    flex: 1; overflow-y: auto;
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px;
+    align-content: start; padding: 1px;
+  }
+  .c-img-grid::-webkit-scrollbar { display: none; }
+  .c-img-tile {
+    height: 106px; border-radius: 14px; overflow: hidden; position: relative;
+    border: 0.5px solid var(--glass-stroke);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transition: transform 0.1s ease;
+  }
+  .c-img-tile:active { transform: scale(0.96); }
+  .c-img-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .c-img-tile-badge {
+    position: absolute; top: 6px; right: 6px;
+    padding: 2px 7px; border-radius: 99px;
+    background: rgba(0, 0, 0, 0.52); backdrop-filter: blur(8px);
+    color: #fff; font-size: 9.5px; font-weight: 650;
+  }
+  .c-img-tile-badge.copied { background: var(--tint-green); }
+  .c-img-tile-foot {
+    position: absolute; inset: auto 0 0 0;
+    padding: 16px 8px 6px;
+    background: linear-gradient(to top, rgba(0,0,0,0.68), transparent);
+    color: #fff; text-align: left;
+  }
+  .c-img-tile-name { font-size: 11px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .c-img-tile-meta { font-size: 9.5px; opacity: 0.78; }
+
+  /* ---- Bottom Editing Bar ---- */
+  .c-editbar {
+    display: grid; grid-template-columns: 68px 1fr 72px 54px;
+    gap: 6px; flex-shrink: 0;
+  }
+  .kb-key {
+    height: 38px; border-radius: 11px;
+    background: var(--ios-key-bg); color: var(--ios-label);
+    box-shadow: var(--ios-key-shadow);
+    font-size: 13px; font-weight: 550;
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    transition: transform 0.08s ease, background 0.12s ease, opacity 0.15s ease;
+    position: relative;
+  }
+  .kb-key:active { transform: scale(0.96); background: var(--ios-key-active); }
+  .kb-key.muted {
+    background: var(--ios-key-muted); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.1);
+  }
+  .kb-key.disabled-look { opacity: 0.46; }
+  .kb-key.undo-ready {
+    background: rgba(255, 149, 0, 0.15);
+    color: var(--tint-orange);
+    border: 0.5px solid rgba(255, 149, 0, 0.32);
+    box-shadow: none;
+    font-weight: 650;
+  }
+  .kb-key.ink {
+    background: var(--accent); color: var(--on-accent); font-weight: 650;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+  }
+  .kb-key.space-scrubbing {
+    background: var(--accent); color: var(--on-accent);
+  }
+
+  /* ---- Inline Status Toast ---- */
+  .c-toast {
+    position: absolute; left: 50%; bottom: 48px; transform: translateX(-50%);
+    z-index: 26;
+    padding: 5px 12px; border-radius: 99px;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 11.5px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 5px;
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+    pointer-events: none; white-space: nowrap;
+    animation: toastRise 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes toastRise {
+    from { opacity: 0; transform: translate(-50%, 6px) scale(0.95); }
+    to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  }
+
+  /* ---- Long-Press Liquid Glass Preview Sheet ---- */
+  .c-preview-sheet {
+    position: absolute; inset: 6px; z-index: 32;
+    border-radius: 18px;
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(26px) saturate(180%);
+    -webkit-backdrop-filter: blur(26px) saturate(180%);
+    border: 0.5px solid var(--glass-border);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.26);
+    padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 10px;
+    animation: popUp 0.16s cubic-bezier(0.2, 0.85, 0.25, 1);
+  }
+  .pv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .pv-meta { font-size: 11px; color: var(--ios-secondary); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .pv-close {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--ios-fill); color: var(--ios-label);
+    display: grid; place-items: center; font-size: 13px; font-weight: 700;
+  }
+  .pv-body {
+    flex: 1; overflow-y: auto;
+    background: var(--ios-fill); border-radius: 12px; padding: 10px 12px;
+    font-size: 13px; line-height: 1.5; color: var(--ios-label); word-break: break-word;
+  }
+  .pv-body.img-wrap { padding: 4px; display: grid; place-items: center; background: transparent; }
+  .pv-body.img-wrap img { max-width: 100%; max-height: 158px; border-radius: 12px; object-fit: contain; }
+  .pv-actions { display: flex; align-items: center; gap: 8px; }
+  .pv-btn {
+    flex: 1; height: 36px; border-radius: 11px;
+    background: var(--ios-fill); color: var(--ios-label);
+    font-size: 12.5px; font-weight: 650;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  }
+  .pv-btn.primary { background: var(--accent); color: var(--on-accent); }
+
+  /* ---- Non-Normal States ---- */
+  .kb-state-box {
+    flex: 1; padding: 14px 16px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; gap: 7px;
+    background: var(--glass-bg); border: 0.5px solid var(--glass-stroke); border-radius: 16px;
+  }
+  .kb-state-icon {
+    width: 40px; height: 40px; border-radius: 13px;
+    background: var(--ios-card-solid); border: 0.5px solid var(--ios-sep);
+    display: grid; place-items: center; color: var(--ios-label);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  }
+  .kb-state-title { font-size: 14px; font-weight: 680; color: var(--ios-label); }
+  .kb-state-desc { font-size: 11.5px; color: var(--ios-secondary); line-height: 1.45; max-width: 260px; }
+  .kb-state-cta {
+    margin-top: 3px; padding: 7px 15px; border-radius: 99px;
+    background: var(--accent); color: var(--on-accent); font-size: 12px; font-weight: 650;
+  }
+  .kb-privacy-chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 2px; }
+  .kb-privacy-chip {
+    font-size: 10.5px; color: var(--ios-secondary);
+    padding: 3px 8px; border-radius: 99px; background: var(--ios-fill);
+  }
+
+  /* ---- Bottom iOS System Dock ---- */
+  .ios-bottom-dock {
+    height: 46px; padding: 4px 24px 8px;
+    display: flex; align-items: center; justify-content: space-between; position: relative;
+  }
+  .dock-sys-btn {
+    width: 34px; height: 34px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--ios-secondary);
+  }
+  .dock-sys-btn:hover { background: var(--ios-fill); color: var(--ios-label); }
+  .home-indicator {
+    position: absolute; left: 50%; bottom: 7px; transform: translateX(-50%);
+    width: 134px; height: 5px; border-radius: 99px; background: var(--ios-label); opacity: 0.85;
+  }
+  .globe-popover {
+    position: absolute; left: 16px; bottom: 48px; z-index: 38;
+    width: 222px; background: var(--glass-bg-strong); backdrop-filter: blur(24px);
+    border: 0.5px solid var(--glass-stroke); border-radius: 14px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24); overflow: hidden;
+    animation: popUp 0.16s ease;
+  }
+  .globe-item {
+    padding: 10px 14px; font-size: 13px; color: var(--ios-label);
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 0.5px solid var(--ios-sep);
+  }
+  .globe-item:last-child { border-bottom: none; }
+  .globe-item.selected { font-weight: 650; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 0.85s linear infinite; }
+
+  /* ======================== Right Final Spec Panel ======================== */
+  .spec-panel {
+    background: var(--panel-bg);
+    border-radius: 22px;
+    padding: 22px 24px;
+    box-shadow: var(--panel-shadow);
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .spec-head { padding-bottom: 14px; border-bottom: 1px solid var(--bar-border); }
+  .spec-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 700;
+    padding: 3px 9px; border-radius: 99px;
+    background: var(--accent); color: var(--on-accent);
+    margin-bottom: 8px;
+  }
+  .spec-title { font-size: 19px; font-weight: 720; letter-spacing: -0.02em; margin: 0 0 6px; }
+  .spec-lead { font-size: 13px; color: var(--bar-muted); line-height: 1.55; margin: 0; }
+
+  .delta-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  @media (max-width: 600px) { .delta-grid { grid-template-columns: 1fr; } }
+  .delta-box {
+    background: var(--bar-surface);
+    border: 1px solid var(--bar-border);
+    border-radius: 13px; padding: 11px 12px;
+  }
+  .delta-num { font-size: 10.5px; font-weight: 750; color: var(--tint-text); margin-bottom: 3px; }
+  .delta-h { font-size: 13px; font-weight: 680; color: var(--bar-text); margin-bottom: 3px; }
+  .delta-p { font-size: 12px; color: var(--bar-muted); line-height: 1.45; }
+
+  .spec-block h3 { font-size: 12.5px; font-weight: 700; margin: 0 0 8px; color: var(--bar-text); }
+  .spec-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .spec-table td {
+    padding: 7px 0; border-bottom: 1px solid var(--bar-border);
+    vertical-align: top; line-height: 1.45;
+  }
+  .spec-table tr:last-child td { border-bottom: none; }
+  .spec-table td:first-child { color: var(--bar-muted); width: 118px; font-weight: 600; }
+
+  .try-box {
+    background: var(--bar-surface); border: 1px solid var(--bar-border);
+    border-radius: 14px; padding: 12px 14px;
+    font-size: 12px; color: var(--bar-muted); line-height: 1.62;
+  }
+  .try-box strong { color: var(--bar-text); }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">C1</div>
+    <div>
+      <div class="brand-title">UniClipboard · iOS 键盘扩展定稿原型（C1 · 纯净单点版）</div>
+      <div class="brand-sub">已移除「直发」按钮 · 整卡全宽单点插入 · 左侧 48pt 液态玻璃工具轨</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="seg-group" id="host-switch" title="切换宿主 App，观察底栏回车键自适应">
+      <button class="seg-btn active" data-host="chat">微信聊天</button>
+      <button class="seg-btn" data-host="safari">Safari</button>
+      <button class="seg-btn" data-host="notes">备忘录</button>
+    </div>
+
+    <div class="seg-group" id="state-switch">
+      <button class="seg-btn active" data-state="normal">正常</button>
+      <button class="seg-btn" data-state="syncing">同步中</button>
+      <button class="seg-btn" data-state="error">同步异常</button>
+      <button class="seg-btn" data-state="gate">无完全访问</button>
+      <button class="seg-btn" data-state="empty">空记录</button>
+    </div>
+
+    <button class="action-chip" id="btn-sim-clip">＋ 模拟 Mac 新复制</button>
+    <button class="action-chip" id="btn-theme"><span id="theme-label">深色模式</span></button>
+  </div>
+</header>
+
+<main class="stage" id="app"></main>
+
+<script>
+/* ======================== Inline Artwork ======================== */
+const IMG_DESIGN = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="200" fill="url(#g1)"/>
+  <circle cx="255" cy="48" r="76" fill="url(#g2)" opacity="0.28"/>
+  <rect x="22" y="24" width="176" height="114" rx="14" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.22)"/>
+  <rect x="38" y="42" width="66" height="10" rx="5" fill="#fff" opacity="0.85"/>
+  <rect x="38" y="62" width="136" height="7" rx="3.5" fill="#fff" opacity="0.35"/>
+  <rect x="38" y="77" width="112" height="7" rx="3.5" fill="#fff" opacity="0.35"/>
+  <rect x="38" y="100" width="52" height="22" rx="11" fill="#38bdf8"/>
+  <rect x="166" y="88" width="130" height="86" rx="14" fill="rgba(15,23,42,0.78)" stroke="rgba(255,255,255,0.2)"/>
+  <path d="M184 150 L212 122 L234 138 L266 108 L280 124" fill="none" stroke="#34d399" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>`)}`;
+
+const IMG_SUNSET = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#312e81"/>
+      <stop offset="48%" stop-color="#db2777"/>
+      <stop offset="100%" stop-color="#fb923c"/>
+    </linearGradient>
+  </defs>
+  <rect width="320" height="200" fill="url(#sky)"/>
+  <circle cx="220" cy="108" r="34" fill="#fde68a" opacity="0.92"/>
+  <path d="M0 148 Q75 112 145 142 T320 132 L320 200 L0 200 Z" fill="#1e1b4b" opacity="0.72"/>
+  <path d="M0 164 Q100 138 205 162 T320 154 L320 200 L0 200 Z" fill="#0f172a"/>
+</svg>`)}`;
+
+const IMG_RECEIPT = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
+  <rect width="320" height="200" fill="#ecfdf5"/>
+  <rect x="64" y="18" width="192" height="164" rx="16" fill="#ffffff" stroke="#a7f3d0" stroke-width="2"/>
+  <circle cx="160" cy="60" r="20" fill="#10b981"/>
+  <path d="M151 60 l6 6 12-13" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="108" y="96" width="104" height="10" rx="5" fill="#065f46" opacity="0.8"/>
+  <rect x="92" y="118" width="136" height="7" rx="3.5" fill="#065f46" opacity="0.25"/>
+  <rect x="112" y="136" width="96" height="7" rx="3.5" fill="#065f46" opacity="0.25"/>
+</svg>`)}`;
+
+const IMG_CODE = `data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200">
+  <rect width="320" height="200" fill="#18181b"/>
+  <circle cx="24" cy="22" r="5" fill="#ef4444"/>
+  <circle cx="40" cy="22" r="5" fill="#f59e0b"/>
+  <circle cx="56" cy="22" r="5" fill="#22c55e"/>
+  <rect x="24" y="48" width="92" height="8" rx="4" fill="#c084fc"/>
+  <rect x="124" y="48" width="124" height="8" rx="4" fill="#38bdf8"/>
+  <rect x="44" y="70" width="170" height="8" rx="4" fill="#a1a1aa"/>
+  <rect x="44" y="92" width="132" height="8" rx="4" fill="#34d399"/>
+  <rect x="44" y="114" width="198" height="8" rx="4" fill="#fbbf24"/>
+  <rect x="24" y="136" width="60" height="8" rx="4" fill="#c084fc"/>
+</svg>`)}`;
+
+/* ======================== Icons ======================== */
+const ICONS = {
+  all: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.8"/><rect x="14" y="3" width="7" height="7" rx="1.8"/><rect x="3" y="14" width="7" height="7" rx="1.8"/><rect x="14" y="14" width="7" height="7" rx="1.8"/></svg>`,
+  pin: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>`,
+  url: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l2.92-2.92a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-2.92 2.92a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>`,
+  image: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-4.5-4.5L7 20"/></svg>`,
+  refresh: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>`,
+  backspace: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><path d="m18 9-6 6M12 9l6 6"/></svg>`,
+  undo: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>`,
+  arrowUR: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg>`,
+  returnKey: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 10 4 15l5 5"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>`,
+  check: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+  globe: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5c2.8 2.8 4.2 6 4.2 9.5s-1.4 6.7-4.2 9.5M12 2.5C9.2 5.3 7.8 8.5 7.8 12s1.4 6.7 4.2 9.5"/></svg>`,
+  mic: `<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>`,
+  shield: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>`,
+  tray: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v7"/><path d="M4 13h4l2 3h4l2-3h4v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-5z"/></svg>`,
+  warn: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>`,
+  bolt: `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>`,
+};
+
+const HOST_APPS = {
+  chat: {
+    name: "设计评审群 (4)",
+    sub: "微信 / iMessage 语义 · returnKey = 发送",
+    returnLabel: "发送",
+    placeholder: "点下方任意卡片即可插入，再点「发送」发出",
+  },
+  safari: {
+    name: "Safari 浏览器",
+    sub: "地址栏语义 · returnKey = 前往",
+    returnLabel: "前往",
+    placeholder: "搜索或输入网站名称",
+  },
+  notes: {
+    name: "iOS 备忘录",
+    sub: "长文编辑语义 · returnKey = 换行",
+    returnLabel: "换行",
+    placeholder: "点卡片直接插入正文",
+  },
+};
+
+/* ======================== Sample Clipboard Data ======================== */
+const INITIAL_CLIPS = [
+  {
+    id: "c1", kind: "otp", pinned: false, isNew: false,
+    title: "849201",
+    insertText: "849201",
+    fullText: "【GitHub】您的登录验证码是 849201，5 分钟内有效。请勿泄露给他人。\n（点按卡片将自动仅填入纯验证码 849201）",
+    subtitle: "GitHub 登录验证码 · 自动提取 6 位纯数字",
+    device: "MacBook Pro", time: "刚刚",
+  },
+  {
+    id: "c2", kind: "url", pinned: false, isNew: false,
+    title: "UNI-418 · iOS 键盘扩展 C1 定稿评审",
+    insertText: "https://linear.app/unic/issue/UNI-418",
+    fullText: "https://linear.app/unic/issue/UNI-418\n\n标题：UNI-418 · iOS 键盘扩展 C1 定稿评审\n来源：MacBook Pro · 智能预览",
+    domain: "linear.app",
+    device: "MacBook Pro", time: "2分钟前",
+  },
+  {
+    id: "c3", kind: "image", pinned: false, isNew: false,
+    title: "键盘交互稿.png",
+    meta: "1280 × 860 · PNG · 点按复制图片",
+    thumb: IMG_DESIGN,
+    device: "MacBook Pro", time: "5分钟前",
+  },
+  {
+    id: "c4", kind: "text", pinned: true, isNew: false,
+    title: "上海市静安区南京西路 1266 号恒隆广场 1 期 28F",
+    insertText: "上海市静安区南京西路 1266 号恒隆广场 1 期 28F",
+    fullText: "上海市静安区南京西路 1266 号恒隆广场 1 期 28F\n收件人：Mark（工作日 10:00–19:00）",
+    device: "iPhone", time: "已置顶",
+  },
+  {
+    id: "c5", kind: "text", pinned: false, isNew: false,
+    title: "明天的设计评审改到下午 3:30，先过 C1 定稿版的单手交互细节，再确认首期 iOS Swift UIKit 实现排期。",
+    insertText: "明天的设计评审改到下午 3:30，先过 C1 定稿版的单手交互细节，再确认首期 iOS Swift UIKit 实现排期。",
+    fullText: "明天的设计评审改到下午 3:30，先过 C1 定稿版的单手交互细节，再确认首期 iOS Swift UIKit 实现排期。\n\n议程：\n1. App Group 只读快照与缩略图缓存上限\n2. 长按预览浮层与置顶交互\n3. 浅色 / 深色与无完全访问引导验收",
+    device: "iPad Pro", time: "12分钟前",
+  },
+  {
+    id: "c6", kind: "image", pinned: false, isNew: false,
+    title: "晚霞实拍.heic",
+    meta: "4032 × 3024 · HEIC · 点按复制图片",
+    thumb: IMG_SUNSET,
+    device: "iPhone", time: "35分钟前",
+  },
+  {
+    id: "c7", kind: "image", pinned: true, isNew: false,
+    title: "支付凭证截图.png",
+    meta: "1179 × 2556 · PNG · 点按复制图片",
+    thumb: IMG_RECEIPT,
+    device: "iPhone", time: "1小时前",
+  },
+  {
+    id: "c8", kind: "image", pinned: false, isNew: false,
+    title: "Engine 报错片段.png",
+    meta: "1600 × 980 · PNG · 点按复制图片",
+    thumb: IMG_CODE,
+    device: "MacBook Pro", time: "2小时前",
+  },
+  {
+    id: "c9", kind: "url", pinned: true, isNew: false,
+    title: "Keyboards | Apple Human Interface Guidelines",
+    insertText: "https://developer.apple.com/design/human-interface-guidelines/keyboards",
+    fullText: "https://developer.apple.com/design/human-interface-guidelines/keyboards",
+    domain: "developer.apple.com",
+    device: "MacBook Pro", time: "3小时前",
+  },
+];
+
+const SIM_INCOMING = [
+  {
+    kind: "otp", title: "317094", insertText: "317094",
+    fullText: "Apple ID 双重认证验证码：317094",
+    subtitle: "Apple ID 验证码 · 自动提取 6 位纯数字", device: "MacBook Pro", time: "刚刚",
+  },
+  {
+    kind: "text", title: "已确认采用 C1 纯净单点版，去掉直发后每条正文宽裕很多，完全不会误发。",
+    insertText: "已确认采用 C1 纯净单点版，去掉直发后每条正文宽裕很多，完全不会误发。",
+    fullText: "已确认采用 C1 纯净单点版，去掉直发后每条正文宽裕很多，完全不会误发。",
+    device: "MacBook Pro", time: "刚刚",
+  },
+  {
+    kind: "url", title: "UniClipboard v2 · PR #348 Keyboard Snapshot Store",
+    insertText: "https://github.com/UniClipboard/unic/pull/348",
+    fullText: "https://github.com/UniClipboard/unic/pull/348",
+    domain: "github.com", device: "MacBook Pro", time: "刚刚",
+  },
+];
+
+/* ======================== App State ======================== */
+const state = {
+  hostApp: "chat",       // "chat" | "safari" | "notes"
+  kbState: "normal",     // "normal" | "syncing" | "error" | "gate" | "empty"
+  theme: "light",
+  filter: "all",         // "all" | "pinned" | "url" | "image"
+  clips: INITIAL_CLIPS.map(c => ({ ...c })),
+  simIndex: 0,
+  inputText: "",
+  undoStack: [],
+  copiedImage: null,
+  actedId: null,
+  previewId: null,
+  toast: null,
+  globeOpen: false,
+  spaceScrubbing: false,
+  messages: [
+    { from: "them", text: "验证码和评审链接发我一下，顺便把刚才那张交互稿也贴进来" },
+    { from: "me", text: "好，我切 UniClipboard 键盘贴给你 👇" },
+  ],
+  noteBody: "2026-11-26 会议速记：\n• iOS 键盘扩展采用 C1 方案（去除直发按钮）。\n• ",
+  safariUrl: "https://linear.app/unic",
+  safariTitle: "UniClipboard · iOS 26 Design Sprint",
+};
+
+let toastTimer = null;
+let actedTimer = null;
+let longPressTimer = null;
+let longPressFired = false;
+let deleteTimer = null;
+let deleteInterval = null;
+
+function esc(s = "") {
+  return String(s).replace(/[&<>"']/g, m => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[m]));
+}
+
+function showToast(text, icon = "check") {
+  state.toast = { text, icon };
+  clearTimeout(toastTimer);
+  render();
+  toastTimer = setTimeout(() => { state.toast = null; render(); }, 1450);
+}
+
+function flashActed(id) {
+  state.actedId = id;
+  clearTimeout(actedTimer);
+  actedTimer = setTimeout(() => { state.actedId = null; render(); }, 650);
+}
+
+function getFilteredClips() {
+  return state.clips.filter(c => {
+    if (state.filter === "all") return true;
+    if (state.filter === "pinned") return c.pinned;
+    if (state.filter === "url") return c.kind === "url";
+    if (state.filter === "image") return c.kind === "image";
+    return true;
+  });
+}
+
+function insertClip(clipId) {
+  const clip = state.clips.find(c => c.id === clipId);
+  if (!clip) return;
+  state.previewId = null;
+  flashActed(clipId);
+
+  if (clip.kind === "image") {
+    state.copiedImage = clip;
+    showToast("图片已复制 · 点按输入框粘贴", "image");
+    return;
+  }
+
+  const text = clip.insertText || clip.title;
+  if (state.hostApp === "notes") {
+    state.noteBody += text;
+    state.undoStack.push(text.length);
+    showToast("已插入备忘录", "check");
+    scrollHostBottom();
+    return;
+  }
+
+  state.inputText += text;
+  state.undoStack.push(text.length);
+  showToast(clip.kind === "otp" ? "已填入 6 位验证码" : "已插入", "check");
+}
+
+function handleReturnKey() {
+  if (state.hostApp === "notes") {
+    state.noteBody += "\n";
+    state.undoStack.push(1);
+    render();
+    scrollHostBottom();
+    return;
+  }
+  const val = state.inputText.trim();
+  if (!val) {
+    showToast("输入框为空", "returnKey");
+    return;
+  }
+  if (state.hostApp === "chat") {
+    state.messages.push({ from: "me", text: val });
+    state.inputText = "";
+    state.undoStack = [];
+    render();
+    scrollHostBottom();
+  } else if (state.hostApp === "safari") {
+    state.safariUrl = val;
+    state.safariTitle = val.startsWith("http") ? "正在浏览页面" : `搜索：${val}`;
+    state.inputText = "";
+    state.undoStack = [];
+    showToast("前往页面", "arrowUR");
+  }
+}
+
+function handleUndo() {
+  if (state.undoStack.length === 0) {
+    showToast("暂无可撤销的插入", "undo");
+    return;
+  }
+  const len = state.undoStack.pop();
+  if (state.hostApp === "notes") {
+    state.noteBody = state.noteBody.slice(0, Math.max(0, state.noteBody.length - len));
+  } else {
+    state.inputText = state.inputText.slice(0, Math.max(0, state.inputText.length - len));
+  }
+  showToast("已撤回上次插入", "undo");
+}
+
+function backspaceOnce() {
+  if (state.hostApp === "notes") {
+    if (state.noteBody.length > 0) {
+      state.noteBody = [...state.noteBody].slice(0, -1).join("");
+      state.undoStack = [];
+      render();
+    }
+    return;
+  }
+  if (state.inputText.length > 0) {
+    state.inputText = [...state.inputText].slice(0, -1).join("");
+    state.undoStack = [];
+    render();
+  }
+}
+
+function togglePin(clipId) {
+  const clip = state.clips.find(c => c.id === clipId);
+  if (!clip) return;
+  clip.pinned = !clip.pinned;
+  showToast(clip.pinned ? "已加入置顶" : "已取消置顶", "pin");
+}
+
+function triggerRefresh() {
+  if (state.kbState === "gate") return;
+  state.kbState = "syncing";
+  render();
+  setTimeout(() => {
+    state.kbState = "normal";
+    showToast("已从 App Group 刷新最新快照", "check");
+  }, 700);
+}
+
+function scrollHostBottom() {
+  requestAnimationFrame(() => {
+    const el = document.querySelector(".host-body");
+    if (el) el.scrollTop = el.scrollHeight;
+  });
+}
+
+function kindColor(kind) {
+  if (kind === "otp") return "var(--tint-otp)";
+  if (kind === "url") return "var(--tint-url)";
+  if (kind === "image") return "var(--tint-image)";
+  return "var(--tint-text)";
+}
+
+/* ======================== Render Keyboard Content ======================== */
+function renderStatePanel() {
+  if (state.kbState === "gate") {
+    return `
+      <div class="kb-state-box">
+        <div class="kb-state-icon">${ICONS.shield}</div>
+        <div class="kb-state-title">开启「允许完全访问」以读取剪贴板</div>
+        <div class="kb-state-desc">iOS 要求键盘扩展开启完全访问后，才能读取主 App 同步到 App Group 的剪贴记录。</div>
+        <div class="kb-privacy-chips">
+          <span class="kb-privacy-chip">不记录外部打字</span>
+          <span class="kb-privacy-chip">不上传第三方服务器</span>
+        </div>
+        <button class="kb-state-cta" data-action="grant-access">前往系统设置 ›</button>
+      </div>`;
+  }
+  if (state.kbState === "syncing") {
+    return `
+      <div class="kb-state-box">
+        <div class="kb-state-icon"><span class="spin" style="display:inline-flex">${ICONS.refresh}</span></div>
+        <div class="kb-state-title">正在同步最新剪贴记录…</div>
+        <div class="kb-state-desc">正在读取主 App 共享快照与局域网设备更新</div>
+      </div>`;
+  }
+  if (state.kbState === "error") {
+    return `
+      <div class="kb-state-box">
+        <div class="kb-state-icon" style="color:var(--tint-orange)">${ICONS.warn}</div>
+        <div class="kb-state-title">暂未连接到主 App 快照</div>
+        <div class="kb-state-desc">主 App 可能在后台被系统挂起，点按重试或打开 UniClipboard 即可恢复同步。</div>
+        <button class="kb-state-cta" data-action="refresh">重试刷新</button>
+      </div>`;
+  }
+  const emptyTitle = {
+    all: "暂无剪贴板记录",
+    pinned: "还没有置顶内容",
+    url: "暂无链接记录",
+    image: "暂无图片记录",
+  }[state.filter];
+  return `
+    <div class="kb-state-box">
+      <div class="kb-state-icon">${ICONS.tray}</div>
+      <div class="kb-state-title">${emptyTitle}</div>
+      <div class="kb-state-desc">${state.filter === "pinned"
+        ? "长按（桌面端可右键）任意卡片即可置顶常用地址、指令或模板。"
+        : "在 Mac、Windows 或本机复制内容后，会自动同步显示在这里。"}</div>
+      <button class="kb-state-cta" data-action="sim-clip">＋ 模拟 Mac 新复制</button>
+    </div>`;
+}
+
+function renderClipCanvas() {
+  const list = getFilteredClips();
+  if (state.kbState !== "normal" || list.length === 0) {
+    return renderStatePanel();
+  }
+
+  // Adaptive 2-column Image Grid when rail === "image"
+  if (state.filter === "image") {
+    return `
+      <div class="c-img-grid">
+        ${list.map(c => {
+          const acted = state.actedId === c.id;
+          return `
+            <button class="c-img-tile" data-clip="${c.id}" data-preview-target="${c.id}">
+              <img src="${c.thumb}" alt="">
+              <span class="c-img-tile-badge ${acted ? "copied" : ""}">${acted ? "✓ 已复制" : "点按复制"}</span>
+              <div class="c-img-tile-foot">
+                <div class="c-img-tile-name">${esc(c.title)}</div>
+                <div class="c-img-tile-meta">${esc(c.device)} · ${esc(c.time)}</div>
+              </div>
+            </button>`;
+        }).join("")}
+      </div>`;
+  }
+
+  // Unified full-width single-tap rows (no Quick-Send button)
+  return `
+    <div class="c-feed">
+      ${list.map((c, idx) => {
+        const isLatest = idx === 0 && state.filter === "all";
+        const isOtp = c.kind === "otp";
+        const acted = state.actedId === c.id;
+        const rowCls = [
+          "c-row",
+          isLatest ? "is-latest" : "",
+          isOtp ? "is-otp" : "",
+          acted ? "just-acted" : "",
+          c.isNew ? "new-arrival" : "",
+        ].filter(Boolean).join(" ");
+
+        return `
+          <button class="${rowCls}" data-clip="${c.id}" data-preview-target="${c.id}">
+            ${c.kind === "image"
+              ? `<div class="c-media-thumb"><img src="${c.thumb}" alt=""></div>`
+              : `<div class="c-kind-pill" style="background:${kindColor(c.kind)}"></div>`}
+            <div class="c-text-col">
+              <div class="c-meta-line">
+                ${isLatest ? `<span class="c-latest-tag">最新</span>` : ""}
+                ${isOtp ? `<span class="c-otp-tag">验证码</span>` : ""}
+                ${c.kind === "url" ? `<span class="c-domain-tag">${esc(c.domain)}</span>` : ""}
+                <span>${esc(c.device)}</span>
+                <span>·</span>
+                <span>${esc(c.time)}</span>
+                ${c.pinned ? `<span class="c-pin-star">★</span>` : ""}
+              </div>
+              ${isOtp
+                ? `<div class="c-title otp-code">${esc(c.title.slice(0,3) + " " + c.title.slice(3))}</div>
+                   <div class="c-sub-hint">${esc(c.subtitle || "")}</div>`
+                : c.kind === "image"
+                  ? `<div class="c-title single">${esc(c.title)}</div>
+                     <div class="c-sub-hint">${esc(c.meta)}</div>`
+                  : `<div class="c-title">${esc(c.title)}</div>`}
+            </div>
+            ${acted ? `<span class="c-acted-badge">${ICONS.check}</span>` : ""}
+          </button>`;
+      }).join("")}
+    </div>`;
+}
+
+function renderPreviewOverlay() {
+  if (!state.previewId) return "";
+  const c = state.clips.find(x => x.id === state.previewId);
+  if (!c) return "";
+  return `
+    <div class="c-preview-sheet">
+      <div class="pv-head">
+        <div class="pv-meta">
+          <span>${esc(c.device)} · ${esc(c.time)}</span>
+          ${c.pinned ? `<span style="color:var(--tint-pin)">★ 已置顶</span>` : ""}
+        </div>
+        <button class="pv-close" data-action="close-preview">✕</button>
+      </div>
+      ${c.kind === "image"
+        ? `<div class="pv-body img-wrap">
+             <img src="${c.thumb}" alt="">
+             <div style="font-size:11px;color:var(--ios-secondary);margin-top:4px">${esc(c.title)} · ${esc(c.meta.replace(" · 点按复制图片", ""))}</div>
+           </div>`
+        : `<div class="pv-body">${esc(c.fullText || c.title)}</div>`}
+      <div class="pv-actions">
+        <button class="pv-btn" data-action="toggle-pin" data-id="${c.id}">
+          ${ICONS.pin}<span>${c.pinned ? "取消置顶" : "置顶"}</span>
+        </button>
+        <button class="pv-btn primary" data-clip="${c.id}">
+          ${c.kind === "image" ? ICONS.image : ICONS.check}
+          <span>${c.kind === "image" ? "复制图片" : "插入输入框"}</span>
+        </button>
+      </div>
+    </div>`;
+}
+
+function renderKeyboard() {
+  const host = HOST_APPS[state.hostApp];
+  const pinnedCount = state.clips.filter(c => c.pinned).length;
+  const canUndo = state.undoStack.length > 0;
+  const isGate = state.kbState === "gate";
+
+  const railButtons = [
+    { key: "all", icon: ICONS.all, label: "全部" },
+    { key: "pinned", icon: ICONS.pin, label: "置顶", badge: pinnedCount },
+    { key: "url", icon: ICONS.url, label: "链接" },
+    { key: "image", icon: ICONS.image, label: "图片" },
+  ];
+
+  return `
+    <div class="kb-c-wrap">
+      ${renderPreviewOverlay()}
+      ${state.toast ? `<div class="c-toast">${ICONS[state.toast.icon] || ""}<span>${esc(state.toast.text)}</span></div>` : ""}
+
+      <div class="c-body">
+        ${isGate ? "" : `
+          <nav class="c-rail" aria-label="剪贴板分类">
+            ${railButtons.map(b => `
+              <button class="c-rail-btn ${state.filter === b.key ? "active" : ""}" data-filter="${b.key}">
+                ${b.icon}
+                <span class="c-rail-lbl">${b.label}</span>
+                ${b.badge ? `<span class="c-rail-count">${b.badge}</span>` : ""}
+              </button>
+            `).join("")}
+            <div class="c-rail-spacer"></div>
+            <div class="c-rail-sep"></div>
+            <button class="c-rail-btn" data-action="refresh" title="手动刷新同步">
+              <span class="${state.kbState === "syncing" ? "spin" : ""}" style="display:inline-flex">${ICONS.refresh}</span>
+              <span class="c-rail-lbl">${state.kbState === "error" ? "重试" : "同步"}</span>
+              ${state.kbState === "normal" ? `<span class="c-sync-dot"></span>` : ""}
+              ${state.kbState === "error" ? `<span class="c-sync-dot err"></span>` : ""}
+            </button>
+          </nav>
+        `}
+
+        <div class="c-canvas">
+          ${renderClipCanvas()}
+        </div>
+      </div>
+
+      ${isGate ? "" : `
+        <div class="c-editbar">
+          <button class="kb-key ${canUndo ? "undo-ready" : "muted disabled-look"}" data-action="undo">${ICONS.undo}<span>撤销</span></button>
+          <button class="kb-key ${state.spaceScrubbing ? "space-scrubbing" : ""}" data-action="space">${state.spaceScrubbing ? "← 移动光标 →" : "空格"}</button>
+          <button class="kb-key ink" data-action="return">${host.returnLabel}</button>
+          <button class="kb-key muted" data-action="backspace" title="长按连续删除">${ICONS.backspace}</button>
+        </div>
+      `}
+    </div>`;
+}
+
+/* ======================== Render Host App Screen ======================== */
+function renderHostContent() {
+  if (state.hostApp === "notes") {
+    return `
+      <div class="note-paper">
+        <div class="note-h1">iOS 键盘扩展评审纪要</div>
+        <div class="note-p">${esc(state.noteBody)}<span class="caret"></span></div>
+      </div>`;
+  }
+  if (state.hostApp === "safari") {
+    return `
+      <div class="safari-card">
+        <div class="safari-domain">${esc(state.safariUrl)}</div>
+        <div class="safari-title">${esc(state.safariTitle)}</div>
+        <div class="safari-desc">模拟 Safari 地址栏：点按任意链接卡片填入地址栏，再点右下角「前往」打开页面。</div>
+      </div>`;
+  }
+  return `
+    <div class="chat-time">今天 00:48</div>
+    ${state.messages.map(m => {
+      if (m.image) {
+        return `
+          <div class="bubble me img-bubble">
+            <img src="${m.image.thumb}" style="width:184px;height:114px;border-radius:13px;display:block;object-fit:cover" alt="">
+            <div class="bubble-img-cap">
+              <span>${esc(m.image.title)}</span><span>${esc(m.image.meta.split("·")[0])}</span>
+            </div>
+          </div>`;
+      }
+      return `<div class="bubble ${m.from}">${esc(m.text)}</div>`;
+    }).join("")}`;
+}
+
+/* ======================== Main Render ======================== */
+function render() {
+  document.documentElement.setAttribute("data-theme", state.theme);
+  document.getElementById("theme-label").textContent = state.theme === "light" ? "深色模式" : "浅色模式";
+
+  document.querySelectorAll("#host-switch .seg-btn").forEach(b => b.classList.toggle("active", b.dataset.host === state.hostApp));
+  document.querySelectorAll("#state-switch .seg-btn").forEach(b => b.classList.toggle("active", b.dataset.state === state.kbState));
+
+  const host = HOST_APPS[state.hostApp];
+
+  const phone = `
+    <div class="iphone-shell">
+      <div class="iphone-screen">
+        <div class="ios-statusbar">
+          <span>00:48</span>
+          <div class="dynamic-island"></div>
+          <div style="display:flex;align-items:center;gap:5px">
+            <svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+            <svg width="22" height="11" viewBox="0 0 26 12" fill="none"><rect x="0.8" y="0.8" width="21" height="10.4" rx="2.6" stroke="currentColor" stroke-width="1.3"/><rect x="2.6" y="2.6" width="16" height="6.8" rx="1.4" fill="currentColor"/><path d="M23.5 4v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+
+        <div class="host-nav">
+          <span class="host-nav-btn">‹ 返回</span>
+          <div class="host-nav-title">
+            <div class="host-nav-name">${host.name}</div>
+            <div class="host-nav-sub">${host.sub}</div>
+          </div>
+          <button class="host-nav-btn" data-action="clear-input">清空</button>
+        </div>
+
+        <div class="host-body">
+          ${renderHostContent()}
+        </div>
+
+        ${state.hostApp === "notes" ? "" : `
+          <div class="composer-bar">
+            ${state.copiedImage ? `
+              <div class="paste-callout">
+                <span>已复制「${esc(state.copiedImage.title)}」</span>
+                <button class="paste-callout-btn" data-action="paste-img">粘贴发送</button>
+              </div>` : ""}
+            <div class="composer-input-wrap">
+              ${state.inputText
+                ? `<div class="composer-text">${esc(state.inputText)}<span class="caret"></span></div>`
+                : `<div class="composer-placeholder">${host.placeholder}<span class="caret"></span></div>`}
+            </div>
+            <button class="composer-send" data-action="return" ${state.inputText.trim() ? "" : "disabled"}>
+              ${host.returnLabel}
+            </button>
+          </div>
+        `}
+
+        <div class="kb-host">
+          ${renderKeyboard()}
+          <div class="ios-bottom-dock">
+            <button class="dock-sys-btn" data-action="globe" title="切换键盘">${ICONS.globe}</button>
+            <div class="home-indicator"></div>
+            <button class="dock-sys-btn" data-action="mic" title="听写">${ICONS.mic}</button>
+            ${state.globeOpen ? `
+              <div class="globe-popover">
+                <div class="globe-item"><span>简体中文（拼音）</span></div>
+                <div class="globe-item"><span>English (US)</span></div>
+                <div class="globe-item selected"><span>UniClipboard Keyboard</span><span>✓</span></div>
+              </div>` : ""}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  const spec = `
+    <aside class="spec-panel">
+      <div class="spec-head">
+        <span class="spec-pill">定稿方向 · C1 纯净单点版</span>
+        <h1 class="spec-title">左侧工具轨 + 全宽单点卡片 + 底部撤销编辑栏</h1>
+        <p class="spec-lead">移除「直发」按钮后，每张卡片回归最纯粹、零误触的单一心智模型——<strong>点按即插入（图片点按即复制）</strong>，同时为长文本、智能链接预览与验证码释放出完整行宽。</p>
+      </div>
+
+      <div class="delta-grid">
+        <div class="delta-box">
+          <div class="delta-num">01 · 整卡全宽单点</div>
+          <div class="delta-h">零误发风险 · 可读宽度最大化</div>
+          <div class="delta-p">不再拆分左右双热区，点卡片任意位置即可插入；命中后右侧闪现 650ms 绿色 <code>✓</code> 微标，静息态完全零视觉噪音。</div>
+        </div>
+        <div class="delta-box">
+          <div class="delta-num">02 · 首条焦点 + 验证码提纯</div>
+          <div class="delta-h">最新跨端剪贴一眼锁定</div>
+          <div class="delta-p">列表首条带克制描边与「最新」微标；验证码用等宽大号数字展示，点击仅填入 6 位纯数字。</div>
+        </div>
+        <div class="delta-box">
+          <div class="delta-num">03 · 左侧 48pt 液态玻璃轨</div>
+          <div class="delta-h">常驻分类 + 同步状态一体</div>
+          <div class="delta-p">全部 / 置顶（带计数角标）/ 链接 / 图片 + 底部刷新同步，图标配 9pt 微标签，无需顶栏占用垂直高度。</div>
+        </div>
+        <div class="delta-box">
+          <div class="delta-num">04 · 自适应媒体流</div>
+          <div class="delta-h">混排横幅缩略图，图片栏切双列大图</div>
+          <div class="delta-p">「全部」中以 62×44 横幅缩略图展示图片；切至「图片」分类自动切换 2 列大图网格选图。</div>
+        </div>
+        <div class="delta-box">
+          <div class="delta-num">05 · 长按详情与置顶</div>
+          <div class="delta-h">键盘内液态玻璃预览浮层</div>
+          <div class="delta-p">长按（桌面右键）卡片查看全文或大图，可直接置顶 / 取消置顶或插入，无需跳出当前 App。</div>
+        </div>
+        <div class="delta-box">
+          <div class="delta-num">06 · 底部编辑闭环</div>
+          <div class="delta-h">状态化撤销 + 宿主自适应回车</div>
+          <div class="delta-p">插入后「撤销」点亮为琥珀态并支持连续撤回；「发送 / 前往 / 换行」自动跟随宿主 <code>returnKeyType</code>。</div>
+        </div>
+      </div>
+
+      <div class="spec-block">
+        <h3>iOS 原生实现规格（Swift UIKit · 严格遵循 0031）</h3>
+        <table class="spec-table">
+          <tr><td>键盘总高</td><td><code>302 pt</code>（不含系统底部地球/听写栏）；无完全访问态隐藏工具轨与编辑栏，仅保留权限引导卡。</td></tr>
+          <tr><td>列表架构</td><td><code>UICollectionViewCompositionalLayout</code>：普通态单列 <code>list</code>，图片分类平滑切换 2 列 <code>grid</code>。</td></tr>
+          <tr><td>卡片交互</td><td>单点：文本/链接/验证码调 <code>insertText</code>，图片写 <code>UIPasteboard</code> 并弹出底部不遮挡 Toast；长按 0.35s 唤起键盘内预览浮层。</td></tr>
+          <tr><td>数据与内存</td><td>不链接 Go Engine；只读 App Group 快照与 220px 缩略图缓存，常驻内存 &lt; 28 MB。</td></tr>
+          <tr><td>视觉令牌</td><td>unic 单色墨 <code>#15171C / #F4F2EE</code> + iOS 26 Liquid Glass 半透明层级，自动跟随宿主浅色/深色外观。</td></tr>
+        </table>
+      </div>
+
+      <div class="try-box">
+        <strong>快速体验：</strong><br>
+        • 点按卡片插入文本/验证码，观察右侧绿色 <code>✓</code> 微标与底部点亮的琥珀色 <strong>「撤销」</strong>；<br>
+        • 点按图片行或切到左侧 <strong>「图片」</strong> 双列大图，体验复制后弹出系统粘贴气泡；<br>
+        • <strong>右键（或长按 0.38s）</strong>任意条目打开键盘内液态玻璃详情预览与置顶切换；<br>
+        • 点顶部 <strong>「＋ 模拟 Mac 新复制」</strong> 与 <strong>「微信 / Safari / 备忘录」</strong> 验证动态更新。
+      </div>
+    </aside>`;
+
+  document.getElementById("app").innerHTML = `<div class="main-grid">${phone}${spec}</div>`;
+}
+
+/* ======================== Event Bindings ======================== */
+document.getElementById("host-switch").addEventListener("click", e => {
+  const b = e.target.closest("[data-host]");
+  if (!b) return;
+  state.hostApp = b.dataset.host;
+  state.previewId = null;
+  state.globeOpen = false;
+  render();
+});
+
+document.getElementById("state-switch").addEventListener("click", e => {
+  const b = e.target.closest("[data-state]");
+  if (!b) return;
+  state.kbState = b.dataset.state;
+  state.previewId = null;
+  render();
+});
+
+document.getElementById("btn-theme").addEventListener("click", () => {
+  state.theme = state.theme === "light" ? "dark" : "light";
+  render();
+});
+
+document.getElementById("btn-sim-clip").addEventListener("click", () => {
+  const tpl = SIM_INCOMING[state.simIndex % SIM_INCOMING.length];
+  state.simIndex += 1;
+  state.clips.forEach(c => { c.isNew = false; });
+  state.clips.unshift({ id: "sim_" + Date.now(), pinned: false, isNew: true, ...tpl });
+  state.kbState = "normal";
+  state.filter = "all";
+  showToast("已同步 MacBook Pro 新剪贴", "bolt");
+});
+
+const appEl = document.getElementById("app");
+
+appEl.addEventListener("contextmenu", e => {
+  const target = e.target.closest("[data-preview-target]");
+  if (!target) return;
+  e.preventDefault();
+  state.previewId = target.dataset.previewTarget;
+  render();
+});
+
+appEl.addEventListener("pointerdown", e => {
+  longPressFired = false;
+  const bs = e.target.closest('[data-action="backspace"]');
+  if (bs) {
+    backspaceOnce();
+    deleteTimer = setTimeout(() => {
+      deleteInterval = setInterval(backspaceOnce, 72);
+    }, 400);
+    return;
+  }
+
+  const sp = e.target.closest('[data-action="space"]');
+  if (sp) {
+    longPressTimer = setTimeout(() => {
+      longPressFired = true;
+      state.spaceScrubbing = true;
+      render();
+    }, 340);
+    return;
+  }
+
+  const target = e.target.closest("[data-preview-target]");
+  if (target) {
+    longPressTimer = setTimeout(() => {
+      longPressFired = true;
+      state.previewId = target.dataset.previewTarget;
+      render();
+    }, 380);
+  }
+});
+
+function clearHoldTimers() {
+  clearTimeout(longPressTimer);
+  clearTimeout(deleteTimer);
+  clearInterval(deleteInterval);
+  longPressTimer = null;
+  deleteTimer = null;
+  deleteInterval = null;
+  if (state.spaceScrubbing) {
+    state.spaceScrubbing = false;
+    render();
+  }
+}
+window.addEventListener("pointerup", clearHoldTimers);
+window.addEventListener("pointercancel", clearHoldTimers);
+
+appEl.addEventListener("click", e => {
+  if (longPressFired) {
+    longPressFired = false;
+    return;
+  }
+
+  const fBtn = e.target.closest("[data-filter]");
+  if (fBtn) { state.filter = fBtn.dataset.filter; state.previewId = null; render(); return; }
+
+  const tapClip = e.target.closest("[data-clip]");
+  if (tapClip) { insertClip(tapClip.dataset.clip); return; }
+
+  const actBtn = e.target.closest("[data-action]");
+  if (actBtn) {
+    const act = actBtn.dataset.action;
+    if (act === "space") {
+      if (state.hostApp === "notes") state.noteBody += " ";
+      else state.inputText += " ";
+      state.undoStack.push(1);
+      render();
+    } else if (act === "return") {
+      handleReturnKey();
+    } else if (act === "undo") {
+      handleUndo();
+    } else if (act === "refresh") {
+      triggerRefresh();
+    } else if (act === "paste-img") {
+      if (state.copiedImage) {
+        state.messages.push({ from: "me", image: state.copiedImage });
+        state.copiedImage = null;
+        render();
+        scrollHostBottom();
+      }
+    } else if (act === "clear-input") {
+      state.inputText = "";
+      state.copiedImage = null;
+      state.undoStack = [];
+      render();
+    } else if (act === "globe") {
+      state.globeOpen = !state.globeOpen;
+      render();
+    } else if (act === "mic") {
+      showToast("系统听写按钮（iOS 托管）", "check");
+    } else if (act === "close-preview") {
+      state.previewId = null;
+      render();
+    } else if (act === "toggle-pin") {
+      togglePin(actBtn.dataset.id);
+    } else if (act === "grant-access") {
+      state.kbState = "normal";
+      showToast("模拟已开启完全访问", "check");
+    } else if (act === "sim-clip") {
+      document.getElementById("btn-sim-clip").click();
+    }
+    return;
+  }
+
+  if (state.globeOpen && !e.target.closest(".globe-popover")) {
+    state.globeOpen = false;
+    render();
+  }
+});
+
+render();
+</script>
+</body>
+</html>

@@ -23,6 +23,7 @@ import {
   type HistorySearchCountsResult,
   type HistorySearchPage,
   type ImagePreviewResult,
+  type KeyboardExtensionStatus,
   type MigrationProgress,
   type MigrationRunResult,
   type PairingCode,
@@ -85,6 +86,9 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   listIncomingShares(): Promise<string>;
   commitIncomingShare(id: string, targets: string): Promise<string>;
   dismissIncomingShare(id: string): Promise<void>;
+  getKeyboardExtensionStatus?(): Promise<string>;
+  setKeyboardPreferences?(soundEnabled: boolean, hapticEnabled: boolean): Promise<string>;
+  syncKeyboardSnapshot?(): Promise<string>;
   copyPlainText(text: string): Promise<void>;
   copyPairingTicket(text: string, expiresAtMs: number): Promise<void>;
   pickAndCommitImage(camera: boolean): Promise<string>;
@@ -285,6 +289,35 @@ export const unicEngineNative = {
     () => requireMod().commitIncomingShare(id, targets ? JSON.stringify(targets) : ""),
   ),
   dismissIncomingShare: (id: string) => callVoid(() => requireMod().dismissIncomingShare(id)),
+  getKeyboardExtensionStatus: async (): Promise<KeyboardExtensionStatus> => {
+    const mod = nativeMod;
+    if (!mod?.getKeyboardExtensionStatus) {
+      return {
+        added: false,
+        has_full_access_seen: false,
+        sound_enabled: true,
+        haptic_enabled: true,
+      };
+    }
+    return callJSON<KeyboardExtensionStatus>(() => mod.getKeyboardExtensionStatus!());
+  },
+  setKeyboardPreferences: async (
+    soundEnabled: boolean,
+    hapticEnabled: boolean,
+  ): Promise<KeyboardExtensionStatus> => {
+    const mod = requireMod();
+    if (!mod.setKeyboardPreferences) {
+      throw new EngineError({ code: "unsupported", message: "keyboard preferences unavailable" });
+    }
+    return callJSON<KeyboardExtensionStatus>(() =>
+      mod.setKeyboardPreferences!(soundEnabled, hapticEnabled),
+    );
+  },
+  syncKeyboardSnapshot: async (): Promise<{ count: number }> => {
+    const mod = nativeMod;
+    if (!mod?.syncKeyboardSnapshot) return { count: 0 };
+    return callJSON<{ count: number }>(() => mod.syncKeyboardSnapshot!());
+  },
   addEventListener: (cb: (eventJSON: string) => void) => {
     if (!nativeMod) return { remove: () => {} };
     return nativeMod.addListener("onEngineEvent", ({ event }) => cb(event));

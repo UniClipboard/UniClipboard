@@ -155,11 +155,18 @@ export function SettingsRootPage({ onNavigate }: { onNavigate: (page: IosSetting
           />
         </Section>
 
-        {/* ── 扩展与权限（对齐 v1 第三组：分享扩展） ── */}
+        {/* ── 扩展与权限（键盘扩展 / 分享扩展） ── */}
         <Section
           header={<SwiftUIText>{t('settings:category.extensions')}</SwiftUIText>}
           footer={<SwiftUIText>{t('settings:ios.extensions.footer')}</SwiftUIText>}
         >
+          <SettingsNavRow
+            testID="keyboard"
+            icon="keyboard"
+            iconColor={settingsTileColors.indigo}
+            title={t('settings:ios.extensions.keyboard')}
+            onPress={() => onNavigate('keyboard')}
+          />
           <SettingsNavRow
             testID="share"
             icon="square.and.arrow.up"

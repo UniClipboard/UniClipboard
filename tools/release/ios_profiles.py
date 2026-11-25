@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the production app and share profiles before archive signing."""
+"""Validate the production app, share, and keyboard profiles before archive signing."""
 
 import json
 from pathlib import Path
@@ -16,7 +16,8 @@ profiles = {}
 team = None
 directory = Path.home() / "Library/Developer/Xcode/UserData/Provisioning Profiles"
 directory.mkdir(parents=True, exist_ok=True)
-for bundle, path in zip((app, app + ".Share"), sys.argv[1:], strict=True):
+bundles = (app, app + ".Share", app + ".Keyboard")
+for bundle, path in zip(bundles, sys.argv[1:], strict=True):
     profile = plistlib.loads(subprocess.check_output(["security", "cms", "-D", "-i", path]))
     identifier, = profile["TeamIdentifier"]
     if team is not None and identifier != team:

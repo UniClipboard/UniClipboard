@@ -39,8 +39,8 @@ type TokenSearchFieldProps struct {
 	// OnExpand is called when the collapsed search trigger is clicked.
 	OnExpand func()
 	// OnCollapse is called when Escape collapses an empty NarrowTakeover omnibar.
-	OnCollapse func()
-	Label      string
+	OnCollapse       func()
+	Label            string
 	Placeholder      string
 	ExternalShortcut bool
 	ShortcutHint     string // display-only, e.g. "⌘F"
@@ -300,7 +300,7 @@ func (k Kit) TokenSearchField(c *ui.Context, p TokenSearchFieldProps) TokenSearc
 				state.Request = false
 			}
 		}
-		if !active && p.ShortcutHint != "" && !(p.Unified && p.Compact) {
+		if !active && p.ShortcutHint != "" && (!p.Unified || !p.Compact) {
 			if p.Unified {
 				ui.Box(c.Key("hint")).Padding(1.5, 5).Radius(5).Background(k.surfaceSolid()).
 					Border(1, k.Color("separator-border")).Shrink(0).AccessHidden(true).Children(func() {

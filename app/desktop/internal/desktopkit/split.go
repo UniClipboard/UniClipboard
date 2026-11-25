@@ -371,7 +371,7 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 				}
 				tp := sc.AnimateTo("takeover-p", 1, ui.Animation{Duration: takeoverDur, Ease: ui.EaseOut})
 				if tp < 0.999 {
-					sc.Opacity(0.55 + 0.45*tp).Translate(8*(1-tp), 0)
+					sc.Opacity(0.55+0.45*tp).Translate(8*(1-tp), 0)
 				}
 				sc.Children(p.Search)
 				closeLabel := p.SearchCloseLabel

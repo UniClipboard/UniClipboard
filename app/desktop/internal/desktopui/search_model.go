@@ -28,11 +28,11 @@ type searchCandidate struct {
 	kind                    desktopkit.SearchTokenKind
 }
 type historySearchState struct {
-	buffer, last, extension                                 string
-	start, end, highlight                                   int
-	open, initialized, restore                              bool
-	wasFocused, hadActivity, returnFocus                    bool
-	options                                                 []searchCandidate
+	buffer, last, extension              string
+	start, end, highlight                int
+	open, initialized, restore           bool
+	wasFocused, hadActivity, returnFocus bool
+	options                              []searchCandidate
 }
 
 var searchDimensions = []string{"type", "tag", "source", "time", "extension"}

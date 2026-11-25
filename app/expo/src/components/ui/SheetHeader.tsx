@@ -1,2 +1,2 @@
-export type { SheetHeaderProps } from './SheetHeader.ios';
-export { SheetHeader } from './SheetHeader.ios';
+export type { SheetHeaderProps, SheetCircleButtonProps } from './SheetHeader.ios';
+export { SheetHeader, SheetCircleButton } from './SheetHeader.ios';

@@ -20,7 +20,6 @@ import {
   font,
   foregroundStyle,
   frame,
-  glassEffect,
   listRowBackground,
   padding,
   opacity,
@@ -529,36 +528,4 @@ export function SetupStepRow({
 }
 
 /** Glass circular header button (back chevron, add, …) matching the sheet header style. */
-export function HeaderCircleButton({
-  testID,
-  systemName,
-  onPress,
-  accessibilityLabel,
-  disabled = false,
-}: {
-  testID?: string;
-  systemName: SFSymbol;
-  onPress: () => void;
-  accessibilityLabel?: string;
-  disabled?: boolean;
-}) {
-  return (
-    <SwiftUIButton
-      testID={testID}
-      onPress={onPress}
-      modifiers={[
-        buttonStyle('plain'),
-        disabledModifier(disabled),
-        glassEffect({ glass: { variant: 'regular', interactive: true }, shape: 'circle' }),
-        ...(accessibilityLabel ? [accessibilityLabelModifier(accessibilityLabel)] : []),
-      ]}
-    >
-      <Image
-        systemName={systemName}
-        size={20}
-        color={headerIconColor}
-        modifiers={[font({ weight: 'semibold' }), padding()]}
-      />
-    </SwiftUIButton>
-  );
-}
+export { SheetCircleButton as HeaderCircleButton } from '@/components/ui';

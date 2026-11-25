@@ -1,13 +1,17 @@
+import React from 'react';
 import {
-  Modal,
-  View,
-  Pressable,
+  KeyboardAvoidingView,
+  ScrollView,
   StyleSheet,
-  DynamicColorIOS,
+  useWindowDimensions,
+  View,
   type ColorValue,
-  useColorScheme,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { RNHostView } from '@expo/ui/swift-ui';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { iosColors } from '@/theme/iosDesignTokens';
+import { IosBottomSheet } from './IosBottomSheet';
 
 export interface AppBottomSheetProps {
   visible: boolean;
@@ -16,65 +20,55 @@ export interface AppBottomSheetProps {
   containerColor?: ColorValue;
 }
 
+/**
+ * Native iOS bottom sheet bridge for shared React Native content.
+ *
+ * Delegates presentation, drag-to-dismiss, drag indicator, detents, and safe-area
+ * chrome to SwiftUI's native `BottomSheet` via `IosBottomSheet` + `RNHostView`.
+ */
 export function AppBottomSheet({
   visible,
   onDismiss,
   children,
   containerColor,
 }: AppBottomSheetProps) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const sheetBg = containerColor ?? iosColors?.systemGroupedBackground ?? '#F2F2F7';
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onDismiss}>
-      <Pressable accessible={false} style={styles.backdrop} onPress={onDismiss}>
-        <Pressable
-          accessible={false}
-          accessibilityViewIsModal
-          style={styles.sheet}
-          onPress={() => {}}
-        >
-          <BlurView
-            intensity={90}
-            tint={isDark ? 'systemChromeMaterialDark' : 'systemChromeMaterial'}
-            style={[
-              StyleSheet.absoluteFill,
-              styles.sheetBlur,
-              containerColor ? { backgroundColor: containerColor } : null,
+    <IosBottomSheet
+      standalone
+      visible={visible}
+      onDismiss={onDismiss}
+      detents={['medium', 'large']}
+      backgroundColor={sheetBg}
+    >
+      <RNHostView>
+        <KeyboardAvoidingView style={[styles.container, { maxWidth: width }]} behavior="padding">
+          <ScrollView
+            bounces={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[
+              styles.content,
+              { paddingBottom: Math.max(insets.bottom, 20) },
             ]}
-          />
-          <View style={styles.handle} />
-          {children}
-        </Pressable>
-      </Pressable>
-    </Modal>
+          >
+            <View>{children}</View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </RNHostView>
+    </IosBottomSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  container: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'flex-end',
+    width: '100%',
   },
-  sheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  content: {
     paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 32,
-    overflow: 'hidden',
-  },
-  sheetBlur: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-  },
-  handle: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: DynamicColorIOS({ light: '#C6C6C8', dark: '#5A5A5E' }),
-    marginBottom: 12,
+    paddingTop: 20,
   },
 });

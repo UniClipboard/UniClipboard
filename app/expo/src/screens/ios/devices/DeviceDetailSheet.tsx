@@ -1,34 +1,28 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
-  BottomSheet,
   Button as SwiftUIButton,
-  Group,
   HStack,
   Image,
-  List,
   Section,
   Spacer,
   Text as SwiftUIText,
   TextField,
-  type TextFieldRef,
+  useNativeState,
   VStack,
 } from '@expo/ui/swift-ui';
 import {
   font,
   foregroundStyle,
   frame,
-  listStyle,
-  presentationDetents,
-  presentationDragIndicator,
-  scrollContentBackground,
+  onSubmit,
+  submitLabel,
 } from '@expo/ui/swift-ui/modifiers';
 import { useTranslation } from 'react-i18next';
 
-import { IosPageChromeProvider, IosSheetPage } from '@/components/ui';
+import { IosBottomSheet, IosSheetForm, IosSheetPage, SheetCircleButton } from '@/components/ui';
 import type { DeviceBinding, EngineDevice } from '@/engine/types';
 import {
-  HeaderCircleButton,
   IconToggleRow,
   SettingsNavRow,
   settingsTileColors,
@@ -44,8 +38,7 @@ export interface DeviceDetailSheetProps {
 }
 
 /**
- * 设备详情底部弹层（对齐 v1 SpaceDeviceDetail.ios.tsx）。
- * 由 DevicesScreen 稳定宿主作为 NavigationStack 兄弟节点持有。
+ * Native SwiftUI device detail sheet owned by `DevicesScreen.ios` as a sibling of `NavigationStack`.
  */
 export function DeviceDetailSheet({
   device,
@@ -58,7 +51,7 @@ export function DeviceDetailSheet({
   const pair = (key: string, values?: Record<string, string>) =>
     t(`settingsSync:pairing.${key}`, values);
   const [name, setName] = useState('');
-  const fieldRef = useRef<TextFieldRef>(null);
+  const nameState = useNativeState('');
   const [saving, setSaving] = useState(false);
   const [confirmUnpair, setConfirmUnpair] = useState(false);
 
@@ -66,170 +59,171 @@ export function DeviceDetailSheet({
     if (device) {
       const initial = device.name || device.reported_name || '';
       setName(initial);
-      void fieldRef.current?.setText(initial);
+      nameState.set(initial);
       setConfirmUnpair(false);
       setSaving(false);
     }
-  }, [device]);
+  }, [device, nameState]);
 
   const status = device ? engineDeviceStatus(device, pair) : null;
   const trimmedName = name.trim();
   const canSaveName = Boolean(device && trimmedName && trimmedName !== device.name && !saving);
 
+  const handleRename = () => {
+    if (!device || !canSaveName) return;
+    setSaving(true);
+    void onRename(device, trimmedName).finally(() => setSaving(false));
+  };
+
   return (
-    <BottomSheet
-      isPresented={device !== null}
-      onIsPresentedChange={(presented) => {
-        if (!presented) onClose();
-      }}
+    <IosBottomSheet
+      visible={device !== null}
+      onDismiss={onClose}
+      detents={['large']}
+      interactiveDismissDisabled={saving}
     >
-      <Group modifiers={[presentationDetents(['large']), presentationDragIndicator('visible')]}>
-        {device ? (
-          <IosPageChromeProvider value={{ kind: 'sheet' }}>
-            <IosSheetPage
-              title={t('settingsSync:space.deviceDetail.title')}
-              rightSlots={[
-                <HeaderCircleButton
-                  key="close"
-                  systemName="xmark"
-                  accessibilityLabel={t('common:action.close')}
-                  onPress={onClose}
-                />,
-              ]}
-            >
-              <List modifiers={[listStyle('insetGrouped'), scrollContentBackground('hidden')]}>
-                <Section>
-                  <HStack
-                    spacing={12}
-                    alignment="center"
-                    modifiers={[frame({ maxWidth: Infinity })]}
-                  >
-                    <Image
-                      systemName="laptopcomputer"
-                      size={32}
-                      color={settingsTileColors.indigo}
-                      modifiers={[frame({ width: 42, height: 42 })]}
-                    />
-                    <VStack alignment="leading" spacing={4}>
-                      <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
-                        {deviceDisplayName(device)}
-                      </SwiftUIText>
-                      <SwiftUIText modifiers={[foregroundStyle('secondary')]}>
-                        {status?.label ?? ''}
-                      </SwiftUIText>
-                    </VStack>
-                  </HStack>
-                </Section>
+      {device ? (
+        <IosSheetPage
+          title={t('settingsSync:space.deviceDetail.title')}
+          rightSlots={[
+            <SheetCircleButton
+              key="close"
+              systemName="xmark"
+              accessibilityLabel={t('common:action.close')}
+              disabled={saving}
+              onPress={onClose}
+            />,
+          ]}
+        >
+          <IosSheetForm>
+            <Section>
+              <HStack
+                spacing={12}
+                alignment="center"
+                modifiers={[frame({ maxWidth: Infinity })]}
+              >
+                <Image
+                  systemName="laptopcomputer"
+                  size={32}
+                  color={settingsTileColors.indigo}
+                  modifiers={[frame({ width: 42, height: 42 })]}
+                />
+                <VStack alignment="leading" spacing={4}>
+                  <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
+                    {deviceDisplayName(device)}
+                  </SwiftUIText>
+                  <SwiftUIText modifiers={[foregroundStyle('secondary')]}>
+                    {status?.label ?? ''}
+                  </SwiftUIText>
+                </VStack>
+              </HStack>
+            </Section>
 
-                <Section>
-                  <HStack modifiers={[frame({ maxWidth: Infinity })]}>
-                    <SwiftUIText>{t('settingsSync:space.deviceDetail.identity.label')}</SwiftUIText>
-                    <Spacer />
-                    <SwiftUIText modifiers={[foregroundStyle('secondary')]}>
-                      {t('settingsSync:space.deviceDetail.identity.remote')}
-                    </SwiftUIText>
-                  </HStack>
-                  <HStack modifiers={[frame({ maxWidth: Infinity })]}>
-                    <SwiftUIText>
-                      {t('settingsSync:space.deviceDetail.reachability.label')}
-                    </SwiftUIText>
-                    <Spacer />
-                    <SwiftUIText modifiers={[foregroundStyle('secondary')]}>
-                      {status?.label ?? ''}
-                    </SwiftUIText>
-                  </HStack>
-                  <VStack alignment="leading" spacing={4}>
-                    <SwiftUIText modifiers={[font({ size: 13 }), foregroundStyle('secondary')]}>
-                      {pair('fingerprint', { value: device.fingerprint })}
-                    </SwiftUIText>
-                  </VStack>
-                </Section>
+            <Section>
+              <HStack modifiers={[frame({ maxWidth: Infinity })]}>
+                <SwiftUIText>{t('settingsSync:space.deviceDetail.identity.label')}</SwiftUIText>
+                <Spacer />
+                <SwiftUIText modifiers={[foregroundStyle('secondary')]}>
+                  {t('settingsSync:space.deviceDetail.identity.remote')}
+                </SwiftUIText>
+              </HStack>
+              <HStack modifiers={[frame({ maxWidth: Infinity })]}>
+                <SwiftUIText>
+                  {t('settingsSync:space.deviceDetail.reachability.label')}
+                </SwiftUIText>
+                <Spacer />
+                <SwiftUIText modifiers={[foregroundStyle('secondary')]}>
+                  {status?.label ?? ''}
+                </SwiftUIText>
+              </HStack>
+              <VStack alignment="leading" spacing={4}>
+                <SwiftUIText modifiers={[font({ size: 13 }), foregroundStyle('secondary')]}>
+                  {pair('fingerprint', { value: device.fingerprint })}
+                </SwiftUIText>
+              </VStack>
+            </Section>
 
-                <Section header={<SwiftUIText>{pair('rename')}</SwiftUIText>}>
-                  <TextField
-                    ref={fieldRef}
-                    testID="devices-rename-input"
-                    placeholder={pair('rename')}
-                    onTextChange={setName}
+            <Section header={<SwiftUIText>{pair('rename')}</SwiftUIText>}>
+              <TextField
+                key={device.id}
+                testID="devices-rename-input"
+                text={nameState}
+                placeholder={pair('rename')}
+                onTextChange={setName}
+                modifiers={[submitLabel('done'), onSubmit(handleRename)]}
+              />
+              <SettingsNavRow
+                icon="checkmark.circle.fill"
+                iconColor={settingsTileColors.blue}
+                title={t('common:action.save')}
+                disabled={!canSaveName}
+                showsChevron={false}
+                showsPressFeedback={false}
+                onPress={handleRename}
+              />
+            </Section>
+
+            {device.bindings && device.bindings.length > 0 ? (
+              <Section header={<SwiftUIText>{t('settings:category.sync')}</SwiftUIText>}>
+                {device.bindings.map((binding) => (
+                  <IconToggleRow
+                    key={binding.id}
+                    icon="arrow.triangle.2.circlepath"
+                    iconColor={settingsTileColors.green}
+                    label={pair(binding.sync_enabled ? 'pauseSync' : 'resumeSync')}
+                    isOn={binding.sync_enabled}
+                    onIsOnChange={(enabled) => void onToggleSync(binding, enabled)}
                   />
+                ))}
+              </Section>
+            ) : null}
+
+            <Section footer={<SwiftUIText>{t('settingsSync:space.devices.removeEffect')}</SwiftUIText>}>
+              <Alert
+                title={pair('unpair')}
+                isPresented={confirmUnpair}
+                onIsPresentedChange={(presented) => {
+                  if (!presented) setConfirmUnpair(false);
+                }}
+              >
+                <Alert.Trigger>
                   <SettingsNavRow
-                    icon="checkmark.circle.fill"
-                    iconColor={settingsTileColors.blue}
-                    title={t('common:action.save')}
-                    disabled={!canSaveName}
+                    icon="trash"
+                    iconColor={settingsTileColors.red}
+                    title={pair('unpair')}
+                    destructive
                     showsChevron={false}
                     showsPressFeedback={false}
+                    onPress={() => setConfirmUnpair(true)}
+                  />
+                </Alert.Trigger>
+                <Alert.Actions>
+                  <SwiftUIButton
+                    label={pair('unpair')}
+                    role="destructive"
                     onPress={() => {
-                      if (!canSaveName) return;
-                      setSaving(true);
-                      void onRename(device, trimmedName).finally(() => setSaving(false));
+                      setConfirmUnpair(false);
+                      void onUnpair(device);
                     }}
                   />
-                </Section>
-
-                {device.bindings && device.bindings.length > 0 ? (
-                  <Section header={<SwiftUIText>{t('settings:category.sync')}</SwiftUIText>}>
-                    {device.bindings.map((binding) => (
-                      <IconToggleRow
-                        key={binding.id}
-                        icon="arrow.triangle.2.circlepath"
-                        iconColor={settingsTileColors.green}
-                        label={pair(binding.sync_enabled ? 'pauseSync' : 'resumeSync')}
-                        isOn={binding.sync_enabled}
-                        onIsOnChange={(enabled) => void onToggleSync(binding, enabled)}
-                      />
-                    ))}
-                  </Section>
-                ) : null}
-
-                <Section footer={<SwiftUIText>{t('settingsSync:space.devices.removeEffect')}</SwiftUIText>}>
-                  <Alert
-                    title={pair('unpair')}
-                    isPresented={confirmUnpair}
-                    onIsPresentedChange={(presented) => {
-                      if (!presented) setConfirmUnpair(false);
-                    }}
-                  >
-                    <Alert.Trigger>
-                      <SettingsNavRow
-                        icon="trash"
-                        iconColor={settingsTileColors.red}
-                        title={pair('unpair')}
-                        destructive
-                        showsChevron={false}
-                        showsPressFeedback={false}
-                        onPress={() => setConfirmUnpair(true)}
-                      />
-                    </Alert.Trigger>
-                    <Alert.Actions>
-                      <SwiftUIButton
-                        label={pair('unpair')}
-                        role="destructive"
-                        onPress={() => {
-                          setConfirmUnpair(false);
-                          void onUnpair(device);
-                        }}
-                      />
-                      <SwiftUIButton
-                        label={t('common:action.cancel')}
-                        role="cancel"
-                        onPress={() => setConfirmUnpair(false)}
-                      />
-                    </Alert.Actions>
-                    <Alert.Message>
-                      <SwiftUIText>
-                        {t('settingsSync:space.devices.removeConfirmNamed', {
-                          device: deviceDisplayName(device),
-                        })}
-                      </SwiftUIText>
-                    </Alert.Message>
-                  </Alert>
-                </Section>
-              </List>
-            </IosSheetPage>
-          </IosPageChromeProvider>
-        ) : null}
-      </Group>
-    </BottomSheet>
+                  <SwiftUIButton
+                    label={t('common:action.cancel')}
+                    role="cancel"
+                    onPress={() => setConfirmUnpair(false)}
+                  />
+                </Alert.Actions>
+                <Alert.Message>
+                  <SwiftUIText>
+                    {t('settingsSync:space.devices.removeConfirmNamed', {
+                      device: deviceDisplayName(device),
+                    })}
+                  </SwiftUIText>
+                </Alert.Message>
+              </Alert>
+            </Section>
+          </IosSheetForm>
+        </IosSheetPage>
+      ) : null}
+    </IosBottomSheet>
   );
 }

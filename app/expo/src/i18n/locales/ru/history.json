@@ -140,5 +140,25 @@
     "remove": "Удалить «{{tag}}»",
     "filter": "Метки",
     "all": "Все метки"
+  },
+  "receiveQueue": {
+    "title": "Входящие элементы",
+    "autoApply": "Автоматически копировать в буфер",
+    "empty": "Нет ожидающих входящих элементов.",
+    "remoteDevice": "Удалённое устройство",
+    "fromSender": "От {{sender}} · {{time}}",
+    "filesCount": "Файлов: {{count}}",
+    "imageContent": "Изображение",
+    "textContent": "Текст",
+    "clipboardContent": "Содержимое буфера обмена",
+    "copyToClipboard": "Скопировать в буфер",
+    "dismiss": "Скрыть",
+    "state": {
+      "applied": "Скопировано в буфер",
+      "applying": "Копирование…",
+      "failed": "Ошибка",
+      "deferred": "Отложено",
+      "pending": "Ожидание"
+    }
   }
 }

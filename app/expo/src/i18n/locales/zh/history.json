@@ -128,5 +128,25 @@
     "remove": "移除「{{tag}}」",
     "filter": "标签",
     "all": "全部标签"
+  },
+  "receiveQueue": {
+    "title": "远端接收队列",
+    "autoApply": "自动应用到剪贴板",
+    "empty": "当前没有待应用的远端内容。",
+    "remoteDevice": "远端设备",
+    "fromSender": "来自 {{sender}} · {{time}}",
+    "filesCount": "{{count}} 个文件",
+    "imageContent": "图片内容",
+    "textContent": "文本内容",
+    "clipboardContent": "剪贴板内容",
+    "copyToClipboard": "复制到剪贴板",
+    "dismiss": "忽略",
+    "state": {
+      "applied": "已复制到剪贴板",
+      "applying": "应用中…",
+      "failed": "应用失败",
+      "deferred": "已延迟",
+      "pending": "待应用"
+    }
   }
 }

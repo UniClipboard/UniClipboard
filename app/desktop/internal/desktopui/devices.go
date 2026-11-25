@@ -755,14 +755,6 @@ func (d *viewState) syncChannelsStrip(c *ui.Context, k desktopkit.Kit) {
 					d.openPluginSettings("")
 				}
 			})
-			if d.restartPending {
-				ui.Box(c.Key("div")).Height(1).Background(edge)
-				ui.Row(c.Key("restart")).Gap(8).AlignItems(ui.Center).Children(func() {
-					k.Icon(c.Key("ric"), desktopkit.IconRetry, 13).TextColor(fg).Shrink(0)
-					k.Text(c.Key("rtxt"), d.tr("同步渠道配置已更改，请退出并重新启动桌面端以生效。"), desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(fg).Grow(1).MinWidth(0)
-					d.restartActionButton(c.Key("rbtn"), k)
-				})
-			}
 		})
 		return
 	}
@@ -822,15 +814,6 @@ func (d *viewState) syncChannelsStrip(c *ui.Context, k desktopkit.Kit) {
 				d.openPluginSettings("")
 			}
 		})
-		if d.restartPending {
-			_, _, fg := deviceWarnBannerSurface(k)
-			ui.Box(c.Key("div")).Height(1).Background(k.Color("separator-border"))
-			ui.Row(c.Key("restart")).Gap(8).AlignItems(ui.Center).Children(func() {
-				k.Icon(c.Key("ric"), desktopkit.IconRetry, 13).TextColor(fg).Shrink(0)
-				k.Text(c.Key("rtxt"), d.tr("同步渠道设置已保存，请退出并重新启动桌面端以生效。"), desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(fg).Grow(1).MinWidth(0)
-				d.restartActionButton(c.Key("rbtn"), k)
-			})
-		}
 	})
 }
 
@@ -893,16 +876,6 @@ func (d *viewState) deviceOverviewCanvas(c *ui.Context, k desktopkit.Kit, winWid
 						d.options["sync"] = true
 					}
 				}
-			})
-		}
-
-		// Live operation feedback notice (when sheet is not open).
-		if d.live != nil && d.live.message != "" && d.deviceTask == "" {
-			bg, edge, fg := deviceWarnBannerSurface(k)
-			ui.Row(c.Key("live-msg")).Padding(10, 12).Radius(11).Gap(8).AlignItems(ui.Center).Shrink(0).
-				Background(bg).Border(1, edge).Children(func() {
-				k.Icon(c.Key("ic"), desktopkit.IconInfo, 15).TextColor(fg).Shrink(0)
-				k.Text(c.Key("t"), d.tr(d.live.message), desktopkit.TextProps{Role: desktopkit.RoleCaption, Emphasized: true}).TextColor(fg).Grow(1)
 			})
 		}
 
@@ -2098,15 +2071,6 @@ func (d *viewState) pairingSheetBody(c *ui.Context, k desktopkit.Kit) {
 				Background(bg).Border(1, edge).Children(func() {
 				k.Icon(c.Key("ic"), desktopkit.IconDevices, 14).TextColor(k.Color("accent-500")).Shrink(0)
 				k.Text(c, fmt.Sprintf(d.tr("为「%s」添加同步路径"), targetDev.displayName()), desktopkit.TextProps{Role: desktopkit.RoleCaption, Emphasized: true})
-			})
-		}
-
-		if d.live != nil && d.live.message != "" && d.deviceTask != "connect" {
-			bg, edge, fg := deviceWarnBannerSurface(k)
-			ui.Row(c.Key("sheet-msg")).Padding(9, 11).Radius(10).Gap(8).AlignItems(ui.Center).
-				Background(bg).Border(1, edge).Children(func() {
-				k.Icon(c.Key("ic"), desktopkit.IconInfo, 14).TextColor(fg).Shrink(0)
-				k.Text(c, d.tr(d.live.message), desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(fg)
 			})
 		}
 

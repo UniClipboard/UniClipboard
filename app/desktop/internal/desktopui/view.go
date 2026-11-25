@@ -176,7 +176,8 @@ type viewState struct {
 	live                                                                  *liveState
 	tagEditor                                                             tagEditorState
 	actionResult                                                          actionResultState
-	actionToast                                                           actionToastState
+	toasts                                                                desktopkit.ToastStore
+	dismissedRestart, dismissedCfgErr, dismissedApply                     string
 	openURL                                                               func(string) error
 	openQuickPanel                                                        func()
 	quick                                                                 *quickPanelState
@@ -272,7 +273,7 @@ func (d *viewState) view(c *ui.Context) {
 		d.actionResultDialog(c.Key("action-result"), k)
 		d.confirmDialog(c.Key("confirm"), k)
 		d.aboutDialogs(c.Key("about"), k)
-		d.actionToastOverlay(c.Key("action-toast"), k)
+		d.toasterOverlay(c, k)
 	})
 }
 

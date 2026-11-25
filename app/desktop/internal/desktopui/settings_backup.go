@@ -219,11 +219,13 @@ func (d *viewState) prepareBackupImport(data []byte, current config.State) {
 	preview, err := previewPortableSettings(data, current)
 	if err != nil {
 		s.err = d.tr("无法导入此配置备份。请检查格式、版本和设置值。")
+		d.toastError(s.err, desktopkit.ToastOptions{ID: "backup-feedback"})
 		return
 	}
 	s.preview = preview
 	if len(preview.changes) == 0 {
 		s.notice = d.tr("备份与当前可移动设置相同。")
+		d.toastInfo(s.notice, desktopkit.ToastOptions{ID: "backup-feedback"})
 	}
 }
 
@@ -238,6 +240,7 @@ func (d *viewState) confirmBackupImport() {
 	preview := s.preview
 	if l.config.Revision != preview.revision {
 		s.err = d.tr("设置已更改。请重新选择备份并检查预览。")
+		d.toastWarning(s.err, desktopkit.ToastOptions{ID: "backup-feedback"})
 		s.confirmOpen = false
 		return
 	}
@@ -247,13 +250,17 @@ func (d *viewState) confirmBackupImport() {
 	}
 	if err := preview.config.Validate(); err != nil {
 		s.err = d.tr("无法导入此配置备份。请检查格式、版本和设置值。")
+		d.toastError(s.err, desktopkit.ToastOptions{ID: "backup-feedback"})
 		return
 	}
 	s.preview = nil
 	s.confirmOpen = false
 	s.err = ""
 	s.notice = ""
-	d.saveLiveConfigThen(preview.config, func() { s.notice = d.tr("配置已导入。请检查需要重启的设置。") })
+	d.saveLiveConfigThen(preview.config, func() {
+		s.notice = d.tr("配置已导入。请检查需要重启的设置。")
+		d.toastSuccess(s.notice, desktopkit.ToastOptions{ID: "backup-feedback"})
+	})
 }
 
 func (d *viewState) runBackupAction(export bool) {
@@ -265,11 +272,13 @@ func (d *viewState) runBackupAction(export bool) {
 	current := l.config
 	if current.Error != "" {
 		s.err = d.tr("当前配置无效。请先修复配置。")
+		d.toastWarning(s.err, desktopkit.ToastOptions{ID: "backup-feedback"})
 		return
 	}
 	data, err := encodePortableSettings(current.Config)
 	if err != nil {
 		s.err = d.tr("无法导出当前设置。")
+		d.toastError(s.err, desktopkit.ToastOptions{ID: "backup-feedback"})
 		return
 	}
 	s.busy = true
@@ -296,16 +305,20 @@ func (d *viewState) runBackupAction(export bool) {
 			s.busy = false
 			if err != nil {
 				s.err = d.tr("配置文件操作失败。请重试。")
+				d.toastError(s.err, desktopkit.ToastOptions{ID: "backup-feedback"})
 				return
 			}
 			if export {
 				if output == "" {
 					s.notice = d.tr("已取消导出。")
+					d.toastInfo(s.notice, desktopkit.ToastOptions{ID: "backup-feedback"})
 				} else {
 					s.notice = d.tr("配置已导出：") + output
+					d.toastSuccess(d.tr("配置已导出"), desktopkit.ToastOptions{ID: "backup-feedback", Description: output})
 				}
 			} else if len(loaded) == 0 {
 				s.notice = d.tr("已取消导入。")
+				d.toastInfo(s.notice, desktopkit.ToastOptions{ID: "backup-feedback"})
 			} else {
 				d.prepareBackupImport(loaded, current)
 			}
@@ -413,13 +426,6 @@ func (d *viewState) backupSettingsContent(c *ui.Context, k desktopkit.Kit) {
 				d.runBackupAction(false)
 			}
 		})
-		if s.err != "" {
-			settingsStrip(c.Key("err"), k, desktopkit.ToneWarning, s.err)
-		}
-		if s.notice != "" {
-			settingsStrip(c.Key("notice"), k, desktopkit.ToneInfo, s.notice)
-		}
-
 		// Collapsible scope disclosure row matching prototype/settings.html.
 		toggle := ui.ButtonBase(c.Key("scope-toggle")).
 			Label(d.tr("查看备份包含与排除范围")).

@@ -72,9 +72,6 @@ func (d *viewState) weTypePairingContent(c *ui.Context, k desktopkit.Kit, item a
 			if ready && (button.Clicked() || field.Submitted) {
 				d.pairWeType(item.ID, false)
 			}
-			if p.message != "" {
-				k.InlineNotice(c.Key("pair-error"), desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: d.tr(p.message)})
-			}
 		})
 	})
 }
@@ -100,6 +97,7 @@ func (d *viewState) pairWeType(id string, resume bool) {
 		req.Code = p.code
 	}
 	p.code, p.message = "", ""
+	d.toastDismiss(toastIDWeTypePair)
 	p.busy, l.busy = true, true
 	if !l.enqueueWithin(func(ctx context.Context) func() {
 		_, err := l.client.PairChannel(ctx, req)
@@ -121,6 +119,9 @@ func (d *viewState) pairWeType(id string, resume bool) {
 				if err != nil {
 					p.message = "未能加入共享空间。请检查微信输入法并重试。"
 				}
+			}
+			if p.message != "" {
+				d.toastError(d.tr(p.message), desktopkit.ToastOptions{ID: toastIDWeTypePair})
 			}
 		}
 	}, 95*time.Second) {

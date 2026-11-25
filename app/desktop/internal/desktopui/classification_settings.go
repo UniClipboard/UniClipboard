@@ -93,9 +93,6 @@ func (d *viewState) classificationRules(c *ui.Context, k desktopkit.Kit, cfg con
 		ui.Column(editor).Padding(12, 16).Gap(10).Children(func() {
 			k.TextField(editor.Key("pattern"), desktopkit.TextFieldProps{Label: d.tr("正则表达式"), Value: &form.draft.Pattern, Placeholder: `\bUNI-[0-9]+\b`, Disabled: busy})
 			k.TextField(editor.Key("tag"), desktopkit.TextFieldProps{Label: d.tr("目标标签"), Value: &form.draft.Tag, Disabled: busy})
-			if form.invalid {
-				k.InlineNotice(editor.Key("invalid"), desktopkit.NoticeProps{Tone: desktopkit.ToneError, Title: d.tr("请输入有效的 Go 正则表达式和标签。表达式最多 1024 字节，标签最多 64 字节。")})
-			}
 			ui.Row(editor.Key("actions")).Gap(8).Children(func() {
 				if k.Button(editor.Key("cancel"), d.tr("取消"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: busy}).Clicked() {
 					*form = classificationSettings{saved: instance.Rules}
@@ -111,7 +108,10 @@ func (d *viewState) classificationRules(c *ui.Context, k desktopkit.Kit, cfg con
 					}
 					_, err := builtinclassify.New(rules, instance.DisabledDefaultTags)
 					form.invalid = err != nil
-					if !form.invalid {
+					if form.invalid {
+						d.toastError(d.tr("请输入有效的 Go 正则表达式和标签。表达式最多 1024 字节，标签最多 64 字节。"), desktopkit.ToastOptions{ID: "classify-invalid"})
+					} else {
+						d.toastDismiss("classify-invalid")
 						save(rules)
 					}
 				}

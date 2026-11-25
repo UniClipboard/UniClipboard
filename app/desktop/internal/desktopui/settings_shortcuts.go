@@ -63,6 +63,7 @@ func (d *viewState) refreshShortcutPermission() {
 			if err != nil {
 				s.status = "unknown"
 				s.err = d.tr("权限状态读取失败，请重试。")
+				d.toastWarning(s.err, desktopkit.ToastOptions{ID: "shortcut-perm"})
 				return
 			}
 			switch status {
@@ -71,6 +72,7 @@ func (d *viewState) refreshShortcutPermission() {
 			default:
 				s.status = "unknown"
 				s.err = d.tr("权限状态读取失败，请重试。")
+				d.toastWarning(s.err, desktopkit.ToastOptions{ID: "shortcut-perm"})
 			}
 		}
 		select {
@@ -102,10 +104,12 @@ func (d *viewState) openShortcutPermissionSettings() {
 			s.opening = false
 			if err != nil {
 				s.actionErr = d.tr("无法打开系统设置，请重试。")
+				d.toastError(s.actionErr, desktopkit.ToastOptions{ID: "shortcut-perm-open"})
 				return
 			}
 			// Opening a settings page is never evidence that permission changed.
 			s.notice = d.tr("已请求打开系统设置。请完成授权后刷新状态。")
+			d.toastInfo(s.notice, desktopkit.ToastOptions{ID: "shortcut-perm-open"})
 		}
 		select {
 		case l.results <- apply:
@@ -144,15 +148,6 @@ func (d *viewState) shortcutPermissionSettings(c *ui.Context, k desktopkit.Kit) 
 		}, nil, func() {
 			settingsPill(c.Key("status-pill"), k, label, tone, true, false)
 		})
-		if s.err != "" {
-			settingsStrip(c.Key("read-error"), k, desktopkit.ToneWarning, s.err)
-		}
-		if s.actionErr != "" {
-			settingsStrip(c.Key("action-error"), k, desktopkit.ToneWarning, s.actionErr)
-		}
-		if s.notice != "" {
-			settingsStrip(c.Key("notice"), k, desktopkit.ToneInfo, s.notice)
-		}
 		hint := d.tr("授权完成后请手动点击刷新，以读取系统最新状态。")
 		if s.status == "unsupported" {
 			hint = d.tr("当前平台无需 macOS 辅助功能权限开关。")

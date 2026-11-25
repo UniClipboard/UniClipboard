@@ -408,6 +408,7 @@ func (d *viewState) applyShortcut(cfg *localconfig.Config, id string, keys []str
 			d.shortcutEditor.error = message
 		} else {
 			d.live.message = message
+			d.toastWarning(message, desktopkit.ToastOptions{ID: "shortcut-conflict"})
 		}
 		return false
 	}

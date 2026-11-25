@@ -1892,8 +1892,10 @@ func (d *viewState) startHistorySend(target string) {
 			l.nextRefresh = time.Time{}
 			if resultErr != nil {
 				l.message = "发送未完成。请检查设备连接和源目录。"
+				d.toastError(d.tr(l.message), desktopkit.ToastOptions{ID: toastIDLiveMessage})
 			} else if out.SyncDisposition != engine.SyncQueued {
 				l.message = "内容已保存，但未发送。请检查同步设置和设备连接。"
+				d.toastWarning(d.tr(l.message), desktopkit.ToastOptions{ID: toastIDLiveMessage})
 			} else {
 				d.notice = "发送完成"
 			}

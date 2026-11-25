@@ -12,21 +12,21 @@
     "title": "Acesso à área de transferência",
     "hero": {
       "title": "Colar sem perguntas",
-      "description": "O iOS pergunta toda vez que o UniClipboard lê algo que você copiou em outro app. Permita uma vez e a sincronização segue sem interrupções.",
+      "description": "O iOS pergunta toda vez que o Unic lê algo que você copiou em outro app. Permita uma vez e a sincronização segue sem interrupções.",
       "trigger": "Mostrar o aviso",
       "triggerAgain": "Mostrar de novo",
       "emptyClipboardHint": "Copie algum texto em outro app primeiro. O iOS não mostra o aviso quando a área de transferência está vazia.",
       "triggered": "Aviso solicitado. Se ele apareceu, basta tocar em \"Permitir Colar\"."
     },
     "prompt": {
-      "title": "“UniClipboard” deseja colar de “Notas”",
+      "title": "“Unic” deseja colar de “Notas”",
       "message": "Deseja permitir?",
       "deny": "Não Permitir Colar",
       "allow": "Permitir Colar"
     },
     "fallbackSection": {
       "header": "Nenhum aviso, ou tocou em \"Não Permitir\"?",
-      "footer": "A opção \"Colar de Outros Apps\" só aparece depois que o UniClipboard pediu uma vez. O iOS não informa aos apps qual opção você escolheu, então não há nada para confirmar aqui.",
+      "footer": "A opção \"Colar de Outros Apps\" só aparece depois que o Unic pediu uma vez. O iOS não informa aos apps qual opção você escolheu, então não há nada para confirmar aqui.",
       "guideRow": "Permitir nos Ajustes do iOS",
       "guideRowSubtitle": "3 passos, com imagens",
       "openSettings": "Abrir Ajustes do iOS"
@@ -41,26 +41,26 @@
       "openSettings": "Abrir Ajustes do iOS",
       "steps": {
         "findApp": {
-          "title": "Encontre o UniClipboard nos Ajustes",
-          "description": "Abra o app Ajustes, vá em Apps e toque em UniClipboard. O botão Abrir Ajustes do iOS abaixo leva direto até lá.",
-          "tip": "No iOS 17 e anteriores, o UniClipboard fica perto do fim da lista principal dos Ajustes."
+          "title": "Encontre o Unic nos Ajustes",
+          "description": "Abra o app Ajustes, vá em Apps e toque em Unic. O botão Abrir Ajustes do iOS abaixo leva direto até lá.",
+          "tip": "No iOS 17 e anteriores, o Unic fica perto do fim da lista principal dos Ajustes."
         },
         "openPaste": {
           "title": "Toque em Colar de Outros Apps",
-          "description": "Fica na lista Permitir que UniClipboard Acesse e normalmente mostra Perguntar.",
-          "tip": "Não encontrou a opção? O iOS só a adiciona depois que o UniClipboard pediu uma vez. Feche aqui e toque em Mostrar o aviso primeiro."
+          "description": "Fica na lista Permitir que Unic Acesse e normalmente mostra Perguntar.",
+          "tip": "Não encontrou a opção? O iOS só a adiciona depois que o Unic pediu uma vez. Feche aqui e toque em Mostrar o aviso primeiro."
         },
         "chooseAllow": {
           "title": "Escolha Permitir",
-          "description": "Agora o UniClipboard lê o que você copia em outros apps sem perguntar. A mudança vale na hora.",
-          "tip": "O iOS não informa ao UniClipboard qual opção você escolheu, então não há confirmação para esperar."
+          "description": "Agora o Unic lê o que você copia em outros apps sem perguntar. A mudança vale na hora.",
+          "tip": "O iOS não informa ao Unic qual opção você escolheu, então não há confirmação para esperar."
         }
       },
       "illustration": {
         "settings": "Ajustes",
         "apps": "Apps",
         "search": "Buscar",
-        "accessHeader": "Permitir que UniClipboard Acesse",
+        "accessHeader": "Permitir que Unic Acesse",
         "pasteFromOtherApps": "Colar de Outros Apps",
         "ask": "Perguntar",
         "deny": "Negar",

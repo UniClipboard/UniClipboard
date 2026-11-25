@@ -1,7 +1,7 @@
 module.exports = (config) => ({
   type: "share",
   name: "UniClipboardShare",
-  displayName: "UniClipboard",
+  displayName: "Unic",
   bundleIdentifier: ".Share",
   deploymentTarget: "17.0",
   exportJs: false,

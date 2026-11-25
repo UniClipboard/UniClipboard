@@ -102,7 +102,7 @@
       "sse": "Envio ao vivo (SSE)"
     },
     "extensions": {
-      "footer": "A extensão de compartilhamento permite enviar itens ao UniClipboard diretamente pelo menu Compartilhar de outros apps.",
+      "footer": "A extensão de compartilhamento permite enviar itens ao Unic diretamente pelo menu Compartilhar de outros apps.",
       "keyboard": "Teclado",
       "share": "Compartilhar",
       "clipboardAccess": "Acesso à área de transferência"
@@ -123,7 +123,7 @@
   "analytics": {
     "sectionTitle": "Privacidade",
     "consentTitle": "Compartilhar uso e diagnósticos anônimos",
-    "consentDescription": "Ajuda a melhorar o UniClipboard sem coletar conteúdo da área de transferência ou nomes",
+    "consentDescription": "Ajuda a melhorar o Unic sem coletar conteúdo da área de transferência ou nomes",
     "footer": "Podem ser enviados versão do app, sistema, região, sessão, número de dispositivos pareados e diagnósticos sem conteúdos ou nomes. Desativar interrompe a coleta e remove os dados pendentes.",
     "reset": "Redefinir",
     "resetTitle": "Redefinir identidade estatística",

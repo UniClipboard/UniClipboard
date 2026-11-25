@@ -44,7 +44,7 @@ export interface ClipboardSettingsGuideSheetProps {
 const GUIDE_STEPS = ['findApp', 'openPaste', 'chooseAllow'] as const;
 type GuideStep = (typeof GUIDE_STEPS)[number];
 
-const APP_NAME = 'UniClipboard';
+const APP_NAME = 'Unic';
 const MOCK_ROW_HEIGHT = 40;
 
 export function ClipboardSettingsGuideSheet({

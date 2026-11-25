@@ -182,7 +182,7 @@ export function useShellSettingGroups(
     return [
       {
         rows: [
-          { id: "about-name", title: "UniClipboard", value: "Expo UI Shell" },
+          { id: "about-name", title: "Unic", value: "Expo UI Shell" },
           {
             id: "about-source",
             title: t("shell:source"),

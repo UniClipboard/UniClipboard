@@ -55,7 +55,7 @@ export const AboutSection = memo(function AboutSection() {
         </RNHostView>
         <Column horizontalAlignment="center">
           <ComposeText style={APP_NAME_STYLE} modifiers={[testID('about-name')]}>
-            UniClipboard
+            Unic
           </ComposeText>
           <ComposeText color={colors.onSurfaceVariant} modifiers={[testID('about-version')]}>
             {t('settingsAbout:versionValue', { version: versionText })}

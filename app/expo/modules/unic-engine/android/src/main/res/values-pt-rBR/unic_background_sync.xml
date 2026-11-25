@@ -1,5 +1,5 @@
 <resources>
-  <string name="unic_background_sync">Sincronização em segundo plano do UniClipboard</string>
+  <string name="unic_background_sync">Sincronização em segundo plano do Unic</string>
   <string name="unic_background_sync_channel_desc">Mantém a sincronização da área de transferência em segundo plano</string>
   <string name="unic_background_sync_running">Sincronização em segundo plano ativa</string>
   <string name="unic_background_sync_stopping">Parando…</string>

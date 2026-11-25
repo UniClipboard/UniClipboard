@@ -1,5 +1,5 @@
 <resources>
-  <string name="unic_background_sync">Фоновая синхронизация UniClipboard</string>
+  <string name="unic_background_sync">Фоновая синхронизация Unic</string>
   <string name="unic_background_sync_channel_desc">Поддерживает синхронизацию буфера обмена в фоне</string>
   <string name="unic_background_sync_running">Фоновая синхронизация активна</string>
   <string name="unic_background_sync_stopping">Остановка…</string>

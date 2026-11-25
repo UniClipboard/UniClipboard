@@ -106,7 +106,7 @@
     "failedBody": "请检查备份目录的权限，然后重试。",
     "retry": "重试迁移",
     "another": "选择其他目录",
-    "welcome": "欢迎使用 UniClipboard",
+    "welcome": "欢迎使用 Unic",
     "slogan": "让每一次复制更有用",
     "skipTitle": "暂不迁移旧版数据？",
     "skipBody": "旧版数据会保留。可以稍后在“设置 › 存储”中启动迁移。",

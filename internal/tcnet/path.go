@@ -1,6 +1,7 @@
 package tcnet
 
 import (
+	"context"
 	"net"
 	"net/netip"
 	"time"
@@ -16,6 +17,34 @@ func (t *Transport) Path(conn net.Conn, outgoing bool) string {
 		return "unknown"
 	}
 	return t.PathSnapshot()(conn, outgoing)
+}
+
+// ProbePath classifies an active session's transport path for an explicit
+// user-initiated check. Incoming sessions read a fresh Server.Status snapshot;
+// outgoing sessions issue one bounded Client.DiscoPing and reduce the result to
+// a finite category before leaving tcnet so raw endpoints and regions never leak.
+func (t *Transport) ProbePath(ctx context.Context, conn net.Conn, outgoing bool) string {
+	if !outgoing {
+		return t.Path(conn, false)
+	}
+	cc, ok := conn.(*clientConn)
+	if !ok || cc == nil || cc.client == nil {
+		return "unknown"
+	}
+	res, err := cc.client.DiscoPing(ctx)
+	if err != nil || res == nil || res.Err != "" {
+		return "unknown"
+	}
+	if addr, err := netip.ParseAddrPort(res.Endpoint); err == nil && addr.IsValid() {
+		return "direct"
+	}
+	if res.PeerRelay != "" {
+		return "peer_relay"
+	}
+	if res.DERPRegionID != 0 || res.DERPRegionCode != "" {
+		return "derp"
+	}
+	return "unknown"
 }
 
 // PathSnapshot reads status once per collection, then retains only a private

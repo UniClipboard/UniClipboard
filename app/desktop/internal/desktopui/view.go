@@ -84,7 +84,10 @@ type deviceBinding struct {
 	implementationID string
 	state            string // authorized, pending
 	syncEnabled      bool
-	connection       string // connected, disconnected
+	connection       string // connected, connecting, disconnected
+	connectionPath   string // direct, derp, peer_relay, unknown, ""
+	latencyMs        int64
+	lastChecked      string
 	revision         int64
 	lastActive       string
 	lastError        string
@@ -187,6 +190,8 @@ type viewState struct {
 	entries                                                               []entry
 	syncChannels                                                          []syncChannel
 	devices                                                               []device
+	refreshingDevices                                                     bool
+	refreshingDeviceID                                                    string
 	channels                                                              []externalChannel
 	selected                                                              string
 	confirmEntries                                                        []string

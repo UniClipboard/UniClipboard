@@ -199,6 +199,13 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				if ra, ok := in.Plugin.(plugin.PeerReceiverAware); ok {
 					ra.SetPeerReceiver(pp)
 				}
+				if la, ok := in.Plugin.(plugin.PeerLinkCallbackAware); ok {
+					la.SetLinkStatusChanged(func(peerID string) {
+						if peerID != "" {
+							e.deviceChanged(peerID)
+						}
+					})
+				}
 				if berr := peerAware.Bind(ctx, pp.bindMsg()); berr != nil {
 					return invalidPlugin(spec.ID, "Bind failed")
 				}

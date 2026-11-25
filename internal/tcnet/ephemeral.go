@@ -106,6 +106,7 @@ func DialEphemeral(ctx context.Context, addr string, port uint16, logf func(stri
 
 type clientConn struct {
 	net.Conn
+	client  *tailcat.Client
 	release func()
 	once    sync.Once
 }

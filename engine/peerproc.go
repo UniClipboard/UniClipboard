@@ -45,6 +45,23 @@ type peerProcBackend struct {
 func (b *peerProcBackend) ID() PluginID        { return b.id }
 func (b *peerProcBackend) Kind() TransportKind { return TransportPeerSessions }
 
+func (b *peerProcBackend) linkSnapshots() map[string]rpc.PeerLinkStatus {
+	insp, ok := b.pb.(plugin.PeerLinkInspector)
+	if !ok {
+		return nil
+	}
+	return insp.LinkSnapshots()
+}
+
+func (b *peerProcBackend) probePeers(ctx context.Context, peerIDs []string) ([]rpc.PeerLinkStatus, bool, error) {
+	insp, ok := b.pb.(plugin.PeerLinkInspector)
+	if !ok {
+		return nil, false, nil
+	}
+	res, err := insp.ProbePeers(ctx, peerIDs)
+	return res, true, err
+}
+
 const maxStateName = rpc.MaxPeerNameBytes
 
 // clipName cuts s to at most n bytes on a rune boundary.

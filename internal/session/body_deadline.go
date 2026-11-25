@@ -2,6 +2,7 @@ package session
 
 import (
 	"net"
+	"sync/atomic"
 	"time"
 )
 
@@ -15,6 +16,8 @@ type bodyDeadlineConn struct {
 	net.Conn
 	body        bool
 	writingBody bool
+	lastRxNs    *atomic.Int64
+	lastTxNs    *atomic.Int64
 }
 
 func (c *bodyDeadlineConn) Read(p []byte) (int, error) {
@@ -24,7 +27,11 @@ func (c *bodyDeadlineConn) Read(p []byte) (int, error) {
 		}
 		defer func() { _ = c.SetReadDeadline(time.Time{}) }()
 	}
-	return c.Conn.Read(p)
+	n, err := c.Conn.Read(p)
+	if n > 0 && c.lastRxNs != nil {
+		c.lastRxNs.Store(time.Now().UnixNano())
+	}
+	return n, err
 }
 
 // The single framed writer owns writingBody while holding the session writer lock.
@@ -35,5 +42,9 @@ func (c *bodyDeadlineConn) Write(p []byte) (int, error) {
 		}
 		defer func() { _ = c.SetWriteDeadline(time.Time{}) }()
 	}
-	return c.Conn.Write(p)
+	n, err := c.Conn.Write(p)
+	if n > 0 && c.lastTxNs != nil {
+		c.lastTxNs.Store(time.Now().UnixNano())
+	}
+	return n, err
 }

@@ -57,6 +57,18 @@ type Verdict struct {
 	OK bool   `json:"ok"`
 }
 
+// Ping is an application-level liveness and RTT probe on an authenticated session.
+type Ping struct {
+	T  string `json:"t"` // "ping"
+	ID string `json:"id"`
+}
+
+// Pong answers a Ping with the same ID.
+type Pong struct {
+	T  string `json:"t"` // "pong"
+	ID string `json:"id"`
+}
+
 // PartMeta announces one blob that follows a Clip message.
 type PartMeta struct {
 	Kind string `json:"kind"` // "fmt" or "file"

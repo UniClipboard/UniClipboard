@@ -108,6 +108,7 @@ func (e *Engine) Stop(ctx context.Context) error
 func (e *Engine) Close(ctx context.Context) error
 func (e *Engine) SetRuntimeState(ctx context.Context, state RuntimeState) error
 func (e *Engine) NotifyNetworkChanged(ctx context.Context) error
+func (e *Engine) RefreshConnections(ctx context.Context, deviceID string) ([]Device, error)
 func (e *Engine) GetState(ctx context.Context) (State, error)
 func (e *Engine) GetCapabilities(ctx context.Context) (Capabilities, error)
 func (e *Engine) UpdateHostCapabilities(ctx context.Context, caps HostCapabilities) error
@@ -178,7 +179,9 @@ DataDir、InboxDir 和 ResourcePolicy 只在 New 设置；历史扩展另有 `Op
 
 `RuntimeState` 为 `active` 或 `suspended`，默认 active。suspended 禁止新网络操作并关闭现有监听和会话；active 后重新建立监听与重连。`Sync.Enabled=false` 仍保留连接，新的提交返回 `sync_disabled`，新接收读完丢弃。已开始传输不因同步开关变化回滚，应用前还须重新检查开关。
 
-`NotifyNetworkChanged` 只触发网络重新评估并重置重连退避，不意味着网络一定可用，也不生成新身份或自动重发旧剪贴板。
+`NotifyNetworkChanged` 触发网络重新评估：重置离线设备的重连退避，并对已连接会话异步发起有界应用层探活预热（若旧会话已半开僵死则在探活超时内立即关闭并重连）；它不意味着网络一定可用，也不生成新身份或自动重发旧剪贴板。
+
+`RefreshConnections(ctx, deviceID)` 由用户显式触发，对目标设备（`deviceID` 为空表示全部已信任设备）执行有界连接检测：对已连会话测量应用层往返延迟与传输路径分类（`direct` / `derp` / `peer_relay` / `unknown`，不含原始端点或地址），对离线设备立即重置退避重拨，更新 `DeviceBinding` 的 `Connection` / `ConnectionPath` / `LatencyMs` / `LastCheckedMs` 并发布 `EventDevices`。该操作按需执行，不引入后台周期性主动探测。
 
 ### 3.3 能力模型
 

@@ -414,6 +414,22 @@ func (c *Client) Status(ctx context.Context) (st Status, err error) {
 	return
 }
 
+// NotifyNetworkChanged tells the daemon that the host woke or switched networks.
+func (c *Client) NotifyNetworkChanged(ctx context.Context) error {
+	return c.do(ctx, "POST", "/v1/network/changed", nil, nil)
+}
+
+// RefreshDevices runs an explicit connection probe for deviceID (or all devices
+// when deviceID is empty) and returns the refreshed Status snapshot.
+func (c *Client) RefreshDevices(ctx context.Context, deviceID string) (st Status, err error) {
+	var body any
+	if deviceID != "" {
+		body = map[string]string{"device_id": deviceID}
+	}
+	err = c.do(ctx, "POST", "/v1/devices/refresh", body, &st)
+	return
+}
+
 // Config returns the configuration in effect.
 func (c *Client) Config(ctx context.Context) (st config.State, err error) {
 	err = c.do(ctx, "GET", "/v1/config", nil, &st)

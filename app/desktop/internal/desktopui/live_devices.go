@@ -2,6 +2,7 @@ package desktopui
 
 import (
 	"context"
+	"time"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
@@ -196,4 +197,36 @@ func (d *viewState) cancelLiveInvitation() {
 		_ = l.client.CancelCode(ctx)
 		return func() { l.code = api.Code{}; l.ticket = ""; d.inviteCode = "" }
 	})
+}
+
+func (d *viewState) refreshLiveDevices(deviceID string) {
+	if d.live == nil || d.refreshingDevices {
+		return
+	}
+	l := d.live
+	client := l.client
+	d.refreshingDevices = true
+	d.refreshingDeviceID = deviceID
+	l.message = ""
+	go func() {
+		rctx, cancel := context.WithTimeout(l.ctx, 12*time.Second)
+		_, err := client.RefreshDevices(rctx, deviceID)
+		cancel()
+		apply := func() {
+			d.refreshingDevices = false
+			d.refreshingDeviceID = ""
+			if err != nil {
+				l.message = "无法刷新连接状态，请重试。"
+			}
+			select {
+			case l.changed <- struct{}{}:
+			default:
+			}
+		}
+		select {
+		case l.results <- apply:
+			l.wake()
+		case <-l.ctx.Done():
+		}
+	}()
 }

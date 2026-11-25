@@ -665,9 +665,10 @@ func asErrorOrNil(err error) error {
 	return asError(err)
 }
 
-// NotifyNetworkChanged tells the engine the host's network changed. It only
-// triggers a fresh look: it does not mean the network works, and it never
-// resends old content.
+// NotifyNetworkChanged tells the engine the host's network changed. It
+// triggers a fresh look (resetting backoff for disconnected peers and running
+// bounded liveness/warmup probes on live peer sessions): it does not mean the
+// network works, and it never resends old content.
 func (e *Engine) NotifyNetworkChanged(ctx context.Context) error {
 	release, gerr := e.enter(ctx)
 	if gerr != nil {
@@ -685,6 +686,73 @@ func (e *Engine) NotifyNetworkChanged(ctx context.Context) error {
 	e.mu.Unlock()
 	e.syncPeerStates()
 	return nil
+}
+
+const refreshConnectionsTimeout = 8 * time.Second
+
+// RefreshConnections explicitly checks peer sessions (measuring RTT and
+// transport path where supported, tearing down half-open links, and resetting
+// backoff for disconnected targets). Empty deviceID refreshes all trusted
+// devices; a non-empty deviceID targets only that device.
+func (e *Engine) RefreshConnections(ctx context.Context, deviceID string) ([]Device, error) {
+	release, gerr := e.enter(ctx)
+	if gerr != nil {
+		return nil, gerr
+	}
+	defer release()
+	e.mu.Lock()
+	err := e.needNetworkLocked()
+	e.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	var targetIDs []string
+	if deviceID != "" {
+		d, derr := e.st.Device(deviceID)
+		if derr != nil || d.Trust == store.TrustRevoked {
+			if derr == nil {
+				derr = store.ErrDeviceNotFound
+			}
+			return nil, deviceStoreErr(derr)
+		}
+		targetIDs = []string{deviceID}
+	}
+	pctx, cancel := context.WithTimeout(ctx, refreshConnectionsTimeout)
+	defer cancel()
+	needNetGen := false
+	var wg sync.WaitGroup
+	for _, pb := range e.peerProcs {
+		pb := pb
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, supported, _ := pb.probePeers(pctx, targetIDs)
+			if !supported {
+				e.mu.Lock()
+				needNetGen = true
+				e.mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if needNetGen {
+		e.mu.Lock()
+		e.netGen++
+		e.mu.Unlock()
+		e.syncPeerStates()
+	}
+	out, derr := e.deviceList()
+	if derr != nil {
+		return nil, derr
+	}
+	if deviceID != "" {
+		e.deviceChanged(deviceID)
+	} else {
+		for _, d := range out {
+			e.deviceChanged(d.ID)
+		}
+	}
+	return out, nil
 }
 
 var errIdentityMismatch = errors.New("device identity does not match the registered key")

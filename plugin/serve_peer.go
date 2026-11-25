@@ -20,6 +20,21 @@ type PeerBackend interface {
 	ApplyState(ctx context.Context, s rpc.SyncState) error
 }
 
+// PeerLinkInspector is an optional capability implemented by peer_sessions
+// backends that can expose sanitized per-peer link state (connecting, path,
+// latency) and execute explicit bounded connection probes.
+type PeerLinkInspector interface {
+	LinkSnapshots() map[string]rpc.PeerLinkStatus
+	ProbePeers(ctx context.Context, peerIDs []string) ([]rpc.PeerLinkStatus, error)
+}
+
+// PeerLinkCallbackAware is an optional in-process hook allowing a peer backend
+// to notify the Engine when a peer's non-session link state changes (e.g.
+// entering or leaving connecting state, or completing a wake warmup probe).
+type PeerLinkCallbackAware interface {
+	SetLinkStatusChanged(fn func(peerID string))
+}
+
 type peerState struct {
 	bound bool
 	bind  rpc.Bind

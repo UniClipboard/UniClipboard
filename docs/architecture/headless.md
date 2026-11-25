@@ -45,10 +45,11 @@ Neither headless program imports the desktop application or a UI toolkit, direct
 ```text
 unic ------------+-- local IPC -- unicd -- Engine / history / plugins / network
 unic-desktop --role tray -- adapter IPC --+
-      +-- clipboard / shortcut / notifications
+      +-- clipboard observer / shortcut / notifications
 unic-desktop --role gui -------- local IPC -- unicd
-unic-desktop --role quick-panel --+
-      +-- target checks / focus / paste; clipboard writes delegate to the active adapter
+unic-desktop --quick-panel / --role quick-panel --+
+      +-- target checks / focus / paste; macOS uses unicd on-demand opt-in;
+          Windows/Linux write directly via bounded /v1/desktop/panel-apply/*
 ```
 
 The service accepts explicit text, PNG and file-reference submissions without a clipboard observation epoch.
@@ -137,7 +138,8 @@ credentials, databases or history. See section 12 of the
 - A tray starts a desktop-owned service only when no service owns the profile. Tray exit or abrupt death closes that service owner pipe.
 - Manual launch opens the GUI in either mode. Normal GUI close retains tray and service; lightweight GUI close retires all Desktop roles and retains only the service.
 - Explicit background entry retains tray/service in normal mode and only the service in lightweight mode, after setup admission. Normal login startup uses its saved background preference; lightweight login keeps only the service.
-- GUI and quick-panel processes never acquire a second clipboard adapter or register a global shortcut.
+- GUI and quick-panel processes never acquire a second background observer adapter or register a global shortcut. Quick Panel uses macOS daemon on-demand opt-in or bounded `/v1/desktop/panel-apply/*` service coordination on Windows and Linux.
+- `unic-desktop --quick-panel` borrows an already running non-temporary same-profile `unicd` after read-only setup/migration admission; it never implicitly starts `unicd`, `tray`, or `gui`, and dismissing or exiting the panel never stops that `unicd`. When a tray borrowing a standalone `unicd` exits on its own (`SIGTERM`), it releases shortcuts and its background observer without terminating an independent Quick Panel.
 - CLI and desktop access the service through shared local DTOs and clients.
 - The CLI does not launch a GUI or silently replace system clipboard reads with history reads.
 - A CLI command stops only a temporary generation whose last lease it released. It never stops a standalone or desktop-owned service.
@@ -221,7 +223,7 @@ The shared `config.toml` has a `[desktop]` section. Engine does not consume it.
 
 The tray's Open main window command starts or activates the GUI. Normal GUI close releases its renderer and subscriptions while keeping tray integration. Lightweight GUI close releases the GUI, tray and quick-panel processes and leaves only the service. The normal tray prepares the quick-panel process asynchronously. A panel request starts it on demand if needed. Dismissing the panel releases its view and windows. It owns no adapter or global shortcut. Explicit application Quit closes all Desktop roles, unregisters the shortcut and stops only a tray-owned service. A macOS service already enabled by Desktop keeps the adapter for its own lifetime after ownership transfer or when the tray releases a borrowed service. This includes lightweight login and lightweight GUI close. Ordinary standalone and CLI-temporary launches start without the adapter. Desktop may opt in an existing standalone service without replacing it. A CLI-temporary service cannot opt in.
 
-`unic-desktop --mode normal|lightweight` selects a background startup policy without changing the saved mode. `--background` selects background entry explicitly. The no-role manual entry requests a visible GUI regardless of saved mode or background intent. Internal `--role tray|gui|quick-panel` entries use the same executable. `unic-desktop-demo` remains an independent fixture and manages no service.
+`unic-desktop --mode normal|lightweight` selects a background startup policy without changing the saved mode. `--background` selects background entry explicitly. `--quick-panel` is a public Desktop entry (mutually exclusive with `--mode`, `--background`, `--role`, `--command`, `--payload`, and positional arguments) that probes an existing non-temporary same-profile `unicd`, checks setup/migration read-only, and opens or focuses the profile's single Quick Panel without requiring a tray. The no-role manual entry requests a visible GUI regardless of saved mode or background intent. Internal `--role tray|gui|quick-panel` entries use the same executable. `unic-desktop-demo` remains an independent fixture and manages no service.
 
 The launcher resolves `unicd` beside its executable. A profile transition lock serializes service acquisition. The tray validates the sibling and service directory before acquisition. It adopts an existing standalone generation and returns no owned-service handle. A live desktop-owned or CLI-temporary generation is refused. With no service, the tray starts `unicd --desktop-owned`, verifies PID, directory and ownership mode, and retains the exclusive stdin lifetime pipe. Only directory-in-use exits from a retiring service receive a bounded retry. Unknown listeners and mismatched profiles are never stopped or unlinked.
 

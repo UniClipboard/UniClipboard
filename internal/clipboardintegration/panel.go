@@ -31,18 +31,26 @@ type ChangeWatchBoard interface {
 	WatchChanges(fn func()) (stop func())
 }
 
+type pendingPanelRelease struct {
+	serviceID    string
+	token        engine.ApplyToken
+	currentPaths []string
+}
+
 // PanelClipboard executes Quick Panel clipboard writes on Windows and Linux
 // directly in the panel process under unicd's bounded panel-apply protocol.
 type PanelClipboard struct {
 	profile string
 	board   Board
 
-	mu          sync.Mutex
-	client      *api.Client
-	heldService string
-	heldToken   engine.ApplyToken
-	heldPaths   []string
-	stopWatch   func()
+	mu              sync.Mutex
+	client          *api.Client
+	heldService     string
+	heldToken       engine.ApplyToken
+	heldPaths       []string
+	stopWatch       func()
+	pendingReleases []pendingPanelRelease
+	closed          bool
 
 	// BeforeComplete is an optional test hook invoked after local write and
 	// read-back verification but before sending /v1/desktop/panel-apply/complete.
@@ -60,6 +68,7 @@ func (p *PanelClipboard) Apply(ctx context.Context, client *api.Client, id strin
 	p.mu.Lock()
 	p.client = client
 	p.mu.Unlock()
+	p.flushPendingReleases(client)
 
 	var obsBefore *clip.Snapshot
 	if before, err := p.board.Read(); err == nil {
@@ -144,6 +153,9 @@ func (p *PanelClipboard) Apply(ctx context.Context, client *api.Client, id strin
 	p.mu.Unlock()
 	if hook != nil {
 		if herr := hook(); herr != nil {
+			if grant.HasFiles {
+				p.updateFileLease(grant)
+			}
 			return "", errors.Join(ErrUncertain, herr)
 		}
 	}
@@ -158,6 +170,11 @@ func (p *PanelClipboard) Apply(ctx context.Context, client *api.Client, id strin
 	})
 	if cerr != nil || !reply.Applied {
 		// Uncertain write outcome: never inject paste input and never replay.
+		// Retain file lease tracking if files were already written so later
+		// clipboard changes or process exit can still release the service hold.
+		if grant.HasFiles {
+			p.updateFileLease(grant)
+		}
 		return "", ErrUncertain
 	}
 
@@ -197,26 +214,45 @@ func (p *PanelClipboard) updateFileLease(grant api.PanelApplyGrant) {
 			go p.checkRelease(serviceID, token)
 		})
 		p.mu.Lock()
-		if p.heldService == serviceID && p.heldToken == token {
+		if p.heldService == serviceID && p.heldToken == token && !p.closed {
 			p.stopWatch = stop
 		} else if stop != nil {
 			stop()
 		}
 		p.mu.Unlock()
 	}
+	// Reconcile once right after recording heldToken and installing the watcher
+	// in case the clipboard was replaced before the watcher became active.
+	go p.checkRelease(serviceID, token)
 }
 
 func (p *PanelClipboard) checkRelease(serviceID string, token engine.ApplyToken) {
+	p.checkReleaseAttempt(serviceID, token, 0)
+}
+
+func (p *PanelClipboard) checkReleaseAttempt(serviceID string, token engine.ApplyToken, attempt int) {
 	snap, readErr := p.board.Read()
 
 	p.mu.Lock()
-	if p.heldService != serviceID || p.heldToken != token {
+	if p.closed || p.heldService != serviceID || p.heldToken != token {
 		p.mu.Unlock()
 		return
 	}
-	if readErr == nil && sameHeldPaths(snap, p.heldPaths) {
+	if readErr != nil {
+		// Transient clipboard read failure must not drop the managed-file hold
+		// or watcher. Schedule a bounded retry; later clipboard events or Close
+		// will also recheck.
+		p.mu.Unlock()
+		if attempt < 3 {
+			time.AfterFunc(150*time.Millisecond, func() {
+				p.checkReleaseAttempt(serviceID, token, attempt+1)
+			})
+		}
+		return
+	}
+	if sameHeldPaths(snap, p.heldPaths) {
 		// A clipboard manager or desktop host may take ownership while still
-		// holding the exact same file paths. Keep the managed file lease alive.
+		// holding any of the protected file paths. Keep the managed file lease alive.
 		p.mu.Unlock()
 		return
 	}
@@ -235,19 +271,68 @@ func (p *PanelClipboard) checkRelease(serviceID string, token engine.ApplyToken)
 		return
 	}
 	var currentPaths []string
-	if readErr == nil {
-		for _, f := range snap.Files {
-			currentPaths = append(currentPaths, f.Path)
-		}
+	for _, f := range snap.Files {
+		currentPaths = append(currentPaths, f.Path)
+	}
+	p.sendRelease(client, pendingPanelRelease{
+		serviceID:    serviceID,
+		token:        token,
+		currentPaths: currentPaths,
+	}, true)
+}
+
+func (p *PanelClipboard) sendRelease(client *api.Client, rel pendingPanelRelease, queueOnFail bool) bool {
+	if client == nil || rel.token == "" {
+		return true
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	_ = client.PanelApplyRelease(ctx, api.PanelApplyReleaseRequest{
+	err := client.PanelApplyRelease(ctx, api.PanelApplyReleaseRequest{
 		Profile:      p.profile,
-		ServiceID:    serviceID,
-		Token:        token,
-		CurrentPaths: currentPaths,
+		ServiceID:    rel.serviceID,
+		Token:        rel.token,
+		CurrentPaths: rel.currentPaths,
 	})
+	if err == nil {
+		return true
+	}
+	if queueOnFail {
+		p.mu.Lock()
+		if len(p.pendingReleases) < 16 {
+			p.pendingReleases = append(p.pendingReleases, rel)
+		}
+		p.mu.Unlock()
+	}
+	return false
+}
+
+func (p *PanelClipboard) flushPendingReleases(client *api.Client) {
+	if client == nil {
+		return
+	}
+	p.mu.Lock()
+	if len(p.pendingReleases) == 0 {
+		p.mu.Unlock()
+		return
+	}
+	pending := append([]pendingPanelRelease(nil), p.pendingReleases...)
+	p.pendingReleases = nil
+	p.mu.Unlock()
+
+	var remaining []pendingPanelRelease
+	for _, rel := range pending {
+		if !p.sendRelease(client, rel, false) {
+			remaining = append(remaining, rel)
+		}
+	}
+	if len(remaining) > 0 {
+		p.mu.Lock()
+		p.pendingReleases = append(remaining, p.pendingReleases...)
+		if len(p.pendingReleases) > 16 {
+			p.pendingReleases = p.pendingReleases[:16]
+		}
+		p.mu.Unlock()
+	}
 }
 
 func (p *PanelClipboard) Matches(mark string) bool {
@@ -258,9 +343,10 @@ func (p *PanelClipboard) Matches(mark string) bool {
 	return err == nil && clipboardMark(s) == mark
 }
 
-// Close releases any held panel file lease and stops active change listeners.
+// Close releases any held panel file lease, retries pending releases, and stops active change listeners.
 func (p *PanelClipboard) Close() {
 	p.mu.Lock()
+	p.closed = true
 	stop := p.stopWatch
 	p.stopWatch = nil
 	serviceID := p.heldService
@@ -274,14 +360,12 @@ func (p *PanelClipboard) Close() {
 	if stop != nil {
 		stop()
 	}
+	p.flushPendingReleases(client)
 	if token != "" && client != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = client.PanelApplyRelease(ctx, api.PanelApplyReleaseRequest{
-			Profile:      p.profile,
-			ServiceID:    serviceID,
-			Token:        token,
-			CurrentPaths: nil,
-		})
+		p.sendRelease(client, pendingPanelRelease{
+			serviceID:    serviceID,
+			token:        token,
+			currentPaths: nil,
+		}, false)
 	}
 }

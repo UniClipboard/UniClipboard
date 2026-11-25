@@ -9,10 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
+	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
@@ -76,13 +78,16 @@ func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error
 	visible := role == desktopprocess.GUI
 	userClosed := false
 	var panelBoard *clipboardintegration.PanelClipboard
+	var panelWrites atomic.Int64
 	if role == desktopprocess.QuickPanel {
-		panelBoard = clipboardintegration.NewPanelClipboard(dir, newDesktopBoard())
+		panelBoard = clipboardintegration.NewPanelClipboard(dir, &countingFixtureBoard{base: newDesktopBoard(), writes: &panelWrites})
 		defer panelBoard.Close()
 	}
 	handler := func(ctx context.Context, command string, raw json.RawMessage) (any, error) {
 		if role == desktopprocess.QuickPanel {
 			switch command {
+			case "panel-write-count":
+				return panelWrites.Load(), nil
 			case "panel-apply":
 				var req clipboardRequest
 				if err := json.Unmarshal(raw, &req); err != nil {
@@ -166,4 +171,15 @@ func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error
 	}()
 	<-ctx.Done()
 	return nil
+}
+
+type countingFixtureBoard struct {
+	base   clipboardintegration.Board
+	writes *atomic.Int64
+}
+
+func (b *countingFixtureBoard) Read() (clip.Snapshot, error) { return b.base.Read() }
+func (b *countingFixtureBoard) Write(s clip.Snapshot) error {
+	b.writes.Add(1)
+	return b.base.Write(s)
 }

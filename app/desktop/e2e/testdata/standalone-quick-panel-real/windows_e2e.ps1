@@ -574,11 +574,12 @@ try {
     [UnicN03Win32]::SendKey(0x0D, $false, $false)
     Wait-Until 'external WinForms target received single paste' {
         $s = Read-TargetState
-        return ($s.text -eq $TextPayload)
+        return ($s.text -ceq $TextPayload) -and ((Get-Sha256Hex ([Text.Encoding]::UTF8.GetBytes([string]$s.text))) -ceq $TextSha)
     } 12
     Start-Sleep -Milliseconds 900
     $AfterPaste1 = Read-TargetState
-    if ($AfterPaste1.text -ne $TextPayload) { throw "Paste mismatch or duplicate: $($AfterPaste1.text)" }
+    $AfterPaste1Sha = Get-Sha256Hex ([Text.Encoding]::UTF8.GetBytes([string]$AfterPaste1.text))
+    if (($AfterPaste1.text -cne $TextPayload) -or ($AfterPaste1Sha -cne $TextSha)) { throw "Paste mismatch or duplicate: $($AfterPaste1.text)" }
     if (-not [UnicN03Win32]::IsZoomed($TargetHwnd)) { throw 'Non-minimized maximized target was unmaximized by paste!' }
     $ClipText1 = Run-ClipHelper 'read-text'
     if ((Get-Sha256Hex ([Text.Encoding]::UTF8.GetBytes($ClipText1))) -ne $TextSha) { throw 'OLE text readback mismatch' }
@@ -626,11 +627,12 @@ try {
     Wait-Until 'minimized target restored and pasted' {
         if ([UnicN03Win32]::IsIconic($TargetHwnd)) { return $false }
         $s = Read-TargetState
-        return ($s.text -eq $TextPayload)
+        return ($s.text -ceq $TextPayload) -and ((Get-Sha256Hex ([Text.Encoding]::UTF8.GetBytes([string]$s.text))) -ceq $TextSha)
     } 12
     Start-Sleep -Milliseconds 700
     $AfterPaste2 = Read-TargetState
-    if ($AfterPaste2.text -ne $TextPayload) { throw "Restored target paste mismatch: $($AfterPaste2.text)" }
+    $AfterPaste2Sha = Get-Sha256Hex ([Text.Encoding]::UTF8.GetBytes([string]$AfterPaste2.text))
+    if (($AfterPaste2.text -cne $TextPayload) -or ($AfterPaste2Sha -cne $TextSha)) { throw "Restored target paste mismatch: $($AfterPaste2.text)" }
     $Manifest.paste_receipts['minimized_target_restore_and_paste'] = [ordered]@{
         target_hwnd = $TState.hwnd
         restored_from_iconic = (-not [UnicN03Win32]::IsIconic($TargetHwnd))

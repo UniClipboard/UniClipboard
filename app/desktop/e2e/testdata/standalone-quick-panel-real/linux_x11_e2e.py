@@ -13,7 +13,6 @@ import hashlib
 import http.client
 import json
 import os
-import shutil
 import signal
 import socket
 import struct
@@ -124,6 +123,29 @@ def unic_processes(profile: Path):
             except OSError:
                 pass
     return rows
+
+
+def x11_window_mapped(wid: str) -> bool:
+    if not wid or wid == "0x0":
+        return False
+    res = subprocess.run(["xwininfo", "-id", wid], env=x11_env(), capture_output=True, text=True, timeout=5)
+    if res.returncode != 0:
+        return False
+    return "Map State: IsViewable" in res.stdout
+
+
+def proc_matches_profile_exe(pid: int, profile: Path, expected_exes: set) -> bool:
+    if pid <= 0 or pid == os.getpid():
+        return False
+    try:
+        exe = Path(os.readlink(f"/proc/{pid}/exe")).resolve()
+        if exe not in expected_exes:
+            return False
+        entries = Path(f"/proc/{pid}/environ").read_bytes().split(b"\x00")
+        target = f"UNIC_HOME={profile}".encode("utf-8")
+        return target in entries
+    except OSError:
+        return False
 
 
 def x11_active_window():
@@ -261,9 +283,9 @@ def main():
     out_dir = args.out_dir.resolve()
     work_dir = args.work_dir.resolve()
     if out_dir.exists():
-        shutil.rmtree(out_dir)
+        raise SystemExit(f"refusing to overwrite existing --out-dir (preserve prior evidence): {out_dir}")
     if work_dir.exists():
-        shutil.rmtree(work_dir)
+        raise SystemExit(f"refusing to overwrite existing --work-dir (preserve prior workspace): {work_dir}")
     out_dir.mkdir(parents=True, mode=0o700)
     work_dir.mkdir(parents=True, mode=0o700)
     (work_dir / "discovery").mkdir(parents=True, mode=0o700)
@@ -305,6 +327,7 @@ def main():
 
     timeline = []
     procs = []
+    owned_profiles = []
     manifest = {
         "case": "N02-linux-x11-standalone-quick-panel",
         "status": "FAIL",
@@ -357,9 +380,19 @@ def main():
             timeout=20,
         )
         log_event(f"init_profile:{name}", json.loads(res.stdout))
+        owned_profiles.append(p)
         return p
 
     xtest = XTestSender()
+
+    def tap_verified_panel(panel_wid: str, panel_pid: int, sym_name: str, ctrl: bool = False):
+        cur_wid, cur_pid = x11_active_window()
+        if cur_wid != panel_wid or cur_pid != panel_pid:
+            raise RuntimeError(
+                f"refusing to send XTest {sym_name}: active window/owner changed "
+                f"(got wid={cur_wid} pid={cur_pid}, want wid={panel_wid} pid={panel_pid})"
+            )
+        xtest.tap(sym_name, ctrl=ctrl)
     try:
         assert manifest["environment"]["display"], "DISPLAY required"
         assert not manifest["environment"]["wayland_display"], "WAYLAND_DISPLAY must be unset for native X11"
@@ -506,12 +539,16 @@ def main():
 
         # Reopen -> Down -> Ctrl+C (PNG) -> verify X11 image/png after dismiss
         subprocess.run([str(bin_dir / "unic-desktop"), "--quick-panel"], env=env_for(main_prof), check=True, timeout=15)
-        wait_until("panel active for png", lambda: x11_active_window()[1] == panel_role["pid"], timeout=10)
+        png_wid = wait_until(
+            "panel active for png",
+            lambda: (lambda w, p: w if p == panel_role["pid"] and w != "0x0" else None)(*x11_active_window()),
+            timeout=10,
+        )
         time.sleep(0.35)
-        xtest.tap("Down")
+        tap_verified_panel(png_wid, panel_role["pid"], "Down")
         time.sleep(0.2)
-        xtest.tap("c", ctrl=True)
-        wait_until("panel dismissed after png copy", lambda: x11_active_window()[1] != panel_role["pid"], timeout=10)
+        tap_verified_panel(png_wid, panel_role["pid"], "c", ctrl=True)
+        wait_until("panel unmapped after png copy", lambda: not x11_window_mapped(png_wid), timeout=10)
         read_png = x11_clip_read("image/png")
         assert sha256_bytes(read_png) == png_sha
         manifest["clipboard_readbacks"]["png_after_dismiss"] = {
@@ -525,14 +562,18 @@ def main():
 
         # Reopen -> Down x2 -> Ctrl+C (managed file) -> delete history -> external xsel replacement reclaims!
         subprocess.run([str(bin_dir / "unic-desktop"), "--quick-panel"], env=env_for(main_prof), check=True, timeout=15)
-        wait_until("panel active for file", lambda: x11_active_window()[1] == panel_role["pid"], timeout=10)
+        file_wid = wait_until(
+            "panel active for file",
+            lambda: (lambda w, p: w if p == panel_role["pid"] and w != "0x0" else None)(*x11_active_window()),
+            timeout=10,
+        )
         time.sleep(0.35)
-        xtest.tap("Down")
+        tap_verified_panel(file_wid, panel_role["pid"], "Down")
         time.sleep(0.15)
-        xtest.tap("Down")
+        tap_verified_panel(file_wid, panel_role["pid"], "Down")
         time.sleep(0.2)
-        xtest.tap("c", ctrl=True)
-        wait_until("panel dismissed after file copy", lambda: x11_active_window()[1] != panel_role["pid"], timeout=10)
+        tap_verified_panel(file_wid, panel_role["pid"], "c", ctrl=True)
+        wait_until("panel unmapped after file copy", lambda: not x11_window_mapped(file_wid), timeout=10)
         uri_raw = x11_clip_read("text/uri-list").decode("utf-8", "replace").strip()
         uris = [line.strip() for line in uri_raw.splitlines() if line.strip() and not line.startswith("#")]
         assert len(uris) == 1 and uris[0].startswith("file://"), f"unexpected X11 uri-list: {uri_raw!r}"
@@ -570,10 +611,14 @@ def main():
         hist_before = len(api_req(main_prof / "unic.sock", "GET", "/v1/history").get("items") or [])
 
         subprocess.run([str(bin_dir / "unic-desktop"), "--quick-panel"], env=env_for(main_prof), check=True, timeout=15)
-        wait_until("panel active with tray", lambda: x11_active_window()[1] == panel_role["pid"], timeout=10)
+        tray_wid = wait_until(
+            "panel active with tray",
+            lambda: (lambda w, p: w if p == panel_role["pid"] and w != "0x0" else None)(*x11_active_window()),
+            timeout=10,
+        )
         time.sleep(0.35)
-        xtest.tap("c", ctrl=True)
-        wait_until("panel dismissed with tray", lambda: x11_active_window()[1] != panel_role["pid"], timeout=10)
+        tap_verified_panel(tray_wid, panel_role["pid"], "c", ctrl=True)
+        wait_until("panel unmapped with tray", lambda: not x11_window_mapped(tray_wid), timeout=10)
         assert sha256_bytes(x11_clip_read("text")) == text_sha
         time.sleep(1.5)
         hist_after = len(api_req(main_prof / "unic.sock", "GET", "/v1/history").get("items") or [])
@@ -592,12 +637,16 @@ def main():
         manifest["process_snapshots"]["x11_after_tray_exit"] = unic_processes(main_prof)
 
         subprocess.run([str(bin_dir / "unic-desktop"), "--quick-panel"], env=env_for(main_prof), check=True, timeout=15)
-        wait_until("panel active after tray exit", lambda: x11_active_window()[1] == panel_role["pid"], timeout=10)
+        post_tray_wid = wait_until(
+            "panel active after tray exit",
+            lambda: (lambda w, p: w if p == panel_role["pid"] and w != "0x0" else None)(*x11_active_window()),
+            timeout=10,
+        )
         time.sleep(0.35)
-        xtest.tap("Down")
+        tap_verified_panel(post_tray_wid, panel_role["pid"], "Down")
         time.sleep(0.2)
-        xtest.tap("c", ctrl=True)
-        wait_until("panel dismissed after post-tray png copy", lambda: x11_active_window()[1] != panel_role["pid"], timeout=10)
+        tap_verified_panel(post_tray_wid, panel_role["pid"], "c", ctrl=True)
+        wait_until("panel unmapped after post-tray png copy", lambda: not x11_window_mapped(post_tray_wid), timeout=10)
         assert sha256_bytes(x11_clip_read("image/png")) == png_sha
         manifest["checks"].append("x11-tray-exit-preserves-standalone-unicd-and-panel-copy")
         log_event("x11_post_tray_exit_copy_verified", {"png_sha256": png_sha})
@@ -610,14 +659,6 @@ def main():
         raise
     finally:
         xtest.close()
-        for r in ps_snapshot():
-            try:
-                raw_env = Path(f"/proc/{r['pid']}/environ").read_bytes().decode("utf-8", "replace")
-                if str(work_dir) in raw_env and r["pid"] != os.getpid():
-                    os.kill(r["pid"], signal.SIGTERM)
-            except OSError:
-                pass
-        time.sleep(0.4)
         for p, f, _ in procs:
             try:
                 if p.poll() is None:
@@ -626,12 +667,28 @@ def main():
             except Exception:
                 try:
                     p.kill()
+                    p.wait(timeout=2)
                 except Exception:
                     pass
             try:
                 f.close()
             except Exception:
                 pass
+        expected_exes = {(bin_dir / "unic-desktop").resolve(), (bin_dir / "unicd").resolve()}
+        for prof in owned_profiles:
+            for role in ("gui", "quick-panel", "tray"):
+                try:
+                    info = role_probe(prof, role)
+                except Exception:
+                    info = None
+                if info and info.get("profile") == str(prof):
+                    pid = int(info.get("pid") or 0)
+                    if proc_matches_profile_exe(pid, prof, expected_exes):
+                        try:
+                            os.kill(pid, signal.SIGTERM)
+                        except OSError:
+                            pass
+        time.sleep(0.4)
         (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
         sums = [f"{sha256_file(p)}  {p.name}" for p in sorted(out_dir.iterdir()) if p.is_file() and p.name != "SHA256SUMS"]
         (out_dir / "SHA256SUMS").write_text("\n".join(sums) + "\n")

@@ -551,6 +551,8 @@ func scenarioStandaloneQuickPanelLifecycle(t *testing.T) {
 	checks = append(checks, "F11: tray exit preserved borrowed standalone unicd and independent panel; subsequent copy succeeded")
 
 	// F14: Interrupted completion returns error without replay; next explicit copy succeeds.
+	var writesBefore, writesAfterInterrupt, writesAfterRecovery int64
+	must(t, roleCall(mainHome, "quick-panel", "panel-write-count", "", &writesBefore))
 	var failRep struct {
 		Mark    string `json:"mark"`
 		Failure string `json:"failure"`
@@ -560,12 +562,21 @@ func scenarioStandaloneQuickPanelLifecycle(t *testing.T) {
 	if failRep.Failure == "" || failRep.Mark != "" {
 		t.Fatalf("F14: expected interrupted completion to report failure without mark, got %+v", failRep)
 	}
-	// Next explicit user copy must recover cleanly.
+	time.Sleep(150 * time.Millisecond)
+	must(t, roleCall(mainHome, "quick-panel", "panel-write-count", "", &writesAfterInterrupt))
+	if writesAfterInterrupt != writesBefore+1 {
+		t.Fatalf("F14: expected exactly 1 clipboard write without replay, before=%d after=%d", writesBefore, writesAfterInterrupt)
+	}
+	// Next explicit user copy must recover cleanly with exactly one additional write.
 	mark, failure = applyFromPanel(richID, false)
 	if failure != "" || mark == "" {
 		t.Fatalf("F14: recovery copy after interrupted completion failed: failure=%q", failure)
 	}
-	checks = append(checks, "F14: interrupted panel-apply completion reported failure without replay and recovered on next explicit action")
+	must(t, roleCall(mainHome, "quick-panel", "panel-write-count", "", &writesAfterRecovery))
+	if writesAfterRecovery != writesBefore+2 {
+		t.Fatalf("F14: expected exactly 1 additional clipboard write on recovery, before=%d after=%d", writesBefore, writesAfterRecovery)
+	}
+	checks = append(checks, "F14: interrupted panel-apply completion wrote once without replay and recovered with one additional write on next explicit action")
 
 	// F07: Opening main window from standalone panel (without tray) starts tray + GUI.
 	must(t, roleCall(mainHome, "quick-panel", "panel-open-main", `"main"`, nil))

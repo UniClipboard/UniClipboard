@@ -17,32 +17,37 @@ import (
 const adapterTTL = 10 * time.Second
 
 type adapterState struct {
-	mu             sync.Mutex
-	n              *Node
-	session        string
-	launchID       string
-	lastStartup    string
-	until          time.Time
-	leases         map[engine.LeaseID]bool
-	ticket         engine.ApplyToken
-	commands       chan api.DesktopCommand
-	waiting        map[string]chan api.DesktopResult
-	ready          bool
-	baseline       bool
-	obsEpoch       string
-	lastEngineSeq  uint64
-	seqOffset      uint64
-	panelCommitSeq uint64
-	panelTx        *panelApplyTx
-	panelHeldLease engine.LeaseID
-	panelHeldToken engine.ApplyToken
-	panelHeldPaths []string
-	panelHeldAt    time.Time
-	panelHeldSeen  bool
-	panelRestores  map[string]*panelRestoreRecord
-	slotChanged    chan struct{}
-	readers        map[*engine.ContentReader]context.CancelFunc
-	gate           chan struct{}
+	mu                   sync.Mutex
+	n                    *Node
+	session              string
+	launchID             string
+	lastStartup          string
+	until                time.Time
+	leases               map[engine.LeaseID]bool
+	leaseContent         map[engine.LeaseID]engine.ContentID
+	ticket               engine.ApplyToken
+	commands             chan api.DesktopCommand
+	waiting              map[string]chan api.DesktopResult
+	ready                bool
+	baseline             bool
+	obsEpoch             string
+	lastEngineSeq        uint64
+	seqOffset            uint64
+	lastObservedContent  engine.ContentID
+	lastPanelPreContent  engine.ContentID
+	lastPanelPostContent engine.ContentID
+	panelCommitSeq       uint64
+	panelTx              *panelApplyTx
+	panelHeldLease       engine.LeaseID
+	panelHeldToken       engine.ApplyToken
+	panelHeldPaths       []string
+	panelHeldEpoch       string
+	panelHeldSeq         uint64
+	panelHeldSeen        bool
+	panelRestores        map[string]*panelRestoreRecord
+	slotChanged          chan struct{}
+	readers              map[*engine.ContentReader]context.CancelFunc
+	gate                 chan struct{}
 }
 
 func (a *adapterState) init(n *Node) {
@@ -52,6 +57,7 @@ func (a *adapterState) init(n *Node) {
 	a.commands = make(chan api.DesktopCommand, 16)
 	a.waiting = map[string]chan api.DesktopResult{}
 	a.leases = map[engine.LeaseID]bool{}
+	a.leaseContent = map[engine.LeaseID]engine.ContentID{}
 	a.panelRestores = map[string]*panelRestoreRecord{}
 	a.slotChanged = make(chan struct{})
 }
@@ -100,9 +106,11 @@ func (a *adapterState) resetLocked() {
 	if !hadPanel {
 		a.obsEpoch = ""
 		a.lastEngineSeq = 0
+		a.lastObservedContent = ""
 	}
 	a.seqOffset = 0
 	a.leases = map[engine.LeaseID]bool{}
+	a.leaseContent = map[engine.LeaseID]engine.ContentID{}
 	a.waiting = map[string]chan api.DesktopResult{}
 	a.commands = make(chan api.DesktopCommand, 16)
 	a.notifySlotLocked()
@@ -319,6 +327,7 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 					h, err = n.e.ImportContent(ctx, input)
 					if err == nil {
 						a.leases[h.LeaseID] = true
+						a.leaseContent[h.LeaseID] = h.Content.ID
 						out = h
 					}
 				}
@@ -352,6 +361,7 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 				h, err = n.e.RetainContent(ctx, id)
 				if err == nil {
 					a.leases[h.LeaseID] = true
+					a.leaseContent[h.LeaseID] = h.Content.ID
 					out = h
 				}
 			}
@@ -363,6 +373,7 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 				} else {
 					err = n.e.ReleaseContent(ctx, l)
 					delete(a.leases, l)
+					delete(a.leaseContent, l)
 				}
 			}
 		case "observe":
@@ -370,11 +381,13 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 			if decode(&o) {
 				if o.LeaseID != "" && !a.leases[o.LeaseID] {
 					err = adapterError(engine.CodeResourceExpired)
-				} else if waitedPanelApplied && o.Mode == engine.ObserveChange && o.Epoch == a.obsEpoch && a.obsEpoch != "" {
+				} else if waitedPanelApplied && o.Mode == engine.ObserveChange && o.Epoch == a.obsEpoch && a.obsEpoch != "" && a.shouldSuppressPostPanelObserveLocked(o.LeaseID) {
 					// This observation was sampled before or during a panel write that
 					// has since been verified by read-back and committed as the new
-					// baseline. Drop it rather than letting a mid-write empty/stale
-					// snapshot clobber e.obs.baseline and echo the panel write.
+					// baseline, and matches either the transient empty window, the
+					// pre-write state, or the panel's committed content. Drop it rather
+					// than letting a stale snapshot clobber e.obs.baseline and echo the
+					// panel write, while allowing genuine new user copies through.
 					if a.seqOffset > 0 {
 						a.seqOffset--
 					}
@@ -394,6 +407,11 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 						} else if mapped.Epoch == a.obsEpoch {
 							a.lastEngineSeq = mapped.Sequence
 						}
+						if mapped.LeaseID == "" {
+							a.lastObservedContent = ""
+						} else {
+							a.lastObservedContent = a.leaseContent[mapped.LeaseID]
+						}
 					}
 				}
 			}
@@ -412,6 +430,7 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 				if err == nil {
 					a.ticket = t.Token
 					a.leases[t.LeaseID] = true
+					a.leaseContent[t.LeaseID] = t.ContentID
 					out = t
 				}
 			}
@@ -430,6 +449,7 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 				if err == nil {
 					a.ticket = t.Token
 					a.leases[t.LeaseID] = true
+					a.leaseContent[t.LeaseID] = t.ContentID
 					out = t
 				}
 			}
@@ -448,6 +468,11 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 						a.ticket = ""
 						if mapped.Outcome == engine.ApplyOutcomeApplied && mapped.Epoch == a.obsEpoch && a.obsEpoch != "" {
 							a.lastEngineSeq = mapped.Sequence
+							if mapped.BaselineLeaseID == "" {
+								a.lastObservedContent = ""
+							} else {
+								a.lastObservedContent = a.leaseContent[mapped.BaselineLeaseID]
+							}
 						}
 						a.notifySlotLocked()
 					}
@@ -464,10 +489,10 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 			var paths []string
 			if decode(&paths) {
 				err = n.e.ReconcileClipboardFiles(ctx, paths)
-				if err == nil && a.panelTx == nil && a.panelHeldLease != "" {
-					if samePathSlice(paths, a.panelHeldPaths) {
+				if err == nil && a.panelTx == nil && a.panelHeldLease != "" && !waitedPanelApplied {
+					if hasAnyProtectedPath(paths, a.panelHeldPaths) {
 						a.panelHeldSeen = true
-					} else if a.panelHeldSeen || time.Since(a.panelHeldAt) > 2*time.Second {
+					} else if a.panelHeldSeen || a.reconcilePostHoldLocked() {
 						a.releasePanelHeldLocked()
 					}
 				}

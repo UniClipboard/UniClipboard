@@ -250,12 +250,16 @@ func runQuickPanelEntry() error {
 	if err := setupflow.CheckAdmission(dir); err != nil {
 		return err
 	}
-	trayProbeCtx, cancelTray := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	trayProbeCtx, cancelTray := context.WithTimeout(context.Background(), 2*time.Second)
 	var trayState roleStatus
 	trayErr := desktopprocess.Call(trayProbeCtx, dir, desktopprocess.Tray, "status", nil, &trayState)
 	cancelTray()
-	if trayErr == nil && trayState.Paused {
-		return errors.New("desktop integration is paused for migration")
+	if trayErr == nil {
+		if trayState.Paused {
+			return errors.New("desktop integration is paused for migration")
+		}
+	} else if !errors.Is(trayErr, desktopprocess.ErrUnavailable) {
+		return fmt.Errorf("cannot verify tray pause state: %w", trayErr)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

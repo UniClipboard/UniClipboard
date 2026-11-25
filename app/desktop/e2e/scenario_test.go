@@ -1052,10 +1052,38 @@ func (s *desktopScenario) stopApp() error {
 		return nil
 	}
 	if s.appDone == nil && s.standaloneDaemonDone != nil {
+		type observedRole struct {
+			role string
+			pid  int
+			wait func(context.Context) error
+		}
 		var cleanupErr error
-		_, _ = s.roleCommand("gui", "quit")
-		_, _ = s.roleCommand("quick-panel", "quit")
-		_, _ = s.roleCommand("tray", "quit")
+		var observed []observedRole
+		for _, role := range []string{"gui", "quick-panel", "tray"} {
+			raw, err := s.roleCommand(role, "probe")
+			if err != nil {
+				continue
+			}
+			var identity desktopRoleIdentity
+			if err = json.Unmarshal(raw, &identity); err != nil {
+				cleanupErr = errors.Join(cleanupErr, err)
+				continue
+			}
+			if identity.PID <= 0 || identity.Role != role || identity.Profile != s.home {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cannot bind standalone cleanup to unverified %s identity", role))
+				continue
+			}
+			wait, release, err := observeProcessExit(identity.PID)
+			if err != nil {
+				cleanupErr = errors.Join(cleanupErr, err)
+				continue
+			}
+			defer release()
+			observed = append(observed, observedRole{role: role, pid: identity.PID, wait: wait})
+		}
+		for _, role := range observed {
+			_, _ = s.roleCommand(role.role, "quit")
+		}
 		if s.standaloneDaemon != nil && s.standaloneDaemon.Process != nil {
 			_ = s.standaloneDaemon.Process.Signal(syscall.SIGTERM)
 			select {
@@ -1070,6 +1098,19 @@ func (s *desktopScenario) stopApp() error {
 					cleanupErr = errors.Join(cleanupErr, errors.New("standalone unicd did not exit"))
 				}
 			}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		for _, role := range observed {
+			if err := role.wait(ctx); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("previously live %s PID %d did not exit: %w", role.role, role.pid, err))
+				continue
+			}
+			if _, err := s.roleCommand(role.role, "probe"); err == nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("owned %s endpoint remained after process %d exited", role.role, role.pid))
+				continue
+			}
+			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("cleanup observed %s PID %d exit and endpoint removal", role.role, role.pid))
 		}
 		return cleanupErr
 	}

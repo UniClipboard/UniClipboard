@@ -608,7 +608,18 @@ func run() error {
 	if err != nil {
 		return fail(err)
 	}
-	items0, _ := h0Raw.(map[string]any)["items"].([]any)
+	h0Map, ok := h0Raw.(map[string]any)
+	if !ok {
+		return fail(fmt.Errorf("malformed /v1/history baseline response: expected JSON object, got %T", h0Raw))
+	}
+	var items0 []any
+	if rawItems, exists := h0Map["items"]; exists && rawItems != nil {
+		var okItems bool
+		items0, okItems = rawItems.([]any)
+		if !okItems {
+			return fail(fmt.Errorf("malformed /v1/history baseline items field: expected array or null, got %T", rawItems))
+		}
+	}
 	if len(items0) != 0 {
 		return fail(fmt.Errorf("headless macOS unicd captured preexisting pasteboard: %d items", len(items0)))
 	}
@@ -900,11 +911,13 @@ else { JSON.stringify({pid: a.processIdentifier, name: ObjC.unwrap(a.localizedNa
 		if err != nil {
 			return fail(err)
 		}
-		textMark, _ := applyTextRes.(string)
-		if textMark != "" {
-			if mRes, err := apiReq(mainSock, "POST", "/v1/desktop/clipboard/match", textMark); err != nil || mRes != true {
-				return fail(fmt.Errorf("clipboard match expected true, got %v (%v)", mRes, err))
-			}
+		textMark, ok := applyTextRes.(string)
+		if !ok || textMark == "" {
+			return fail(fmt.Errorf("clipboard apply returned invalid mark: %#v (%T)", applyTextRes, applyTextRes))
+		}
+		mRes, err := apiReq(mainSock, "POST", "/v1/desktop/clipboard/match", textMark)
+		if err != nil || mRes != true {
+			return fail(fmt.Errorf("clipboard match expected true, got %#v (%v)", mRes, err))
 		}
 		readText, err := waitUntil("pbpaste text match", 10*time.Second, func() ([]byte, bool, error) {
 			b, err := pbReadText()

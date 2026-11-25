@@ -311,10 +311,6 @@ func TestPanelApplyRejectsCLITemporary(t *testing.T) {
 }
 
 func TestPanelApplyExpiresAbandonedTransaction(t *testing.T) {
-	oldTTL := panelApplyTTL
-	panelApplyTTL = 150 * time.Millisecond
-	defer func() { panelApplyTTL = oldTTL }()
-
 	ctx := context.Background()
 	n, dir, genID, cleanup := openPanelTestNode(t, servicelifecycle.ModeStandalone, nil, false)
 	defer cleanup()
@@ -333,8 +329,16 @@ func TestPanelApplyExpiresAbandonedTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(250 * time.Millisecond)
-	// Late complete must fail as resource_expired.
+	// Expire only the abandoned first grant so the second grant keeps production TTL.
+	n.adapter.mu.Lock()
+	if n.adapter.panelTx == nil {
+		n.adapter.mu.Unlock()
+		t.Fatal("expected active panelTx")
+	}
+	n.adapter.panelTx.expiresAt = time.Now().Add(-time.Second)
+	n.adapter.mu.Unlock()
+
+	// Late complete must fail as resource_expired via normal expiry logic.
 	if _, err := n.PanelApplyComplete(ctx, api.PanelApplyCompleteRequest{
 		Profile:   dir,
 		ServiceID: genID,
@@ -345,7 +349,7 @@ func TestPanelApplyExpiresAbandonedTransaction(t *testing.T) {
 	}); api.ReasonOf(err) != "resource_expired" {
 		t.Fatalf("expected resource_expired after TTL, got %v", err)
 	}
-	// Next explicit panel apply must succeed immediately (Engine ticket freed!).
+	// Next explicit panel apply must succeed immediately (Engine ticket and restore slot freed).
 	grant2, err := n.PanelApplyBegin(ctx, api.PanelApplyBeginRequest{
 		Profile:   dir,
 		RequestID: "req-recovered",
@@ -378,7 +382,7 @@ func TestPanelApplyAlongsideActiveObserverZeroEchoAndSeqContinuity(t *testing.T)
 	if err := board.Write(clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte("initial-board")}}}); err != nil {
 		t.Fatal(err)
 	}
-	// Submit two history entries.
+	// Submit history entry to apply from panel.
 	sub1, err := n.Submit(ctx, api.SubmitInput{
 		RequestID: "sub-1",
 		Snapshot:  clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte("from-history-1")}}},
@@ -394,7 +398,13 @@ func TestPanelApplyAlongsideActiveObserverZeroEchoAndSeqContinuity(t *testing.T)
 	} else {
 		sess = string(rep.Value[1 : len(rep.Value)-1])
 	}
-	remote := &directAdapterEngine{n: n, session: sess}
+	obsCh := make(chan engine.ObservationResult, 16)
+	remote := &directAdapterEngine{n: n, session: sess, onObserve: func(res engine.ObservationResult) {
+		select {
+		case obsCh <- res:
+		default:
+		}
+	}}
 	if err := remote.setCaps(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -420,6 +430,10 @@ func TestPanelApplyAlongsideActiveObserverZeroEchoAndSeqContinuity(t *testing.T)
 	pageBefore, err := n.ListHistory(ctx, api.HistoryQuery{Limit: 50})
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Drain any earlier baseline signal.
+	for len(obsCh) > 0 {
+		<-obsCh
 	}
 
 	// Perform panel apply while observer is actively polling every 25ms!
@@ -450,8 +464,15 @@ func TestPanelApplyAlongsideActiveObserverZeroEchoAndSeqContinuity(t *testing.T)
 		t.Fatalf("panel complete with observer: %v", err)
 	}
 
-	// Wait multiple observer poll intervals: must NOT create duplicate history (zero echo)!
-	time.Sleep(200 * time.Millisecond)
+	// Wait explicitly until the observer has observed the panel-written snapshot.
+	select {
+	case res := <-obsCh:
+		if res.Disposition != engine.DispUnchanged {
+			t.Fatalf("expected observer to treat panel snapshot as unchanged, got %q", res.Disposition)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for observer to process panel snapshot")
+	}
 	pageAfter, err := n.ListHistory(ctx, api.HistoryQuery{Limit: 50})
 	if err != nil {
 		t.Fatal(err)
@@ -465,14 +486,17 @@ func TestPanelApplyAlongsideActiveObserverZeroEchoAndSeqContinuity(t *testing.T)
 	epochBefore := n.adapter.obsEpoch
 	n.adapter.mu.Unlock()
 
-	if err := board.Write(clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte("real-user-copy-after-panel")}}}); err != nil {
+	const userCopy = "real-user-copy-after-panel"
+	if err := board.Write(clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte(userCopy)}}}); err != nil {
 		t.Fatal(err)
 	}
 	deadline = time.Now().Add(3 * time.Second)
+	var finalPage api.HistoryPage
 	captured := false
 	for time.Now().Before(deadline) {
 		p, err := n.ListHistory(ctx, api.HistoryQuery{Limit: 50})
 		if err == nil && len(p.Items) == len(pageBefore.Items)+1 {
+			finalPage = p
 			captured = true
 			break
 		}
@@ -480,6 +504,9 @@ func TestPanelApplyAlongsideActiveObserverZeroEchoAndSeqContinuity(t *testing.T)
 	}
 	if !captured {
 		t.Fatal("observer failed to capture subsequent user copy after panel apply")
+	}
+	if gotText := readHistoryText(t, n, finalPage.Items[0].ID); gotText != userCopy {
+		t.Fatalf("sole new history item text=%q want %q", gotText, userCopy)
 	}
 	n.adapter.mu.Lock()
 	epochAfter := n.adapter.obsEpoch
@@ -604,10 +631,217 @@ func TestPanelApplyMidWriteObserverEmptyDoesNotEcho(t *testing.T) {
 	}
 }
 
+func TestPanelApplyBlockedGenuineUserCopyNotSuppressed(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	n, dir, genID, cleanup := openPanelTestNode(t, servicelifecycle.ModeStandalone, nil, false)
+	defer cleanup()
+
+	sub1, err := n.Submit(ctx, api.SubmitInput{
+		RequestID: "sub-genuine-1",
+		Snapshot:  clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte("panel-applied-text")}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var sess string
+	if rep := n.AdapterCall(ctx, api.AdapterRequest{Method: "register"}); rep.Error != nil {
+		t.Fatal(rep.Error)
+	} else {
+		sess = string(rep.Value[1 : len(rep.Value)-1])
+	}
+	remote := &directAdapterEngine{n: n, session: sess}
+	if err := remote.setCaps(ctx); err != nil {
+		t.Fatal(err)
+	}
+	importText := func(text string) engine.LeaseID {
+		var h engine.ContentHandle
+		if err := remote.call(ctx, "import", api.AdapterImport{
+			Snapshot: clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte(text)}}},
+		}, &h); err != nil {
+			t.Fatal(err)
+		}
+		return h.LeaseID
+	}
+
+	initLease := importText("before-panel-text")
+	const ep = "obs-genuine-epoch"
+	if _, err := remote.ObserveClipboard(ctx, engine.Observation{Epoch: ep, Sequence: 1, Mode: engine.ObserveBaseline, LeaseID: initLease}); err != nil {
+		t.Fatal(err)
+	}
+	_ = remote.ReleaseContent(ctx, initLease)
+
+	grant, err := n.PanelApplyBegin(ctx, api.PanelApplyBeginRequest{
+		Profile:   dir,
+		ServiceID: genID,
+		RequestID: "req-genuine",
+		HistoryID: string(sub1.HistoryID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Observer imports a genuine brand-new user copy while panelTx is active, then blocks on observe.
+	genuineLease := importText("brand-new-user-copy")
+	type obsOut struct {
+		res engine.ObservationResult
+		err error
+	}
+	blocked := make(chan obsOut, 1)
+	go func() {
+		res, err := remote.ObserveClipboard(ctx, engine.Observation{Epoch: ep, Sequence: 2, Mode: engine.ObserveChange, LeaseID: genuineLease})
+		blocked <- obsOut{res: res, err: err}
+	}()
+	time.Sleep(40 * time.Millisecond)
+
+	if _, err := n.PanelApplyComplete(ctx, api.PanelApplyCompleteRequest{
+		Profile:   dir,
+		ServiceID: genID,
+		RequestID: "req-genuine",
+		Token:     grant.Token,
+		Outcome:   "applied",
+		ReadBack:  &grant.Snapshot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := <-blocked
+	_ = remote.ReleaseContent(ctx, genuineLease)
+	if got.err != nil {
+		t.Fatalf("blocked genuine user observe failed: %v", got.err)
+	}
+	if got.res.Disposition == engine.DispUnchanged || got.res.Disposition == engine.DispEcho {
+		t.Fatalf("genuine user copy was wrongly suppressed: disposition=%q", got.res.Disposition)
+	}
+	page, err := n.ListHistory(ctx, api.HistoryQuery{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 2 || readHistoryText(t, n, page.Items[0].ID) != "brand-new-user-copy" {
+		t.Fatalf("expected genuine user copy in history, got %+v", page.Items)
+	}
+}
+
+func readHistoryText(t *testing.T, n *Node, historyID string) string {
+	t.Helper()
+	ctx := context.Background()
+	h, err := n.e.RetainHistoryContent(ctx, engine.HistoryID(historyID))
+	if err != nil {
+		t.Fatalf("RetainHistoryContent(%s): %v", historyID, err)
+	}
+	defer func() { _ = n.e.ReleaseContent(ctx, h.LeaseID) }()
+	for _, p := range h.Content.Parts {
+		if p.MIME == clip.Text {
+			rc, err := n.e.ReadContent(ctx, h.LeaseID, p.ID)
+			if err != nil {
+				t.Fatalf("ReadContent: %v", err)
+			}
+			raw, err := io.ReadAll(rc)
+			_ = rc.Close()
+			if err != nil {
+				t.Fatalf("ReadAll: %v", err)
+			}
+			return string(raw)
+		}
+	}
+	t.Fatalf("history item %s has no text/plain part", historyID)
+	return ""
+}
+
+func TestPanelApplyFileLeaseProtectionAndUncertainRetention(t *testing.T) {
+	ctx := context.Background()
+	n, dir, genID, cleanup := openPanelTestNode(t, servicelifecycle.ModeStandalone, nil, false)
+	defer cleanup()
+
+	fileA := filepath.Join(dir, "a.txt")
+	fileB := filepath.Join(dir, "b.txt")
+	if err := os.WriteFile(fileA, []byte("aaa"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(fileB, []byte("bbb"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sub, err := n.Submit(ctx, api.SubmitInput{
+		RequestID: "sub-two-files",
+		Snapshot: clip.Snapshot{Files: []clip.File{
+			{Name: "a.txt", Path: fileA, Size: 3},
+			{Name: "b.txt", Path: fileB, Size: 3},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Uncertain abort (timeout) retains the managed-file lease until released.
+	grant1, err := n.PanelApplyBegin(ctx, api.PanelApplyBeginRequest{
+		Profile:   dir,
+		RequestID: "req-file-uncertain",
+		HistoryID: string(sub.HistoryID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	n.adapter.mu.Lock()
+	n.adapter.abortPanelTxLocked("timeout")
+	heldAfterAbort := n.adapter.panelHeldLease
+	n.adapter.mu.Unlock()
+	if heldAfterAbort == "" {
+		t.Fatal("expected uncertain abort of file tx to retain panelHeldLease")
+	}
+
+	// Reordered paths and partial overlap must keep the lease.
+	if err := n.PanelApplyRelease(ctx, api.PanelApplyReleaseRequest{
+		Profile:      dir,
+		ServiceID:    genID,
+		Token:        grant1.Token,
+		CurrentPaths: []string{fileB, fileA},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	n.adapter.mu.Lock()
+	stillHeld := n.adapter.panelHeldLease
+	n.adapter.mu.Unlock()
+	if stillHeld == "" {
+		t.Fatal("expected reordered paths to keep lease")
+	}
+	if err := n.PanelApplyRelease(ctx, api.PanelApplyReleaseRequest{
+		Profile:      dir,
+		ServiceID:    genID,
+		Token:        grant1.Token,
+		CurrentPaths: []string{fileB},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	n.adapter.mu.Lock()
+	stillHeld = n.adapter.panelHeldLease
+	n.adapter.mu.Unlock()
+	if stillHeld == "" {
+		t.Fatal("expected partial protected-path overlap to keep lease")
+	}
+	// Only when all protected paths are absent should release drop the lease.
+	if err := n.PanelApplyRelease(ctx, api.PanelApplyReleaseRequest{
+		Profile:      dir,
+		ServiceID:    genID,
+		Token:        grant1.Token,
+		CurrentPaths: []string{filepath.Join(dir, "other.txt")},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	n.adapter.mu.Lock()
+	afterRelease := n.adapter.panelHeldLease
+	n.adapter.mu.Unlock()
+	if afterRelease != "" {
+		t.Fatalf("expected lease released when no protected paths remain, got %q", afterRelease)
+	}
+}
+
 // directAdapterEngine routes clipboardintegration.Engine calls directly through Node.AdapterCall.
 type directAdapterEngine struct {
-	n       *Node
-	session string
+	n         *Node
+	session   string
+	onObserve func(engine.ObservationResult)
 }
 
 func (d *directAdapterEngine) call(ctx context.Context, method string, in, out any) error {
@@ -676,6 +910,9 @@ func (d *directAdapterEngine) FileReference(ctx context.Context, l engine.LeaseI
 }
 func (d *directAdapterEngine) ObserveClipboard(ctx context.Context, o engine.Observation) (out engine.ObservationResult, err error) {
 	err = d.call(ctx, "observe", o, &out)
+	if err == nil && d.onObserve != nil {
+		d.onObserve(out)
+	}
 	return
 }
 func (d *directAdapterEngine) BeginApply(ctx context.Context, r engine.ApplyRequest) (out engine.ApplyTicket, err error) {

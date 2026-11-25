@@ -415,9 +415,14 @@ func activateQuickPanelWithLauncher(ctx context.Context, dir, socket string, act
 		}
 	} else if activation.Target.ID != 0 {
 		// On Wayland, compositor-managed targets carry no external PID; reject
-		// auto-paste when unic's own main GUI window currently holds focus.
+		// auto-paste when unic's own main GUI window holds focus or when a live
+		// GUI's focus state cannot be confirmed.
 		var guiState roleStatus
-		if err := desktopprocess.Call(ctx, dir, desktopprocess.GUI, "status", nil, &guiState); err == nil && guiState.Focused {
+		if err := desktopprocess.Call(ctx, dir, desktopprocess.GUI, "status", nil, &guiState); err == nil {
+			if guiState.Focused {
+				activation = panelActivation{Error: "target"}
+			}
+		} else if !errors.Is(err, desktopprocess.ErrUnavailable) {
 			activation = panelActivation{Error: "target"}
 		}
 	}

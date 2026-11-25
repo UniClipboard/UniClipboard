@@ -151,6 +151,7 @@ func runGUI(settings *config.Manager) error {
 			select {
 			case focused = <-focusedCh:
 			case <-ctx.Done():
+				return nil, ctx.Err()
 			}
 			return roleStatus{Ready: !current.Required(), SetupRequired: current.Required(), Visible: true, Focused: focused}, nil
 		case "activate":

@@ -14,7 +14,6 @@ import hashlib
 import http.client
 import json
 import os
-import shutil
 import signal
 import socket
 import struct
@@ -158,6 +157,20 @@ def unic_processes(profile: Path):
     return rows
 
 
+def proc_matches_profile_exe(pid: int, profile: Path, expected_exes: set) -> bool:
+    if pid <= 0 or pid == os.getpid():
+        return False
+    try:
+        exe = Path(os.readlink(f"/proc/{pid}/exe")).resolve()
+        if exe not in expected_exes:
+            return False
+        entries = Path(f"/proc/{pid}/environ").read_bytes().split(b"\x00")
+        target = f"UNIC_HOME={profile}".encode("utf-8")
+        return target in entries
+    except OSError:
+        return False
+
+
 def wl_env():
     env = {k: v for k, v in os.environ.items() if k != "DISPLAY"}
     env["XDG_SESSION_TYPE"] = "wayland"
@@ -220,9 +233,9 @@ def main():
     out_dir = args.out_dir.resolve()
     work_dir = args.work_dir.resolve()
     if out_dir.exists():
-        shutil.rmtree(out_dir)
+        raise SystemExit(f"refusing to overwrite existing --out-dir (preserve prior evidence): {out_dir}")
     if work_dir.exists():
-        shutil.rmtree(work_dir)
+        raise SystemExit(f"refusing to overwrite existing --work-dir (preserve prior workspace): {work_dir}")
     out_dir.mkdir(parents=True, mode=0o700)
     work_dir.mkdir(parents=True, mode=0o700)
     (work_dir / "discovery").mkdir(parents=True, mode=0o700)
@@ -261,6 +274,7 @@ def main():
     timeline = []
     procs = []
     wl_owners = []
+    owned_profiles = []
     manifest = {
         "case": f"N01-{args.mode}-linux-wayland-standalone-quick-panel",
         "status": "FAIL",
@@ -312,6 +326,7 @@ def main():
             f"[desktop]\nmode = 'normal'\nquick_panel_shortcut = ''\n"
         )
         subprocess.run([str(bin_dir / "unic"), "migrate", "--initialize-empty", "--json"], env=env_for(p, e2e_tag), check=True, capture_output=True, timeout=20)
+        owned_profiles.append((p, e2e_tag))
         return p
 
     def start_wl_copy(text: str):
@@ -376,9 +391,13 @@ def main():
             auto_rpc(panel_sock, "input", {"window": win["id"], "events": [{"type": "key", "key": "CmdOrCtrl+Enter"}]})
             want_both = text1 + text2
             wait_until("editor pasted text2", lambda: editor_state.exists() and json.loads(editor_state.read_text()).get("text") == want_both, timeout=12)
-            win_reopened = wait_until("panel auto reopened", visible_panel, timeout=8)
+            win_reopened = wait_until(
+                "panel auto reopened and focused",
+                lambda: (lambda w: w if w and w.get("focused") else None)(visible_panel()),
+                timeout=8,
+            )
             capture_shot(panel_sock, "02-niri-wayland-reopened-after-ctrl-enter.png", win_reopened["id"])
-            manifest["paste_receipts"]["ctrl_enter_keep_open_paste"] = {"editor_text": want_both, "sha256": sha256_bytes(want_both.encode()), "panel_reopened": True}
+            manifest["paste_receipts"]["ctrl_enter_keep_open_paste"] = {"editor_text": want_both, "sha256": sha256_bytes(want_both.encode()), "panel_reopened": True, "panel_focused": True}
             manifest["checks"].append("niri-wayland-ctrl-enter-paste-and-reopen")
         else:
             manifest["environment"]["compositor"] = subprocess.check_output(["kwin_wayland", "--version"], text=True).strip()
@@ -428,7 +447,7 @@ def main():
             time.sleep(0.15)
             api_req(main_prof / "unic.sock", "POST", "/v1/submissions", {"request_id": "n01-text", "snapshot": {"parts": [{"format": "text/plain", "data": base64.b64encode(text_payload.encode()).decode()}]}})
 
-            start_wl_copy("N01-WAYLAND-BASELINE")
+            baseline_owner = start_wl_copy("N01-WAYLAND-BASELINE")
             panel_sock = main_prof / "automation-panel.sock"
             subprocess.run([str(bin_dir / "unic-desktop-e2e"), "--quick-panel"], env=env_for(main_prof, True), check=True, timeout=20)
             def visible_win():
@@ -442,7 +461,14 @@ def main():
             wait_until("text row visible", lambda: find_node(auto_rpc(panel_sock, "tree", {"window": win["id"]}), name_sub="N01 Wayland"), timeout=10)
             capture_shot(panel_sock, "01-wayland-panel-open.png", win["id"])
             auto_rpc(panel_sock, "input", {"window": win["id"], "events": [{"type": "key", "key": "Enter"}]})
+            wait_until(
+                "panel reports paste unavailable",
+                lambda: find_node(auto_rpc(panel_sock, "tree", {"window": win["id"]}), name_sub="不支持自动粘贴"),
+                timeout=8,
+            )
             time.sleep(0.5)
+            # On Wayland, wl-copy --foreground exits as soon as any client replaces clipboard ownership.
+            assert baseline_owner.poll() is None, "clipboard ownership changed during refused Enter"
             assert wl_paste(no_newline=True).decode() == "N01-WAYLAND-BASELINE"
             manifest["checks"].append("wayland-copy-fallback-enter-refusal")
 
@@ -464,8 +490,13 @@ def main():
             x, y, w, h = node_bounds(fnode)
             auto_rpc(panel_sock, "input", {"window": win["id"], "events": [{"type": "click", "x": x + w / 2, "y": y + h / 2}, {"type": "key", "key": "CmdOrCtrl+C"}]})
             wait_until("hidden after file", lambda: len(auto_rpc(panel_sock, "windows").get("windows") or []) == 0, timeout=10)
-            uri = [l.strip() for l in wl_paste(mime="text/uri-list").decode().splitlines() if l.strip() and not l.startswith("#")][0]
-            managed_path = Path(urllib.parse.unquote(urllib.parse.urlparse(uri).path))
+            uris = [l.strip() for l in wl_paste(mime="text/uri-list").decode().splitlines() if l.strip() and not l.startswith("#")]
+            assert len(uris) == 1, f"expected exactly 1 file URI, got {uris!r}"
+            parsed_uri = urllib.parse.urlparse(uris[0])
+            assert parsed_uri.scheme == "file", f"expected local file URI, got {uris[0]!r}"
+            inbox_root = (main_prof / "inbox").resolve()
+            managed_path = Path(urllib.parse.unquote(parsed_uri.path)).resolve()
+            assert managed_path.is_relative_to(inbox_root), f"managed file outside inbox: {managed_path} not under {inbox_root}"
             assert managed_path.exists() and sha256_file(managed_path) == managed_sha
             api_req(main_prof / "unic.sock", "DELETE", f"/v1/history/{managed_item['id']}?revision={managed_item['revision']}")
             time.sleep(0.5)
@@ -481,9 +512,19 @@ def main():
             win = wait_until("reopened with tray", visible_win, timeout=10)
             auto_rpc(panel_sock, "input", {"window": win["id"], "events": [{"type": "key", "key": "CmdOrCtrl+C"}]})
             wait_until("hidden with tray", lambda: len(auto_rpc(panel_sock, "windows").get("windows") or []) == 0, timeout=10)
+            assert sha256_bytes(wl_paste(mime="text/plain;charset=utf-8", no_newline=True)) == text_sha
             time.sleep(1.5)
             assert len(api_req(main_prof / "unic.sock", "GET", "/v1/history").get("items") or []) == h0
             tray_proc.terminate(); tray_proc.wait(timeout=10)
+            svc_after = api_req(main_prof / "unic.sock", "GET", "/v1/service")
+            panel_after = role_probe(bin_dir / "unic-desktop-e2e", main_prof, "quick-panel", True)
+            assert svc_after["id"] == main_svc["id"] and svc_after["pid"] == main_svc["pid"]
+            assert panel_after is not None and panel_after["pid"] == panel_role["pid"]
+            subprocess.run([str(bin_dir / "unic-desktop-e2e"), "--quick-panel"], env=env_for(main_prof, True), check=True, timeout=15)
+            win = wait_until("reopened after tray exit", visible_win, timeout=10)
+            auto_rpc(panel_sock, "input", {"window": win["id"], "events": [{"type": "key", "key": "Down"}, {"type": "key", "key": "CmdOrCtrl+C"}]})
+            wait_until("hidden after post-tray png", lambda: len(auto_rpc(panel_sock, "windows").get("windows") or []) == 0, timeout=10)
+            assert sha256_bytes(wl_paste(mime="image/png")) == png_sha
             assert api_req(main_prof / "unic.sock", "GET", "/v1/service")["id"] == main_svc["id"]
             assert role_probe(bin_dir / "unic-desktop-e2e", main_prof, "quick-panel", True)["pid"] == panel_role["pid"]
             manifest["checks"].append("wayland-tray-coexistence-and-exit-preservation")
@@ -501,26 +542,41 @@ def main():
                 p.terminate(); p.wait(timeout=2)
             except Exception:
                 pass
-        for r in ps_snapshot():
-            try:
-                if str(work_dir) in Path(f"/proc/{r['pid']}/environ").read_bytes().decode("utf-8", "replace") and r["pid"] != os.getpid():
-                    os.kill(r["pid"], signal.SIGTERM)
-            except OSError:
-                pass
-        time.sleep(0.4)
         for p, f, _ in procs:
             try:
                 if p.poll() is None:
                     p.terminate(); p.wait(timeout=5)
             except Exception:
                 try:
-                    p.kill()
+                    p.kill(); p.wait(timeout=2)
                 except Exception:
                     pass
             try:
                 f.close()
             except Exception:
                 pass
+        expected_exes = {
+            p.resolve()
+            for name in ("unic-desktop", "unic-desktop-e2e", "unicd")
+            if (p := bin_dir / name).exists()
+        }
+        for prof, e2e_tag in owned_profiles:
+            probe_bin = bin_dir / ("unic-desktop-e2e" if e2e_tag else "unic-desktop")
+            if not probe_bin.exists():
+                continue
+            for role in ("gui", "quick-panel", "tray"):
+                try:
+                    info = role_probe(probe_bin, prof, role, e2e_tag)
+                except Exception:
+                    info = None
+                if info and info.get("profile") == str(prof):
+                    pid = int(info.get("pid") or 0)
+                    if proc_matches_profile_exe(pid, prof, expected_exes):
+                        try:
+                            os.kill(pid, signal.SIGTERM)
+                        except OSError:
+                            pass
+        time.sleep(0.4)
         (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
         sums = [f"{sha256_file(p)}  {p.name}" for p in sorted(out_dir.iterdir()) if p.is_file() and p.name != "SHA256SUMS"]
         (out_dir / "SHA256SUMS").write_text("\n".join(sums) + "\n")

@@ -21,6 +21,7 @@ import (
 type mockPanelBoard struct {
 	mu          sync.Mutex
 	snap        clip.Snapshot
+	readErr     error
 	writeErr    error
 	tamperAfter bool
 	onRelease   func()
@@ -31,6 +32,9 @@ type mockPanelBoard struct {
 func (b *mockPanelBoard) Read() (clip.Snapshot, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.readErr != nil {
+		return clip.Snapshot{}, b.readErr
+	}
 	return b.snap, nil
 }
 
@@ -255,4 +259,121 @@ func TestPanelClipboardProtocolAndFileLease(t *testing.T) {
 		t.Fatalf("expected 1 release for tok-file, got %+v", releases)
 	}
 	mu.Unlock()
+}
+
+func TestPanelClipboardReadFailureKeepsHoldAndReleaseRetriesOnClose(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "uc-pc-retry-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "p.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	sampleFile := filepath.Join(dir, "doc.txt")
+	if err := os.WriteFile(sampleFile, []byte("hello"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fileSnap := clip.Snapshot{Files: []clip.File{{Name: "doc.txt", Path: sampleFile, Size: 5}}}
+
+	var mu sync.Mutex
+	failRelease := true
+	releaseAttempts := 0
+	releaseSucceeded := 0
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/desktop/panel-apply/begin", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(api.PanelApplyGrant{
+			ServiceID: "svc-1",
+			Epoch:     "ep-1",
+			Token:     engine.ApplyToken("tok-retry"),
+			Snapshot:  fileSnap,
+			HasFiles:  true,
+		})
+	})
+	mux.HandleFunc("POST /v1/desktop/panel-apply/complete", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(api.PanelApplyCompleteReply{Applied: true})
+	})
+	mux.HandleFunc("POST /v1/desktop/panel-apply/release", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		releaseAttempts++
+		fail := failRelease
+		if !fail {
+			releaseSucceeded++
+		}
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if fail {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(api.ErrorBody{Error: "temp failure", Reason: "unavailable"})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
+
+	srv := &http.Server{Handler: mux}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
+
+	client := api.NewClient(sock)
+	board := &mockPanelBoard{}
+	pc := clipboardintegration.NewPanelClipboard(dir, board)
+
+	if _, err := pc.Apply(context.Background(), client, "h-file", false); err != nil {
+		t.Fatalf("file apply failed: %v", err)
+	}
+	// Transient read failure during clipboard event must NOT release the hold.
+	board.mu.Lock()
+	board.readErr = errors.New("clipboard temporarily locked")
+	board.mu.Unlock()
+	board.triggerRelease()
+	time.Sleep(100 * time.Millisecond)
+	mu.Lock()
+	gotAttempts := releaseAttempts
+	mu.Unlock()
+	if gotAttempts != 0 {
+		t.Fatalf("expected 0 release calls on transient Read() error, got %d", gotAttempts)
+	}
+
+	// Once clipboard read succeeds with replacement content, release is attempted (and fails once).
+	board.mu.Lock()
+	board.readErr = nil
+	board.mu.Unlock()
+	board.setExternal(clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte("replaced")}}})
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		a := releaseAttempts
+		mu.Unlock()
+		if a >= 1 {
+			break
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	mu.Lock()
+	if releaseAttempts < 1 {
+		mu.Unlock()
+		t.Fatal("expected release attempt after clipboard replacement")
+	}
+	failRelease = false
+	mu.Unlock()
+
+	// Close() must retry the queued failed release without repeating any clipboard write.
+	writesBeforeClose := board.writes
+	pc.Close()
+	mu.Lock()
+	succ := releaseSucceeded
+	mu.Unlock()
+	if succ != 1 {
+		t.Fatalf("expected Close() to retry pending release once, succeeded=%d", succ)
+	}
+	if board.writes != writesBeforeClose {
+		t.Fatalf("Close() replayed clipboard write: before=%d after=%d", writesBeforeClose, board.writes)
+	}
 }

@@ -20,6 +20,7 @@ type panelApplyTx struct {
 	serviceID       string
 	requestID       string
 	historyID       string
+	contentID       engine.ContentID
 	token           engine.ApplyToken
 	lease           engine.LeaseID
 	syncLease       engine.LeaseID
@@ -36,8 +37,53 @@ type panelApplyTx struct {
 type panelRestoreRecord struct {
 	historyID string
 	at        time.Time
+	inFlight  bool
+	done      chan struct{}
 	result    engine.RestoreSyncResult
 	err       error
+}
+
+func (a *adapterState) cancelPanelRestoreLocked(requestID string) {
+	if r := a.panelRestores[requestID]; r != nil && r.inFlight {
+		delete(a.panelRestores, requestID)
+		if r.done != nil {
+			close(r.done)
+		}
+	}
+}
+
+func (a *adapterState) retainPanelHeldLocked(tx *panelApplyTx) {
+	oldHeld := a.panelHeldLease
+	a.panelHeldLease = tx.lease
+	a.panelHeldToken = tx.token
+	a.panelHeldPaths = tx.filePaths
+	a.panelHeldEpoch = a.obsEpoch
+	a.panelHeldSeq = a.lastEngineSeq
+	a.panelHeldSeen = false
+	if oldHeld != "" && oldHeld != a.panelHeldLease {
+		_ = a.n.e.ReleaseContent(context.Background(), oldHeld)
+	}
+}
+
+func (a *adapterState) shouldSuppressPostPanelObserveLocked(lease engine.LeaseID) bool {
+	if lease == "" {
+		return true
+	}
+	cid := a.leaseContent[lease]
+	if cid == "" {
+		return false
+	}
+	return cid == a.lastPanelPostContent || cid == a.lastPanelPreContent
+}
+
+func (a *adapterState) reconcilePostHoldLocked() bool {
+	if a.obsEpoch != "" && a.obsEpoch == a.panelHeldEpoch && a.lastEngineSeq > a.panelHeldSeq {
+		return true
+	}
+	if a.baseline && a.obsEpoch != "" && a.obsEpoch != a.panelHeldEpoch {
+		return true
+	}
+	return false
 }
 
 func (a *adapterState) expirePanelTxLocked(now time.Time) {
@@ -52,12 +98,18 @@ func (a *adapterState) abortPanelTxLocked(errorCode string) {
 		return
 	}
 	a.panelTx = nil
+	a.cancelPanelRestoreLocked(tx.requestID)
 	_ = a.n.e.ReportApplyResult(context.Background(), engine.ApplyResult{
 		Token:     tx.token,
 		Outcome:   engine.ApplyOutcomeFailed,
 		ErrorCode: errorCode,
 	})
-	if tx.lease != "" {
+	if tx.hasFiles && tx.lease != "" {
+		// Uncertain outcome: the panel may already have written these managed
+		// files to the OS clipboard before timing out or losing connection.
+		// Retain the lease until clipboard change, release, reconciliation, or shutdown.
+		a.retainPanelHeldLocked(tx)
+	} else if tx.lease != "" {
 		_ = a.n.e.ReleaseContent(context.Background(), tx.lease)
 	}
 	if tx.syncLease != "" {
@@ -80,7 +132,8 @@ func (a *adapterState) releasePanelHeldLocked() {
 	}
 	a.panelHeldToken = ""
 	a.panelHeldPaths = nil
-	a.panelHeldAt = time.Time{}
+	a.panelHeldEpoch = ""
+	a.panelHeldSeq = 0
 	a.panelHeldSeen = false
 }
 
@@ -191,13 +244,13 @@ func canonicalDir(p string) string {
 	return filepath.Clean(abs)
 }
 
-func (n *Node) importPanelSnap(ctx context.Context, s *clip.Snapshot) (engine.LeaseID, error) {
+func (n *Node) importPanelSnap(ctx context.Context, s *clip.Snapshot) (engine.LeaseID, engine.ContentID, error) {
 	if s == nil || s.Empty() {
-		return "", nil
+		return "", "", nil
 	}
 	in, err := contentInput(*s)
 	if err != nil {
-		return "", nil
+		return "", "", nil
 	}
 	h, err := n.e.ImportContent(ctx, in)
 	if err != nil {
@@ -205,12 +258,12 @@ func (n *Node) importPanelSnap(ctx context.Context, s *clip.Snapshot) (engine.Le
 		if errors.As(err, &ee) {
 			switch ee.Code {
 			case engine.CodeLimitExceeded, engine.CodeUnsupported, engine.CodeInvalidArgument, engine.CodeSourceChanged:
-				return "", nil
+				return "", "", nil
 			}
 		}
-		return "", err
+		return "", "", err
 	}
-	return h.LeaseID, nil
+	return h.LeaseID, h.Content.ID, nil
 }
 
 func (n *Node) snapshotOfTicket(ctx context.Context, tk engine.ApplyTicket) (s clip.Snapshot, hasFiles bool, err error) {
@@ -284,7 +337,7 @@ func (n *Node) snapshotOfTicket(ctx context.Context, tk engine.ApplyTicket) (s c
 
 func (a *adapterState) prunePanelRestoresLocked(now time.Time) {
 	for k, r := range a.panelRestores {
-		if now.Sub(r.at) >= 30*time.Minute {
+		if !r.inFlight && now.Sub(r.at) >= 30*time.Minute {
 			delete(a.panelRestores, k)
 		}
 	}
@@ -337,33 +390,68 @@ func (n *Node) PanelApplyBegin(ctx context.Context, req api.PanelApplyBeginReque
 		return out, err
 	}
 
+	reservedRestore := false
 	if !req.Plain {
-		a.prunePanelRestoresLocked(time.Now())
-		if old := a.panelRestores[req.RequestID]; old != nil {
-			if old.historyID != req.HistoryID {
-				return out, &api.Error{Status: 409, Reason: "conflict", Message: "request_id already names another history item"}
+		for {
+			a.prunePanelRestoresLocked(time.Now())
+			if old := a.panelRestores[req.RequestID]; old != nil {
+				if old.historyID != req.HistoryID {
+					return out, &api.Error{Status: 409, Reason: "conflict", Message: "request_id already names another history item"}
+				}
+				if old.inFlight {
+					done := old.done
+					a.mu.Unlock()
+					select {
+					case <-done:
+					case <-ctx.Done():
+						a.mu.Lock()
+						return out, &api.Error{Status: 409, Reason: "in_use", Message: "restore request is already in progress"}
+					}
+					a.mu.Lock()
+					info, err = n.checkPanelService(req.Profile, req.ServiceID, false)
+					if err != nil {
+						return out, err
+					}
+					continue
+				}
+				if old.err != nil {
+					return out, old.err
+				}
+				res := old.result
+				return api.PanelApplyGrant{
+					ServiceID: info.ID,
+					Replayed:  true,
+					Restore:   &res,
+				}, nil
 			}
-			if old.err != nil {
-				return out, old.err
+			if len(a.panelRestores) >= 1024 {
+				return out, &api.Error{Status: 429, Reason: "resource_exhausted", Message: "restore request cache is full"}
 			}
-			res := old.result
-			return api.PanelApplyGrant{
-				ServiceID: info.ID,
-				Replayed:  true,
-				Restore:   &res,
-			}, nil
+			a.panelRestores[req.RequestID] = &panelRestoreRecord{
+				historyID: req.HistoryID,
+				at:        time.Now(),
+				inFlight:  true,
+				done:      make(chan struct{}),
+			}
+			reservedRestore = true
+			break
 		}
-		if len(a.panelRestores) >= 1024 {
-			return out, &api.Error{Status: 429, Reason: "resource_exhausted", Message: "restore request cache is full"}
+	}
+	releaseRestoreOnErr := func() {
+		if reservedRestore {
+			a.cancelPanelRestoreLocked(req.RequestID)
+			reservedRestore = false
 		}
 	}
 
 	if err := a.waitApplySlotLocked(ctx); err != nil {
+		releaseRestoreOnErr()
 		return out, err
 	}
 	// Re-check after waiting.
 	info, err = n.checkPanelService(req.Profile, req.ServiceID, false)
 	if err != nil {
+		releaseRestoreOnErr()
 		return out, err
 	}
 
@@ -383,6 +471,7 @@ func (n *Node) PanelApplyBegin(ctx context.Context, req api.PanelApplyBeginReque
 			Observe:      engine.AbilityUnavailable,
 			Apply:        engine.AbilityAvailable,
 		}); err != nil {
+			releaseRestoreOnErr()
 			return out, apiErr(err, false)
 		}
 		restoreCaps := func() {
@@ -393,9 +482,10 @@ func (n *Node) PanelApplyBegin(ctx context.Context, req api.PanelApplyBeginReque
 				})
 			}
 		}
-		beforeLease, ierr := n.importPanelSnap(ctx, req.ObservedBefore)
+		beforeLease, beforeContent, ierr := n.importPanelSnap(ctx, req.ObservedBefore)
 		if ierr != nil {
 			restoreCaps()
+			releaseRestoreOnErr()
 			return out, apiErr(ierr, false)
 		}
 		ep = "panel-" + randomID()
@@ -410,11 +500,13 @@ func (n *Node) PanelApplyBegin(ctx context.Context, req api.PanelApplyBeginReque
 		}
 		if oerr != nil {
 			restoreCaps()
+			releaseRestoreOnErr()
 			return out, apiErr(oerr, false)
 		}
 		a.obsEpoch = ep
 		a.lastEngineSeq = 1
 		a.seqOffset = 0
+		a.lastObservedContent = beforeContent
 		expectedSeq = 1
 	}
 
@@ -431,6 +523,7 @@ func (n *Node) PanelApplyBegin(ctx context.Context, req api.PanelApplyBeginReque
 				Apply:   engine.AbilityUnavailable,
 			})
 		}
+		releaseRestoreOnErr()
 		return out, apiErr(berr, false)
 	}
 
@@ -446,6 +539,7 @@ func (n *Node) PanelApplyBegin(ctx context.Context, req api.PanelApplyBeginReque
 					Apply:   engine.AbilityUnavailable,
 				})
 			}
+			releaseRestoreOnErr()
 			return out, apiErr(rerr, false)
 		}
 		syncLease = held.LeaseID
@@ -464,6 +558,7 @@ func (n *Node) PanelApplyBegin(ctx context.Context, req api.PanelApplyBeginReque
 				Apply:   engine.AbilityUnavailable,
 			})
 		}
+		releaseRestoreOnErr()
 		return out, apiErr(serr, false)
 	}
 
@@ -479,6 +574,7 @@ func (n *Node) PanelApplyBegin(ctx context.Context, req api.PanelApplyBeginReque
 		serviceID:       info.ID,
 		requestID:       req.RequestID,
 		historyID:       req.HistoryID,
+		contentID:       tk.ContentID,
 		token:           tk.Token,
 		lease:           tk.LeaseID,
 		syncLease:       syncLease,
@@ -541,6 +637,7 @@ func (n *Node) PanelApplyComplete(ctx context.Context, req api.PanelApplyComplet
 		if code == "" {
 			code = "write_failed"
 		}
+		a.cancelPanelRestoreLocked(tx.requestID)
 		_ = n.e.ReportApplyResult(ctx, engine.ApplyResult{
 			Token:     tx.token,
 			Outcome:   engine.ApplyOutcomeFailed,
@@ -558,14 +655,17 @@ func (n *Node) PanelApplyComplete(ctx context.Context, req api.PanelApplyComplet
 	}
 
 	// Outcome == "applied": import read-back snapshot first before releasing any prior file lease.
-	baseLease, ierr := n.importPanelSnap(ctx, req.ReadBack)
+	baseLease, baseContent, ierr := n.importPanelSnap(ctx, req.ReadBack)
 	if ierr != nil {
+		a.cancelPanelRestoreLocked(tx.requestID)
 		_ = n.e.ReportApplyResult(context.Background(), engine.ApplyResult{
 			Token:     tx.token,
 			Outcome:   engine.ApplyOutcomeFailed,
 			ErrorCode: "unavailable",
 		})
-		if tx.lease != "" {
+		if tx.hasFiles && tx.lease != "" {
+			a.retainPanelHeldLocked(tx)
+		} else if tx.lease != "" {
 			_ = n.e.ReleaseContent(context.Background(), tx.lease)
 		}
 		if tx.syncLease != "" {
@@ -590,7 +690,10 @@ func (n *Node) PanelApplyComplete(ctx context.Context, req api.PanelApplyComplet
 		Sequence:        nextSeq,
 	})
 	if rerr != nil {
-		if tx.lease != "" {
+		a.cancelPanelRestoreLocked(tx.requestID)
+		if tx.hasFiles && tx.lease != "" {
+			a.retainPanelHeldLocked(tx)
+		} else if tx.lease != "" {
 			_ = n.e.ReleaseContent(context.Background(), tx.lease)
 		}
 		if tx.syncLease != "" {
@@ -603,6 +706,13 @@ func (n *Node) PanelApplyComplete(ctx context.Context, req api.PanelApplyComplet
 
 	a.lastEngineSeq = nextSeq
 	a.panelCommitSeq++
+	postContent := baseContent
+	if postContent == "" {
+		postContent = tx.contentID
+	}
+	a.lastPanelPreContent = a.lastObservedContent
+	a.lastPanelPostContent = postContent
+	a.lastObservedContent = postContent
 	if a.session != "" && a.session == tx.observerSession && a.obsEpoch == tx.epoch {
 		a.seqOffset++
 	}
@@ -615,25 +725,13 @@ func (n *Node) PanelApplyComplete(ctx context.Context, req api.PanelApplyComplet
 		}
 	}
 	_ = n.e.ReconcileClipboardFiles(ctx, readBackPaths)
-	oldHeld := a.panelHeldLease
 	if tx.hasFiles {
-		a.panelHeldLease = tx.lease
-		a.panelHeldToken = tx.token
-		a.panelHeldPaths = tx.filePaths
-		a.panelHeldAt = time.Now()
-		a.panelHeldSeen = false
+		a.retainPanelHeldLocked(tx)
 	} else {
-		a.panelHeldLease = ""
-		a.panelHeldToken = ""
-		a.panelHeldPaths = nil
-		a.panelHeldAt = time.Time{}
-		a.panelHeldSeen = false
+		a.releasePanelHeldLocked()
 		if tx.lease != "" {
 			_ = n.e.ReleaseContent(context.Background(), tx.lease)
 		}
-	}
-	if oldHeld != "" && oldHeld != a.panelHeldLease {
-		_ = n.e.ReleaseContent(context.Background(), oldHeld)
 	}
 
 	finishTx()
@@ -657,10 +755,19 @@ func (n *Node) PanelApplyComplete(ctx context.Context, req api.PanelApplyComplet
 		out.Restore = &res
 		a.mu.Lock()
 		a.prunePanelRestoresLocked(time.Now())
-		a.panelRestores[tx.requestID] = &panelRestoreRecord{
-			historyID: tx.historyID,
-			at:        time.Now(),
-			result:    res,
+		if rec := a.panelRestores[tx.requestID]; rec != nil && rec.inFlight {
+			rec.at = time.Now()
+			rec.result = res
+			rec.inFlight = false
+			if rec.done != nil {
+				close(rec.done)
+			}
+		} else {
+			a.panelRestores[tx.requestID] = &panelRestoreRecord{
+				historyID: tx.historyID,
+				at:        time.Now(),
+				result:    res,
+			}
 		}
 		a.mu.Unlock()
 	} else if tx.syncLease != "" {
@@ -687,7 +794,7 @@ func (n *Node) PanelApplyRelease(ctx context.Context, req api.PanelApplyReleaseR
 	if a.panelHeldLease == "" || a.panelHeldToken != req.Token {
 		return nil
 	}
-	if samePathSlice(req.CurrentPaths, a.panelHeldPaths) {
+	if hasAnyProtectedPath(req.CurrentPaths, a.panelHeldPaths) {
 		return nil
 	}
 	_ = n.e.ReconcileClipboardFiles(ctx, req.CurrentPaths)
@@ -695,14 +802,23 @@ func (n *Node) PanelApplyRelease(ctx context.Context, req api.PanelApplyReleaseR
 	return nil
 }
 
-func samePathSlice(a, b []string) bool {
-	if len(a) == 0 || len(a) != len(b) {
+func hasAnyProtectedPath(current, protected []string) bool {
+	if len(current) == 0 || len(protected) == 0 {
 		return false
 	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
+	set := make(map[string]struct{}, len(protected))
+	for _, p := range protected {
+		if p != "" {
+			set[filepath.Clean(p)] = struct{}{}
 		}
 	}
-	return true
+	for _, p := range current {
+		if p == "" {
+			continue
+		}
+		if _, ok := set[filepath.Clean(p)]; ok {
+			return true
+		}
+	}
+	return false
 }

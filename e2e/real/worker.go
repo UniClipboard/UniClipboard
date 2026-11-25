@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,9 +40,31 @@ type worker struct {
 	closed                               bool
 }
 
-func workerMain(ctx context.Context, runID, name string) (resultErr error) {
+func workerMain(ctx context.Context, runID, name, controlAddr, tokenFile string) (resultErr error) {
 	if !nodeLabel.MatchString(name) || len(runID) != 32 {
 		return fmt.Errorf("invalid worker identity")
+	}
+	var in io.Reader = os.Stdin
+	var out io.Writer = os.Stdout
+	if controlAddr != "" {
+		rawTok, err := os.ReadFile(tokenFile)
+		_ = os.Remove(tokenFile)
+		if err != nil {
+			return fmt.Errorf("control_token_read_failed")
+		}
+		tok := strings.TrimSpace(string(rawTok))
+		if tok == "" {
+			return fmt.Errorf("control_token_empty")
+		}
+		conn, err := (&net.Dialer{Timeout: 15 * time.Second}).DialContext(ctx, "tcp", controlAddr)
+		if err != nil {
+			return fmt.Errorf("control_dial_failed")
+		}
+		defer func() { _ = conn.Close() }()
+		if err = json.NewEncoder(conn).Encode(controlAuth{Token: tok}); err != nil {
+			return fmt.Errorf("control_auth_write_failed")
+		}
+		in, out = conn, conn
 	}
 	root, err := os.MkdirTemp("", "ue-")
 	if err != nil {
@@ -100,7 +123,7 @@ func workerMain(ctx context.Context, runID, name string) (resultErr error) {
 	go func() {
 		defer close(incoming)
 		defer cancel()
-		dec := json.NewDecoder(os.Stdin)
+		dec := json.NewDecoder(in)
 		for {
 			var req request
 			if err := dec.Decode(&req); err != nil {
@@ -113,7 +136,7 @@ func workerMain(ctx context.Context, runID, name string) (resultErr error) {
 			}
 		}
 	}()
-	enc := json.NewEncoder(os.Stdout)
+	enc := json.NewEncoder(out)
 	for {
 		var req request
 		select {
@@ -359,7 +382,7 @@ func (w *worker) close(keep bool) (logsResult, error) {
 	}
 	return result, nil
 }
-func (w *worker) configure(v installConfig) error {
+func (w *worker) configure(ctx context.Context, v installConfig) error {
 	if v.Name != w.name {
 		return fmt.Errorf("node_identity_mismatch")
 	}
@@ -371,6 +394,11 @@ func (w *worker) configure(v installConfig) error {
 		if err != nil || got != sha {
 			return fmt.Errorf("program_hash_mismatch")
 		}
+	}
+	// Complete the production CLI's explicit no-source initialization once in an
+	// isolated empty discovery home so the harness never inspects a user's legacy v1 profile.
+	if err := w.initializeEmptyProfile(ctx); err != nil {
+		return err
 	}
 	for name, b := range v.Plugins {
 		clean := filepath.Clean(filepath.FromSlash(name))
@@ -388,6 +416,47 @@ func (w *worker) configure(v installConfig) error {
 	config := fmt.Sprintf("device_name = %q\n[telemetry]\nenabled = false\n[plugins]\nlua = [\"example.lua-sensitive\", \"example.lua-emailtag\"]\n[plugins.instances.\"example.lua-emailtag\".config]\ntag = %q\n", "lab-"+w.name, "local-"+w.name)
 	if err := os.WriteFile(filepath.Join(w.root, "state", "config.toml"), []byte(config), 0600); err != nil {
 		return fmt.Errorf("configuration_write_failed")
+	}
+	return nil
+}
+func (w *worker) initializeEmptyProfile(ctx context.Context) error {
+	discovery, err := os.MkdirTemp(w.root, "init-discovery-")
+	if err != nil {
+		return fmt.Errorf("profile_init_dir_failed")
+	}
+	defer func() { _ = os.RemoveAll(discovery) }()
+	initCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	stateDir := filepath.Join(w.root, "state")
+	cmd := exec.CommandContext(initCtx, filepath.Join(w.root, "bin", exe("unic")), "migrate", "--initialize-empty", "--target", stateDir, "--json")
+	var env []string
+	for _, s := range w.env() {
+		upper := strings.ToUpper(s)
+		switch {
+		case strings.HasPrefix(upper, "HOME="),
+			strings.HasPrefix(upper, "USERPROFILE="),
+			strings.HasPrefix(upper, "APPDATA="),
+			strings.HasPrefix(upper, "LOCALAPPDATA="),
+			strings.HasPrefix(upper, "XDG_DATA_HOME="),
+			strings.HasPrefix(upper, "XDG_CONFIG_HOME="),
+			strings.HasPrefix(upper, "UC_PROFILE="):
+			continue
+		}
+		env = append(env, s)
+	}
+	env = append(env,
+		"HOME="+discovery,
+		"USERPROFILE="+discovery,
+		"APPDATA="+filepath.Join(discovery, "roaming"),
+		"LOCALAPPDATA="+filepath.Join(discovery, "local"),
+		"XDG_DATA_HOME="+filepath.Join(discovery, "data"),
+		"XDG_CONFIG_HOME="+filepath.Join(discovery, "config"),
+		"UC_PROFILE=",
+	)
+	cmd.Env = env
+	cmd.Dir = w.root
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("profile_init_failed")
 	}
 	return nil
 }
@@ -653,7 +722,7 @@ func (w *worker) handle(ctx context.Context, r request) (any, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid_request")
 		}
-		return true, w.configure(v)
+		return true, w.configure(ctx, v)
 	case "start":
 		return true, w.start(ctx)
 	case "stop":
@@ -783,6 +852,22 @@ func (w *worker) handle(ctx context.Context, r request) (any, error) {
 		}
 		_, err = w.checkedCLI(ctx, "config", "apply", path)
 		return true, err
+	case "notify_network":
+		nctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		if err := w.client.NotifyNetworkChanged(nctx); err != nil {
+			return nil, fmt.Errorf("notify_network_failed")
+		}
+		return true, nil
+	case "refresh":
+		deviceID, _ := decodeValue[string](r.Value)
+		rctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		st, err := w.client.RefreshDevices(rctx, deviceID)
+		if err != nil {
+			return nil, fmt.Errorf("refresh_devices_failed")
+		}
+		return st, nil
 	case "close":
 		keep, err := decodeValue[bool](r.Value)
 		if err != nil {

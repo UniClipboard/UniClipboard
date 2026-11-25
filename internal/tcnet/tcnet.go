@@ -155,7 +155,7 @@ func (t *Transport) Dial(ctx context.Context, addr string) (net.Conn, error) {
 		release()
 		return nil, err
 	}
-	return &clientConn{Conn: conn, release: release}, nil
+	return &clientConn{Conn: conn, client: c.client, release: release}, nil
 }
 
 // Binding is the identity protocol's context_binding for connections to the

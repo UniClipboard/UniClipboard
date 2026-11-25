@@ -95,6 +95,23 @@ func (p *Plugin) Close(ctx context.Context) error {
 
 func (p *Plugin) SetPeerAuthority(a plugin.PeerAuthority) { p.b.SetPeerAuthority(a) }
 func (p *Plugin) SetPeerReceiver(r plugin.PeerReceiver)   { p.b.SetPeerReceiver(r) }
+func (p *Plugin) SetLinkStatusChanged(fn func(peerID string)) {
+	if p.b != nil {
+		p.b.SetLinkStatusChanged(fn)
+	}
+}
+func (p *Plugin) LinkSnapshots() map[string]rpc.PeerLinkStatus {
+	if p.b == nil {
+		return nil
+	}
+	return p.b.LinkSnapshots()
+}
+func (p *Plugin) ProbePeers(ctx context.Context, peerIDs []string) ([]rpc.PeerLinkStatus, error) {
+	if p.b == nil {
+		return nil, rpc.NewError(rpc.CodeUnavailable)
+	}
+	return p.b.ProbePeers(ctx, peerIDs)
+}
 
 func (p *Plugin) Bind(ctx context.Context, b rpc.Bind) error { return p.b.Bind(ctx, b) }
 func (p *Plugin) ApplyState(ctx context.Context, s rpc.SyncState) error {

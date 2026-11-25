@@ -15,6 +15,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
@@ -173,14 +174,30 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		return json.NewEncoder(os.Stdout).Encode(backends)
 
 	case "device list":
-		if len(args) > 1 || len(args) == 1 && args[0] != "--json" {
-			return errors.New("usage: unic device list [--json]")
+		var asJSON, refresh bool
+		for _, a := range args {
+			switch a {
+			case "--json":
+				asJSON = true
+			case "--refresh":
+				refresh = true
+			default:
+				return errors.New("usage: unic device list [--refresh] [--json]")
+			}
 		}
-		st, err := c.Status(short)
+		var st api.Status
+		var err error
+		if refresh {
+			rctx, rcancel := context.WithTimeout(ctx, 12*time.Second)
+			st, err = c.RefreshDevices(rctx, "")
+			rcancel()
+		} else {
+			st, err = c.Status(short)
+		}
 		if err != nil {
 			return err
 		}
-		if len(args) == 1 {
+		if asJSON {
 			return json.NewEncoder(os.Stdout).Encode(st)
 		}
 		printPeers(st.Peers)
@@ -424,16 +441,65 @@ func printPeers(ps []api.PeerStatus) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "ID\tNAME\tSTATE\tLAST SEEN")
 	for _, p := range ps {
-		state, seen := "offline", "never"
-		if p.Connected {
-			state = "online"
-		}
+		state, seen := peerStateSummary(p), "never"
 		if p.LastSeen > 0 {
 			seen = time.Since(time.Unix(p.LastSeen, 0)).Round(time.Second).String() + " ago"
 		}
 		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.ID, p.Name, state, seen)
 	}
 	_ = w.Flush()
+}
+
+func peerStateSummary(p api.PeerStatus) string {
+	if p.Kind == "external" {
+		if p.Enabled {
+			return "enabled"
+		}
+		return "disabled"
+	}
+	var connected, connecting bool
+	var path string
+	var latencyMs int64
+	for _, b := range p.Bindings {
+		if b.State != engine.BindingAuthorized {
+			continue
+		}
+		switch b.Connection {
+		case engine.Connected:
+			connected = true
+			if path == "" && b.ConnectionPath != "" && b.ConnectionPath != "unknown" {
+				path = b.ConnectionPath
+			}
+			if latencyMs == 0 && b.LatencyMs > 0 {
+				latencyMs = b.LatencyMs
+			}
+		case engine.Connecting:
+			connecting = true
+		}
+	}
+	switch {
+	case connected || p.Connected:
+		var detail []string
+		switch path {
+		case "direct":
+			detail = append(detail, "direct")
+		case "derp":
+			detail = append(detail, "relay")
+		case "peer_relay":
+			detail = append(detail, "peer-relay")
+		}
+		if latencyMs > 0 {
+			detail = append(detail, fmt.Sprintf("%dms", latencyMs))
+		}
+		if len(detail) > 0 {
+			return "online (" + strings.Join(detail, ", ") + ")"
+		}
+		return "online"
+	case connecting:
+		return "reconnecting"
+	default:
+		return "offline"
+	}
 }
 
 func printPending(ps []api.PendingPeer) {

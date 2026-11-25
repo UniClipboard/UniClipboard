@@ -1,0 +1,18 @@
+version = 1
+
+[nodes.mac]
+transport = "local"
+
+[nodes.windows]
+transport = "parallels"
+vm = "Windows 11"
+
+[suite]
+topology = "mesh"
+repetitions = 1
+receive_timeout_seconds = 60
+scenarios = ["wake-refresh"]
+text_bytes = [64]
+png_pixels = []
+file_bytes = []
+html_bytes = []

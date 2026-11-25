@@ -257,7 +257,11 @@ func runTray(settings *config.Manager) error {
 		}
 		close(r.nativeReady)
 		updateTray := setupTray(ctx, settings.Current().Desktop)
+		stopWake := watchSystemWake(ctx, r.socket)
 		mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
+			if stopWake != nil {
+				stopWake()
+			}
 			if stopUpdateChange != nil {
 				stopUpdateChange()
 			}

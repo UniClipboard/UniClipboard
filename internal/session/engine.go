@@ -22,6 +22,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/uniclipboard/unic/internal/syncdiag"
@@ -49,9 +50,10 @@ type Transport interface {
 }
 
 type Config struct {
-	Observer  syncdiag.Observer
-	Transport Transport
-	Logf      func(format string, args ...any)
+	Observer     syncdiag.Observer
+	Transport    Transport
+	Logf         func(format string, args ...any)
+	ProbeTimeout time.Duration // optional override for ping liveness timeout (defaults to 4s)
 }
 
 var (
@@ -80,18 +82,21 @@ type Backend struct {
 	// Keep session election/registration atomic with respect to send lookup.
 	publication sync.RWMutex
 
-	mu         sync.Mutex
-	bound      bool
-	self       string
-	st         rpc.SyncState
-	trTried    bool          // Transport.Start was ever called; Close must release it
-	trUsed     bool          // Transport.Start was called
-	trDone     chan struct{} // closed when that call returned
-	run        *runState     // non-nil while the network is up
-	recoveries map[string]recoveryObservation
-	sessions   map[string]*session
-	dialers    map[string]*dialer
-	gen        uint64
+	mu           sync.Mutex
+	bound        bool
+	self         string
+	st           rpc.SyncState
+	trTried      bool          // Transport.Start was ever called; Close must release it
+	trUsed       bool          // Transport.Start was called
+	trDone       chan struct{} // closed when that call returned
+	run          *runState     // non-nil while the network is up
+	recoveries   map[string]recoveryObservation
+	sessions     map[string]*session
+	dialers      map[string]*dialer
+	dialing      map[string]dialStatus
+	lastChecked  map[string]int64
+	onLinkChange func(string)
+	gen          uint64
 }
 
 // runState is one up period of the network.
@@ -107,7 +112,14 @@ func New(cfg Config) *Backend {
 	if cfg.Logf == nil {
 		cfg.Logf = func(string, ...any) {} // session logs name devices; never default to the global logger
 	}
-	return &Backend{cfg: cfg, recoveries: map[string]recoveryObservation{}, sessions: map[string]*session{}, dialers: map[string]*dialer{}}
+	return &Backend{
+		cfg:         cfg,
+		recoveries:  map[string]recoveryObservation{},
+		sessions:    map[string]*session{},
+		dialers:     map[string]*dialer{},
+		dialing:     map[string]dialStatus{},
+		lastChecked: map[string]int64{},
+	}
 }
 
 func (b *Backend) logf(f string, a ...any) { b.cfg.Logf(f, a...) }
@@ -223,6 +235,7 @@ func (b *Backend) down() {
 		d.cancel()
 		delete(b.dialers, id)
 	}
+	clear(b.dialing)
 	var conns []net.Conn
 	if r != nil {
 		for c := range r.conns {
@@ -494,8 +507,15 @@ func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, 
 	}
 	var s *session
 	if local && dec.SessionToken != nil {
-		s = &session{b: b, r: r, conn: conn, w: w, bodyConn: bodyConn, connID: connID, token: *dec.SessionToken, peerID: dec.PeerID, outgoing: outgoing,
-			trustRev: uint64(dec.TrustRevision), done: make(chan struct{}), exited: make(chan struct{})}
+		s = &session{
+			b: b, r: r, conn: conn, w: w, bodyConn: bodyConn, connID: connID, token: *dec.SessionToken, peerID: dec.PeerID, outgoing: outgoing,
+			trustRev: uint64(dec.TrustRevision), wlock: make(chan struct{}, 1), pongSem: make(chan struct{}, 1),
+			done: make(chan struct{}), exited: make(chan struct{}),
+		}
+		bodyConn.lastRxNs = &s.lastRxUnixNs
+		bodyConn.lastTxNs = &s.lastTxUnixNs
+		s.markRx()
+		s.markTx()
 	}
 	if rerr != nil {
 		s.abort()
@@ -590,11 +610,19 @@ type session struct {
 	trustRev    uint64
 	introWake   chan struct{}
 
-	wmu    sync.Mutex // one writer
-	done   chan struct{}
-	exited chan struct{} // closed when serving ended and the Engine was told
-	once   sync.Once
-	seq    uint64 // last event sequence sent
+	wlock        chan struct{} // buffered(1), serializes wire writes with cancellation support
+	bodyActive   atomic.Bool
+	lastRxUnixNs atomic.Int64
+	lastTxUnixNs atomic.Int64
+	probeMu      sync.Mutex
+	probes       map[string]chan struct{}
+	pongSem      chan struct{}
+	pongWG       sync.WaitGroup
+	link         peerLinkCache // guarded by b.mu
+	done         chan struct{}
+	exited       chan struct{} // closed when serving ended and the Engine was told
+	once         sync.Once
+	seq          uint64 // last event sequence sent
 }
 
 func (s *session) isDone() bool {
@@ -667,6 +695,7 @@ func (b *Backend) establish(r *runState, s *session) bool {
 	replaced := b.sessions[s.peerID]
 	s.introWake = make(chan struct{}, 1)
 	b.sessions[s.peerID] = s
+	delete(b.dialing, s.peerID)
 	s.observation = sessionObservation{epoch: epoch, started: now, observed: now}
 	recovery, recovered := b.recoveries[s.peerID]
 	delete(b.recoveries, s.peerID)
@@ -696,7 +725,16 @@ func (b *Backend) serve(s *session) {
 	err := b.recvLoop(s)
 	s.closeWith(reason(err))
 	<-introDone
+	s.pongWG.Wait()
 	b.endObservation(s)
+	b.mu.Lock()
+	if b.run == s.r && b.sessions[s.peerID] == nil {
+		ds := b.dialing[s.peerID]
+		ds.attempts = 0
+		ds.activeUntil = time.Now().Add(connectingGraceWindow)
+		b.dialing[s.peerID] = ds
+	}
+	b.mu.Unlock()
 	_ = s.event("disconnected")
 	close(s.exited)
 	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) { // recvLoop always returns an error
@@ -741,8 +779,14 @@ func (s *session) introduceLoop() {
 }
 
 func (s *session) sendIntroductions() error {
-	s.wmu.Lock()
-	defer s.wmu.Unlock()
+	ctx := context.Background()
+	if s.r != nil {
+		ctx = s.r.ctx
+	}
+	if !s.acquireWrite(ctx) {
+		return nil
+	}
+	defer s.releaseWrite()
 	s.b.mu.Lock()
 	enabled := s.b.st.Introduce && s.b.sessions[s.peerID] == s && !s.isDone()
 	peers := append([]rpc.StatePeer(nil), s.b.st.Peers...)
@@ -835,8 +879,15 @@ func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) (
 		}
 		out[i] = op
 	}
-	sess.wmu.Lock()
-	defer sess.wmu.Unlock()
+	if !sess.acquireWrite(ctx) {
+		if ctx.Err() != nil {
+			return rpc.NewError(rpc.CodeCancelled)
+		}
+		return rpc.NewError(rpc.CodeUnavailable)
+	}
+	defer sess.releaseWrite()
+	sess.bodyActive.Store(true)
+	defer sess.bodyActive.Store(false)
 	if sess.bodyConn != nil {
 		sess.bodyConn.writingBody = true
 		defer func() { sess.bodyConn.writingBody = false; _ = sess.conn.SetWriteDeadline(time.Time{}) }()
@@ -871,6 +922,15 @@ func (b *Backend) recvLoop(s *session) error {
 		typ, raw, err := s.w.ReadRaw()
 		if err != nil {
 			return err
+		}
+		s.markRx()
+		if typ == "ping" {
+			s.handlePing(raw)
+			continue
+		}
+		if typ == "pong" {
+			s.handlePong(raw)
+			continue
 		}
 		if typ == "introduce" {
 			var msg introduction
@@ -911,6 +971,8 @@ func (b *Backend) recvLoop(s *session) error {
 // A clip nobody wants is read and dropped so the stream stays in sync.
 func (b *Backend) receive(s *session, m *wire.Clip) error {
 	// Header waits remain unbounded; only a declared body uses the I/O budget.
+	s.bodyActive.Store(true)
+	defer s.bodyActive.Store(false)
 	if s.bodyConn != nil {
 		s.bodyConn.body = true
 		defer func() { s.bodyConn.body = false; _ = s.conn.SetReadDeadline(time.Time{}) }()
@@ -1106,9 +1168,12 @@ func (b *Backend) reconcile() {
 	genChanged := uint64(st.NetworkGeneration) != b.gen
 	b.gen = uint64(st.NetworkGeneration)
 	var drop []*session
+	var probeLive []*session
 	for id, s := range b.sessions {
 		if p, ok := want[id]; !ok || uint64(p.TrustRevision) != s.trustRev {
 			drop = append(drop, s)
+		} else if genChanged && !s.isDone() {
+			probeLive = append(probeLive, s)
 		}
 	}
 	for id, d := range b.dialers {
@@ -1117,10 +1182,22 @@ func (b *Backend) reconcile() {
 			delete(b.dialers, id)
 		}
 	}
+	for id := range b.dialing {
+		if _, ok := want[id]; !ok {
+			delete(b.dialing, id)
+			delete(b.lastChecked, id)
+		}
+	}
 	var start []rpc.StatePeer
 	for _, p := range st.Peers {
 		if p.Address != "" && b.dialers[p.ID] == nil {
 			start = append(start, p)
+			if !b.connectedLocked(p.ID) {
+				ds := b.dialing[p.ID]
+				ds.attempts = 0
+				ds.activeUntil = time.Now().Add(connectingGraceWindow)
+				b.dialing[p.ID] = ds
+			}
 		}
 	}
 	b.mu.Unlock()
@@ -1132,6 +1209,10 @@ func (b *Backend) reconcile() {
 	for _, s := range drop {
 		s.closeWith("revocation")
 		<-s.exited // the Engine has been told; nothing of it runs on
+	}
+	for _, s := range probeLive {
+		sess := s
+		b.spawn(r, func() { b.probeAndHeal(sess) })
 	}
 	for _, p := range start {
 		b.keepDialing(r, p)
@@ -1167,6 +1248,18 @@ func (b *Backend) keepDialing(r *runState, p rpc.StatePeer) {
 				backoff = time.Second
 				continue
 			}
+			b.mu.Lock()
+			if b.dialers[p.ID] == d && !b.connectedLocked(p.ID) {
+				ds := b.dialing[p.ID]
+				ds.inFlight = false
+				ds.attempts++
+				if ds.attempts >= maxConnectingAttempts {
+					ds.activeUntil = time.Time{}
+				}
+				b.dialing[p.ID] = ds
+			}
+			b.mu.Unlock()
+			b.notifyLinkChanged(p.ID)
 			if !wait(ctx, d.wake, backoff) {
 				return
 			}
@@ -1186,6 +1279,25 @@ func (b *Backend) keepDialing(r *runState, p rpc.StatePeer) {
 
 // dialOnce makes one attempt and reports whether a session came up.
 func (b *Backend) dialOnce(ctx context.Context, r *runState, p rpc.StatePeer) bool {
+	b.mu.Lock()
+	ds := b.dialing[p.ID]
+	wasConnecting := ds.inFlight || (time.Now().Before(ds.activeUntil) && ds.attempts < maxConnectingAttempts)
+	if ds.attempts < maxConnectingAttempts {
+		ds.inFlight = true
+		b.dialing[p.ID] = ds
+	}
+	b.mu.Unlock()
+	if !wasConnecting && ds.inFlight {
+		b.notifyLinkChanged(p.ID)
+	}
+	defer func() {
+		b.mu.Lock()
+		if cur, ok := b.dialing[p.ID]; ok && cur.inFlight {
+			cur.inFlight = false
+			b.dialing[p.ID] = cur
+		}
+		b.mu.Unlock()
+	}()
 	dctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	conn, err := b.dial(dctx, p.Address)
 	cancel()

@@ -4,7 +4,7 @@ paths:
   - e2e/twohost/README.md
   - Makefile
   - tools/docscheck
-verified: 433c51db4f0de56be53b3aa636e776a09c794218
+verified: ea95bb0259c8cb06cfe7216b47a56235ae2b814d
 ---
 # Real-machine CLI testing
 
@@ -12,7 +12,7 @@ The repository provides a node-configured harness for production CLI/service tes
 
 ## Current implementation
 
-`e2e/real` builds one Go program with controller and native worker roles. A TOML inventory declares node labels and `local` or `ssh` transport. Operating-system roles are discovered, not encoded in scenarios. OpenSSH supplies host authentication, credentials and jump-host behavior. Remote hosts do not need Go or Python.
+`e2e/real` builds one Go program with controller and native worker roles. A TOML inventory declares node labels and `local`, `ssh`, or `parallels` (`prlctl`) transport. Operating-system roles are discovered, not encoded in scenarios. OpenSSH supplies host authentication, credentials and jump-host behavior; Parallels nodes use an ephemeral token-authenticated host-bridge socket and local artifact transfer without requiring SSH or shared folders. Remote hosts do not need Go or Python.
 
 The controller snapshots tracked repository files and untracked production/harness inputs before building anything. Repository-internal file symlinks are materialized; external links are rejected. Workers and production programs are compiled from the private snapshot with CGO and VCS stamping explicitly disabled. The public manifest binds source hashes and actual artifact hashes. Later edits to the original checkout do not enter an active run.
 
@@ -74,4 +74,4 @@ The documentation checker excludes generated `.cache` trees, as it excludes othe
 
 ## Gaps
 
-Native clipboard, rendering, mobile adapters, concurrent senders, additional pairing graphs, sleep/wake and network switching remain outside this first catalog. Abrupt power loss and bounded idle crash detection are not part of cooperative service-stop acceptance. Controller operating systems require separate native acceptance even when their target workers have been verified. Actual platform/node coverage and retained failures are recorded in the [acceptance receipt](../exec/real-machine-harness.md).
+Native clipboard, rendering, mobile adapters, concurrent senders, additional pairing graphs, physical macOS AppKit `NSWorkspaceDidWakeNotification` delivery and physical Wi-Fi switching remain outside this catalog (the optional `wake-refresh` scenario with `transport = "parallels"` exercises real-Tailcat connection refresh, `POST /v1/network/changed` half-open detection, and VM freeze/resume recovery). Abrupt power loss and bounded idle crash detection are not part of cooperative service-stop acceptance. Controller operating systems require separate native acceptance even when their target workers have been verified. Actual platform/node coverage and retained failures are recorded in the [acceptance receipt](../exec/real-machine-harness.md).

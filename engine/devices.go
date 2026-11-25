@@ -9,6 +9,7 @@ import (
 
 	"github.com/uniclipboard/unic/internal/identity"
 	"github.com/uniclipboard/unic/internal/store"
+	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
 // ---- unified devices (docs/architecture/identity-and-trust.md, device contract) ----
@@ -66,6 +67,13 @@ type DeviceBinding struct {
 	LastError    string `json:"last_error,omitempty"` // a stable class, never raw backend text
 	// Connection is the live link on this path right now.
 	Connection Connection `json:"connection"`
+	// ConnectionPath is the finite transport path classification when known:
+	// "direct", "derp", "peer_relay", or "unknown". Never carries raw endpoints.
+	ConnectionPath string `json:"connection_path,omitempty"`
+	// LatencyMs is the last measured application round-trip time in milliseconds.
+	LatencyMs int64 `json:"latency_ms,omitempty"`
+	// LastCheckedMs is the Unix millisecond timestamp of the last link check.
+	LastCheckedMs int64 `json:"last_checked_ms,omitempty"`
 	// Ticket says the device proved it held a pairing ticket for this path.
 	// It explains how the request arose; it grants nothing.
 	Ticket bool `json:"ticket,omitempty"`
@@ -118,24 +126,64 @@ func deviceStoreErr(err error) *Error {
 	return retryable(newErr(CodeUnavailable, "the device database failed"))
 }
 
-func (e *Engine) toDevice(d store.Device, bs []store.Binding) Device {
+func (e *Engine) toDevice(d store.Device, bs []store.Binding, links map[PluginID]map[string]rpc.PeerLinkStatus) Device {
 	out := Device{ID: d.ID, Name: d.Name, ReportedName: d.ReportedName, Trust: d.Trust, Revision: d.Revision, UpdatedMs: d.UpdatedMs,
 		Fingerprint: identity.Fingerprint(e.ident.Public(), d.PublicKey)}
 	for _, b := range bs {
-		out.Bindings = append(out.Bindings, e.toBinding(b))
+		out.Bindings = append(out.Bindings, e.toBindingWithLinks(b, links))
 	}
 	return out
 }
 
 func (e *Engine) toBinding(b store.Binding) DeviceBinding {
+	return e.toBindingWithLinks(b, e.peerLinkSnapshots())
+}
+
+func (e *Engine) toBindingWithLinks(b store.Binding, links map[PluginID]map[string]rpc.PeerLinkStatus) DeviceBinding {
 	conn := Disconnected
+	var path string
+	var latencyMs, checkedMs int64
 	for _, pb := range e.peerProcs {
-		if string(pb.id) == b.InstanceID && pb.connected(b.DeviceID) {
+		if string(pb.id) != b.InstanceID {
+			continue
+		}
+		var st rpc.PeerLinkStatus
+		var hasSt bool
+		if snaps := links[pb.id]; snaps != nil {
+			st, hasSt = snaps[b.DeviceID]
+		}
+		if pb.connected(b.DeviceID) {
 			conn = Connected
+			if hasSt && st.Validate() == nil {
+				if st.Path != "" {
+					path = st.Path
+				}
+				latencyMs = st.LatencyMs
+				checkedMs = st.LastCheckedMs
+			}
+		} else if hasSt && st.Validate() == nil {
+			if st.State == rpc.LinkStateConnecting && b.State == BindingAuthorized {
+				conn = Connecting
+			}
+			checkedMs = st.LastCheckedMs
 		}
 	}
 	return DeviceBinding{ID: b.ID, InstanceID: b.InstanceID, State: b.State, SyncEnabled: b.SyncEnabled,
-		Revision: b.Revision, LastActiveMs: b.LastActiveMs, LastError: b.LastError, Connection: conn, Ticket: b.Ticket}
+		Revision: b.Revision, LastActiveMs: b.LastActiveMs, LastError: b.LastError, Connection: conn,
+		ConnectionPath: path, LatencyMs: latencyMs, LastCheckedMs: checkedMs, Ticket: b.Ticket}
+}
+
+func (e *Engine) peerLinkSnapshots() map[PluginID]map[string]rpc.PeerLinkStatus {
+	if len(e.peerProcs) == 0 {
+		return nil
+	}
+	out := make(map[PluginID]map[string]rpc.PeerLinkStatus, len(e.peerProcs))
+	for _, pb := range e.peerProcs {
+		if snaps := pb.linkSnapshots(); len(snaps) > 0 {
+			out[pb.id] = snaps
+		}
+	}
+	return out
 }
 
 func (e *Engine) deviceChanged(id string) {
@@ -165,6 +213,7 @@ func (e *Engine) deviceList() ([]Device, *Error) {
 	if err != nil {
 		return nil, deviceStoreErr(err)
 	}
+	links := e.peerLinkSnapshots()
 	out := make([]Device, 0, len(ds))
 	for _, d := range ds {
 		if d.Trust == store.TrustRevoked {
@@ -174,7 +223,7 @@ func (e *Engine) deviceList() ([]Device, *Error) {
 		if err != nil {
 			return nil, deviceStoreErr(err)
 		}
-		out = append(out, e.toDevice(d, bs))
+		out = append(out, e.toDevice(d, bs, links))
 	}
 	return out, nil
 }
@@ -200,7 +249,7 @@ func (e *Engine) loadDevice(id string) (Device, error) {
 	if err != nil {
 		return Device{}, deviceStoreErr(err)
 	}
-	return e.toDevice(d, bs), nil
+	return e.toDevice(d, bs, e.peerLinkSnapshots()), nil
 }
 
 func validDeviceName(s string) bool {

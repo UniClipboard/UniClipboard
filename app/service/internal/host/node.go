@@ -69,6 +69,8 @@ type Node struct {
 	runCtx        context.Context
 	logf          func(string, ...any)
 	customReceive bool
+	customNet     bool
+	wake          wakeState
 
 	dataDir          string
 	luaDir           string
@@ -103,7 +105,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}
 	// Install the notification after Node exists. Its hub is allocated before
 	// Engine.New, so diagnostics may report initialization without a GUI.
-	n := &Node{peer: peer, dataDir: o.Dir}
+	n := &Node{peer: peer, dataDir: o.Dir, customNet: o.Transport != nil}
 	obsOpts.Changed = func() { n.hub.emit(api.Event{Kind: "diagnostics"}) }
 	diagnostics := observability.New(obsOpts)
 	n.diagnostics = diagnostics
@@ -261,12 +263,17 @@ func (n *Node) Start(ctx context.Context) error {
 		n.wg.Add(1)
 		go func() { defer n.wg.Done(); runner.Run(runCtx) }()
 	}
+	if !n.customNet {
+		n.wg.Add(1)
+		go func() { defer n.wg.Done(); n.watchHostWake(runCtx) }()
+	}
 	return nil
 }
 
 // Close stops everything and releases the state directory.
 func (n *Node) Close(ctx context.Context) error {
 	n.peer.ExpectStop()
+	n.wake.stop()
 	if n.cancel != nil {
 		n.cancel()
 	}

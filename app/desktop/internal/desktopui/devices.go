@@ -167,6 +167,19 @@ func pendingBindings(v device) []deviceBinding {
 	return out
 }
 
+func (d *viewState) bindingPathLabel(path string) string {
+	switch path {
+	case "direct":
+		return d.tr("直连")
+	case "derp":
+		return d.tr("中继")
+	case "peer_relay":
+		return d.tr("节点中继")
+	default:
+		return ""
+	}
+}
+
 func (d *viewState) deviceAggregateStatus(v device) (text string, tone desktopkit.StatusTone, online bool) {
 	if v.id == "local" {
 		return d.tr("本机"), desktopkit.StatusPositive, true
@@ -177,11 +190,19 @@ func (d *viewState) deviceAggregateStatus(v device) (text string, tone desktopki
 	}
 	enabled := 0
 	connected := 0
+	connecting := 0
+	knownPath := ""
 	for _, b := range auth {
 		if b.syncEnabled {
 			enabled++
-			if b.connection == "connected" {
+			switch b.connection {
+			case "connected":
 				connected++
+				if knownPath == "" {
+					knownPath = d.bindingPathLabel(b.connectionPath)
+				}
+			case "connecting":
+				connecting++
 			}
 		}
 	}
@@ -192,7 +213,13 @@ func (d *viewState) deviceAggregateStatus(v device) (text string, tone desktopki
 		if len(auth) > 1 && connected < len(auth) {
 			return fmt.Sprintf(d.tr("在线 · %d/%d"), connected, len(auth)), desktopkit.StatusPositive, true
 		}
+		if knownPath != "" {
+			return fmt.Sprintf(d.tr("在线 · %s"), knownPath), desktopkit.StatusPositive, true
+		}
 		return d.tr("在线"), desktopkit.StatusPositive, true
+	}
+	if connecting > 0 {
+		return d.tr("重连中"), desktopkit.StatusWarning, false
 	}
 	return d.tr("离线"), desktopkit.StatusNeutral, false
 }
@@ -663,6 +690,20 @@ func (d *viewState) devicesPage(c *ui.Context, k desktopkit.Kit) {
 				d.statusPill(c.Key("summary-pill"), k, fmt.Sprintf(d.tr("%d 台在线 · 共 %d 台"), onlinePeers, len(d.devices)), desktopkit.StatusPositive)
 			}
 			ui.Spacer(c)
+			refreshLabel := d.tr("刷新状态")
+			if d.refreshingDevices && d.refreshingDeviceID == "" {
+				refreshLabel = d.tr("检测中…")
+			}
+			if k.Button(c.Key("refresh-devices"), refreshLabel, desktopkit.ButtonProps{
+				Variant:  desktopkit.Subtle,
+				Size:     desktopkit.SizeSmall,
+				Icon:     desktopkit.IconRetry,
+				Disabled: d.refreshingDevices || (d.live != nil && d.live.busy),
+			}).Clicked() {
+				if d.live != nil {
+					d.refreshLiveDevices("")
+				}
+			}
 			if k.Button(c.Key("add-device"), d.tr("添加设备"), desktopkit.ButtonProps{
 				Variant: desktopkit.Primary,
 				Size:    desktopkit.SizeSmall,
@@ -808,13 +849,17 @@ func (d *viewState) deviceOverviewCanvas(c *ui.Context, k desktopkit.Kit, winWid
 		if len(pendingBindings(v)) > 0 {
 			return 0
 		}
-		if _, _, online := d.deviceAggregateStatus(v); online {
+		_, tone, online := d.deviceAggregateStatus(v)
+		if online {
 			return 1
 		}
-		if len(authorizedBindings(v)) > 0 {
+		if tone == desktopkit.StatusWarning {
 			return 2
 		}
-		return 3
+		if len(authorizedBindings(v)) > 0 {
+			return 3
+		}
+		return 4
 	}
 	slices.SortStableFunc(peers, func(a, b device) int {
 		return deviceScore(a) - deviceScore(b)
@@ -1372,6 +1417,22 @@ func (d *viewState) trustedDeviceDetail(c *ui.Context, k desktopkit.Kit, v *devi
 		ui.Column(c.Key("sync-paths")).Gap(8).Children(func() {
 			ui.Row(c.Key("head")).AlignItems(ui.Center).Gap(8).Children(func() {
 				k.Text(c, fmt.Sprintf(d.tr("同步路径 (%d)"), len(auth)), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Emphasized: true}).Grow(1)
+				if len(auth) > 0 {
+					probeLabel := d.tr("检测连接")
+					if d.refreshingDevices && (d.refreshingDeviceID == "" || d.refreshingDeviceID == v.id) {
+						probeLabel = d.tr("检测中…")
+					}
+					if k.Button(c.Key("probe-device"), probeLabel, desktopkit.ButtonProps{
+						Variant:  desktopkit.Subtle,
+						Size:     desktopkit.SizeSmall,
+						Icon:     desktopkit.IconRetry,
+						Disabled: d.refreshingDevices || busy,
+					}).Clicked() {
+						if d.live != nil {
+							d.refreshLiveDevices(v.id)
+						}
+					}
+				}
 				addTip := ""
 				if len(unbound) == 0 {
 					addTip = d.tr("所有运行中的可配对同步渠道均已关联")
@@ -1417,14 +1478,28 @@ func (d *viewState) trustedDeviceDetail(c *ui.Context, k desktopkit.Kit, v *devi
 						chInfo := d.syncChannelByID(b.instanceID)
 						beStopped := chInfo != nil && chInfo.state != "running"
 						connText := d.tr("未连接")
-						if !b.syncEnabled {
+						switch {
+						case !b.syncEnabled:
 							connText = d.tr("已暂停")
-						} else if b.connection == "connected" {
-							connText = d.tr("已连接")
+						case b.connection == "connected":
+							parts := []string{d.tr("已连接")}
+							if pLabel := d.bindingPathLabel(b.connectionPath); pLabel != "" {
+								parts = append(parts, pLabel)
+							}
+							if b.latencyMs > 0 {
+								parts = append(parts, fmt.Sprintf("%d ms", b.latencyMs))
+							}
+							connText = strings.Join(parts, " · ")
+						case b.connection == "connecting":
+							connText = d.tr("正在重连…")
 						}
 						sub := b.implementationID + " · " + connText
+						var metaParts []string
+						if checked := d.displayRelativeTime(b.lastChecked); checked != "" {
+							metaParts = append(metaParts, d.tr("上次检测 ")+checked)
+						}
 						if act := d.displayRelativeTime(b.lastActive); act != "" {
-							sub += " · " + act
+							metaParts = append(metaParts, d.tr("最近活动 ")+act)
 						}
 						ui.Row(c.Key("path-"+b.id)).Padding(11, 13).Gap(10).AlignItems(ui.Center).Children(func() {
 							ui.Column(c.Key("info")).Gap(2).Grow(1).MinWidth(0).Children(func() {
@@ -1435,6 +1510,9 @@ func (d *viewState) trustedDeviceDetail(c *ui.Context, k desktopkit.Kit, v *devi
 									}
 								})
 								k.Text(c.Key("sub"), sub, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Truncate: true})
+								if len(metaParts) > 0 {
+									k.Text(c.Key("meta-time"), strings.Join(metaParts, " · "), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneTertiary, Truncate: true})
+								}
 								if b.lastError != "" && b.syncEnabled && !beStopped {
 									k.Text(c.Key("err"), d.bindingErrorLabel(b.lastError), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneCritical})
 								}

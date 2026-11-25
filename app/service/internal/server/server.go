@@ -47,6 +47,54 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 		reply(w, 200, st)
 	})
 
+	mux.HandleFunc("POST /v1/network/changed", func(w http.ResponseWriter, r *http.Request) {
+		notifier, ok := b.(interface {
+			NotifyNetworkChanged(context.Context) error
+		})
+		if !ok {
+			fail(w, 501, errors.New("network notifications unavailable"))
+			return
+		}
+		if err := notifier.NotifyNetworkChanged(r.Context()); err != nil {
+			fail(w, 500, err)
+			return
+		}
+		reply(w, 200, map[string]bool{"ok": true})
+	})
+
+	mux.HandleFunc("POST /v1/devices/refresh", func(w http.ResponseWriter, r *http.Request) {
+		refresher, ok := b.(interface {
+			RefreshConnections(context.Context, string) (api.Status, error)
+		})
+		if !ok {
+			fail(w, 501, errors.New("connection refresh unavailable"))
+			return
+		}
+		var body struct {
+			DeviceID string `json:"device_id"`
+		}
+		if r.Body != nil {
+			dec := json.NewDecoder(io.LimitReader(r.Body, 4<<10))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+				fail(w, 400, errors.New(`body must be {} or {"device_id": "..."}`))
+				return
+			}
+		}
+		st, err := refresher.RefreshConnections(r.Context(), strings.TrimSpace(body.DeviceID))
+		if err != nil {
+			fail(w, 502, err)
+			return
+		}
+		if st.Peers == nil {
+			st.Peers = []api.PeerStatus{}
+		}
+		if st.Pending == nil {
+			st.Pending = []api.PendingPeer{}
+		}
+		reply(w, 200, st)
+	})
+
 	// The configuration in effect, where it lives, and why the last edit was
 	// rejected (if it was).
 	mux.HandleFunc("PUT /v1/config", func(w http.ResponseWriter, r *http.Request) {

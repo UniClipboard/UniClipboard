@@ -8416,5 +8416,59 @@
     "ja": "アプリを再起動できませんでした。手動で終了して再起動してください。",
     "pt-BR": "Não foi possível reiniciar o aplicativo. Saia e reabra o aplicativo manualmente.",
     "ru": "Не удалось перезапустить приложение. Закройте и откройте приложение вручную."
+  },
+  "节点中继": {
+    "en": "Peer relay",
+    "ja": "ピア中継",
+    "pt-BR": "Retransmissão por par",
+    "ru": "Ретрансляция через узел"
+  },
+  "重连中": {
+    "en": "Reconnecting",
+    "ja": "再接続中",
+    "pt-BR": "Reconectando",
+    "ru": "Переподключение"
+  },
+  "正在重连…": {
+    "en": "Reconnecting…",
+    "ja": "再接続中…",
+    "pt-BR": "Reconectando…",
+    "ru": "Переподключение…"
+  },
+  "刷新状态": {
+    "en": "Refresh Status",
+    "ja": "状態を更新",
+    "pt-BR": "Atualizar status",
+    "ru": "Обновить статус"
+  },
+  "检测连接": {
+    "en": "Check Connection",
+    "ja": "接続を確認",
+    "pt-BR": "Verificar conexão",
+    "ru": "Проверить связь"
+  },
+  "检测中…": {
+    "en": "Checking…",
+    "ja": "確認中…",
+    "pt-BR": "Verificando…",
+    "ru": "Проверка…"
+  },
+  "上次检测 ": {
+    "en": "Checked ",
+    "ja": "確認 ",
+    "pt-BR": "Verificado ",
+    "ru": "Проверка: "
+  },
+  "在线 · %s": {
+    "en": "Online · %s",
+    "ja": "オンライン · %s",
+    "pt-BR": "Online · %s",
+    "ru": "В сети · %s"
+  },
+  "无法刷新连接状态，请重试。": {
+    "en": "Could not refresh connection status. Please try again.",
+    "ja": "接続状態を更新できませんでした。もう一度お試しください。",
+    "pt-BR": "Não foi possível atualizar o status da conexão. Tente novamente.",
+    "ru": "Не удалось обновить статус подключения. Повторите попытку."
   }
 }

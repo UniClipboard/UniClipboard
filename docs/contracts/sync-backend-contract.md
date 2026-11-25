@@ -212,3 +212,10 @@ A receive error or aborted batch ends that session instead of draining an unfini
 ### Concurrent receive handlers
 
 The RPC reader accepts a receive root before its child requests, but their handlers run concurrently. An admitted child waits for its granted receive root to publish state, bounded by the grant expiry and call cancellation. The proxy then checks both the actual parent ID and receive ID. Handler scheduling cannot turn a valid admitted part into a permission failure. Unknown grants, mismatched parents, duplicate consumption and out-of-order parts remain rejected.
+
+## Peer session liveness probes and link inspection
+
+Built-in `peer_sessions` connections support lightweight authenticated control frames `{"t":"ping","id":"<nonce>"}` and `{"t":"pong","id":"<nonce>"}` (wire version remains 1). No periodic background probes run while idle:
+
+- When `NetworkGeneration` advances (e.g. host sleep/wake or interface change), the built-in session backend resets dial backoff for disconnected peers and launches a bounded asynchronous `ping`/`pong` warmup probe (4s timeout) on each live session. Sessions that fail to respond while idle are closed promptly so fresh recovery starts before the next clipboard copy. Active bulk body transfers with recent I/O progress are not falsely closed by a concurrent probe.
+- Optional in-process capability `plugin.PeerLinkInspector` (`LinkSnapshots`, `ProbePeers`) exposes sanitized per-peer link status (`connected` / `connecting` / `disconnected`, finite path category `direct` / `derp` / `peer_relay` / `unknown`, `latency_ms`, and `last_checked_ms`) for explicit user-triggered connection refreshes. For `builtin.tailcat`, incoming paths use fresh `Server.Status()` snapshots and outgoing active checks may run one bounded `Client.DiscoPing` exclusively during explicit manual refresh, reducing the result to a finite category inside `internal/tcnet` without feeding passive OTLP path metrics. Backends that do not implement `PeerLinkInspector` continue to work unchanged.

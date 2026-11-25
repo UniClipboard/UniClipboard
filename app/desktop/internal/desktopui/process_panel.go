@@ -156,6 +156,9 @@ func (p *ProcessPanel) release(q *quickPanelState, destroy bool) {
 	if destroy && w != nil {
 		w.Destroy()
 	}
+	// Closed window callbacks can outlive the native window. Drop the
+	// cancelled binding and projected rows once the view is gone.
+	q.live, q.entries, q.rows = nil, nil, nil
 }
 
 // SetExternalShortcut exposes the tray's registration receipt without owning a

@@ -17,6 +17,7 @@ type lab struct {
 type nodeConfig struct {
 	Transport string `toml:"transport"`
 	Host      string `toml:"host"`
+	VM        string `toml:"vm"`
 }
 type suiteConfig struct {
 	DirectoryBytes        []int64  `toml:"directory_bytes" json:"directory_bytes,omitempty"`
@@ -50,15 +51,19 @@ func readLab(path string) (lab, error) {
 		}
 		switch n.Transport {
 		case "local":
-			if n.Host != "" {
-				return c, fmt.Errorf("local node %s cannot have a host", name)
+			if n.Host != "" || n.VM != "" {
+				return c, fmt.Errorf("local node %s cannot have a host or vm", name)
 			}
 		case "ssh":
-			if n.Host == "" || strings.HasPrefix(n.Host, "-") || strings.ContainsAny(n.Host, " \t\r\n\x00") {
+			if n.VM != "" || n.Host == "" || strings.HasPrefix(n.Host, "-") || strings.ContainsAny(n.Host, " \t\r\n\x00") {
 				return c, fmt.Errorf("invalid SSH host for %s", name)
 			}
+		case "parallels":
+			if n.Host != "" || n.VM == "" || strings.HasPrefix(n.VM, "-") || strings.ContainsAny(n.VM, "\r\n\x00") {
+				return c, fmt.Errorf("invalid Parallels vm for %s", name)
+			}
 		default:
-			return c, fmt.Errorf("node %s requires transport=local or ssh", name)
+			return c, fmt.Errorf("node %s requires transport=local, ssh or parallels", name)
 		}
 	}
 	s := c.Suite
@@ -75,7 +80,7 @@ func readLab(path string) (lab, error) {
 		}
 		seen[v] = true
 		switch v {
-		case "contract", "pairwise", "mesh", "isolation", "directory", "directory-revoke", "directory-crash":
+		case "contract", "pairwise", "mesh", "isolation", "directory", "directory-revoke", "directory-crash", "wake-refresh":
 		default:
 			return c, fmt.Errorf("unknown scenario: %s", v)
 		}

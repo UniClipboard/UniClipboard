@@ -817,6 +817,11 @@ func (c *controller) runScenarios(ctx context.Context) error {
 			return err
 		}
 	}
+	if enabled["wake-refresh"] {
+		if err := c.wakeRefresh(ctx); err != nil {
+			return err
+		}
+	}
 	if enabled["isolation"] {
 		return c.isolation(ctx)
 	}

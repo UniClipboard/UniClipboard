@@ -34,10 +34,12 @@ func mainCommand(ctx context.Context, args []string) error {
 	if args[0] == "worker" {
 		runID := fs.String("run-id", "", "run identity")
 		name := fs.String("node", "", "node label")
+		controlAddr := fs.String("control-addr", "", "optional host control TCP address")
+		controlTokenFile := fs.String("control-token-file", "", "optional private file containing one-time control token")
 		if err := fs.Parse(args[1:]); err != nil {
 			return err
 		}
-		return workerMain(ctx, *runID, *name)
+		return workerMain(ctx, *runID, *name, *controlAddr, *controlTokenFile)
 	}
 	if args[0] != "doctor" && args[0] != "run" && args[0] != "plan" {
 		return fmt.Errorf("unknown harness command")
@@ -97,7 +99,36 @@ func mainCommand(ctx context.Context, args []string) error {
 	if err = os.MkdirAll(c.private, 0700); err != nil {
 		return err
 	}
-	c.manifest = manifest{Version: 1, RunID: runID, PlannedMeasurements: plannedMeasurements(cfg), PayloadBound: plannedPayloadBound(cfg), Mode: args[0], Status: "running", Started: time.Now().UTC(), Suite: cfg.Suite, SharedHostControl: *allowShared, Limits: []string{"System clipboard, native rendering, sleep/wake and network switching are not exercised.", "HTML submission uses a test injector through the production local API; other content uses the production CLI.", "Distinct OS machine identities do not attest bare-metal hardware or exclude virtual machines.", "Network paths remain unknown unless observed independently; SSH reachability does not prove a direct synchronization path.", "Negative checks use bounded observation windows. Stops use the observed service generation; Unix SIGTERM or Windows termination are fallbacks. Forced stops are recorded.", "Three samples do not support a reliable tail-latency percentile. Inspect all raw samples and bounds."}}
+	limits := []string{
+		"System clipboard, native rendering, sleep/wake and network switching are not exercised.",
+		"HTML submission uses a test injector through the production local API; other content uses the production CLI.",
+		"Distinct OS machine identities do not attest bare-metal hardware or exclude virtual machines.",
+		"Network paths remain unknown unless observed independently; SSH or Parallels transport reachability does not prove a direct synchronization path.",
+		"Negative checks use bounded observation windows. Stops use the observed service generation; Unix SIGTERM or Windows termination are fallbacks. Forced stops are recorded.",
+		"Three samples do not support a reliable tail-latency percentile. Inspect all raw samples and bounds.",
+	}
+	hasWake := false
+	for _, s := range cfg.Suite.Scenarios {
+		if s == "wake-refresh" {
+			hasWake = true
+			break
+		}
+	}
+	if hasWake {
+		hasParallels := false
+		for _, n := range cfg.Nodes {
+			if n.Transport == "parallels" {
+				hasParallels = true
+				break
+			}
+		}
+		if hasParallels {
+			limits[0] = "System clipboard, native rendering, physical OS sleep/wake UI hooks (e.g. AppKit NSWorkspaceDidWakeNotification) and physical network interface switching are not exercised; wake-refresh exercises Parallels VM pause/resume and service POST /v1/network/changed."
+		} else {
+			limits[0] = "System clipboard, native rendering, physical OS sleep/wake and physical network interface switching are not exercised; wake-refresh exercises service POST /v1/network/changed and manual connection refresh."
+		}
+	}
+	c.manifest = manifest{Version: 1, RunID: runID, PlannedMeasurements: plannedMeasurements(cfg), PayloadBound: plannedPayloadBound(cfg), Mode: args[0], Status: "running", Started: time.Now().UTC(), Suite: cfg.Suite, SharedHostControl: *allowShared, Limits: limits}
 	c.manifest.KeepPrivate = *keepPrivate
 	if args[0] == "doctor" {
 		c.manifest.PlannedMeasurements = 0
@@ -321,6 +352,9 @@ func (c *controller) startHeartbeat(n *node) {
 			case <-c.heartbeatCtx.Done():
 				return
 			case <-ticker.C:
+				if n.paused.Load() {
+					continue
+				}
 				probe, done := context.WithTimeout(context.Background(), 15*time.Second)
 				_ = n.action(probe, "clock", nil)
 				done()

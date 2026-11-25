@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf16"
 )
@@ -25,22 +26,26 @@ type controlMessage struct {
 
 type platform struct{ OS, Arch, Bootstrap string }
 type node struct {
-	name     string
-	config   nodeConfig
-	platform platform
-	hello    hello
-	hashes   map[string]string
-	cmd      *exec.Cmd
-	input    io.WriteCloser
-	replies  chan controlMessage
-	done     chan error
-	mutex    sync.Mutex
-	sequence uint64
-	broken   bool
-	private  string
-	cleanup  *logsResult
-	running  bool
-	deviceID string
+	name        string
+	config      nodeConfig
+	platform    platform
+	hostIP      string
+	hello       hello
+	hashes      map[string]string
+	cmd         *exec.Cmd
+	input       io.WriteCloser
+	controlConn io.Closer
+	stderrFile  *os.File
+	replies     chan controlMessage
+	done        chan error
+	mutex       sync.Mutex
+	sequence    uint64
+	broken      bool
+	paused      atomic.Bool
+	private     string
+	cleanup     *logsResult
+	running     bool
+	deviceID    string
 }
 
 func ps(script string) string {
@@ -70,6 +75,9 @@ func detect(ctx context.Context, c nodeConfig) (platform, error) {
 	if c.Transport == "local" {
 		return platform{OS: runtime.GOOS, Arch: runtime.GOARCH}, nil
 	}
+	if c.Transport == "parallels" {
+		return parallelsDetect(ctx, c.VM)
+	}
 	probe, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
 	b, err := remote(probe, c.Host, "uname -s -m")
@@ -97,11 +105,20 @@ func detect(ctx context.Context, c nodeConfig) (platform, error) {
 }
 func (n *node) bootstrap(ctx context.Context, worker, runID string) error {
 	var cmd *exec.Cmd
-	if n.config.Transport == "local" {
+	var stdout io.ReadCloser
+	var stderr *os.File
+	var err error
+	switch n.config.Transport {
+	case "parallels":
+		stdout, n.input, cmd, err = n.bootstrapParallels(ctx, worker, runID)
+		if err != nil {
+			return err
+		}
+		stderr = n.stderrFile
+	case "local":
 		cmd = exec.Command(worker, "worker", "--run-id", runID, "--node", n.name)
-	} else {
+	default:
 		var b []byte
-		var err error
 		if n.platform.OS == "windows" {
 			script := "$p=Join-Path ([IO.Path]::GetTempPath()) ('unic-e2e-'+[Guid]::NewGuid().ToString('N')); [IO.Directory]::CreateDirectory($p) | Out-Null; [IO.File]::WriteAllText((Join-Path $p 'owner')," + quotePS(runID) + "); [Console]::WriteLine($p)"
 			b, err = remote(ctx, n.config.Host, ps(script))
@@ -134,23 +151,24 @@ func (n *node) bootstrap(ctx context.Context, worker, runID string) error {
 		}
 		cmd = exec.Command("ssh", sshArgs(n.config.Host, invoke)...)
 	}
-	var err error
-	n.input, err = cmd.StdinPipe()
-	if err != nil {
-		return err
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-	stderr, err := os.OpenFile(n.private, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-	if err != nil {
-		return err
-	}
-	cmd.Stderr = stderr
-	if err = cmd.Start(); err != nil {
-		_ = stderr.Close()
-		return fmt.Errorf("worker_start_failed")
+	if n.config.Transport != "parallels" {
+		n.input, err = cmd.StdinPipe()
+		if err != nil {
+			return err
+		}
+		stdout, err = cmd.StdoutPipe()
+		if err != nil {
+			return err
+		}
+		stderr, err = os.OpenFile(n.private, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+		if err != nil {
+			return err
+		}
+		cmd.Stderr = stderr
+		if err = cmd.Start(); err != nil {
+			_ = stderr.Close()
+			return fmt.Errorf("worker_start_failed")
+		}
 	}
 	n.cmd = cmd
 	n.done = make(chan error, 1)
@@ -159,7 +177,9 @@ func (n *node) bootstrap(ctx context.Context, worker, runID string) error {
 	go func() {
 		<-readFinished
 		err := cmd.Wait()
-		_ = stderr.Close()
+		if stderr != nil {
+			_ = stderr.Close()
+		}
 		n.done <- err
 	}()
 	go func() {
@@ -186,6 +206,9 @@ func (n *node) copy(ctx context.Context, source, dest string) error {
 			return err
 		}
 		return os.WriteFile(dest, b, 0700)
+	}
+	if n.config.Transport == "parallels" {
+		return n.parallelsCopy(ctx, source, dest)
 	}
 	_, err := command(ctx, "", nil, "scp", "-C", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "--", source, n.config.Host+":"+strings.ReplaceAll(dest, "\\", "/"))
 	if err != nil {
@@ -263,6 +286,11 @@ func (n *node) cli(ctx context.Context, args ...string) (cliResult, error) {
 }
 func (n *node) stop(ctx context.Context) error { return n.action(ctx, "stop", nil) }
 func (n *node) close(runID string, keep bool) error {
+	if n.config.Transport == "parallels" && n.paused.Swap(false) {
+		rctx, rcancel := context.WithTimeout(context.Background(), 20*time.Second)
+		_ = parallelsResume(rctx, n.config.VM)
+		rcancel()
+	}
 	if n.cmd == nil {
 		if keep {
 			return nil
@@ -274,6 +302,9 @@ func (n *node) close(runID string, keep bool) error {
 	var result logsResult
 	err := n.call(ctx, "close", keep, &result)
 	_ = n.input.Close()
+	if n.controlConn != nil && n.controlConn != n.input {
+		_ = n.controlConn.Close()
+	}
 	select {
 	case waitErr := <-n.done:
 		if waitErr != nil && err == nil {
@@ -308,6 +339,9 @@ func (n *node) removeBootstrap(runID string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
+	if n.config.Transport == "parallels" {
+		return n.removeParallelsBootstrap(ctx, runID)
+	}
 	dir := n.platform.Bootstrap
 	var script string
 	if n.platform.OS == "windows" {

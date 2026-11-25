@@ -92,6 +92,7 @@ type targetOutcome struct {
 }
 type manifest struct {
 	DirectoryChecks     []directoryCheck `json:"directory_checks,omitempty"`
+	WakeChecks          []wakeCheck      `json:"wake_checks,omitempty"`
 	KeepPrivate         bool             `json:"keep_private"`
 	PrivateRemoved      bool             `json:"controller_private_removed"`
 	Outcomes            []targetOutcome  `json:"target_outcomes"`
@@ -203,6 +204,17 @@ func (c *controller) report() error {
 			fmt.Fprintf(&text, "| %s | %s | %s | %.2f | %s |\n", v.Node, v.Case, v.Result, v.Milliseconds, v.Detail)
 		}
 		text.WriteString("\nSee target outcomes for full independent expected/received tree inventories and sampled resources. RSS is sampled, not an allocator high-water mark. Open staging/fixture descriptors are measured on Linux only; -1 means unavailable. Submit and verified times include CLI/control costs. Pure network transfer and exact scan/preparation durations are not inferred from combined timers.\n")
+	}
+	if len(c.manifest.WakeChecks) > 0 {
+		text.WriteString("\n## Wake and connection refresh checks\n\n| Node | Peer | Case | Result | Measured ms | Path | RTT ms | Detail |\n|---|---|---|---|---:|---|---:|---|\n")
+		for _, v := range c.manifest.WakeChecks {
+			path := v.Path
+			if path == "" {
+				path = "-"
+			}
+			fmt.Fprintf(&text, "| %s | %s | %s | %s | %.2f | %s | %d | %s |\n", v.Node, v.Peer, v.Case, v.Result, v.Milliseconds, path, v.LatencyMS, v.Detail)
+		}
+		text.WriteString("\nParallels VM pause/resume exercises half-open peer freeze, wall-clock jump recovery and wake-triggered `NotifyNetworkChanged` probing over real Tailcat; it does not substitute for physical macOS AppKit `NSWorkspaceDidWakeNotification` or physical Wi-Fi switching.\n")
 	}
 	text.WriteString("\n## Receive latency\n\nReceive estimates include submitting-client startup, IPC, commit, transport and receiver storage. HTML uses the production local API injector. They exclude controller-side SSH, export and hash verification round trips. `verified_ms` separately includes those control costs. Native clock exchanges bracket each payload cell. Per-sample bounds include both node clock uncertainties, timestamp quantization and observed calibration drift. Bounds are clock bounds, not statistical confidence intervals. A bound reaching zero cannot establish a precise one-way latency. No network path is inferred from the SSH route.\n\n")
 	type group struct{ samples []sample }

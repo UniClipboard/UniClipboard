@@ -1,6 +1,6 @@
 # Real-machine CLI harness
 
-Run one test suite against any configured set of macOS, Windows and Linux hosts. The controller uses local processes or OpenSSH to deploy a native Go worker. Workers execute production `unic` and `unicd` in private profiles. SSH carries control and deployment traffic; clipboard content travels through real unic/tailcat connections.
+Run one test suite against any configured set of macOS, Windows and Linux hosts. The controller uses local processes, OpenSSH, or Parallels Desktop (`prlctl`) to deploy a native Go worker. Workers execute production `unic` and `unicd` in private profiles. Control/deployment traffic stays on local pipes, SSH, or an ephemeral token-authenticated host-bridge socket; clipboard content travels through real unic/tailcat connections.
 
 See the [three-machine acceptance and retained failures](../../docs/exec/real-machine-harness.md) for executed coverage.
 
@@ -48,7 +48,7 @@ file_bytes = [0, 1024, 1048576, 16777216, 104857600]
 html_bytes = [1024, 65536, 1048576]
 ```
 
-Node names are arbitrary labels, not operating-system roles. Use 1–32 ASCII letters, digits, underscores or hyphens, starting with a letter. A local node cannot have `host`. An SSH node requires a host or alias accepted by OpenSSH. Accounts, keys and jump-host details stay in your SSH configuration. The controller need not be a test node: all nodes can use SSH.
+Node names are arbitrary labels, not operating-system roles. Use 1–32 ASCII letters, digits, underscores or hyphens, starting with a letter. A `local` node cannot have `host` or `vm`. An `ssh` node requires a `host` alias accepted by OpenSSH. A `parallels` node requires `vm` (a running Parallels Desktop VM name/UUID accessible via `prlctl` on macOS, without needing SSH or shared folders). Accounts, keys and jump-host details stay in your SSH configuration. The controller need not be a test node: all nodes can use SSH or Parallels.
 
 Add another node table to add another machine. No scenario source changes are required. Unknown configuration fields, invalid sizes and duplicate scenario selections fail validation.
 
@@ -80,6 +80,7 @@ Scenario selection is a set. Execution order is contract, pairwise, mesh, then i
 - `pairwise`: start only each selected pair of services, approve that pair and measure both directions. Other workers remain available, but their services are stopped. For N hosts there are N(N−1)/2 pairs and N(N−1) directed links.
 - `mesh`: start and mutually pair all nodes. Each sender submits once per payload/repetition. Every other node must receive exactly one matching record. Each receiver contributes its own sample. Samples share a case ID and a last-receiver latency estimate. For exactly two nodes, mesh also supplies the isolated pairwise baseline instead of repeating identical work.
 - `isolation`: seed durable history, stop/restart all services, assert unchanged device identities/trust/history without repairing lost trust, stop one node, verify surviving-node transfers, recover without offline replay, transfer new content, and revoke one relationship while other nodes remain usable.
+- `wake-refresh`: verify production `unic device list --refresh` (`direct` / `derp` / `peer_relay` path classification, RTT, timestamp, and endpoint redaction) on both sides plus baseline transfer. When paired with a `parallels` VM node, also executes `prlctl pause`/`resume` fault injection to verify half-open zombie detection on `POST /v1/network/changed`, >25s freeze auto-recovery, brief-freeze wake warmup without session drop, and verified first-copy transfers.
 
 Pairing always compares the two independently returned fingerprints before either approval. Introductions do not substitute for approval and do not forward content.
 

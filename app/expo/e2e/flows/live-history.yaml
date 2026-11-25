@@ -5,10 +5,14 @@ name: Live Engine history intake and search
     when:
       platform: iOS
     commands:
+      - launchApp:
+          appId: app.uniclipboard.e2e.clipboard
+      - assertVisible: Clipboard fixture ready
+      - launchApp:
+          appId: app.uniclipboard.shell
+      - assertNotVisible: ".*Unic Mobile E2E.*"
       - tapOn:
           id: home-add-menu
-      - evalScript: '${output.pasteboardStatus = http.post(PASTEBOARD_FIXTURE_URL, { body: "" }).status}'
-      - assertTrue: ${output.pasteboardStatus == 204}
       - tapOn: "Upload clipboard|上传剪贴板"
       - tapOn:
           text: "Allow Paste|允许粘贴"

@@ -160,8 +160,8 @@ jobs:
           xcrun simctl bootstatus "$device" -b
           if ! node e2e/run.mjs --suite live --platform ios --device "$device" \
             --app "$RUNNER_TEMP/unic-ios/Build/Products/Release-iphonesimulator/UniClipboardUIShell.app"; then
-            xcrun simctl spawn "$device" log show --last 5m --style compact \
-              --predicate 'process == "pasteboardd" OR (process == "UniClipboardUIShell" AND eventMessage CONTAINS[c] "pasteboard")' \
+            xcrun simctl spawn "$device" log show --last 5m --info --style compact \
+              --predicate 'process == "pasted" OR subsystem == "com.apple.Pasteboard"' \
               > e2e/results/ios-pasteboard.log || true
             {
               if clipboard=$(xcrun devicectl device pasteboard paste --device "$device" --timeout 15 --quiet); then

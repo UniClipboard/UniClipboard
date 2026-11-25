@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
-import { createHash, randomUUID } from "node:crypto";
-import { once } from "node:events";
+import { createHash } from "node:crypto";
 import {
+  copyFileSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -9,7 +9,6 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { createServer } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -56,7 +55,7 @@ const receipt = {
   status: "failed",
   stages: [],
 };
-function command(program, argv, stage, input) {
+function command(program, argv, stage) {
   return new Promise((resolveCommand, rejectCommand) => {
     const child = execFile(program, argv, {
       cwd: root,
@@ -83,22 +82,26 @@ function command(program, argv, stage, input) {
       }
     });
     child.stdin.on("error", () => {});
-    child.stdin.end(input);
+    child.stdin.end();
   });
 }
-async function seedIOSClipboard(runtimeMajor) {
-  const fixture = "Unic Mobile E2E";
-  let clipboardText;
-  if (runtimeMajor >= 27) {
-    const pasteboard = ["devicectl", "device", "pasteboard"];
-    const target = ["--device", options.device, "--timeout", "45", "--quiet"];
-    await command("xcrun", [...pasteboard, "copy", ...target], "seed-clipboard", fixture);
-    clipboardText = await command("xcrun", [...pasteboard, "paste", ...target], "verify-clipboard");
-  } else {
-    await command("xcrun", ["simctl", "pbcopy", options.device], "seed-clipboard", fixture);
-    clipboardText = await command("xcrun", ["simctl", "pbpaste", options.device], "verify-clipboard");
-  }
-  if (clipboardText !== fixture) throw new Error("iOS Simulator pasteboard does not contain the fixture");
+async function installIOSClipboardFixture() {
+  const source = join(root, "e2e/fixtures/ios-clipboard");
+  const bundle = join(output, "ClipboardFixture.app");
+  mkdirSync(bundle);
+  copyFileSync(join(source, "Info.plist"), join(bundle, "Info.plist"));
+  const sdk = await command(
+    "xcrun", ["--sdk", "iphonesimulator", "--show-sdk-path"], "fixture-sdk",
+  );
+  const arch = process.arch === "x64" ? "x86_64" : process.arch;
+  await command("xcrun", [
+    "--sdk", "iphonesimulator", "swiftc", "-parse-as-library",
+    "-target", `${arch}-apple-ios17.0-simulator`, "-sdk", sdk,
+    join(source, "ClipboardFixture.swift"), "-o", join(bundle, "ClipboardFixture"),
+  ], "build-clipboard-fixture");
+  await command("codesign", ["--force", "--sign", "-", bundle], "sign-clipboard-fixture");
+  receipt.clipboardFixtureSha256 = treeHash(bundle);
+  await command("xcrun", ["simctl", "install", options.device, bundle], "install-clipboard-fixture");
 }
 const hash = (data) => createHash("sha256").update(data).digest("hex");
 function treeHash(path) {
@@ -129,7 +132,6 @@ try {
   );
   const maestro = process.env.MAESTRO_BIN ?? "maestro";
   receipt.maestro = await command(maestro, ["--version"], "maestro-version");
-  let iosRuntimeMajor;
   if (options.platform === "ios") {
     if (!artifact.endsWith(".app"))
       throw new Error("Expected a Simulator .app");
@@ -141,7 +143,6 @@ try {
     );
     if (!runtime)
       throw new Error("Select an already booted iOS Simulator");
-    iosRuntimeMajor = Number(runtime.match(/\.iOS-(\d+)/)?.[1]);
     const actual = await command(
       "/usr/libexec/PlistBuddy",
       ["-c", "Print :CFBundleIdentifier", join(artifact, "Info.plist")],
@@ -154,6 +155,7 @@ try {
       ["simctl", "install", options.device, artifact],
       "install",
     );
+    if (suite === "live") await installIOSClipboardFixture();
   } else {
     if (!artifact.endsWith(".apk") || !options.device.startsWith("emulator-"))
       throw new Error(
@@ -193,27 +195,7 @@ try {
       const launch = await command("adb", [...shell, "am", "start", "-W", "-n", appId + "/.MainActivity"], name + "-launch");
       if (!/^Status: ok$/m.test(launch)) throw new Error("Android Emulator could not start the test app");
     }
-    let pasteboardServer;
-    const parameters = [];
-    if (name === "live-history" && options.platform === "ios") {
-      const fixturePath = "/" + randomUUID();
-      pasteboardServer = createServer(async (request, response) => {
-        if (request.method !== "POST" || request.url !== fixturePath) {
-          response.writeHead(404).end();
-          return;
-        }
-        try {
-          await seedIOSClipboard(iosRuntimeMajor);
-          response.writeHead(204).end();
-        } catch (error) {
-          response.writeHead(500).end(error.message);
-        }
-      });
-      const listening = once(pasteboardServer, "listening");
-      pasteboardServer.listen(0, "127.0.0.1");
-      await listening;
-      parameters.push("--env", `PASTEBOARD_FIXTURE_URL=http://127.0.0.1:${pasteboardServer.address().port}${fixturePath}`);
-    } else if (name === "live-history") {
+    if (name === "live-history" && options.platform === "android") {
       await command("adb", ["-s", options.device, "shell", `am start -W -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT 'Unic Mobile E2E' -n ${appId}/.MainActivity`], "seed-share-intent");
     }
     const flow = join(root, "e2e/flows", `${name}.yaml`);
@@ -221,28 +203,22 @@ try {
       name: `${name}-flow`,
       sha256: hash(readFileSync(flow)),
     });
-    try {
-      await command(
-        maestro,
-        [
-          "--device",
-          options.device,
-          "test",
-          flow,
-          ...parameters,
-          "--format",
-          "junit",
-          "--output",
-          join(output, `${name}.xml`),
-          "--test-output-dir",
-          join(output, name),
-        ],
-        name,
-      );
-    } finally {
-      pasteboardServer?.close();
-      pasteboardServer?.closeAllConnections();
-    }
+    await command(
+      maestro,
+      [
+        "--device",
+        options.device,
+        "test",
+        flow,
+        "--format",
+        "junit",
+        "--output",
+        join(output, `${name}.xml`),
+        "--test-output-dir",
+        join(output, name),
+      ],
+      name,
+    );
   }
   receipt.status = "passed";
 } catch (error) {

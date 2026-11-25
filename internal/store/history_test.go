@@ -1,9 +1,13 @@
 package store
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
+
+	"github.com/uniclipboard/unic/internal/sqldb"
 )
 
 func openTemp(t *testing.T) (*Store, string) {
@@ -251,4 +255,131 @@ func count(t *testing.T, s *Store) int {
 		t.Fatal(err)
 	}
 	return n
+}
+
+func TestMigratePreEnricherAndPolicyV2Database(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-v2.db")
+	rawDB, err := sql.Open(sqldb.Driver, "file:"+path+sqldb.WriteOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Exact schema of a v2 database created before PR #2368 (enricher) and PR #2367 (binding policy).
+	legacySQL := `
+PRAGMA foreign_keys = ON;
+CREATE TABLE history_state (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL);
+INSERT INTO history_state (id, revision) VALUES (1, 1);
+CREATE TABLE clip_items (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL,
+  kind TEXT NOT NULL, origin_kind TEXT NOT NULL, device_id TEXT NOT NULL DEFAULT '',
+  plugin_id TEXT NOT NULL DEFAULT '', source_application BLOB,
+  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL DEFAULT 0,
+  sync_allowed INTEGER NOT NULL DEFAULT 1, sync_state TEXT NOT NULL DEFAULT 'not_requested',
+  total_bytes INTEGER NOT NULL
+);
+CREATE TABLE clip_item_parts (
+  item_seq INTEGER NOT NULL REFERENCES clip_items (seq) ON DELETE CASCADE,
+  ord INTEGER NOT NULL, kind TEXT NOT NULL, mime TEXT NOT NULL DEFAULT '',
+  name TEXT NOT NULL DEFAULT '', size INTEGER NOT NULL, inline BLOB,
+  blob TEXT NOT NULL DEFAULT '', ref TEXT NOT NULL DEFAULT '', version TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (item_seq, ord)
+);
+CREATE TABLE clip_tags (
+  item_seq INTEGER NOT NULL REFERENCES clip_items (seq) ON DELETE CASCADE,
+  tag TEXT NOT NULL, PRIMARY KEY (item_seq, tag)
+) WITHOUT ROWID;
+CREATE TABLE clip_item_sync (
+  item_seq INTEGER NOT NULL REFERENCES clip_items (seq) ON DELETE CASCADE,
+  backend_id TEXT NOT NULL, state TEXT NOT NULL, disposition TEXT NOT NULL DEFAULT '',
+  error_code TEXT NOT NULL DEFAULT '', PRIMARY KEY (item_seq, backend_id)
+) WITHOUT ROWID;
+CREATE TABLE sync_dedup (
+  source TEXT NOT NULL, transfer_id TEXT NOT NULL, view_hash TEXT NOT NULL,
+  created_ms INTEGER NOT NULL, PRIMARY KEY (source, transfer_id, view_hash)
+) WITHOUT ROWID;
+CREATE TABLE devices (
+  id TEXT PRIMARY KEY, public_key BLOB NOT NULL UNIQUE, name TEXT NOT NULL DEFAULT '',
+  reported_name TEXT NOT NULL DEFAULT '', trust TEXT NOT NULL, revision INTEGER NOT NULL,
+  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL
+) WITHOUT ROWID;
+CREATE TABLE device_bindings (
+  id TEXT PRIMARY KEY, device_id TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+  instance_id TEXT NOT NULL, remote_context BLOB NOT NULL DEFAULT x'',
+  state TEXT NOT NULL, sync_enabled INTEGER NOT NULL DEFAULT 1,
+  revision INTEGER NOT NULL, created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
+  last_active_ms INTEGER NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '',
+  endpoint BLOB NOT NULL DEFAULT x'', ticket INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (device_id, instance_id)
+) WITHOUT ROWID;
+CREATE TABLE channels (
+  id TEXT PRIMARY KEY, instance_id TEXT NOT NULL, remote_context BLOB NOT NULL,
+  name TEXT NOT NULL DEFAULT '', reported_name TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1, auto_apply INTEGER NOT NULL DEFAULT 1,
+  revision INTEGER NOT NULL, created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
+  last_active_ms INTEGER NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '',
+  UNIQUE (instance_id, remote_context)
+) WITHOUT ROWID;
+` + candidateSchema + `
+CREATE TABLE history_search_totals(id INTEGER PRIMARY KEY CHECK(id=1),reserved INTEGER NOT NULL);
+INSERT INTO history_search_totals VALUES(1,0);
+CREATE TABLE history_search_state(item_seq INTEGER PRIMARY KEY REFERENCES clip_items(seq) ON DELETE CASCADE,ready INTEGER NOT NULL,reserved INTEGER NOT NULL);
+CREATE TABLE history_search_docs(id INTEGER PRIMARY KEY,item_seq INTEGER NOT NULL REFERENCES clip_items(seq) ON DELETE CASCADE,body TEXT NOT NULL,folded TEXT NOT NULL,extension TEXT NOT NULL DEFAULT '');
+CREATE INDEX history_search_item ON history_search_docs(item_seq);
+CREATE INDEX history_search_extension ON history_search_docs(extension,item_seq);
+CREATE VIRTUAL TABLE history_search_fts USING fts5(folded,content='history_search_docs',content_rowid='id',tokenize='trigram case_sensitive 1');
+CREATE TRIGGER history_search_ai AFTER INSERT ON history_search_docs BEGIN INSERT INTO history_search_fts(rowid,folded) VALUES(new.id,new.folded); END;
+CREATE TRIGGER history_search_ad AFTER DELETE ON history_search_docs BEGIN INSERT INTO history_search_fts(history_search_fts,rowid,folded) VALUES('delete',old.id,old.folded); END;
+INSERT INTO clip_items(id,revision,kind,origin_kind,created_ms,updated_ms,total_bytes) VALUES('h1',1,'text','local_system',100,100,5);
+INSERT INTO clip_item_parts(item_seq,ord,kind,mime,size,inline) VALUES(1,0,'rep','text/plain',5,CAST('hello' AS BLOB));
+INSERT INTO history_search_state(item_seq,ready,reserved) VALUES(1,1,100);
+INSERT INTO history_search_docs(item_seq,body,folded,extension) VALUES(1,'hello','hello','');
+INSERT INTO devices(id,public_key,name,reported_name,trust,revision,created_ms,updated_ms) VALUES('dev1',X'0102','Mac','Mac','trusted',1,100,100);
+INSERT INTO device_bindings(id,device_id,instance_id,state,sync_enabled,revision,created_ms,updated_ms) VALUES('bind1','dev1','builtin.tailcat','authorized',1,1,100,100);
+PRAGMA user_version = 2;
+`
+	if _, err := rawDB.Exec(legacySQL); err != nil {
+		_ = rawDB.Close()
+		t.Fatal(err)
+	}
+	if err := rawDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open legacy v2 db failed: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+
+	var v int
+	if err := s.db.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil || v != len(versioned) {
+		t.Fatalf("user_version = %d, want %d (err=%v)", v, len(versioned), err)
+	}
+	if _, err := s.ReferencedBlobs(); err != nil {
+		t.Fatalf("ReferencedBlobs after migration failed: %v", err)
+	}
+	b, err := s.InstanceBinding("dev1", "builtin.tailcat")
+	if err != nil {
+		t.Fatalf("InstanceBinding after migration failed: %v", err)
+	}
+	if b.Policy != DefaultBindingPolicy() || b.AuthRevision != 1 {
+		t.Fatalf("migrated binding policy/auth = %+v / %d", b.Policy, b.AuthRevision)
+	}
+	hits, _, _, _, err := s.SearchHistory(context.Background(), SearchRead{
+		Filter: SearchFilter{Terms: []string{"hello"}},
+		Limit:  10,
+	})
+	if err != nil || len(hits) != 1 || hits[0].Item.ID != "h1" {
+		t.Fatalf("SearchHistory after migration = %+v, %v", hits, err)
+	}
+
+	// Re-running v2->v3 on a DB that already has the new columns/tables must also succeed (idempotent).
+	if _, err := s.db.Exec(`PRAGMA user_version = 2`); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatalf("idempotent re-migration failed: %v", err)
+	}
+	_ = s2.Close()
 }

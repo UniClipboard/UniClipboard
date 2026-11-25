@@ -775,62 +775,104 @@ func (d *viewState) devicesPage(c *ui.Context, k desktopkit.Kit) {
 
 	ui.Column(c.Key("devices-page")).Grow(1).MinHeight(0).AlignSelf(ui.Stretch).Background(deviceCanvasBg(k)).Children(func() {
 		// Unified 52-DIP top band aligned with macOS traffic lights.
+		trailing := d.trailingToolbar(c)
+		tm := desktopkit.ToolbarLayout(c, zoomScale(d.zoomStep), 0, trailing != nil)
 		padLeft := float32(16)
+		padRight := float32(18)
+		if trailing != nil {
+			padRight = 8
+		}
 		if integratedCaption {
 			padLeft = caption.Left + 10
 		}
-		bar := ui.Row(c.Key("devices-toolbar")).Height(headerHeight).Padding(0, 18, 0, padLeft).Gap(10).
+		barGap := float32(10)
+		if tm.Compact {
+			barGap = 8
+		}
+		bar := ui.Row(c.Key("devices-toolbar")).Height(headerHeight).Padding(0, padRight, 0, padLeft).Gap(barGap).
 			AlignItems(ui.Center).Shrink(0).Role(ui.RoleToolbar).Label(d.tr("设备管理")).
 			Background(deviceToolbarBg(k)).
 			InsetShadow(0, -1, 0, 0, k.Color("separator-border")).DragWindow()
 		bar.Children(func() {
 			if singlePane && d.deviceDetailOpen {
-				back := ui.ButtonBase(c.Key("back-overview")).Label(d.tr("设备")).KeyShortcuts(0, ui.KeyEscape).Height(28).Padding(0, 8).Radius(7).Gap(4).
-					AlignItems(ui.Center).FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
+				backLabel := d.tr("设备")
+				back := ui.ButtonBase(c.Key("back-overview")).Label(backLabel).Tooltip(backLabel).KeyShortcuts(0, ui.KeyEscape).Height(28).Radius(7).
+					AlignItems(ui.Center).Justify(ui.Center).Shrink(0).FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
+				if tm.Compact {
+					back.Width(28)
+				} else {
+					back.Padding(0, 8).Gap(4)
+				}
 				if back.Hovered() {
 					back.Background(k.Color("background-secondary-hover"))
 				}
 				back.Children(func() {
 					k.Icon(c, desktopkit.IconBack, 15).TextColor(k.Color("foreground-icon-secondary"))
-					k.Text(c, d.tr("设备"), desktopkit.TextProps{Role: desktopkit.RoleCallout})
+					if !tm.Compact {
+						k.Text(c, backLabel, desktopkit.TextProps{Role: desktopkit.RoleCallout})
+					}
 				})
 				if back.Clicked() {
 					d.deviceDetailOpen, d.renaming = false, false
 				}
 			} else {
-				back := ui.ButtonBase(c.Key("back-history")).Label(d.tr("返回历史")).KeyShortcuts(0, ui.KeyEscape).Height(28).Padding(0, 8).Radius(7).Gap(4).
-					AlignItems(ui.Center).FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
+				backLabel := d.tr("返回历史")
+				back := ui.ButtonBase(c.Key("back-history")).Label(backLabel).Tooltip(backLabel).KeyShortcuts(0, ui.KeyEscape).Height(28).Radius(7).
+					AlignItems(ui.Center).Justify(ui.Center).Shrink(0).FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(2)
+				if tm.Compact {
+					back.Width(28)
+				} else {
+					back.Padding(0, 8).Gap(4)
+				}
 				if back.Hovered() {
 					back.Background(k.Color("background-secondary-hover"))
 				}
 				back.Children(func() {
 					k.Icon(c, desktopkit.IconBack, 15).TextColor(k.Color("foreground-icon-secondary"))
-					k.Text(c, d.tr("返回历史"), desktopkit.TextProps{Role: desktopkit.RoleCallout})
+					if !tm.Compact {
+						k.Text(c, backLabel, desktopkit.TextProps{Role: desktopkit.RoleCallout})
+					}
 				})
 				if back.Clicked() {
 					d.page, d.renaming, d.deviceDetailOpen = "history", false, false
 				}
 			}
 			ui.Box(c.Key("sep")).Size(1, 16).Background(k.Color("separator-border")).Shrink(0)
-			k.Text(c.Key("title"), d.tr("设备管理"), desktopkit.TextProps{Role: desktopkit.RoleHeadline, Emphasized: true})
-			switch {
-			case !d.globalSyncEnabled():
-				d.statusPill(c.Key("summary-pill"), k, d.tr("全局同步已关闭"), desktopkit.StatusWarning)
-			case len(d.runningSyncChannels()) == 0:
-				d.statusPill(c.Key("summary-pill"), k, d.tr("仅本地模式"), desktopkit.StatusNeutral)
-			default:
-				d.statusPill(c.Key("summary-pill"), k, fmt.Sprintf(d.tr("%d 台在线 · 共 %d 台"), onlinePeers, len(d.devices)), desktopkit.StatusPositive)
+			k.Text(c.Key("title"), d.tr("设备管理"), desktopkit.TextProps{Role: desktopkit.RoleHeadline, Emphasized: true, Truncate: true}).MinWidth(0).Shrink(1)
+			if tm.AvailWidth >= 520 {
+				switch {
+				case !d.globalSyncEnabled():
+					d.statusPill(c.Key("summary-pill"), k, d.tr("全局同步已关闭"), desktopkit.StatusWarning)
+				case len(d.runningSyncChannels()) == 0:
+					d.statusPill(c.Key("summary-pill"), k, d.tr("仅本地模式"), desktopkit.StatusNeutral)
+				default:
+					d.statusPill(c.Key("summary-pill"), k, fmt.Sprintf(d.tr("%d 台在线 · 共 %d 台"), onlinePeers, len(d.devices)), desktopkit.StatusPositive)
+				}
 			}
 			ui.Spacer(c)
 			refreshLabel := d.tr("刷新状态")
-			if d.refreshingDevices && d.refreshingDeviceID == "" {
+			refreshBusy := d.refreshingDevices && d.refreshingDeviceID == ""
+			if refreshBusy {
 				refreshLabel = d.tr("检测中…")
 			}
-			if k.Button(c.Key("refresh-devices"), refreshLabel, desktopkit.ButtonProps{
+			refreshDisabled := d.refreshingDevices || (d.live != nil && d.live.busy)
+			if tm.Narrow {
+				if k.ToolbarIconButton(c.Key("refresh-devices"), desktopkit.ToolbarIconButtonProps{
+					Icon:     desktopkit.IconRetry,
+					Label:    refreshLabel,
+					Tooltip:  refreshLabel,
+					Busy:     refreshBusy,
+					Disabled: refreshDisabled,
+				}).Clicked() {
+					if d.live != nil {
+						d.refreshLiveDevices("")
+					}
+				}
+			} else if k.Button(c.Key("refresh-devices"), refreshLabel, desktopkit.ButtonProps{
 				Variant:  desktopkit.Subtle,
 				Size:     desktopkit.SizeSmall,
 				Icon:     desktopkit.IconRetry,
-				Disabled: d.refreshingDevices || (d.live != nil && d.live.busy),
+				Disabled: refreshDisabled,
 			}).Clicked() {
 				if d.live != nil {
 					d.refreshLiveDevices("")
@@ -843,7 +885,8 @@ func (d *viewState) devicesPage(c *ui.Context, k desktopkit.Kit) {
 			}).Clicked() {
 				d.openPairingSheet("", "")
 			}
-			if trailing := d.trailingToolbar(c); trailing != nil {
+			if trailing != nil {
+				ui.Box(c.Key("host-sep")).Width(1).Height(16).Background(k.Color("separator-border")).Shrink(0).AccessHidden(true)
 				trailing()
 			}
 		})

@@ -61,6 +61,51 @@ func (k Kit) layRadius() float32 {
 // and the detail one at a time (the list, or the detail with a back button).
 const SinglePaneWidth = 760
 
+// Toolbar responsive width thresholds (evaluated against effective toolbar content
+// width excluding host window chrome and docked sidebar).
+const (
+	ToolbarCompactWidth     = 600
+	ToolbarNarrowWidth      = 480
+	ToolbarUltraNarrowWidth = 360
+)
+
+// ToolbarMetrics describes the responsive density tier of a SplitView toolbar for the
+// current viewport, content scale, docked sidebar width, and host caption chrome.
+type ToolbarMetrics struct {
+	AvailWidth  float32
+	Compact     bool
+	Narrow      bool
+	UltraNarrow bool
+}
+
+// ToolbarLayout computes deterministic toolbar width metrics shared by SplitView and its callers.
+func ToolbarLayout(c *ui.Context, contentScale, sidebarWidth float32, hasHostTrailing bool) ToolbarMetrics {
+	w, _ := c.Size()
+	if contentScale > 0 {
+		w /= contentScale
+	}
+	caption := c.TitleBar()
+	integratedCaption := runtime.GOOS == "darwin" && caption.Left > 0
+	contentW := max(0, w-sidebarWidth)
+	padLeft := float32(16)
+	padRight := float32(16)
+	if integratedCaption {
+		padLeft = max(16, caption.Left+48-sidebarWidth)
+	}
+	hostTrailingW := float32(0)
+	if hasHostTrailing {
+		padRight = 8
+		hostTrailingW = 144
+	}
+	avail := max(0, contentW-padLeft-padRight-hostTrailingW)
+	return ToolbarMetrics{
+		AvailWidth:  avail,
+		Compact:     avail < ToolbarCompactWidth,
+		Narrow:      avail < ToolbarNarrowWidth,
+		UltraNarrow: avail < ToolbarUltraNarrowWidth,
+	}
+}
+
 type SplitViewProps struct {
 	// ContentScale converts the physical view width to the scaled layout width.
 	// Zero preserves unscaled layout.
@@ -90,6 +135,13 @@ type SplitViewProps struct {
 	// SearchCentered places Search in the centered omnibar slot of the 52-DIP toolbar
 	// between the leading heading and trailing controls (U1 unified search+filter bar).
 	SearchCentered bool
+	// SearchTakeover expands Search across the narrow toolbar band while keeping host
+	// caption controls pinned at the trailing edge.
+	SearchTakeover bool
+	// SearchCloseLabel names the collapse button shown beside Search during SearchTakeover.
+	SearchCloseLabel string
+	// OnSearchClose is invoked when the SearchTakeover collapse button is clicked.
+	OnSearchClose func()
 	// ToolbarLeading holds controls just before the trailing commands, e.g. the list / grid switch.
 	ToolbarLeading func()
 	// Toolbar holds controls at the trailing end of the toolbar band, after the search field.
@@ -277,20 +329,85 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 
 	toolbar := func() {
 		h := headerHeight
-		bar := ui.Row(c.Key("split-toolbar")).Height(h).Gap(8).AlignItems(ui.Center).Role(ui.RoleToolbar).
-			Label(p.Title)
-		bar.Padding(0, 16).Background(t.View).InsetShadow(0, -1, 0, 0, t.Border)
-
+		tm := ToolbarLayout(c, p.ContentScale, target, p.ToolbarTrailing != nil)
+		takeover := p.SearchCentered && p.Search != nil && p.SearchTakeover && !drawerOpen
+		padLeft := float32(16)
+		padRight := float32(16)
+		if p.ToolbarTrailing != nil {
+			padRight = 8
+		}
 		if integratedCaption {
 			// As the sidebar moves, controls must continue clearing the real traffic lights.
-			bar.Padding(0, 16, 0, max(16, caption.Left+48-curW))
+			padLeft = max(16, caption.Left+48-curW)
+		} else if takeover {
+			padLeft = 12
 		}
+		gap := float32(8)
+		if tm.Compact {
+			gap = 6
+		}
+		bar := ui.Row(c.Key("split-toolbar")).Height(h).Gap(gap).AlignItems(ui.Center).Role(ui.RoleToolbar).
+			Label(p.Title)
+		bar.Padding(0, padRight, 0, padLeft).Background(t.View).InsetShadow(0, -1, 0, 0, t.Border)
 		bar.DragWindow()
 		bar.Children(func() {
+			if takeover {
+				// Narrow Search Takeover: let the unified omnibar claim the toolbar band
+				// while host window controls remain pinned at the trailing edge.
+				sc := ui.Row(c.Key("split-search")).Grow(1).MinWidth(0).MaxWidth(456).Shrink(1).AlignItems(ui.Center)
+				takeoverAnim := ui.Local(sc, "takeover-anim", func() bool { return false })
+				if !*takeoverAnim {
+					*takeoverAnim = true
+					if c.Preferences().ReduceMotion {
+						sc.Jump("takeover-p", 1)
+					} else {
+						sc.Jump("takeover-p", 0)
+					}
+				}
+				takeoverDur := 150 * time.Millisecond
+				if c.Preferences().ReduceMotion {
+					takeoverDur = 0
+					sc.Jump("takeover-p", 1)
+				}
+				tp := sc.AnimateTo("takeover-p", 1, ui.Animation{Duration: takeoverDur, Ease: ui.EaseOut})
+				if tp < 0.999 {
+					sc.Opacity(0.55+0.45*tp).Translate(8*(1-tp), 0)
+				}
+				sc.Children(p.Search)
+				closeLabel := p.SearchCloseLabel
+				if closeLabel == "" {
+					closeLabel = "Close search"
+				}
+				closeBtn := k.ToolbarIconButton(c.Key("split-search-close"), ToolbarIconButtonProps{
+					Icon:    IconDismiss,
+					Label:   closeLabel,
+					Tooltip: closeLabel + " (Esc)",
+				}).KeepFocus()
+				if closeBtn.Clicked() && p.OnSearchClose != nil {
+					p.OnSearchClose()
+				}
+				if p.ToolbarTrailing != nil {
+					ui.Box(c.Key("split-host-sep")).Width(1).Height(16).Background(k.Color("separator-border")).Shrink(0).AccessHidden(true)
+					ui.Row(c.Key("split-host-controls")).Shrink(0).AlignItems(ui.Center).Children(p.ToolbarTrailing)
+				}
+				k.TopHairlineProgress(c.Key("toolbar-progress"), p.ToolbarLoading)
+				return
+			}
+
 			if detail {
-				back := k.Button(c.Key("split-back"), p.BackLabel, ButtonProps{Variant: Subtle, Size: SizeSmall, Icon: IconBack})
-				if back.Clicked() {
-					*p.DetailOpen = false
+				if tm.Compact {
+					if k.ToolbarIconButton(c.Key("split-back"), ToolbarIconButtonProps{
+						Icon:    IconBack,
+						Label:   p.BackLabel,
+						Tooltip: p.BackLabel,
+					}).Clicked() {
+						*p.DetailOpen = false
+					}
+				} else {
+					back := k.Button(c.Key("split-back"), p.BackLabel, ButtonProps{Variant: Subtle, Size: SizeSmall, Icon: IconBack})
+					if back.Clicked() {
+						*p.DetailOpen = false
+					}
 				}
 			}
 			if !integratedCaption {
@@ -300,15 +417,17 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 				p.TitleLeading()
 			}
 			heading := func() {
-				h := ui.Row(c.Key("split-heading")).Gap(7).AlignItems(ui.Baseline).MinWidth(0)
-				if p.SearchCentered {
-					h.MinWidth(68)
+				hd := ui.Row(c.Key("split-heading")).Gap(6).AlignItems(ui.Baseline).MinWidth(0).Shrink(1)
+				if p.SearchCentered && !tm.Compact {
+					hd.MinWidth(68)
+				} else if p.SearchCentered && tm.Compact && !tm.Narrow {
+					hd.MaxWidth(132)
 				}
-				h.Children(func() {
-					k.Text(c.Key("t"), p.Title, TextProps{Role: RoleHeadline, Emphasized: true, Truncate: true})
+				hd.Children(func() {
+					k.Text(c.Key("t"), p.Title, TextProps{Role: RoleHeadline, Emphasized: true, Truncate: true}).MinWidth(0).Shrink(1)
 
 					if p.Subtitle != "" {
-						sub := k.Text(c.Key("s"), p.Subtitle, TextProps{Role: RoleCaption, Tone: ToneSecondary, Truncate: true})
+						sub := k.Text(c.Key("s"), p.Subtitle, TextProps{Role: RoleCaption, Tone: ToneSecondary, Truncate: true}).Shrink(0)
 						subTarget := float32(1)
 						if p.SubtitleMuted {
 							subTarget = 0.42
@@ -338,28 +457,64 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			if p.SearchCentered && p.Search != nil {
 				heading()
 				if !drawerOpen {
-					ui.Box(c.Key("split-sp-l")).Grow(1).MinWidth(6)
-					sc := ui.Row(c.Key("split-search")).Grow(3).MinWidth(110).MaxWidth(456).Shrink(1).AlignItems(ui.Center)
-					if p.ToolbarTrailing != nil {
-						sc.MinWidth(0)
-					}
-					if drawerProgress > 0 {
-						sc.Opacity(max(0, 1-drawerProgress*1.4))
-					}
-					sc.Children(p.Search)
-					ui.Box(c.Key("split-sp-r")).Grow(1).MinWidth(6)
-					trail := ui.Row(c.Key("split-trailing")).Gap(6).AlignItems(ui.Center).Shrink(0)
-					if drawerProgress > 0 {
-						trail.Opacity(max(0, 1-drawerProgress*1.4))
-					}
-					trail.Children(func() {
-						if p.ToolbarLeading != nil {
-							p.ToolbarLeading()
+					if tm.Narrow {
+						// Narrow Idle: give the window a real draggable region and keep the
+						// compact search trigger beside view and command controls.
+						ui.Box(c.Key("split-spacer")).Grow(1).MinWidth(4)
+						trail := ui.Row(c.Key("split-trailing")).Gap(4).AlignItems(ui.Center).Shrink(0)
+						if drawerProgress > 0 {
+							trail.Opacity(max(0, 1-drawerProgress*1.4))
 						}
-						if p.Toolbar != nil {
-							ui.Row(c.Key("split-commands")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(p.Toolbar)
+						trail.Children(func() {
+							ui.Row(c.Key("split-search")).Shrink(0).AlignItems(ui.Center).Children(p.Search)
+							if p.ToolbarLeading != nil {
+								p.ToolbarLeading()
+							}
+							if p.Toolbar != nil {
+								ui.Row(c.Key("split-commands")).Gap(4).AlignItems(ui.Center).Shrink(0).Children(p.Toolbar)
+							}
+						})
+					} else if tm.Compact {
+						// Compact Inline: omit double-gap spacers so the inline omnibar keeps
+						// comfortable width without clipping or overlap.
+						sc := ui.Row(c.Key("split-search")).Grow(1).MinWidth(0).MaxWidth(456).Shrink(1).AlignItems(ui.Center)
+						if drawerProgress > 0 {
+							sc.Opacity(max(0, 1-drawerProgress*1.4))
 						}
-					})
+						sc.Children(p.Search)
+						trail := ui.Row(c.Key("split-trailing")).Gap(6).AlignItems(ui.Center).Shrink(0)
+						if drawerProgress > 0 {
+							trail.Opacity(max(0, 1-drawerProgress*1.4))
+						}
+						trail.Children(func() {
+							if p.ToolbarLeading != nil {
+								p.ToolbarLeading()
+							}
+							if p.Toolbar != nil {
+								ui.Row(c.Key("split-commands")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(p.Toolbar)
+							}
+						})
+					} else {
+						ui.Box(c.Key("split-sp-l")).Grow(1).MinWidth(6)
+						sc := ui.Row(c.Key("split-search")).Grow(3).MinWidth(0).MaxWidth(456).Shrink(1).AlignItems(ui.Center)
+						if drawerProgress > 0 {
+							sc.Opacity(max(0, 1-drawerProgress*1.4))
+						}
+						sc.Children(p.Search)
+						ui.Box(c.Key("split-sp-r")).Grow(1).MinWidth(6)
+						trail := ui.Row(c.Key("split-trailing")).Gap(6).AlignItems(ui.Center).Shrink(0)
+						if drawerProgress > 0 {
+							trail.Opacity(max(0, 1-drawerProgress*1.4))
+						}
+						trail.Children(func() {
+							if p.ToolbarLeading != nil {
+								p.ToolbarLeading()
+							}
+							if p.Toolbar != nil {
+								ui.Row(c.Key("split-commands")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(p.Toolbar)
+							}
+						})
+					}
 				} else {
 					ui.Box(c.Key("split-spacer")).Grow(1).MinWidth(0)
 				}
@@ -390,6 +545,7 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 				}
 			}
 			if p.ToolbarTrailing != nil {
+				ui.Box(c.Key("split-host-sep")).Width(1).Height(16).Background(k.Color("separator-border")).Shrink(0).AccessHidden(true)
 				ui.Row(c.Key("split-host-controls")).Shrink(0).AlignItems(ui.Center).Children(p.ToolbarTrailing)
 			}
 			k.TopHairlineProgress(c.Key("toolbar-progress"), p.ToolbarLoading)

@@ -12,13 +12,7 @@ on:
         required: true
       version:
         type: string
-        description: Set the configured version to release both CLI and Desktop
-      desktop_candidate_run_id:
-        type: string
-        description: Accepted standalone Desktop build. Required for joint stable.
-      stable_acceptance:
-        type: string
-        description: JSON with darwin, linux and windows receipts. Required for joint stable.
+        description: Release both products at this version; leave empty for standalone CLI
       expected_source:
         type: string
         description: Expected source SHA for a joint release
@@ -38,32 +32,42 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       desktop_build: ${{ steps.plan.outputs.desktop_build }}
+      reused_cli_sha256: ${{ steps.plan.outputs.reused_cli_sha256 }}
       cli_manifest_sha256: ${{ steps.plan.outputs.cli_manifest_sha256 }}
     steps:
       - uses: actions/checkout@v6
+        if: inputs.version != ''
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
+      - uses: actions/setup-go@v6
+        if: inputs.version != '' && inputs.channel == 'alpha'
+        with:
+          go-version-file: go.mod
       - id: plan
         if: inputs.version != ''
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}
           CHANNEL: ${{ inputs.channel }}
-          DESKTOP_CANDIDATE: ${{ inputs.desktop_candidate_run_id }}
-          STABLE_ACCEPTANCE: ${{ inputs.stable_acceptance }}
+          EXPECTED_SOURCE: ${{ inputs.expected_source }}
           CLI_CANDIDATE: ${{ inputs.candidate_run_id }}
         run: |
-          args=()
           test -z "$CLI_CANDIDATE"
-          if [[ "$CHANNEL" == stable ]]; then
-            test -n "$DESKTOP_CANDIDATE"
-            test -n "$STABLE_ACCEPTANCE"
-            args+=(--stable)
-          fi
-          python3 tools/release/joint.py "$VERSION" --github-output "$GITHUB_OUTPUT" "${args[@]}"
+          test -z "$EXPECTED_SOURCE" || test "$EXPECTED_SOURCE" = "$GITHUB_SHA"
+          python3 tools/release/joint_plan.py plan --channel "$CHANNEL" --version "$VERSION" \
+            --run-id "$GITHUB_RUN_ID" --source "$GITHUB_SHA" --output dist/joint-plan --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: inputs.version != ''
+        with:
+          name: joint-release-plan
+          path: dist/joint-plan/
+          overwrite: true
+          if-no-files-found: error
   resolve:
     name: Recover CLI candidate
     needs: plan
-    if: inputs.candidate_run_id == ''
+    if: inputs.candidate_run_id == '' && (inputs.version == '' || inputs.channel == 'alpha')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -75,20 +79,32 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: inputs.version != ''
+        with:
+          name: joint-release-plan
+          path: dist/joint-plan
       - name: Recover an already staged immutable candidate
         id: resume
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           JOINT_VERSION: ${{ inputs.version }}
+          REUSED_DIGEST: ${{ needs.plan.outputs.reused_cli_sha256 }}
         run: |
           args=()
-          if [[ -n "$JOINT_VERSION" ]]; then args+=(--reuse-published); fi
+          if [[ -n "$JOINT_VERSION" ]]; then args+=(--metadata dist/joint-plan/products.toml); fi
+          if [[ -n "$REUSED_DIGEST" ]]; then args+=(--reuse-published); fi
           python3 tools/release/release.py resume --output dist/npm --github-output "$GITHUB_OUTPUT" "${args[@]}"
+          if [[ -n "$REUSED_DIGEST" ]]; then
+            actual=$(sha256sum dist/npm/release-manifest.json)
+            test "${actual%% *}" = "$REUSED_DIGEST"
+          fi
       - uses: actions/upload-artifact@v4
         if: steps.resume.outputs.staged == 'true'
         with:
           name: cli-npm-resumed
           path: dist/npm/
+          overwrite: true
           if-no-files-found: error
   build:
     name: Build and sign CLI
@@ -98,18 +114,20 @@ jobs:
     with:
       source_sha: ${{ github.sha }}
       distribution: true
+      joint: ${{ inputs.version != '' }}
     secrets:
       POSTHOG_PROJECT_KEY: ${{ secrets.POSTHOG_PROJECT_KEY }}
       APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
       APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
   publish:
     name: Publish CLI to npm
-    needs: [plan, resolve, build, stable_draft, desktop_build]
+    needs: [plan, resolve, build, desktop_build]
     if: >-
-      ${{ !cancelled() && needs.plan.result == 'success'
-      && (needs.stable_draft.result == 'success' || needs.stable_draft.result == 'skipped')
-      && (inputs.version == '' || inputs.channel == 'stable' || needs.desktop_build.result == 'success')
-      && (inputs.candidate_run_id != '' || (needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true'))) }}
+      ${{ !cancelled() && needs.plan.result == 'success' &&
+      ((inputs.version != '' && inputs.channel == 'stable')
+      || (inputs.version != '' && needs.desktop_build.result == 'success')
+      || (inputs.version == '' && (inputs.candidate_run_id != ''
+      || (needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.resolve.outputs.staged == 'true'))))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -135,7 +153,12 @@ jobs:
           echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/unic-npmrc" >> "$GITHUB_ENV"
           echo "NODE_AUTH_TOKEN=" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
-        if: inputs.candidate_run_id == ''
+        if: inputs.version != '' && inputs.channel == 'stable'
+        with:
+          name: joint-release-plan
+          path: dist/joint-plan
+      - uses: actions/download-artifact@v4
+        if: inputs.candidate_run_id == '' && (inputs.version == '' || inputs.channel == 'alpha')
         with:
           name: ${{ needs.resolve.outputs.staged == 'true' && 'cli-npm-resumed' || 'cli-npm-candidate' }}
           path: dist/npm
@@ -150,17 +173,25 @@ jobs:
         env:
           EXPECTED_DIGEST: ${{ needs.plan.outputs.cli_manifest_sha256 || inputs.candidate_manifest_sha256 }}
         run: |
-          actual=$(sha256sum dist/npm/release-manifest.json)
+          manifest=dist/npm/release-manifest.json
+          if [[ -f dist/joint-plan/cli-manifest.json ]]; then manifest=dist/joint-plan/cli-manifest.json; fi
+          actual=$(sha256sum "$manifest")
           test "${actual%% *}" = "$EXPECTED_DIGEST"
       - name: Stage durable immutable build record
+        if: inputs.version == '' || inputs.channel == 'alpha'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 tools/release/release.py record --manifest dist/npm/release-manifest.json
       - name: Publish and read back exact npm packages
+        if: inputs.version == '' || inputs.channel == 'alpha'
         env:
           CHANNEL: ${{ inputs.channel }}
         run: python3 tools/release/release.py publish --manifest dist/npm/release-manifest.json --channel "$CHANNEL" --receipt dist/publication.json
+      - name: Promote and read back the exact Alpha packages on npm
+        if: inputs.version != '' && inputs.channel == 'stable'
+        run: python3 tools/release/release.py promote --manifest dist/joint-plan/cli-manifest.json --channel stable --receipt dist/publication.json
       - name: Finalize build record
+        if: inputs.version == '' || inputs.channel == 'alpha'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 tools/release/release.py record --manifest dist/npm/release-manifest.json --finish --receipt dist/publication.json
@@ -179,18 +210,24 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: joint-release-plan
+          path: dist/joint-plan
       - uses: actions/download-artifact@v4
         with:
           name: ${{ needs.resolve.outputs.staged == 'true' && 'cli-npm-resumed' || 'cli-npm-candidate' }}
           path: dist/desktop-cli
       - env:
           VERSION: ${{ inputs.version }}
-        run: python3 tools/release/joint.py "$VERSION" --cli-manifest dist/desktop-cli/release-manifest.json --output dist/desktop-cli/products.toml --github-output "$GITHUB_OUTPUT"
+        run: python3 tools/release/joint.py "$VERSION" --metadata dist/joint-plan/products.toml --cli-manifest dist/desktop-cli/release-manifest.json --output dist/desktop-cli/products.toml --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: joint-desktop-cli
           path: dist/desktop-cli/
+          overwrite: true
           if-no-files-found: error
   desktop_build:
     name: Build and sign Desktop
@@ -202,28 +239,15 @@ jobs:
       source_sha: ${{ github.sha }}
       joint: true
     secrets: inherit
-  stable_draft:
-    name: Verify native acceptance
-    needs: plan
-    if: inputs.version != '' && inputs.channel == 'stable'
-    uses: ./.github/workflows/release-desktop.yml
-    with:
-      operation: github-draft
-      channel: stable
-      candidate_run_id: ${{ inputs.desktop_candidate_run_id }}
-      stable_acceptance: ${{ inputs.stable_acceptance }}
-      joint: true
-    secrets: inherit
   desktop_publish:
     name: Publish Desktop
     needs: [plan, publish, desktop_build]
-    if: ${{ !cancelled() && inputs.version != '' && needs.publish.result == 'success' && (inputs.channel == 'stable' || needs.desktop_build.result == 'success') }}
+    if: ${{ !cancelled() && inputs.version != '' && inputs.channel == 'alpha' && needs.publish.result == 'success' && needs.desktop_build.result == 'success' }}
     uses: ./.github/workflows/release-desktop.yml
     with:
       operation: publish
       channel: ${{ inputs.channel }}
-      candidate_run_id: ${{ inputs.channel == 'alpha' && github.run_id || inputs.desktop_candidate_run_id }}
-      stable_acceptance: ${{ inputs.stable_acceptance }}
+      candidate_run_id: ${{ github.run_id }}
       joint: true
     secrets: inherit
   legacy_alpha:
@@ -238,14 +262,13 @@ jobs:
     secrets: inherit
   desktop_promote:
     name: Advance and verify Desktop channel
-    needs: [desktop_publish, legacy_alpha]
-    if: ${{ !cancelled() && needs.desktop_publish.result == 'success' && (inputs.channel == 'stable' || needs.legacy_alpha.result == 'success') }}
+    needs: [publish, legacy_alpha]
+    if: ${{ !cancelled() && inputs.version != '' && needs.publish.result == 'success' && (inputs.channel == 'stable' || needs.legacy_alpha.result == 'success') }}
     uses: ./.github/workflows/release-desktop.yml
     with:
       operation: promote
       channel: ${{ inputs.channel }}
-      candidate_run_id: ${{ inputs.channel == 'alpha' && github.run_id || inputs.desktop_candidate_run_id }}
-      stable_acceptance: ${{ inputs.stable_acceptance }}
+      candidate_run_id: ${{ github.run_id }}
       expected_revision: ${{ inputs.channel == 'stable' && 'auto' || needs.legacy_alpha.outputs.expected_revision }}
       joint: true
     secrets: inherit

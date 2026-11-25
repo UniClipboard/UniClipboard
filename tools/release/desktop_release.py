@@ -635,6 +635,22 @@ def publish(args):
             raise ValueError("publication receipt read-back failed")
 
 
+def verify_channel_feed(feed, m):
+    if (feed.get("product"), feed.get("version"), feed.get("buildNumber")) != (
+        "desktop",
+        m["version"],
+        str(m["build_number"]),
+    ):
+        raise ValueError("public channel identity differs from accepted build")
+    expected = {(a["target"], a["sha256"]) for a in m["artifacts"] if a["updater"]}
+    if {
+        (a["platform"], a["sha256"])
+        for a in feed.get("artifacts", [])
+        if a.get("updater")
+    } != expected:
+        raise ValueError("public updater set differs from accepted build")
+
+
 def promote(args):
     manifest, m = load(args.manifest, not args.fixture)
     receipt = package.cli.read_json(args.publication)
@@ -686,19 +702,7 @@ def promote(args):
             access=True,
         )
     feed = request(public, "/v1/desktop/" + args.channel + ".json")
-    if (feed.get("product"), feed.get("version"), feed.get("buildNumber")) != (
-        "desktop",
-        m["version"],
-        str(m["build_number"]),
-    ):
-        raise ValueError("public channel identity differs from accepted build")
-    expected = {(a["target"], a["sha256"]) for a in m["artifacts"] if a["updater"]}
-    if {
-        (a["platform"], a["sha256"])
-        for a in feed.get("artifacts", [])
-        if a.get("updater")
-    } != expected:
-        raise ValueError("public updater set differs from accepted build")
+    verify_channel_feed(feed, m)
     save(
         args.receipt,
         {

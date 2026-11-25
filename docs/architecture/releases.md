@@ -25,6 +25,7 @@ paths:
   - .github/workflows/package-acceptance.yml
   - .github/workflows/pr-checks.yml
   - .github/workflows/release-desktop.yml
+  - .github/workflows/record-desktop-acceptance.yml
   - .github/workflows/prepare-legacy-desktop-alpha.yml
   - .github/workflows/native-desktop-acceptance.yml
   - app/desktop/e2e/run.py
@@ -37,36 +38,52 @@ verified: 7979e6d4405c998b21a4156b259faa7e41ca609b
 
 ## Current implementation
 
-`release/products.toml` owns product versions and build numbers. CLI and Desktop have separate build and delivery controllers. A joint workflow coordinates both products. Android and iOS records reserve independent metadata. These records do not establish release support.
+`release/products.toml` owns the standalone product metadata and declares the joint build targets and Desktop update key. CLI and Desktop have separate build and delivery controllers. A joint workflow coordinates both products. Android and iOS records reserve independent metadata. These records do not establish release support.
 
 ### Joint CLI and Desktop delivery
 
 Run **Release CLI and Desktop** from the selected release source. Supply
-`channel` and `version`. The version must match both product records in
-`release/products.toml`. Each product reads its own build number from that file.
-The entry uses `release-cli.yml` to retain the npm trusted publishing identity.
-Leave `version` empty to release the CLI independently.
+`channel` and `version`. The entry uses `release-cli.yml` to retain the npm
+trusted publishing identity. Leave `version` empty to release the CLI
+independently.
 
-Alpha creates the Desktop CLI lock from the exact accepted CLI manifest.
-An already published CLI build can be recovered from its verified tag and
-immutable assets. Draft recovery still requires the original source and
-metadata. Signed Desktop construction must succeed before the workflow
-publishes the CLI to npm. Desktop preparation verifies the selected CLI
-manifest, package integrity and shared source compatibility for all six
-targets in one Ubuntu job. Each target repeats the checks during staging.
+Alpha records the source SHA, selected CLI and Desktop build number in a
+create-only Git tag under `joint-release/alpha/`. The planner allocates new
+numbers above existing product tags, draft GitHub releases, previous
+reservations and, for CLI, every published npm platform version. The configured
+number is a floor for that version. A retry restores the saved plan. The plan
+supplies metadata to the build jobs without editing the checkout.
+
+The planner checks the newest eligible published CLI against all six Desktop
+targets. It pins the exact compatible CLI manifest or reserves a new CLI build
+from the selected source when shared source hashes differ. Recovery verifies
+the pinned digest or the original source and generated metadata. Signed
+Desktop construction must succeed before the workflow publishes the CLI to
+npm. Desktop preparation checks the CLI lock, package integrity and shared
+source again before starting native jobs. Each target also checks those inputs
+during staging.
 The Windows installer lifecycle fixture uses the same lock as the production
 installer and changes only the fixture build number.
 After npm publication, the workflow publishes the Desktop candidate, stages the
 legacy upgrade after all twelve native receipts pass, and promotes Desktop
-using the channel revision from the staging receipt.
+using the channel revision from the staging receipt. The verified Alpha
+selection is stored under `joint-release/published/`.
 
-Stable requires `desktop_candidate_run_id` and `stable_acceptance` for that
-exact Desktop candidate and source. Desktop must lock the CLI build selected
-for npm `latest`. The workflow verifies native receipts before Desktop
-publication and checks the exact CLI manifest before CLI publication.
-Desktop promotion reads the current revision and checks it when changing the
-channel. Joint promotion rejects a downgrade and verifies the public feed
-when the requested build is already selected.
+After native acceptance, run **Record Desktop native acceptance** with the
+exact Alpha build identity and the three platform receipts. The workflow
+checks the catalogue digest and every package hash, GUI result and lifecycle
+result. It stores the verified receipts under `joint-release/accepted/`.
+The workflow can also register a previously published build that still
+matches the public Alpha feed and its six updater hashes.
+
+Stable chooses the highest accepted Desktop build for the requested version.
+It pins that selection for the run and checks the public origin receipt,
+GitHub attachments, native receipts and exact published npm integrity before
+promotion. It fails when there is no accepted candidate. The workflow promotes
+the existing npm versions to `latest` and uses the original Desktop catalogue,
+release notes and signed assets to advance the Stable feed. It verifies both
+channels after changing them. Desktop promotion uses a channel revision and
+rejects a downgrade.
 
 The same Actions run displays CLI construction and publication, Desktop
 construction and publication, legacy acceptance and Desktop promotion.

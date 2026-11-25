@@ -90,14 +90,11 @@ def fresh_output(path):
     return path
 
 
-def locked_cli(metadata, manifest_path, target, development):
-    manifest = cli.validate_manifest(manifest_path)
-    if (sha(manifest_path), manifest["version"], manifest["build_number"]) != (
-        metadata.get("cli_manifest_sha256"),
-        metadata.get("cli_version"),
-        metadata.get("cli_build_number"),
-    ):
-        raise ValueError("Desktop CLI lock mismatch")
+class SharedSourceMismatch(ValueError):
+    """The bundled service needs a fresh CLI build for this Desktop source."""
+
+
+def check_cli_source(manifest, target, development=False):
     if not development and manifest.get("source_clean") is not True:
         raise ValueError("locked CLI source is not clean")
     if target not in manifest["targets"] or len(manifest["targets"]) != len(
@@ -137,9 +134,21 @@ def locked_cli(metadata, manifest_path, target, development):
         path = Path(filename.strip())
         relative = path.relative_to(ROOT).as_posix()
         if native.get("source_sha256", {}).get(relative) != sha(path):
-            raise ValueError(
+            raise SharedSourceMismatch(
                 "locked CLI shared configuration/API mismatch: " + relative
             )
+    return native
+
+
+def locked_cli(metadata, manifest_path, target, development):
+    manifest = cli.validate_manifest(manifest_path)
+    if (sha(manifest_path), manifest["version"], manifest["build_number"]) != (
+        metadata.get("cli_manifest_sha256"),
+        metadata.get("cli_version"),
+        metadata.get("cli_build_number"),
+    ):
+        raise ValueError("Desktop CLI lock mismatch")
+    native = check_cli_source(manifest, target, development)
     package = next(p for p in manifest["packages"] if p.get("target") == target)
     path = cli.checked_file(
         Path(manifest_path).parent, package["file"], package["sha256"]

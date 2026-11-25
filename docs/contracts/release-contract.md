@@ -2,10 +2,31 @@
 
 ## Scope
 
-Each product owns `version` and a positive `build_number` in `release/products.toml`.
+Each standalone product owns `version` and a positive `build_number` in `release/products.toml`.
 A build identity is `(product, version, build_number)`. Channels are alpha and stable.
 CLI packages belong to npm. Desktop/mobile file publication belongs to R2 and FlareRelease.
 GitCode is outside this implementation.
+
+## Joint release plan
+
+The joint release takes a product version and channel. An Alpha plan binds
+the workflow run and source SHA to an unused Desktop build number and either
+an exact compatible CLI manifest or an unused CLI build number. Allocate above
+existing build records and outstanding reservations. For CLI, include versions
+observed in every npm package. Persist the plan before starting native builds.
+Retries use its original source and identities. A new run cannot reuse another
+run's reservation.
+
+For CLI reuse, verify the published tag, exact manifests, native acceptance,
+macOS signing and shared target-selected sources. A shared source mismatch
+requires a new CLI build and preserves the previous immutable assets. The
+Desktop matrix repeats package and compatibility checks during staging.
+
+Stable selection requires a verified Alpha publication and three native
+acceptance receipts covering the exact Desktop catalogue. Select the highest
+accepted Desktop build for the requested version. Pin the selection for the
+workflow run. Stable promotes existing npm packages and the existing Desktop
+catalogue. Missing acceptance or conflicting evidence blocks promotion.
 
 ## CLI candidate and npm identity
 

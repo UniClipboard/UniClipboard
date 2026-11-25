@@ -87,6 +87,9 @@ jobs:
     runs-on: ubuntu-24.04
     environment: Production
     timeout-minutes: 60
+    env:
+      DESKTOP_NOTES: ${{ inputs.joint && inputs.channel == 'stable' && 'dist/catalogue/desktop-notes.json' || 'release/desktop-notes.json' }}
+      DESKTOP_TEMPLATE: ${{ inputs.joint && inputs.channel == 'stable' && 'dist/catalogue/release-template.md' || '.github/release-notes/desktop.md.tmpl' }}
     steps:
       - if: inputs.expected_source != '' && inputs.expected_source != github.sha
         run: exit 1
@@ -113,7 +116,23 @@ jobs:
         with:
           pattern: desktop-*64
           path: dist/desktop-build-artifacts
+      - uses: actions/download-artifact@v4
+        if: inputs.joint && inputs.channel == 'stable'
+        with:
+          name: joint-release-plan
+          path: dist/joint-plan
+      - name: Acquire the selected published Alpha assets
+        if: inputs.joint && inputs.channel == 'stable'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist/cli-input
+          cp dist/joint-plan/cli-manifest.json dist/cli-input/release-manifest.json
+          python3 tools/release/joint_plan.py fetch-stable --plan dist/joint-plan/plan.json \
+            --output dist/catalogue --cli-manifest dist/cli-input/release-manifest.json \
+            --acceptance dist/joint-plan/stable-acceptance.json
       - name: Acquire exact accepted native candidate and locked CLI
+        if: ${{ !inputs.joint || inputs.channel == 'alpha' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
@@ -129,19 +148,8 @@ jobs:
           fi
           python3 tools/release/desktop_release.py acquire --run-id "$CANDIDATE_RUN" --output dist/candidate "${args[@]}"
           python3 tools/release/desktop_release.py assemble --metadata "$metadata" --input dist/candidate --output dist/catalogue
-      - name: Verify stable acceptance before joint publication
-        if: inputs.joint && inputs.operation == 'github-draft' && inputs.channel == 'stable'
-        env:
-          STABLE_ACCEPTANCE: ${{ inputs.stable_acceptance }}
-        run: |
-          printf '%s\n' "$STABLE_ACCEPTANCE" > dist/stable-acceptance.json
-          PYTHONPATH=tools/release python3 - <<'PY'
-          from desktop_release import load, verify_stable_acceptance
-
-          manifest, catalogue = load('dist/catalogue/release-manifest.json', True)
-          verify_stable_acceptance(manifest, catalogue, 'dist/stable-acceptance.json')
-          PY
       - name: Stage or verify immutable GitHub Release before delivery
+        if: ${{ !inputs.joint || inputs.channel == 'alpha' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHANNEL: ${{ inputs.channel }}
@@ -188,6 +196,7 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
           EXPECTED_REVISION: ${{ inputs.expected_revision }}
           FORWARD_ONLY: ${{ inputs.joint || inputs.expected_source != '' }}
+          JOINT: ${{ inputs.joint }}
           STABLE_ACCEPTANCE: ${{ inputs.stable_acceptance }}
         run: |
           python3 - <<'PY'
@@ -206,7 +215,11 @@ jobs:
             args+=(--forward-only)
           fi
           if [[ "$CHANNEL" == stable ]]; then
-            printf '%s\n' "$STABLE_ACCEPTANCE" > dist/stable-acceptance.json
+            if [[ "$JOINT" == true ]]; then
+              cp dist/joint-plan/stable-acceptance.json dist/stable-acceptance.json
+            else
+              printf '%s\n' "$STABLE_ACCEPTANCE" > dist/stable-acceptance.json
+            fi
             args+=(--acceptance dist/stable-acceptance.json --cli-manifest dist/cli-input/release-manifest.json)
           fi
           python3 tools/release/desktop_release.py promote --manifest dist/catalogue/release-manifest.json --publication dist/publication.json --admin "$RELEASE_ADMIN" --channel "$CHANNEL" --expected-revision "$EXPECTED_REVISION" --receipt dist/promotion.json "${args[@]}"
@@ -223,7 +236,14 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
           PREVIOUS_TAG: ${{ inputs.previous_tag }}
         run: |
-          python3 tools/release/github_desktop.py publish --manifest dist/catalogue/release-manifest.json --cli-manifest dist/cli-input/release-manifest.json --notes release/desktop-notes.json --output dist/github-page --channel "$CHANNEL" --previous-tag "$PREVIOUS_TAG" --publication dist/publication.json --promotion dist/promotion.json
+          python3 tools/release/github_desktop.py publish --manifest dist/catalogue/release-manifest.json --cli-manifest dist/cli-input/release-manifest.json --notes "$DESKTOP_NOTES" --template "$DESKTOP_TEMPLATE" --output dist/github-page --channel "$CHANNEL" --previous-tag "$PREVIOUS_TAG" --publication dist/publication.json --promotion dist/promotion.json
+      - name: Record the verified Alpha selection
+        if: inputs.joint && inputs.operation == 'promote' && inputs.channel == 'alpha'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 tools/release/joint_plan.py mark-alpha --manifest dist/catalogue/release-manifest.json \
+            --cli-manifest dist/cli-input/release-manifest.json --promotion dist/promotion.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

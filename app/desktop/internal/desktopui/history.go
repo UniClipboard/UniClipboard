@@ -314,7 +314,11 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 		if d.current().kind == desktopkit.KindFile {
 			copyLabel = "复制文件"
 		}
-		r := k.QuickLook(c.Key("quick-look"), desktopkit.QuickLookProps{Open: &d.quickLook, Title: d.entryTitle(*d.current()), CloseLabel: d.tr("关闭预览"), Src: d.entryImage(c, *d.current()), Alt: d.current().title, PrimaryLabel: d.tr(copyLabel)}, nil)
+		image := d.entryImage(*d.current())
+		r := k.QuickLook(c.Key("quick-look"), desktopkit.QuickLookProps{
+			Open: &d.quickLook, Title: d.entryTitle(*d.current()), CloseLabel: d.tr("关闭预览"),
+			Src: image.source, Alt: d.current().title, ImageDrawOver: image.drawOver(), PrimaryLabel: d.tr(copyLabel),
+		}, nil)
 		if r.Primary {
 			d.useEntry()
 		}
@@ -429,21 +433,21 @@ func (d *viewState) previewTextWhileLoading(v entry) (string, bool) {
 }
 
 func (d *viewState) renderDetailImagePreview(c *ui.Context, k desktopkit.Kit, v entry, height float32) {
-	img := d.entryImage(c, v)
+	img := d.entryImage(v)
 	upgrading := d.live != nil && v.picture != nil && !v.picture.matches(0)
 	stage := ui.Box(c.Key("img-stage")).FillWidth().Height(height).Clip().Center()
 	st := ui.Local(stage, "detail-img-fade", func() detailImageFadeState { return detailImageFadeState{} })
 	if !st.initialized || st.lastID != v.id {
 		st.initialized = true
 		st.lastID = v.id
-		st.hadImage = img != nil
+		st.hadImage = img.source != nil
 		stage.Jump("img-a", 1)
 		if upgrading {
 			stage.Jump("img-blur", 1)
 		} else {
 			stage.Jump("img-blur", 0)
 		}
-	} else if !st.hadImage && img != nil {
+	} else if !st.hadImage && img.source != nil {
 		st.hadImage = true
 		stage.Jump("img-a", 0)
 	}
@@ -462,11 +466,11 @@ func (d *viewState) renderDetailImagePreview(c *ui.Context, k desktopkit.Kit, v 
 		NonMotion: true,
 	})
 	stage.Children(func() {
-		if img == nil {
+		if img.source == nil {
 			k.ShimmerBox(c.Key("img-skel"), 8).Fill()
 			return
 		}
-		im := ui.Image(c.Key("img"), img).FillWidth().Height(height)
+		im := img.element(c.Key("img")).FillWidth().Height(height)
 		if alpha < 0.999 {
 			im.Opacity(alpha)
 		}
@@ -787,16 +791,10 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 					d.toggleFavorites([]string{entryItem.id})
 				},
 			}
-			if v.kind == desktopkit.KindImage {
-				if img := d.entryImage(c, entryItem); img != nil {
-					card.Media = func() { ui.Image(c, img).FillWidth().Grow(1).Fit(ui.Cover) }
-				} else if d.live != nil {
-					card.ImageLoading = true
-				}
-			} else if v.kind == desktopkit.KindFile && d.expectImagePreview(entryItem) {
-				if img := d.entryImage(c, entryItem); img != nil {
-					card.Media = func() { ui.Image(c, img).FillWidth().Grow(1).Fit(ui.Cover) }
-				} else if d.live != nil && !d.detailCached(entryItem.id) {
+			if v.kind == desktopkit.KindImage || (v.kind == desktopkit.KindFile && d.expectImagePreview(entryItem)) {
+				if img := d.entryImage(entryItem); img.source != nil {
+					card.Media = func() { img.element(c).FillWidth().Grow(1).Fit(ui.Cover) }
+				} else if d.live != nil && (v.kind == desktopkit.KindImage || !d.detailCached(entryItem.id)) {
 					card.ImageLoading = true
 				}
 			}
@@ -845,12 +843,10 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 					d.useEntry()
 				},
 			}
-			if v.kind == desktopkit.KindImage {
-				row.Image = d.entryImage(c, entryItem)
-				row.ImageLoading = row.Image == nil && d.live != nil
-			} else if v.kind == desktopkit.KindFile && d.expectImagePreview(entryItem) {
-				row.Image = d.entryImage(c, entryItem)
-				row.ImageLoading = row.Image == nil && d.live != nil && !d.detailCached(entryItem.id)
+			if v.kind == desktopkit.KindImage || (v.kind == desktopkit.KindFile && d.expectImagePreview(entryItem)) {
+				img := d.entryImage(entryItem)
+				row.Image, row.ImageDrawOver = img.source, img.drawOver()
+				row.ImageLoading = row.Image == nil && d.live != nil && (v.kind == desktopkit.KindImage || !d.detailCached(entryItem.id))
 			}
 			rows = append(rows, row)
 		}
@@ -1751,14 +1747,11 @@ func (d *viewState) sendTo(target string) {
 	d.notice = "演示：已发送到" + name
 }
 
-func (d *viewState) entryImage(c *ui.Context, v entry) ui.ImageSource {
+func (d *viewState) entryImage(v entry) bitmapPreview {
 	if d.live != nil {
-		if v.picture != nil {
-			return v.picture.source(c)
-		}
-		return v.image
+		return v.bitmapPreview()
 	}
-	return d.previewImage
+	return bitmapPreview{source: d.previewImage}
 }
 func syncStateLabel(s string) string {
 	switch s {

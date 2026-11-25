@@ -28,25 +28,35 @@ type historyImage struct {
 	released      bool
 }
 
-func (p *historyImage) source(c *ui.Context) ui.ImageSource {
-	if !p.released {
-		p.releaseAfterFrame(c.Now(), c.After)
-	}
-	return p.bitmap
+type bitmapPreview struct {
+	source  ui.ImageSource
+	history *historyImage
 }
 
-// Release on a later frame so the preceding frame can upload the pixels.
-// mygo retains the encoded data for texture recovery.
-func (p *historyImage) releaseAfterFrame(now time.Time, after func(time.Duration)) {
-	if p.firstFrame.IsZero() {
-		p.firstFrame = now
-		after(time.Millisecond)
-	} else if !p.firstFrame.Equal(now) {
-		p.bitmap.ReleasePixels()
-		p.released = true
+func (e entry) bitmapPreview() bitmapPreview {
+	if e.picture != nil {
+		return bitmapPreview{source: e.picture.bitmap, history: e.picture}
 	}
+	return bitmapPreview{source: e.image}
 }
 
+func (image bitmapPreview) drawOver() func(*ui.Painter, ui.Rect) {
+	if image.history != nil && !image.history.released {
+		return image.history.afterAcceleratedPaint
+	}
+	return nil
+}
+
+func (image bitmapPreview) element(c *ui.Context) ui.Element {
+	element := ui.Image(c, image.source)
+	if drawOver := image.drawOver(); drawOver != nil {
+		return element.DrawOver(drawOver)
+	}
+	return element
+}
+
+// Release on a later accelerated frame so the preceding frame can upload the
+// pixels. mygo retains the encoded data for texture recovery.
 func (p *historyImage) afterAcceleratedPaint(paint *ui.Painter, _ ui.Rect) {
 	if p.released {
 		return
@@ -57,7 +67,14 @@ func (p *historyImage) afterAcceleratedPaint(paint *ui.Painter, _ ui.Rect) {
 		p.firstFrame = time.Time{}
 		return
 	}
-	p.releaseAfterFrame(paint.Now(), paint.After)
+	now := paint.Now()
+	if p.firstFrame.IsZero() {
+		p.firstFrame = now
+		paint.After(time.Millisecond)
+	} else if !p.firstFrame.Equal(now) {
+		p.bitmap.ReleasePixels()
+		p.released = true
+	}
 }
 
 func thumbnailEdge(count int) int {

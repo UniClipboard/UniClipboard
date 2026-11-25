@@ -28,6 +28,7 @@ type ItemListItem struct {
 	Pinned        bool
 	Tags          []GridTag
 	Image         ui.ImageSource
+	ImageDrawOver func(*ui.Painter, ui.Rect)
 	// ImageLoading reserves the 34x34 thumbnail slot with a shimmer placeholder while
 	// an image thumbnail is still decoding.
 	ImageLoading bool

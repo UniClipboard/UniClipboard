@@ -5,7 +5,10 @@ paths:
   - internal
   - plugin
   - plugins
-  - app/desktop
+  - app/desktop/boardui
+  - app/desktop/cmd
+  - app/desktop/e2e
+  - app/desktop/internal
   - app/service
   - bindings
   - app/expo
@@ -16,7 +19,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: bb3a129b327493d4b6ee2c52309e989da7d32fb9
+verified: beee08c4db89cb326015f4b59f3093eaf7a24e9c
 ---
 # 仓库布局与依赖边界
 
@@ -171,8 +174,7 @@ View-level E2E verifies mygo input and layout without opening a native app. Nati
 ## 缺口
 
 - The adopted demo supplies desktop composition and interaction. Native visual acceptance and the remaining live capabilities are recorded in the [execution receipt](../exec/desktop-live-data.md).
-- Android、iOS 工程及移动绑定尚未建立；gomobile 接入时需补嵌套模块、工作区和版本标签约定（`bindings/vX.Y.Z`）。
-- 各端原生 CI 尚未建立。随应用工程接入，再实现核心变更验证所有端、应用变更验证对应端的路径分流。
+- Mobile physical-device synchronization, system credential prompts and Store rollout have separate acceptance gates. See the [mobile completion plan](../exec/0031-mobile-completion-plan.md) and [release architecture](releases.md#mobile-candidates).
 
 ## Independent release programs
 

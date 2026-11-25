@@ -1,6 +1,6 @@
 # 0018: Independent product builds and releases
 
-- Status: Accepted design; CLI vertical slice implemented locally; Desktop/mobile implementation pending.
+- Status: accepted. CLI and Desktop build and delivery workflows are implemented. Mobile builds and Store candidate workflows are in place. See the [release architecture](../../architecture/releases.md) for channel and acceptance gates.
 - Date: 2026-11-10
 - Requirement: Android, iOS, CLI and Desktop each have dedicated build and release workflows, with a shared promotion workflow for exact builds.
 - Execution plan: [0018 implementation plan](../../exec/0018-independent-product-build-and-release.md).

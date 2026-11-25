@@ -1441,6 +1441,8 @@ func loadSearchEntry(ctx context.Context, client *api.Client, it api.HistoryItem
 			parsed := richtext.ParseHTML(v.text)
 			v.rich = richtext.NewDocument(parsed)
 			v.text = parsed.PlainText()
+		} else if slices.Contains(it.Tags, plugin.TagLink) {
+			v.linkPreview = loadLinkPreview(ctx, client, id, edge)
 		}
 		v.title = shortText(strings.TrimSpace(v.text), 90)
 		v.generatedTitle = false

@@ -2,10 +2,10 @@
 
 - 状态：已实现并有测试（提交结果与网络结果分离、请求幂等、旧 SubmitContent 门面、提交屏障、Received/跨后端去重与资源账本；见[执行计划](../exec/0004-clipboard-pipeline-lua.md) P1–P3、P8）；插件主动变换见[Action 契约](clipboard-action-contract.md)，RPC 核心帧见[RPC 核心协议](plugin-rpc-contract.md)，后端业务 DTO 见[同步后端契约](sync-backend-contract.md)，Lua 预算见[运行时契约](lua-runtime-contract.md)。
 - 日期：2026-11-07。
-- 字段的具体 Go 类型、可选指针、目标结构与错误分类见[SDK 扩展类型契约](sdk-extension-contract.md)，仍待实现。
-- 依据：[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md)、[Engine 契约](engine-contract.md)、[历史契约](history-contract.md)、[插件契约](plugin-contract.md)。本文件是 Engine 的目标扩展，不表示已有代码支持下述 API。
+- The [SDK extension contract](sdk-extension-contract.md) defines Go types, optional values, targets and error categories.
+- Related contracts: [Engine](engine-contract.md), [history](history-contract.md) and [plugins](plugin-contract.md).
 
-实现登记：P1 首批已接入私有 captured/received 处理核心、暂存/回滚、协作取消及旧网络适配，默认无处理器。legacy 提交已增加独立有界结果缓存（成功/失败、TTL/容量驱逐、processing 不淘汰），调用者取消只停止等待。观察接纳已与处理分离，最新已接纳位置与成功基线分开维护，旧结果不覆盖新观察/epoch/应用基线。公开 `CommitContent`/`GetSubmission` 已实现首版（HistoryID/BackendResults 随历史与多后端另行加入；无目标/同步关闭仍 committed）。持久 commit 与提交事件仍待实现；缓存当前保存旧门面网络结果，不能视作持久提交结果。
+`CommitContent` and `GetSubmission` expose the local commit result and per-backend dispositions. Persisted content receives a history ID. The bounded submission table tracks request results within the running Engine. Durable history and in-memory submission lookup have separate recovery boundaries. The [pipeline architecture](../architecture/pipeline.md) describes processing, dispatch and resource ownership.
 
 ## 1. 将 commit 与发送结果分开
 

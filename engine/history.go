@@ -431,6 +431,7 @@ func (e *Engine) persistHistory(ctx context.Context, pc *processedContent, dedup
 	h.mu.Unlock()
 	e.historyChanged(append([]string{it.ID}, evicted...)...)
 	e.notifyObservers(plugin.EventDeleted, evicted...)
+	e.enqueueCommitEnrichment(it.ID, it.Kind, it.Tags)
 	return HistoryID(it.ID), nil
 }
 

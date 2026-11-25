@@ -3,6 +3,7 @@ paths:
   - engine/peerauth.go
   - engine/pairing.go
   - engine/devices.go
+  - engine/engine.go
   - engine/candidates.go
   - engine/tailcat_host.go
   - engine/peerproc.go
@@ -29,9 +30,10 @@ paths:
   - app/desktop/internal/desktopui/live.go
   - app/desktop/internal/desktopui/live_devices.go
   - internal/session/engine.go
+  - internal/session/probe.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
-verified: bbbbe5ed418e40009cea22eaf6e9be8e1d1dba2d
+verified: f99e90e35f86c5d5fe50c87e04217c415595a93a
 ---
 # 设备身份、信任与配对
 
@@ -110,6 +112,12 @@ The event contains no device identity, fingerprint, binding context or pairing m
 ## Backend callback state refresh
 
 A handshake that revives a revoked device records it as pending and queues a coalesced state refresh. It never waits for `ApplyState` from a backend callback. A single Engine-owned refresh worker drains these requests; Engine stop prevents new work and drains the worker before closing the store. Explicit unpairing, rejection and other revocations retain the synchronous state barrier. The pending handshake grants no session token or trust.
+
+## Device connection refresh
+
+A device binding reports its current connection state. When the peer-session backend has the data, it also reports a finite transport category, the last measured round-trip time and the last check time. Route and timing fields contain no endpoints or credentials.
+
+`Engine.RefreshConnections` checks one device or all devices. A capable backend probes existing sessions, closes half-open connections and resets reconnect backoff. Backends without a probe fall back to the existing network-change signal. Connection checks do not grant trust or change binding authorization. See the [service routes](../contracts/local-service-contract.md#device-connection-refresh).
 
 ## External backend host workflow
 

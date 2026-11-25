@@ -876,6 +876,16 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 					card.ImageLoading = true
 				}
 			}
+			if v.kind == desktopkit.KindLink && v.linkPreview != nil {
+				card.LinkSite = v.linkPreview.siteName
+				card.LinkTitle = v.linkPreview.title
+				card.LinkDescription = v.linkPreview.description
+				card.LinkFavicon = v.linkPreview.favicon
+				if v.linkPreview.thumbnail != nil && v.linkPreview.thumbnail.bitmap != nil {
+					card.LinkImage = v.linkPreview.thumbnail.bitmap
+					card.LinkImageDrawOver = bitmapDrawOver(v.linkPreview.thumbnail)
+				}
+			}
 			cards = append(cards, card)
 		}
 		k.GroupedGrid(c.Key("grid"), &d.list, desktopkit.GroupedGridProps{Label: d.tr("历史网格"), Groups: groups, Items: cards, Size: float32(d.gridSize), Menu: d.historyItemMenu}).Grow(1).MinHeight(0)
@@ -884,6 +894,13 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 		for _, v := range items {
 			entryItem := v
 			title := d.entryTitle(v)
+			excerpt := listRowExcerpt(v, title)
+			if v.kind == desktopkit.KindLink && v.linkPreview != nil && v.linkPreview.title != "" {
+				title = v.linkPreview.title
+				if rawURL := strings.TrimSpace(v.text); rawURL != "" {
+					excerpt = rawURL
+				}
+			}
 			shortTime := strings.TrimPrefix(strings.TrimPrefix(v.date, "今天 "), "昨天 ")
 			meta := d.sourceName(v.source)
 			if v.sourceAppName != "" {
@@ -904,7 +921,7 @@ func (d *viewState) historyList(c *ui.Context, k desktopkit.Kit, items []entry) 
 				Subtitle:      d.sourceName(v.source) + " · " + shortTime,
 				Highlight:     d.historyHighlightTerms(v),
 				CardRow:       true,
-				Excerpt:       listRowExcerpt(v, title),
+				Excerpt:       excerpt,
 				ExcerptKind:   v.kind,
 				Time:          shortTime,
 				Meta:          meta,
@@ -1144,39 +1161,7 @@ func (d *viewState) detail(c *ui.Context, k desktopkit.Kit) {
 					linkBody = loadingPreviewText
 				}
 				if v.kind == desktopkit.KindLink && v.rich == nil && v.image == nil && (d.live == nil || (v.contentError == "" && (!d.live.detailBusy || useLoadingPreviewText))) {
-					host, _ := urlHostAndPath(linkBody)
-					ui.Column(c.Key("link-preview")).Padding(14, 16).Radius(12).Gap(10).
-						Background(k.SubtleCardSurface()).Border(1, border).Shrink(0).Children(func() {
-						if host != "" {
-							bg, fg := k.TagTint("blue")
-							ui.Row(c.Key("host")).Gap(6).AlignItems(ui.Center).Children(func() {
-								ui.Box(c.Key("ico")).Size(18, 18).Radius(5).Background(bg).Center().Shrink(0).Children(func() {
-									k.Icon(c, desktopkit.IconLink, 11).TextColor(fg)
-								})
-								k.HighlightedText(c.Key("h"), host, highlightTerms, desktopkit.HighlightTextProps{
-									FontSize:   12,
-									FontWeight: 600,
-									TextColor:  fg,
-									SingleLine: true,
-								})
-							})
-						}
-						if title := d.entryTitle(*v); title != "" && title != strings.TrimSpace(linkBody) {
-							k.HighlightedText(c.Key("t"), title, highlightTerms, desktopkit.HighlightTextProps{
-								FontSize:   15,
-								FontWeight: 600,
-								TextColor:  k.Color("text-primary"),
-							})
-						}
-						ui.Box(c.Key("url-box")).Padding(9, 11).Radius(8).
-							Background(k.DrawerInnerSurface()).Border(1, border).Children(func() {
-							k.HighlightedText(c, strings.TrimSpace(linkBody), highlightTerms, desktopkit.HighlightTextProps{
-								FontSize:  11.5,
-								TextColor: k.Color("accent-500"),
-								Monospace: true,
-							})
-						})
-					})
+					d.renderLinkPreviewCard(c, k, *v, linkBody, highlightTerms, k.SubtleCardSurface(), k.DrawerInnerSurface(), border)
 				} else {
 					p := desktopkit.PreviewFrameProps{Kind: kind}
 					if kind == desktopkit.PreviewImage {
@@ -1482,39 +1467,7 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 					drawerLinkBody = drawerLoadingText
 				}
 				if item.kind == desktopkit.KindLink && item.rich == nil && item.image == nil && (d.live == nil || (item.contentError == "" && (!d.live.detailBusy || useDrawerLoadingText))) {
-					host, _ := urlHostAndPath(drawerLinkBody)
-					ui.Column(c.Key("link-preview")).Padding(14, 16).Radius(12).Gap(10).
-						Background(k.DrawerInnerSurface()).Border(1, border).Shrink(0).Children(func() {
-						if host != "" {
-							bg, fg := k.TagTint("blue")
-							ui.Row(c.Key("host")).Gap(6).AlignItems(ui.Center).Children(func() {
-								ui.Box(c.Key("ico")).Size(18, 18).Radius(5).Background(bg).Center().Shrink(0).Children(func() {
-									k.Icon(c, desktopkit.IconLink, 11).TextColor(fg)
-								})
-								k.HighlightedText(c.Key("h"), host, drawerHighlights, desktopkit.HighlightTextProps{
-									FontSize:   12,
-									FontWeight: 600,
-									TextColor:  fg,
-									SingleLine: true,
-								})
-							})
-						}
-						if title := d.entryTitle(*item); title != "" && title != strings.TrimSpace(drawerLinkBody) {
-							k.HighlightedText(c.Key("t"), title, drawerHighlights, desktopkit.HighlightTextProps{
-								FontSize:   15,
-								FontWeight: 600,
-								TextColor:  k.Color("text-primary"),
-							})
-						}
-						ui.Box(c.Key("url-box")).Padding(9, 11).Radius(8).
-							Background(k.Color("background-primary-default")).Border(1, border).Children(func() {
-							k.HighlightedText(c, strings.TrimSpace(drawerLinkBody), drawerHighlights, desktopkit.HighlightTextProps{
-								FontSize:  11.5,
-								TextColor: k.Color("accent-500"),
-								Monospace: true,
-							})
-						})
-					})
+					d.renderLinkPreviewCard(c, k, *item, drawerLinkBody, drawerHighlights, k.DrawerInnerSurface(), k.Color("background-primary-default"), border)
 				} else {
 					kind := desktopkit.PreviewPlain
 					if item.kind == desktopkit.KindCode {

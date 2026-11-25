@@ -44,9 +44,9 @@ Windows · macOS · Linux · CLI　|　Texto · Imagens · Arquivos · Pastas
 | 🔍 **Encontre tudo** | Digite uma palavra ou filtre com `#etiqueta`, `@dispositivo` ou `/tipo`. Encontre o que copiou há meses. |
 | 🏷️ **Etiquetas automáticas** | Links, e-mails, cores, números de versão, UUIDs e endereços IP recebem etiquetas automaticamente. Crie suas próprias regras. |
 | 📁 **Arquivos e pastas** | Envie uma pasta inteira com a estrutura preservada, para todos os dispositivos ou só um. |
-| 📮 **Envio sem pareamento** | `unic send "texto"` mostra um código de 6 dígitos. O outro lado digita o código para receber. Nenhum registro de dispositivo fica salvo. |
+| 📮 **Envio sem pareamento** | `unic send "texto"` mostra um link de transferência e, quando disponível, um código de 6 dígitos. Quem recebe pode usar um ou outro. Nenhum registro de dispositivo fica salvo. |
 | 🧩 **Plugins** | Instale plugins com um clique nas Configurações, por exemplo para transformar uma imagem ou arquivo em link de compartilhamento. |
-| ⌨️ **Linha de comando** | Use `unic` para enviar, receber e buscar no histórico pelo terminal, via SSH ou em scripts. |
+| ⌨️ **Linha de comando** | Use `unic` para enviar, receber e filtrar a lista do histórico pelo terminal, via SSH ou em scripts. |
 | 🌍 **Idiomas** | English, 简体中文, 日本語, Português, Русский. Temas claro e escuro. |
 
 <a id="quick-start"></a>
@@ -55,7 +55,7 @@ Windows · macOS · Linux · CLI　|　Texto · Imagens · Arquivos · Pastas
 
 **1. Execute**
 
-> Os instaladores chegam em breve. Por enquanto, execute a partir do código-fonte. Você só precisa do [Go](https://go.dev/dl/).
+Baixe a versão de prévia do Desktop v2 para a sua plataforma no [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases). Para executar a partir do código-fonte, use os comandos abaixo.
 
 ```sh
 git clone https://github.com/UniClipboard/UniClipboard.git
@@ -76,7 +76,7 @@ Pressione `Ctrl+C` em um dispositivo e `Ctrl+V` no outro.
 ```sh
 unic send --to all "Hello"        # enviar para todos os dispositivos
 unic send --to all -f ./photos    # enviar arquivos ou uma pasta
-unic send "temporário"            # sem pareamento: gera um código
+unic send "temporário"            # sem pareamento: mostra um link e, quando disponível, um código
 unic recv 482913                  # receber com o código
 unic history list                 # ver o histórico
 ```

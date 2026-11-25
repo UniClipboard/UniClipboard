@@ -28,6 +28,7 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 	headlessRoutes(mux, b)
 	transferRoutes(mux, b)
 	searchRoutes(mux, b)
+	annotationRoutes(mux, b)
 	bindingRoutes(mux, b)
 	pluginRoutes(mux, b)
 	channelPairRoute(mux, b)

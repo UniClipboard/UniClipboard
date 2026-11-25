@@ -50,6 +50,11 @@ the expected directory.
 Native CI has separate Engine, Expo bundle and platform-specific live UI
 jobs. The live suite runs on explicitly selected disposable simulators. Its
 receipts include the artifact hash, flow hashes, JUnit and screenshots.
+The first [hosted Android job](https://github.com/UniClipboard/UniClipboard/actions/runs/45530292519/job/138923618540)
+stopped before compilation because the Ubuntu runner had no Android SDK
+command-line tools on its PATH. The Android acceptance and Store candidate
+workflows install the required SDK packages explicitly.
+
 The iOS workflows use the [GitHub-hosted Xcode 27 image](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md).
 
 The `mobile-ios` environment supplies the Apple Distribution PKCS#12 file,

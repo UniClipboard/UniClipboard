@@ -63,6 +63,15 @@ func wireSpec(s Spec) rpc.Spec {
 	for _, a := range s.Actions {
 		out.Actions = append(out.Actions, rpc.ActionSpec{ID: a.ID, Title: a.Title, Accepts: slices.Clone(a.Accepts), Placements: slices.Clone(a.Placements), PostActions: slices.Clone(a.PostActions), TimeoutMS: a.TimeoutMS})
 	}
+	if s.Enricher != nil {
+		out.Enricher = &rpc.EnricherSpec{
+			Accepts:      slices.Clone(s.Enricher.Accepts),
+			RequiredTags: slices.Clone(s.Enricher.RequiredTags),
+			Triggers:     slices.Clone(s.Enricher.Triggers),
+			Annotations:  slices.Clone(s.Enricher.Annotations),
+			TimeoutMS:    s.Enricher.TimeoutMS,
+		}
+	}
 	return out
 }
 
@@ -102,6 +111,8 @@ func (s *server) handle(ctx context.Context, c *rpc.Call) (any, error) {
 		res, err = s.process(ctx, c)
 	case rpc.MethodRunAction:
 		res, err = s.runAction(ctx, c)
+	case rpc.MethodEnrich:
+		res, err = s.enrich(ctx, c)
 	case rpc.MethodOnEvent:
 		res, err = s.onEvent(ctx, c)
 	case rpc.MethodSubmit:

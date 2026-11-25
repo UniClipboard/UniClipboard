@@ -4,6 +4,7 @@ import {
   Button as SwiftUIButton,
   HStack,
   Image,
+  ProgressView,
   RNHostView,
   Section,
   Spacer,
@@ -20,12 +21,14 @@ import {
   font,
   foregroundStyle,
   frame,
+  lineLimit,
   multilineTextAlignment,
   onSubmit,
   padding,
   shapes,
   submitLabel,
   textInputAutocapitalization,
+  truncationMode,
 } from '@expo/ui/swift-ui/modifiers';
 import { useTranslation } from 'react-i18next';
 
@@ -34,8 +37,161 @@ import {
   iosProminentButtonModifiers,
   iosSecondaryButtonModifiers,
 } from '@/components/ui/iosButtonStyles.ios';
-import type { EngineCandidate, SensitiveTicket } from '@/engine/types';
+import type { EngineCandidate, EngineDevice, SensitiveTicket } from '@/engine/types';
 import { settingsTileColors } from '@/screens/settings/ios/common';
+import { deviceDisplayName } from './deviceRows';
+
+function formatFingerprintLines(value: string): string {
+  const groups = value.trim().split(/\s+/).filter(Boolean);
+  if (groups.length === 8) {
+    return `${groups.slice(0, 4).join(' ')}\n${groups.slice(4).join(' ')}`;
+  }
+  return value;
+}
+
+export function PairingApproveSheet({
+  device,
+  onApprove,
+  onClose,
+}: {
+  device: EngineDevice | null;
+  onApprove: (device: EngineDevice) => Promise<void>;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const pair = (key: string) => t(`settingsSync:pairing.${key}`);
+  const [approving, setApproving] = useState(false);
+
+  useEffect(() => {
+    setApproving(false);
+  }, [device?.id, device?.revision]);
+
+  const handleApprove = () => {
+    if (!device || approving) return;
+    setApproving(true);
+    void onApprove(device).finally(() => setApproving(false));
+  };
+
+  return (
+    <IosBottomSheet
+      visible={device !== null}
+      onDismiss={onClose}
+      detents={[{ fraction: 0.6 }, 'large']}
+      interactiveDismissDisabled={approving}
+    >
+      {device ? (
+        <IosSheetPage
+          title={pair('approveSheetTitle')}
+          rightSlots={[
+            <SheetCircleButton
+              key="close"
+              testID="devices-approve-close"
+              systemName="xmark"
+              accessibilityLabel={t('common:action.close')}
+              disabled={approving}
+              onPress={onClose}
+            />,
+          ]}
+        >
+          <IosSheetForm>
+            <Section>
+              <HStack spacing={12} alignment="center" modifiers={[frame({ maxWidth: Infinity })]}>
+                <Image
+                  systemName="laptopcomputer"
+                  size={30}
+                  color={settingsTileColors.orange}
+                  modifiers={[frame({ width: 42, height: 42 })]}
+                />
+                <VStack alignment="leading" spacing={4}>
+                  <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
+                    {deviceDisplayName(device)}
+                  </SwiftUIText>
+                  <SwiftUIText
+                    modifiers={[
+                      font({ size: 12, design: 'monospaced' }),
+                      foregroundStyle('secondary'),
+                      lineLimit(1),
+                      truncationMode('middle'),
+                    ]}
+                  >
+                    {device.id}
+                  </SwiftUIText>
+                </VStack>
+                <Spacer />
+              </HStack>
+
+              <VStack
+                alignment="center"
+                spacing={8}
+                modifiers={[frame({ maxWidth: Infinity }), padding({ vertical: 6 })]}
+              >
+                <SwiftUIText modifiers={[font({ size: 13 }), foregroundStyle('secondary')]}>
+                  {pair('fingerprintLabel')}
+                </SwiftUIText>
+                <SwiftUIText
+                  testID="devices-approve-fingerprint"
+                  modifiers={[
+                    font({ size: 17, weight: 'semibold', design: 'monospaced' }),
+                    multilineTextAlignment('center'),
+                  ]}
+                >
+                  {formatFingerprintLines(device.fingerprint)}
+                </SwiftUIText>
+                <SwiftUIText
+                  modifiers={[
+                    font({ size: 13 }),
+                    foregroundStyle('secondary'),
+                    multilineTextAlignment('center'),
+                    padding({ top: 2 }),
+                  ]}
+                >
+                  {pair('approveHint')}
+                </SwiftUIText>
+              </VStack>
+            </Section>
+          </IosSheetForm>
+          <VStack spacing={10} modifiers={[padding({ horizontal: 20, top: 8, bottom: 20 })]}>
+            <SwiftUIButton
+              testID="devices-approve-confirm"
+              onPress={handleApprove}
+              modifiers={[
+                ...iosProminentButtonModifiers(undefined, { fullWidth: true }),
+                controlSize('large'),
+                disabled(approving),
+              ]}
+            >
+              <HStack spacing={8} modifiers={[frame({ maxWidth: Infinity })]}>
+                <Spacer />
+                {approving ? <ProgressView /> : null}
+                <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
+                  {pair('approve')}
+                </SwiftUIText>
+                <Spacer />
+              </HStack>
+            </SwiftUIButton>
+            <SwiftUIButton
+              testID="devices-approve-cancel"
+              onPress={onClose}
+              modifiers={[
+                ...iosSecondaryButtonModifiers({ fullWidth: true }),
+                controlSize('large'),
+                disabled(approving),
+              ]}
+            >
+              <HStack modifiers={[frame({ maxWidth: Infinity })]}>
+                <Spacer />
+                <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
+                  {t('common:action.cancel')}
+                </SwiftUIText>
+                <Spacer />
+              </HStack>
+            </SwiftUIButton>
+          </VStack>
+        </IosSheetPage>
+      ) : null}
+    </IosBottomSheet>
+  );
+}
 
 export function PairingJoinSheet({
   visible,

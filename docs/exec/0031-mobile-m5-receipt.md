@@ -79,6 +79,8 @@ by seccomp on the raw `lstat` syscall used by the Go-translated SQLite
 dependency. The x86-64 Android binding now uses SQLite built with the NDK
 and FTS5. Its write, search and backup connections retain WAL, limits
 on lock waits, foreign keys and read-only policies where applicable.
+The [following x86-64 job](https://github.com/UniClipboard/UniClipboard/actions/runs/45547212385/job/138979594362)
+passed live Setup, history intake and search, and devices and diagnostics.
 
 The first [hosted iOS run](https://github.com/UniClipboard/UniClipboard/actions/runs/45530292519/job/138923618609)
 passed setup on iPhone Duo and failed its clipboard history assertion. The
@@ -86,21 +88,25 @@ same local live suite passed on an iPhone 17 Pro simulator with iOS 27.0.
 CI now creates that simulator explicitly. The
 [first pinned-simulator run with a complete fixture setup](https://github.com/UniClipboard/UniClipboard/actions/runs/45534772791/job/138938562176)
 read the fixture back through simctl, then failed the same app history
-assertion. On iOS 27 the fixture now uses CoreDevice's device pasteboard
-commands. Host readback passed while the app history assertion still
-failed in CI. The flow now seeds and verifies the clipboard after Maestro
-opens the menu. A full build from the rebased source passed this flow on
-the local iOS 27.0 simulator. The app intake and search assertions remain.
-A failed iOS run captures pasteboard diagnostics from that isolated simulator.
+assertion. The iOS 27 test then tried CoreDevice's device pasteboard commands
+and moved fixture creation into the flow, after Maestro opened the upload menu.
 The [first hosted in-flow attempt](https://github.com/UniClipboard/UniClipboard/actions/runs/45547212385/job/138979594389)
-still failed with Xcode 27.1 after successful fixture write and readback.
-Both iOS workflows now select Xcode 27.0. On failure the acceptance job
-also checks for the synthetic text in the pasteboard and reads its record
-count from the private test database without exporting either content
-store. The
-[next iOS job](https://github.com/UniClipboard/UniClipboard/actions/runs/45534358566/job/138937188768)
-stopped during a lost release-asset connection. Both Maestro downloads now
-use bounded retries and retain the SHA-256 check.
+still failed with Xcode 27.1. The
+[pinned Xcode 27.0 run](https://github.com/UniClipboard/UniClipboard/actions/runs/45553234131/job/138999086096)
+and [diagnostic retry](https://github.com/UniClipboard/UniClipboard/actions/runs/45558319616/job/139015663426)
+confirmed that the fixture was still present through host readback, the
+history contained zero matching records, and the simulator did not provide
+application pasteboard logs. The local test showed the system permission
+prompt and passed all three live flows with the same clipboard command.
+
+The live iOS flow now creates the clipboard item through UIKit in a separate
+simulator fixture app. Maestro returns to UniClipboard, verifies that history
+does not contain the item yet, selects Upload clipboard, and checks intake
+and search. The fixture is built into the test output and identified by its
+hash. The workflow retains pasteboard diagnostics and the count of matching
+database records on failure. The
+[interrupted asset download](https://github.com/UniClipboard/UniClipboard/actions/runs/45534358566/job/138937188768)
+is handled by bounded retries and the existing Maestro SHA-256 check.
 
 The iOS workflows use the [GitHub-hosted Xcode 27 image](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md).
 

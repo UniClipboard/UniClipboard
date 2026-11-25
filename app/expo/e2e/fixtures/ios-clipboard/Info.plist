@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>app.uniclipboard.e2e.clipboard</string>
+  <key>CFBundleExecutable</key><string>ClipboardFixture</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleName</key><string>Clipboard Fixture</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>UIApplicationSceneManifest</key>
+  <dict>
+    <key>UIApplicationSupportsMultipleScenes</key><false/>
+    <key>UISceneConfigurations</key>
+    <dict>
+      <key>UIWindowSceneSessionRoleApplication</key>
+      <array><dict>
+        <key>UISceneDelegateClassName</key><string>ClipboardFixtureSceneDelegate</string>
+      </dict></array>
+    </dict>
+  </dict>
+  <key>UILaunchScreen</key><dict/>
+</dict>
+</plist>

@@ -42,14 +42,16 @@ node e2e/run.mjs --platform android --device emulator-5554 \
 
 Use `--suite live` with an Engine-enabled Release build to exercise fresh
 Setup, history intake and search, the device page, and diagnostics settings.
-This suite seeds synthetic text through the iOS Simulator pasteboard or a
-targeted Android share intent. It clears the test app data before Setup.
-On Android the runner uses SDK adb to reset and launch the app and to restart
-it for the device and diagnostics flow. Maestro checks the live app UI.
+This suite clears the test app data before Setup. On iOS, the runner builds
+and installs a separate clipboard fixture app on the selected simulator. The
+fixture writes synthetic text through UIKit. Maestro switches to the test app
+and checks that its Upload clipboard action adds the text to history. On
+Android, the runner uses SDK adb to launch the app and deliver the text through
+a targeted share intent. Maestro checks the live app UI on both platforms.
 
 The runner writes `e2e/results/<run>/receipt.json` on success and failure. It
-records artifact/lockfile/flow hashes, device ID, tool version and every stage's
-status. The same directory contains Maestro logs, screenshots and JUnit reports.
+records artifact/lockfile/flow hashes, the iOS fixture hash when applicable,
+the device ID, the tool version, and every stage's status. The same directory contains Maestro logs, screenshots and JUnit reports.
 Repeat a run using the same artifact and flow revision. A bundle acceptance report
 must always show native UI as `NOT RUN`; the native receipt is the separate proof.
 

@@ -486,7 +486,13 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			if len(a) != 2 {
 				return errors.New("ui-click role label")
 			}
-			node, err := s.find(a[0], a[1])
+			// Serialize against background recording captures so a slow software
+			// CapturePage() cannot stall between sampling bounds and delivering
+			// the click, and wait for the target element's bounds to settle when
+			// an enter/layout transition (such as a Sheet scale-in) is animating.
+			s.captureMu.Lock()
+			defer s.captureMu.Unlock()
+			node, err := s.findForClick(a[0], a[1])
 			if err != nil {
 				return err
 			}
@@ -758,6 +764,42 @@ func (s *desktopScenario) find(role, label string) (desktopNode, error) {
 	}
 	return found[0], nil
 }
+func (s *desktopScenario) findForClick(role, label string) (desktopNode, error) {
+	if s.call(s.ctx, "idle", map[string]any{"window": s.window, "timeout": 15}, nil) == nil {
+		return s.find(role, label)
+	}
+	var prev, target desktopNode
+	stable := time.Time{}
+	err := s.waitFor(3*time.Second, func() bool {
+		if s.call(s.ctx, "idle", map[string]any{"window": s.window, "timeout": 15}, nil) == nil {
+			node, err := s.find(role, label)
+			if err != nil {
+				stable = time.Time{}
+				return false
+			}
+			target = node
+			return true
+		}
+		node, err := s.find(role, label)
+		if err != nil {
+			stable = time.Time{}
+			return false
+		}
+		if stable.IsZero() || node.ID != prev.ID || node.Bounds != prev.Bounds {
+			prev, stable = node, time.Now()
+			return false
+		}
+		if time.Since(stable) >= 400*time.Millisecond {
+			target = node
+			return true
+		}
+		return false
+	})
+	if err != nil {
+		return s.find(role, label)
+	}
+	return target, nil
+}
 func (s *desktopScenario) expect(args []string, absent bool) error {
 	if len(args) < 2 || len(args) > 3 {
 		return errors.New("ui assertion requires role, exact label and optional timeout seconds")
@@ -774,21 +816,36 @@ func (s *desktopScenario) expect(args []string, absent bool) error {
 	if err != nil {
 		return err
 	}
+	type nodeSnap struct {
+		ID     string
+		Bounds struct{ X, Y, Width, Height float64 }
+	}
+	var previous []nodeSnap
 	stable := time.Time{}
 	err = s.waitFor(limit, func() bool {
 		nodes, e := s.tree()
 		if e != nil {
 			return false
 		}
-		present := false
+		var matched []nodeSnap
 		for _, n := range nodes {
-			present = present || (n.Role == args[0] && match(n.Label))
+			if n.Role == args[0] && match(n.Label) {
+				matched = append(matched, nodeSnap{ID: n.ID, Bounds: n.Bounds})
+			}
 		}
+		present := len(matched) > 0
 		if present == absent {
+			previous = nil
 			stable = time.Time{}
 			return false
 		}
-		if stable.IsZero() {
+		if !absent {
+			if stable.IsZero() || !slices.Equal(matched, previous) {
+				previous = matched
+				stable = time.Now()
+				return false
+			}
+		} else if stable.IsZero() {
 			stable = time.Now()
 		}
 		return time.Since(stable) >= 350*time.Millisecond

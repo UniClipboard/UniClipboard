@@ -489,6 +489,121 @@ func TestPanelApplyAlongsideActiveObserverZeroEchoAndSeqContinuity(t *testing.T)
 	}
 }
 
+func TestPanelApplyMidWriteObserverEmptyDoesNotEcho(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	n, dir, genID, cleanup := openPanelTestNode(t, servicelifecycle.ModeStandalone, nil, false)
+	defer cleanup()
+
+	sub1, err := n.Submit(ctx, api.SubmitInput{
+		RequestID: "sub-midwrite-1",
+		Snapshot:  clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte("panel-target-text")}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var sess string
+	if rep := n.AdapterCall(ctx, api.AdapterRequest{Method: "register"}); rep.Error != nil {
+		t.Fatal(rep.Error)
+	} else {
+		sess = string(rep.Value[1 : len(rep.Value)-1])
+	}
+	remote := &directAdapterEngine{n: n, session: sess}
+	if err := remote.setCaps(ctx); err != nil {
+		t.Fatal(err)
+	}
+	importText := func(text string) engine.LeaseID {
+		var h engine.ContentHandle
+		if err := remote.call(ctx, "import", api.AdapterImport{
+			Snapshot: clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte(text)}}},
+		}, &h); err != nil {
+			t.Fatal(err)
+		}
+		return h.LeaseID
+	}
+
+	initLease := importText("initial-text")
+	const ep = "obs-midwrite-epoch"
+	if _, err := remote.ObserveClipboard(ctx, engine.Observation{Epoch: ep, Sequence: 1, Mode: engine.ObserveBaseline, LeaseID: initLease}); err != nil {
+		t.Fatal(err)
+	}
+	_ = remote.ReleaseContent(ctx, initLease)
+
+	// Begin panel apply so panelTx is active.
+	grant, err := n.PanelApplyBegin(ctx, api.PanelApplyBeginRequest{
+		Profile:   dir,
+		ServiceID: genID,
+		RequestID: "req-midwrite",
+		HistoryID: string(sub1.HistoryID),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate an observer sampling a transient empty clipboard while panelTx is in flight.
+	type obsOut struct {
+		res engine.ObservationResult
+		err error
+	}
+	blocked := make(chan obsOut, 1)
+	go func() {
+		res, err := remote.ObserveClipboard(ctx, engine.Observation{Epoch: ep, Sequence: 2, Mode: engine.ObserveChange})
+		blocked <- obsOut{res: res, err: err}
+	}()
+	time.Sleep(40 * time.Millisecond)
+
+	// Complete panel apply with verified read-back snapshot.
+	if _, err := n.PanelApplyComplete(ctx, api.PanelApplyCompleteRequest{
+		Profile:   dir,
+		ServiceID: genID,
+		RequestID: "req-midwrite",
+		Token:     grant.Token,
+		Outcome:   "applied",
+		ReadBack:  &grant.Snapshot,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := <-blocked
+	if got.err != nil {
+		t.Fatalf("blocked observe failed: %v", got.err)
+	}
+	if got.res.Disposition != engine.DispUnchanged {
+		t.Fatalf("blocked mid-write empty observe disposition=%q want %q", got.res.Disposition, engine.DispUnchanged)
+	}
+
+	// Next poll sees the panel-written text: MUST be DispUnchanged (zero echo).
+	panelLease := importText("panel-target-text")
+	resAfter, err := remote.ObserveClipboard(ctx, engine.Observation{Epoch: ep, Sequence: 3, Mode: engine.ObserveChange, LeaseID: panelLease})
+	_ = remote.ReleaseContent(ctx, panelLease)
+	if err != nil {
+		t.Fatalf("post-panel observe failed: %v", err)
+	}
+	if resAfter.Disposition != engine.DispUnchanged {
+		t.Fatalf("post-panel observe echoed: disposition=%q want %q", resAfter.Disposition, engine.DispUnchanged)
+	}
+
+	// A genuine new user copy MUST still be captured into history on the same epoch.
+	userLease := importText("genuine-new-copy")
+	resUser, err := remote.ObserveClipboard(ctx, engine.Observation{Epoch: ep, Sequence: 4, Mode: engine.ObserveChange, LeaseID: userLease})
+	_ = remote.ReleaseContent(ctx, userLease)
+	if err != nil {
+		t.Fatalf("subsequent user observe failed: %v", err)
+	}
+	if resUser.Disposition == engine.DispUnchanged || resUser.Disposition == engine.DispEcho {
+		t.Fatalf("subsequent user copy was suppressed: disposition=%q", resUser.Disposition)
+	}
+	page, err := n.ListHistory(ctx, api.HistoryQuery{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("expected 2 history items (1 seeded + 1 genuine user copy, zero echo), got %d", len(page.Items))
+	}
+}
+
 // directAdapterEngine routes clipboardintegration.Engine calls directly through Node.AdapterCall.
 type directAdapterEngine struct {
 	n       *Node

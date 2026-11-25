@@ -32,6 +32,7 @@ type adapterState struct {
 	obsEpoch       string
 	lastEngineSeq  uint64
 	seqOffset      uint64
+	panelCommitSeq uint64
 	panelTx        *panelApplyTx
 	panelHeldLease engine.LeaseID
 	panelHeldToken engine.ApplyToken
@@ -217,12 +218,16 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 	} else if !a.validLocked(in.Session) {
 		err = adapterError(engine.CodeResourceExpired)
 	} else {
+		waitedPanelApplied := false
 		switch in.Method {
 		case "capabilities", "observe", "apply", "apply-history", "reconcile":
+			hadPanel := a.panelTx != nil
+			beforeCommits := a.panelCommitSeq
 			if werr := a.waitPanelClearLocked(ctx); werr != nil {
 				err = werr
 				break
 			}
+			waitedPanelApplied = hadPanel && a.panelCommitSeq > beforeCommits
 			if !a.validLocked(in.Session) {
 				err = adapterError(engine.CodeResourceExpired)
 				break
@@ -365,6 +370,15 @@ func (n *Node) AdapterCall(ctx context.Context, in api.AdapterRequest) api.Adapt
 			if decode(&o) {
 				if o.LeaseID != "" && !a.leases[o.LeaseID] {
 					err = adapterError(engine.CodeResourceExpired)
+				} else if waitedPanelApplied && o.Mode == engine.ObserveChange && o.Epoch == a.obsEpoch && a.obsEpoch != "" {
+					// This observation was sampled before or during a panel write that
+					// has since been verified by read-back and committed as the new
+					// baseline. Drop it rather than letting a mid-write empty/stale
+					// snapshot clobber e.obs.baseline and echo the panel write.
+					if a.seqOffset > 0 {
+						a.seqOffset--
+					}
+					out = engine.ObservationResult{Disposition: engine.DispUnchanged}
 				} else {
 					mapped := o
 					if mapped.Mode == engine.ObserveChange && mapped.Epoch == a.obsEpoch && a.obsEpoch != "" {

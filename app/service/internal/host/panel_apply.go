@@ -602,6 +602,7 @@ func (n *Node) PanelApplyComplete(ctx context.Context, req api.PanelApplyComplet
 	}
 
 	a.lastEngineSeq = nextSeq
+	a.panelCommitSeq++
 	if a.session != "" && a.session == tx.observerSession && a.obsEpoch == tx.epoch {
 		a.seqOffset++
 	}

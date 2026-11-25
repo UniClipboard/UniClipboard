@@ -29,10 +29,21 @@ var dirFormats = []struct{ file, format string }{
 
 const dirFiles = "files"
 
+var dirLocks sync.Map // map[string]*sync.Mutex
+
+func dirMutex(dir string) *sync.Mutex {
+	key := filepath.Clean(dir)
+	v, _ := dirLocks.LoadOrStore(key, &sync.Mutex{})
+	return v.(*sync.Mutex)
+}
+
 func (d Dir) Read() (clip.Snapshot, error) {
 	if err := d.waitDirectoryApply(); err != nil {
 		return clip.Snapshot{}, err
 	}
+	mu := dirMutex(string(d))
+	mu.Lock()
+	defer mu.Unlock()
 
 	var s clip.Snapshot
 	if data, err := os.ReadFile(filepath.Join(string(d), "source.json")); err == nil {
@@ -71,25 +82,38 @@ func (d Dir) Write(s clip.Snapshot) error {
 	if err := os.MkdirAll(string(d), 0o700); err != nil {
 		return err
 	}
-	for _, name := range []string{dirFiles, "text", "html", "png", "source.json"} {
-		if err := os.Remove(filepath.Join(string(d), name)); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-	}
+	mu := dirMutex(string(d))
+	mu.Lock()
+	defer mu.Unlock()
+
+	kept := map[string]bool{}
 	if len(s.Files) > 0 {
 		var b strings.Builder
 		for _, f := range s.Files {
 			b.WriteString(f.Path + "\n")
 		}
-		return writeAtomic(filepath.Join(string(d), dirFiles), []byte(b.String()))
-	}
-	for _, p := range s.Parts {
-		for _, f := range dirFormats {
-			if f.format == p.Format {
-				if err := writeAtomic(filepath.Join(string(d), f.file), p.Data); err != nil {
-					return err
+		if err := writeAtomic(filepath.Join(string(d), dirFiles), []byte(b.String())); err != nil {
+			return err
+		}
+		kept[dirFiles] = true
+	} else {
+		for _, p := range s.Parts {
+			for _, f := range dirFormats {
+				if f.format == p.Format {
+					if err := writeAtomic(filepath.Join(string(d), f.file), p.Data); err != nil {
+						return err
+					}
+					kept[f.file] = true
 				}
 			}
+		}
+	}
+	for _, name := range []string{dirFiles, "text", "html", "png", "source.json"} {
+		if kept[name] {
+			continue
+		}
+		if err := os.Remove(filepath.Join(string(d), name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
 		}
 	}
 	return nil

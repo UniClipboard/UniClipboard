@@ -68,7 +68,12 @@ same explicit virtual-device directory when it starts the emulator. The
 [next run](https://github.com/UniClipboard/UniClipboard/actions/runs/45537027573/job/138946015405)
 passed emulator startup and showed Setup. The app left the foreground
 after the Setup action. The test now captures Android's crash buffer and
-the app's process-exit records on failure.
+the app's process-exit records on failure. A
+[subsequent run](https://github.com/UniClipboard/UniClipboard/actions/runs/45540321919/job/138956987238)
+lost the transport during both Maestro launch attempts. Neither crash
+buffer contained a crash. The runner now clears and launches the Android
+test app through SDK adb and leaves Setup and restart assertions to
+Maestro.
 
 The first [hosted iOS run](https://github.com/UniClipboard/UniClipboard/actions/runs/45530292519/job/138923618609)
 passed setup on iPhone Duo and failed its clipboard history assertion. The

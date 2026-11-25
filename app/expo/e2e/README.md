@@ -43,7 +43,9 @@ node e2e/run.mjs --platform android --device emulator-5554 \
 Use `--suite live` with an Engine-enabled Release build to exercise fresh
 Setup, history intake and search, the device page, and diagnostics settings.
 This suite seeds synthetic text through the iOS Simulator pasteboard or a
-targeted Android share intent. Its first flow clears the test app data.
+targeted Android share intent. It clears the test app data before Setup.
+On Android the runner uses SDK adb to reset and launch the app and to restart
+it for the device and diagnostics flow. Maestro checks the live app UI.
 
 The runner writes `e2e/results/<run>/receipt.json` on success and failure. It
 records artifact/lockfile/flow hashes, device ID, tool version and every stage's

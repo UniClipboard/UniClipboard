@@ -91,33 +91,34 @@ type targetOutcome struct {
 	Error                    string              `json:"error,omitempty"`
 }
 type manifest struct {
-	DirectoryChecks     []directoryCheck `json:"directory_checks,omitempty"`
-	WakeChecks          []wakeCheck      `json:"wake_checks,omitempty"`
-	KeepPrivate         bool             `json:"keep_private"`
-	PrivateRemoved      bool             `json:"controller_private_removed"`
-	Outcomes            []targetOutcome  `json:"target_outcomes"`
-	PlannedMeasurements int              `json:"planned_measurements"`
-	PayloadBound        int64            `json:"planned_payload_bytes_upper_bound"`
-	Version             int              `json:"version"`
-	RunID               string           `json:"run_id"`
-	Mode                string           `json:"mode"`
-	Status              string           `json:"status"`
-	Started             time.Time        `json:"started_at"`
-	Finished            time.Time        `json:"finished_at"`
-	Source              sourceIdentity   `json:"source"`
-	SnapshotUnchanged   bool             `json:"snapshot_unchanged"`
-	Go                  string           `json:"go"`
-	ControllerSHA       string           `json:"controller_sha256"`
-	Nodes               []nodeEvidence   `json:"nodes"`
-	MachineCount        int              `json:"distinct_machine_identities"`
-	SharedHostControl   bool             `json:"shared_host_control"`
-	Suite               suiteConfig      `json:"suite"`
-	Checks              []string         `json:"checks"`
-	Calibrations        []calibration    `json:"calibrations"`
-	Samples             []sample         `json:"samples"`
-	Failure             string           `json:"failure,omitempty"`
-	CleanupErrors       []string         `json:"cleanup_errors,omitempty"`
-	Limits              []string         `json:"limits"`
+	DirectoryChecks     []directoryCheck     `json:"directory_checks,omitempty"`
+	WakeChecks          []wakeCheck          `json:"wake_checks,omitempty"`
+	BindingPolicyChecks []bindingPolicyCheck `json:"binding_policy_checks,omitempty"`
+	KeepPrivate         bool                 `json:"keep_private"`
+	PrivateRemoved      bool                 `json:"controller_private_removed"`
+	Outcomes            []targetOutcome      `json:"target_outcomes"`
+	PlannedMeasurements int                  `json:"planned_measurements"`
+	PayloadBound        int64                `json:"planned_payload_bytes_upper_bound"`
+	Version             int                  `json:"version"`
+	RunID               string               `json:"run_id"`
+	Mode                string               `json:"mode"`
+	Status              string               `json:"status"`
+	Started             time.Time            `json:"started_at"`
+	Finished            time.Time            `json:"finished_at"`
+	Source              sourceIdentity       `json:"source"`
+	SnapshotUnchanged   bool                 `json:"snapshot_unchanged"`
+	Go                  string               `json:"go"`
+	ControllerSHA       string               `json:"controller_sha256"`
+	Nodes               []nodeEvidence       `json:"nodes"`
+	MachineCount        int                  `json:"distinct_machine_identities"`
+	SharedHostControl   bool                 `json:"shared_host_control"`
+	Suite               suiteConfig          `json:"suite"`
+	Checks              []string             `json:"checks"`
+	Calibrations        []calibration        `json:"calibrations"`
+	Samples             []sample             `json:"samples"`
+	Failure             string               `json:"failure,omitempty"`
+	CleanupErrors       []string             `json:"cleanup_errors,omitempty"`
+	Limits              []string             `json:"limits"`
 }
 
 func writeJSON(path string, v any) error {
@@ -215,6 +216,14 @@ func (c *controller) report() error {
 			fmt.Fprintf(&text, "| %s | %s | %s | %s | %.2f | %s | %d | %s |\n", v.Node, v.Peer, v.Case, v.Result, v.Milliseconds, path, v.LatencyMS, v.Detail)
 		}
 		text.WriteString("\nParallels VM pause/resume exercises half-open peer freeze, wall-clock jump recovery and wake-triggered `NotifyNetworkChanged` probing over real Tailcat; it does not substitute for physical macOS AppKit `NSWorkspaceDidWakeNotification` or physical Wi-Fi switching.\n")
+	}
+	if len(c.manifest.BindingPolicyChecks) > 0 {
+		text.WriteString("\n## Per-device binding sync policy matrix\n\n| Case | Direction | Mode | Type | Policy | Expected | Observed | Result | Measured ms |\n|---|---|---|---|---|---|---|---|---:|\n")
+		for _, v := range c.manifest.BindingPolicyChecks {
+			fmt.Fprintf(&text, "| %s | %s → %s | %s | %s | %s | %s | %s | %s | %.2f |\n",
+				v.Case, v.Sender, v.Receiver, v.Mode, v.Kind, v.Policy, v.Expected, v.Observed, v.Result, v.Milliseconds)
+		}
+		text.WriteString("\nAuto-sync cells use production `/v1/adapter` observation (`OriginClipboard`); explicit cells use production `unic send` (`OriginExplicit`); policy edits use production `unic device path policy|pause|resume`. Positive deliveries verify exported part count, MIME, size and SHA-256; negative cells audit zero deliveries across a bounded observation window.\n")
 	}
 	text.WriteString("\n## Receive latency\n\nReceive estimates include submitting-client startup, IPC, commit, transport and receiver storage. HTML uses the production local API injector. They exclude controller-side SSH, export and hash verification round trips. `verified_ms` separately includes those control costs. Native clock exchanges bracket each payload cell. Per-sample bounds include both node clock uncertainties, timestamp quantization and observed calibration drift. Bounds are clock bounds, not statistical confidence intervals. A bound reaching zero cannot establish a precise one-way latency. No network path is inferred from the SSH route.\n\n")
 	type group struct{ samples []sample }

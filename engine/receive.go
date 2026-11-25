@@ -68,6 +68,8 @@ type receiveTicket struct {
 	key               store.DedupKey
 	reserved          int64
 	cacheReserved     int64
+	backendPolicy     BackendSyncPolicy
+	admittedPolicy    BackendSyncPolicy
 }
 
 func (e *Engine) dedupRecord(k store.DedupKey) store.Dedup {
@@ -146,11 +148,21 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 		srcKey = "channel:" + req.channel
 	}
 	key := store.DedupKey{Source: srcKey, Transfer: req.transfer, View: req.view}
+	bindingPol := DefaultBindingSyncPolicy()
+	if req.channel == "" && !req.ephemeral && req.source != "" {
+		if bd, berr := e.st.InstanceBinding(string(req.source), string(req.backend)); berr == nil {
+			bindingPol = fromStoreBindingPolicy(bd.Policy)
+		}
+	}
 	e.mu.Lock()
 	ok := e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled
-	pol := e.policyLocked(req.backend)
+	backendPol := e.policyLocked(req.backend)
 	_, arriving := e.dedupInflight[key]
 	e.mu.Unlock()
+	pol := backendPol
+	if req.channel == "" && !req.ephemeral && req.source != "" {
+		pol = applyBindingReceivePolicy(backendPol, bindingPol)
+	}
 	filesBlocked := false
 	for _, p := range req.parts {
 		filesBlocked = filesBlocked || ((p.file || p.mime == directory.MIME) && !pol.Files)
@@ -210,7 +222,20 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 		e.commit(EventResourceWarning)
 		return peerbackend.Admission{}, false
 	}
-	t := receiveTicket{sourceApplication: req.sourceApplication.Clone(), started: started, kind: kind, backend: req.backend, source: req.source, channel: req.channel, ephemeral: req.ephemeral, key: key, reserved: reservation, cacheReserved: cacheBytes}
+	t := receiveTicket{
+		sourceApplication: req.sourceApplication.Clone(),
+		started:           started,
+		kind:              kind,
+		backend:           req.backend,
+		source:            req.source,
+		channel:           req.channel,
+		ephemeral:         req.ephemeral,
+		key:               key,
+		reserved:          reservation,
+		cacheReserved:     cacheBytes,
+		backendPolicy:     backendPol,
+		admittedPolicy:    pol,
+	}
 	var once sync.Once
 	finish := func(snap clip.Snapshot, dir string, ok bool, cause error) {
 		once.Do(func() {
@@ -288,7 +313,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	}
 	e.mu.Lock()
 	enabled := e.settings.Value.Sync.Enabled
-	sy := e.policyLocked(t.backend)
+	sy := t.admittedPolicy
 	running := e.life == LifecycleRunning && e.runtime == RuntimeActive
 	receiveCtx := e.runCtx
 	e.mu.Unlock()
@@ -389,7 +414,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	// cannot be discovered after the history record and dedup entry exist.
 	live := func() bool {
 		return e.life == LifecycleRunning && e.runtime == RuntimeActive && e.settings.Value.Sync.Enabled &&
-			e.policyLocked(t.backend) == sy && workCtx.Err() == nil
+			e.policyLocked(t.backend) == t.backendPolicy && workCtx.Err() == nil
 	}
 	allowed := func() (bool, error) { return e.allowedPeerOn(string(t.backend), string(peer)) }
 	autoApply := false

@@ -307,7 +307,7 @@ func (b *peerProcBackend) CheckPeer(_ context.Context, r rpc.CheckPeer) (rpc.Pee
 	if wasRevoked {
 		e.refreshPeerStates() // never wait for ApplyState from its backend callback
 	}
-	rev := uint64(d.Revision + bd.Revision)
+	rev := uint64(d.Revision + bd.AuthRevision)
 	if d.Trust != store.TrustTrusted || bd.State != store.BindingAuthorized {
 		return rpc.PeerDecision{PeerID: id, Decision: "pending", TrustRevision: rpc.U64(rev)}, nil
 	}
@@ -338,13 +338,22 @@ func (b *peerProcBackend) trustRevision(peerID string) (uint64, bool) {
 	if err != nil || bd.State != store.BindingAuthorized {
 		return 0, false
 	}
-	return uint64(d.Revision + bd.Revision), true
+	return uint64(d.Revision + bd.AuthRevision), true
 }
 
 // syncEnabled reports whether the user has not paused sync on this path.
 func (b *peerProcBackend) syncEnabled(peerID string) bool {
 	bd, err := b.e.st.InstanceBinding(peerID, string(b.id))
 	return err == nil && bd.SyncEnabled
+}
+
+// bindingPolicy returns the per-type sync policy for this peer on this backend.
+func (b *peerProcBackend) bindingPolicy(peerID string) BindingSyncPolicy {
+	bd, err := b.e.st.InstanceBinding(peerID, string(b.id))
+	if err != nil {
+		return DefaultBindingSyncPolicy()
+	}
+	return fromStoreBindingPolicy(bd.Policy)
 }
 
 // dialer is the device that opened the connection; of two simultaneous

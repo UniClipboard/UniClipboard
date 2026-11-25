@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
+	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
@@ -239,6 +240,135 @@ func (d *viewState) deviceSubtitle(v device) string {
 	return fmt.Sprintf(d.tr("%d 条同步路径"), len(auth))
 }
 
+func isDefaultBindingPolicy(p engine.BindingSyncPolicy) bool {
+	return p.Normalized() == engine.DefaultBindingSyncPolicy()
+}
+
+func (d *viewState) bindingPolicyShortTag(b deviceBinding) string {
+	p := b.policy.Normalized()
+	if isDefaultBindingPolicy(p) {
+		return ""
+	}
+	if p.Text == p.Images && p.Images == p.Files {
+		switch p.Text {
+		case engine.SyncDirectionSendOnly:
+			return d.tr("仅发送")
+		case engine.SyncDirectionReceiveOnly:
+			return d.tr("仅接收")
+		case engine.SyncDirectionDisabled:
+			return d.tr("不同步")
+		}
+	}
+	return d.tr("自定义")
+}
+
+func (d *viewState) bindingDirectionShortLabel(dir engine.SyncDirection) string {
+	switch dir {
+	case engine.SyncDirectionSendOnly:
+		return d.tr("仅发")
+	case engine.SyncDirectionReceiveOnly:
+		return d.tr("仅收")
+	case engine.SyncDirectionDisabled:
+		return d.tr("关闭")
+	default:
+		return d.tr("双向")
+	}
+}
+
+func (d *viewState) bindingPolicySummary(b deviceBinding) string {
+	if !b.syncEnabled {
+		return d.tr("已暂停")
+	}
+	p := b.policy.Normalized()
+	if isDefaultBindingPolicy(p) {
+		return d.tr("全部双向")
+	}
+	if p.Text == p.Images && p.Images == p.Files {
+		switch p.Text {
+		case engine.SyncDirectionSendOnly:
+			return d.tr("仅发送")
+		case engine.SyncDirectionReceiveOnly:
+			return d.tr("仅接收")
+		case engine.SyncDirectionDisabled:
+			return d.tr("不同步")
+		}
+	}
+	return fmt.Sprintf("%s %s · %s %s · %s %s",
+		d.tr("文本"), d.bindingDirectionShortLabel(p.Text),
+		d.tr("图片"), d.bindingDirectionShortLabel(p.Images),
+		d.tr("文件"), d.bindingDirectionShortLabel(p.Files),
+	)
+}
+
+func (d *viewState) bindingExpanded(b deviceBinding, total int) bool {
+	if d.expandedBindings != nil {
+		if open, ok := d.expandedBindings[b.id]; ok {
+			return open
+		}
+	}
+	return total == 1
+}
+
+func (d *viewState) toggleBindingExpanded(b deviceBinding, total int) {
+	if d.expandedBindings == nil {
+		d.expandedBindings = map[string]bool{}
+	}
+	d.expandedBindings[b.id] = !d.bindingExpanded(b, total)
+}
+
+func (d *viewState) globalFilesEnabled() bool {
+	if d.live != nil && d.live.loaded {
+		return d.live.config.Config.Sync.Files
+	}
+	if on, ok := d.options["syncFiles"]; ok {
+		return on
+	}
+	return true
+}
+
+func (d *viewState) bindingTypeLockedReason(ch *syncChannel, kind string) (string, bool) {
+	if !d.globalSyncEnabled() {
+		return d.tr("全局同步已关闭"), true
+	}
+	if kind == "files" && !d.globalFilesEnabled() {
+		return d.tr("全局文件已关闭"), true
+	}
+	if ch != nil {
+		switch kind {
+		case "text":
+			if ch.noText {
+				return d.tr("渠道已关闭"), true
+			}
+		case "images":
+			if ch.noImages {
+				return d.tr("渠道已关闭"), true
+			}
+		case "files":
+			if ch.noFiles {
+				return d.tr("渠道已关闭"), true
+			}
+		}
+	}
+	return "", false
+}
+
+func (d *viewState) applyBindingPolicyUpdate(v *device, b deviceBinding, enabled *bool, next engine.BindingSyncPolicy) {
+	next = next.Normalized()
+	if d.live != nil {
+		d.setLiveBindingPolicy(b.id, b.revision, enabled, next)
+		return
+	}
+	for j := range v.bindings {
+		if v.bindings[j].id == b.id {
+			v.bindings[j].policy = next
+			if enabled != nil {
+				v.bindings[j].syncEnabled = *enabled
+			}
+			break
+		}
+	}
+}
+
 func (d *viewState) deviceFootPaths(v device) string {
 	auth := authorizedBindings(v)
 	if len(auth) == 0 {
@@ -249,6 +379,8 @@ func (d *viewState) deviceFootPaths(v device) string {
 		name := d.channelDisplayName(b.instanceID)
 		if !b.syncEnabled {
 			name = fmt.Sprintf(d.tr("%s(暂停)"), name)
+		} else if tag := d.bindingPolicyShortTag(b); tag != "" {
+			name = fmt.Sprintf("%s(%s)", name, tag)
 		}
 		parts = append(parts, name)
 	}
@@ -595,7 +727,7 @@ func (d *viewState) fingerprintGrid(c *ui.Context, k desktopkit.Kit, fp string, 
 			end := min(start+4, len(groups))
 			ui.Row(c.Key(start)).Gap(6).Children(func() {
 				for i := start; i < end; i++ {
-					ui.Row(c.Key(i)).Grow(1).MinWidth(0).Height(30).Radius(7).
+					ui.Row(c.Key(i)).Grow(1).Basis(0).MinWidth(0).Height(30).Radius(7).
 						Justify(ui.Center).AlignItems(ui.Center).
 						Background(cellBg).Border(1, cellBorder).Children(func() {
 						k.Text(c, groups[i], desktopkit.TextProps{Monospace: true, Emphasized: true, Role: desktopkit.RoleCaption})
@@ -969,15 +1101,18 @@ func (d *viewState) deviceOverviewCanvas(c *ui.Context, k desktopkit.Kit, winWid
 			renderCard := func(v device) {
 				selected := d.deviceList.Value == v.id
 				statusText, tone, online := d.deviceAggregateStatus(v)
-				card := ui.Column(c.Key("dev-"+v.id)).Grow(1).MinWidth(0).Padding(13, 14).Radius(13).Gap(11).
+				card := ui.Column(c.Key("dev-" + v.id)).MinWidth(0).Radius(13).Gap(11).
 					Background(deviceCardBg(k)).Role(ui.RoleListItem).Label(v.displayName())
+				if twoCols {
+					card.Grow(1)
+				}
 				card.AccessSelected(selected)
 				if selected {
-					card.Border(1.5, k.Color("accent-500"))
+					card.Padding(12.5, 13.5).Border(1.5, k.Color("accent-500"))
 				} else if card.Hovered() {
-					card.Border(1, deviceCardBorderHover(k))
+					card.Padding(13, 14).Border(1, deviceCardBorderHover(k))
 				} else {
-					card.Border(1, deviceCardBorder(k))
+					card.Padding(13, 14).Border(1, deviceCardBorder(k))
 				}
 				if !k.Dark {
 					card.Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, .035))
@@ -1031,11 +1166,15 @@ func (d *viewState) deviceOverviewCanvas(c *ui.Context, k desktopkit.Kit, winWid
 			if twoCols {
 				for i := 0; i < len(ordered); i += 2 {
 					ui.Row(c.Key(i)).Gap(11).AlignItems(ui.Stretch).Children(func() {
-						renderCard(ordered[i])
+						ui.Column(c.Key("slot-0")).Grow(1).Basis(0).MinWidth(0).Children(func() {
+							renderCard(ordered[i])
+						})
 						if i+1 < len(ordered) {
-							renderCard(ordered[i+1])
+							ui.Column(c.Key("slot-1")).Grow(1).Basis(0).MinWidth(0).Children(func() {
+								renderCard(ordered[i+1])
+							})
 						} else {
-							ui.Box(c.Key("spacer")).Grow(1).MinWidth(0)
+							ui.Box(c.Key("spacer")).Grow(1).Basis(0).MinWidth(0)
 						}
 					})
 				}
@@ -1501,70 +1640,115 @@ func (d *viewState) trustedDeviceDetail(c *ui.Context, k desktopkit.Kit, v *devi
 						if act := d.displayRelativeTime(b.lastActive); act != "" {
 							metaParts = append(metaParts, d.tr("最近活动 ")+act)
 						}
-						ui.Row(c.Key("path-"+b.id)).Padding(11, 13).Gap(10).AlignItems(ui.Center).Children(func() {
-							ui.Column(c.Key("info")).Gap(2).Grow(1).MinWidth(0).Children(func() {
-								ui.Row(c.Key("trow")).Wrap().Gap(6).AlignItems(ui.Center).Children(func() {
-									k.Text(c.Key("name"), d.channelDisplayName(b.instanceID), desktopkit.TextProps{Emphasized: true})
-									if beStopped {
-										d.inlineBadge(c.Key("stop-badge"), k, d.channelStateLabel(chInfo.state), desktopkit.StatusWarning)
+						expanded := d.bindingExpanded(b, len(auth))
+						customized := !isDefaultBindingPolicy(b.policy)
+						ui.Column(c.Key("path-" + b.id)).Children(func() {
+							ui.Row(c.Key("head")).Padding(11, 13).Gap(8).AlignItems(ui.Center).Children(func() {
+								toggle := ui.ButtonBase(c.Key("toggle-expand")).Label(d.tr("展开或收起同步策略") + " " + d.channelDisplayName(b.instanceID)).
+									Grow(1).MinWidth(0).Gap(6).AlignItems(ui.Start).
+									FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(1)
+								toggle.Children(func() {
+									chev := desktopkit.IconChevronRight
+									if expanded {
+										chev = desktopkit.IconChevronDown
 									}
-								})
-								k.Text(c.Key("sub"), sub, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Truncate: true})
-								if len(metaParts) > 0 {
-									k.Text(c.Key("meta-time"), strings.Join(metaParts, " · "), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneTertiary, Truncate: true})
-								}
-								if b.lastError != "" && b.syncEnabled && !beStopped {
-									k.Text(c.Key("err"), d.bindingErrorLabel(b.lastError), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneCritical})
-								}
-								if beStopped {
-									ui.Row(c.Key("warn-row")).Wrap().Gap(4).AlignItems(ui.Center).Children(func() {
-										k.Text(c.Key("w"), d.tr("对应同步渠道未运行"), desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(k.Color("status-yellow-text"))
-										if k.Button(c.Key("jump"), d.tr("前往插件设置"), desktopkit.ButtonProps{Variant: desktopkit.Link, Size: desktopkit.SizeSmall}).Clicked() {
-											d.openPluginSettings(b.instanceID)
+									ui.Box(c.Key("chev")).Padding(3, 0, 0, 0).Shrink(0).Children(func() {
+										k.Icon(c, chev, 12).TextColor(k.Color("foreground-icon-tertiary")).AccessHidden(true)
+									})
+									ui.Column(c.Key("info")).Gap(2).Grow(1).MinWidth(0).Children(func() {
+										ui.Row(c.Key("trow")).Wrap().Gap(6).AlignItems(ui.Center).Children(func() {
+											k.Text(c.Key("name"), d.channelDisplayName(b.instanceID), desktopkit.TextProps{Emphasized: true})
+											if customized && b.syncEnabled {
+												d.inlineBadge(c.Key("custom-badge"), k, d.tr("自定义"), desktopkit.StatusInfo)
+											}
+											if beStopped {
+												d.inlineBadge(c.Key("stop-badge"), k, d.channelStateLabel(chInfo.state), desktopkit.StatusWarning)
+											}
+										})
+										k.Text(c.Key("sub"), sub, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Truncate: true})
+										if !expanded {
+											k.Text(c.Key("pol-sum"), d.bindingPolicySummary(b), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneTertiary, Truncate: true})
+										}
+										if len(metaParts) > 0 {
+											k.Text(c.Key("meta-time"), strings.Join(metaParts, " · "), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneTertiary, Truncate: true})
+										}
+										if b.lastError != "" && b.syncEnabled && !beStopped {
+											k.Text(c.Key("err"), d.bindingErrorLabel(b.lastError), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneCritical})
+										}
+										if beStopped {
+											ui.Row(c.Key("warn-row")).Wrap().Gap(4).AlignItems(ui.Center).Children(func() {
+												k.Text(c.Key("w"), d.tr("对应同步渠道未运行"), desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(k.Color("status-yellow-text"))
+												if k.Button(c.Key("jump"), d.tr("前往插件设置"), desktopkit.ButtonProps{Variant: desktopkit.Link, Size: desktopkit.SizeSmall}).Clicked() {
+													d.openPluginSettings(b.instanceID)
+												}
+											})
 										}
 									})
+								})
+								if toggle.Clicked() {
+									d.toggleBindingExpanded(b, len(auth))
 								}
-							})
-							ui.Row(c.Key("acts")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-								on := b.syncEnabled
-								if k.Switch(c.Key("sw"), &on, desktopkit.SwitchProps{Label: d.tr("同步") + " " + d.channelDisplayName(b.instanceID), Disabled: busy}).Changed() {
-									if d.live != nil {
-										d.setLiveBindingSync(b.id, b.revision, on)
-									} else {
-										for j := range v.bindings {
-											if v.bindings[j].id == b.id {
-												v.bindings[j].syncEnabled = on
-												break
+								ui.Row(c.Key("acts")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+									on := b.syncEnabled
+									if k.Switch(c.Key("sw"), &on, desktopkit.SwitchProps{Label: d.tr("同步") + " " + d.channelDisplayName(b.instanceID), Disabled: busy}).Changed() {
+										if d.live != nil {
+											d.setLiveBindingSync(b.id, b.revision, on)
+										} else {
+											for j := range v.bindings {
+												if v.bindings[j].id == b.id {
+													v.bindings[j].syncEnabled = on
+													break
+												}
 											}
 										}
 									}
-								}
-								_, chosen := k.Menu(c.Key("more"), desktopkit.MenuProps{
-									Label:    d.tr("更多操作"),
-									Icon:     desktopkit.IconMore,
-									IconOnly: true,
-									Variant:  desktopkit.Subtle,
-									Size:     desktopkit.SizeSmall,
-									Items: []desktopkit.MenuEntry{
-										{ID: "policy", Label: d.tr("查看同步渠道策略…"), Icon: desktopkit.IconSettings},
-										{ID: "remove", Label: d.tr("移除此路径"), Icon: desktopkit.IconDelete, Destructive: true, Disabled: busy},
-									},
+									menuItems := []desktopkit.MenuEntry{}
+									if customized {
+										menuItems = append(menuItems, desktopkit.MenuEntry{
+											ID:       "reset-policy",
+											Label:    d.tr("恢复默认策略"),
+											Icon:     desktopkit.IconRetry,
+											Disabled: busy,
+										})
+									}
+									menuItems = append(menuItems,
+										desktopkit.MenuEntry{ID: "policy", Label: d.tr("查看同步渠道策略…"), Icon: desktopkit.IconSettings},
+										desktopkit.MenuEntry{ID: "remove", Label: d.tr("移除此路径"), Icon: desktopkit.IconDelete, Destructive: true, Disabled: busy},
+									)
+									_, chosen := k.Menu(c.Key("more"), desktopkit.MenuProps{
+										Label:    d.tr("更多操作"),
+										Icon:     desktopkit.IconMore,
+										IconOnly: true,
+										Variant:  desktopkit.Subtle,
+										Size:     desktopkit.SizeSmall,
+										Items:    menuItems,
+									})
+									switch chosen {
+									case "reset-policy":
+										en := true
+										var enPtr *bool
+										if !b.syncEnabled {
+											enPtr = &en
+										}
+										d.applyBindingPolicyUpdate(v, b, enPtr, engine.DefaultBindingSyncPolicy())
+									case "policy":
+										d.openPluginSettings(b.instanceID)
+									case "remove":
+										chName := d.channelDisplayName(b.instanceID)
+										d.confirm = fmt.Sprintf(d.tr("移除 %s 路径？"), chName)
+										d.confirmDesc = fmt.Sprintf(d.tr("仅移除与「%s」通过 %s 的同步路径。设备信任与其他同步路径将保留，日后可重新配对添加。"), v.displayName(), chName)
+										d.confirmLabel = d.tr("移除路径")
+										d.confirmID = "binding:" + v.id + ":" + b.id
+									}
 								})
-								switch chosen {
-								case "policy":
-									d.openPluginSettings(b.instanceID)
-								case "remove":
-									chName := d.channelDisplayName(b.instanceID)
-									d.confirm = fmt.Sprintf(d.tr("移除 %s 路径？"), chName)
-									d.confirmDesc = fmt.Sprintf(d.tr("仅移除与「%s」通过 %s 的同步路径。设备信任与其他同步路径将保留，日后可重新配对添加。"), v.displayName(), chName)
-									d.confirmLabel = d.tr("移除路径")
-									d.confirmID = "binding:" + v.id + ":" + b.id
-								}
 							})
+							if expanded {
+								d.bindingPolicyPanel(c.Key("pol-panel"), k, v, b, chInfo, busy)
+							}
 						})
 					}
 				})
-				k.Text(c, d.tr("单路径开关控制是否经该同步渠道收发内容；文本/图片/文件策略请在插件设置中按同步渠道调整。"), footnote)
+				k.Text(c, d.tr("单路径开关控制是否暂停该路径；下方策略仅控制本机自动同步与接收，手动发送不受限制，修改仅影响新开始的传输。"), footnote)
 			}
 		})
 
@@ -1615,6 +1799,192 @@ func (d *viewState) trustedDeviceDetail(c *ui.Context, k desktopkit.Kit, v *devi
 				d.confirmLabel = d.tr("移除设备")
 				d.confirmID = "device:" + v.id
 			}
+		})
+	})
+}
+
+func (d *viewState) bindingPolicyPanel(c *ui.Context, k desktopkit.Kit, v *device, b deviceBinding, chInfo *syncChannel, busy bool) {
+	pol := b.policy.Normalized()
+	globalOn := d.globalSyncEnabled()
+	paused := !b.syncEnabled || !globalOn
+	segTrackBg := k.Color("background-tertiary-default")
+	segActiveBg := deviceCardBg(k)
+
+	activePreset := engine.SyncDirection("")
+	if b.syncEnabled && pol.Text == pol.Images && pol.Images == pol.Files {
+		activePreset = pol.Text
+	}
+
+	ui.Box(c.Key("div")).Height(1).Background(k.Color("separator-border"))
+	panel := ui.Column(c.Key("body")).Padding(9, 12, 10, 12).Gap(8).Background(deviceInsetBg(k, true))
+	if paused {
+		panel.Opacity(0.62)
+	}
+	panel.Children(func() {
+		// Quick presets row
+		ui.Row(c.Key("presets")).Gap(6).AlignItems(ui.Center).Children(func() {
+			k.Text(c.Key("lbl"), d.tr("快捷模式"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Emphasized: true}).Shrink(0)
+			ui.Spacer(c)
+			ui.Row(c.Key("track")).Padding(2).Radius(7).Gap(2).Background(segTrackBg).Shrink(0).Children(func() {
+				presets := []struct {
+					dir   engine.SyncDirection
+					label string
+				}{
+					{engine.SyncDirectionBidirectional, d.tr("全部双向")},
+					{engine.SyncDirectionSendOnly, d.tr("仅发送")},
+					{engine.SyncDirectionReceiveOnly, d.tr("仅接收")},
+					{engine.SyncDirectionDisabled, d.tr("不同步")},
+				}
+				for _, p := range presets {
+					selected := activePreset == p.dir
+					btn := ui.ButtonBase(c.Key("pre-"+string(p.dir))).Label(p.label).Height(22).Padding(0, 7).Radius(5).
+						Justify(ui.Center).AlignItems(ui.Center).Shrink(0).Disabled(busy || !globalOn).
+						FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(1)
+					fg := k.Color("text-secondary")
+					if selected {
+						btn.Background(segActiveBg)
+						fg = k.Color("text-primary")
+						if p.dir == engine.SyncDirectionBidirectional {
+							fg = k.Color("accent-500")
+						}
+					} else if btn.Hovered() && !busy && globalOn {
+						fg = k.Color("text-primary")
+					}
+					btn.Children(func() {
+						k.Text(c, p.label, desktopkit.TextProps{Role: desktopkit.RoleCaption, Emphasized: selected}).TextColor(fg)
+					})
+					if btn.Clicked() {
+						next := engine.BindingSyncPolicy{Text: p.dir, Images: p.dir, Files: p.dir}
+						var enPtr *bool
+						if !b.syncEnabled && p.dir != engine.SyncDirectionDisabled {
+							en := true
+							enPtr = &en
+						}
+						d.applyBindingPolicyUpdate(v, b, enPtr, next)
+					}
+				}
+			})
+		})
+
+		// Per-type direction rows (Plan A)
+		type typeRow struct {
+			kind  string
+			label string
+			icon  desktopkit.IconName
+			cur   engine.SyncDirection
+			set   func(p *engine.BindingSyncPolicy, dir engine.SyncDirection)
+		}
+		rows := []typeRow{
+			{"text", d.tr("文本"), desktopkit.IconText, pol.Text, func(p *engine.BindingSyncPolicy, dir engine.SyncDirection) { p.Text = dir }},
+			{"images", d.tr("图片"), desktopkit.IconImage, pol.Images, func(p *engine.BindingSyncPolicy, dir engine.SyncDirection) { p.Images = dir }},
+			{"files", d.tr("文件"), desktopkit.IconFile, pol.Files, func(p *engine.BindingSyncPolicy, dir engine.SyncDirection) { p.Files = dir }},
+		}
+		dirs := []struct {
+			dir   engine.SyncDirection
+			label string
+		}{
+			{engine.SyncDirectionBidirectional, d.tr("双向")},
+			{engine.SyncDirectionSendOnly, d.tr("仅发")},
+			{engine.SyncDirectionReceiveOnly, d.tr("仅收")},
+			{engine.SyncDirectionDisabled, d.tr("关闭")},
+		}
+
+		ui.Column(c.Key("matrix")).Gap(7).Children(func() {
+			for _, tr := range rows {
+				reason, locked := d.bindingTypeLockedReason(chInfo, tr.kind)
+				ui.Row(c.Key("row-" + tr.kind)).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Row(c.Key("meta")).Gap(6).AlignItems(ui.Center).Grow(1).MinWidth(0).Children(func() {
+						ui.Row(c.Key("ic")).Size(22, 22).Radius(6).Justify(ui.Center).AlignItems(ui.Center).Shrink(0).
+							Background(deviceInspectorCardBg(k)).Border(1, deviceCardBorder(k)).Children(func() {
+							k.Icon(c, tr.icon, 12).TextColor(k.Color("foreground-icon-secondary")).AccessHidden(true)
+						})
+						k.Text(c.Key("lbl"), tr.label, desktopkit.TextProps{Role: desktopkit.RoleCallout, Emphasized: true, Truncate: true})
+					})
+					if locked {
+						bg, edge, fg := deviceWarnBannerSurface(k)
+						ui.Row(c.Key("locked")).Height(24).Padding(0, 7).Radius(7).Gap(5).AlignItems(ui.Center).Shrink(0).
+							Background(bg).Border(1, edge).Children(func() {
+							k.Text(c.Key("r"), reason, desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(fg)
+							if reason == d.tr("渠道已关闭") {
+								if k.Button(c.Key("adj"), d.tr("调整"), desktopkit.ButtonProps{Variant: desktopkit.Link, Size: desktopkit.SizeSmall}).Clicked() {
+									d.openPluginSettings(b.instanceID)
+								}
+							}
+						})
+					} else {
+						ui.Row(c.Key("seg")).Padding(2).Radius(7).Gap(2).Background(segTrackBg).Shrink(0).Children(func() {
+							for _, opt := range dirs {
+								active := b.syncEnabled && tr.cur == opt.dir
+								btn := ui.ButtonBase(c.Key("opt-"+string(opt.dir))).
+									Label(tr.label+"："+opt.label).
+									Height(22).Padding(0, 7).Radius(5).
+									Justify(ui.Center).AlignItems(ui.Center).Shrink(0).
+									Disabled(busy || paused).
+									FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(1)
+								fg := k.Color("text-secondary")
+								if active {
+									btn.Background(segActiveBg)
+									switch opt.dir {
+									case engine.SyncDirectionBidirectional:
+										fg = k.Color("accent-500")
+									case engine.SyncDirectionSendOnly:
+										fg = k.Color("state-success-text")
+										if k.Dark {
+											fg = k.Color("notification-success-foreground")
+										}
+									case engine.SyncDirectionReceiveOnly:
+										fg = k.Color("text-primary")
+									default:
+										fg = k.Color("text-secondary")
+									}
+								} else if btn.Hovered() && !busy && !paused {
+									fg = k.Color("text-primary")
+								}
+								btn.Children(func() {
+									k.Text(c, opt.label, desktopkit.TextProps{Role: desktopkit.RoleCaption, Emphasized: active}).TextColor(fg)
+								})
+								if btn.Clicked() && tr.cur != opt.dir {
+									next := pol
+									tr.set(&next, opt.dir)
+									d.applyBindingPolicyUpdate(v, b, nil, next)
+								}
+							}
+						})
+					}
+				})
+			}
+		})
+
+		// Effective send/receive flow summary
+		var sendLabels, recvLabels []string
+		for _, tr := range rows {
+			_, locked := d.bindingTypeLockedReason(chInfo, tr.kind)
+			if locked || !b.syncEnabled {
+				continue
+			}
+			if tr.cur.AllowsSend() {
+				sendLabels = append(sendLabels, tr.label)
+			}
+			if tr.cur.AllowsReceive() {
+				recvLabels = append(recvLabels, tr.label)
+			}
+		}
+		formatKinds := func(items []string) string {
+			if len(items) == 0 {
+				return d.tr("无")
+			}
+			return strings.Join(items, " · ")
+		}
+		ui.Column(c.Key("flow")).Padding(7, 9).Radius(8).Gap(3).
+			Background(deviceInspectorCardBg(k)).Border(1, deviceCardBorder(k)).Children(func() {
+			ui.Row(c.Key("out")).Gap(6).AlignItems(ui.Center).Children(func() {
+				k.Text(c.Key("d"), d.tr("本机 → 对端"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary}).Grow(1)
+				k.Text(c.Key("v"), formatKinds(sendLabels), desktopkit.TextProps{Role: desktopkit.RoleCaption, Emphasized: len(sendLabels) > 0, Tone: desktopkit.TonePrimary})
+			})
+			ui.Row(c.Key("in")).Gap(6).AlignItems(ui.Center).Children(func() {
+				k.Text(c.Key("d"), d.tr("对端 → 本机"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary}).Grow(1)
+				k.Text(c.Key("v"), formatKinds(recvLabels), desktopkit.TextProps{Role: desktopkit.RoleCaption, Emphasized: len(recvLabels) > 0, Tone: desktopkit.TonePrimary})
+			})
 		})
 	})
 }

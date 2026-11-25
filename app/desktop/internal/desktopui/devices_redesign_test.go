@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image/png"
 	"io"
+	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -568,4 +571,340 @@ func TestDevicesEscapeReturnsToPreviousLayer(t *testing.T) {
 			t.Fatalf("final Escape did not return to history: page=%q", d.page)
 		}
 	})
+}
+
+func TestDeviceCardsTwoColumnAndSingleColumnAlignment(t *testing.T) {
+	// Odd device count (3 cards: local + 2 peers, matching a 2+1 two-column grid)
+	// with different content lengths and a selected card on row 2.
+	makeState := func() *viewState {
+		d := newDemo("devices", "light")
+		d.pending = nil
+		d.channels = nil
+		d.candidates = nil
+		d.syncChannels = []syncChannel{
+			{id: "builtin.tailcat", implementationID: "builtin.tailcat", state: "running", pairing: true},
+			{id: "unic.wxime", implementationID: "unic.wxime", state: "running", externalChannels: true},
+		}
+		d.devices = []device{
+			{id: "local", name: "LNG-8XN9C54", icon: desktopkit.IconDesktop},
+			{
+				id: "peer-1", name: "Mac-mini.local", icon: desktopkit.IconDesktop, lastSeen: "今天 10:57",
+				bindings: []deviceBinding{{id: "b1", instanceID: "builtin.tailcat", implementationID: "builtin.tailcat", state: "authorized", syncEnabled: true, connection: "disconnected"}},
+			},
+			{
+				id: "peer-2", name: "M02 Physical", icon: desktopkit.IconDesktop, lastSeen: "今天 13:18",
+				bindings: []deviceBinding{{id: "b2", instanceID: "builtin.tailcat", implementationID: "builtin.tailcat", state: "authorized", syncEnabled: true, connection: "disconnected"}},
+			},
+		}
+		d.deviceList.Value = "peer-2"
+		return d
+	}
+
+	t.Run("two-column odd count aligns left column and equalizes widths", func(t *testing.T) {
+		d := makeState()
+		tt := ui.NewTesterWith(d.view, 1120, 760, ui.TesterOptions{})
+		tt.Frame()
+
+		c0, ok0 := tt.AccessByRole(ui.RoleListItem, "LNG-8XN9C54")
+		c1, ok1 := tt.AccessByRole(ui.RoleListItem, "Mac-mini.local")
+		c2, ok2 := tt.AccessByRole(ui.RoleListItem, "M02 Physical")
+		if !ok0 || !ok1 || !ok2 {
+			t.Fatalf("missing device cards: ok0=%v ok1=%v ok2=%v", ok0, ok1, ok2)
+		}
+
+		// Row 1 cards must share identical width and top Y, separated by the 11px gap.
+		if math.Abs(float64(c0.Bounds.Y-c1.Bounds.Y)) > 0.5 {
+			t.Fatalf("row 1 Y mismatch: c0=%+v c1=%+v", c0.Bounds, c1.Bounds)
+		}
+		if math.Abs(float64(c0.Bounds.W-c1.Bounds.W)) > 0.5 {
+			t.Fatalf("row 1 width mismatch: c0=%+v c1=%+v", c0.Bounds, c1.Bounds)
+		}
+		// Row 2 lone card must match column 0 X, width, and height exactly.
+		if math.Abs(float64(c2.Bounds.X-c0.Bounds.X)) > 0.5 {
+			t.Fatalf("row 2 X mismatch with column 0: c0=%+v c2=%+v", c0.Bounds, c2.Bounds)
+		}
+		if math.Abs(float64(c2.Bounds.W-c0.Bounds.W)) > 0.5 {
+			t.Fatalf("row 2 lone card width mismatch with column 0: c0=%+v c2=%+v", c0.Bounds, c2.Bounds)
+		}
+		if math.Abs(float64(c2.Bounds.H-c0.Bounds.H)) > 0.5 {
+			t.Fatalf("selected card height mismatch with unselected card: c0=%+v c2=%+v", c0.Bounds, c2.Bounds)
+		}
+	})
+
+	t.Run("single-column cards share identical X, width, and height", func(t *testing.T) {
+		d := makeState()
+		tt := ui.NewTesterWith(d.view, 860, 760, ui.TesterOptions{})
+		tt.Frame()
+
+		c0, ok0 := tt.AccessByRole(ui.RoleListItem, "LNG-8XN9C54")
+		c1, ok1 := tt.AccessByRole(ui.RoleListItem, "Mac-mini.local")
+		c2, ok2 := tt.AccessByRole(ui.RoleListItem, "M02 Physical")
+		if !ok0 || !ok1 || !ok2 {
+			t.Fatalf("missing single-column device cards: ok0=%v ok1=%v ok2=%v", ok0, ok1, ok2)
+		}
+		for _, pair := range [][2]ui.Rect{{c0.Bounds, c1.Bounds}, {c0.Bounds, c2.Bounds}} {
+			if math.Abs(float64(pair[0].X-pair[1].X)) > 0.5 || math.Abs(float64(pair[0].W-pair[1].W)) > 0.5 {
+				t.Fatalf("single-column alignment mismatch: a=%+v b=%+v", pair[0], pair[1])
+			}
+			if math.Abs(float64(pair[0].H-pair[1].H)) > 0.5 {
+				t.Fatalf("single-column height mismatch: a=%+v b=%+v", pair[0], pair[1])
+			}
+		}
+	})
+}
+
+func TestBindingPolicyPlanAInteractionsAndLivePayload(t *testing.T) {
+	t.Run("demo plan A presets, per-type directions, upper ceiling and reset", func(t *testing.T) {
+		for _, theme := range []string{"light", "dark"} {
+			t.Run(theme, func(t *testing.T) {
+				d := newDemo("devices", theme)
+				d.deviceList.Value = "phone"
+				// Make phone active and connected with default bidirectional policy.
+				for i := range d.devices {
+					if d.devices[i].id == "phone" {
+						d.devices[i].bindings[0].syncEnabled = true
+						d.devices[i].bindings[0].policy = engine.DefaultBindingSyncPolicy()
+					}
+				}
+				tt := ui.NewTesterWith(d.view, 1120, 760, ui.TesterOptions{Dark: theme == "dark"})
+				tt.Frame()
+
+				// Single binding defaults expanded, showing Plan A controls.
+				if !tt.HasText("快捷模式") || !tt.HasText("本机 → 对端") || !tt.HasText("对端 → 本机") {
+					t.Fatal("binding policy Plan A controls missing")
+				}
+
+				// Click per-type controls: Text -> 仅发, Images -> 仅收, Files -> 关闭.
+				if err := tt.Click("文本：仅发"); err != nil {
+					t.Fatal(err)
+				}
+				if err := tt.Click("图片：仅收"); err != nil {
+					t.Fatal(err)
+				}
+				if err := tt.Click("文件：关闭"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+
+				dev := d.deviceByID("phone")
+				want := engine.BindingSyncPolicy{
+					Text:   engine.SyncDirectionSendOnly,
+					Images: engine.SyncDirectionReceiveOnly,
+					Files:  engine.SyncDirectionDisabled,
+				}
+				if dev.bindings[0].policy != want {
+					t.Fatalf("policy = %+v, want %+v", dev.bindings[0].policy, want)
+				}
+				if !tt.HasText("自定义") {
+					t.Fatal("customized badge not shown")
+				}
+
+				// Upper-layer channel ceiling locks Files when channel disables files.
+				for i := range d.syncChannels {
+					if d.syncChannels[i].id == "builtin.tailcat" {
+						d.syncChannels[i].noFiles = true
+					}
+				}
+				tt.Frame()
+				if !tt.HasText("渠道已关闭") {
+					t.Fatal("upper-layer channel lock badge not shown")
+				}
+				for i := range d.syncChannels {
+					if d.syncChannels[i].id == "builtin.tailcat" {
+						d.syncChannels[i].noFiles = false
+					}
+				}
+
+				// Quick preset "仅发送" sets all three types to send_only.
+				if err := tt.Click("仅发送"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Frame()
+				wantSend := engine.BindingSyncPolicy{
+					Text:   engine.SyncDirectionSendOnly,
+					Images: engine.SyncDirectionSendOnly,
+					Files:  engine.SyncDirectionSendOnly,
+				}
+				if dev.bindings[0].policy != wantSend {
+					t.Fatalf("after 仅发送 preset: %+v, want %+v", dev.bindings[0].policy, wantSend)
+				}
+			})
+		}
+	})
+
+	t.Run("live policy update sends PATCH /v1/bindings with policy payload", func(t *testing.T) {
+		var mu sync.Mutex
+		var gotMethod, gotURI, gotBody string
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		client := api.NewClient("/nonexistent-in-memory.sock")
+		client.WrapTransport(func(_ http.RoundTripper) http.RoundTripper {
+			return historySendTransport(func(r *http.Request) (*http.Response, error) {
+				raw, _ := io.ReadAll(r.Body)
+				mu.Lock()
+				gotMethod = r.Method
+				gotURI = r.URL.RequestURI()
+				gotBody = string(raw)
+				mu.Unlock()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewBufferString(`{}`)),
+					Header:     make(http.Header),
+				}, nil
+			})
+		})
+		d := &viewState{
+			live: &liveState{
+				ctx:     ctx,
+				cancel:  cancel,
+				client:  client,
+				jobs:    make(chan func(context.Context) func(), 4),
+				results: make(chan func(), 8),
+			},
+		}
+		go d.live.work()
+
+		pol := engine.BindingSyncPolicy{
+			Text:   engine.SyncDirectionBidirectional,
+			Images: engine.SyncDirectionSendOnly,
+			Files:  engine.SyncDirectionDisabled,
+		}
+		d.setLiveBindingPolicy("b-42", 7, nil, pol)
+
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			select {
+			case f := <-d.live.results:
+				f()
+			default:
+			}
+			if !d.live.busy {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		mu.Lock()
+		defer mu.Unlock()
+		if gotMethod != http.MethodPatch || gotURI != "/v1/bindings/b-42" {
+			t.Fatalf("request = %s %s, want PATCH /v1/bindings/b-42", gotMethod, gotURI)
+		}
+		var edit api.BindingEdit
+		if err := json.Unmarshal([]byte(gotBody), &edit); err != nil {
+			t.Fatalf("invalid json %q: %v", gotBody, err)
+		}
+		if edit.Revision != 7 || edit.Enabled != nil || edit.Policy == nil || *edit.Policy != pol {
+			t.Fatalf("payload = %+v, want rev=7 enabled=nil policy=%+v", edit, pol)
+		}
+	})
+}
+
+func TestCaptureDevicePolicyEvidence(t *testing.T) {
+	outDir := os.Getenv("UNIC_DEVICE_POLICY_EVIDENCE_DIR")
+	if outDir == "" {
+		t.Skip("set UNIC_DEVICE_POLICY_EVIDENCE_DIR to export screenshots")
+	}
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	save := func(name string, tt *ui.Tester) {
+		t.Helper()
+		f, err := os.Create(filepath.Join(outDir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = f.Close() }()
+		if err := png.Encode(f, tt.Image()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	makeScreenshotState := func(theme string) *viewState {
+		d := newDemo("devices", theme)
+		d.pending = nil
+		d.syncChannels = []syncChannel{
+			{id: "builtin.tailcat", implementationID: "builtin.tailcat", state: "running", pairing: true},
+			{id: "unic.wxime", implementationID: "unic.wxime", state: "running", externalChannels: true},
+		}
+		d.devices = []device{
+			{id: "local", name: "LNG-8XN9C54", icon: desktopkit.IconDesktop},
+			{
+				id: "peer-1", name: "Mac-mini.local", icon: desktopkit.IconDesktop, lastSeen: "今天 10:57",
+				fingerprint: "8A42 7C91 2F60 B3D8 41E5 9A0C 7D12 5F3E",
+				bindings: []deviceBinding{{
+					id: "b1", instanceID: "builtin.tailcat", implementationID: "builtin.tailcat",
+					state: "authorized", syncEnabled: true, connection: "disconnected",
+					lastActive: "今天 10:57", policy: engine.DefaultBindingSyncPolicy(),
+				}},
+			},
+			{
+				id: "peer-2", name: "M02 Physical", icon: desktopkit.IconDesktop, lastSeen: "今天 13:18",
+				fingerprint: "BE67 5F51 6005 18C8 1D3B BFEE DA2E 8F2B",
+				bindings: []deviceBinding{{
+					id: "b2", instanceID: "builtin.tailcat", implementationID: "builtin.tailcat",
+					state: "authorized", syncEnabled: true, connection: "disconnected",
+					lastActive: "今天 13:18",
+					policy: engine.BindingSyncPolicy{
+						Text:   engine.SyncDirectionBidirectional,
+						Images: engine.SyncDirectionSendOnly,
+						Files:  engine.SyncDirectionDisabled,
+					},
+				}},
+			},
+		}
+		d.channels = []externalChannel{
+			{id: "ch-wetype", name: "WeType", backendID: "unic.wxime", enabled: true, autoApply: true},
+		}
+		d.candidates = []deviceCandidate{
+			{id: "cand-1", name: "MARKEA46", introducer: "Mac-mini.local", backendID: "builtin.tailcat", icon: desktopkit.IconDesktop},
+		}
+		d.deviceList.Value = "peer-2"
+		return d
+	}
+
+	// 1. Light mode: exact 3-device scenario with aligned 2-col cards + expanded Plan A policy.
+	dLight := makeScreenshotState("light")
+	ttLight := ui.NewTesterWith(dLight.view, 1120, 760, ui.TesterOptions{Dark: false})
+	ttLight.SetScale(2)
+	ttLight.Frame()
+	save("01-devices-light-aligned-and-policy.png", ttLight)
+
+	// 2. Dark mode: upper-layer channel ceiling lock on Files + custom policy.
+	dDark := makeScreenshotState("dark")
+	dDark.syncChannels[0].noFiles = true
+	dDark.devices[2].bindings[0].policy = engine.BindingSyncPolicy{
+		Text:   engine.SyncDirectionReceiveOnly,
+		Images: engine.SyncDirectionBidirectional,
+		Files:  engine.SyncDirectionBidirectional,
+	}
+	ttDark := ui.NewTesterWith(dDark.view, 1120, 760, ui.TesterOptions{Dark: true})
+	ttDark.SetScale(2)
+	ttDark.Frame()
+	save("02-devices-dark-channel-ceiling.png", ttDark)
+
+	// 3. Multi-channel device: 2 independent channels on one device (one expanded, one collapsed with summary).
+	dMulti := newDemo("devices", "light")
+	dMulti.deviceList.Value = "linux"
+	for i := range dMulti.devices {
+		if dMulti.devices[i].id == "linux" && len(dMulti.devices[i].bindings) >= 2 {
+			dMulti.devices[i].bindings[0].policy = engine.BindingSyncPolicy{
+				Text:   engine.SyncDirectionSendOnly,
+				Images: engine.SyncDirectionSendOnly,
+				Files:  engine.SyncDirectionSendOnly,
+			}
+			dMulti.devices[i].bindings[1].policy = engine.BindingSyncPolicy{
+				Text:   engine.SyncDirectionBidirectional,
+				Images: engine.SyncDirectionReceiveOnly,
+				Files:  engine.SyncDirectionDisabled,
+			}
+			dMulti.expandedBindings = map[string]bool{
+				dMulti.devices[i].bindings[0].id: true,
+				dMulti.devices[i].bindings[1].id: false,
+			}
+		}
+	}
+	ttMulti := ui.NewTesterWith(dMulti.view, 1120, 760, ui.TesterOptions{Dark: false})
+	ttMulti.SetScale(2)
+	ttMulti.Frame()
+	save("03-devices-multi-channel-policy.png", ttMulti)
 }

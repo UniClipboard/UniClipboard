@@ -495,6 +495,82 @@ func scenarioQuickPanelProcess(t *testing.T) {
 		t.Fatal("stale shortcut config accepted")
 	}
 	checks = append(checks, "shortcut conflict preserves active registration; retry/disable/quit work; preference persists through real revision-checked service config")
+
+	// Standalone service-coordinated PanelClipboard path: Matches(mark) tamper
+	// interception before paste, uncertain completion zero-paste/zero-replay,
+	// and Wayland unsupported automatic paste with successful Copy.
+	panelBoard := clipboardintegration.NewPanelClipboard(home, fileBoard)
+	defer panelBoard.Close()
+	panelNative := &fixturePlatform{active: true, ready: true}
+	panelVisible := true
+	panelCtrl := quickpanel.New(quickpanel.Options{
+		Context:   ctx,
+		Client:    client,
+		Clipboard: panelBoard,
+		Platform:  panelNative,
+		Dispatch:  func(f func()) { queue <- f },
+		Visible:   func(v bool) { panelVisible = v },
+	})
+	// Tamper with clipboard during target activation -> Matches(mark) must block paste.
+	panelNative.onActivate = func() {
+		_ = fileBoard.Write(clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte("tampered-before-paste")}}})
+	}
+	panelCtrl.Open()
+	panelVisible = true
+	if e := panelCtrl.Start(id, false, true, false); e != nil {
+		t.Fatalf("panel-apply tamper test start: %v", e)
+	}
+	wait("panel-apply tamper blocked", func() bool { return !panelCtrl.Busy })
+	if panelCtrl.Sent || panelNative.pastes != 0 || !strings.Contains(panelCtrl.Message, "剪贴板已变化") {
+		t.Fatalf("panel-apply tamper was not blocked: sent=%v pastes=%d msg=%q", panelCtrl.Sent, panelNative.pastes, panelCtrl.Message)
+	}
+	panelNative.onActivate = nil
+
+	// Interrupted completion -> uncertain error, zero paste input, zero replay.
+	panelBoard.BeforeComplete = func() error { return errors.New("simulated completion drop") }
+	panelCtrl.Open()
+	panelVisible = true
+	if e := panelCtrl.Start(id, false, true, false); e != nil {
+		t.Fatalf("panel-apply uncertain start: %v", e)
+	}
+	wait("panel-apply uncertain failure", func() bool { return !panelCtrl.Busy })
+	panelBoard.BeforeComplete = nil
+	if panelCtrl.Sent || panelNative.pastes != 0 || !panelVisible || !strings.Contains(panelCtrl.Message, "未能确认完成") {
+		t.Fatalf("uncertain completion pasted or hid panel: sent=%v pastes=%d visible=%v msg=%q", panelCtrl.Sent, panelNative.pastes, panelVisible, panelCtrl.Message)
+	}
+
+	// Wayland unsupported session: auto-paste reports unavailable without writing; Copy succeeds.
+	waylandNative := &fixturePlatform{active: true, ready: true, captureErr: quickpanel.ErrUnsupported}
+	waylandCtrl := quickpanel.New(quickpanel.Options{
+		Context:   ctx,
+		Client:    client,
+		Clipboard: panelBoard,
+		Platform:  waylandNative,
+		Dispatch:  func(f func()) { queue <- f },
+		Visible:   func(v bool) { panelVisible = v },
+	})
+	waylandCtrl.Open()
+	if waylandCtrl.CanPaste || !strings.Contains(waylandCtrl.Message, "不支持自动粘贴") {
+		t.Fatalf("Wayland session did not report auto-paste unavailable: canPaste=%v msg=%q", waylandCtrl.CanPaste, waylandCtrl.Message)
+	}
+	if err := waylandCtrl.Start(id, false, true, false); !errors.Is(err, quickpanel.ErrUnsupported) {
+		t.Fatalf("Wayland Enter expected ErrUnsupported, got %v", err)
+	}
+	if waylandNative.pastes != 0 {
+		t.Fatal("Wayland Enter injected paste")
+	}
+	if err := waylandCtrl.Start(id, false, false, false); err != nil {
+		t.Fatalf("Wayland Copy start failed: %v", err)
+	}
+	wait("Wayland Copy via panel-apply", func() bool { return !waylandCtrl.Busy })
+	if waylandCtrl.Sent || waylandNative.pastes != 0 || waylandCtrl.Message != "已复制" {
+		t.Fatalf("Wayland Copy failed: sent=%v pastes=%d msg=%q", waylandCtrl.Sent, waylandNative.pastes, waylandCtrl.Message)
+	}
+	got, e = fileBoard.Read()
+	if e != nil || got.Hash() != rich.Hash() {
+		t.Fatalf("Wayland Copy board mismatch: err=%v", e)
+	}
+	checks = append(checks, "service-coordinated PanelClipboard blocks tampered paste via Matches(mark), reports uncertain completion without paste/replay, and keeps Copy working when Wayland reports auto-paste unavailable")
 	receipt["platform_events"] = native.events
 	succeeded = true
 }

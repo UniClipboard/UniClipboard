@@ -17,6 +17,61 @@ import (
 )
 
 var ErrTargetBusy = errors.New("migration target is in use")
+var ErrSetupRequired = errors.New("profile setup is required; run unic-desktop to finish setup or unic migrate to initialize")
+var ErrMigrationPending = errors.New("v1 migration is pending; run unic-desktop or unic migrate to finish migration")
+
+// CheckAdmission checks whether target is initialized and ready for standalone
+// Desktop activation (such as unic-desktop --quick-panel) without creating
+// directories or writing marker files.
+func CheckAdmission(target string) error {
+	target, err := filepath.Abs(target)
+	if err != nil {
+		return err
+	}
+	st, err := os.Stat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return ErrSetupRequired
+	}
+	if err != nil {
+		return err
+	}
+	if !st.IsDir() {
+		return errors.New("invalid profile directory")
+	}
+	cliState, err := climigration.Read(target)
+	if err != nil {
+		return err
+	}
+	if cliState.Status == "pending" {
+		return ErrMigrationPending
+	}
+	raw, err := os.ReadFile(filepath.Join(target, "desktop-setup.json"))
+	if err == nil {
+		var state State
+		if err = json.Unmarshal(raw, &state); err != nil {
+			return errors.New("invalid desktop setup state")
+		}
+		if !state.Complete {
+			return ErrSetupRequired
+		}
+		return nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	if cliState.Status == "complete" {
+		return nil
+	}
+	if dbStat, dbErr := os.Stat(filepath.Join(target, "unic.db")); dbErr == nil {
+		if !dbStat.Mode().IsRegular() || dbStat.Size() == 0 {
+			return errors.New("invalid existing v2 database")
+		}
+		return nil
+	} else if !errors.Is(dbErr, os.ErrNotExist) {
+		return dbErr
+	}
+	return ErrSetupRequired
+}
 
 // State contains navigation intent only. Secrets and migration records stay out.
 type State struct {

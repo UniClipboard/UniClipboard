@@ -4,7 +4,7 @@ paths:
   - e2e/twohost/README.md
   - Makefile
   - tools/docscheck
-verified: 433c51db4f0de56be53b3aa636e776a09c794218
+verified: ea95bb0259c8cb06cfe7216b47a56235ae2b814d
 ---
 # Real-machine CLI testing
 

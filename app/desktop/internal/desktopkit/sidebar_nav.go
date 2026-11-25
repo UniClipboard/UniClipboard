@@ -245,7 +245,7 @@ func (k Kit) SidebarNav(c *ui.Context, st *NavState, p SidebarNavProps) ui.Eleme
 			slot := ui.Column(c.Key("announcement-slot")).Shrink(0).Padding(0, 12, 0, 0)
 			slot.Children(func() {
 				if res := p.Announcement(); res.Present {
-					res.Element.Margin(8, 0, 4, 0)
+					res.Margin(8, 0, 4, 0)
 				}
 			})
 		}

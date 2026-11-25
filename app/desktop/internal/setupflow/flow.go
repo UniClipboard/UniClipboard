@@ -64,7 +64,7 @@ func Open(target string) (*Flow, error) {
 	}
 	return f, nil
 }
-func (f *Flow) path() string   { return filepath.Join(f.target, "desktop-setup.json") }
+func (f *Flow) path() string { return filepath.Join(f.target, "desktop-setup.json") }
 func (f *Flow) State() State {
 	f.mu.Lock()
 	defer f.mu.Unlock()

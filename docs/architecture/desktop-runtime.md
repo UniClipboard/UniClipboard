@@ -47,7 +47,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 7b7a1132be5ad130e61c7d71b24d6adea7f92daa
+verified: 5e4067a67e223c03f3e81d6376766c4e90a82db7
 ---
 # Desktop configuration and received files
 
@@ -438,7 +438,7 @@ Unsupported OS paste and semantic classifications remain separate from retrieval
 
 The tray captures the external foreground target before starting or activating the independent quick-panel process. It sends the ephemeral target through private Desktop IPC. The quick-panel process owns the target session in `app/desktop/internal/quickpanel`, its history window and its nonfocusable preview. Global shortcuts, tray activation and the Settings button use the same opening path. Repeated activation while visible dismisses the panel without replacing the target.
 
-Normal Desktop startup prepares the panel role asynchronously after the service and tray integration are ready. The standby role keeps its IPC endpoint, event loop and settings watcher. Each activation creates a new history view and begins its first-page read before native window creation. The view publishes the first page before fetching supplementary settings, tags and device metadata. The flyout is created on demand. After a completed dismissal, the role destroys both windows and cancels its view context. Paste temporarily hides the windows while the controller completes native focus checks and any guarded reopen. The next opening reads fresh history. See the [standby acceptance plan](../exec/quick-panel-idle-research.md).
+Normal Desktop startup prepares the panel role asynchronously after the service and tray integration are ready. The standby role keeps its IPC endpoint, event loop and settings watcher. Each activation creates a new history view and begins its first-page read before native window creation. The view publishes the first page before fetching supplementary settings, tags and device metadata. The flyout is created on demand. After a completed dismissal, the role cancels the view context and destroys both windows. It clears the previous view's binding and projected rows after teardown. Paste temporarily hides the windows while the controller completes native focus checks and any guarded reopen. The next opening reads fresh history. See the [standby acceptance plan](../exec/quick-panel-idle-research.md).
 
 Settings > Shortcuts records one or two key combinations and groups actions by
 where they run. Window navigation, history actions and quick-panel actions read

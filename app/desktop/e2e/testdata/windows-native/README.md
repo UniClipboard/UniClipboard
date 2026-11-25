@@ -123,12 +123,14 @@ matrix uses three private profiles:
 1. Start independent S0 in a normal profile. Manually open a visible foreground
    GUI, then send WM_CLOSE. Require the GUI process to exit while tray and S0
    remain. Do not create a panel through role IPC or a tray menu first.
-2. Show the private WinForms target and verify its exact foreground HWND/PID and
+2. Maximize the private WinForms target and verify its foreground HWND/PID and
    released modifiers. Inject Ctrl+Alt+V once while no GUI process exists.
    Require an independent panel process, a visible Win32 panel window and the
    panel's actual foreground PID. Wait for the search field in the app-scoped
    accessibility tree and an idle rendered frame before capturing the native crop. App-scoped Escape then tests restoration of
-   the same target focus. Escape is labeled separately from native key input.
+   the same target focus and requires the target to keep its maximized state and
+   bounds. `escape-target-window.json` records both window states. Escape is
+   labeled separately from native key input.
 3. Use the actual native tray menu to reopen GUI. Save lightweight mode through
    production `unic config apply`. WM_CLOSE must now end all three UI roles and
    preserve S0. A manual no-argument lightweight restart must open a new visible

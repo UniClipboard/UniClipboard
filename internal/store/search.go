@@ -7,6 +7,8 @@ import (
 	"errors"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/uniclipboard/unic/internal/sqldb"
 )
 
 var ErrSearchIncomplete = errors.New("store: search index incomplete")
@@ -48,7 +50,7 @@ func openSearch(db *sql.DB, path string) (*sql.DB, error) {
 	if _, err := db.Exec(searchSchema); err != nil {
 		return nil, err
 	}
-	r, err := sql.Open("sqlite", "file:"+path+"?mode=ro&_pragma=busy_timeout(1000)&_pragma=query_only(1)&_pragma=foreign_keys(1)")
+	r, err := sql.Open(sqldb.Driver, "file:"+path+sqldb.SearchOptions)
 	if err != nil {
 		return nil, err
 	}

@@ -266,7 +266,10 @@ conditions reported by the host.
 
 The mobile binding build trims Go source paths and omits Go symbol tables and
 DWARF data from the iOS XCFramework and Android AAR. Native packaging retains
-its own debug symbol settings.
+its own debug symbol settings. Android x86-64 uses an NDK-built SQLite driver
+with FTS5 because the Go-translated Linux driver invokes a disallowed syscall
+on that ABI. The binding build enables FTS5 with the `sqlite_fts5` tag. The
+store and backup reader retain the same schema and connection policies.
 
 The default Expo build keeps its isolated shell identity. The production
 variant preserves the previous mobile package identities and resolves each

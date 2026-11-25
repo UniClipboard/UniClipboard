@@ -617,6 +617,43 @@ func (d *viewState) matchingInlinePending() *pendingDevice {
 	return nil
 }
 
+// openPendingDevice navigates directly to Device Management and focuses the
+// requested pending approval (or the first pending approval when id is empty).
+func (d *viewState) openPendingDevice(id string) {
+	d.page = "devices"
+	d.nav.Value = "all"
+	d.deviceTask = ""
+	d.deviceTaskForID = ""
+	d.renaming = false
+	target := ""
+	if id != "" {
+		for _, p := range d.pending {
+			if p.id == id {
+				if d.isExistingPendingDevice(p.id) {
+					target = p.id
+				} else {
+					target = "pending:" + p.id
+				}
+				break
+			}
+		}
+	}
+	if target == "" && len(d.pending) > 0 {
+		p := d.pending[0]
+		if d.isExistingPendingDevice(p.id) {
+			target = p.id
+		} else {
+			target = "pending:" + p.id
+		}
+	}
+	if target != "" {
+		d.deviceList.Value = target
+		d.deviceDetailOpen = true
+		return
+	}
+	d.ensureDeviceSelection()
+}
+
 func (d *viewState) ensureDeviceSelection() {
 	id := d.deviceList.Value
 	switch {

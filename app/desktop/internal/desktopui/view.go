@@ -182,6 +182,7 @@ type viewState struct {
 	diagnostics     diagnosticsState
 	backup          backupSettingsState
 	shortcuts       shortcutSettingsState
+	notifications   notificationSettingsState
 
 	reference                                                             string
 	previewImage                                                          ui.ImageSource
@@ -192,7 +193,9 @@ type viewState struct {
 	tagEditor                                                             tagEditorState
 	actionResult                                                          actionResultState
 	toasts                                                                desktopkit.ToastStore
-	dismissedRestart, dismissedCfgErr, dismissedApply                     string
+	dismissedRestart, dismissedCfgErr, dismissedApply, dismissedPending   string
+	pendingCountChanged                                                   func(int)
+	lastPendingCount                                                      int
 	openURL                                                               func(string) error
 	openQuickPanel                                                        func()
 	announcement                                                          announcementState
@@ -234,10 +237,21 @@ type viewState struct {
 	choices                                                               map[string]string
 }
 
+// SetPendingCountChanged registers a host callback notified whenever the number
+// of pending device requests changes (used to update OS Dock/app badges).
+func (s *Desktop) SetPendingCountChanged(fn func(int)) {
+	s.d.pendingCountChanged = fn
+	s.d.lastPendingCount = -1
+}
+
 func (d *viewState) view(c *ui.Context) {
 	if d.live != nil {
 		d.live.bindWake(c)
 		d.live.poll(d)
+	}
+	if d.pendingCountChanged != nil && len(d.pending) != d.lastPendingCount {
+		d.lastPendingCount = len(d.pending)
+		d.pendingCountChanged(d.lastPendingCount)
 	}
 	dark := c.Theme().Dark
 	if d.theme != "system" {

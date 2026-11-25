@@ -18,6 +18,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopui"
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
+	"github.com/uniclipboard/unic/app/desktop/internal/notifications"
 	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
 	"github.com/uniclipboard/unic/internal/desktopkeys"
 	"github.com/uniclipboard/unic/internal/desktopupdate"
@@ -130,7 +131,17 @@ func runTray(settings *config.Manager) error {
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { cancel() })
 	mygo.App.OnQuit(func() { r.close(); _ = owner.Close() })
 	showDesktop = func() { nativeAsync(r.openGUI) }
+	openDesktopRoute = func(route string) {
+		nativeAsync(func(ctx context.Context) error { return r.openGUIAction(ctx, route) })
+	}
 	showQuickPanel = func() { nativeAsync(r.openPanel) }
+	notifier := notifications.New(notifications.Options{
+		Config:     func() config.Desktop { return settings.Current().Desktop },
+		OnNavigate: openDesktopRoute,
+		OnError:    func(error) { logHostFailure() },
+	})
+	r.testNotification = notifier.SendTest
+	mygo.App.OnNotificationClick(notifier.HandleClick)
 	if runtime.GOOS == "darwin" {
 		mygo.App.OnActivate(func(bool) { nativeAsync(r.openGUI) })
 	}
@@ -258,7 +269,7 @@ func runTray(settings *config.Manager) error {
 			stopUpdateChange = updater.OnChange(syncUpdates)
 		}
 		close(r.nativeReady)
-		updateTray := setupTray(ctx, settings.Current().Desktop)
+		trayCtrl := setupTray(ctx, settings.Current().Desktop)
 		stopWake := watchSystemWake(ctx, r.socket)
 		mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
 			if stopWake != nil {
@@ -288,7 +299,7 @@ func runTray(settings *config.Manager) error {
 			if err == nil {
 				mygo.RunOnMain(func() {
 					mygo.Theme.SetSource(mygo.ThemeSource(current.Desktop.ColorMode))
-					updateTray(current.Desktop)
+					trayCtrl.updateConfig(current.Desktop)
 				})
 				go apply()
 				if previous.Desktop.Mode != current.Desktop.Mode && current.Desktop.Mode == "normal" {
@@ -298,9 +309,12 @@ func runTray(settings *config.Manager) error {
 		}
 		go apply()
 		go func() { _ = settings.Watch(ctx) }()
-		if !useDaemonClipboard {
-			go notifyPending(ctx, r.socket, func() string { return settings.Current().Desktop.Language })
-		}
+		go notifier.Watch(ctx, api.NewClient(r.socket), func(summary notifications.PendingSummary) {
+			mygo.RunOnMain(func() {
+				trayCtrl.updatePending(summary)
+				mygo.App.SetBadgeCount(summary.Count)
+			})
+		})
 		// Relaunch (e.g. from mygo.Updater) preserves the original tray intent.
 		// When spawned by the no-role launcher, that launcher delivers the
 		// startup/background command directly, so skip duplicating it here.

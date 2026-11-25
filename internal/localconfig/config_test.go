@@ -278,3 +278,40 @@ tag = "x"
 		t.Fatal("a changed policy must be seen as needing a restart")
 	}
 }
+
+func TestDesktopNotificationsConfigDefaultsAndOverrides(t *testing.T) {
+	def := Default()
+	if !def.Desktop.Notifications.EnabledOrDefault() || !def.Desktop.Notifications.DevicePairingEnabled() {
+		t.Fatalf("expected desktop notifications enabled by default: %+v", def.Desktop.Notifications)
+	}
+
+	c, err := Parse([]byte(`
+[desktop.notifications]
+enabled = false
+device_pairing = true
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Desktop.Notifications.EnabledOrDefault() {
+		t.Fatal("expected master notification switch disabled")
+	}
+	if c.Desktop.Notifications.DevicePairingEnabled() {
+		t.Fatal("master switch disabled must disable device pairing notifications")
+	}
+
+	c2, err := Parse([]byte(`
+[desktop.notifications]
+enabled = true
+device_pairing = false
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c2.Desktop.Notifications.EnabledOrDefault() {
+		t.Fatal("expected master notification switch enabled")
+	}
+	if c2.Desktop.Notifications.DevicePairingEnabled() {
+		t.Fatal("expected device pairing notifications disabled")
+	}
+}

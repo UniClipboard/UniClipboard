@@ -19,6 +19,7 @@ var settingsSections = []settingsSectionSpec{
 			{ID: "appearance", Label: "外观", Icon: desktopkit.IconSun},
 			{ID: "shortcuts", Label: "快捷键", Icon: desktopkit.IconKeyboard},
 			{ID: "quickPanel", Label: "快捷面板", Icon: desktopkit.IconQuickPanel},
+			{ID: "notifications", Label: "通知", Icon: desktopkit.IconChat},
 		},
 	},
 	{
@@ -58,6 +59,10 @@ func (d *viewState) settingsSidebarSections() ([]desktopkit.SidebarNavSection, s
 			switch it.ID {
 			case "quickPanel":
 				if qpWarn {
+					it.Indicator = &warnTone
+				}
+			case "notifications":
+				if d.notifications.status == "denied" {
 					it.Indicator = &warnTone
 				}
 			case "storage":
@@ -246,6 +251,11 @@ func (d *viewState) settingsContent(c *ui.Context, k desktopkit.Kit) {
 					}
 				}
 			})
+		})
+	case "notifications":
+		group("notifications", d.tr("通知开关"), func() {
+			d.switchRow(c, k, "notificationsEnabled", d.tr("系统通知"), d.tr("接收来自 UniClipboard 的系统级桌面通知。关闭后仍会在应用内保留红点提醒。"))
+			d.switchRow(c, k, "notificationsDevicePairing", d.tr("新设备配对与路径请求"), d.tr("有新设备请求加入或新增同步路径时发送系统通知。"))
 		})
 	case "sync":
 		group("sync", d.tr("同步行为"), func() {

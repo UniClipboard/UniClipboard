@@ -21,6 +21,9 @@ type SidebarNavItem struct {
 	Status *StatusTone
 	// Indicator 非 nil 时在尾部显示状态圆点，同时保留左侧图标。
 	Indicator *StatusTone
+	// Badge 非空时在尾部显示强调徽章（如待批准设备数量红点胶囊）。
+	Badge     string
+	BadgeTone StatusTone
 	// ShortcutHint 仅显示，如 `⌘,`。
 	ShortcutHint string
 }
@@ -182,7 +185,18 @@ func (k Kit) SidebarNavEntry(c *ui.Context, st *NavState, item SidebarNavItem) u
 			k.Icon(c, item.Icon, lk.icon).TextColor(iconColor)
 		}
 		k.native().Text(c, item.Label, labelStyle).TextColor(fg).SingleLine().Grow(1).MinWidth(0)
-		if item.Indicator != nil {
+		if item.Badge != "" {
+			tone := item.BadgeTone
+			if tone == StatusNeutral {
+				tone = StatusCritical
+			}
+			bg := k.navStatusColor(tone)
+			ui.Row(c.Key("badge")).MinWidth(18).Height(18).Padding(0, 5).Radius(9).
+				Justify(ui.Center).AlignItems(ui.Center).Shrink(0).Background(bg).Children(func() {
+				ui.Text(c.Key("t"), item.Badge).FontSize(11).FontWeight(600).FontFeatures("tnum").
+					TextColor(ui.RGB(255, 255, 255)).SingleLine()
+			})
+		} else if item.Indicator != nil {
 			ui.Box(c.Key("ind")).Size(7, 7).Radius(3.5).Shrink(0).Background(k.navStatusColor(*item.Indicator)).AccessHidden(true)
 		}
 		if item.Count != "" {

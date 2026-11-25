@@ -3,6 +3,7 @@ package desktopui
 import (
 	"context"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -168,13 +169,21 @@ func (s *Desktop) SetExternalShortcut(status func() (string, string), retry func
 	s.d.retryQuickShortcut = retry
 }
 
-// OpenFromPanel preserves the panel's main-window and settings destinations.
+// OpenFromPanel navigates the main window to a route requested by the quick
+// panel, tray menu, or a clicked system notification.
 func (s *Desktop) OpenFromPanel(action string) {
-	switch action {
-	case "settings":
+	switch {
+	case action == "settings":
 		s.d.page = "settings"
 		s.d.settings.Value = "quickPanel"
-	case "main":
+	case action == "settings:notifications":
+		s.d.page = "settings"
+		s.d.settings.Value = "notifications"
+	case action == "devices":
+		s.d.openPendingDevice("")
+	case strings.HasPrefix(action, "devices:"):
+		s.d.openPendingDevice(strings.TrimPrefix(action, "devices:"))
+	case action == "main":
 		s.d.page = "history"
 	}
 }

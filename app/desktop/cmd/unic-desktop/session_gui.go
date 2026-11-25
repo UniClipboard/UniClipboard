@@ -120,6 +120,8 @@ func (s *desktopSession) start() {
 			bindDesktopDiagnostics(screen, s.dir, func() string { return s.settings.Current().Desktop.Language })
 			bindBackupActions(screen, func() string { return s.settings.Current().Desktop.Language })
 			bindDesktopShortcutPermissions(screen)
+			bindDesktopNotifications(screen, s.dir)
+			screen.SetPendingCountChanged(func(n int) { mygo.App.SetBadgeCount(n) })
 			screen.SetWindowToolbar(s.windowFrame, s.windowControls)
 			r := &desktopRuntime{screen: screen, cancel: cancel}
 			s.runtime = r

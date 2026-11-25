@@ -11,5 +11,8 @@ import (
 	"github.com/uniclipboard/unic/internal/servicelifecycle"
 )
 
-func registerDesktopNotifications(context.Context, *http.ServeMux, *host.Node, *config.Manager, *servicelifecycle.Service) {
+func registerDesktopNotifications(_ context.Context, mux *http.ServeMux, _ *host.Node, _ *config.Manager, _ *servicelifecycle.Service) {
+	mux.HandleFunc("POST /v1/desktop/notifications/disable", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 }

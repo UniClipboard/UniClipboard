@@ -2,54 +2,86 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
-	"time"
 
 	"github.com/egoist/mygo"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
+	"github.com/uniclipboard/unic/app/desktop/internal/notifications"
 	"github.com/uniclipboard/unic/app/desktop/internal/trayicon"
-	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
-	"github.com/uniclipboard/unic/internal/pairnotice"
 )
 
 var checkDesktopUpdates func()
 
 var showDesktop = func() {}
+var openDesktopRoute = func(string) {}
 var showQuickPanel = func() {}
 
-func setupTray(ctx context.Context, cfg config.Desktop) func(config.Desktop) {
+type trayController struct {
+	updateConfig  func(config.Desktop)
+	updatePending func(notifications.PendingSummary)
+}
+
+func setupTray(ctx context.Context, cfg config.Desktop) *trayController {
 	language := cfg.Language
-	menu := func(language string) *mygo.Menu {
-		tr := func(text string) string { return i18n.Translate(language, text) }
-		items := []*mygo.MenuItem{
-			{Label: tr("打开主窗口"), Click: func(*mygo.MenuItem, *mygo.Window) { showDesktop() }},
-			{Label: tr("快捷面板"), Click: func(*mygo.MenuItem, *mygo.Window) { showQuickPanel() }},
-			mygo.Separator(), {Label: tr("退出整个应用"), Role: mygo.RoleQuit},
+	var pending notifications.PendingSummary
+
+	buildTooltip := func(lang string, p notifications.PendingSummary) string {
+		base := i18n.Translate(lang, "跨设备剪贴板同步")
+		if p.Count > 0 {
+			return fmt.Sprintf("%s · %s", base, fmt.Sprintf(i18n.Translate(lang, "待批准设备请求 (%d)"), p.Count))
 		}
+		return base
+	}
+	menu := func(lang string, p notifications.PendingSummary) *mygo.Menu {
+		tr := func(text string) string { return i18n.Translate(lang, text) }
+		var items []*mygo.MenuItem
+		if p.Count > 0 {
+			route := "devices"
+			if p.FirstID != "" {
+				route = "devices:" + p.FirstID
+			}
+			items = append(items,
+				&mygo.MenuItem{
+					Label: fmt.Sprintf(tr("待批准设备请求 (%d)…"), p.Count),
+					Click: func(*mygo.MenuItem, *mygo.Window) { openDesktopRoute(route) },
+				},
+				mygo.Separator(),
+			)
+		}
+		items = append(items,
+			&mygo.MenuItem{Label: tr("打开主窗口"), Click: func(*mygo.MenuItem, *mygo.Window) { showDesktop() }},
+			&mygo.MenuItem{Label: tr("快捷面板"), Click: func(*mygo.MenuItem, *mygo.Window) { showQuickPanel() }},
+		)
 		if checkDesktopUpdates != nil {
-			items = append(items[:2], append([]*mygo.MenuItem{{Label: tr("检查更新"), Click: func(*mygo.MenuItem, *mygo.Window) { checkDesktopUpdates() }}}, items[2:]...)...)
+			items = append(items, &mygo.MenuItem{Label: tr("检查更新"), Click: func(*mygo.MenuItem, *mygo.Window) { checkDesktopUpdates() }})
 		}
+		items = append(items, mygo.Separator(), &mygo.MenuItem{Label: tr("退出整个应用"), Role: mygo.RoleQuit})
 		return mygo.NewMenu(items)
 	}
 
+	noop := &trayController{
+		updateConfig:  func(config.Desktop) {},
+		updatePending: func(notifications.PendingSummary) {},
+	}
 	raw, template, err := trayicon.Render(cfg.TrayIcon)
 	if err != nil {
 		logHostFailure()
-		return func(config.Desktop) {}
+		return noop
 	}
 	tray, err := mygo.NewTray(mygo.TrayOptions{
 		ID:             "unic-desktop",
 		Icon:           raw,
 		IconIsTemplate: template,
-		ToolTip:        i18n.Translate(language, "跨设备剪贴板同步"),
-		Menu:           menu(language),
+		ToolTip:        buildTooltip(language, pending),
+		Menu:           menu(language, pending),
 	})
 	if err != nil {
 		// Some desktop sessions do not provide a tray host.
 		logHostFailure()
-		return func(config.Desktop) {}
+		return noop
 	}
 	icon := trayicon.New(tray.SetIcon)
 	if err := icon.SetStyle(cfg.TrayIcon); err != nil {
@@ -68,41 +100,25 @@ func setupTray(ctx context.Context, cfg config.Desktop) func(config.Desktop) {
 	stopTheme := mygo.Theme.OnUpdated(refresh)
 	trayicon.WatchTheme(themeCtx, refresh)
 	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { cancelTheme(); stopTheme(); tray.Destroy() })
-	return func(current config.Desktop) {
-		if current.Language != language {
-			tray.SetMenu(menu(current.Language))
-			tray.SetToolTip(i18n.Translate(current.Language, "跨设备剪贴板同步"))
-			language = current.Language
-		}
-		if err := icon.SetStyle(current.TrayIcon); err != nil {
-			logHostFailure()
-		}
-	}
-}
-
-// notifyPending raises a system notification when a device asks to join, so
-// that the request is not missed while the window is closed. It is best
-// effort: some systems refuse notifications from unsigned programs.
-func notifyPending(ctx context.Context, sock string, language func() string) {
-	if !mygo.NotificationsSupported() {
-		return
-	}
-	c := api.NewClient(sock)
-	for ctx.Err() == nil {
-		_ = c.Events(ctx, func(ev api.Event) {
-			if ev.Kind != "pending" {
-				return
+	return &trayController{
+		updateConfig: func(current config.Desktop) {
+			if current.Language != language {
+				language = current.Language
+				tray.SetMenu(menu(language, pending))
+				tray.SetToolTip(buildTooltip(language, pending))
 			}
-			title, body := pairnotice.Text(language(), ev.Peer, ev.Info)
-			n := mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body})
-			if err := n.Show(); err != nil {
+			if err := icon.SetStyle(current.TrayIcon); err != nil {
 				logHostFailure()
 			}
-		})
-		select {
-		case <-ctx.Done():
-		case <-time.After(2 * time.Second):
-		}
+		},
+		updatePending: func(current notifications.PendingSummary) {
+			if current == pending {
+				return
+			}
+			pending = current
+			tray.SetMenu(menu(language, pending))
+			tray.SetToolTip(buildTooltip(language, pending))
+		},
 	}
 }
 

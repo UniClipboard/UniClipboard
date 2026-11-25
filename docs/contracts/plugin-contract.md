@@ -18,9 +18,9 @@ processor 只能改标签、过期、persist、sync，不能改写正文；改�
 
 **外部 Go 插件使用独立可执行程序 + RPC**。宿主传入 `Options.PluginProcesses []PluginProcessSpec`（ID、可执行路径、摘要、API 版本），Engine 启动与管理子进程。路径仅供装配，不进入普通状态与事件。每个 Engine 的每个启用插件各有一个常驻进程，跨处理/发送复用，不编译进宿主，不使用 Go 动态库或全局 init 注册。
 
-Lua 的预算、白名单、失败状态与热替换约束见 [Lua 运行时契约](lua-runtime-contract.md)；上游行为已核实，增强 VM 尚未实现。Lua 返回插件表，由 Engine 内适配器运行。宿主负责文件读取、监听和 TOML 映射；Engine 不依赖桌面文件监听。
+The [Lua runtime contract](lua-runtime-contract.md) defines the enhanced VM's budgets, allowlist, failure states and hot replacement. The Engine adapter runs the plugin table that Lua returns. The host reads and watches files and maps TOML into plugin configuration.
 
-公开 SDK 规划为 `github.com/uniclipboard/unic/plugin`，不依赖 engine；Engine 依赖它的 DTO 和 RPC 客户端。以下是插件进程内部接口，跨 RPC 传请求/响应，不传 Go 指针、interface 或 context：
+The public SDK is `github.com/uniclipboard/unic/plugin`. Engine depends on its DTOs and RPC client. A plugin process exchanges requests and responses over RPC. Go pointers, interfaces and contexts stay inside their process.
 
 ```go
 type Spec struct {
@@ -187,7 +187,7 @@ type SyncBackend interface {
 
 大文件/图片以短期句柄 + 分块二进制 + 窗口流控传输，不整体编码为 JSON/base64。句柄绑定会话与请求，取消/完成/断线即失效；不传本机文件路径。SyncHost 反向调用也须校验能力、会话与授权状态。
 
-核心帧格式、握手、process patch 与流描述已在[RPC 核心协议](plugin-rpc-contract.md) 和机器可读 Schema/向量中定义；编解码器与子进程互操作测试待实现。SyncBackend/SyncHost 业务方法、传输授权票据、状态生效屏障与接收 DTO 已在[同步后端业务契约](sync-backend-contract.md) 定义，实现及互操作测试仍待完成。移动端不默认承诺可启动子进程，运行方式按平台约束另定；不因移动端限制自动退回进程内第三方执行。
+The [core RPC contract](plugin-rpc-contract.md), schema and protocol vectors define framing, handshake, process patches and streams. The codec lives in `plugin/rpc`. The [sync backend contract](sync-backend-contract.md) defines the implemented `peer_sessions` methods, transfer authorization, revocation barriers and receive DTOs. The real Go subprocess tests in `engine/peere2e_test.go` cover pairing, sync and device introduction. Subprocess availability depends on the host platform. Mobile hosts must not load third-party code in-process as a fallback.
 
 ## 7. 最小模板
 

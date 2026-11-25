@@ -44,9 +44,9 @@ Windows · macOS · Linux · CLI　|　Text · Images · Files · Folders
 | 🔍 **Find anything** | Type a keyword, or filter with `#tag`, `@device` or `/type`. Find what you copied months ago. |
 | 🏷️ **Auto-tagging** | Links, emails, colors, version numbers, UUIDs and IP addresses are tagged automatically. Add your own rules. |
 | 📁 **Files and folders** | Send a whole folder with its structure intact, to every device or just one. |
-| 📮 **Send without pairing** | `unic send "text"` prints a 6-digit code. The other side enters it to receive. No device record is kept. |
+| 📮 **Send without pairing** | `unic send "text"` prints a transfer link and a 6-digit pickup code when available. The receiver can use either. No device record is kept. |
 | 🧩 **Plugins** | Install plugins in one click from Settings, for example to turn an image or file into a share link. |
-| ⌨️ **Command line** | Use `unic` to send, receive and search history from a terminal, over SSH or in scripts. |
+| ⌨️ **Command line** | Use `unic` to send, receive, and filter the history list from a terminal, over SSH, or in scripts. |
 | 🌍 **Languages** | English, 简体中文, 日本語, Português, Русский. Light and dark themes. |
 
 <a id="quick-start"></a>
@@ -55,7 +55,7 @@ Windows · macOS · Linux · CLI　|　Text · Images · Files · Folders
 
 **1. Run it**
 
-> Installers are coming soon. For now, run from source. You only need [Go](https://go.dev/dl/).
+Download the v2 Desktop preview for your platform from [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases). To run from source, use the commands below.
 
 ```sh
 git clone https://github.com/UniClipboard/UniClipboard.git
@@ -76,7 +76,7 @@ Press `Ctrl+C` on one device, then `Ctrl+V` on the other.
 ```sh
 unic send --to all "Hello"        # send to all devices
 unic send --to all -f ./photos    # send files or a folder
-unic send "temporary"             # no pairing: get a pickup code
+unic send "temporary"             # no pairing: get a transfer link and, when available, a pickup code
 unic recv 482913                  # receive with a code
 unic history list                 # browse history
 ```

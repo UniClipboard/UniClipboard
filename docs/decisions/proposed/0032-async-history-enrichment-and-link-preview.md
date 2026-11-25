@@ -1,6 +1,6 @@
 # 0032 · 异步历史富化能力（Enricher）与链接预览首个闭环
 
-- 状态：已采纳，待契约修订与实现
+- Status: accepted. Engine, RPC, local service and Desktop link previews support the in-repository `unic.linkpreview` plugin. Independent plugin distribution and the OCR follow-up remain open.
 - 日期：2026-11-25
 - 关联：[0004 剪贴板流水线与插件](0004-clipboard-pipeline-lua.md)、[0010 插件设置 Schema](0010-plugin-settings-schema.md)、[0027 文叔叔临时分享 Action](0027-wenshushu-share-action.md)、[0028 桌面端在线插件市场](0028-desktop-plugin-marketplace.md)
 - 落地目标：[插件契约](../../contracts/plugin-contract.md)、[插件 RPC 核心协议](../../contracts/plugin-rpc-contract.md)、[本机历史契约](../../contracts/history-contract.md)、[历史搜索契约](../../contracts/history-search-contract.md)、[本地服务契约](../../contracts/local-service-contract.md)、[流水线与本机历史](../../architecture/pipeline.md)

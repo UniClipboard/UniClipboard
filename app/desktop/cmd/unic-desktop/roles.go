@@ -651,6 +651,12 @@ func (r *trayRuntime) closeViews(ctx context.Context, roles ...desktopprocess.Ro
 	}
 	for _, role := range roles {
 		err := desktopprocess.Call(ctx, r.dir, role, "quit", nil, nil)
+		if errors.Is(err, desktopprocess.ErrStaleBuild) {
+			if _, rerr := desktopprocess.RetireStale(ctx, r.dir, role); rerr != nil {
+				return rerr
+			}
+			continue
+		}
 		if err != nil && !errors.Is(err, desktopprocess.ErrUnavailable) {
 			return err
 		}
@@ -660,6 +666,12 @@ func (r *trayRuntime) closeViews(ctx context.Context, roles ...desktopprocess.Ro
 			_, err := desktopprocess.Probe(ctx, r.dir, role)
 			if errors.Is(err, desktopprocess.ErrUnavailable) {
 				break
+			}
+			if errors.Is(err, desktopprocess.ErrStaleBuild) {
+				if _, rerr := desktopprocess.RetireStale(ctx, r.dir, role); rerr != nil {
+					return rerr
+				}
+				continue
 			}
 			if err != nil {
 				return err
@@ -677,7 +689,14 @@ func (r *trayRuntime) closeViews(ctx context.Context, roles ...desktopprocess.Ro
 var roleEnvironment = func(_ desktopprocess.Role, env []string) []string { return env }
 
 func launchDesktopRole(ctx context.Context, dir, socket string, role desktopprocess.Role, args ...string) (desktopprocess.Info, error) {
-	return desktopprocess.LaunchEnv(ctx, dir, socket, role, roleEnvironment(role, os.Environ()), args...)
+	env := roleEnvironment(role, os.Environ())
+	info, err := desktopprocess.LaunchEnv(ctx, dir, socket, role, env, args...)
+	if errors.Is(err, desktopprocess.ErrStaleBuild) && (role == desktopprocess.QuickPanel || role == desktopprocess.GUI) {
+		if retired, rerr := desktopprocess.RetireStale(ctx, dir, role); rerr == nil && retired {
+			return desktopprocess.LaunchEnv(ctx, dir, socket, role, env, args...)
+		}
+	}
+	return info, err
 }
 
 // A user close reaches this barrier only after GUI resources and role ownership

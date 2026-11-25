@@ -71,6 +71,8 @@ type desktopScenario struct {
 	windowSkin                     string
 	app                            *exec.Cmd
 	appDone                        chan error
+	standaloneDaemon               *exec.Cmd
+	standaloneDaemonDone           chan error
 	client                         *api.Client
 	automation                     string
 	window                         int
@@ -484,7 +486,13 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			if len(a) != 2 {
 				return errors.New("ui-click role label")
 			}
-			node, err := s.find(a[0], a[1])
+			// Serialize against background recording captures so a slow software
+			// CapturePage() cannot stall between sampling bounds and delivering
+			// the click, and wait for the target element's bounds to settle when
+			// an enter/layout transition (such as a Sheet scale-in) is animating.
+			s.captureMu.Lock()
+			defer s.captureMu.Unlock()
+			node, err := s.findForClick(a[0], a[1])
 			if err != nil {
 				return err
 			}
@@ -756,6 +764,42 @@ func (s *desktopScenario) find(role, label string) (desktopNode, error) {
 	}
 	return found[0], nil
 }
+func (s *desktopScenario) findForClick(role, label string) (desktopNode, error) {
+	if s.call(s.ctx, "idle", map[string]any{"window": s.window, "timeout": 15}, nil) == nil {
+		return s.find(role, label)
+	}
+	var prev, target desktopNode
+	stable := time.Time{}
+	err := s.waitFor(3*time.Second, func() bool {
+		if s.call(s.ctx, "idle", map[string]any{"window": s.window, "timeout": 15}, nil) == nil {
+			node, err := s.find(role, label)
+			if err != nil {
+				stable = time.Time{}
+				return false
+			}
+			target = node
+			return true
+		}
+		node, err := s.find(role, label)
+		if err != nil {
+			stable = time.Time{}
+			return false
+		}
+		if stable.IsZero() || node.ID != prev.ID || node.Bounds != prev.Bounds {
+			prev, stable = node, time.Now()
+			return false
+		}
+		if time.Since(stable) >= 400*time.Millisecond {
+			target = node
+			return true
+		}
+		return false
+	})
+	if err != nil {
+		return s.find(role, label)
+	}
+	return target, nil
+}
 func (s *desktopScenario) expect(args []string, absent bool) error {
 	if len(args) < 2 || len(args) > 3 {
 		return errors.New("ui assertion requires role, exact label and optional timeout seconds")
@@ -772,21 +816,36 @@ func (s *desktopScenario) expect(args []string, absent bool) error {
 	if err != nil {
 		return err
 	}
+	type nodeSnap struct {
+		ID     string
+		Bounds struct{ X, Y, Width, Height float64 }
+	}
+	var previous []nodeSnap
 	stable := time.Time{}
 	err = s.waitFor(limit, func() bool {
 		nodes, e := s.tree()
 		if e != nil {
 			return false
 		}
-		present := false
+		var matched []nodeSnap
 		for _, n := range nodes {
-			present = present || (n.Role == args[0] && match(n.Label))
+			if n.Role == args[0] && match(n.Label) {
+				matched = append(matched, nodeSnap{ID: n.ID, Bounds: n.Bounds})
+			}
 		}
+		present := len(matched) > 0
 		if present == absent {
+			previous = nil
 			stable = time.Time{}
 			return false
 		}
-		if stable.IsZero() {
+		if !absent {
+			if stable.IsZero() || !slices.Equal(matched, previous) {
+				previous = matched
+				stable = time.Now()
+				return false
+			}
+		} else if stable.IsZero() {
 			stable = time.Now()
 		}
 		return time.Since(stable) >= 350*time.Millisecond
@@ -963,13 +1022,24 @@ func (s *desktopScenario) finish(env *testscript.Env) {
 	}
 }
 func (s *desktopScenario) roleCommand(role, command string) ([]byte, error) {
-	if s.app == nil {
+	binPath := ""
+	var baseEnv []string
+	if s.app != nil {
+		binPath = s.app.Path
+		baseEnv = s.app.Env
+	} else if s.standaloneDaemon != nil {
+		binPath = filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unic-desktop")
+		if os.PathSeparator == '\\' {
+			binPath += ".exe"
+		}
+		baseEnv = s.standaloneDaemon.Env
+	} else {
 		return nil, errors.New("Desktop has not started")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, s.app.Path, "--role", role, "--command", command)
-	for _, entry := range s.app.Env {
+	cmd := exec.CommandContext(ctx, binPath, "--role", role, "--command", command)
+	for _, entry := range baseEnv {
 		if !strings.HasPrefix(entry, "MYGO_AUTOMATION=") {
 			cmd.Env = append(cmd.Env, entry)
 		}
@@ -978,8 +1048,71 @@ func (s *desktopScenario) roleCommand(role, command string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 func (s *desktopScenario) stopApp() error {
-	if s.appDone == nil {
+	if s.appDone == nil && s.standaloneDaemonDone == nil {
 		return nil
+	}
+	if s.appDone == nil && s.standaloneDaemonDone != nil {
+		type observedRole struct {
+			role string
+			pid  int
+			wait func(context.Context) error
+		}
+		var cleanupErr error
+		var observed []observedRole
+		for _, role := range []string{"gui", "quick-panel", "tray"} {
+			raw, err := s.roleCommand(role, "probe")
+			if err != nil {
+				continue
+			}
+			var identity desktopRoleIdentity
+			if err = json.Unmarshal(raw, &identity); err != nil {
+				cleanupErr = errors.Join(cleanupErr, err)
+				continue
+			}
+			if identity.PID <= 0 || identity.Role != role || identity.Profile != s.home {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("cannot bind standalone cleanup to unverified %s identity", role))
+				continue
+			}
+			wait, release, err := observeProcessExit(identity.PID)
+			if err != nil {
+				cleanupErr = errors.Join(cleanupErr, err)
+				continue
+			}
+			defer release()
+			observed = append(observed, observedRole{role: role, pid: identity.PID, wait: wait})
+		}
+		for _, role := range observed {
+			_, _ = s.roleCommand(role.role, "quit")
+		}
+		if s.standaloneDaemon != nil && s.standaloneDaemon.Process != nil {
+			_ = s.standaloneDaemon.Process.Signal(syscall.SIGTERM)
+			select {
+			case err := <-s.standaloneDaemonDone:
+				_ = err
+			case <-time.After(8 * time.Second):
+				_ = s.standaloneDaemon.Process.Kill()
+				select {
+				case err := <-s.standaloneDaemonDone:
+					_ = err
+				case <-time.After(3 * time.Second):
+					cleanupErr = errors.Join(cleanupErr, errors.New("standalone unicd did not exit"))
+				}
+			}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		for _, role := range observed {
+			if err := role.wait(ctx); err != nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("previously live %s PID %d did not exit: %w", role.role, role.pid, err))
+				continue
+			}
+			if _, err := s.roleCommand(role.role, "probe"); err == nil {
+				cleanupErr = errors.Join(cleanupErr, fmt.Errorf("owned %s endpoint remained after process %d exited", role.role, role.pid))
+				continue
+			}
+			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("cleanup observed %s PID %d exit and endpoint removal", role.role, role.pid))
+		}
+		return cleanupErr
 	}
 	type observedRole struct {
 		role string

@@ -45,15 +45,42 @@ type capturedPlatform struct {
 }
 
 func (p *capturedPlatform) Capture() (quickpanel.Target, error) { return p.target, p.captureError }
+func (p *capturedPlatform) PreparePaste(ctx context.Context) error {
+	if prep, ok := p.Platform.(quickpanel.PastePreparer); ok {
+		return prep.PreparePaste(ctx)
+	}
+	return nil
+}
 func NewProcessPanel(ctx context.Context, client *api.Client, clipboard PanelClipboard, settings func() config.Config, root func(string)) *ProcessPanel {
-	return &ProcessPanel{ctx: ctx, client: client, clipboard: clipboard, native: &capturedPlatform{Platform: quickpanel.NewNative()}, settings: settings, root: root}
+	p := &ProcessPanel{ctx: ctx, client: client, clipboard: clipboard, native: &capturedPlatform{Platform: quickpanel.NewNative()}, settings: settings, root: root}
+	if fc, ok := p.native.Platform.(interface{ SetFocusChecker(func() bool) }); ok {
+		fc.SetFocusChecker(func() bool {
+			return p.window != nil && p.window.IsVisible() && p.window.IsFocused()
+		})
+	}
+	return p
+}
+func (p *ProcessPanel) SetProfileDir(dir string) {
+	if cfg, ok := p.native.Platform.(interface{ SetProfileDir(string) }); ok {
+		cfg.SetProfileDir(dir)
+	}
 }
 func (p *ProcessPanel) Visible() bool {
 	return p.state != nil && p.state.visible && p.window != nil && p.window.IsVisible()
 }
+func (p *ProcessPanel) Focus() {
+	if p.Visible() && p.window != nil {
+		p.window.Show()
+		p.window.Focus()
+		p.window.Invalidate()
+	}
+}
 func (p *ProcessPanel) Open(target quickpanel.Target, captureError string, favorites bool) {
 	if p.Visible() {
-		p.Hide()
+		if favorites {
+			p.FilterFavorites()
+		}
+		p.Focus()
 		return
 	}
 	if p.state != nil {
@@ -132,6 +159,9 @@ func (p *ProcessPanel) Hide() {
 func (p *ProcessPanel) Close() {
 	if p.state != nil {
 		p.release(p.state, true)
+	}
+	if closer, ok := p.clipboard.(interface{ Close() }); ok {
+		closer.Close()
 	}
 	if closer, ok := p.native.Platform.(interface{ Close() }); ok {
 		closer.Close()

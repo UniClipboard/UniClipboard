@@ -20,6 +20,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	"github.com/uniclipboard/unic/app/desktop/internal/notifications"
 	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
+	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	"github.com/uniclipboard/unic/internal/desktopkeys"
 	"github.com/uniclipboard/unic/internal/desktopupdate"
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -38,9 +39,6 @@ func configureNativeRole(dir string, colorMode string) {
 	if runtime.GOOS == "darwin" {
 		mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory)
 	}
-}
-func roleCall(ctx context.Context, dir string, role desktopprocess.Role, command string, payload any, result any) error {
-	return desktopprocess.Call(ctx, dir, role, command, payload, result)
 }
 func nativeAsync(work func(context.Context) error) {
 	go func() {
@@ -128,13 +126,19 @@ func runTray(settings *config.Manager) error {
 		}
 	}
 	mygo.App.OnWindowAllClosed(func() {})
-	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { cancel() })
+	mygo.App.OnWillQuit(func(*mygo.QuitEvent) {
+		if ctx.Err() == nil {
+			r.markCloseAllViews()
+		}
+		cancel()
+	})
 	mygo.App.OnQuit(func() { r.close(); _ = owner.Close() })
 	showDesktop = func() { nativeAsync(r.openGUI) }
 	openDesktopRoute = func(route string) {
 		nativeAsync(func(ctx context.Context) error { return r.openGUIAction(ctx, route) })
 	}
 	showQuickPanel = func() { nativeAsync(r.openPanel) }
+	toggleQuickPanel := func() { nativeAsync(r.togglePanel) }
 	notifier := notifications.New(notifications.Options{
 		Config:     func() config.Desktop { return settings.Current().Desktop },
 		OnNavigate: openDesktopRoute,
@@ -151,7 +155,7 @@ func runTray(settings *config.Manager) error {
 		var effective, listeningModifier string
 		var stopModifier context.CancelFunc
 		shortcutHandlers := map[string]func(){
-			desktopkeys.TogglePanel: showQuickPanel,
+			desktopkeys.TogglePanel: toggleQuickPanel,
 			desktopkeys.ShowMain:    showDesktop,
 			desktopkeys.ShowFavorites: func() {
 				nativeAsync(func(ctx context.Context) error { return r.openPanelFiltered(ctx, true) })
@@ -204,7 +208,7 @@ func runTray(settings *config.Manager) error {
 					listeningModifier = ""
 					if modifier != "" {
 						listenerContext, cancelListener := context.WithCancel(ctx)
-						if quickpanel.WatchModifier(listenerContext, nativePlatform, modifier, showQuickPanel) {
+						if quickpanel.WatchModifier(listenerContext, nativePlatform, modifier, toggleQuickPanel) {
 							stopModifier, listeningModifier = cancelListener, modifier
 						} else {
 							cancelListener()
@@ -385,6 +389,10 @@ func runPanel(settings *config.Manager) error {
 	if err != nil {
 		return err
 	}
+	socket, err := paths.Socket()
+	if err != nil {
+		return err
+	}
 	ctx, cancel := roleContext()
 	defer cancel()
 	var panel *desktopui.ProcessPanel
@@ -411,8 +419,28 @@ func runPanel(settings *config.Manager) error {
 				return nil, err
 			}
 			mygo.RunOnMain(func() {
+				if panel == nil {
+					return
+				}
+				if panel.Visible() {
+					switch activation.Action {
+					case panelActionToggle:
+						panel.Hide()
+					case panelActionFavorites:
+						panel.FilterFavorites()
+						panel.Focus()
+					default:
+						panel.Focus()
+					}
+					return
+				}
+				panel.Open(activation.Target, activation.Error, activation.Favorites)
+			})
+			return nil, nil
+		case "focus":
+			mygo.RunOnMain(func() {
 				if panel != nil {
-					panel.Open(activation.Target, activation.Error, activation.Favorites)
+					panel.Focus()
 				}
 			})
 			return nil, nil
@@ -457,15 +485,18 @@ func runPanel(settings *config.Manager) error {
 		}
 	})
 	mygo.App.WhenReady(func() {
-		clipboard := remoteClipboard{dir: dir}
+		var clipboard desktopui.PanelClipboard
 		if useDaemonClipboard {
-			clipboard.daemon = c
+			clipboard = daemonClipboard{daemon: c}
+		} else {
+			clipboard = clipboardintegration.NewPanelClipboard(dir, newDesktopBoard())
 		}
 		panel = desktopui.NewProcessPanel(ctx, c, clipboard, settings.Current, func(action string) {
 			nativeAsync(func(ctx context.Context) error {
-				return roleCall(ctx, dir, desktopprocess.Tray, "open-gui", action, nil)
+				return openMainFromPanel(ctx, dir, socket, action)
 			})
 		})
+		panel.SetProfileDir(dir)
 		close(ready)
 		settings.OnChange = func(_, current config.Config, err error) {
 			if err == nil {

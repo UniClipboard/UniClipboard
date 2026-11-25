@@ -398,6 +398,9 @@ function Invoke-GUIAbsentHotkey([string]$TaskProfile,$Tray){
     if([UnicNativeB973]::Owner($targetWindow) -ne $target.pid){throw 'Target HWND identity mismatch'}
     if(-not [UnicNativeB973]::SetForegroundWindow($targetWindow)){throw 'Foreground activation rejected; no hotkey injected'}
     Wait-Until {return [UnicNativeB973]::GetForegroundWindow() -eq $targetWindow} 'exact task target foreground'
+    Wait-Until {return [UnicNativeB973]::IsZoomed($targetWindow)} 'task target maximized'
+    $before=[UnicNativeB973+RECT]::new()
+    if(-not [UnicNativeB973]::GetWindowRect($targetWindow,[ref]$before)){throw 'Initial target bounds unavailable'}
     $shortcut=Role $TaskProfile 'tray' 'status'
     if($shortcut.shortcut.effective -ne 'Ctrl+Alt+V' -or $shortcut.shortcut.error){throw 'Shortcut is no longer effective; no key injected'}
     [UnicNativeB973]::CheckModifiers()
@@ -421,6 +424,12 @@ function Invoke-GUIAbsentHotkey([string]$TaskProfile,$Tray){
     Event 'app-scoped-automation' 'Escape dismiss panel' @{window=$content[0].ID;endpoint='automation-panel.sock'}
     Wait-Until {$status=Role $TaskProfile 'quick-panel' 'status';return -not $status.visible} 'panel dismissal'
     Wait-Until {return [UnicNativeB973]::GetForegroundWindow() -eq $targetWindow} 'Escape restored exact task target focus'
+    $after=[UnicNativeB973+RECT]::new()
+    if([UnicNativeB973]::Owner($targetWindow) -ne $target.pid -or -not [UnicNativeB973]::GetWindowRect($targetWindow,[ref]$after)){throw 'Final target bounds unavailable'}
+    $maximized=[UnicNativeB973]::IsZoomed($targetWindow)
+    $unchanged=$after.Left -eq $before.Left -and $after.Top -eq $before.Top -and $after.Right -eq $before.Right -and $after.Bottom -eq $before.Bottom
+    Save-JSON 'escape-target-window.json' @{target_pid=$target.pid;target_hwnd=$target.hwnd;before=@{maximized=$true;bounds=$before};after=@{maximized=$maximized;bounds=$after};bounds_unchanged=$unchanged}
+    if(-not $maximized -or -not $unchanged){throw 'Panel dismissal changed the maximized target window state or bounds'}
     $script:ScenarioStatus.normal_gui_absent_hotkey='PASS'
     return $panel
 }

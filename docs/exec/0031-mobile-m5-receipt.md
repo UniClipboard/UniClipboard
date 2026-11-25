@@ -55,6 +55,19 @@ stopped before compilation because the Ubuntu runner had no Android SDK
 command-line tools on its PATH. The Android acceptance and Store candidate
 workflows install the required SDK packages explicitly.
 
+Two [hosted](https://github.com/UniClipboard/UniClipboard/actions/runs/45530764536/job/138925182817)
+[Android runs](https://github.com/UniClipboard/UniClipboard/actions/runs/45531613917/job/138928043313)
+built the APK and lost the ADB transport during the first Maestro launch.
+The Android job now builds before starting the emulator, retains emulator
+logs, and retries the suite once only after the recorded transport failure
+and a stable connection. Each attempt writes a separate receipt.
+
+The first [hosted iOS run](https://github.com/UniClipboard/UniClipboard/actions/runs/45530292519/job/138923618609)
+passed setup on iPhone Duo and failed its clipboard history assertion. The
+same local live suite passed on an iPhone 17 Pro simulator with iOS 27.0.
+CI now creates that simulator explicitly. The suite checks the pasteboard
+fixture before starting the history flow.
+
 The iOS workflows use the [GitHub-hosted Xcode 27 image](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md).
 
 The `mobile-ios` environment supplies the Apple Distribution PKCS#12 file,

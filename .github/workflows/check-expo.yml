@@ -114,13 +114,9 @@ jobs:
           packages: >-
             platform-tools ndk;27.1.12297006 platforms;android-36 build-tools;36.0.0
             emulator system-images;android-36;google_apis;x86_64
-      - name: Start Android emulator
+      - name: Select Android NDK
         if: matrix.platform == 'android'
-        run: |
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.1.12297006" >> "$GITHUB_ENV"
-          printf 'no\n' | avdmanager create avd -n unic-ci -k 'system-images;android-36;google_apis;x86_64'
-          sudo chmod a+rw /dev/kvm
-          nohup "$ANDROID_HOME/emulator/emulator" -avd unic-ci -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > "$RUNNER_TEMP/emulator.log" 2>&1 &
+        run: echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.1.12297006" >> "$GITHUB_ENV"
       - name: Install pinned Maestro CLI
         shell: bash
         run: |
@@ -145,25 +141,52 @@ jobs:
           xcodebuild -workspace ios/UniClipboardUIShell.xcworkspace -scheme UniClipboardUIShell \
             -configuration Release -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/unic-ios" ARCHS=arm64 CODE_SIGNING_ALLOWED=NO
-          device=$(xcrun simctl list devices available --json | jq -er '[.devices | to_entries[] | select(.key | contains(".iOS-")) | .value[] | select(.isAvailable and .state == "Shutdown" and (.name | startswith("iPhone")))][-1].udid')
+          device=$(xcrun simctl create 'UniClipboard CI' com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro com.apple.CoreSimulator.SimRuntime.iOS-27-0)
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
           node e2e/run.mjs --suite live --platform ios --device "$device" \
             --app "$RUNNER_TEMP/unic-ios/Build/Products/Release-iphonesimulator/UniClipboardUIShell.app"
-      - name: Build and test Android emulator
+      - name: Build Android emulator APK
+        if: matrix.platform == 'android'
+        working-directory: app/expo/android
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64
+      - name: Test Android emulator
         if: matrix.platform == 'android'
         working-directory: app/expo
         shell: bash
         run: |
-          (cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64)
-          for _ in {1..100}; do
-            if [[ $(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r') == 1 ]]; then break; fi
-            sleep 3
-          done
-          test "$(adb -s emulator-5554 shell getprop sys.boot_completed | tr -d '\r')" = 1
+          mkdir -p e2e/results
+          printf 'no\n' | avdmanager create avd -n unic-ci -k 'system-images;android-36;google_apis;x86_64'
+          sudo chmod a+rw /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd unic-ci -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > e2e/results/emulator.log 2>&1 &
+
+          wait_for_emulator() {
+            local stable=0
+            for _ in {1..100}; do
+              if [[ $(timeout 5s adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r') == 1 ]]; then
+                stable=$((stable + 1))
+                if [[ $stable == 5 ]]; then return 0; fi
+              else
+                stable=0
+              fi
+              sleep 2
+            done
+            echo 'Android emulator did not become ready' >&2
+            return 1
+          }
+
+          run_live() {
+            node e2e/run.mjs --suite live --platform android --device emulator-5554 \
+              --app android/app/build/outputs/apk/release/app-release.apk
+          }
+
+          wait_for_emulator
           adb -s emulator-5554 shell wm dismiss-keyguard
-          node e2e/run.mjs --suite live --platform android --device emulator-5554 \
-            --app android/app/build/outputs/apk/release/app-release.apk
+          if run_live; then exit 0; fi
+          grep -rqE --include=maestro.log 'CommandFailed: Command failed \(host:transport:emulator-5554\): device offline' e2e/results
+          echo 'Maestro lost its ADB connection. Retrying once after the emulator reconnects.'
+          wait_for_emulator
+          run_live
       - uses: actions/upload-artifact@v4
         if: always()
         with:

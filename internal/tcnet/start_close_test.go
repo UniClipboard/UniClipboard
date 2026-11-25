@@ -13,9 +13,10 @@ func TestStartAndCloseConcurrentlyNoRace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	done := make(chan error, 1)
+	done := make(chan struct{})
 	go func() {
-		done <- tr.Start()
+		defer close(done)
+		_ = tr.Start()
 	}()
 	time.Sleep(15 * time.Millisecond)
 	if err := tr.Close(); err != nil {

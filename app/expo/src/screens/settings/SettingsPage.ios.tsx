@@ -92,6 +92,7 @@ export function SettingsPage({ title, groups, onBack }: SettingsPageProps) {
                         icon="circle"
                         iconColor={settingsTileColors.blue}
                         title={row.title}
+                        subtitle={row.description}
                         value={row.value}
                         onPress={row.onPress}
                         readOnly={!row.onPress}

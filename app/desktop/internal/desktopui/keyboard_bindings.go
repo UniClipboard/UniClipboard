@@ -180,7 +180,12 @@ func (d *viewState) bindKeyboardCommands(c *ui.Context) {
 	}
 	if d.page == "history" {
 		commands[desktopkeys.Sidebar] = func() { d.sidebarHidden = !d.sidebarHidden }
-		commands[desktopkeys.Search] = func() { d.search.restore = true; d.filterOpen = false }
+		commands[desktopkeys.Search] = func() {
+			d.narrowSearchOpen = true
+			d.search.restore = true
+			d.search.hadActivity = false
+			d.filterOpen = false
+		}
 		commands[desktopkeys.Favorite] = func() {
 			if item := d.current(); item != nil {
 				d.toggleFavorites([]string{item.id})

@@ -1,11 +1,11 @@
 # Engine 公共契约 v0.1
 
-> 2026-11-08 目标修订：[身份与信任](../architecture/identity-and-trust.md) 与[设备契约](device-contract.md) 统一设备身份、设备级信任与按后端实例授权。下文 Peer 单 Connection、配对请求/结果、ID 指纹及旧实现登记不构成完整目标 API；须同批替换 SDK/宿主/测试，不保留兼容层。普通设备列表每设备一行并展开多个关联，秘密仍仅显式导出。
+> The [device contract](device-contract.md) and [identity architecture](../architecture/identity-and-trust.md) govern device identity, approval, pairing and per-instance bindings. Use them for device and pairing DTOs. A device list presents one row per device with its bindings. Export pairing material only through the explicit export operation.
 
-- 状态：设计稿，正在分阶段实现；实现进度见第 14 节，未列为已实现的部分当前代码尚未符合本规范。
+- Status: public Go SDK contract. The linked feature contracts specify the implemented history, submission, Action, plugin and device APIs. Section 14 records implementation scope.
 - 日期：2026-11-07
 - 依据：[0003 独立 Engine](../decisions/proposed/0003-engine-sdk.md)、[身份与信任](../architecture/identity-and-trust.md)、[0002 配置](../decisions/proposed/0002-config-file.md)。
-- 范围：公开 Go 包 `github.com/uniclipboard/unic/engine` 的业务契约及桌面宿主接入；移动端沿用业务语义，具体语言绑定后续定义。
+- Scope: the public Go package `github.com/uniclipboard/unic/engine` and its host-facing semantics. The [mobile binding](../architecture/overview.md#expo-mobile-client-and-in-process-engine) embeds the same Engine in the Expo host.
 
 本文中的“必须”是实现和契约测试要求。“宿主”指调用 SDK 的平台集成层，不是 GUI。SDK 不直接访问系统剪贴板，不创建 UI，不提供后台常驻保证。
 
@@ -18,13 +18,13 @@
 5. 方法允许并发调用。状态变更在明确提交点原子生效；核心不在持锁期间调用宿主代码。SDK 不指定 UI 线程。
 6. context 只控制本次调用和其直接 I/O，不充当实例生命周期。context 取消后，已提交操作继续存在；取消不回滚信任与成功导入的资源。
 7. 普通查询和事件不含设备地址、票据、剪贴板正文、文件内容或绝对路径。内容只能显式读取，地址和配对码只能显式获取。日志和错误必须脱敏，包括第三方错误。
-8. v0.1 保留 wire v2，不新增远端 ACK、断点续传或可靠离线投递；本机历史基础筛选见历史扩展契约。
+8. The built-in peer-session wire uses version 1. It does not provide remote application acknowledgments, resumable transfers or reliable offline delivery. See the [history contract](history-contract.md) for local queries.
 
-### 0007 多后端同步扩展（待实现）
+### Multiple sync backends
 
-[0007](../decisions/proposed/0007-multiple-sync-backends.md) 确定全局 sync.enabled、各实例启用、各后端独立的 text/images/files/自动文件阈值三层控制，允许多个后端并发，结果/目标/资源按后端隔离。目标 Settings.Sync 只保留 Enabled，新增 BackendPolicies 映射；下文旧 SyncSettings 类型字段及过滤/在途语义描述既有实现，接入时须同批迁移 SDK、宿主与测试。全局关闭立即取消所有后端内容工作，不能被手动发送绕过；本机历史、处理与 Action 保留。P2P 连接 API 仅为 peer_sessions 扩展，WebDAV 对象协议另定。
+Engine applies global sync settings, backend instance enablement and each backend's `Settings.BackendPolicies` for text, images, files and automatic file size. Backend results, targets and resource ownership are independent. Disabling global sync cancels backend content work, including explicit sends. History, processing and Actions remain available. See the [pipeline architecture](../architecture/pipeline.md#sync-settings-and-file-ownership) and [backend contract](sync-backend-contract.md) for the current policy and peer-session interfaces.
 
-### 外部渠道扩展（已实现，后端接入待定）
+### External channels
 
 [0009](../decisions/proposed/0009-external-channels.md) 的数据模型与接收路径已实现：`Channel` DTO（无地址/指纹/远端上下文）、`AddChannel / ListChannels / GetChannel / RenameChannel / SetChannelEnabled / SetChannelAutoApply / RemoveChannel`（均带 ExpectedRevision 做 CAS，变化发 `ObjectRef{Type:"channel"}` 与 `EventDevices`）和混排的 `ListPeers`（`Peer{Kind: device|channel}`）。发送目标类型 `group`，一次发送一条目标状态；提交时只把已启用渠道交给后端，后端登记未启用渠道返回 invalid_argument。接收经 `plugin.Receiver` 进入与设备相同的准入、received 流水线、历史与去重，来源为 `external`，`ReceivedContent` 带 `ChannelID`（`PeerID` 为空）与到达时的 `AutoApply`；引擎不写剪贴板，宿主据 `AutoApply` 决定。`RemoveChannel`：后端未声明 `remote_revocation` 时只删本地；声明时（须实现 `plugin.ChannelLeaver`）先停用、请求退出，成功才删除，失败保留并标记 `remove_failed`。
 
@@ -52,33 +52,35 @@ restarts the previous processes with their running configurations. The Engine
 preserves channel authorization for unchanged effective configuration and
 applies the existing revocation rule for changes in one transaction.
 
-### 0004 扩展边界（待实现）
+### Persistent history
 
-[0004](../decisions/proposed/0004-clipboard-pipeline-lua.md) 已确定：本机持久历史和处理流水线均由 Engine 管理，业务实现放在 `engine/`；宿主只经 SDK 访问，不另建历史或流水线。[本机历史契约](history-contract.md) 已确定历史 API、筛选分页、稳定 ID、内容租约、更新/删除、容量与过期、接收列表映射、历史应用和事件恢复。该契约为本文的目标扩展，尚未实现；其明确声明的历史语义优先于本文既有实例内接收列表约定。临时资源启动清理不得删除有效历史；标签与过期不进 wire，不承诺重启后的待应用可靠投递。
+Engine owns the persistent history and processing pipeline. Hosts use the SDK for history and processing. The [history contract](history-contract.md) defines stable history IDs, queries, leases, updates, deletion, retention, received-item mapping, application and event recovery. Startup cleanup preserves retained history. Local tags and expiry stay outside the wire protocol.
 
-### 流水线提交扩展（待实现）
+### Submission and Actions
 
-[流水线提交契约](pipeline-contract.md) 确定新增 `CommitContent/GetSubmission`、提交结果与网络结果分离、独立请求幂等表、旧 SubmitContent 门面和 ObservationResult 扩展。无目标、同步关闭或无后端仍可本机 commit；旧发送错误不能用于判断历史是否保存。以下既有发送/观察章节描述原 v0.1 API，接入 0004 时按该扩展同步迁移代码、宿主和测试。[Action 契约](clipboard-action-contract.md) 取代早期的自动写回设计：处理器只标注，ListActions/RunAction 由用户主动触发，结果成为 origin=action 的新历史条目并经 BeginApplyHistory 应用；RPC 核心帧与控制载荷见[RPC 核心协议](plugin-rpc-contract.md)，[后端业务 DTO 与撤销屏障](sync-backend-contract.md) 已定义，实现及互操作测试仍待完成。
+The [submission contract](pipeline-contract.md) defines `CommitContent` and `GetSubmission`, request idempotency, and the legacy `SubmitContent` facade. A commit can save history when sync is disabled or no backend or target is available. Check the commit result to determine whether history was saved.
+
+Processors can annotate content. The host calls `ListActions` and runs a selected Action with `RunAction`. A successful Action produces a new history entry with origin `action`. The host can apply that entry through `BeginApplyHistory`. See the [Action contract](clipboard-action-contract.md) and [RPC core protocol](plugin-rpc-contract.md).
 
 三类入口的状态转换、Stop/策略与 commit 的序列化屏障、Received 槽位与成功去重记录的发布、引用/配额交接及重启边界见[流水线契约 §7](pipeline-contract.md#7-状态转换与资源交接)。公开 submission Phase 不增加内部准备状态；接收完成、应用和历史删除不能混作一个终态。
 
-### 后端装配与身份初始化扩展（待实现）
+### Backend assembly and identity initialization
 
 按[装配契约](backend-migration-contract.md) 生成并持久化 Engine 设备身份与各实例独立传输身份；不导入旧 tc.*，不保留旧地址或配对记录。Engine 持有全局设备/信任与关联；插件持有传输凭据，不能取得设备私钥。移除公开 Network 并显式装配程序，零后端为本机模式，默认 tailcat 由桌面发行清单提供。
 
-### Lua 运行时扩展（待实现）
+### Lua runtime
 
-[Lua 运行时契约](lua-runtime-contract.md) 确定增强 VM、逐项白名单、执行/编译/原生操作/逻辑分配预算及失败状态处置。四项上游探针已通过，不代表增强预算或完整沙箱通过验收；不使用 SetMx，不宣称精确堆内存隔离。运行时细节不进入公开 SDK 类型。
+The [Lua runtime contract](lua-runtime-contract.md) defines the enhanced VM, allowlist, execution, compilation and allocation budgets, and failure handling. `internal/luavm` implements the runtime budget checks. The VM accounts for logical work and allocations. Runtime internals stay outside the public SDK.
 
-### SDK 类型与错误扩展（待实现）
+### SDK extension types and errors
 
-[SDK 扩展类型契约](sdk-extension-contract.md) 确定历史/提交/Action DTO、可选值、插件装配及 Lua 源码输入、标准策略唯一存储、严格 Config 校验和错误分类。目标新增 invalid_config/plugin_panic，与已定义 RPC 对齐；既有 errors.go 尚无这两个码，不能宣称已实现。各阶段同步代码、适配和实现登记，内部类型不进入公开 SDK。
+The [SDK extension contract](sdk-extension-contract.md) defines the history, submission and Action DTOs, optional values, plugin assembly, and configuration validation. Use the public `engine.Code` set for Engine errors and the [RPC code list](plugin-rpc-contract.md) for plugin protocol errors.
 
-### 插件与同步后端扩展（待实现）
+### Plugins and sync backends
 
-插件化后端的状态快照、审批与会话 token、传输前授权、接收准入/流和撤销生效屏障见[同步后端业务契约](sync-backend-contract.md)。该扩展要求撤销成功前取得后端确认；外部后端可终止回收进程，builtin 须关闭端点并确认任务退出，不能确认则停止同步服务并报告失败；下文既有 Unpair 的异步资源关闭说明只描述当前进程内实现。
+The [sync backend contract](sync-backend-contract.md) governs the implemented peer-session state snapshot, approvals, session tokens, send authorization, receive admission and revocation barrier. Revocation must reach the backend before Engine reports success.
 
-[插件契约 v0.1](plugin-contract.md) 定义 Go/Lua 统一插件与最小模板。builtin Go 插件由宿主显式传入进程内实例，外部 Go 插件通过独立常驻进程/RPC 接入，安装优先平台预编译，缺失时可 --build 构建插件自身，不重建宿主；Engine 拥有注册、生命周期、配置、串行处理、commit 和操作状态；tailcat 网络、会话与传输封装为默认 builtin Go 插件 `builtin.tailcat`（`internal/plugins/tailcat/`，与 `builtin.text` 独立），公共配对/发送/接收 API 保持门面，审批、信任和策略最终由 Engine 控制。通知总线不承担同步调度。默认后端按 0008 实现统一设备身份，不保留旧 wire v2 兼容要求；无后端允许本机历史工作。插件 API 和同步流式 DTO 尚未实现，不计入第 14 节已完成功能。
+The [plugin contract](plugin-contract.md) covers Go and Lua registration, built-ins, external Go processes and GitHub installation. The host explicitly assembles default sync through `builtin.tailcat`. Engine owns plugin lifecycle, processing, commit and operation state. Engine also owns device approval, trust and sync policy. Running with zero backends still provides local history.
 
 ### 0014 Logs 与 Metrics 诊断扩展（已接入工作区）
 
@@ -98,7 +100,7 @@ Names, finite values and exact emission semantics are defined in [the observabil
 
 ## 2. 接口总览
 
-以下是目标 Go 签名。DTO 字段由后文规定；标识类型均为独立 string 类型，枚举也是独立 string 类型。所有带 context 的方法拒绝 nil context。`Subscription` 与 `ContentReader` 是 SDK 管理的句柄，不跨语言直接导出。
+Selected public Go signatures follow. The feature contracts specify their DTOs. Context arguments must be non-nil. The SDK owns the `Subscription` and `ContentReader` handles.
 
 ```go
 func New(ctx context.Context, opts Options) (*Engine, error)
@@ -117,14 +119,13 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 func (e *Engine) CreatePairingCode(ctx context.Context) (PairingCode, error)
 func (e *Engine) GetPairingCode(ctx context.Context) (PairingCode, bool, error)
 func (e *Engine) CancelPairingCode(ctx context.Context) error
-func (e *Engine) ExportPairingAddress(ctx context.Context) (SensitiveAddress, error)
+func (e *Engine) ExportPairingTicket(ctx context.Context) (SensitiveTicket, error)
 func (e *Engine) JoinByCode(ctx context.Context, req JoinRequest) (OperationID, error)
-func (e *Engine) PairByAddress(ctx context.Context, req PairRequest) (OperationID, error)
+func (e *Engine) JoinByTicket(ctx context.Context, req JoinTicketRequest) (OperationID, error)
+func (e *Engine) ListDevices(ctx context.Context) ([]Device, error)
 func (e *Engine) ListPeers(ctx context.Context) ([]Peer, error)
-func (e *Engine) ListPending(ctx context.Context) ([]PendingPeer, error)
-func (e *Engine) Approve(ctx context.Context, req ApprovalRequest) (Peer, error)
-func (e *Engine) Reject(ctx context.Context, req PendingRequest) error
-func (e *Engine) Unpair(ctx context.Context, id DeviceID) error
+func (e *Engine) ApproveDevice(ctx context.Context, req ApproveDeviceRequest) (Device, error)
+func (e *Engine) UnpairDevice(ctx context.Context, req UnpairDeviceRequest) error
 func (e *Engine) CreatePairingCodeVia(ctx context.Context, backend PluginID) (PairingCode, error)
 func (e *Engine) ExportPairingTicketVia(ctx context.Context, backend PluginID) (SensitiveTicket, error)
 func (e *Engine) ListCandidates(ctx context.Context) ([]Candidate, error)
@@ -137,14 +138,21 @@ func (e *Engine) ReadContent(ctx context.Context, lease LeaseID, part PartID) (*
 func (e *Engine) LocalFilePath(ctx context.Context, lease LeaseID, part PartID) (string, error)
 func (e *Engine) FileReference(ctx context.Context, lease LeaseID, part PartID) (string, error)
 func (e *Engine) ReleaseContent(ctx context.Context, lease LeaseID) error
+func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (SubmissionResult, error)
+func (e *Engine) GetSubmission(ctx context.Context, id RequestID) (SubmissionResult, error)
 func (e *Engine) SubmitContent(ctx context.Context, req SubmitRequest) (OperationID, error)
 func (e *Engine) GetOperation(ctx context.Context, id OperationID) (Operation, error)
 func (e *Engine) ListReceived(ctx context.Context) ([]ReceivedContent, error)
 func (e *Engine) DismissReceived(ctx context.Context, id ReceiptID) error
+func (e *Engine) ListHistory(ctx context.Context, req ListHistoryRequest) (HistoryPage, error)
+func (e *Engine) SearchHistory(ctx context.Context, req HistorySearchRequest) (HistorySearchPage, error)
+func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest) (ApplyTicket, error)
+func (e *Engine) ListActions(ctx context.Context) ([]ActionInfo, error)
+func (e *Engine) RunAction(ctx context.Context, req RunActionRequest) (ActionResult, error)
 
-func (e *Engine) ObserveClipboard(ctx context.Context, req Observation) (ObservationResult, error)
+func (e *Engine) ObserveClipboard(ctx context.Context, o Observation) (ObservationResult, error)
 func (e *Engine) BeginApply(ctx context.Context, req ApplyRequest) (ApplyTicket, error)
-func (e *Engine) ReportApplyResult(ctx context.Context, result ApplyResult) error
+func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error
 func (e *Engine) SubscribeEvents(ctx context.Context) (*Subscription, error)
 
 func (s *Subscription) Snapshot() State
@@ -152,7 +160,7 @@ func (s *Subscription) Next(ctx context.Context) (Event, error)
 func (s *Subscription) Close() error
 ```
 
-`ContentReader` 实现 `io.ReadCloser`，只提供指定 part 的字节；与文件路径、URI 无关。以上签名属于设计稿，调整须同步更新本文及契约测试。历史扩展的 `ListHistory/GetItem/RetainHistoryContent/UpdateItem/DeleteItem/BeginApplyHistory` 签名与 DTO 见[本机历史契约 §2](history-contract.md#2-标识描述与-api)。
+`ContentReader` implements `io.ReadCloser` and returns bytes for the selected part. See the [history API](history-contract.md#2-标识描述与-api) for the full history interface and DTOs.
 
 ## 3. 创建、配置与运行条件
 
@@ -171,7 +179,7 @@ func (s *Subscription) Close() error
 
 ### 3.2 Settings
 
-字段为 `DeviceName`、`RendezvousURL`、`Limits{MaxFileBytes, MaxTotalBytes}`、`Sync{Enabled, Text, Images, Files}`。默认值与验证规则沿用 0002。空设备名使用创建时生成并稳定保存的默认名；不在每次查询读取宿主名。
+`Settings` includes the device name, rendezvous URL, transfer limits, global `Sync`, `BackendPolicies`, history cleanup and file-cache settings. Global `Sync` controls enablement, automatic and restore sends, file and directory policy, and introductions. Backend policies contain the per-backend text, image and file switches and automatic file threshold. An empty device name uses the saved default name chosen at creation.
 
 `UpdateSettingsRequest{ExpectedRevision, Value}` 替换完整配置，修订不匹配报 `conflict`；验证失败无字段生效。返回 `SettingsState{Revision, Value}`。名称仅影响之后的握手；端点仅影响之后的新配对码请求；大小限制在新传输开始时取快照。在途传输不追溯。同步开关过滤规则沿用 0002。
 
@@ -216,19 +224,17 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 
 | DTO | 必需字段/语义 |
 |---|---|
-| Peer | ID、Name、TrustRevision、Connection（disconnected/connecting/connected）、LastSeenMs；已配对不等于已连接 |
-| PendingPeer | ID、Name、RequestRevision、Source（direct/code/introduction）、IntroducedByID（可空）、Fingerprint、SeenAtMs |
-| PairingCode | Code（NNN-NNN）、ExpiresAtMs；敏感，只在显式方法返回 |
-| PairRequest / JoinRequest | RequestID 与 Address / Code；敏感输入不得进入 Operation DTO |
-| ApprovalRequest | DeviceID、RequestRevision、ExpectedFingerprint；用于校验批准的是用户看到的请求 |
-| PendingRequest | DeviceID、RequestRevision；拒绝过期请求返回 conflict |
+| `Device` | Stable device identity, fingerprint, trust, revision and current bindings. |
+| `DeviceBinding` | One device path through a backend instance. Carries authorization, sync state, connection and revision. |
+| `PairingCode` | Sensitive `Code` (`NNN-NNN`) and `ExpiresAtMs`. Returned only by explicit calls. |
+| `JoinRequest` / `JoinTicketRequest` | Caller request ID, optional backend selection and a code or ticket. Pairing material stays out of the operation projection. |
+| `ApproveDeviceRequest` | Device ID, device revision, expected fingerprint and complete pending binding ID/revision set. |
 
 - CreatePairingCode 成功才替换旧码；失败保留旧码。配对码修改串行化；Cancel 返回时本地已失效，远端 consume 是尽力操作，不影响本地安全。有效期、token、指纹和限速分类见[身份与信任](../architecture/identity-and-trust.md)。
 - GetState 仅显示 `PairingCodeState{Active, ExpiresAtMs}`，不包含码本身。GetPairingCode 过期时返回 exists=false。
-- Join/Pair 接受请求后返回 OperationID；operation 的 type 为 pairing，phase 为 resolving/connecting/handshaking 或终态 succeeded/failed。成功结果为 PeerID、Fingerprint、AwaitingRemoteApproval。等待批准是成功的配对结果，不意味着已经建立同步会话；此 operation 随后不变，后续状态查询 Peer。
-- 入码方保留主动配对信任语义；出码方必须形成待批准请求。未批准和仅被介绍的设备不得接收内容。批准操作要求指纹一致；不一致报 conflict，宿主必须重新展示，而非自动重试。
-- Approve 的提交点是信任持久化成功；不会等待联网。Reject 等价于 Unpair：留下墓碑并丢弃其担保；该设备再次连接会以新的 pending 请求出现。
-- Unpair 对未配对 ID 幂等成功；持久化移除信任并使旧会话/重连代次失效后返回，旧会话不得继续接收、发送新内容，网络资源随后关闭。已完整接收的本地资源保留；未来直接连接仍须重新审批。
+- `JoinByCode` and `JoinByTicket` return a pairing operation ID. A successful result can still require approval. Query the device and its bindings for the current trust and connection state.
+- The code and ticket identify a pairing attempt. Each side must approve the peer. `ApproveDevice` atomically checks the fingerprint, device revision and pending path revisions before persisting trust and authorizing the reviewed paths.
+- `UnpairDevice` records a revoked device and removes its bindings. The revocation barrier invalidates affected sessions before success. A later pairing attempt requires new approval. Previously received local history remains available.
 - `CreatePairingCodeVia` / `ExportPairingTicketVia` issue a code/ticket for a selected peer-sessions instance. Ticket `be` identifies the implementation. The receiver selects a compatible local instance through `JoinRequest.BackendID` or `JoinTicketRequest.BackendID`. Methods without `Via` select the default Tailcat instance.
 - 设备介绍（[身份与信任](../architecture/identity-and-trust.md)）：`ListCandidates` 返回已配对设备推荐的候选（`Candidate{DeviceID, BackendID, Name, Introducers, LastSeenMs, Ignored, Requested, RequestedUntilMs}`，名称未经验证，不含地址与指纹）。`PairCandidate` 返回 pairing 类 OperationID，立即尝试一次并在 24 小时内退避重试，仍须对方批准、双方核对指纹；`IgnoreCandidate` 隐藏/恢复。候选变化发 `ObjectRef{Type:"candidate"}` 与 `EventDevices`。设置 `sync.introductions`（默认开）关闭时不接受介绍也不发送介绍。介绍只是建议，不授信。
 - 身份不一致、协议版本不兼容均失败，不覆盖原有 Peer 身份；失败可能已产生对方待审批项，不能声称跨设备事务回滚。
@@ -263,6 +269,10 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 ### 6.3 Device selection and temporary transfer
 
 - `CommitRequest.DeviceIDs` limits a send to named paired devices. `nil` selects all devices. Empty, unknown, revoked or repeated selections return `invalid_argument`. Selection is part of request idempotency; changing it under the same RequestID returns `conflict`. Only peer-session backends dispatch selected sends. Offline targets retain the `no_targets` disposition.
+- `CommitRequest.LocalOnly` skips dispatch for this request and returns
+  `not_requested` without a send operation. Local processing and history
+  policies apply. The request must omit both target selections. Changing
+  `LocalOnly` under the same request ID returns `conflict`.
 - `AdmitTransfer(ctx, TransferOffer) (*TransferInbox, error)` admits content from a peer without a unic device identity. Admission precedes payload reads. Engine must be running; sync, backend policy, duplicate detection and storage admission apply. The caller writes received files beneath the private `TransferInbox.Dir`, then calls exactly one of `Complete(TransferContent)` or `Abort()`. Completion enters the received pipeline, including processors, deduplication, quota, history and the received list. Origin is `external`, PluginID is `unic.transfer`, PeerID is empty and ChannelID is `transfer`. This peer creates no device, stored channel or trust relationship. Public signatures expose neither tailcat nor internal types. The host owns the transfer protocol. See the [headless architecture](../architecture/headless.md#command-surface-and-temporary-transfer).
 
 ## 7. 资源租约与接收列表
@@ -383,33 +393,15 @@ CLI“写入并发送”由宿主执行本地写入、回读、建立抑制回�
 
 ## 13. 版本与后续修订
 
-本文 v0.1 是尚未实现的业务契约；公开稳定前可根据桌面落地调整，但必须同步文档和测试。0003 描述架构与实施顺序，本文描述具体调用语义；发现矛盾时先修订文档再实现，不能默认以代码覆盖约定。
-
-SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定数值/字节映射、句柄关闭、取消、线程投递、分块读取和平台来源标记的可用性；这些工作不改变已定义的信任与成功语义。引入 ACK、摘要、可靠投递或跨进程内容恢复须另写设计决策。
+The SDK, local service API and peer wire have separate version boundaries. The [mobile binding](../architecture/overview.md#expo-mobile-client-and-in-process-engine) adapts the same SDK semantics through a platform-specific interface. Update the corresponding contract and verification when a public boundary changes.
 
 ## 14. 实现进度与落地时的补充约定
 
-公开包 `github.com/uniclipboard/unic/engine` 分两步落地。每一步完成后更新本节；契约测试位于 `engine/engine_test.go`。
+The public Engine provides lifecycle, clipboard observation and application, device trust, content leases, operations and event subscriptions. The production desktop service owns a single Engine instance. The [headless architecture](../architecture/headless.md) describes service and clipboard adapter ownership.
 
-**第一步（已实现并有测试）**：创建与目录独占锁、`Start`/`Stop`/`Close`、`SetRuntimeState`、`NotifyNetworkChanged`、`GetState`、`GetCapabilities`、`UpdateHostCapabilities`、`UpdateSettings`、全部配对与设备方法（`CreatePairingCode` … `Unpair`）、`GetOperation`、`SubscribeEvents`/`Subscription`、错误模型。
+Engine implements durable history, local commit results, request idempotency, multiple backend dispatch and user-triggered Actions. The [history contract](history-contract.md), [submission contract](pipeline-contract.md) and [Action contract](clipboard-action-contract.md) specify the current behavior and link to verification.
 
-**第二步 2a（已实现并有测试）**：内容导入与租约（`ImportContent`、`RetainContent`、`ReadContent`、`ReleaseContent`、`LocalFilePath`），含文件引用（`FileSource`）、配额预留与回滚、读取句柄持有引用、`Close` 中止读取并清理。
-
-**第二步 2b（已实现并有测试）**：`SubmitContent`（仅 explicit）、发送类 `Operation`（`Targets`、`Outcome`、阶段 queued/sending/completed）、每设备一个在途加一个待发并替换为 `superseded`、挂起/断线使在途与待发失败、提交时与开始传输时的同步开关与大小限制检查、引用文件在传输前重新校验。
-
-**第二步 2c（已实现并有测试）**：接收列表（`ListReceived`、`DismissReceived`、`State.Received`、`received` 与 `resource_warning` 事件）；接收内容存为内容对象，经 `RetainContent` 读取、`LocalFilePath` 取文件。
-
-**桌面迁移（已完成）**：`app/service/cmd/unicd` 只装配 `app/service/internal/host`，由它持有 SDK 引擎、系统剪贴板适配和 HTTP 后端；内部 `internal/session`（原 `internal/engine`）退化为会话层，旧的剪贴板轮询、`apply`、`broadcast`、`lastHash`、`SetLocal`、`Board` 已删除，只剩一套业务状态与信任逻辑。
-
-**第二步 2d（已实现并有测试）**：`ObserveClipboard`、`BeginApply`、`ReportApplyResult`、`State.ActiveApply`、`apply` 事件。公开 Engine 本身不读写系统剪贴板，由宿主适配调用这些方法。
-
-**0004 提交扩展（提交结果与幂等契约已确定、实现与测试待完成）**：见[流水线提交契约](pipeline-contract.md)。Action（插件主动变换）见[Action 契约](clipboard-action-contract.md)，待实现。
-
-**0004 P1 首批内部处理（已实现并有测试，P1 未完成）**：三类入口共用私有处理核心，提供策略暂存、成功采纳/失败回滚、逐实例串行、协作超时/挂起取消与内容引用交接（早期的文本改写 SetText、自动化深度与 plugin 来源已按取消自动写回的决定移除）；默认处理链为空。旧网络适配读取最终内容，入站处理后再次校验运行/策略/信任；并发同键 legacy 提交合并，独立缓存成功/失败（MaxSubmissions 默认 1024、SubmissionTTL 默认完成后 30 分钟），处理中的记录不驱逐，缓存不持有正文。调用者取消只停止等待，工作随 Engine 运行 context 收敛；观察接纳已与处理分离，旧结果不覆盖新位置/基线。CommitContent/GetSubmission、持久历史与多后端分发此后已实现（见执行计划 P1/P2 登记）；Action 及标注型处理的收尾尚未实现。
-
-**0004 历史扩展（契约已确定、实现与测试待完成）**：见[本机历史契约](history-contract.md)。现有代码仍采用下列临时资源/接收列表语义；历史实现时必须同步调整清理、持有关系与应用规则，不能以已有测试通过代表历史验收通过。
-
-落地时确定的细节（既有 v0.1 实现；0004 历史扩展以历史契约为准，必要时回改前文）：
+The numbered notes below record the initial SDK implementation. Use the linked feature contracts above for current device, history, submission and backend behavior.
 
 1. **实例目录**：`DataDir/unic.db` 与桌面现有数据库同名同表，设备身份沿用 `device.id`；独占锁是 `DataDir/unic.lock`（flock / LockFileEx），进程退出由系统释放。默认设备名在首次创建时取主机名并保存（`device.default_name`），之后不随主机名变化。
 2. **配置输入**：`Options.Settings` 全零值等同 `DefaultSettings()`；会合服务地址只来自 `Settings.RendezvousURL`，空则用生产服务，不读环境变量（桌面宿主自行把 `UNIC_RENDEZVOUS_URL` 填入）。`Settings` 不含 inbox，它是创建选项 `InboxDir`。
@@ -420,7 +412,7 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 7. **审批输入**：`Approve` 要求 `ExpectedFingerprint` 非空且与当前一致，空值按不一致处理。`Reject` 只校验修订。
 8. **运行条件**：`CreatePairingCode`、`JoinByCode`、`PairByAddress`、`NotifyNetworkChanged` 要求 running 且非 suspended，分别报 `invalid_state` / `suspended`；重复的 `RequestID` 即使在 suspended 时也返回原操作。`GetPairingCode`、`CancelPairingCode`、设备列表与审批在任何未关闭状态可用。`ExportPairingAddress` 要求 running（挂起时仍可用）。
 9. **事件合并**：会话层的“设备上线/下线”只产生 `peers` 事件；“配对或批准”产生 `peers` 与 `pending` 两个事件（各占一个修订）。事件的 `Objects` 目前只用于操作。
-10. **挂起恢复**：恢复时重新监听并重连全部已配对设备；`NotifyNetworkChanged` 让未连接设备跳过退避立即重试。
+10. **Network recovery**. `NotifyNetworkChanged` resets backoff for disconnected peers and runs bounded probes on live sessions. See [device connection refresh](../architecture/identity-and-trust.md#device-connection-refresh).
 11. **ID 前缀**：实例内的 ID（内容、租约、操作）都以实例 ID 加 `-` 开头。他实例的 ID 返回 `resource_expired`，本实例未知的返回 `not_found`。已释放的租约和已回收的内容各记住最近 8192 个，超出后退化为 `not_found`。
 12. **PNG 校验**：只校验文件头和尺寸信息（`png.DecodeConfig`），不做整图解码，避免 64 MiB 图片导入时的内存放大；损坏的像素数据会在应用端暴露。
 13. **清理范围**：`New` 只删除 `InboxDir` 下以 `unic-content-` 开头的目录（数据目录锁保证它们属于已死的实例）。旧的 `clip-*` 由桌面适配在迁移时处理，SDK 不碰，因为 `InboxDir` 可能是用户自己的目录。
@@ -428,7 +420,6 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 15. **发送的过滤与限制**：提交时按当前 `Sync` 设置裁剪内容（文本/HTML 属于 Text，PNG 属于 Images，文件属于 Files），裁剪后为空报 `sync_disabled`；哈希按裁剪后的内容计算。大小限制在提交时检查，开始传输时用当时的设置再检查一次，超限或同步已暂停则该目标失败而不是发送。
 16. **失败不一定断线**：开始写之前的失败（文件已变化、超限、同步暂停）只让这一次发送失败，连接保持；写了一半的失败会丢弃连接，因为流已不同步。
 17. **操作持有内容**：创建发送操作时增加内容引用，所有目标终态后释放；调用者此后可立即释放租约。没有目标时不创建操作，引用立即归还。
-18. **旧式对端**：发送侧的测试曾用基于会话层的旧式对端验证字节与哈希，现保留它作为与旧 daemon 的线路兼容测试。
 19. **接收的准入**：会话层读取一份内容之前先问引擎。不在 running/active、无内容、或存储放不下时，该内容被读完丢弃，连接保持。存储不够时先按从旧到新淘汰接收列表中“只有列表持有”的条目；被租约、读取句柄或操作持有的条目淘汰后也不会释放空间，因此不淘汰；仍放不下则丢弃新内容并发 `resource_warning`。
 20. **接收的过滤**：交付时再按当时的同步设置过滤（图片属 Images，其他格式属 Text，文件属 Files）；过滤后为空则丢弃并归还配额，保留的部分只按保留的字节计配额。
 21. **接收列表**：最新在前，上限 `MaxReceived`，条目 `ReceivedTTL` 后过期并发 `received` 事件；条目被驱逐后，内容在无其他持有者时立即删除。接收的文件写在 `InboxDir/unic-recv/` 下，该目录整个归引擎所有，启动和 `Close` 时清空。接收文件的 MIME 固定为 `application/octet-stream`（wire 不携带文件类型）。
@@ -438,7 +429,6 @@ SDK、桌面 HTTP、wire 分别版本化。未来移动端绑定需额外规定�
 25. **回声**：应用成功后基线取宿主读回的内容，因此系统补充格式不会造成回传。`AppliedToken` 只对未完成的当前 ticket 有效，否则 `conflict`。ticket 未完成期间出现不带 token 的真实本地变化，视为用户新复制：照常处理，并使该 ticket 的成功报告 `conflict`（ticket 随之以 failed 结束、接收条目回到可再次应用）。
 26. **ticket 作废**：挂起、停止、同步暂停、宿主应用能力不再 `available` 都会作废当前 ticket：条目解锁，但槽位保持占用直到宿主报告结果（成功报告会 `conflict`，failed/deferred 正常结束）。无观察能力的宿主（`Observe` 不可用）可以不带 epoch 调用 `BeginApply` 和报告 applied，不更新基线。
 27. **应用条目的生存**：被应用的接收条目不受容量淘汰、TTL 和 `DismissReceived`（`in_use`）影响，即使已过期仍在列表中；应用结束后立即按 TTL 处理。
-28. **Network 选项**：`Options.Network` 允许替换默认的 tailcat 网络（接口只用标准库类型），用于测试和特殊嵌入；`Start`/`Close` 各调用一次，挂起恢复时 `Listen` 会再次调用。
 29. **桌面适配的约定**：适配器把剪贴板快照只保留 text/html/png 与普通文件，文件以引用导入；无法表示的内容（文件夹、超限、只有厂商格式）按“剪贴板已清空”上报，因此之后复制别的内容仍是真实变化。应用成功后适配器会把条目移出接收列表（`DismissReceived`），接收文件的生命周期只由剪贴板上的租约决定，被新内容替换后立即释放。显式发送（CLI/GUI 的写入并发送）先写入、回读，再以新 epoch 的 baseline 建立基线，最后 `SubmitContent`，一次请求只发送一次。
 30. **桌面 HTTP /v1**：`GET /v1/status` 不含地址/票据，也不触发签发。显式 `POST /v1/pairing-ticket` 返回 `{"ticket":"unic-pair:…"}`，响应禁止缓存，CLI `unic device addr` 与 GUI 生成票据使用它。`POST /v1/pending/{id}/approve` 必须提交 `{"fingerprint":"…","revision":1,"bindings":[{"id":"…","revision":1}]}`，修订均来自待批准列表；遗漏/坏 JSON 报 400，指纹不符或设备/待批准关联集合变化报 409。`ApproveDeviceRequest{ID, ExpectedRevision, ExpectedFingerprint, Bindings []BindingRequest}` 由 `Engine.ApproveDevice` 在一个事务中批准设备及完整待批准关联；已信任设备也不可跳过指纹。CLI `unic device approve <id> '<另一端指纹>'`，GUI 回传所展示的完整快照。事件的 `Info` 不携带正文摘要，只写 `text`、`image`、`N files`；`pending` 事件的 `Info` 仍是 `code` 或介绍人名称。
 

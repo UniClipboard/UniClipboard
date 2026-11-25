@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
+	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
@@ -97,10 +98,20 @@ func (d *viewState) renameLivePeer(id string, rev int64, name string) {
 
 func (d *viewState) setLiveBindingSync(bindingID string, rev int64, enabled bool) {
 	client := d.live.client
+	en := enabled
 	d.mutate(func(ctx context.Context) error {
-		_, err := client.SetBindingSync(ctx, bindingID, api.BindingEdit{Revision: rev, Enabled: enabled})
+		_, err := client.SetBindingSync(ctx, bindingID, api.BindingEdit{Revision: rev, Enabled: &en})
 		return err
 	}, "同步路径设置已保存")
+}
+
+func (d *viewState) setLiveBindingPolicy(bindingID string, rev int64, enabled *bool, policy engine.BindingSyncPolicy) {
+	client := d.live.client
+	pol := policy.Normalized()
+	d.mutate(func(ctx context.Context) error {
+		_, err := client.SetBindingSync(ctx, bindingID, api.BindingEdit{Revision: rev, Enabled: enabled, Policy: &pol})
+		return err
+	}, "同步策略已保存")
 }
 
 func (d *viewState) setLiveAllBindingsSync(bindings []deviceBinding, enabled bool) {
@@ -118,13 +129,14 @@ func (d *viewState) setLiveAllBindingsSync(bindings []deviceBinding, enabled boo
 		return
 	}
 	client := d.live.client
+	en := enabled
 	msg := "已暂停全部路径"
 	if enabled {
 		msg = "已恢复全部路径"
 	}
 	d.mutate(func(ctx context.Context) error {
 		for _, t := range targets {
-			if _, err := client.SetBindingSync(ctx, t.id, api.BindingEdit{Revision: t.rev, Enabled: enabled}); err != nil {
+			if _, err := client.SetBindingSync(ctx, t.id, api.BindingEdit{Revision: t.rev, Enabled: &en}); err != nil {
 				return err
 			}
 		}

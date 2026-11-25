@@ -44,6 +44,7 @@ android {
 }
 
 dependencies {
+  implementation 'androidx.documentfile:documentfile:1.1.0'
   implementation 'com.facebook.react:react-android'
   implementation files(new File(unpackedAarDir, "classes.jar"))
 }

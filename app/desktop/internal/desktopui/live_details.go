@@ -52,6 +52,7 @@ func copyDetail(dst *entry, src entry) {
 	dst.text, dst.image, dst.rich = src.text, src.image, src.rich
 	dst.picture = src.picture
 	dst.contentError, dst.folder = src.contentError, src.folder
+	dst.linkPreview = src.linkPreview
 }
 
 func (l *liveState) dropDetail(d *viewState, id string) {

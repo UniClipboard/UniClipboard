@@ -55,5 +55,31 @@
       "failed": "发送失败",
       "unconfirmed": "结果未确认"
     }
+  },
+  "incoming": {
+    "title": "分享至 UniClipboard",
+    "save": "仅保存到本机历史",
+    "send": "发送给所选设备",
+    "savedWithoutSend": "已保存到本机。发送未开始。",
+    "sendNotStarted": "发送未开始。",
+    "notSaved": "未保存到历史。",
+    "failed": "无法处理分享内容"
+  },
+  "compose": {
+    "clipboard": "剪贴板",
+    "emptyClipboard": "当前系统剪贴板为空或已同步。",
+    "readClipboard": "读取系统剪贴板",
+    "sendFile": "发送文件",
+    "forwardTitle": "转发历史条目到设备",
+    "sendTitle": "发送到本机或已配对设备",
+    "textHint": "输入要保存或发送的文本内容…",
+    "targets": "选择目标设备。不选择时，按同步规则发送。",
+    "connected": "已连接",
+    "offline": "离线或正在连接",
+    "noTargets": "暂无已配对设备。内容将保存到本机历史。",
+    "sendSelected": "发送给所选设备（{{count}} 台）",
+    "sendAll": "发送给所有在线设备",
+    "commitText": "保存并发送文本",
+    "chooseFile": "选择文件发送"
   }
 }

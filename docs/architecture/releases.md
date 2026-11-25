@@ -32,13 +32,42 @@ paths:
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
   - .github/workflows/promote.yml
-verified: fba9253c8446ba090ee04002942e923151734116
+  - .github/workflows/check-expo.yml
+  - .github/workflows/release-android.yml
+  - .github/workflows/release-ios.yml
+  - app/expo/app.config.js
+  - app/expo/plugins/withUnsignedAndroidRelease.js
+verified: 44cb9e173d44f4864d874c1fe6325592a845cc8c
 ---
 # Product builds and CLI releases
 
 ## Current implementation
 
-`release/products.toml` owns the standalone product metadata and declares the joint build targets and Desktop update key. CLI and Desktop have separate build and delivery controllers. A joint workflow coordinates both products. Android and iOS records reserve independent metadata. These records do not establish release support.
+`release/products.toml` owns the standalone product metadata and declares the joint build targets and Desktop update key. CLI and Desktop have separate build and delivery controllers. A joint workflow coordinates both products. Android and iOS have independent candidate workflows and metadata.
+
+Use the [product manifest](../../release/products.toml) for the build numbers configured at this revision. Use [npm dist-tags](https://www.npmjs.com/package/@uniclipboard/cli) for CLI channel availability and [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) for public Desktop preview installers. A checked-in build number is a build input. A joint release can allocate a higher number.
+
+### Mobile candidates
+
+**Mobile build and acceptance** runs the mobile binding and Engine boundary
+checks, transitively native Release builds, and the live Engine Maestro suite.
+It saves native receipts separately from the Expo bundle verification.
+
+The **Android Store candidate** workflow generates a production AAB, signs
+it with the Play upload key, validates application metadata with bundletool,
+and retains the SHA-256 receipt. A manual upload selects the internal or
+production track. A successful production upload enables the separate GitHub
+checksum-receipt job. The **iOS Store candidate** workflow validates the app
+and Share Extension App Store profiles, archives and exports the IPA, and
+retains both artifact hashes and dSYMs. Its optional upload transfers the
+candidate to App Store Connect. TestFlight availability, submission for
+review and Store publication have their own acceptance states.
+
+The production variant retains `app.uniclipboard.android` and
+`app.uniclipboard.UniClipboard` from the preceding mobile product. The
+initial candidate is `2.5.0 (205)`. The maintained legacy history format,
+device update behavior, Android upload certificate lineage, and iOS
+production provisioning require verification before rollout.
 
 ### Joint CLI and Desktop delivery
 
@@ -134,7 +163,7 @@ AppImage currently uses host GTK3 libraries; self-contained runtime delivery rem
 
 Desktop packages keep `unic-desktop`, `unic` and `unicd` together in a private directory. Linux exposes only `uniclipboard` as the graphical launcher, preserving independently installed CLI commands.
 `unic-desktop` supplies the launcher, tray, GUI and quick-panel roles from one executable. Each running role has its own OS process. Internal `--role` arguments do not add a distributable executable or change the immutable CLI lock. The macOS `CFBundleExecutable`, Windows Start-menu and Scoop shortcuts, and Linux desktop entry keep using the launcher without a role argument. Login startup also enters this launcher and reads the saved desktop mode.
-The tray owns login registration and application updates. Its application name and installation identity remain stable across roles and profiles; profile-scoped activation uses Desktop IPC rather than a different native application name. The macOS bundle declares `LSUIElement` so the launcher, tray, quick panel and bundled service start without a Dock icon. The GUI switches to regular activation as it opens its window and returns to accessory activation during graceful quit. Explicit application quit and updater relaunch must stop the owned GUI and quick-panel processes before retiring the tray. The Windows NSIS installer (`packaging/windows/installer.nsi`) uses MUI2 with automatic English, Simplified Chinese and Traditional Chinese language selection. Before installing or uninstalling interactively, it checks managed executables in the target install directory and prompts the user to stop those path-scoped running processes and continue (retrying or canceling if locks remain), while silent (`/S`) and legacy v1 update paths remain non-interactive. Interactive installation finishes with a checked-by-default option to launch `unic-desktop.exe`; silent installs skip GUI pages and legacy v1 updates retain their explicit restart path. Native process and login acceptance remain separate from package construction.
+The tray owns login registration and application updates. Its application name and installation identity remain stable across roles and profiles; profile-scoped activation uses Desktop IPC rather than a different native application name. The macOS bundle declares `LSUIElement` so the launcher, tray, quick panel and bundled service start without a Dock icon. The GUI switches to regular activation as it opens its window and returns to accessory activation during graceful quit. Explicit application quit and updater relaunch must stop the owned GUI and quick-panel processes before retiring the tray; if an earlier version left a moved-aside or replaced view role holding the profile endpoint, `tray` classifies it as `ErrStaleBuild` and retires only that OS-verified previous-build process before relaunching or shutting down. The Windows NSIS installer (`packaging/windows/installer.nsi`) uses MUI2 with automatic English, Simplified Chinese and Traditional Chinese language selection. Before installing or uninstalling interactively, it checks managed executables in the target install directory and prompts the user to stop those path-scoped running processes (including leftover `.old-<pid>` updater executables) and continue (retrying or canceling if locks remain), while silent (`/S`) and legacy v1 update paths remain non-interactive. Interactive installation finishes with a checked-by-default option to launch `unic-desktop.exe`; silent installs skip GUI pages and legacy v1 updates retain their explicit restart path. Native process and login acceptance remain separate from package construction.
 macOS bundles retain `app.uniclipboard.desktop`. The Windows installer retains the v1 per-user uninstall registration, checks or stops running owned executables in `$INSTDIR` before replacement or removal, and preserves user data.
 Actual v1 installer replacement and GUI behavior of a formally installed package remain unverified. Source-built Windows ARM64 native role/lifecycle acceptance is recorded separately in the [process receipt](../exec/desktop-process-lifecycle.md).
 
@@ -303,9 +332,9 @@ The report records source hashes, process observations and assertions. Acceptanc
 
 ## Gaps
 
-The selected next CLI version is `2.0.0 (2)`, encoded as `2.0.0-build.2` on npm. Alpha selects the `alpha` dist-tag. Desktop selects `2.0.0 (3)`; Android and iOS retain independent local candidate seeds. The v1-to-v2 npm tag transition is implemented. Historical remote five-target build and package assembly acceptance passed. The six-target CLI matrix has native hosted acceptance. CLI build 2 is selected to include the current shared configuration/API; the execution receipt records its final accepted lock. Workflow authorization remains a publication prerequisite. Public OIDC/provenance and real GitHub release publication remain unverified.
+Stable advancement requires the exact Desktop acceptance and publication receipts described above. Each distribution format has its own availability and acceptance evidence. Native sandbox GUI, package refresh and real-OS clipboard, file and network acceptance remain separate checks. GitCode delivery is deferred.
 
-Desktop staging checks the locked private service configuration/API in addition to executable hashes. macOS signing/notarization, native Windows installer lifecycle, and two-architecture Nix/Flatpak/strict Snap process/IPC acceptance have passed as recorded in the execution receipt. Production delivery requires the durable raw updater key and the numbered public routes. R2/FlareRelease transport and the locked CLI npm availability gate are implemented but have not performed production delivery. Native sandbox GUI, package refresh and real-OS clipboard/file/network acceptance remain open. Android and iOS share an Expo UI shell under `app/expo`; it has no Engine integration and does not establish native release support. Their workflows, signing, Store acceptance and promotion are not implemented. GitCode is deferred. Do not archive decision 0018 while these phases remain open.
+Mobile candidate builds, simulator runs, production signing, Store upload and rollout each have their own acceptance gate. The [mobile release preparation receipt](../exec/0031-mobile-m5-receipt.md) records candidate builds and simulator observations. The [iPhone receipt](../exec/0031-mobile-m2-receipt.md#ios-physical-device-acceptance) records the physical-device scenarios tested so far.
 
 Exact interface requirements are in the [release contract](../contracts/release-contract.md). Process ownership remains in the [headless architecture](headless.md).
 

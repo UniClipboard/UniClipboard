@@ -115,6 +115,21 @@ export function HomeSearchFilterBar({ c }: { c: HomeController }) {
             />
           ))}
         </FilterMenu>
+        {c.availableTags.length > 0 && (
+          <FilterMenu
+            testID="history-filter-tag"
+            label={c.selectedTag ?? t('tags.filter')}
+            active={c.selectedTag !== null}
+            isDark={isDark}
+            selection={c.selectedTag === null ? ALL : `tag:${c.selectedTag}`}
+            onChange={(value) => c.setSelectedTag(value === ALL ? null : value.slice(4))}
+          >
+            <SwiftUIText modifiers={[tag(ALL)]}>{t('tags.all')}</SwiftUIText>
+            {c.availableTags.map((value) => (
+              <SwiftUIText key={value} modifiers={[tag(`tag:${value}`)]}>{value}</SwiftUIText>
+            ))}
+          </FilterMenu>
+        )}
         <Spacer />
         {c.hasActiveFilters ? (
           <SwiftUIButton

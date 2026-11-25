@@ -30,29 +30,30 @@ const maxSource = 1 << 20
 
 // Manifest is spec.toml of a Lua plugin.
 type Manifest struct {
-	ManifestVersion    int                 `toml:"manifest_version"`
-	ID                 string              `toml:"id"`
-	Version            string              `toml:"version"`
-	Name               string              `toml:"name"`
-	Icon               string              `toml:"icon"`
-	Summary            string              `toml:"summary"`
-	I18N               map[string]Text     `toml:"i18n"`
-	APIVersion         int                 `toml:"api_version"`
-	Kind               string              `toml:"kind"`
-	Entry              string              `toml:"entry"`
-	Capabilities       []string            `toml:"capabilities"`
-	Events             []string            `toml:"events"`
-	SettingsSchema     string              `toml:"settings_schema"`
-	SettingsSHA256     string              `toml:"settings_sha256"`
-	Module             string              `toml:"module"`
-	Package            string              `toml:"package"`
-	TransportKind      string              `toml:"transport_kind"`
-	ImageFilesAsImages bool                `toml:"image_files_as_images"`
-	ExternalChannels   bool                `toml:"external_channels"`
-	RemoteRevocation   bool                `toml:"remote_revocation"`
-	Actions            []plugin.ActionSpec `toml:"actions"`
-	Artifacts          []Artifact          `toml:"artifacts"`
-	Defaults           map[string]any      `toml:"config"`
+	ManifestVersion    int                  `toml:"manifest_version"`
+	ID                 string               `toml:"id"`
+	Version            string               `toml:"version"`
+	Name               string               `toml:"name"`
+	Icon               string               `toml:"icon"`
+	Summary            string               `toml:"summary"`
+	I18N               map[string]Text      `toml:"i18n"`
+	APIVersion         int                  `toml:"api_version"`
+	Kind               string               `toml:"kind"`
+	Entry              string               `toml:"entry"`
+	Capabilities       []string             `toml:"capabilities"`
+	Events             []string             `toml:"events"`
+	SettingsSchema     string               `toml:"settings_schema"`
+	SettingsSHA256     string               `toml:"settings_sha256"`
+	Module             string               `toml:"module"`
+	Package            string               `toml:"package"`
+	TransportKind      string               `toml:"transport_kind"`
+	ImageFilesAsImages bool                 `toml:"image_files_as_images"`
+	ExternalChannels   bool                 `toml:"external_channels"`
+	RemoteRevocation   bool                 `toml:"remote_revocation"`
+	Actions            []plugin.ActionSpec  `toml:"actions"`
+	Enricher           *plugin.EnricherSpec `toml:"enricher"`
+	Artifacts          []Artifact           `toml:"artifacts"`
+	Defaults           map[string]any       `toml:"config"`
 }
 
 // Text is one language's display text for the plugin list and detail page.

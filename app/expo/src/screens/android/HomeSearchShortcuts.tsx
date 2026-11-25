@@ -113,6 +113,15 @@ export function HomeSearchShortcuts({ c }: { c: HomeController }) {
           )}
         </View>
       </Section>
+      {c.availableTags.length > 0 && (
+        <Section title={t('history:tags.filter')} color={colors.textSecondary}>
+          <View style={styles.chips}>
+            {c.availableTags.map((value) => (
+              <FilterChip key={value} label={value} onPress={apply(() => c.setSelectedTag(value))} />
+            ))}
+          </View>
+        </Section>
+      )}
     </ScrollView>
   );
 }

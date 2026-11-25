@@ -282,6 +282,7 @@ const (
 // connected right now.
 type SubmitRequest struct {
 	restored  bool
+	localOnly bool
 	RequestID RequestID
 	LeaseID   LeaseID
 	Origin    Origin
@@ -482,6 +483,9 @@ type CommitRequest struct {
 	// DeviceIDs limits the send to these paired devices. nil means every device;
 	// an empty list, an unknown device or a repeated ID is invalid_argument.
 	DeviceIDs []DeviceID
+	// LocalOnly skips network dispatch for this commit. Target selections must
+	// be nil. Local processing and history policies still apply.
+	LocalOnly bool
 }
 
 type PluginID string

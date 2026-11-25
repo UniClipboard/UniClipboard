@@ -103,6 +103,8 @@ type Engine struct {
 
 	processors      []*pipelineProcessor // private adapters, fixed before Start
 	actions         []*pipelineAction
+	enrichers       []*pipelineEnricher
+	enrich          *enrichmentScheduler
 	observers       []*pipelineObserver // likewise
 	pluginInstances map[PluginID]plugin.Plugin
 	plugins         []plugin.Plugin // closed with the engine
@@ -247,6 +249,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		dedupInflight: map[store.DedupKey]struct{}{},
 		hist:          hist,
 	}
+	e.enrich = newEnrichmentScheduler(e)
 	rv := opts.rendezvous
 	if rv == nil {
 		rv = rendezvous.NewWithURL("") // the production service; settings.RendezvousURL overrides it, the environment does not
@@ -449,7 +452,9 @@ func (e *Engine) startRun(ctx context.Context) error {
 	e.runCtx, e.runCancel, e.runDone = rctx, cancel, done
 	e.resetSendCtxLocked()
 	e.netUp = true
+	runCtx := e.runCtx
 	e.mu.Unlock()
+	e.enrich.start(runCtx)
 	close(done) // the backends own their goroutines; the run context only bounds engine work
 	e.syncPeerStates()
 	return nil
@@ -466,6 +471,9 @@ func (e *Engine) stopRun(ctx context.Context) error {
 		cancel()
 		e.commitGate.Lock()   // drain commits that passed their last check
 		e.commitGate.Unlock() //nolint:staticcheck // SA2001: taking and dropping the lock is the barrier
+	}
+	if e.enrich != nil {
+		e.enrich.stop()
 	}
 	if done != nil {
 		select {

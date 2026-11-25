@@ -3,6 +3,7 @@ paths:
   - engine/peerauth.go
   - engine/pairing.go
   - engine/devices.go
+  - engine/engine.go
   - engine/candidates.go
   - engine/tailcat_host.go
   - engine/peerproc.go
@@ -29,9 +30,10 @@ paths:
   - app/desktop/internal/desktopui/live.go
   - app/desktop/internal/desktopui/live_devices.go
   - internal/session/engine.go
+  - internal/session/probe.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
-verified: bbbbe5ed418e40009cea22eaf6e9be8e1d1dba2d
+verified: 24a39cb2b20254bfbc3848cd1f4f9d6dc3a61701
 ---
 # 设备身份、信任与配对
 
@@ -41,7 +43,7 @@ Engine 统一管理“对端是谁、是否被信任、经哪条后端路径可�
 
 - **身份**：每台设备一把 Ed25519 密钥，首次启动由 Engine 生成，存 `<DataDir>/identity/device.key`（0600，目录 0700）；公钥登记在库的 `meta.identity.public`。DeviceID 由公钥导出（26 字符 base32）。密钥缺失、损坏或与登记不符时启动失败，不会重新生成。与任何传输密钥（如 tailcat 节点密钥）无关。
 - **握手**：插件后端只搬运字节，Hello/转录/签名/验证都在 Engine（`engine/peerauth.go`：`IdentityHello`→`IdentityProve`→`CheckPeer`）。证明绑定后端提供的连接上下文与双方新鲜 nonce；nonce 记忆防重放，握手 60 秒过期、单次使用。同一 ID 配不同公钥、或同一公钥配不同 ID 为 `ErrIdentityConflict`，不覆盖记录。
-- **设备与关联**：`devices` 一行一台设备（`pending`/`trusted`/`revoked` 墓碑）；`device_bindings` 一行一条“设备×后端实例”路径（`pending`/`authorized` + 独立 `sync_enabled`）。握手通过（`recordPeer`）只会建立 `pending` 设备与 `pending` 关联；待批准设备上限 64（`tailcat_host.go`，仅限新设备与回流的墓碑；超限 `CheckPeer` 返回 reject，此时配对码/票据已被消耗）。有效权限 = 设备 `trusted` ∧ 关联 `authorized`（`allowedPeerOn`、`trustRevision`）。
+- **设备与关联**：`devices` 一行一台设备（`pending`/`trusted`/`revoked` 墓碑）；`device_bindings` 一行一条“设备×后端实例”路径（`pending`/`authorized` + 独立 `sync_enabled` 总开关 + 按 `text`/`images`/`files` 分方向的自动化同步/接收策略 `policy`，默认全 `bidirectional`）。握手通过（`recordPeer`）只会建立 `pending` 设备与 `pending` 关联；待批准设备上限 64（`tailcat_host.go`，仅限新设备与回流的墓碑；超限 `CheckPeer` 返回 reject，此时配对码/票据已被消耗）。有效权限 = 设备 `trusted` ∧ 关联 `authorized`（`allowedPeerOn`、`trustRevision`）。单路径 `policy` 仅在后端实例策略范围内收紧自动同步发送与接收，用户显式手动发送忽略该自动化策略；修改 `policy` 只递增 `revision`（CAS）不递增 `auth_revision`，不断开既有会话也不取消在途传输，仅影响之后新开始的传输。
 - **Approval**: `TrustDevice` requires the user-checked fingerprint and returns `identity_mismatch` on mismatch. It does not authorize a binding. The service host's `Node.Approve` calls `ApproveDevice` with the fingerprint, device revision and complete pending binding ID/revision set. One SQLite transaction checks that set before trusting the device and authorizing all bindings. Added, removed, revised or changed bindings invalidate the whole approval. An already trusted device still requires a fingerprint check for new bindings.
 - **撤销**：`RemoveBinding` 只撤一条路径；`UnpairDevice` 一个事务内置 `revoked` 并删除全部关联，事务提交后另行丢弃该设备的担保（`DropIntroducer`，非原子，错误被忽略）。桌面 reject 等价于 unpair（留墓碑），被拒设备再拨入会以 `pending` 回来并占用名额。已有会话在 `PeerEvent`/状态屏障（`pruneSessions`）里按信任修订失效。被撤销设备再次出现只回到 `pending`，需重新批准。`store.AddBinding` 在 `remote_context` 变化时会把关联重置为 `pending`，但当前唯一调用路径（`recordPeer`）总是传空上下文，此路径不会触发。
 - **指纹**：`identity.Fingerprint(a, b)`，两端公钥按字节排序，对 `"unic/fingerprint/v1\x00"‖a‖b` 做 SHA-256 取前 16 字节，显示为 8 组 4 位大写十六进制，双方各自计算；比对时忽略空白与大小写。DeviceID 为 `SHA-256("unic/device-id/v1\x00"‖公钥)` 前 16 字节的小写 base32（26 字符）。
@@ -110,6 +112,12 @@ The event contains no device identity, fingerprint, binding context or pairing m
 ## Backend callback state refresh
 
 A handshake that revives a revoked device records it as pending and queues a coalesced state refresh. It never waits for `ApplyState` from a backend callback. A single Engine-owned refresh worker drains these requests; Engine stop prevents new work and drains the worker before closing the store. Explicit unpairing, rejection and other revocations retain the synchronous state barrier. The pending handshake grants no session token or trust.
+
+## Device connection refresh
+
+A device binding reports its current connection state. When the peer-session backend has the data, it also reports a finite transport category, the last measured round-trip time and the last check time. Route and timing fields contain no endpoints or credentials.
+
+`Engine.RefreshConnections` checks one device or all devices. A capable backend probes existing sessions, closes half-open connections and resets reconnect backoff. Backends without a probe fall back to the existing network-change signal. Connection checks do not grant trust or change binding authorization. See the [service routes](../contracts/local-service-contract.md#device-connection-refresh).
 
 ## External backend host workflow
 

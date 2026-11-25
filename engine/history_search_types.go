@@ -29,6 +29,7 @@ type HistorySearchRange struct {
 type HistorySearchPreview struct {
 	Text       string               `json:"text"`
 	Highlights []HistorySearchRange `json:"highlights"`
+	MatchKind  string               `json:"match_kind,omitempty"`
 }
 type HistorySearchHit struct {
 	Item    HistoryItem          `json:"item"`

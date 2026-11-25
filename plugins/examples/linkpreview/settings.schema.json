@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "auto_fetch": {
+      "type": "boolean",
+      "default": true,
+      "title": "自动抓取链接预览",
+      "description": "复制单个网页链接后在后台自动抓取标题、简介与封面图；关闭后仅在查看详情或手动刷新时抓取。",
+      "x-unic-ui": {
+        "order": 1,
+        "group": "抓取行为",
+        "i18n": {
+          "en": {
+            "title": "Fetch link previews automatically",
+            "description": "Fetch webpage title, summary, and cover image in the background when a standalone URL is copied.",
+            "group": "Fetching"
+          }
+        }
+      }
+    },
+    "fetch_favicon": {
+      "type": "boolean",
+      "default": true,
+      "title": "抓取网站图标 (Favicon)",
+      "description": "在链接卡片中显示来源站点的图标。",
+      "x-unic-ui": {
+        "order": 2,
+        "group": "抓取行为",
+        "i18n": {
+          "en": {
+            "title": "Fetch site favicon",
+            "description": "Show the website icon on link preview cards.",
+            "group": "Fetching"
+          }
+        }
+      }
+    },
+    "fetch_thumbnail": {
+      "type": "boolean",
+      "default": true,
+      "title": "抓取网页封面图 (og:image)",
+      "description": "默认抓取并压缩网页的 OpenGraph 封面图用于卡片展示。",
+      "x-unic-ui": {
+        "order": 3,
+        "group": "抓取行为",
+        "i18n": {
+          "en": {
+            "title": "Fetch cover image (og:image)",
+            "description": "Fetch and resize the page's OpenGraph preview image by default.",
+            "group": "Fetching"
+          }
+        }
+      }
+    },
+    "request_timeout_sec": {
+      "type": "integer",
+      "default": 8,
+      "minimum": 2,
+      "maximum": 15,
+      "title": "单次抓取超时（秒）",
+      "description": "限制单个链接的网页与图片请求总时长。",
+      "x-unic-ui": {
+        "order": 4,
+        "group": "抓取行为",
+        "i18n": {
+          "en": {
+            "title": "Request timeout (seconds)",
+            "description": "Bound total fetch duration for one link.",
+            "group": "Fetching"
+          }
+        }
+      }
+    },
+    "excluded_domains": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 253
+      },
+      "default": [],
+      "title": "排除域名",
+      "description": "不抓取列表中的域名（支持精确域名或 *.example.com 通配）。",
+      "x-unic-ui": {
+        "order": 5,
+        "group": "隐私与过滤",
+        "i18n": {
+          "en": {
+            "title": "Excluded domains",
+            "description": "Skip fetching URLs under these domains (exact host or *.example.com).",
+            "group": "Privacy & Filtering"
+          }
+        }
+      }
+    }
+  }
+}

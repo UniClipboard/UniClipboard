@@ -34,6 +34,17 @@ type entry struct {
 	tags                                []string
 	pinned                              bool
 	folder                              *folderInfo
+	linkPreview                         *linkPreviewInfo
+}
+
+// linkPreviewInfo holds the resolved link_preview.v1 annotation and decoded assets.
+type linkPreviewInfo struct {
+	siteName    string
+	title       string
+	description string
+	canonical   string
+	favicon     ui.ImageSource
+	thumbnail   *historyImage
 }
 
 // folderInfo is the display model of a folder entry. Rows exist only for snapshots.
@@ -76,6 +87,9 @@ type syncChannel struct {
 	externalChannels bool
 	restart          bool
 	policy           string
+	noText           bool
+	noImages         bool
+	noFiles          bool
 }
 
 type deviceBinding struct {
@@ -84,6 +98,7 @@ type deviceBinding struct {
 	implementationID string
 	state            string // authorized, pending
 	syncEnabled      bool
+	policy           engine.BindingSyncPolicy
 	connection       string // connected, connecting, disconnected
 	connectionPath   string // direct, derp, peer_relay, unknown, ""
 	latencyMs        int64
@@ -191,6 +206,7 @@ type viewState struct {
 	entries                                                               []entry
 	syncChannels                                                          []syncChannel
 	devices                                                               []device
+	expandedBindings                                                      map[string]bool
 	refreshingDevices                                                     bool
 	refreshingDeviceID                                                    string
 	channels                                                              []externalChannel
@@ -198,6 +214,7 @@ type viewState struct {
 	confirmEntries                                                        []string
 	drawerSwitchDir                                                       int
 	sidebarHidden, detailOpen, inspector, tagsOpen, quickLook, filterOpen bool
+	narrowSearchOpen, wasNarrow                                           bool
 	zoomStep                                                              int
 	shortcutReturnPage                                                    string
 	shortcutEditor                                                        shortcutEditor

@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { KeyboardAvoidingView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { KeyboardAvoidingView, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, FadeOutDown } from 'react-native-reanimated';
 import { DefaultTopBar, SelectModeTopBar } from '@/components/HomeTopBar';
 import type { AnimatedCardGridHandle } from '@/components/AnimatedCardGrid';
+import { useEngineStore } from '@/engine/store';
 import { iosColors } from '@/theme/iosDesignTokens';
 import { useHomeController, type HomeController } from './useHomeController';
 import { getLayoutMode } from '@/hooks/useLayoutMode';
@@ -47,6 +48,7 @@ function tabBarClearance(safeBottom: number): number {
  * 浮起面板=secondarySystemGroupedBackground(网格区同为该面板色,中间区域是一个整体白面板)。
  */
 export function HomeView({ onOpenSettings, onImmersiveModeChange, searchRequestId = 0 }: HomeViewProps) {
+  const clipboardHint = useEngineStore((state) => state.pendingClipboardHint);
   const { width: screenWidth } = useWindowDimensions();
   const mode = getLayoutMode(screenWidth);
   // iPhone 的筛选只在搜索视图里;iPad 的筛选在常驻侧栏,退出搜索不清空
@@ -85,6 +87,17 @@ export function HomeView({ onOpenSettings, onImmersiveModeChange, searchRequestI
     [c.handleTakePhoto, c.handleUploadImage, c.handleUploadFile, c.handleUpload, c.handleSyncHistory]
   );
 
+  const clipboardAction = clipboardHint && !immersive ? (
+    <Pressable
+      testID="home-read-detected-clipboard"
+      accessibilityRole="button"
+      onPress={c.handleSyncHistory}
+      style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 20 }}
+    >
+      <Text style={{ color: c.theme.colors.accent }}>{c.t('history:media.clipboardChanged')}</Text>
+    </Pressable>
+  ) : null;
+
   if (mode === 'compact') {
     const topBarStyle = [
       styles.topBar,
@@ -117,8 +130,11 @@ export function HomeView({ onOpenSettings, onImmersiveModeChange, searchRequestI
           renderOverlays={false}
           search={{
             gridHeader: {
-              height: HOME_LARGE_TITLE_HEIGHT,
-              node: <HomeLargeTitle title={c.t('nav.clipboard')} horizontalInset={headerInset} />,
+              height: HOME_LARGE_TITLE_HEIGHT + (clipboardAction ? 44 : 0),
+              node: <>
+                <HomeLargeTitle title={c.t('nav.clipboard')} horizontalInset={headerInset} />
+                {clipboardAction}
+              </>,
             },
           }}
           renderCollection={getHomeHistoryCollection(home)}
@@ -137,6 +153,9 @@ export function HomeView({ onOpenSettings, onImmersiveModeChange, searchRequestI
                   historyLayout={c.historyLayout}
                   onHistoryLayoutChange={c.setHistoryLayout}
                   addActions={addActions}
+                  receiveResults={home.receiveEntryCount > 0
+                    ? { count: home.receiveEntryCount, onOpen: () => home.setReceiveResultsOpen(true) }
+                    : undefined}
                   theme={c.theme}
                 />
               )}
@@ -203,6 +222,7 @@ export function HomeView({ onOpenSettings, onImmersiveModeChange, searchRequestI
     <KeyboardAvoidingView style={styles.fill} behavior="padding">
       <HomeExpandedView
         c={c}
+        search={clipboardAction ? { gridHeader: { height: 44, node: clipboardAction } } : undefined}
         screenWidth={screenWidth}
         refreshTintColor={undefined}
         gutterColor={iosColors?.systemGroupedBackground ?? (c.theme.colors.background as string)}

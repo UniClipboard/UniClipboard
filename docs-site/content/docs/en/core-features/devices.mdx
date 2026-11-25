@@ -62,8 +62,10 @@ The rendezvous service URL can be set via `rendezvous_url` in config or the `UNI
 ## Device List
 
 ```bash
-unic device list [--json]
+unic device list [--refresh] [--json]
 ```
+
+Use `--refresh` to check connections before listing devices. In Desktop, choose **Refresh Status** in the device list or **Check Connection** in the details for a supported device. A path shows its transport, latency, and last check time when the backend provides them.
 
 Device states are Pending, Trusted, and Removed. A device can connect over multiple sync backends; each connection is a "path" that can be paused independently:
 

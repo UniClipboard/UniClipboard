@@ -235,5 +235,8 @@
     "denied": "Text message permission is required to copy verification codes",
     "enabled": "Verification codes will be copied",
     "disabled": "Verification code copying turned off"
+  },
+  "live": {
+    "description": "Keep receiving shared clipboard history while the Android notification is active. Android may stop the service when its time limit is reached."
   }
 }

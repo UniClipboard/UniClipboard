@@ -8,5 +8,8 @@ project under `app/expo/ios`.
 In-process Go Engine integration (`UnicCore.xcframework`) lives in the Expo
 Local Module `app/expo/modules/unic-engine/ios`, following the
 [Engine contract](../../docs/contracts/engine-contract.md) and reporting iOS
-clipboard/background/Keychain capabilities honestly. Production App Group,
-Share Extension and Store signing remain separate scope.
+clipboard/background/Keychain capabilities honestly. The production app and
+Share Extension use a separate incoming-share App Group. The
+[iOS candidate workflow](../../docs/architecture/releases.md#mobile-candidates)
+uses both distribution profiles. Provisioning and Store acceptance require
+production credentials.

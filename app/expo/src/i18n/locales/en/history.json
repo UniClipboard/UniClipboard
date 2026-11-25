@@ -109,5 +109,27 @@
     "list": "List",
     "compact": "Compact list",
     "grid": "Grid"
+  },
+  "media": {
+    "clipboardChanged": "Read new clipboard content",
+    "invalidLink": "Enter a valid HTTP or HTTPS link.",
+    "textTooLong": "The text is too long for this action.",
+    "actionFailed": "Could not complete the action",
+    "saved": "Saved",
+    "folderContents": "Folder contents",
+    "folderUnavailable": "Folder contents are unavailable.",
+    "folderLoading": "Loading folder contents…",
+    "folderEmpty": "The folder is empty.",
+    "folderTruncated": "Showing the first 200 entries."
+  },
+  "tags": {
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "edit": "Edit tags",
+    "name": "Tag name",
+    "add": "Add tag",
+    "remove": "Remove “{{tag}}”",
+    "filter": "Tags",
+    "all": "All tags"
   }
 }

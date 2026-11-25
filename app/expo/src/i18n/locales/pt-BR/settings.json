@@ -41,7 +41,15 @@
     "confirmationConfirm": "Usar sincronização direta",
     "updateFailed": "Não foi possível alterar o método de sincronização"
   },
+  "mobileDiagnostics": {
+    "telemetry": "Enviar telemetria",
+    "export": "Compartilhar registros anonimizados da sessão",
+    "unavailable": "O envio está indisponível nesta compilação.",
+    "empty": "Ainda não há registros de diagnóstico.",
+    "failed": "Não foi possível concluir a ação de diagnóstico."
+  },
   "category": {
+    "network": "Rede avançada",
     "sync": "Sincronização",
     "about": "Sobre",
     "other": "Outros",
@@ -123,5 +131,45 @@
     "resetConfirm": "Redefinir identidade",
     "resetDone": "Identidade estatística redefinida",
     "error": "Não foi possível atualizar as configurações de estatísticas"
+  },
+  "live": {
+    "deviceName": "Nome do dispositivo",
+    "syncEnabled": "Ativar sincronização",
+    "syncAutomatic": "Sincronizar novos conteúdos automaticamente",
+    "syncRestore": "Sincronizar itens restaurados",
+    "syncFiles": "Sincronizar arquivos",
+    "syncIntroductions": "Recomendar dispositivos",
+    "capture": "Detectar alterações na área de transferência",
+    "captureHint": "No iOS, confirme antes de ler o novo conteúdo detectado.",
+    "cleanup": "Limpar histórico automaticamente",
+    "retention": "Retenção em dias",
+    "excludedTags": "Etiquetas excluídas da limpeza",
+    "excludedHint": "Use 0 para desativar o limite de dias ou de itens. Separe as etiquetas com vírgulas.",
+    "starred": "Favoritos",
+    "pinned": "Fixados",
+    "max_file_bytes": "Limite por arquivo (bytes)",
+    "max_total_bytes": "Limite de conteúdo total (bytes)",
+    "cacheLimit": "Limite de cache de arquivos (bytes)",
+    "clearPreviews": "Limpar prévias locais",
+    "rendezvous": "URL do serviço de pareamento",
+    "default": "Padrão",
+    "resetRendezvous": "Restaurar URL de pareamento padrão",
+    "runtime": "Atividade de rede",
+    "tailcat": "Conexões Tailcat",
+    "connected": "{{connected}} de {{total}} conectados",
+    "observe": "Ler área de transferência",
+    "apply": "Gravar na área de transferência",
+    "integer": "Digite um número inteiro não negativo.",
+    "loading": "Carregando configurações do Engine…",
+    "status": {
+      "available": "Disponível",
+      "permission_required": "Permissão necessária",
+      "unavailable": "Indisponível",
+      "unsupported": "Sem suporte",
+      "active": "Ativa",
+      "suspended": "Suspensa",
+      "sync_disabled": "Sincronização desativada",
+      "not_running": "Engine parado"
+    }
   }
 }

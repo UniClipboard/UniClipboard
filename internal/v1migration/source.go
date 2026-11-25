@@ -28,7 +28,8 @@ import (
 	"github.com/zeebo/blake3"
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
-	_ "modernc.org/sqlite"
+
+	"github.com/uniclipboard/unic/internal/sqldb"
 
 	"github.com/uniclipboard/unic/plugin"
 )
@@ -88,7 +89,7 @@ func Open(ctx context.Context, root, service string, password []byte, secrets Se
 		databasePath = "/" + databasePath
 	}
 	u := url.URL{Scheme: "file", Path: databasePath}
-	db, err := sql.Open("sqlite", u.String()+"?mode=ro&_pragma=query_only(1)&_pragma=busy_timeout(5000)")
+	db, err := sql.Open(sqldb.Driver, u.String()+sqldb.MigrationOptions)
 	if err != nil {
 		s.close()
 		return nil, ErrFormat

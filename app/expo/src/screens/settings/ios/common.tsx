@@ -142,6 +142,7 @@ export interface SettingsNavRowProps {
 
 type SettingsRowContentProps = Pick<
   SettingsNavRowProps,
+  | 'testID'
   | 'icon'
   | 'iconColor'
   | 'title'
@@ -159,6 +160,7 @@ type SettingsRowContentProps = Pick<
  * defines a rectangular hit shape, so the empty trailing space is tappable.
  */
 function SettingsRowContent({
+  testID,
   icon,
   iconColor,
   title,
@@ -173,6 +175,7 @@ function SettingsRowContent({
 }: SettingsRowContentProps) {
   return (
     <HStack
+      testID={testID}
       spacing={12}
       modifiers={[
         frame({ maxWidth: Infinity }),
@@ -271,6 +274,7 @@ export function SettingsNavRow({
   if (readOnly) {
     return (
       <SettingsRowContent
+        testID={testID}
         icon={icon}
         iconColor={iconColor}
         title={title}

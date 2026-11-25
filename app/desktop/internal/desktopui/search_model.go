@@ -28,10 +28,11 @@ type searchCandidate struct {
 	kind                    desktopkit.SearchTokenKind
 }
 type historySearchState struct {
-	buffer, last, extension    string
-	start, end, highlight      int
-	open, initialized, restore bool
-	options                    []searchCandidate
+	buffer, last, extension              string
+	start, end, highlight                int
+	open, initialized, restore           bool
+	wasFocused, hadActivity, returnFocus bool
+	options                              []searchCandidate
 }
 
 var searchDimensions = []string{"type", "tag", "source", "time", "extension"}
@@ -417,11 +418,18 @@ func (s *historySearchState) key(d *viewState, key desktopkit.SearchFieldKey) bo
 	return false
 }
 
-func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
+func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit, tm desktopkit.ToolbarMetrics) {
 	s := &d.search
 	s.refresh(d)
 	restore := s.restore
 	s.restore = false
+	collapsed := tm.Narrow && !d.narrowSearchOpen
+	takeover := tm.Narrow && d.narrowSearchOpen
+	returnFocus := false
+	if collapsed && s.returnFocus {
+		returnFocus = true
+		s.returnFocus = false
+	}
 	var suggestions []desktopkit.SearchSuggestion
 	var prospective []engine.HistorySearchQuery
 	previous := ""
@@ -484,9 +492,38 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 	if d.live != nil {
 		overrides = d.live.config.Config.Desktop.Shortcuts
 	}
+	activeTooltip := ""
+	if collapsed && (strings.TrimSpace(s.buffer) != "" || filterCount > 0) {
+		var parts []string
+		if q := strings.TrimSpace(s.buffer); q != "" {
+			parts = append(parts, q)
+		}
+		if filterCount > 0 {
+			parts = append(parts, fmt.Sprintf("%s (%d)", d.tr("筛选条件"), filterCount))
+		}
+		activeTooltip = d.tr("搜索历史") + " · " + strings.Join(parts, " · ")
+	}
 	res := k.TokenSearchField(c, desktopkit.TokenSearchFieldProps{ExternalShortcut: true,
-		Toolbar:           true,
-		Unified:           true,
+		Toolbar:        true,
+		Unified:        true,
+		Compact:        tm.Compact,
+		Collapsed:      collapsed,
+		NarrowTakeover: takeover,
+		ActiveTooltip:  activeTooltip,
+		ReturnFocus:    returnFocus,
+		OnExpand: func() {
+			d.narrowSearchOpen = true
+			s.restore = true
+			s.hadActivity = false
+			c.Invalidate()
+		},
+		OnCollapse: func() {
+			d.narrowSearchOpen = false
+			d.filterOpen = false
+			s.open = false
+			s.returnFocus = true
+			c.Invalidate()
+		},
 		Label:             d.tr("搜索历史"),
 		Value:             &s.buffer,
 		Placeholder:       d.tr("搜索或筛选…"),
@@ -518,6 +555,11 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 			}
 		},
 	})
+	if collapsed {
+		s.wasFocused = false
+		s.hadActivity = false
+		return
+	}
 	if restore {
 		res.Input.SetTextSelection(s.start, s.end).Focus()
 	}
@@ -538,6 +580,19 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit) {
 		s.clear(d)
 		d.filterOpen = false
 		c.Invalidate()
+	}
+	s.wasFocused = res.Focused
+	if takeover {
+		activeFocus := res.Focused || d.filterOpen
+		if s.hadActivity && !activeFocus && !restore && !s.restore {
+			d.narrowSearchOpen = false
+			c.Invalidate()
+		}
+		if activeFocus {
+			s.hadActivity = true
+		}
+	} else {
+		s.hadActivity = false
 	}
 }
 

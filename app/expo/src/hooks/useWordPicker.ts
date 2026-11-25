@@ -5,6 +5,9 @@ import { useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import * as Haptics from 'expo-haptics';
 import i18n from '@/i18n';
+import { openWebLink } from '@/engine/historyActions';
+import { unicEngineNative } from '@/engine/nativeModule';
+import { useEngineStore } from '@/engine/store';
 import { showUnavailable } from '@/shell/notice';
 import { useMessageStore } from '@/stores/messageStore';
 
@@ -541,9 +544,31 @@ export function useWordPicker(
 
   const clearSelection = useCallback(() => commitSelection(new Set()), [commitSelection]);
 
-  const copySelected = useCallback(async () => { if (outputText) showUnavailable(); }, [outputText]);
-  const shareSelected = copySelected;
-  const searchSelected = copySelected;
+  const withSelectedText = useCallback(async (action: (text: string) => Promise<void>) => {
+    if (!outputText) return;
+    if (useEngineStore.getState().mode !== 'live') {
+      showUnavailable();
+      return;
+    }
+    try {
+      await action(outputText);
+    } catch (error) {
+      useMessageStore.getState().showMessage(
+        error instanceof Error ? error.message : i18n.t('history:media.actionFailed'),
+        'error',
+      );
+    }
+  }, [outputText]);
+  const copySelected = useCallback(() => withSelectedText(async (text) => {
+    await unicEngineNative.copyPlainText(text);
+    useMessageStore.getState().showMessage(i18n.t('history:wordPicker.copied'), 'success');
+  }), [withSelectedText]);
+  const shareSelected = useCallback(() => withSelectedText(
+    (text) => unicEngineNative.shareHistoryMedia([], text)
+  ), [withSelectedText]);
+  const searchSelected = useCallback(() => withSelectedText(
+    (text) => openWebLink(`https://www.google.com/search?q=${encodeURIComponent(text)}`)
+  ), [withSelectedText]);
 
   return {
     status,

@@ -66,6 +66,8 @@ export interface ClipboardItem extends HistoryItemRevision {
 
   /** 数据文件名 */
   dataName?: string;
+  fileName?: string;
+  isFolder?: boolean;
 
   /** 文件大小（字节） */
   size?: number;
@@ -110,6 +112,7 @@ export interface ClipboardItem extends HistoryItemRevision {
 
   /** 是否置顶 */
   pinned: boolean;
+  tags?: readonly string[];
 
   /** 本地数据是否就绪（false表示仅有元数据） */
   isLocalFileReady: boolean;

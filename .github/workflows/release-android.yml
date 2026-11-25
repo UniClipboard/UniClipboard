@@ -1,0 +1,139 @@
+name: Android Store candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload to Google Play
+        type: boolean
+        default: false
+      track:
+        description: Google Play track
+        type: choice
+        options: [internal, production]
+        default: internal
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-store-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: mobile-android
+    timeout-minutes: 45
+    env:
+      EXPO_NO_TELEMETRY: '1'
+      UNIC_MOBILE_VARIANT: production
+      UNIC_MOBILE_RELEASE_PLATFORM: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bindings/go.mod
+          cache-dependency-path: |
+            go.sum
+            bindings/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/expo/.nvmrc
+          cache: npm
+          cache-dependency-path: app/expo/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: 'platform-tools ndk;27.1.12297006 platforms;android-36 build-tools;36.0.0'
+      - name: Build Android bindings
+        env:
+          UNIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+          UNIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_KEY }}
+        run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.1.12297006" ./bindings/scripts/build-mobile.sh
+      - working-directory: app/expo
+        run: |
+          npm ci --no-audit --no-fund
+          npx expo prebuild --platform android --no-install
+          (cd android && ./gradlew :app:bundleRelease -PreactNativeArchitectures=arm64-v8a,x86_64)
+      - name: Sign and verify candidate
+        env:
+          ANDROID_UPLOAD_KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+        shell: bash
+        run: |
+          : "${ANDROID_UPLOAD_KEYSTORE:?}" "${ANDROID_UPLOAD_STORE_PASSWORD:?}" "${ANDROID_UPLOAD_KEY_PASSWORD:?}" "${ANDROID_UPLOAD_KEY_ALIAS:?}"
+          umask 077
+          keystore=$(mktemp)
+          trap 'unlink "$keystore"' EXIT
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE" | base64 --decode > "$keystore"
+          mkdir -p dist/mobile-android
+          export artifact=dist/mobile-android/UniClipboard.aab
+          jarsigner -keystore "$keystore" -storepass:env ANDROID_UPLOAD_STORE_PASSWORD \
+            -keypass:env ANDROID_UPLOAD_KEY_PASSWORD -signedjar "$artifact" \
+            app/expo/android/app/build/outputs/bundle/release/app-release.aab "$ANDROID_UPLOAD_KEY_ALIAS"
+          jarsigner -J-Duser.language=en -J-Duser.country=US -verify "$artifact" | grep -Fx 'jar verified.'
+          jar="$RUNNER_TEMP/bundletool.jar"
+          curl -fsSL https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar -o "$jar"
+          java -jar "$jar" validate --bundle="$artifact"
+          python3 -B tools/release/mobile.py record-candidate android "$artifact" dist/mobile-android/candidate.json --bundletool "$jar"
+          (cd dist/mobile-android && sha256sum UniClipboard.aab candidate.json > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mobile-android-candidate
+          path: dist/mobile-android/
+          if-no-files-found: error
+      - uses: ruby/setup-ruby@v1
+        if: inputs.publish
+        with:
+          ruby-version: '3.3'
+      - name: Upload to selected Google Play track
+        if: inputs.publish
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_TRACK: ${{ inputs.track }}
+        shell: bash
+        run: |
+          : "${PLAY_SERVICE_ACCOUNT_JSON:?}"
+          umask 077
+          credentials=$(mktemp)
+          trap 'unlink "$credentials"' EXIT
+          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > "$credentials"
+          gem install fastlane -v 2.242.0 --no-document
+          app=$(jq -er .application_id dist/mobile-android/candidate.json)
+          fastlane supply --json_key "$credentials" --package_name "$app" --track "$PLAY_TRACK" \
+            --aab dist/mobile-android/UniClipboard.aab --release_status completed \
+            --skip_upload_metadata true --skip_upload_changelogs true --skip_upload_images true --skip_upload_screenshots true
+
+  github-receipt:
+    needs: build
+    if: inputs.publish && inputs.track == 'production'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mobile-android-candidate
+          path: candidate
+      - name: Publish the production checksum receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd candidate
+          sha256sum -c SHA256SUMS
+          test "$(jq -er .source_sha candidate.json)" = "$GITHUB_SHA"
+          version=$(jq -er .version candidate.json)
+          build=$(jq -er .build_number candidate.json)
+          gh release create "android/v$version-build.$build" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Android $version ($build)" --notes 'Google Play production candidate checksums.' \
+            candidate.json SHA256SUMS

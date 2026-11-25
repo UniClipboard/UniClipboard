@@ -1,21 +1,59 @@
-name: Expo UI shell
+name: Mobile build and acceptance
 
 on:
   pull_request:
     paths:
       - app/expo/**
+      - bindings/**
+      - engine/**
+      - internal/**
+      - go.mod
+      - go.sum
+      - release/products.toml
+      - tools/release/mobile.py
       - .github/workflows/check-expo.yml
   push:
     branches: [main]
     paths:
       - app/expo/**
+      - bindings/**
+      - engine/**
+      - internal/**
+      - go.mod
+      - go.sum
+      - release/products.toml
+      - tools/release/mobile.py
       - .github/workflows/check-expo.yml
+  schedule:
+    - cron: '20 3 * * 2'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  EXPO_NO_TELEMETRY: '1'
+  MAESTRO_CLI_NO_ANALYTICS: '1'
+  MAESTRO_CLI_DISABLE_UPDATE_CHECK: '1'
+
 jobs:
+  engine:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bindings/go.mod
+          cache-dependency-path: |
+            go.sum
+            bindings/go.sum
+      - run: go test -race ./engine -run '^TestPublicEngineHasNoDesktopDependencies$'
+      - working-directory: bindings
+        run: |
+          go test -race ./...
+          go run ./e2e/local-commit
+          go run ./e2e/mobile-diagnostics
+
   native-bundles:
     runs-on: ubuntu-latest
     defaults:
@@ -38,3 +76,171 @@ jobs:
             app/expo/dist/verification/
             app/expo/dist/ios/
             app/expo/dist/android/
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ios
+            runner: macos-26
+          - platform: android
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 50
+    env:
+      UNIC_MOBILE_RELEASE_PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/expo/.nvmrc
+          cache: npm
+          cache-dependency-path: app/expo/package-lock.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bindings/go.mod
+          cache-dependency-path: |
+            go.sum
+            bindings/go.sum
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Select Xcode 26.6
+        if: matrix.platform == 'ios'
+        run: |
+          xcode_dir=/Applications/Xcode_26.6.app/Contents/Developer
+          DEVELOPER_DIR="$xcode_dir" xcodebuild -version
+          echo "DEVELOPER_DIR=$xcode_dir" >> "$GITHUB_ENV"
+      - name: Set up Android SDK
+        if: matrix.platform == 'android'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: >-
+            platform-tools ndk;27.1.12297006 platforms;android-36 build-tools;36.0.0
+            emulator system-images;android-36;google_apis;x86_64
+      - name: Configure Android emulator
+        if: matrix.platform == 'android'
+        shell: bash
+        run: |
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/unic-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          avdmanager create avd --force --name unic-ci --device pixel_7 --package 'system-images;android-36;google_apis;x86_64'
+          test -s "$ANDROID_AVD_HOME/unic-ci.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx unic-ci
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.1.12297006" >> "$GITHUB_ENV"
+      - name: Install pinned Maestro CLI
+        shell: bash
+        run: |
+          base=https://github.com/mobile-dev-inc/Maestro/releases/download/cli-2.10.0
+          cd "$RUNNER_TEMP"
+          curl --retry 2 --retry-all-errors -fsSLO "$base/maestro.zip"
+          curl --retry 2 --retry-all-errors -fsSLO "$base/checksums_sha256.txt"
+          grep 'maestro.zip$' checksums_sha256.txt | shasum -a 256 -c
+          unzip -q maestro.zip
+          echo "$RUNNER_TEMP/maestro/bin" >> "$GITHUB_PATH"
+      - run: ./bindings/scripts/build-mobile.sh
+      - working-directory: app/expo
+        run: |
+          npm ci --no-audit --no-fund
+          npx expo prebuild --platform "$UNIC_MOBILE_RELEASE_PLATFORM" --no-install
+      - name: Build and test iOS Simulator
+        if: matrix.platform == 'ios'
+        working-directory: app/expo
+        shell: bash
+        run: |
+          (cd ios && pod install)
+          xcodebuild -workspace ios/UniClipboardUIShell.xcworkspace -scheme UniClipboardUIShell \
+            -configuration Release -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/unic-ios" ARCHS=arm64 CODE_SIGN_IDENTITY=-
+          app="$RUNNER_TEMP/unic-ios/Build/Products/Release-iphonesimulator/UniClipboardUIShell.app"
+          codesign --verify --strict "$app"
+          device=$(xcrun simctl create 'UniClipboard CI' com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro com.apple.CoreSimulator.SimRuntime.iOS-26-5)
+          xcrun simctl boot "$device"
+          xcrun simctl bootstatus "$device" -b
+          if ! node e2e/run.mjs --suite live --platform ios --device "$device" \
+            --app "$app"; then
+            xcrun simctl spawn "$device" log show --last 5m --info --style compact \
+              --predicate 'process == "pasted" OR subsystem == "com.apple.Pasteboard"' \
+              > e2e/results/ios-pasteboard.log || true
+            {
+              if clipboard=$(xcrun simctl pbpaste "$device"); then
+                if [[ "$clipboard" == 'Unic Mobile E2E' ]]; then
+                  echo 'fixture-pasteboard=present'
+                else
+                  echo 'fixture-pasteboard=absent'
+                fi
+              else
+                echo 'fixture-pasteboard=unavailable'
+              fi
+              if container=$(xcrun simctl get_app_container "$device" app.uniclipboard.shell data); then
+                history_db="$container/Library/Application Support/unic-v2/unic.db"
+                if [[ -f "$history_db" ]]; then
+                  sqlite3 -readonly "$history_db" \
+                    "SELECT 'fixture-records=' || COUNT(*) FROM clip_item_parts WHERE CAST(inline AS TEXT) = 'Unic Mobile E2E';" || true
+                fi
+              fi
+            } > e2e/results/ios-history-check.log 2>&1
+            exit 1
+          fi
+      - name: Build Android emulator APK
+        if: matrix.platform == 'android'
+        working-directory: app/expo/android
+        run: ./gradlew :app:assembleRelease -PreactNativeArchitectures=x86_64
+      - name: Test Android emulator
+        if: matrix.platform == 'android'
+        working-directory: app/expo
+        shell: bash
+        run: |
+          mkdir -p e2e/results
+          sudo chmod a+rw /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -avd unic-ci -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > e2e/results/emulator.log 2>&1 &
+          emulator_pid=$!
+
+          wait_for_emulator() {
+            local stable=0
+            for _ in {1..100}; do
+              if ! kill -0 "$emulator_pid" 2>/dev/null; then
+                cat e2e/results/emulator.log >&2
+                return 1
+              fi
+              if [[ $(timeout 5s adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r') == 1 ]]; then
+                stable=$((stable + 1))
+                if [[ $stable == 5 ]]; then return 0; fi
+              else
+                stable=0
+              fi
+              sleep 2
+            done
+            echo 'Android emulator did not become ready' >&2
+            return 1
+          }
+
+          run_live() {
+            node e2e/run.mjs --suite live --platform android --device emulator-5554 \
+              --app android/app/build/outputs/apk/release/app-release.apk
+          }
+
+          record_android_exit() {
+            timeout 15s adb -s emulator-5554 logcat -d -b crash > "e2e/results/android-crash-$1.log" || true
+            timeout 15s adb -s emulator-5554 shell dumpsys activity exit-info app.uniclipboard.shell \
+              > "e2e/results/android-exit-$1.log" || true
+          }
+
+          wait_for_emulator
+          adb -s emulator-5554 shell wm dismiss-keyguard
+          if run_live; then exit 0; fi
+          record_android_exit first
+          grep -rqE --include=maestro.log 'CommandFailed: Command failed \(host:transport:emulator-5554\): device offline' e2e/results
+          echo 'Maestro lost its ADB connection. Retrying once after the emulator reconnects.'
+          wait_for_emulator
+          if run_live; then exit 0; fi
+          record_android_exit retry
+          exit 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-native-${{ matrix.platform }}
+          path: app/expo/e2e/results/

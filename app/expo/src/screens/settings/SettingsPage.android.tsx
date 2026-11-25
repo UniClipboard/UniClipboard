@@ -42,7 +42,7 @@ export function SettingsPage({ title, groups, onBack }: SettingsPageProps) {
                 onClick={onBack}
               >
                 <Icon
-                  source={require("../assets/icons/chevron_right.xml")}
+                  source={require("../../assets/icons/chevron_right.xml")}
                   contentDescription={t("common:action.back")}
                   modifiers={[rotate(180)]}
                 />

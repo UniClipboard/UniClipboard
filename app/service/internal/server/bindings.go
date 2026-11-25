@@ -20,17 +20,18 @@ func bindingRoutes(mux *http.ServeMux, b api.Backend) {
 		return
 	}
 	mux.HandleFunc("PATCH /v1/bindings/{id}", func(w http.ResponseWriter, r *http.Request) {
-		var in struct {
-			Revision int64 `json:"revision"`
-			Enabled  *bool `json:"enabled"`
-		}
+		var in api.BindingEdit
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 		dec.DisallowUnknownFields()
-		if dec.Decode(&in) != nil || dec.Decode(new(any)) != io.EOF || in.Revision <= 0 || in.Enabled == nil {
-			fail(w, 400, &api.Error{Reason: "invalid_argument", Message: "binding revision is required"})
+		if dec.Decode(&in) != nil || dec.Decode(new(any)) != io.EOF || in.Revision <= 0 || (in.Enabled == nil && in.Policy == nil) {
+			fail(w, 400, &api.Error{Reason: "invalid_argument", Message: "binding revision and enabled or policy are required"})
 			return
 		}
-		out, err := backend.SetBindingSync(r.Context(), r.PathValue("id"), api.BindingEdit{Revision: in.Revision, Enabled: *in.Enabled})
+		if in.Policy != nil && !in.Policy.Valid() {
+			fail(w, 400, &api.Error{Reason: "invalid_argument", Message: "valid text, images and files sync directions are required"})
+			return
+		}
+		out, err := backend.SetBindingSync(r.Context(), r.PathValue("id"), in)
 		if err != nil {
 			fail(w, 400, err)
 			return

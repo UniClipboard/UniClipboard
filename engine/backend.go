@@ -65,11 +65,14 @@ type targetKey struct {
 // filtered by that backend's policy. id and tsMs are shared by all backends
 // of a commit (the transfer identity of 0007 §6).
 type backendView struct {
-	workContext context.Context // owned submission lifetime; nil for short-lived callers
-	set         sendSet
-	id          string
-	tsMs        int64
-	devices     []DeviceID // non-empty: only these devices receive it
+	workContext   context.Context // owned submission lifetime; nil for short-lived callers
+	set           sendSet
+	id            string
+	tsMs          int64
+	devices       []DeviceID // non-empty: only these devices receive it
+	manual        bool       // explicit send: bypasses per-binding automatic direction/type policy
+	backendPolicy BackendSyncPolicy
+	filtered      *bool // set when connected peers were skipped only by per-binding policy
 }
 
 // backendHost is handed to a backend for one submission.
@@ -297,7 +300,17 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 				res.Disposition, res.Error = BackendFailed, lerr
 				break
 			}
-			queued, err := b.Submit(ctx, backendView{workContext: workContext, set: set, id: transfer, tsMs: tsMs, devices: req.DeviceIDs}, host)
+			var filtered bool
+			queued, err := b.Submit(ctx, backendView{
+				workContext:   workContext,
+				set:           set,
+				id:            transfer,
+				tsMs:          tsMs,
+				devices:       req.DeviceIDs,
+				manual:        manual,
+				backendPolicy: pol,
+				filtered:      &filtered,
+			}, host)
 			switch {
 			case queued:
 				res.Disposition = BackendQueued
@@ -305,6 +318,8 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 				res.Disposition = BackendDisabled
 			case err != nil:
 				res.Disposition, res.Error = BackendFailed, err
+			case filtered:
+				res.Disposition = BackendPolicyFiltered
 			default:
 				res.Disposition = BackendNoTargets
 			}

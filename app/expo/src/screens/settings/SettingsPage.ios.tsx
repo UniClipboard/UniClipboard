@@ -18,8 +18,28 @@ import {
   SettingsPickerRow,
   settingsTileColors,
 } from "@/screens/settings/ios/common";
+import type { SFSymbol } from "sf-symbols-typescript";
 import { iosAccentColor } from "@/theme/iosDesignTokens";
 import type { SettingsPageProps } from "./SettingsPage.types";
+
+const ROW_ICONS: Record<string, { icon: SFSymbol; color: string }> = {
+  "auto-apply": { icon: "arrow.down.doc", color: settingsTileColors.green },
+  "auto-push": { icon: "arrow.up.doc", color: settingsTileColors.teal },
+  sync: { icon: "arrow.triangle.2.circlepath", color: settingsTileColors.blue },
+  history: { icon: "clock.arrow.circlepath", color: settingsTileColors.blue },
+  clipboard: { icon: "doc.on.clipboard", color: settingsTileColors.orange },
+  appearance: { icon: "circle.lefthalf.filled", color: settingsTileColors.indigo },
+  language: { icon: "globe", color: settingsTileColors.blue },
+  storage: { icon: "externaldrive", color: settingsTileColors.purple },
+  network: { icon: "network", color: settingsTileColors.teal },
+  background: { icon: "bolt.fill", color: settingsTileColors.orange },
+  keyboard: { icon: "keyboard", color: settingsTileColors.indigo },
+  share: { icon: "square.and.arrow.up", color: settingsTileColors.green },
+  diagnostics: { icon: "waveform.path.ecg", color: settingsTileColors.red },
+  privacy: { icon: "hand.raised.fill", color: settingsTileColors.blue },
+  about: { icon: "info.circle", color: settingsTileColors.gray },
+  developer: { icon: "wrench.and.screwdriver", color: settingsTileColors.indigo },
+};
 
 export function SettingsPage({ title, groups, onBack }: SettingsPageProps) {
   const { t } = useTranslation();
@@ -62,13 +82,14 @@ export function SettingsPage({ title, groups, onBack }: SettingsPageProps) {
                     ) : undefined
                   }
                 >
-                  {group.rows.map((row) =>
-                    row.toggle ? (
+                  {group.rows.map((row) => {
+                    const iconSpec = ROW_ICONS[row.id];
+                    return row.toggle ? (
                       <IconToggleRow
                         key={row.id}
                         testID={row.id}
-                        icon="arrow.triangle.2.circlepath"
-                        iconColor={settingsTileColors.green}
+                        icon={iconSpec?.icon ?? "arrow.triangle.2.circlepath"}
+                        iconColor={iconSpec?.color ?? settingsTileColors.green}
                         label={row.title}
                         description={row.description}
                         isOn={row.toggle.value}
@@ -78,8 +99,8 @@ export function SettingsPage({ title, groups, onBack }: SettingsPageProps) {
                       <SettingsPickerRow
                         key={row.id}
                         testID={row.id}
-                        icon="slider.horizontal.3"
-                        iconColor={settingsTileColors.indigo}
+                        icon={iconSpec?.icon ?? "slider.horizontal.3"}
+                        iconColor={iconSpec?.color ?? settingsTileColors.indigo}
                         title={row.title}
                         selection={row.choices.value}
                         options={row.choices.options}
@@ -89,8 +110,8 @@ export function SettingsPage({ title, groups, onBack }: SettingsPageProps) {
                       <SettingsNavRow
                         key={row.id}
                         testID={row.id}
-                        icon="circle"
-                        iconColor={settingsTileColors.blue}
+                        icon={iconSpec?.icon ?? "gearshape"}
+                        iconColor={iconSpec?.color ?? settingsTileColors.blue}
                         title={row.title}
                         subtitle={row.description}
                         value={row.value}
@@ -98,8 +119,8 @@ export function SettingsPage({ title, groups, onBack }: SettingsPageProps) {
                         readOnly={!row.onPress}
                         showsChevron={!!row.onPress}
                       />
-                    ),
-                  )}
+                    );
+                  })}
                 </Section>
               ))}
             </IosSheetForm>

@@ -1,0 +1,447 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, AppState, Image, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Host, NavigationStack, ZStack } from '@expo/ui/swift-ui';
+import { frame, tint } from '@expo/ui/swift-ui/modifiers';
+import { useTranslation } from 'react-i18next';
+
+import {
+  AppAlertDialog,
+  AppBottomSheet,
+  AppButton,
+  AppHost,
+  IosPageChromeProvider,
+  type IosPageChrome,
+} from '@/components/ui';
+import { parseEngineError, unicEngineNative } from '@/engine/nativeModule';
+import { useEngineStore } from '@/engine/store';
+import type {
+  EngineCandidate,
+  EngineDevice,
+  EngineEvent,
+  EngineOperation,
+  SensitiveTicket,
+} from '@/engine/types';
+import { useTheme } from '@/hooks/useTheme';
+import type { RootStackParamList, SpaceDeviceTarget } from '@/navigation/AppNavigator.types';
+import { useHideTabBarOnSubPage } from '@/navigation/ios/useHideTabBarOnSubPage';
+import { showUnavailable } from '@/shell/notice';
+import { useMessageStore } from '@/stores/messageStore';
+import { iosAccentColor } from '@/theme/iosDesignTokens';
+import { PairingScanner } from './PairingScanner';
+import { DeviceDetailSheet } from './ios/devices/DeviceDetailSheet';
+import { DevicesRootPage } from './ios/devices/DevicesRootPage';
+import { deviceDisplayName } from './ios/devices/deviceRows';
+
+const fillModifier = frame({ maxWidth: Infinity, maxHeight: Infinity });
+const NAVIGATION_CHROME: IosPageChrome = { kind: 'navigation' };
+
+/**
+ * iOS「设备」标签页（对齐 v1 src/screens/ios/DevicesScreen.tsx）。
+ * 全屏 SwiftUI Host 内持有 NavigationStack 与所有兄弟 Sheet，接入 v2 Go Engine 配对与设备信任管理。
+ */
+export function DevicesScreen(_props: SpaceDeviceTarget) {
+  const { t } = useTranslation();
+  const pair = (key: string, values?: Record<string, string>) =>
+    t(`settingsSync:pairing.${key}`, values);
+  const { theme } = useTheme();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const focused = useIsFocused();
+
+  const [path, setPath] = useState<string[]>([]);
+  useHideTabBarOnSubPage(path);
+
+  const mode = useEngineStore((s) => s.mode);
+  const self = useEngineStore((s) => s.snapshot?.self);
+  const devices = useEngineStore((s) => s.devices);
+  const candidates = useEngineStore((s) => s.candidates);
+  const pairingCode = useEngineStore((s) => s.pairingCode);
+
+  const [joinMode, setJoinMode] = useState<'manual' | 'scan' | null>(null);
+  const [joinInput, setJoinInput] = useState('');
+  const [starting, setStarting] = useState(false);
+  const startingRef = useRef(false);
+  const operationGeneration = useRef(0);
+  const [operationID, setOperationID] = useState<string | null>(null);
+  const [operation, setOperation] = useState<EngineOperation | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
+  const [ticket, setTicket] = useState<SensitiveTicket | null>(null);
+  const ticketGeneration = useRef(0);
+  const exporting = useRef(false);
+  const [pendingApproveDevice, setPendingApproveDevice] = useState<EngineDevice | null>(null);
+  const [selectedDeviceID, setSelectedDeviceID] = useState<string | null>(null);
+  const [selectedCandidate, setSelectedCandidate] = useState<EngineCandidate | null>(null);
+  const [foreground, setForeground] = useState(AppState.currentState === 'active');
+
+  const closeTicket = useCallback(() => {
+    ticketGeneration.current++;
+    setTicket(null);
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      const active = state === 'active';
+      setForeground(active);
+      if (!active) closeTicket();
+    });
+    return () => subscription.remove();
+  }, [closeTicket]);
+
+  useEffect(() => {
+    if (focused && mode === 'live') return;
+    setJoinMode(null);
+    setJoinInput('');
+    closeTicket();
+  }, [focused, mode, closeTicket]);
+
+  useEffect(() => {
+    if (!ticket) return;
+    const timer = setTimeout(closeTicket, Math.max(0, ticket.expires_at_ms - Date.now()));
+    return () => clearTimeout(timer);
+  }, [ticket, closeTicket]);
+
+  useEffect(() => {
+    if (!operationID || mode !== 'live') return;
+    let request = 0;
+    let disposed = false;
+    const refresh = async () => {
+      const current = ++request;
+      try {
+        const result = await unicEngineNative.getOperation(operationID);
+        if (!disposed && current === request) {
+          setOperation(result);
+          setOperationError(null);
+        }
+      } catch (error) {
+        if (!disposed && current === request) setOperationError(parseEngineError(error).code);
+      }
+    };
+    const events = unicEngineNative.addEventListener((raw) => {
+      let event: EngineEvent;
+      try {
+        event = JSON.parse(raw) as EngineEvent;
+      } catch {
+        return;
+      }
+      if (event.kind === 'operations' && event.objects?.some(({ id }) => id === operationID)) {
+        void refresh();
+      }
+    });
+    const resync = unicEngineNative.addResyncListener(() => void refresh());
+    const active = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refresh();
+    });
+    void refresh();
+    return () => {
+      disposed = true;
+      events.remove();
+      resync.remove();
+      active.remove();
+    };
+  }, [operationID, mode]);
+
+  const errorText = (error: unknown) => {
+    const code = parseEngineError(error).code;
+    return t(`errors:engine.${code}`, { defaultValue: t('errors:engine.internal') });
+  };
+
+  const run = async (action: () => Promise<unknown>) => {
+    try {
+      await action();
+    } catch (error) {
+      Alert.alert(pair('actionFailed'), errorText(error));
+    }
+  };
+
+  const start = async (action: () => Promise<string>) => {
+    if (startingRef.current) return;
+    startingRef.current = true;
+    const generation = ++operationGeneration.current;
+    setStarting(true);
+    setOperationID(null);
+    setOperation(null);
+    setOperationError(null);
+    try {
+      const id = await action();
+      if (generation === operationGeneration.current) setOperationID(id);
+    } catch (error) {
+      if (generation === operationGeneration.current) {
+        Alert.alert(pair('actionFailed'), errorText(error));
+      }
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
+    }
+  };
+
+  const submit = (input: string) => {
+    const raw = input.trim();
+    const digits = raw.replace(/\s+/g, '');
+    const store = useEngineStore.getState();
+    setJoinMode(null);
+    setJoinInput('');
+    if (/^\d{3}-?\d{3}$/.test(digits)) {
+      void start(() => store.joinByCode(digits));
+    } else if (raw.startsWith('unic-pair:')) {
+      void start(() => store.joinByTicket(raw));
+    } else {
+      Alert.alert(pair('actionFailed'), pair('invalidInput'));
+    }
+  };
+
+  const exportTicket = async () => {
+    if (exporting.current) return;
+    exporting.current = true;
+    const generation = ++ticketGeneration.current;
+    try {
+      const result = await useEngineStore.getState().exportPairingTicket();
+      if (generation === ticketGeneration.current && result.expires_at_ms > Date.now()) {
+        setTicket(result);
+      }
+    } catch (error) {
+      if (generation === ticketGeneration.current) {
+        Alert.alert(pair('actionFailed'), errorText(error));
+      }
+    } finally {
+      exporting.current = false;
+    }
+  };
+
+  const store = useEngineStore.getState();
+  const trusted = devices.find((d) => d.trust === 'trusted' && d.id === selectedDeviceID) ?? null;
+  const peer = devices.find((d) => d.id === operation?.pairing?.peer_id);
+  const waitingApproval = Boolean(
+    operation?.pairing &&
+      ((operation.pairing.awaiting_local_approval && peer?.trust !== 'trusted') ||
+        (operation.pairing.awaiting_remote_approval &&
+          !peer?.bindings?.some((binding) => binding.connection === 'connected')))
+  );
+  const phase = waitingApproval ? 'waitingApproval' : (operation?.phase ?? 'resolving');
+  const operationMessage = operationError || operation?.error?.code;
+  const operationStatus = operationMessage
+    ? t(`errors:engine.${operationMessage}`, { defaultValue: t('errors:engine.internal') })
+    : t(`settingsSync:pairing.phase.${phase}`, { defaultValue: pair('phase.resolving') });
+
+  const titleStyle = { color: theme.colors.textPrimary, fontSize: 18, fontWeight: '700' as const };
+  const inputStyle = {
+    borderRadius: 12,
+    padding: 12,
+    backgroundColor: theme.colors.surface,
+    color: theme.colors.textPrimary,
+  };
+  const closeJoin = () => {
+    setJoinMode(null);
+    setJoinInput('');
+  };
+
+  return (
+    <>
+      <Host style={styles.host}>
+        <ZStack modifiers={[fillModifier, ...(iosAccentColor ? [tint(iosAccentColor)] : [])]}>
+          <IosPageChromeProvider value={NAVIGATION_CHROME}>
+            <NavigationStack path={path} onPathChange={setPath}>
+              <DevicesRootPage
+                mode={mode === 'live' ? 'live' : 'unavailable'}
+                self={self}
+                devices={devices}
+                candidates={candidates}
+                pairingCode={pairingCode}
+                starting={starting}
+                operationID={operationID}
+                operationStatus={operationStatus}
+                onRefresh={() => void run(store.refreshDevicesAndCandidates)}
+                onCopyLocalID={() => {
+                  if (!self) return;
+                  void run(async () => {
+                    await unicEngineNative.copyPlainText(self.id);
+                    useMessageStore.getState().showMessage(t('errors:copy.copied'), 'success');
+                  });
+                }}
+                onCreatePairingCode={() => void run(store.createPairingCode)}
+                onCancelPairingCode={() => void run(store.cancelPairingCode)}
+                onOpenManualJoin={() => setJoinMode('manual')}
+                onOpenScanJoin={() => setJoinMode('scan')}
+                onExportTicket={() => void exportTicket()}
+                onStopWaiting={() => {
+                  operationGeneration.current++;
+                  setStarting(false);
+                  setOperationID(null);
+                  setOperation(null);
+                  setOperationError(null);
+                }}
+                onApprovePending={setPendingApproveDevice}
+                onSelectDevice={(device) => setSelectedDeviceID(device.id)}
+                onSelectCandidate={setSelectedCandidate}
+                onOpenConnectionPreview={() => navigation.navigate('ConnectionPreview')}
+                onShowUnavailable={showUnavailable}
+              />
+            </NavigationStack>
+          </IosPageChromeProvider>
+
+          <DeviceDetailSheet
+            device={trusted}
+            onClose={() => setSelectedDeviceID(null)}
+            onRename={async (device, nextName) => {
+              await run(async () => {
+                await store.renameDevice(device.id, device.revision, nextName);
+                setSelectedDeviceID(null);
+              });
+            }}
+            onToggleSync={async (binding, enabled) => {
+              await run(() => store.setBindingSync(binding.id, binding.revision, enabled));
+            }}
+            onUnpair={async (device) => {
+              setSelectedDeviceID(null);
+              await run(() => store.unpairDevice(device.id, device.revision));
+            }}
+          />
+        </ZStack>
+      </Host>
+
+      <AppAlertDialog
+        visible={pendingApproveDevice !== null}
+        standalone
+        title={pair('approveTitle')}
+        message={
+          pendingApproveDevice
+            ? pair('approveBody', {
+                name: deviceDisplayName(pendingApproveDevice),
+                value: pendingApproveDevice.fingerprint,
+              })
+            : ''
+        }
+        confirmLabel={pair('approve')}
+        onConfirm={() => {
+          const target = pendingApproveDevice;
+          setPendingApproveDevice(null);
+          if (target) void run(() => store.approveDevice(target, target.fingerprint));
+        }}
+        dismissLabel={t('common:action.cancel')}
+        onDismiss={() => setPendingApproveDevice(null)}
+        onDismissAction={() => setPendingApproveDevice(null)}
+      />
+
+      <AppBottomSheet visible={joinMode !== null} onDismiss={closeJoin}>
+        <View style={{ padding: 16, gap: 12 }}>
+          <Text style={titleStyle}>{pair(joinMode === 'scan' ? 'scan' : 'enterCode')}</Text>
+          {joinMode === 'scan' ? (
+            focused && foreground && <PairingScanner onRead={submit} />
+          ) : (
+            <>
+              <TextInput
+                testID="devices-join-input"
+                value={joinInput}
+                onChangeText={setJoinInput}
+                placeholder={pair('inputHint')}
+                placeholderTextColor={theme.colors.textSecondary}
+                autoCapitalize="none"
+                autoCorrect={false}
+                style={inputStyle}
+              />
+              <AppHost matchContents={{ vertical: true }}>
+                <AppButton
+                  testID="devices-join-submit"
+                  title={pair('connect')}
+                  variant="filled"
+                  fullWidth
+                  disabled={starting || !joinInput.trim()}
+                  onPress={() => submit(joinInput)}
+                />
+              </AppHost>
+            </>
+          )}
+          <AppHost matchContents={{ vertical: true }}>
+            <AppButton
+              title={t('common:action.cancel')}
+              variant="text"
+              fullWidth
+              onPress={closeJoin}
+            />
+          </AppHost>
+        </View>
+      </AppBottomSheet>
+
+      <AppBottomSheet visible={ticket !== null && focused && foreground} onDismiss={closeTicket}>
+        {ticket && focused && foreground && (
+          <View style={{ padding: 16, gap: 12 }}>
+            <Text style={titleStyle}>{pair('ticketTitle')}</Text>
+            <Text style={{ color: theme.colors.textPrimary }}>{pair('ticketHelp')}</Text>
+            {ticket.qr_png ? (
+              <Image
+                testID="devices-pairing-qr"
+                accessibilityLabel={pair('ticketTitle')}
+                source={{ uri: `data:image/png;base64,${ticket.qr_png}` }}
+                style={{ width: 260, height: 260, alignSelf: 'center' }}
+              />
+            ) : null}
+            <AppHost matchContents={{ vertical: true }}>
+              <AppButton
+                title={t('common:action.copy')}
+                variant="filled"
+                fullWidth
+                onPress={() =>
+                  void run(async () => {
+                    if (ticket.expires_at_ms <= Date.now()) {
+                      closeTicket();
+                      return;
+                    }
+                    await unicEngineNative.copyPairingTicket(ticket.ticket, ticket.expires_at_ms);
+                    Alert.alert(t('errors:copy.copied'));
+                  })
+                }
+              />
+            </AppHost>
+            <AppHost matchContents={{ vertical: true }}>
+              <AppButton
+                title={t('common:action.close')}
+                variant="text"
+                fullWidth
+                onPress={closeTicket}
+              />
+            </AppHost>
+          </View>
+        )}
+      </AppBottomSheet>
+
+      <AppBottomSheet
+        visible={selectedCandidate !== null}
+        onDismiss={() => setSelectedCandidate(null)}
+      >
+        {selectedCandidate ? (
+          <View style={{ padding: 16, gap: 12 }}>
+            <Text style={titleStyle}>
+              {selectedCandidate.name || selectedCandidate.device_id.slice(0, 8)}
+            </Text>
+            <AppHost matchContents={{ vertical: true }}>
+              <AppButton
+                title={pair('connect')}
+                fullWidth
+                disabled={starting || selectedCandidate.requested}
+                onPress={() => {
+                  setSelectedCandidate(null);
+                  void start(() => store.pairCandidate(selectedCandidate));
+                }}
+              />
+            </AppHost>
+            <AppHost matchContents={{ vertical: true }}>
+              <AppButton
+                title={pair('ignore')}
+                variant="outlined"
+                fullWidth
+                onPress={() => {
+                  setSelectedCandidate(null);
+                  void run(() => store.ignoreCandidate(selectedCandidate.device_id, true));
+                }}
+              />
+            </AppHost>
+          </View>
+        ) : null}
+      </AppBottomSheet>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  host: { flex: 1 },
+});

@@ -35,6 +35,11 @@ name: Live Engine devices and diagnostics
     commands:
       - tapOn:
           id: main-tab-Preferences
+- scrollUntilVisible:
+    element:
+      id: diagnostics
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: diagnostics
 - extendedWaitUntil:

@@ -12,11 +12,11 @@
     },
     "hero": {
       "title": "Your clips, where you type",
-      "description": "UniClip Keyboard shows what you copied on your other devices. Tap a clip to paste it into any app."
+      "description": "UniClipboard Keyboard shows what you copied on your other devices. Tap a clip to paste it into any app."
     },
     "almostThere": {
       "title": "Almost there",
-      "description": "UniClip Keyboard is added. Turn on Full Access so it can show your clips."
+      "description": "UniClipboard Keyboard is added. Turn on Full Access so it can show your clips."
     },
     "ready": {
       "title": "Ready",
@@ -25,21 +25,21 @@
     "setup": {
       "title": "Set up · {{done}} of 3",
       "add": {
-        "title": "Add UniClip Keyboard",
-        "subtitle": "Settings › Apps › UniClip › Keyboards"
+        "title": "Add UniClipboard Keyboard",
+        "subtitle": "Settings › Apps › UniClipboard › Keyboards"
       },
       "fullAccess": {
         "title": "Allow Full Access",
         "subtitle": "So it can show your synced clips",
-        "path": "Keyboards › UniClip Keyboard › Allow Full Access",
-        "readsOnly": "Reads only clips UniClip has already synced",
+        "path": "Keyboards › UniClipboard Keyboard › Allow Full Access",
+        "readsOnly": "Reads only clips UniClipboard has already synced",
         "sendsOnly": "Sends only to devices in your space",
         "systemWarning": "iOS shows a general warning when you turn this on."
       },
       "switch": {
         "title": "Switch to it once",
         "subtitle": "Confirms everything works",
-        "instructions": "Tap the field, then press and hold the globe key and choose UniClip Keyboard.",
+        "instructions": "Tap the field, then press and hold the globe key and choose UniClipboard Keyboard.",
         "placeholder": "Tap to bring up the keyboard",
         "detected": "Detected, with Full Access. You're all set.",
         "stillOffHint": "If the keyboard shows “Full Access Required” instead, Full Access is still off."
@@ -50,7 +50,7 @@
     "howToUse": {
       "title": "How to use",
       "switchTitle": "Switch keyboards",
-      "switchDescription": "In any app, press and hold the globe key and choose UniClip Keyboard.",
+      "switchDescription": "In any app, press and hold the globe key and choose UniClipboard Keyboard.",
       "tryLabel": "Try it here",
       "tryPlaceholder": "Tap to bring up the keyboard"
     },
@@ -67,14 +67,14 @@
   },
   "share": {
     "title": "Share",
-    "testMessage": "Share test from UniClip 👋",
+    "testMessage": "Share test from UniClipboard 👋",
     "hero": {
       "title": "Send from any app",
-      "description": "Share something and pick UniClip. UniClip opens with the item ready, so you choose which devices get it."
+      "description": "Share something and pick UniClipboard. UniClipboard opens with the item ready, so you choose which devices get it."
     },
     "flow": {
       "tapShare": "Tap Share",
-      "pickApp": "Pick UniClip",
+      "pickApp": "Pick UniClipboard",
       "chooseDevices": "Choose devices"
     },
     "tryButton": "Try it now",
@@ -87,9 +87,9 @@
     },
     "quickAccess": {
       "title": "Quick access",
-      "footer": "Nothing to switch on. UniClip is in the share sheet as soon as it's installed.",
+      "footer": "Nothing to switch on. UniClipboard is in the share sheet as soon as it's installed.",
       "favoritesRow": "Pin to Favorites",
-      "favoritesRowSubtitle": "Keep UniClip first in the app row · 4 steps"
+      "favoritesRowSubtitle": "Keep UniClipboard first in the app row · 4 steps"
     },
     "guide": {
       "title": "Pin to Favorites",
@@ -109,12 +109,12 @@
           "description": "Swipe the row of app icons all the way to the left, then tap More at the end."
         },
         "addFavorite": {
-          "title": "Add UniClip to Favorites",
-          "description": "Tap Edit, then the green plus next to UniClip."
+          "title": "Add UniClipboard to Favorites",
+          "description": "Tap Edit, then the green plus next to UniClipboard."
         },
         "moveToTop": {
           "title": "Move it to the top",
-          "description": "Drag UniClip by its handle above the others, then tap Done."
+          "description": "Drag UniClipboard by its handle above the others, then tap Done."
         }
       },
       "illustration": {
@@ -157,9 +157,9 @@
       "message": "Please try again later."
     },
     "warning": {
-      "engineLogsMissing": "Engine logs were not found, so the package has no Engine evidence. Restart UniClip and export again.",
-      "engineLogsUnreadable": "Some or all Engine logs were found but couldn't be read, so the package may be incomplete. Restart UniClip and export again.",
-      "engineLogsWrittenNotFound": "The Engine reports written logs, but the files are missing from disk. The package is incomplete; restart UniClip and export again.",
+      "engineLogsMissing": "Engine logs were not found, so the package has no Engine evidence. Restart UniClipboard and export again.",
+      "engineLogsUnreadable": "Some or all Engine logs were found but couldn't be read, so the package may be incomplete. Restart UniClipboard and export again.",
+      "engineLogsWrittenNotFound": "The Engine reports written logs, but the files are missing from disk. The package is incomplete; restart UniClipboard and export again.",
       "networkLogsIncomplete": "Network logs may be incomplete: some files could not be flushed, read or verified. Only this process was flushed; other processes such as the keyboard were not."
     },
     "capture": {

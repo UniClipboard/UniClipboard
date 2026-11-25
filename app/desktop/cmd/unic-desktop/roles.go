@@ -27,25 +27,51 @@ import (
 var runRole = runNativeRole
 var useDaemonClipboard = runtime.GOOS == "darwin"
 
+type panelAction string
+
+const (
+	panelActionOpen      panelAction = "open"
+	panelActionToggle    panelAction = "toggle"
+	panelActionFavorites panelAction = "favorites"
+)
+
 // panelActivation is ephemeral. Never write it to a file or a log.
 type panelActivation struct {
 	Target    quickpanel.Target `json:"target"`
 	Error     string            `json:"error,omitempty"`
 	Favorites bool              `json:"favorites,omitempty"`
+	Action    panelAction       `json:"action,omitempty"`
 }
+
+var capturePublicTarget = func() panelActivation {
+	p := quickpanel.NewNative()
+	if closer, ok := p.(interface{ Close() }); ok {
+		defer closer.Close()
+	}
+	target, err := p.Capture()
+	a := panelActivation{Target: target}
+	if err != nil {
+		a.Error = quickpanel.FailureCode(err)
+	}
+	return a
+}
+
 type clipboardReply struct {
 	Mark    string `json:"mark"`
 	Failure string `json:"failure"`
 }
 type clipboardRequest struct {
-	ID    string `json:"id"`
-	Plain bool   `json:"plain"`
-	Mark  string `json:"mark"`
+	ID                string `json:"id"`
+	Plain             bool   `json:"plain"`
+	Mark              string `json:"mark"`
+	InterruptComplete bool   `json:"interrupt_complete,omitempty"`
 }
 type roleStatus struct {
 	Ready         bool           `json:"ready"`
 	SetupRequired bool           `json:"setup_required"`
+	Paused        bool           `json:"paused,omitempty"`
 	Visible       bool           `json:"visible"`
+	Focused       bool           `json:"focused,omitempty"`
 	ServicePID    int            `json:"service_pid"`
 	Shortcut      shortcutStatus `json:"shortcut"`
 	LoginEnabled  bool           `json:"login_enabled"`
@@ -76,6 +102,7 @@ type trayRuntime struct {
 	wanted                  bool
 	paused                  bool
 	retiring                bool
+	closeAllViews           bool
 	ctx                     context.Context
 	cancel                  context.CancelFunc
 	dir, socket, executable string
@@ -123,6 +150,7 @@ func newTrayRuntime(ctx context.Context, cancel context.CancelFunc, settings *co
 func (r *trayRuntime) status() roleStatus {
 	r.mu.Lock()
 	state := r.state
+	state.Paused = r.paused
 	r.mu.Unlock()
 	if flow, err := setupflow.Open(r.dir); err == nil {
 		state.SetupRequired = flow.Required()
@@ -304,17 +332,28 @@ func (r *trayRuntime) openGUILocked(ctx context.Context, action string) error {
 	return desktopprocess.Call(ctx, r.dir, desktopprocess.GUI, "activate", action, nil)
 }
 func (r *trayRuntime) openPanel(ctx context.Context) error {
-	return r.openPanelFiltered(ctx, false)
+	return r.openPanelAction(ctx, panelActionOpen)
+}
+
+func (r *trayRuntime) togglePanel(ctx context.Context) error {
+	return r.openPanelAction(ctx, panelActionToggle)
 }
 
 func (r *trayRuntime) openPanelFiltered(ctx context.Context, favorites bool) error {
+	if favorites {
+		return r.openPanelAction(ctx, panelActionFavorites)
+	}
+	return r.openPanelAction(ctx, panelActionOpen)
+}
+
+func (r *trayRuntime) openPanelAction(ctx context.Context, action panelAction) error {
 	select {
 	case <-r.nativeReady:
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 	// Serialize capture and activation. Never capture a target behind an already
-	// visible panel. Its existing session must handle repeated shortcuts.
+	// visible panel. Its existing session must handle repeated activations.
 	r.opening.Lock()
 	defer r.opening.Unlock()
 	r.mu.Lock()
@@ -331,33 +370,100 @@ func (r *trayRuntime) openPanelFiltered(ctx context.Context, favorites bool) err
 	} else if flow.Required() {
 		return r.openGUILocked(ctx, "")
 	}
+	return activateQuickPanelWithLauncher(ctx, r.dir, r.socket, action, r.capture, func(launchCtx context.Context) (desktopprocess.Info, error) {
+		r.panelLaunch.Lock()
+		defer r.panelLaunch.Unlock()
+		return launchDesktopRole(launchCtx, r.dir, r.socket, desktopprocess.QuickPanel)
+	})
+}
+
+func activateQuickPanel(ctx context.Context, dir, socket string, action panelAction, capture func() panelActivation) error {
+	return activateQuickPanelWithLauncher(ctx, dir, socket, action, capture, func(launchCtx context.Context) (desktopprocess.Info, error) {
+		return launchDesktopRole(launchCtx, dir, socket, desktopprocess.QuickPanel)
+	})
+}
+
+func activateQuickPanelWithLauncher(ctx context.Context, dir, socket string, action panelAction, capture func() panelActivation, launch func(context.Context) (desktopprocess.Info, error)) error {
 	var state roleStatus
-	if err := desktopprocess.Call(ctx, r.dir, desktopprocess.QuickPanel, "status", nil, &state); err == nil && state.Visible {
-		if favorites {
-			return desktopprocess.Call(ctx, r.dir, desktopprocess.QuickPanel, "favorites", nil, nil)
+	if err := desktopprocess.Call(ctx, dir, desktopprocess.QuickPanel, "status", nil, &state); err == nil && state.Visible {
+		switch action {
+		case panelActionFavorites:
+			return desktopprocess.Call(ctx, dir, desktopprocess.QuickPanel, "favorites", nil, nil)
+		case panelActionToggle:
+			return desktopprocess.Call(ctx, dir, desktopprocess.QuickPanel, "close", nil, nil)
+		default:
+			if info, perr := desktopprocess.Probe(ctx, dir, desktopprocess.QuickPanel); perr == nil {
+				quickpanel.AllowForeground(info.PID)
+			}
+			return desktopprocess.Call(ctx, dir, desktopprocess.QuickPanel, "focus", nil, nil)
 		}
-		return desktopprocess.Call(ctx, r.dir, desktopprocess.QuickPanel, "close", nil, nil)
 	}
 	activation := panelActivation{Error: "target"}
-	if r.capture != nil {
-		activation = r.capture()
+	if capture != nil {
+		activation = capture()
 	}
 	if activation.Target.PID != 0 {
-		for _, role := range []desktopprocess.Role{desktopprocess.GUI, desktopprocess.QuickPanel} {
-			if info, err := desktopprocess.Probe(ctx, r.dir, role); err == nil && info.PID == activation.Target.PID {
-				activation = panelActivation{Error: "target"}
+		if activation.Target.PID == os.Getpid() {
+			activation = panelActivation{Error: "target"}
+		} else {
+			for _, role := range []desktopprocess.Role{desktopprocess.Tray, desktopprocess.GUI, desktopprocess.QuickPanel} {
+				if info, err := desktopprocess.Probe(ctx, dir, role); err == nil && info.PID == activation.Target.PID {
+					activation = panelActivation{Error: "target"}
+					break
+				}
 			}
 		}
+	} else if activation.Target.ID != 0 {
+		// On Wayland, compositor-managed targets carry no external PID; reject
+		// auto-paste when unic's own main GUI window holds focus or when a live
+		// GUI's focus state cannot be confirmed.
+		var guiState roleStatus
+		if err := desktopprocess.Call(ctx, dir, desktopprocess.GUI, "status", nil, &guiState); err == nil {
+			if guiState.Focused {
+				activation = panelActivation{Error: "target"}
+			}
+		} else if !errors.Is(err, desktopprocess.ErrUnavailable) {
+			activation = panelActivation{Error: "target"}
+		}
 	}
-	activation.Favorites = favorites
-	r.panelLaunch.Lock()
-	info, err := launchDesktopRole(ctx, r.dir, r.socket, desktopprocess.QuickPanel)
-	r.panelLaunch.Unlock()
+	activation.Action = action
+	activation.Favorites = action == panelActionFavorites
+	info, err := launch(ctx)
 	if err != nil {
 		return err
 	}
 	quickpanel.AllowForeground(info.PID)
-	return desktopprocess.Call(ctx, r.dir, desktopprocess.QuickPanel, "activate", activation, nil)
+	return desktopprocess.Call(ctx, dir, desktopprocess.QuickPanel, "activate", activation, nil)
+}
+
+// openMainFromPanel activates the main GUI via an online tray, or starts the
+// standard Desktop launcher flow (tray + GUI) when Quick Panel runs standalone.
+func openMainFromPanel(ctx context.Context, dir, socket, action string) error {
+	err := desktopprocess.Call(ctx, dir, desktopprocess.Tray, "open-gui", action, nil)
+	if !errors.Is(err, desktopprocess.ErrUnavailable) {
+		return err
+	}
+	for {
+		if _, err = launchDesktopRole(ctx, dir, socket, desktopprocess.Tray); err != nil {
+			return err
+		}
+		err = desktopprocess.Call(ctx, dir, desktopprocess.Tray, "startup", nil, nil)
+		if errors.Is(err, desktopprocess.ErrUnavailable) {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(50 * time.Millisecond):
+				continue
+			}
+		}
+		if err != nil {
+			return err
+		}
+		if action != "" {
+			return desktopprocess.Call(ctx, dir, desktopprocess.Tray, "open-gui", action, nil)
+		}
+		return nil
+	}
 }
 func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawMessage) (any, error) {
 	switch command {
@@ -404,6 +510,7 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 		r.runtimeMu.Unlock()
 		r.mu.Lock()
 		r.retiring = true
+		r.closeAllViews = true
 		r.mu.Unlock()
 		return desktopprocess.ReplyAfter(nil, func() {
 			r.cancel()
@@ -544,6 +651,7 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 		r.opening.Lock()
 		r.mu.Lock()
 		r.retiring = true
+		r.closeAllViews = true
 		r.mu.Unlock()
 		r.opening.Unlock()
 		return desktopprocess.ReplyAfter(nil, func() {
@@ -557,10 +665,23 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 		return nil, fmt.Errorf("unknown tray command")
 	}
 }
+func (r *trayRuntime) markCloseAllViews() {
+	r.mu.Lock()
+	r.closeAllViews = true
+	r.mu.Unlock()
+}
 func (r *trayRuntime) close() {
+	r.mu.Lock()
+	closeAll := r.closeAllViews
+	r.mu.Unlock()
+	r.runtimeMu.Lock()
+	ownsService := r.service != nil
+	r.runtimeMu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	_ = r.closeViews(ctx, desktopprocess.GUI, desktopprocess.QuickPanel)
+	if closeAll || ownsService {
+		_ = r.closeViews(ctx, desktopprocess.GUI, desktopprocess.QuickPanel)
+	}
 	_ = r.pause(false)
 }
 
@@ -626,37 +747,27 @@ func roleContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
 
-// remoteClipboard preserves the tracked write receipt in the adapter owner.
-// UI processes neither acquire an adapter session nor access the native board.
-type remoteClipboard struct {
-	dir    string
+// daemonClipboard coordinates Quick Panel clipboard writes on macOS through
+// unicd's nativeboard adapter, opting in on demand when running standalone.
+type daemonClipboard struct {
 	daemon *api.Client
 }
 
-func (r remoteClipboard) Apply(ctx context.Context, _ *api.Client, id string, plain bool) (string, error) {
-	if r.daemon != nil {
-		out, err := r.daemon.ApplyDesktopClipboard(ctx, id, plain)
-		if err == nil {
-			err = quickpanel.FailureFromCode(out.Failure)
-		}
-		return out.Mark, err
+func (r daemonClipboard) Apply(ctx context.Context, _ *api.Client, id string, plain bool) (string, error) {
+	if err := r.daemon.EnableDesktopClipboard(ctx); err != nil {
+		return "", quickpanel.ErrClipboard
 	}
-	var reply clipboardReply
-	err := desktopprocess.Call(ctx, r.dir, desktopprocess.Tray, "clipboard-apply", clipboardRequest{ID: id, Plain: plain}, &reply)
+	out, err := r.daemon.ApplyDesktopClipboard(ctx, id, plain)
 	if err == nil {
-		err = quickpanel.FailureFromCode(reply.Failure)
+		err = quickpanel.FailureFromCode(out.Failure)
 	}
-	return reply.Mark, err
+	return out.Mark, err
 }
-func (r remoteClipboard) Matches(mark string) bool {
+func (r daemonClipboard) Matches(mark string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if r.daemon != nil {
-		matches, err := r.daemon.MatchDesktopClipboard(ctx, mark)
-		return err == nil && matches
-	}
-	var matches bool
-	return desktopprocess.Call(ctx, r.dir, desktopprocess.Tray, "clipboard-matches", clipboardRequest{Mark: mark}, &matches) == nil && matches
+	matches, err := r.daemon.MatchDesktopClipboard(ctx, mark)
+	return err == nil && matches
 }
 
 // closeViews is a shutdown barrier. No PID-only kill is permitted.

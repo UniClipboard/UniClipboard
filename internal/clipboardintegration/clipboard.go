@@ -612,13 +612,22 @@ func (c *Clipboard) IgnoreReceipts(ids []engine.ReceiptID) {
 }
 
 func sameHeldPaths(s clip.Snapshot, paths []string) bool {
-	if len(paths) == 0 || len(paths) != len(s.Files) {
+	if len(paths) == 0 || len(s.Files) == 0 {
 		return false
 	}
-	for i, f := range s.Files {
-		if f.Path != paths[i] {
-			return false
+	protected := make(map[string]struct{}, len(paths))
+	for _, p := range paths {
+		if p != "" {
+			protected[filepath.Clean(p)] = struct{}{}
 		}
 	}
-	return true
+	for _, f := range s.Files {
+		if f.Path == "" {
+			continue
+		}
+		if _, ok := protected[filepath.Clean(f.Path)]; ok {
+			return true
+		}
+	}
+	return false
 }

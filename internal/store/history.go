@@ -16,11 +16,19 @@ var (
 	ErrConflict = errors.New("store: history item revision mismatch")
 )
 
-// versioned holds schema steps tracked by PRAGMA user_version. No version has
-// been released, so there is one step: the current schema. Once a release
-// exists, append steps; never edit one that has shipped.
-var versioned = []string{
-	`CREATE TABLE history_state (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL);
+type schemaStep func(*sql.Tx) error
+
+func execStep(ddl string) schemaStep {
+	return func(tx *sql.Tx) error {
+		_, err := tx.Exec(ddl)
+		return err
+	}
+}
+
+// versioned holds schema steps tracked by PRAGMA user_version. Append new steps
+// rather than editing shipped ones in place so existing databases migrate cleanly.
+var versioned = []schemaStep{
+	execStep(`CREATE TABLE history_state (id INTEGER PRIMARY KEY CHECK (id = 1), revision INTEGER NOT NULL);
 INSERT INTO history_state (id, revision) VALUES (1, 0);
 -- seq is the private, never reused commit order (AUTOINCREMENT); id is public.
 CREATE TABLE clip_items (
@@ -81,8 +89,87 @@ CREATE TABLE sync_dedup (
   PRIMARY KEY (source, transfer_id, view_hash)
 ) WITHOUT ROWID;
 CREATE INDEX sync_dedup_created ON sync_dedup (created_ms);
-` + "\n" + annotationSchema + "\n" + deviceSchema, // unified devices and their per-backend-instance bindings (docs/architecture/identity-and-trust.md)
-	candidateSchema, // devices a peer vouched for (see docs/architecture/identity-and-trust.md)
+` + "\n" + annotationSchema + "\n" + deviceSchema), // unified devices and their per-backend-instance bindings (docs/architecture/identity-and-trust.md)
+	execStep(candidateSchema), // devices a peer vouched for (see docs/architecture/identity-and-trust.md)
+	migrateEnricherAndBindingPolicy,
+}
+
+func tableExists(tx *sql.Tx, table string) (bool, error) {
+	var ok int
+	err := tx.QueryRow(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&ok)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+func ensureColumn(tx *sql.Tx, table, column, definition string) error {
+	rows, err := tx.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var (
+			cid, notNull, pk int
+			name, ctype      string
+			dflt             sql.NullString
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dflt, &pk); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if name == column {
+			found = true
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if found {
+		return nil
+	}
+	_, err = tx.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
+	return err
+}
+
+// migrateEnricherAndBindingPolicy upgrades v2 databases created before PR #2368
+// (enricher annotations + isolated search doc columns) and PR #2367 (per-binding
+// sync direction policies) idempotently to schema version 3.
+func migrateEnricherAndBindingPolicy(tx *sql.Tx) error {
+	if _, err := tx.Exec(annotationSchema); err != nil {
+		return err
+	}
+	bindingCols := [][2]string{
+		{"policy_text", "TEXT NOT NULL DEFAULT 'bidirectional'"},
+		{"policy_images", "TEXT NOT NULL DEFAULT 'bidirectional'"},
+		{"policy_files", "TEXT NOT NULL DEFAULT 'bidirectional'"},
+		{"auth_revision", "INTEGER NOT NULL DEFAULT 1"},
+	}
+	for _, col := range bindingCols {
+		if err := ensureColumn(tx, "device_bindings", col[0], col[1]); err != nil {
+			return err
+		}
+	}
+	hasSearchDocs, err := tableExists(tx, "history_search_docs")
+	if err != nil {
+		return err
+	}
+	if hasSearchDocs {
+		searchCols := [][2]string{
+			{"source", "TEXT NOT NULL DEFAULT 'base'"},
+			{"doc_kind", "TEXT NOT NULL DEFAULT 'text'"},
+		}
+		for _, col := range searchCols {
+			if err := ensureColumn(tx, "history_search_docs", col[0], col[1]); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func migrate(db *sql.DB) error {
@@ -101,7 +188,7 @@ func migrate(db *sql.DB) error {
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec(versioned[v]); err != nil {
+		if err := versioned[v](tx); err != nil {
 			_ = tx.Rollback()
 			return err
 		}

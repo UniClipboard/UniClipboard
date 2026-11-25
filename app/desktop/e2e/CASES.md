@@ -57,6 +57,8 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [sidebar-collapse](#sidebar-collapse) | view | Sidebar closing tail, reopening and interrupted-transition reversal. |
 | [sidebar-navigation](#sidebar-navigation) | view | Distinguish hover from selection and keep scrollbar/footer space in the real history sidebar. |
 | [source-application](#source-application) | view | Show the captured application's cached icon and name immediately after device and time. |
+| [standalone-quick-panel-lifecycle](#standalone-quick-panel-lifecycle) | process | Public unic-desktop --quick-panel works with only standalone unicd, rejects invalid flags/services/uninitialized profiles, converges concurrent launches, coordinates clipboard writes with and without tray without echo or replay, releases managed file leases on replacement, and opens main GUI without tray. |
+| [standalone-quick-panel-native](#standalone-quick-panel-native) | native | Public unic-desktop --quick-panel opens a native Quick Panel window against standalone unicd without tray or GUI, searches and previews text/image/file history, copies to the isolated directory board, focuses without hiding on repeat launch, and keeps unicd and standby panel alive after dismissal. |
 | [startup-lifecycle](#startup-lifecycle) | process | Ownership, background intent, lightweight launch and process cleanup. |
 | [storage-cleanup-settings](#storage-cleanup-settings) | native | Keep cleanup rules inactive when cleanup is off while preserving the independent cache quota. |
 | [system-clipboard-formats](#system-clipboard-formats) | native | Prove native MIME capture and application without shared-clipboard propagation. |
@@ -1307,6 +1309,50 @@ Forbidden: Stale source metadata after selection changes, replacement by local a
 
 ```text
 acceptance desktopui source-application
+```
+
+## standalone-quick-panel-lifecycle
+
+Standalone Quick Panel lifecycle and service-coordinated clipboard
+
+Steps: Reject invalid flag combinations, absent service, cross-profile socket, cli-temporary service, and uninitialized/pending-migration profiles without creating processes or mutating profile state. Start standalone unicd, invoke concurrent unic-desktop --quick-panel launches, copy text, plain-text Action, image, and cached files, verify exact directory-board bytes and managed file lease release after external clipboard replacement. Run tray alongside the standalone panel, verify one clipboard write and zero capture/sync echo, exit tray while keeping the standalone unicd, repeat panel copy, inject completion interruption to verify zero replay, and open main GUI from the standalone panel.
+
+Expected: One quick-panel PID and one unicd generation serve the profile; repeated --quick-panel keeps the visible panel open; all copy formats and plain-text rejections succeed accurately; tray coexistence and exit cause no echo or loss of panel copy; interrupted completion never replays; opening main GUI succeeds without tray.
+
+Forbidden: Implicit unicd/tray/gui launch on rejected --quick-panel, polluting uninitialized directories, duplicate quick-panel PIDs, hiding visible panel on repeated --quick-panel, duplicate clipboard writes, capture/sync echo, automatic replay of uncertain writes, leaked file leases, or native system clipboard claims.
+
+```text
+acceptance startup standalone-quick-panel-lifecycle
+```
+
+## standalone-quick-panel-native
+
+Standalone Quick Panel native window without tray
+
+Steps: Start standalone unicd in an initialized isolated profile without tray or GUI, submit synthetic text, PNG image, and file history, and invoke public unic-desktop --quick-panel. Verify only unicd and quick-panel processes exist; search and preview stored entries including the satellite flyout; invoke unic-desktop --quick-panel again to verify the window stays open and focused; copy selected content and verify exact directory-board bytes and windowless standby after dismissal.
+
+Expected: Native Quick Panel window and preview satellite render and record continuous frames without tray or GUI; repeated --quick-panel focuses without closing; Copy writes exact directory-board bytes; dismissal destroys windows while quick-panel and standalone unicd stay alive with distinct PIDs.
+
+Forbidden: Tray or GUI process creation, system clipboard mutation, physical input claims, hiding on repeated --quick-panel, stopping standalone unicd on panel dismissal, missing screenshots, or missing continuous sampled-window recording.
+
+```text
+start-standalone-service
+submit standalone-panel-text 'Standalone Quick Panel native text'
+submit-image standalone-panel-image
+submit-file standalone-panel-file 'standalone-note.txt' 'Standalone panel file body'
+public-open-panel
+standalone-panel-only-check
+ui-wait button '历史：Standalone Quick Panel native text'
+ui-set textField '搜索快捷面板' 'Standalone Quick Panel'
+ui-wait button '历史：Standalone Quick Panel native text'
+role-panel-preview
+screenshot standalone-panel-open
+public-open-panel-refocus
+screenshot standalone-panel-refocused
+role-panel-copy
+board-equals 'Standalone Quick Panel native text'
+role-panel-hidden
+standalone-panel-only-check
 ```
 
 ## startup-lifecycle

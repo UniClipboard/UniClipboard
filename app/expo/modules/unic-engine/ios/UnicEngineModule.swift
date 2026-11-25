@@ -210,6 +210,7 @@ public final class UnicEngineModule: Module {
   private var activeMigrationCancel: MobileCancelToken?
   private var pathMonitor: NWPathMonitor?
   private var activeMediaPicker: MediaPickerCoordinator?
+  private var activeQRScanner: PairingQRScanner?
   private var automaticCapture = true
   private var activePickerCoordinator: DocumentPickerCoordinator?
   private var securityScopedSetupURL: URL?
@@ -927,6 +928,25 @@ public final class UnicEngineModule: Module {
         } else {
           self.presentImagePicker(camera: camera, promise: promise)
         }
+      }
+    }
+
+    AsyncFunction("scanQRCode") { (cancelLabel: String, hint: String, promise: Promise) in
+      Task { @MainActor in
+        guard self.activeQRScanner == nil else {
+          promise.reject(UnicModuleException("[unic:invalid_state] {\"code\":\"invalid_state\",\"message\":\"QR scanner already active\"}"))
+          return
+        }
+        let scanner = PairingQRScanner(
+          cancelLabel: cancelLabel,
+          hint: hint,
+          promise: promise,
+          onFinish: { [weak self] in
+            self?.activeQRScanner = nil
+          }
+        )
+        self.activeQRScanner = scanner
+        scanner.start()
       }
     }
 

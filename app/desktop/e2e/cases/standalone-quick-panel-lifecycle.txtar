@@ -1,0 +1,13 @@
+# Case: Standalone Quick Panel lifecycle and service-coordinated clipboard
+# Mode: process
+# Purpose: Public unic-desktop --quick-panel works with only standalone unicd, rejects invalid flags/services/uninitialized profiles, converges concurrent launches, coordinates clipboard writes with and without tray without echo or replay, releases managed file leases on replacement, and opens main GUI without tray.
+# Steps:
+#   Reject invalid flag combinations, absent service, cross-profile socket, cli-temporary service, and uninitialized/pending-migration profiles without creating processes or mutating profile state.
+#   Start standalone unicd, invoke concurrent unic-desktop --quick-panel launches, copy text, plain-text Action, image, and cached files, verify exact directory-board bytes and managed file lease release after external clipboard replacement.
+#   Run tray alongside the standalone panel, verify one clipboard write and zero capture/sync echo, exit tray while keeping the standalone unicd, repeat panel copy, inject completion interruption to verify zero replay, and open main GUI from the standalone panel.
+# Expected:
+#   One quick-panel PID and one unicd generation serve the profile; repeated --quick-panel keeps the visible panel open; all copy formats and plain-text rejections succeed accurately; tray coexistence and exit cause no echo or loss of panel copy; interrupted completion never replays; opening main GUI succeeds without tray.
+# Forbidden:
+#   Implicit unicd/tray/gui launch on rejected --quick-panel, polluting uninitialized directories, duplicate quick-panel PIDs, hiding visible panel on repeated --quick-panel, duplicate clipboard writes, capture/sync echo, automatic replay of uncertain writes, leaked file leases, or native system clipboard claims.
+
+acceptance startup standalone-quick-panel-lifecycle

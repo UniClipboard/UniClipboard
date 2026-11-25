@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Image as RNImage, StyleSheet, View } from 'react-native';
+import { Image as RNImage, StyleSheet } from 'react-native';
 import {
   Button as SwiftUIButton,
   HStack,
@@ -38,7 +38,6 @@ import {
   iosSecondaryButtonModifiers,
 } from '@/components/ui/iosButtonStyles.ios';
 import type { EngineCandidate, EngineDevice, SensitiveTicket } from '@/engine/types';
-import { PairingScanner } from '@/screens/PairingScanner';
 import { settingsTileColors } from '@/screens/settings/ios/common';
 import { deviceDisplayName } from './deviceRows';
 
@@ -195,16 +194,12 @@ export function PairingApproveSheet({
 }
 
 export function PairingJoinSheet({
-  mode,
-  focused,
-  foreground,
+  visible,
   starting,
   onSubmitInput,
   onClose,
 }: {
-  mode: 'manual' | 'scan' | null;
-  focused: boolean;
-  foreground: boolean;
+  visible: boolean;
   starting: boolean;
   onSubmitInput: (input: string) => void;
   onClose: () => void;
@@ -215,11 +210,11 @@ export function PairingJoinSheet({
   const inputState = useNativeState('');
 
   useEffect(() => {
-    if (mode === null) {
+    if (!visible) {
       setInput('');
       inputState.set('');
     }
-  }, [mode, inputState]);
+  }, [visible, inputState]);
 
   const canSubmit = Boolean(input.trim()) && !starting;
 
@@ -230,37 +225,11 @@ export function PairingJoinSheet({
 
   return (
     <IosBottomSheet
-      visible={mode !== null}
+      visible={visible}
       onDismiss={onClose}
-      detents={mode === 'scan' ? ['large'] : ['medium', 'large']}
+      detents={['medium', 'large']}
     >
-      {mode === 'scan' ? (
-        <IosSheetPage
-          title={pair('scan')}
-          rightSlots={[
-            <SheetCircleButton
-              key="close"
-              systemName="xmark"
-              accessibilityLabel={t('common:action.close')}
-              onPress={onClose}
-            />,
-          ]}
-        >
-          <VStack
-            spacing={16}
-            modifiers={[
-              frame({ maxWidth: Infinity, maxHeight: Infinity, alignment: 'top' }),
-              padding({ horizontal: 20, top: 12, bottom: 20 }),
-            ]}
-          >
-            <RNHostView matchContents>
-              <View style={styles.scannerContainer}>
-                {focused && foreground ? <PairingScanner onRead={onSubmitInput} /> : null}
-              </View>
-            </RNHostView>
-          </VStack>
-        </IosSheetPage>
-      ) : mode === 'manual' ? (
+      {visible ? (
         <IosSheetPage
           title={pair('enterCode')}
           rightSlots={[
@@ -500,11 +469,6 @@ export function CandidateDetailSheet({
 }
 
 const styles = StyleSheet.create({
-  scannerContainer: {
-    width: '100%',
-    minHeight: 280,
-    gap: 12,
-  },
   qrImage: {
     width: 240,
     height: 240,

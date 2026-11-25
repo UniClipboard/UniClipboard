@@ -42,6 +42,13 @@ type Platform interface {
 	Paste(Target) error
 	OwnsForeground() bool
 }
+
+// PastePreparer is optionally implemented by platforms that must obtain or
+// restore user-consented input authorization (such as the Wayland RemoteDesktop
+// portal) before applying the clipboard and hiding the panel.
+type PastePreparer interface {
+	PreparePaste(context.Context) error
+}
 type Options struct {
 	Context   context.Context
 	Client    *api.Client
@@ -144,12 +151,28 @@ func (c *Controller) Start(id string, plain, paste, keep bool) error {
 	}
 	c.generation++
 	generation := c.generation
-	ctx, cancel := context.WithTimeout(c.options.Context, 10*time.Second)
+	timeout := 10 * time.Second
+	preparer, hasPreparer := c.options.Platform.(PastePreparer)
+	if paste && hasPreparer {
+		timeout = 65 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(c.options.Context, timeout)
 	c.cancel = cancel
 	c.Busy = true
 	c.changed()
 	go func() {
-		mark, err := c.options.Clipboard.Apply(ctx, c.options.Client, id, plain)
+		var (
+			mark string
+			err  error
+		)
+		if paste && hasPreparer {
+			err = preparer.PreparePaste(ctx)
+		}
+		if err == nil {
+			applyCtx, applyCancel := context.WithTimeout(ctx, 10*time.Second)
+			mark, err = c.options.Clipboard.Apply(applyCtx, c.options.Client, id, plain)
+			applyCancel()
+		}
 		c.options.Dispatch(func() {
 			if generation != c.generation || ctx.Err() != nil {
 				if generation == c.generation {

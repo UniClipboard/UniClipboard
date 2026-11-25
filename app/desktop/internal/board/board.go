@@ -90,12 +90,24 @@ func readContent() (clip.Snapshot, error) {
 }
 
 func (MyGo) Write(s clip.Snapshot) error {
+	return (MyGo{}).WriteWithRelease(s, nil)
+}
+
+func (MyGo) WriteWithRelease(s clip.Snapshot, onRelease func()) error {
+	var opts []mygo.ClipboardOptions
+	if onRelease != nil {
+		opts = append(opts, mygo.ClipboardOptions{OnRelease: onRelease})
+	}
 	if len(s.Files) > 0 {
 		paths := make([]string, len(s.Files))
 		for i, f := range s.Files {
 			paths[i] = f.Path
 		}
-		return mygo.Clipboard.WriteFiles(paths...)
+		data, err := transfer.FileData(paths...)
+		if err != nil {
+			return err
+		}
+		return mygo.Clipboard.Write(data, opts...)
 	}
 	// One item with several representations: they are alternatives for the
 	// same content, as a rich-text copy offers text, HTML and an image.
@@ -103,7 +115,13 @@ func (MyGo) Write(s clip.Snapshot) error {
 	for _, p := range s.Parts {
 		reps = append(reps, transfer.Bytes(transfer.Format(p.Format), p.Data))
 	}
-	return mygo.Clipboard.Write(transfer.New(transfer.NewItem(reps...)))
+	return mygo.Clipboard.Write(transfer.New(transfer.NewItem(reps...)), opts...)
+}
+
+// WatchChanges subscribes to native clipboard change events (for example GTK
+// owner-change or Win32 WM_CLIPBOARDUPDATE) without polling timers.
+func (MyGo) WatchChanges(fn func()) func() {
+	return mygo.Clipboard.OnChanged(fn)
 }
 
 func baseName(p string) string {

@@ -16,4 +16,5 @@ func TestDesktopAcceptance(t *testing.T) {
 	t.Run("desktop-lightweight-invalid-config-close", scenarioLightweightClose)
 	t.Run("first-install-setup", scenarioFirstInstallSetup)
 	t.Run("production-boundary", scenarioProductionBoundary)
+	t.Run("standalone-quick-panel-lifecycle", scenarioStandaloneQuickPanelLifecycle)
 }

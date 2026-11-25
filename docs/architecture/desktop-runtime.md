@@ -47,7 +47,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: f99e90e35f86c5d5fe50c87e04217c415595a93a
+verified: 44cb9e173d44f4864d874c1fe6325592a845cc8c
 ---
 # Desktop configuration and received files
 
@@ -386,7 +386,7 @@ Cleanup does not enumerate unknown default-cache directories merely because thei
 - `internal/localconfig/manager.go`: serialized saves, raw-file revision, watcher, and restart status.
 - `app/service/cmd/unic/cli.go`: configuration commands and cache inventory.
 - `app/desktop/internal/lifecycle/service.go`: tray acquisition policy (borrow a standalone service, start an owned service when absent, refuse another desktop owner or CLI-temporary service); process primitives are in `internal/servicelaunch`.
-- `app/desktop/internal/desktopprocess`: profile-scoped kernel role locks, private activation IPC and OS peer executable verification.
+- `app/desktop/internal/desktopprocess`: profile-scoped kernel role locks, private activation IPC, OS peer executable verification, and handle-verified retirement of orphaned previous-build view roles (`gui`, `quick-panel`) after executable replacement.
 - `app/service/cmd/unic/history.go`: explicit history restore, Action execution and retry key.
 - `app/service/cmd/unic/requirements.go`, `session.go`, `sendwait.go`: command requirements, generation-bound service usage and own-operation completion.
 - `engine/restore.go`: token-authorized resend without a new commit.

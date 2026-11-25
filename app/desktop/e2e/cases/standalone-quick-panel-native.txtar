@@ -1,0 +1,28 @@
+# Case: Standalone Quick Panel native window without tray
+# Mode: native
+# Purpose: Public unic-desktop --quick-panel opens a native Quick Panel window against standalone unicd without tray or GUI, searches and previews text/image/file history, copies to the isolated directory board, focuses without hiding on repeat launch, and keeps unicd and standby panel alive after dismissal.
+# Steps:
+#   Start standalone unicd in an initialized isolated profile without tray or GUI, submit synthetic text, PNG image, and file history, and invoke public unic-desktop --quick-panel.
+#   Verify only unicd and quick-panel processes exist; search and preview stored entries including the satellite flyout; invoke unic-desktop --quick-panel again to verify the window stays open and focused; copy selected content and verify exact directory-board bytes and windowless standby after dismissal.
+# Expected:
+#   Native Quick Panel window and preview satellite render and record continuous frames without tray or GUI; repeated --quick-panel focuses without closing; Copy writes exact directory-board bytes; dismissal destroys windows while quick-panel and standalone unicd stay alive with distinct PIDs.
+# Forbidden:
+#   Tray or GUI process creation, system clipboard mutation, physical input claims, hiding on repeated --quick-panel, stopping standalone unicd on panel dismissal, missing screenshots, or missing continuous sampled-window recording.
+
+start-standalone-service
+submit standalone-panel-text 'Standalone Quick Panel native text'
+submit-image standalone-panel-image
+submit-file standalone-panel-file 'standalone-note.txt' 'Standalone panel file body'
+public-open-panel
+standalone-panel-only-check
+ui-wait button '历史：Standalone Quick Panel native text'
+ui-set textField '搜索快捷面板' 'Standalone Quick Panel'
+ui-wait button '历史：Standalone Quick Panel native text'
+role-panel-preview
+screenshot standalone-panel-open
+public-open-panel-refocus
+screenshot standalone-panel-refocused
+role-panel-copy
+board-equals 'Standalone Quick Panel native text'
+role-panel-hidden
+standalone-panel-only-check

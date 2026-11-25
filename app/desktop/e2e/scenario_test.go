@@ -71,6 +71,8 @@ type desktopScenario struct {
 	windowSkin                     string
 	app                            *exec.Cmd
 	appDone                        chan error
+	standaloneDaemon               *exec.Cmd
+	standaloneDaemonDone           chan error
 	client                         *api.Client
 	automation                     string
 	window                         int
@@ -920,13 +922,24 @@ func (s *desktopScenario) finish(env *testscript.Env) {
 	}
 }
 func (s *desktopScenario) roleCommand(role, command string) ([]byte, error) {
-	if s.app == nil {
+	binPath := ""
+	var baseEnv []string
+	if s.app != nil {
+		binPath = s.app.Path
+		baseEnv = s.app.Env
+	} else if s.standaloneDaemon != nil {
+		binPath = filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unic-desktop")
+		if os.PathSeparator == '\\' {
+			binPath += ".exe"
+		}
+		baseEnv = s.standaloneDaemon.Env
+	} else {
 		return nil, errors.New("Desktop has not started")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, s.app.Path, "--role", role, "--command", command)
-	for _, entry := range s.app.Env {
+	cmd := exec.CommandContext(ctx, binPath, "--role", role, "--command", command)
+	for _, entry := range baseEnv {
 		if !strings.HasPrefix(entry, "MYGO_AUTOMATION=") {
 			cmd.Env = append(cmd.Env, entry)
 		}
@@ -935,8 +948,28 @@ func (s *desktopScenario) roleCommand(role, command string) ([]byte, error) {
 	return cmd.CombinedOutput()
 }
 func (s *desktopScenario) stopApp() error {
-	if s.appDone == nil {
+	if s.appDone == nil && s.standaloneDaemonDone == nil {
 		return nil
+	}
+	if s.appDone == nil && s.standaloneDaemonDone != nil {
+		var cleanupErr error
+		_, _ = s.roleCommand("gui", "quit")
+		_, _ = s.roleCommand("quick-panel", "quit")
+		_, _ = s.roleCommand("tray", "quit")
+		if s.standaloneDaemon != nil && s.standaloneDaemon.Process != nil {
+			_ = s.standaloneDaemon.Process.Signal(syscall.SIGTERM)
+			select {
+			case <-s.standaloneDaemonDone:
+			case <-time.After(8 * time.Second):
+				_ = s.standaloneDaemon.Process.Kill()
+				select {
+				case <-s.standaloneDaemonDone:
+				case <-time.After(3 * time.Second):
+					cleanupErr = errors.Join(cleanupErr, errors.New("standalone unicd did not exit"))
+				}
+			}
+		}
+		return cleanupErr
 	}
 	type observedRole struct {
 		role string

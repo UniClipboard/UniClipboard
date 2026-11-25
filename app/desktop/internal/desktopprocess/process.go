@@ -96,9 +96,21 @@ func identity(dir string, role Role) (Info, error) {
 	return Info{Role: role, PID: os.Getpid(), StartedAt: time.Now().UTC(), Profile: profile, BinaryPath: program, BinarySHA256: hash}, nil
 }
 
+type fileStamp struct {
+	dev       uint64
+	ino       uint64
+	size      int64
+	mtimeSec  int64
+	mtimeNsec int64
+	ctimeSec  int64
+	ctimeNsec int64
+}
+
 var self struct {
 	once       sync.Once
 	path, hash string
+	stamp      fileStamp
+	hasStamp   bool
 	err        error
 }
 
@@ -115,6 +127,27 @@ func fileHash(path string) (string, error) {
 	}
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
+
+func hashFileWithStamp(path string) (string, fileStamp, bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fileStamp{}, false, err
+	}
+	stamp, ok := fdFileStamp(f)
+	sum := sha256.New()
+	_, copyErr := io.Copy(sum, f)
+	closeErr := f.Close()
+	if err := errors.Join(copyErr, closeErr); err != nil {
+		return "", fileStamp{}, false, err
+	}
+	if ok {
+		if cur, curOK := statFileStamp(path); !curOK || cur != stamp {
+			ok = false
+		}
+	}
+	return hex.EncodeToString(sum.Sum(nil)), stamp, ok, nil
+}
+
 func selfExecutable() (string, string, error) {
 	self.once.Do(func() {
 		self.path, self.err = os.Executable()
@@ -125,10 +158,15 @@ func selfExecutable() (string, string, error) {
 		if self.err != nil {
 			return
 		}
-		self.hash, self.err = fileHash(self.path)
+		self.hash, self.stamp, self.hasStamp, self.err = hashFileWithStamp(self.path)
 	})
 	if self.err != nil {
 		return "", "", self.err
+	}
+	if self.hasStamp {
+		if cur, ok := statFileStamp(self.path); ok && cur == self.stamp {
+			return self.path, self.hash, nil
+		}
 	}
 	hash, err := fileHash(self.path)
 	if err != nil {
@@ -150,6 +188,11 @@ func verifyPeer(conn net.Conn, server bool, expected Info) (int, error) {
 			return 0, fmt.Errorf("%w: desktop IPC peer executable replaced", ErrStaleBuild)
 		}
 		return 0, errors.New("desktop IPC peer executable mismatch")
+	}
+	if self.hasStamp && expected.BinarySHA256 == self.hash && samePath(path, self.path) {
+		if cur, ok := statFileStamp(path); ok && cur == self.stamp {
+			return pid, nil
+		}
 	}
 	hash, err := fileHash(path)
 	if err != nil || hash != expected.BinarySHA256 {

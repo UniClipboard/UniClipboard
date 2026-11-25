@@ -79,6 +79,9 @@ func runDaemon(mode servicelifecycle.Mode) error {
 		}
 	}()
 	settings.OnChange = func(_, _ config.Config, err error) { n.ConfigChanged(err) }
+	if err := n.Start(ctx); err != nil {
+		return err
+	}
 	ln, err = server.Listen(sock)
 	if err != nil {
 		return err
@@ -86,9 +89,6 @@ func runDaemon(mode servicelifecycle.Mode) error {
 	// Remove the socket only after Engine releases its state-directory lock.
 	if unixListener, ok := ln.(*net.UnixListener); ok {
 		unixListener.SetUnlinkOnClose(false)
-	}
-	if err := n.Start(ctx); err != nil {
-		return err
 	}
 	go func() { _ = settings.Watch(ctx) }()
 	mux := http.NewServeMux()

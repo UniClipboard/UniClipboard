@@ -111,6 +111,7 @@ func (s *desktopSession) start() {
 				s.startFailed()
 				return
 			}
+			wasSetup := s.setup != nil
 			s.flow = flow
 			s.setup = nil
 			ctx, cancel := context.WithCancel(s.ctx)
@@ -184,8 +185,10 @@ func (s *desktopSession) start() {
 				})
 			})
 			go s.followHost(ctx)
-			s.g.win.SetMinimumSize(600, 480)
-			resizeContentCentered(s.g.win, desktopWindowWidth, desktopWindowHeight)
+			if wasSetup {
+				s.g.win.SetMinimumSize(600, 480)
+				resizeContentCentered(s.g.win, desktopWindowWidth, desktopWindowHeight)
+			}
 			s.g.win.Invalidate()
 		})
 	}()

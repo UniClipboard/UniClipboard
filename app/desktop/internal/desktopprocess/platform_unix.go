@@ -93,3 +93,19 @@ func dial(ctx context.Context, root string, role Role) (net.Conn, error) {
 }
 
 func configureRoleProcess(cmd *exec.Cmd) { servicelaunch.ConfigureProcess(cmd) }
+
+func statFileStamp(path string) (fileStamp, bool) {
+	var st unix.Stat_t
+	if err := unix.Stat(path, &st); err != nil {
+		return fileStamp{}, false
+	}
+	return unixFileStamp(&st)
+}
+
+func fdFileStamp(f *os.File) (fileStamp, bool) {
+	var st unix.Stat_t
+	if err := unix.Fstat(int(f.Fd()), &st); err != nil {
+		return fileStamp{}, false
+	}
+	return unixFileStamp(&st)
+}

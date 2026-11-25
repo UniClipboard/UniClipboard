@@ -87,8 +87,9 @@ type Backend struct {
 	self         string
 	st           rpc.SyncState
 	trTried      bool          // Transport.Start was ever called; Close must release it
-	trUsed       bool          // Transport.Start was called
-	trDone       chan struct{} // closed when that call returned
+	trUsed       bool          // Transport.Start succeeded or is currently in flight
+	trReady      bool          // Transport.Start succeeded
+	trDone       chan struct{} // closed when the latest Transport.Start call returned
 	run          *runState     // non-nil while the network is up
 	recoveries   map[string]recoveryObservation
 	sessions     map[string]*session
@@ -101,11 +102,13 @@ type Backend struct {
 
 // runState is one up period of the network.
 type runState struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	ln     net.Listener
-	conns  map[net.Conn]struct{} // connections still handshaking
-	wg     sync.WaitGroup
+	ctx     context.Context
+	cancel  context.CancelFunc
+	mu      sync.Mutex // guards ln
+	ln      net.Listener
+	serving bool                  // guarded by Backend.mu
+	conns   map[net.Conn]struct{} // connections still handshaking
+	wg      sync.WaitGroup
 }
 
 func New(cfg Config) *Backend {
@@ -168,54 +171,103 @@ func (b *Backend) ApplyState(ctx context.Context, s rpc.SyncState) error {
 	return nil
 }
 
-// up starts the transport (first time only) and the listener.
-func (b *Backend) up(ctx context.Context) error {
+// up activates the run immediately and starts the transport (first time only)
+// and listener asynchronously so local startup never blocks on network probes.
+func (b *Backend) up(_ context.Context) error {
 	b.life.Lock()
 	defer b.life.Unlock()
 	b.mu.Lock()
-	if b.run != nil {
-		b.mu.Unlock()
+	r := b.run
+	if r == nil {
+		rctx, cancel := context.WithCancel(context.Background())
+		r = &runState{ctx: rctx, cancel: cancel, conns: map[net.Conn]struct{}{}}
+		b.run = r
+	}
+	if !b.trReady && !b.trUsed {
+		b.trUsed, b.trTried = true, true
+		done := make(chan struct{})
+		b.trDone = done
+		go b.startTransport(done)
+	}
+	needServe := !r.serving
+	if needServe {
+		r.serving = true
+	}
+	b.mu.Unlock()
+	if needServe {
+		if !b.spawn(r, func() { b.serveRun(r) }) {
+			b.mu.Lock()
+			if b.run == r {
+				r.serving = false
+			}
+			b.mu.Unlock()
+		}
+	}
+	return nil
+}
+
+func (b *Backend) startTransport(done chan struct{}) {
+	epoch, start := b.epoch(), time.Now()
+	err := b.cfg.Transport.Start()
+	b.attempt(epoch, "network_start", "none", start, err, "")
+	b.mu.Lock()
+	if err == nil {
+		b.trReady = true
+	} else {
+		b.trUsed = false // a later active state tries again
+	}
+	b.mu.Unlock()
+	close(done)
+}
+
+func (b *Backend) waitTransport(ctx context.Context) error {
+	b.mu.Lock()
+	ready, used, done := b.trReady, b.trUsed, b.trDone
+	b.mu.Unlock()
+	if ready {
 		return nil
 	}
-	if !b.trUsed {
-		b.trUsed, b.trTried = true, true
-		b.trDone = make(chan struct{})
-		done := b.trDone
-		res := make(chan error, 1)
-		go func() {
-			epoch, start := b.epoch(), time.Now()
-			err := b.cfg.Transport.Start()
-			b.attempt(epoch, "network_start", "none", start, err, "")
-			res <- err
-			close(done)
-		}()
-		b.mu.Unlock()
-		select {
-		case err := <-res:
-			if err != nil {
-				b.mu.Lock()
-				b.trUsed = false // a later state tries again
-				b.mu.Unlock()
-				return rpc.NewError(rpc.CodeUnavailable)
-			}
-		case <-ctx.Done():
-			return rpc.NewError(rpc.CodeCancelled)
-		}
-		b.mu.Lock()
-	}
-	b.mu.Unlock()
-	rctx, cancel := context.WithCancel(context.Background())
-	ln, err := b.cfg.Transport.Listen(rctx)
-	if err != nil {
-		cancel()
+	if !used || done == nil {
 		return rpc.NewError(rpc.CodeUnavailable)
 	}
-	r := &runState{ctx: rctx, cancel: cancel, ln: ln, conns: map[net.Conn]struct{}{}}
-	b.mu.Lock()
-	b.run = r
-	b.mu.Unlock()
-	b.spawn(r, func() { b.acceptLoop(r) })
-	return nil
+	select {
+	case <-done:
+		b.mu.Lock()
+		ready = b.trReady
+		b.mu.Unlock()
+		if !ready {
+			return rpc.NewError(rpc.CodeUnavailable)
+		}
+		return nil
+	case <-ctx.Done():
+		return rpc.NewError(rpc.CodeCancelled)
+	}
+}
+
+func (b *Backend) serveRun(r *runState) {
+	defer func() {
+		b.mu.Lock()
+		if b.run == r {
+			r.serving = false
+		}
+		b.mu.Unlock()
+	}()
+	if err := b.waitTransport(r.ctx); err != nil {
+		return
+	}
+	ln, err := b.cfg.Transport.Listen(r.ctx)
+	if err != nil {
+		return
+	}
+	r.mu.Lock()
+	if r.ctx.Err() != nil {
+		r.mu.Unlock()
+		_ = ln.Close()
+		return
+	}
+	r.ln = ln
+	r.mu.Unlock()
+	b.acceptLoop(r, ln)
 }
 
 // down closes the listener, every connection and every goroutine of the run.
@@ -256,7 +308,13 @@ func (b *Backend) down() {
 		s.closeWith(why)
 	}
 	r.cancel()
-	_ = r.ln.Close()
+	r.mu.Lock()
+	ln := r.ln
+	r.ln = nil
+	r.mu.Unlock()
+	if ln != nil {
+		_ = ln.Close()
+	}
 	for _, c := range conns {
 		_ = c.Close()
 	}
@@ -323,7 +381,13 @@ func (b *Backend) running() *runState { b.mu.Lock(); defer b.mu.Unlock(); return
 // ---- pairing ----
 
 // PairingAddress is the address a ticket carries: this device's own.
-func (b *Backend) PairingAddress(context.Context, string) (string, error) {
+func (b *Backend) PairingAddress(ctx context.Context, _ string) (string, error) {
+	if b.running() == nil {
+		return "", rpc.NewError(rpc.CodeUnavailable)
+	}
+	if err := b.waitTransport(ctx); err != nil {
+		return "", err
+	}
 	if b.running() == nil {
 		return "", rpc.NewError(rpc.CodeUnavailable)
 	}
@@ -339,6 +403,12 @@ func (b *Backend) PairingAddress(context.Context, string) (string, error) {
 func (b *Backend) Connect(ctx context.Context, c rpc.Connect) (rpc.ConnectResult, error) {
 	r := b.running()
 	if r == nil {
+		return rpc.ConnectResult{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	if err := b.waitTransport(ctx); err != nil {
+		return rpc.ConnectResult{}, err
+	}
+	if b.running() != r {
 		return rpc.ConnectResult{}, rpc.NewError(rpc.CodeUnavailable)
 	}
 	if c.Address == b.cfg.Transport.Addr() {
@@ -561,9 +631,9 @@ func randHex(n int) string {
 	return hex.EncodeToString(buf)
 }
 
-func (b *Backend) acceptLoop(r *runState) {
+func (b *Backend) acceptLoop(r *runState, ln net.Listener) {
 	for {
-		conn, err := r.ln.Accept()
+		conn, err := ln.Accept()
 		if err != nil {
 			if r.ctx.Err() == nil {
 				b.logf("accept: %v", err)
@@ -1279,6 +1349,9 @@ func (b *Backend) keepDialing(r *runState, p rpc.StatePeer) {
 
 // dialOnce makes one attempt and reports whether a session came up.
 func (b *Backend) dialOnce(ctx context.Context, r *runState, p rpc.StatePeer) bool {
+	if err := b.waitTransport(ctx); err != nil {
+		return false
+	}
 	b.mu.Lock()
 	ds := b.dialing[p.ID]
 	wasConnecting := ds.inFlight || (time.Now().Before(ds.activeUntil) && ds.attempts < maxConnectingAttempts)

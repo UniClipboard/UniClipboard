@@ -6,6 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/ebitengine/purego"
+	"golang.org/x/sys/unix"
 )
 
 var procPath struct {
@@ -41,4 +42,16 @@ func processExecutable(pid int) (string, error) {
 		}
 	}
 	return "", errors.New("desktop IPC peer executable path too long")
+}
+
+func unixFileStamp(st *unix.Stat_t) (fileStamp, bool) {
+	return fileStamp{
+		dev:       uint64(st.Dev),
+		ino:       uint64(st.Ino),
+		size:      st.Size,
+		mtimeSec:  int64(st.Mtim.Sec),
+		mtimeNsec: int64(st.Mtim.Nsec),
+		ctimeSec:  int64(st.Ctim.Sec),
+		ctimeNsec: int64(st.Ctim.Nsec),
+	}, true
 }

@@ -57,4 +57,33 @@ func TestTrayRuntimeRestartCommandGuards(t *testing.T) {
 			t.Fatal("expected error while another desktop transition holds the lock")
 		}
 	})
+
+	t.Run("start-runtime fast path does not block on opening lock when already active", func(t *testing.T) {
+		r := newRuntime()
+		r.state.Ready = true
+		r.adapterCancel = func() {}
+		r.opening.Lock()
+		defer r.opening.Unlock()
+		if _, err := r.handler(ctx, "start-runtime", nil); err != nil {
+			t.Fatalf("start-runtime = %v, want nil without waiting on opening lock", err)
+		}
+	})
+
+	t.Run("start-runtime respects pause and retiring barriers", func(t *testing.T) {
+		r := newRuntime()
+		r.state.Ready = true
+		r.adapterCancel = func() {}
+		r.paused = true
+		if r.isReadyFast() {
+			t.Fatal("paused runtime must not take start-runtime fast path")
+		}
+		r.paused = false
+		r.retiring = true
+		if r.isReadyFast() {
+			t.Fatal("retiring runtime must not take start-runtime fast path")
+		}
+		if _, err := r.handler(ctx, "start-runtime", nil); !errors.Is(err, desktopprocess.ErrUnavailable) {
+			t.Fatalf("retiring start-runtime = %v, want ErrUnavailable", err)
+		}
+	})
 }

@@ -197,6 +197,7 @@ type viewState struct {
 	confirmEntries                                                        []string
 	drawerSwitchDir                                                       int
 	sidebarHidden, detailOpen, inspector, tagsOpen, quickLook, filterOpen bool
+	narrowSearchOpen, wasNarrow                                           bool
 	zoomStep                                                              int
 	shortcutReturnPage                                                    string
 	shortcutEditor                                                        shortcutEditor

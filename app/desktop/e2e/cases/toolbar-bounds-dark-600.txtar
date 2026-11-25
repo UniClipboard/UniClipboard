@@ -1,8 +1,8 @@
 # Case: Native toolbar bounds at 600 points in dark mode
 # Mode: native
-# Purpose: Keep unified production history controls within the toolbar at 600x480.
-# Steps: Start an isolated production desktop; focus the always-visible search, edit and clear its query, switch layouts and open the command menu.
-# Expected: Every toolbar control remains inside the band; search and menus remain usable.
+# Purpose: Keep responsive narrow production history controls within the toolbar at 600x480 without overlap.
+# Steps: Start an isolated production desktop; expand or focus search, edit and clear its query, collapse back to idle, switch layouts and open the command menu.
+# Expected: Every toolbar control remains inside the band without overlap; narrow search takeover, clear/collapse, layout switch and menus remain usable.
 # Forbidden: Real profile access, system clipboard writes, missing native recording, or claims about OS decorations.
 
 start 600 480 dark
@@ -10,7 +10,8 @@ submit entry 'Toolbar bounds evidence'
 ui-wait listItem 'Toolbar bounds evidence'
 ui-toolbar-contained
 screenshot idle
-ui-click comboBox '搜索历史'
+[!linux] ui-click button '搜索历史'
+[linux] ui-click comboBox '搜索历史'
 ui-wait comboBox '搜索历史'
 ui-toolbar-contained
 ui-set comboBox '搜索历史' bounds

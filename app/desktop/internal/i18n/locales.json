@@ -8470,5 +8470,11 @@
     "ja": "接続状態を更新できませんでした。もう一度お試しください。",
     "pt-BR": "Não foi possível atualizar o status da conexão. Tente novamente.",
     "ru": "Не удалось обновить статус подключения. Повторите попытку."
+  },
+  "收起搜索": {
+    "en": "Close search",
+    "ja": "検索を閉じる",
+    "pt-BR": "Fechar pesquisa",
+    "ru": "Закрыть поиск"
   }
 }

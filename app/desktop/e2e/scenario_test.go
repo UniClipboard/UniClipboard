@@ -306,19 +306,62 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			if bar.Bounds.Height != 52 {
 				return fmt.Errorf("toolbar height=%v, want 52", bar.Bounds.Height)
 			}
-			count := 0
+			var controls []desktopNode
+			takeover := false
 			for _, n := range nodes {
-				if n.Label != "显示方式" && n.Label != "发送到设备" && n.Label != "切换收藏" && n.Label != "更多操作" && n.Role != "search" {
+				if n.Role == "button" && n.Label == "收起搜索" {
+					takeover = true
+				}
+				if n.Label != "显示方式" && n.Label != "发送到设备" && n.Label != "切换收藏" && n.Label != "动作" && n.Label != "更多操作" && n.Label != "收起搜索" && n.Label != "最小化" && n.Label != "最大化" && n.Label != "还原" && n.Label != "关闭" && n.Role != "search" {
 					continue
 				}
 				b := n.Bounds
+				if b.Y >= bar.Bounds.Y+bar.Bounds.Height {
+					continue
+				}
 				if b.X < bar.Bounds.X || b.X+b.Width > bar.Bounds.X+bar.Bounds.Width+.1 || b.Y < bar.Bounds.Y+8 || b.Y+b.Height > bar.Bounds.Y+bar.Bounds.Height-8+.1 {
 					return fmt.Errorf("%s outside toolbar insets: control=%+v toolbar=%+v", n.Label, b, bar.Bounds)
 				}
-				count++
+				controls = append(controls, n)
 			}
-			if count != 5 {
-				return fmt.Errorf("toolbar controls=%d, want 5", count)
+			slices.SortFunc(controls, func(a, b desktopNode) int {
+				if a.Bounds.X < b.Bounds.X {
+					return -1
+				}
+				if a.Bounds.X > b.Bounds.X {
+					return 1
+				}
+				return 0
+			})
+			for i := 1; i < len(controls); i++ {
+				prev, cur := controls[i-1], controls[i]
+				if prev.Bounds.X+prev.Bounds.Width > cur.Bounds.X+.1 {
+					return fmt.Errorf("toolbar controls overlap: %s (%+v) overlaps %s (%+v)", prev.Label, prev.Bounds, cur.Label, cur.Bounds)
+				}
+			}
+			if takeover {
+				hasSearch, hasClose := false, false
+				for _, n := range controls {
+					if n.Role == "search" {
+						hasSearch = true
+					}
+					if n.Label == "收起搜索" {
+						hasClose = true
+					}
+				}
+				if !hasSearch || !hasClose {
+					return fmt.Errorf("narrow search takeover missing controls: search=%v close=%v", hasSearch, hasClose)
+				}
+			} else {
+				core := 0
+				for _, n := range controls {
+					if n.Label == "显示方式" || n.Label == "发送到设备" || n.Label == "切换收藏" || n.Label == "更多操作" || n.Role == "search" {
+						core++
+					}
+				}
+				if core != 5 {
+					return fmt.Errorf("toolbar controls=%d, want 5", core)
+				}
 			}
 			data, err := json.MarshalIndent(nodes, "", "  ")
 			if err != nil {
@@ -327,7 +370,7 @@ func desktopCommands() map[string]func(*testscript.TestScript, bool, []string) {
 			if err := os.WriteFile(filepath.Join(s.out, fmt.Sprintf("toolbar-%02d.json", len(s.result.Steps))), append(data, '\n'), 0644); err != nil {
 				return err
 			}
-			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("all five toolbar controls fit the 52-point band at %dx%d, %s", s.windowWidth, s.windowHeight, s.windowTheme))
+			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("all toolbar controls fit without overlap in the 52-point band at %dx%d, %s", s.windowWidth, s.windowHeight, s.windowTheme))
 			return nil
 		},
 		"ui-idle": func(s *desktopScenario, a []string) error {

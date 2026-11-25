@@ -116,12 +116,30 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 			d.selectEntry(items[0].id)
 		}
 	}
+	dockedSidebarW := float32(250)
+	if d.sidebarHidden || d.compact {
+		dockedSidebarW = 0
+	}
+	trailing := d.trailingToolbar(c)
+	tm := desktopkit.ToolbarLayout(c, zoomScale(d.zoomStep), dockedSidebarW, trailing != nil)
+	if tm.Narrow && !d.wasNarrow {
+		if d.search.wasFocused || d.filterOpen {
+			d.narrowSearchOpen = true
+			d.search.hadActivity = true
+		} else {
+			d.narrowSearchOpen = false
+		}
+	} else if !tm.Narrow && d.wasNarrow {
+		d.narrowSearchOpen = false
+	}
+	d.wasNarrow = tm.Narrow
+
 	gridDrawerOpen := d.layout == "grid" && !d.compact && d.inspector && d.current() != nil
 	if gridDrawerOpen {
 		c.OnWindowShortcut(0, ui.KeyEscape, func() {
 			d.inspector = false
 		})
-	} else if len(items) == 0 && (d.hasActiveSearchOrFilter() || d.isSearchUnavailableState()) && !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" && !d.filterOpen {
+	} else if len(items) == 0 && (d.hasActiveSearchOrFilter() || d.isSearchUnavailableState()) && !d.tagsOpen && !d.tagEditor.open && !d.actionResult.open && d.deviceTask == "" && d.confirm == "" && !d.filterOpen && !d.narrowSearchOpen {
 		c.OnWindowShortcut(0, ui.KeyEscape, d.clearAllHistoryFilters)
 	}
 	coldLoading := len(items) == 0 && d.live != nil && d.live.foregroundLoading && !d.live.loaded
@@ -132,22 +150,31 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 		subtitle = ""
 	}
 	subtitleMuted := !coldLoading && d.live != nil && d.live.showForegroundLoading() && d.live.displayedKey != d.liveQueryKey()
-	k.SplitView(c, desktopkit.SplitViewProps{ContentScale: zoomScale(d.zoomStep), ToolbarTrailing: d.trailingToolbar(c),
+	k.SplitView(c, desktopkit.SplitViewProps{ContentScale: zoomScale(d.zoomStep), ToolbarTrailing: trailing,
 		Title: d.historyHeadingTitle(), Subtitle: subtitle, SubtitleMuted: subtitleMuted,
 		ToolbarLoading: d.live != nil && d.live.showForegroundLoading(),
 		Sidebar:        func() { d.sidebar(c, k) }, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact,
 		SidebarToggleLabel: d.tr("切换侧栏"), DetailOpen: &d.detailOpen, BackLabel: d.tr("返回历史"),
-		DrawerOpen:     gridDrawerOpen,
-		DrawerLabel:    d.tr("历史详情"),
-		DrawerWidth:    436,
-		DrawerInset:    8,
-		DrawerRadius:   12,
-		SearchCentered: true,
+		DrawerOpen:       gridDrawerOpen,
+		DrawerLabel:      d.tr("历史详情"),
+		DrawerWidth:      436,
+		DrawerInset:      8,
+		DrawerRadius:     12,
+		SearchCentered:   true,
+		SearchTakeover:   tm.Narrow && d.narrowSearchOpen,
+		SearchCloseLabel: d.tr("收起搜索"),
+		OnSearchClose: func() {
+			d.narrowSearchOpen = false
+			d.filterOpen = false
+			d.search.open = false
+			d.search.returnFocus = true
+			c.Invalidate()
+		},
 		Drawer: func() {
 			d.gridDetailDrawer(c.Key("grid-drawer"), k, items)
 		},
 		Search: func() {
-			d.historySearch(c.Key("search"), k)
+			d.historySearch(c.Key("search"), k, tm)
 		},
 		ToolbarLeading: func() {
 			ui.Row(c.Key("layout-controls")).AlignItems(ui.Center).Shrink(0).Children(func() {
@@ -183,7 +210,7 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 				}
 			})
 		},
-		Toolbar: func() { k.ToolbarGroup(c, func() { d.historyCommands(c, k) }) },
+		Toolbar: func() { k.ToolbarGroup(c, func() { d.historyCommands(c, k, tm) }) },
 	}, func() {
 		// V3 Segmented Directional Slide between List and Grid views (±28 DIP).
 		stage := ui.Row(c.Key("v3-layout-stage")).Grow(1).MinWidth(0).MinHeight(0).AlignItems(ui.Stretch).Clip()
@@ -658,29 +685,33 @@ func listRowExcerpt(v entry, title string) string {
 	}
 }
 
-func (d *viewState) historyCommands(c *ui.Context, k desktopkit.Kit) {
+func (d *viewState) historyCommands(c *ui.Context, k desktopkit.Kit, tm desktopkit.ToolbarMetrics) {
 	v := d.current()
-	_, command := k.ToolbarIconMenu(c.Key("send"), desktopkit.ToolbarIconMenuProps{
-		Label:    d.tr("发送到设备"),
-		Open:     &d.historySendMenu,
-		Icon:     desktopkit.IconSend,
-		Disabled: v == nil,
-		Items:    d.sendMenuItems(),
-	})
-	if command != "" {
-		d.sendTo(command)
-	}
-	if k.ToolbarIconButton(c.Key("pin"), desktopkit.ToolbarIconButtonProps{
-		Icon:        desktopkit.IconPin,
-		Label:       d.tr("切换收藏"),
-		Active:      v != nil && v.pinned,
-		ActiveColor: k.Color("status-orange-text"),
-		Disabled:    v == nil || d.live != nil && d.live.showBusy(),
-	}).Clicked() {
-		d.togglePin()
-	}
+	var actions []desktopkit.MenuEntry
 	if d.live != nil && v != nil {
-		if actions := d.historyActionsFor(v.id, plugin.ActionPlacementHistoryToolbar, ""); len(actions) > 0 {
+		actions = d.historyActionsFor(v.id, plugin.ActionPlacementHistoryToolbar, "")
+	}
+	if !tm.UltraNarrow {
+		_, command := k.ToolbarIconMenu(c.Key("send"), desktopkit.ToolbarIconMenuProps{
+			Label:    d.tr("发送到设备"),
+			Open:     &d.historySendMenu,
+			Icon:     desktopkit.IconSend,
+			Disabled: v == nil,
+			Items:    d.sendMenuItems(),
+		})
+		if command != "" {
+			d.sendTo(command)
+		}
+		if k.ToolbarIconButton(c.Key("pin"), desktopkit.ToolbarIconButtonProps{
+			Icon:        desktopkit.IconPin,
+			Label:       d.tr("切换收藏"),
+			Active:      v != nil && v.pinned,
+			ActiveColor: k.Color("status-orange-text"),
+			Disabled:    v == nil || d.live != nil && d.live.showBusy(),
+		}).Clicked() {
+			d.togglePin()
+		}
+		if len(actions) > 0 {
 			if d.live.busy {
 				d.historyActionsMenu = false
 			}
@@ -698,26 +729,73 @@ func (d *viewState) historyCommands(c *ui.Context, k desktopkit.Kit) {
 			d.historyActionsMenu = false
 		}
 	} else {
+		d.historySendMenu = false
 		d.historyActionsMenu = false
 	}
-	_, command = k.ToolbarIconMenu(c.Key("more"), desktopkit.ToolbarIconMenuProps{
+
+	moreItems := make([]desktopkit.MenuEntry, 0, 8)
+	if tm.UltraNarrow {
+		rawSend := d.sendMenuItems()
+		sendChildren := make([]desktopkit.MenuEntry, len(rawSend))
+		for i, it := range rawSend {
+			if !it.Separator {
+				it.ID = "overflow:send:" + it.ID
+			}
+			sendChildren[i] = it
+		}
+		sendDisabled := v == nil || len(sendChildren) == 0 || sendChildren[0].Disabled
+		moreItems = append(moreItems, desktopkit.MenuEntry{
+			ID: "overflow:send", Label: d.tr("发送到设备"), Icon: desktopkit.IconSend, Disabled: sendDisabled, Children: sendChildren,
+		})
+		pinLabel := d.tr("收藏")
+		if v != nil && v.pinned {
+			pinLabel = d.tr("取消收藏")
+		}
+		moreItems = append(moreItems, desktopkit.MenuEntry{
+			ID: "overflow:pin", Label: pinLabel, Icon: desktopkit.IconPin, Disabled: v == nil || d.live != nil && d.live.showBusy(),
+		})
+		if len(actions) > 0 {
+			actionChildren := make([]desktopkit.MenuEntry, len(actions))
+			for i, it := range actions {
+				if !it.Separator {
+					it.ID = "overflow:action:" + it.ID
+				}
+				actionChildren[i] = it
+			}
+			moreItems = append(moreItems, desktopkit.MenuEntry{
+				ID: "overflow:actions", Label: d.tr("动作"), Icon: desktopkit.IconEdit, Disabled: d.live.showBusy(), Children: actionChildren,
+			})
+		}
+		moreItems = append(moreItems, desktopkit.MenuSeparator("overflow-sep"))
+	}
+	moreItems = append(moreItems,
+		desktopkit.MenuEntry{ID: "tags", Label: d.tr("管理标签"), Icon: desktopkit.IconTag},
+		desktopkit.MenuEntry{ID: "delete", Label: d.tr("删除"), Icon: desktopkit.IconDelete, Destructive: true, Disabled: v == nil},
+		desktopkit.MenuSeparator("sep"),
+		desktopkit.MenuEntry{ID: "quick-panel", Label: d.tr("查看快捷面板")},
+	)
+
+	_, command := k.ToolbarIconMenu(c.Key("more"), desktopkit.ToolbarIconMenuProps{
 		Label: d.tr("更多操作"),
 		Icon:  desktopkit.IconMore,
-		Items: []desktopkit.MenuEntry{
-			{ID: "tags", Label: d.tr("管理标签"), Icon: desktopkit.IconTag},
-			{ID: "delete", Label: d.tr("删除"), Icon: desktopkit.IconDelete, Destructive: true, Disabled: v == nil},
-			desktopkit.MenuSeparator("sep"),
-			{ID: "quick-panel", Label: d.tr("查看快捷面板")},
-		},
+		Items: moreItems,
 	})
-	switch command {
-	case "tags":
+	switch {
+	case command == "overflow:pin":
+		d.togglePin()
+	case strings.HasPrefix(command, "overflow:send:"):
+		d.sendTo(strings.TrimPrefix(command, "overflow:send:"))
+	case strings.HasPrefix(command, "overflow:action:"):
+		if v != nil && d.live != nil && !d.live.busy {
+			d.runHistoryAction(v.id, strings.TrimPrefix(command, "overflow:action:"))
+		}
+	case command == "tags":
 		d.tagsOpen = true
-	case "delete":
+	case command == "delete":
 		if v != nil {
 			d.requestDelete(d.list.Selection())
 		}
-	case "quick-panel":
+	case command == "quick-panel":
 		if d.openQuickPanel != nil {
 			d.openQuickPanel()
 		} else {

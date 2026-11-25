@@ -85,7 +85,7 @@ if [[ $PLATFORM != ios ]]; then
     cd "$BINDINGS_DIR"
     "$BIN_DIR/gomobile" bind \
       -target=android/arm64,android/amd64 \
-      -androidapi=24 \
+      -androidapi=24 -tags=sqlite_fts5 \
       -trimpath -ldflags="$LDFLAGS" \
       -o "$ANDROID_OUT" \
       github.com/uniclipboard/unic/bindings/mobile

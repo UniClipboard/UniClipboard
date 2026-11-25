@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	_ "modernc.org/sqlite"
+	"github.com/uniclipboard/unic/internal/sqldb"
 )
 
 type Store struct{ db, search *sql.DB }
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS history_import_limits (
 
 func Open(path string) (*Store, error) {
 	// A single connection serializes access; the load is tiny.
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)")
+	db, err := sql.Open(sqldb.Driver, "file:"+path+sqldb.WriteOptions)
 	if err != nil {
 		return nil, err
 	}

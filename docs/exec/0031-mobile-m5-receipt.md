@@ -73,7 +73,12 @@ the app's process-exit records on failure. A
 lost the transport during both Maestro launch attempts. Neither crash
 buffer contained a crash. The runner now clears and launches the Android
 test app through SDK adb and leaves Setup and restart assertions to
-Maestro.
+Maestro. The [first successful SDK-adb launch](https://github.com/UniClipboard/UniClipboard/actions/runs/45543537353/job/138967556925)
+then captured an Android x86-64 crash during Setup. The process was killed
+by seccomp on the raw `lstat` syscall used by the Go-translated SQLite
+dependency. The x86-64 Android binding now uses SQLite built with the NDK
+and FTS5. Its write, search and backup connections retain WAL, limits
+on lock waits, foreign keys and read-only policies where applicable.
 
 The first [hosted iOS run](https://github.com/UniClipboard/UniClipboard/actions/runs/45530292519/job/138923618609)
 passed setup on iPhone Duo and failed its clipboard history assertion. The
@@ -82,8 +87,11 @@ CI now creates that simulator explicitly. The
 [first pinned-simulator run with a complete fixture setup](https://github.com/UniClipboard/UniClipboard/actions/runs/45534772791/job/138938562176)
 read the fixture back through simctl, then failed the same app history
 assertion. On iOS 27 the fixture now uses CoreDevice's device pasteboard
-commands. The test still asserts app intake and search. A failed iOS run
-captures pasteboard diagnostics from that isolated simulator. The
+commands. Host readback passed while the app history assertion still
+failed in CI. The flow now seeds and verifies the clipboard after Maestro
+opens the menu. A full build from the rebased source passed this flow on
+the local iOS 27.0 simulator. The app intake and search assertions remain.
+A failed iOS run captures pasteboard diagnostics from that isolated simulator. The
 [next iOS job](https://github.com/UniClipboard/UniClipboard/actions/runs/45534358566/job/138937188768)
 stopped during a lost release-asset connection. Both Maestro downloads now
 use bounded retries and retain the SHA-256 check.

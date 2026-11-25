@@ -13,6 +13,7 @@ require (
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/jezek/xgb v1.3.1
 	github.com/klauspost/compress v1.19.1
+	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/posthog/posthog-go v1.42.0
 	github.com/rogpeppe/go-internal v1.14.1
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e

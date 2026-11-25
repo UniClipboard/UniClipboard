@@ -19,6 +19,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	config "github.com/uniclipboard/unic/internal/localconfig"
+	"github.com/uniclipboard/unic/internal/servicelifecycle"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
@@ -62,6 +63,7 @@ func runDesktop(args []string) error {
 		}
 	}
 	flags := flag.NewFlagSet("unic-desktop", flag.ContinueOnError)
+	quickPanel := flags.Bool("quick-panel", false, "open or focus Quick Panel using an already running unicd")
 	mode := flags.String("mode", "", "normal or lightweight background startup policy; defaults to desktop.mode")
 	background := flags.Bool("background", false, "start without a GUI after setup; lightweight runs only unicd")
 	role := flags.String("role", "", "tray, gui or quick-panel")
@@ -69,6 +71,14 @@ func runDesktop(args []string) error {
 	payload := flags.String("payload", "null", "JSON command payload")
 	if err := flags.Parse(args); err != nil {
 		return err
+	}
+	setFlags := map[string]bool{}
+	flags.Visit(func(f *flag.Flag) { setFlags[f.Name] = true })
+	if *quickPanel {
+		if flags.NArg() != 0 || setFlags["role"] || setFlags["command"] || setFlags["payload"] || setFlags["background"] || setFlags["mode"] {
+			return fmt.Errorf("--quick-panel cannot be combined with --role, --command, --payload, --background, --mode, or positional arguments")
+		}
+		return runQuickPanelEntry()
 	}
 	if flags.NArg() != 0 {
 		return fmt.Errorf("unexpected positional argument")
@@ -190,6 +200,71 @@ func runDesktop(args []string) error {
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
+}
+
+func runQuickPanelEntry() error {
+	rawDir, err := paths.ResolveDir()
+	if err != nil {
+		return err
+	}
+	st, err := os.Stat(rawDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return errors.New("profile is not initialized and unicd is not running; run unic-desktop to complete setup")
+	}
+	if err != nil {
+		return err
+	}
+	if !st.IsDir() {
+		return errors.New("invalid profile directory")
+	}
+	dir := rawDir
+	if canon, err := filepath.EvalSymlinks(rawDir); err == nil {
+		dir = canon
+	}
+	dir = filepath.Clean(dir)
+	socket := os.Getenv("UNIC_SOCK")
+	if socket == "" {
+		socket = filepath.Join(dir, "unic.sock")
+	}
+
+	probeCtx, cancelProbe := context.WithTimeout(context.Background(), time.Second)
+	svc, err := api.NewClient(socket).Service(probeCtx)
+	cancelProbe()
+	if err != nil {
+		return fmt.Errorf("unicd is not running or unavailable: %w", err)
+	}
+	svcDir := svc.Directory
+	if abs, err := filepath.Abs(svcDir); err == nil {
+		svcDir = abs
+	}
+	if canon, err := filepath.EvalSymlinks(svcDir); err == nil {
+		svcDir = canon
+	}
+	if filepath.Clean(svcDir) != dir {
+		return errors.New("unicd socket belongs to a different profile")
+	}
+	if svc.Retiring || svc.Mode == servicelifecycle.ModeCLITemporary {
+		return errors.New("current unicd service is unavailable for Quick Panel")
+	}
+
+	if err := setupflow.CheckAdmission(dir); err != nil {
+		return err
+	}
+	trayProbeCtx, cancelTray := context.WithTimeout(context.Background(), 2*time.Second)
+	var trayState roleStatus
+	trayErr := desktopprocess.Call(trayProbeCtx, dir, desktopprocess.Tray, "status", nil, &trayState)
+	cancelTray()
+	if trayErr == nil {
+		if trayState.Paused {
+			return errors.New("desktop integration is paused for migration")
+		}
+	} else if !errors.Is(trayErr, desktopprocess.ErrUnavailable) {
+		return fmt.Errorf("cannot verify tray pause state: %w", trayErr)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return activateQuickPanel(ctx, dir, socket, panelActionOpen, capturePublicTarget)
 }
 
 func trunc(s string, n int) string {

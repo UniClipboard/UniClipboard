@@ -143,7 +143,17 @@ func runGUI(settings *config.Manager) error {
 			if err != nil {
 				return nil, err
 			}
-			return roleStatus{Ready: !current.Required(), SetupRequired: current.Required(), Visible: true}, nil
+			focusedCh := make(chan bool, 1)
+			mygo.RunOnMain(func() {
+				focusedCh <- g.win != nil && g.win.IsFocused()
+			})
+			focused := false
+			select {
+			case focused = <-focusedCh:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+			return roleStatus{Ready: !current.Required(), SetupRequired: current.Required(), Visible: true, Focused: focused}, nil
 		case "activate":
 			var action string
 			_ = json.Unmarshal(raw, &action)

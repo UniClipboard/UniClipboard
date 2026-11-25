@@ -8,10 +8,10 @@ See [headless architecture](../../docs/architecture/headless.md) and the [local 
 ```text
 unic -----------+-- local socket -- unicd -- Engine / network / history
 unic-desktop --role tray -- adapter IPC --+
-     +-- clipboard / shortcut / notifications
+     +-- clipboard observer / shortcut / notifications
 unic-desktop --role gui -------- local IPC -- unicd
-unic-desktop --role quick-panel --+
-     +-- target checks / focus / paste; clipboard writes delegate to the active adapter
+unic-desktop --quick-panel / --role quick-panel --+
+     +-- target checks / focus / paste; macOS daemon opt-in or Windows/Linux /v1/desktop/panel-apply/*
 ```
 
 | Path | Responsibility |
@@ -178,7 +178,7 @@ See [headless architecture](../../docs/architecture/headless.md).
 
 ## Startup and runtime modes
 
-Manual application launch always opens GUI. Normal GUI close keeps tray and unicd; lightweight GUI close leaves only unicd. Explicit `--background` omits GUI after completed setup: normal keeps tray integration; lightweight starts only unicd. Fresh or pending setup opens GUI before runtime admission. In normal mode, the Quick Panel process waits for requests without retaining its native windows. Each activation creates the windows it needs. Closing the panel destroys those windows. The process exits with the tray.
+Manual application launch always opens GUI. Normal GUI close keeps tray and unicd; lightweight GUI close leaves only unicd. Explicit `--background` omits GUI after completed setup: normal keeps tray integration; lightweight starts only unicd. Explicit `--quick-panel` opens or focuses the profile's Quick Panel against an already running non-temporary `unicd` without starting `unicd`, `tray` or `gui` (after read-only setup/migration admission). Fresh or pending setup opens GUI before runtime admission. The Quick Panel runs in its own OS process without retaining native windows between requests (each activation creates the windows it needs and closing destroys them while preserving native clipboard selection and held file leases until replaced), and remains usable alongside or without a tray over a standalone `unicd`.
 
 ```toml
 [desktop]
@@ -230,7 +230,7 @@ This process acceptance does not start a native app, offscreen renderer or syste
 
 The production host registers Command+Ctrl+V on macOS and Ctrl+Alt+V on Windows/Linux by default. Change or disable it in Settings > Quick Panel. A conflicting replacement preserves the previous working registration and offers retry. The tray also opens the panel. The tray owns this shortcut. In normal mode the GUI need not be open. Lightweight GUI close also stops the tray and shortcut; open the application icon to return.
 
-Open the panel from another application to capture its target. Enter applies history and sends paste to that target. Shift+Enter applies the existing plain-text Action first. Command/Ctrl+Enter sends paste and reopens the panel. Command/Ctrl+C copies without input injection. macOS requires Accessibility permission. Wayland keeps Copy but cannot automatically restore arbitrary target focus or inject paste.
+Open the panel from another application to capture its target. Enter applies history and sends paste to that target. Shift+Enter applies the existing plain-text Action first. Command/Ctrl+Enter sends paste and reopens the panel. Command/Ctrl+C copies without input injection. macOS requires Accessibility permission. On Linux Wayland, automatic paste uses compositor-managed focus return with `zwp_virtual_keyboard_v1` (Niri/Hyprland/Sway) or the user-consented `org.freedesktop.portal.RemoteDesktop` portal (GNOME/KDE, storing a persistent `restore_token` in the profile), and falls back cleanly to Copy when neither is available or consent is declined.
 
 The [system contract](../../docs/contracts/desktop-quick-panel-contract.md) defines cancellation, clipboard ownership and platform limits. The [execution receipt](../../docs/exec/desktop-quick-panel-system.md) distinguishes process evidence from native acceptance.
 

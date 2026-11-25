@@ -20,9 +20,10 @@ type x11Platform struct {
 }
 
 func NewNative() Platform {
-	// XWayland must not be mistaken for authority over native Wayland windows.
+	// Native Wayland sessions never use XWayland XTest; select a sanctioned
+	// Wayland input backend (virtual keyboard or RemoteDesktop portal).
 	if os.Getenv("WAYLAND_DISPLAY") != "" || strings.EqualFold(os.Getenv("XDG_SESSION_TYPE"), "wayland") {
-		return unsupportedPlatform{}
+		return newWaylandPlatform()
 	}
 	display := os.Getenv("DISPLAY")
 	if !strings.HasPrefix(display, ":") && !strings.HasPrefix(display, "unix:") {

@@ -12,7 +12,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
+
+	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
+	"github.com/uniclipboard/unic/internal/clip"
+	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 // Failure inventory is in docs/exec/desktop-process-failures.md. These commands
@@ -345,6 +350,181 @@ func nativeProcessCommands() map[string]func(*desktopScenario, []string) error {
 			}
 			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("tray IPC recreated native GUI PID %d after old GUI PID %d exited", current.PID, old.PID))
 			return s.nativeRoleCheckpoint("gui-reopened")
+		},
+		"start-standalone-service": func(s *desktopScenario, args []string) error {
+			if len(args) != 0 {
+				return errors.New("start-standalone-service takes no arguments")
+			}
+			s.home = filepath.Join(s.private, "profile")
+			if err := os.MkdirAll(s.home, 0700); err != nil {
+				return err
+			}
+			var err error
+			s.home, err = filepath.EvalSymlinks(s.home)
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(filepath.Join(s.home, "e2e-owner"), []byte("desktop-e2e"), 0600); err != nil {
+				return err
+			}
+			cfg := "[history]\nauto_cleanup=false\n[telemetry]\nenabled=false\n[sync]\nenabled=false\n[desktop]\nmode='normal'\nlaunch_at_login=false\nstart_in_background=false\nquick_panel_shortcut=''\n"
+			if err := os.WriteFile(filepath.Join(s.home, "config.toml"), []byte(cfg), 0600); err != nil {
+				return err
+			}
+			flow, err := setupflow.Open(s.home)
+			if err != nil {
+				return err
+			}
+			if err := flow.Complete(); err != nil {
+				return err
+			}
+			unicdBin := filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unicd")
+			if os.PathSeparator == '\\' {
+				unicdBin += ".exe"
+			}
+			cmd := exec.Command(unicdBin)
+			for _, env := range os.Environ() {
+				if !strings.HasPrefix(env, "UNIC_") && !strings.HasPrefix(env, "MYGO_AUTOMATION=") {
+					cmd.Env = append(cmd.Env, env)
+				}
+			}
+			cmd.Env = append(cmd.Env, "UNIC_HOME="+s.home, "UNIC_SOCK="+filepath.Join(s.home, "unic.sock"), "UNIC_DESKTOP_E2E_PROFILE="+s.home, "MYGO_AUTOMATION=", "UNIC_RENDEZVOUS_URL=http://127.0.0.1:1")
+			logFile, err := os.OpenFile(filepath.Join(s.private, "unicd.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+			if err != nil {
+				return err
+			}
+			cmd.Stdout = logFile
+			cmd.Stderr = logFile
+			if err := cmd.Start(); err != nil {
+				_ = logFile.Close()
+				return err
+			}
+			s.standaloneDaemon = cmd
+			s.standaloneDaemonDone = make(chan error, 1)
+			go func() { err := cmd.Wait(); _ = logFile.Close(); s.standaloneDaemonDone <- err }()
+			s.client = api.NewClient(filepath.Join(s.home, "unic.sock"))
+			if err := s.wait(func() bool {
+				v, err := s.client.Service(s.ctx)
+				if err != nil || v.Directory != s.home {
+					return false
+				}
+				s.nativeServiceID = v.ID
+				return true
+			}); err != nil {
+				return fmt.Errorf("standalone unicd readiness: %w", err)
+			}
+			s.result.Assertions = append(s.result.Assertions, "standalone unicd started without tray or GUI")
+			return nil
+		},
+		"submit-image": func(s *desktopScenario, args []string) error {
+			if len(args) != 1 {
+				return errors.New("submit-image id")
+			}
+			raw, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=")
+			if err != nil {
+				return err
+			}
+			_, err = s.client.Submit(s.ctx, api.SubmitInput{RequestID: args[0], Snapshot: clip.Snapshot{Parts: []clip.Part{{Format: clip.PNG, Data: raw}}}})
+			return err
+		},
+		"submit-file": func(s *desktopScenario, args []string) error {
+			if len(args) != 3 {
+				return errors.New("submit-file id filename body")
+			}
+			p := filepath.Join(s.private, filepath.Base(args[1]))
+			if err := os.WriteFile(p, []byte(args[2]), 0600); err != nil {
+				return err
+			}
+			_, err := s.client.Submit(s.ctx, api.SubmitInput{RequestID: args[0], Snapshot: clip.Snapshot{Files: []clip.File{{Name: filepath.Base(args[1]), Path: p, Size: int64(len(args[2]))}}}})
+			return err
+		},
+		"public-open-panel": func(s *desktopScenario, args []string) error {
+			if len(args) != 0 {
+				return errors.New("public-open-panel takes no arguments")
+			}
+			binPath := filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unic-desktop")
+			if os.PathSeparator == '\\' {
+				binPath += ".exe"
+			}
+			cmd := exec.CommandContext(s.ctx, binPath, "--quick-panel")
+			cmd.Env = append([]string(nil), s.standaloneDaemon.Env...)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("unic-desktop --quick-panel: %w: %s", err, out)
+			}
+			if err := s.selectNativeRole("quick-panel"); err != nil {
+				return err
+			}
+			if s.media == nil {
+				s.media = newDesktopRecording(s)
+			}
+			s.result.Assertions = append(s.result.Assertions, "public unic-desktop --quick-panel opened native Quick Panel window")
+			return nil
+		},
+		"public-open-panel-refocus": func(s *desktopScenario, args []string) error {
+			if len(args) != 0 {
+				return errors.New("public-open-panel-refocus takes no arguments")
+			}
+			beforeRaw, err := s.roleCommand("quick-panel", "probe")
+			if err != nil {
+				return err
+			}
+			var before desktopRoleIdentity
+			if err := json.Unmarshal(beforeRaw, &before); err != nil {
+				return err
+			}
+			binPath := filepath.Join(os.Getenv("UNIC_DESKTOP_E2E_BIN"), "unic-desktop")
+			if os.PathSeparator == '\\' {
+				binPath += ".exe"
+			}
+			cmd := exec.CommandContext(s.ctx, binPath, "--quick-panel")
+			cmd.Env = append([]string(nil), s.standaloneDaemon.Env...)
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("repeat unic-desktop --quick-panel: %w: %s", err, out)
+			}
+			if err := s.selectNativeRole("quick-panel"); err != nil {
+				return fmt.Errorf("repeat --quick-panel hid visible panel: %w", err)
+			}
+			afterRaw, err := s.roleCommand("quick-panel", "probe")
+			if err != nil {
+				return err
+			}
+			var after desktopRoleIdentity
+			if err := json.Unmarshal(afterRaw, &after); err != nil {
+				return err
+			}
+			if after.PID != before.PID {
+				return fmt.Errorf("repeat --quick-panel changed PID %d -> %d", before.PID, after.PID)
+			}
+			s.result.Assertions = append(s.result.Assertions, "repeat --quick-panel focused visible panel without hiding or replacing PID")
+			return nil
+		},
+		"standalone-panel-only-check": func(s *desktopScenario, args []string) error {
+			if len(args) != 0 {
+				return errors.New("standalone-panel-only-check takes no arguments")
+			}
+			if _, err := s.roleCommand("tray", "probe"); err == nil {
+				return errors.New("tray role unexpectedly running in standalone panel scenario")
+			}
+			if _, err := s.roleCommand("gui", "probe"); err == nil {
+				return errors.New("gui role unexpectedly running in standalone panel scenario")
+			}
+			raw, err := s.roleCommand("quick-panel", "probe")
+			if err != nil {
+				return fmt.Errorf("quick-panel probe failed: %w", err)
+			}
+			var panel desktopRoleIdentity
+			if err := json.Unmarshal(raw, &panel); err != nil {
+				return err
+			}
+			svc, err := s.client.Service(s.ctx)
+			if err != nil {
+				return err
+			}
+			if svc.ID != s.nativeServiceID || svc.PID == panel.PID {
+				return fmt.Errorf("unexpected standalone service state: svc=%+v panel=%+v", svc, panel)
+			}
+			s.result.Assertions = append(s.result.Assertions, fmt.Sprintf("standalone inventory verified: only unicd PID %d and quick-panel PID %d running", svc.PID, panel.PID))
+			return nil
 		},
 	}
 }

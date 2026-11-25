@@ -131,6 +131,7 @@ func scenarioTrayIconSettings(t *testing.T) {
 	}()
 	images := []string{}
 	failImage := false
+	pendingStyle := ""
 	icon := trayicon.New(func(raw []byte, template bool) error {
 		if failImage {
 			return errors.New("synthetic native image failure")
@@ -142,7 +143,8 @@ func scenarioTrayIconSettings(t *testing.T) {
 		if img.Bounds().Dx() < 16 {
 			return errors.New("invalid tray dimensions")
 		}
-		if template != (runtime.GOOS != "linux") {
+		wantTemplate := pendingStyle == "glyph" && runtime.GOOS != "linux"
+		if template != wantTemplate {
 			return errors.New("wrong template mode")
 		}
 		if len(images) == 0 {
@@ -159,10 +161,14 @@ func scenarioTrayIconSettings(t *testing.T) {
 		}
 		return nil
 	})
+	setIconStyle := func(style string) error {
+		pendingStyle = style
+		return icon.SetStyle(style)
+	}
 	if manager.Current().Desktop.TrayIcon != "glyph" {
 		t.Fatal("default must match v1 glyph")
 	}
-	if err := icon.SetStyle(manager.Current().Desktop.TrayIcon); err != nil {
+	if err := setIconStyle(manager.Current().Desktop.TrayIcon); err != nil {
 		t.Fatal(err)
 	}
 	deliveredStyle := manager.Current().Desktop.TrayIcon
@@ -187,7 +193,7 @@ func scenarioTrayIconSettings(t *testing.T) {
 	drain := func() {
 		for len(changes) > 0 {
 			cfg := <-changes
-			if err := icon.SetStyle(cfg.Desktop.TrayIcon); err != nil {
+			if err := setIconStyle(cfg.Desktop.TrayIcon); err != nil {
 				t.Fatal(err)
 			}
 			deliveredStyle = cfg.Desktop.TrayIcon
@@ -243,7 +249,7 @@ func scenarioTrayIconSettings(t *testing.T) {
 	}
 	choose("cat", "经典猫头")
 	count := len(images)
-	if err := icon.SetStyle("cat"); err != nil {
+	if err := setIconStyle("cat"); err != nil {
 		t.Fatal(err)
 	}
 	if len(images) != count {
@@ -314,11 +320,11 @@ func scenarioTrayIconSettings(t *testing.T) {
 	checks = append(checks, "real CLI and file edits reach the image owner; invalid values retain the last valid configuration")
 	count = len(images)
 	failImage = true
-	if err := icon.SetStyle("glyph"); err == nil {
+	if err := setIconStyle("glyph"); err == nil {
 		t.Fatal("failed image delivery reported success")
 	}
 	failImage = false
-	if err := icon.SetStyle("glyph"); err != nil {
+	if err := setIconStyle("glyph"); err != nil {
 		t.Fatal(err)
 	}
 	if len(images) != count+1 || images[len(images)-1] != glyphHash {

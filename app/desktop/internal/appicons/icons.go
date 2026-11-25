@@ -18,7 +18,7 @@ var MacPNG []byte
 //go:embed icon-windows.png
 var WindowsPNG []byte
 
-// TrayPNG is the original black-on-transparent cat template.
+// TrayPNG is the full-color classic pixel-cat tray artwork.
 //
 //go:embed tray-cat@2x.png
 var TrayPNG []byte

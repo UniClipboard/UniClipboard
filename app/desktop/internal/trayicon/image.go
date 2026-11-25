@@ -31,6 +31,7 @@ func Render(style string) ([]byte, bool, error) {
 	}
 	s := platformSpec()
 	img := image.NewNRGBA(image.Rect(0, 0, s.size, s.size))
+	template := s.template
 	if style == "glyph" {
 		source := glyph.Image(s.glyph, s.glyph, s.foreground)
 		offset := (s.size - s.glyph) / 2
@@ -40,16 +41,15 @@ func Render(style string) ([]byte, bool, error) {
 		if err != nil {
 			return nil, false, err
 		}
-		mask := image.NewAlpha(img.Bounds())
 		offset := (s.size - s.cat) / 2
-		xdraw.CatmullRom.Scale(mask, image.Rect(offset, offset, offset+s.cat, offset+s.cat), source, source.Bounds(), xdraw.Src, nil)
-		draw.DrawMask(img, img.Bounds(), image.NewUniform(s.foreground), image.Point{}, mask, image.Point{}, draw.Src)
+		xdraw.CatmullRom.Scale(img, image.Rect(offset, offset, offset+s.cat, offset+s.cat), source, source.Bounds(), xdraw.Src, nil)
+		template = false
 	}
 	var out bytes.Buffer
 	if err := png.Encode(&out, img); err != nil {
 		return nil, false, err
 	}
-	return out.Bytes(), s.template, nil
+	return out.Bytes(), template, nil
 }
 
 // Icon serializes image preferences on its owner's thread. It never changes menus.

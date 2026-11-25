@@ -66,6 +66,11 @@ func TestParseRejects(t *testing.T) {
 		"config on builtin":   "[plugins.instances.\"builtin.text\".config]\nk = 1",
 		"lua enabled key":     "[plugins]\nlua = [\"a.b\"]\n[plugins.instances.\"a.b\"]\nenabled = false",
 		"backend on_error":    "[plugins.instances.\"builtin.tailcat\"]\non_error = \"block_sync\"",
+		"preview sync":        "[plugins.instances.\"builtin.preview\".sync]\ntext = false",
+		"preview on_error":    "[plugins.instances.\"builtin.preview\"]\non_error = \"block_sync\"",
+		"preview on text":     "[plugins.instances.\"builtin.text\".preview]\nlink_preview = false",
+		"preview bad timeout": "[plugins.instances.\"builtin.preview\".preview]\nrequest_timeout_sec = 99",
+		"preview bad domain":  "[plugins.instances.\"builtin.preview\".preview]\nexcluded_domains = [\"bad host\"]",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected an error", name)
@@ -194,6 +199,56 @@ func TestBuiltinTextCanBeSwitchedOff(t *testing.T) {
 	}
 	if c.PluginEnabled("builtin.text") || !Default().PluginEnabled("builtin.text") {
 		t.Fatal("enabled flag not honoured")
+	}
+}
+
+func TestBuiltinPreviewDefaultsDisableAndRestart(t *testing.T) {
+	if !Default().PluginEnabled("builtin.preview") {
+		t.Fatal("builtin.preview must default to enabled")
+	}
+	off, err := Parse([]byte("[plugins.instances.\"builtin.preview\"]\nenabled = false"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if off.PluginEnabled("builtin.preview") {
+		t.Fatal("builtin.preview disabled flag not honoured")
+	}
+	// Equivalent explicit defaults should not trigger restart_required.
+	sameDefaults, err := Parse([]byte(`
+[plugins.instances."builtin.preview"]
+enabled = true
+[plugins.instances."builtin.preview".preview]
+link_preview = true
+fetch_favicon = true
+fetch_thumbnail = true
+request_timeout_sec = 8
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sameDefaults.processorSettingsKey(), Default().processorSettingsKey()) {
+		t.Fatal("explicit default preview settings should match implicit defaults")
+	}
+	changed, err := Parse([]byte(`
+[plugins.instances."builtin.preview".preview]
+fetch_thumbnail = false
+excluded_domains = ["Corp.Example"]
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reflect.DeepEqual(changed.processorSettingsKey(), Default().processorSettingsKey()) {
+		t.Fatal("changed preview settings must require restart")
+	}
+	// Verify Manager.State reports plugins / plugins.settings restart requirements.
+	m := Static(Default())
+	m.cur = off
+	if st := m.State(); len(st.RestartRequired) == 0 || st.RestartRequired[0] != "plugins" {
+		t.Fatalf("expected plugins restart requirement, got %v", st.RestartRequired)
+	}
+	m.cur = changed
+	if st := m.State(); len(st.RestartRequired) == 0 || st.RestartRequired[0] != "plugins.settings" {
+		t.Fatalf("expected plugins.settings restart requirement, got %v", st.RestartRequired)
 	}
 }
 

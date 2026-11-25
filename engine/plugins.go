@@ -267,6 +267,8 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 		return invalidPlugin(s.ID, "invalid ID")
 	case s.ID == string(BackendTailcat) && !in.Builtin:
 		return invalidPlugin(s.ID, "builtin.tailcat is reserved")
+	case s.ID == "builtin.preview" && !in.Builtin:
+		return invalidPlugin(s.ID, "builtin.preview is reserved")
 	case s.APIVersion != 1:
 		return invalidPlugin(s.ID, "unsupported API version")
 	case s.Version == "" || len(s.Version) > 64:

@@ -18,6 +18,7 @@ import (
 
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
+	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 )
@@ -222,6 +223,10 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 	if err != nil {
 		return nil, wrapErr(err)
 	}
+	previewer, err := builtinpreview.New(builtinpreview.Settings{})
+	if err != nil {
+		return nil, wrapErr(err)
+	}
 
 	diagnostics := newMobileDiagnostics(dataDir)
 	peer.Observe(diagnostics.controller)
@@ -237,6 +242,7 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 			{Plugin: peer, Builtin: true},
 			{Plugin: classifier},
 			{Plugin: builtintext.New()},
+			{Plugin: previewer, Builtin: true},
 		},
 	}
 

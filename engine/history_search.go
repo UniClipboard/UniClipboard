@@ -175,7 +175,9 @@ func (e *Engine) SearchHistory(ctx context.Context, req HistorySearchRequest) (H
 		page.NextCursor = e.hist.seal(cursorPayload{Inst: e.instance, Filter: key, Upper: read.Upper, After: last.Seq, AfterTime: last.OrderMs})
 	}
 	for _, h := range hits {
-		page.Hits = append(page.Hits, HistorySearchHit{Item: e.historyItem(h.Item), Preview: searchPreview(h.Preview, q.TextTerms)})
+		p := searchPreview(h.Preview, q.TextTerms)
+		p.MatchKind = h.MatchKind
+		page.Hits = append(page.Hits, HistorySearchHit{Item: e.historyItem(h.Item), Preview: p})
 	}
 	return page, nil
 }

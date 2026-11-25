@@ -81,7 +81,7 @@ CREATE TABLE sync_dedup (
   PRIMARY KEY (source, transfer_id, view_hash)
 ) WITHOUT ROWID;
 CREATE INDEX sync_dedup_created ON sync_dedup (created_ms);
-` + "\n" + deviceSchema, // unified devices and their per-backend-instance bindings (docs/architecture/identity-and-trust.md)
+` + "\n" + annotationSchema + "\n" + deviceSchema, // unified devices and their per-backend-instance bindings (docs/architecture/identity-and-trust.md)
 	candidateSchema, // devices a peer vouched for (see docs/architecture/identity-and-trust.md)
 }
 
@@ -587,7 +587,10 @@ func (s *Store) ExpiredHistory(nowMs int64) (ids, blobs []string, rev uint64, er
 
 func deleteSeqs(tx *sql.Tx, seqs []int64) (blobs []string, err error) {
 	for _, q := range seqs {
-		rows, err := tx.Query(`SELECT blob FROM clip_item_parts WHERE item_seq = ? AND blob <> ''`, q)
+		rows, err := tx.Query(`
+SELECT blob FROM clip_item_parts WHERE item_seq = ? AND blob <> ''
+UNION ALL
+SELECT a.blob FROM history_annotation_assets a JOIN history_annotations h ON h.id = a.annotation_id WHERE h.item_seq = ? AND a.blob <> ''`, q, q)
 		if err != nil {
 			return nil, err
 		}
@@ -610,25 +613,28 @@ func deleteSeqs(tx *sql.Tx, seqs []int64) (blobs []string, err error) {
 }
 
 // HistoryTotals returns the item count and the bytes history itself stores
-// (inline data and blobs). Files kept in place by reference cost nothing.
+// (inline data, blobs, annotations and annotation assets). Files kept in place by reference cost nothing.
 func (s *Store) HistoryTotals() (items int, bytes int64, err error) {
 	if err = s.db.QueryRow(`SELECT COUNT(*) FROM clip_items`).Scan(&items); err != nil {
 		return
 	}
-	err = s.db.QueryRow(`SELECT (SELECT COALESCE(SUM(size),0) FROM clip_item_parts WHERE kind <> 'file' OR ref = '') + (SELECT COALESCE(SUM(length(source_application)),0) FROM clip_items)`).Scan(&bytes)
+	err = s.db.QueryRow(`SELECT (SELECT COALESCE(SUM(size),0) FROM clip_item_parts WHERE kind <> 'file' OR ref = '') + (SELECT COALESCE(SUM(length(source_application)),0) FROM clip_items) + (SELECT COALESCE(SUM(byte_size),0) FROM history_annotations) + (SELECT COALESCE(SUM(byte_size),0) FROM history_annotation_assets)`).Scan(&bytes)
 	return
 }
 
-// BlobInUse reports whether any item still references the blob.
+// BlobInUse reports whether any item or annotation asset still references the blob.
 func (s *Store) BlobInUse(name string) (bool, error) {
 	var n int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM clip_item_parts WHERE blob = ?`, name).Scan(&n)
+	err := s.db.QueryRow(`SELECT (SELECT COUNT(*) FROM clip_item_parts WHERE blob = ?) + (SELECT COUNT(*) FROM history_annotation_assets WHERE blob = ?)`, name, name).Scan(&n)
 	return n > 0, err
 }
 
 // ReferencedBlobs lists every blob name referenced, for orphan cleanup.
 func (s *Store) ReferencedBlobs() (map[string]bool, error) {
-	rows, err := s.db.Query(`SELECT DISTINCT blob FROM clip_item_parts WHERE blob <> ''`)
+	rows, err := s.db.Query(`
+SELECT DISTINCT blob FROM clip_item_parts WHERE blob <> ''
+UNION
+SELECT DISTINCT blob FROM history_annotation_assets WHERE blob <> ''`)
 	if err != nil {
 		return nil, err
 	}
@@ -750,7 +756,7 @@ func (s *Store) HistoryCleanupCandidates(excluded []string, keep int64, limit in
 	args = append(args, keep)
 	switch storage {
 	case "owned":
-		where += " AND (length(source_application)>0 OR EXISTS (SELECT 1 FROM clip_item_parts p WHERE p.item_seq=clip_items.seq AND (p.kind<>'file' OR p.ref='')))"
+		where += " AND (length(source_application)>0 OR EXISTS (SELECT 1 FROM clip_item_parts p WHERE p.item_seq=clip_items.seq AND (p.kind<>'file' OR p.ref='')) OR EXISTS (SELECT 1 FROM history_annotations a WHERE a.item_seq=clip_items.seq))"
 	case "cache":
 		where += " AND EXISTS (SELECT 1 FROM clip_item_parts p WHERE p.item_seq=clip_items.seq AND p.ref LIKE 'cache:%')"
 	}

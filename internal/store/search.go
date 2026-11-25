@@ -17,15 +17,21 @@ INSERT OR IGNORE INTO history_search_totals VALUES(1,0);
 CREATE TABLE IF NOT EXISTS history_search_state(item_seq INTEGER PRIMARY KEY REFERENCES clip_items(seq) ON DELETE CASCADE,ready INTEGER NOT NULL,reserved INTEGER NOT NULL);
 CREATE TRIGGER IF NOT EXISTS history_search_reserve AFTER INSERT ON history_search_state BEGIN UPDATE history_search_totals SET reserved=reserved+new.reserved WHERE id=1; END;
 CREATE TRIGGER IF NOT EXISTS history_search_release AFTER DELETE ON history_search_state BEGIN UPDATE history_search_totals SET reserved=reserved-old.reserved WHERE id=1; END;
-CREATE TABLE IF NOT EXISTS history_search_docs(id INTEGER PRIMARY KEY,item_seq INTEGER NOT NULL REFERENCES clip_items(seq) ON DELETE CASCADE,body TEXT NOT NULL,folded TEXT NOT NULL,extension TEXT NOT NULL DEFAULT '');
+CREATE TABLE IF NOT EXISTS history_enrichment_search_totals(id INTEGER PRIMARY KEY CHECK(id=1),reserved INTEGER NOT NULL);
+INSERT OR IGNORE INTO history_enrichment_search_totals VALUES(1,0);
+CREATE TABLE IF NOT EXISTS history_enrichment_search_state(item_seq INTEGER NOT NULL REFERENCES clip_items(seq) ON DELETE CASCADE,plugin_id TEXT NOT NULL,reserved INTEGER NOT NULL,PRIMARY KEY(item_seq,plugin_id)) WITHOUT ROWID;
+CREATE TRIGGER IF NOT EXISTS history_enrich_search_reserve AFTER INSERT ON history_enrichment_search_state BEGIN UPDATE history_enrichment_search_totals SET reserved=reserved+new.reserved WHERE id=1; END;
+CREATE TRIGGER IF NOT EXISTS history_enrich_search_release AFTER DELETE ON history_enrichment_search_state BEGIN UPDATE history_enrichment_search_totals SET reserved=reserved-old.reserved WHERE id=1; END;
+CREATE TABLE IF NOT EXISTS history_search_docs(id INTEGER PRIMARY KEY,item_seq INTEGER NOT NULL REFERENCES clip_items(seq) ON DELETE CASCADE,source TEXT NOT NULL DEFAULT 'base',doc_kind TEXT NOT NULL DEFAULT 'text',body TEXT NOT NULL,folded TEXT NOT NULL,extension TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS history_search_item ON history_search_docs(item_seq);
+CREATE INDEX IF NOT EXISTS history_search_source ON history_search_docs(item_seq,source);
 CREATE INDEX IF NOT EXISTS history_search_extension ON history_search_docs(extension,item_seq);
 CREATE VIRTUAL TABLE IF NOT EXISTS history_search_fts USING fts5(folded,content='history_search_docs',content_rowid='id',tokenize='trigram case_sensitive 1');
 CREATE TRIGGER IF NOT EXISTS history_search_ai AFTER INSERT ON history_search_docs BEGIN INSERT INTO history_search_fts(rowid,folded) VALUES(new.id,new.folded); END;
 CREATE TRIGGER IF NOT EXISTS history_search_ad AFTER DELETE ON history_search_docs BEGIN INSERT INTO history_search_fts(history_search_fts,rowid,folded) VALUES('delete',old.id,old.folded); END;
 `
 
-type SearchDocument struct{ Text, Folded, Extension string }
+type SearchDocument struct{ Text, Folded, Extension, Kind string }
 type SearchSource struct{ Kind, DeviceID string }
 type SearchFilter struct {
 	HistoryFilter
@@ -39,8 +45,9 @@ type SearchRead struct {
 	Limit                          int
 }
 type SearchHit struct {
-	Item    HistoryItem
-	Preview string
+	Item      HistoryItem
+	Preview   string
+	MatchKind string
 }
 type SearchCandidate struct{ Key, Value, Label, Kind, DeviceID string }
 
@@ -81,11 +88,63 @@ func insertSearch(tx *sql.Tx, seq int64, docs []SearchDocument, ready bool, budg
 		return err
 	}
 	for _, d := range docs {
-		if _, err := tx.Exec(`INSERT INTO history_search_docs(item_seq,body,folded,extension) VALUES(?,?,?,?)`, seq, d.Text, d.Folded, d.Extension); err != nil {
+		kind := d.Kind
+		if kind == "" {
+			kind = "text"
+		}
+		if _, err := tx.Exec(`INSERT INTO history_search_docs(item_seq,source,doc_kind,body,folded,extension) VALUES(?,'base',?,?,?,?)`, seq, kind, d.Text, d.Folded, d.Extension); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// replaceEnrichmentSearch atomically replaces derived search docs owned by pluginID
+// without ever modifying base search readiness (history_search_state).
+func replaceEnrichmentSearch(tx *sql.Tx, seq int64, pluginID string, docs []SearchDocument, budget int64) (bool, error) {
+	source := "enricher:" + pluginID
+	resDel, err := tx.Exec(`DELETE FROM history_search_docs WHERE item_seq=? AND source=?`, seq, source)
+	if err != nil {
+		return false, err
+	}
+	changed := false
+	if n, _ := resDel.RowsAffected(); n > 0 {
+		changed = true
+	}
+	if _, err := tx.Exec(`DELETE FROM history_enrichment_search_state WHERE item_seq=? AND plugin_id=?`, seq, pluginID); err != nil {
+		return false, err
+	}
+	if len(docs) == 0 {
+		return changed, nil
+	}
+	var reserved int64
+	for _, d := range docs {
+		reserved += int64(8*(len(d.Text)+len(d.Folded)) + 256)
+	}
+	var used int64
+	if err := tx.QueryRow(`SELECT reserved FROM history_enrichment_search_totals WHERE id=1`).Scan(&used); err != nil {
+		return false, err
+	}
+	if budget <= 0 {
+		budget = 1 << 30
+	}
+	if reserved > budget-used {
+		// Sub-budget exhausted: skip derived search docs without corrupting base search readiness.
+		return changed, nil
+	}
+	if _, err := tx.Exec(`INSERT INTO history_enrichment_search_state(item_seq,plugin_id,reserved) VALUES(?,?,?)`, seq, pluginID, reserved); err != nil {
+		return false, err
+	}
+	for _, d := range docs {
+		kind := d.Kind
+		if kind == "" {
+			kind = "derived"
+		}
+		if _, err := tx.Exec(`INSERT INTO history_search_docs(item_seq,source,doc_kind,body,folded,extension) VALUES(?,?,?,?,?,?)`, seq, source, kind, d.Text, d.Folded, d.Extension); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
 }
 func (s *Store) RepairSearch(seq int64, docs []SearchDocument, ready bool, budget int64) error {
 	tx, err := s.db.Begin()
@@ -93,7 +152,7 @@ func (s *Store) RepairSearch(seq int64, docs []SearchDocument, ready bool, budge
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err = tx.Exec(`DELETE FROM history_search_docs WHERE item_seq=?`, seq); err != nil {
+	if _, err = tx.Exec(`DELETE FROM history_search_docs WHERE item_seq=? AND source='base'`, seq); err != nil {
 		return err
 	}
 	if _, err = tx.Exec(`DELETE FROM history_search_state WHERE item_seq=?`, seq); err != nil {
@@ -288,10 +347,18 @@ func (s *Store) SearchHistory(ctx context.Context, q SearchRead) (hits []SearchH
 		if len(q.Filter.Terms) > 0 {
 			term = q.Filter.Terms[0]
 		}
-		e = tx.QueryRowContext(ctx, `SELECT substr(body,max(instr(folded,?)-24,1),512) FROM history_search_docs WHERE item_seq=? ORDER BY (instr(folded,?)>0) DESC,id LIMIT 1`, term, hits[i].Item.Seq, term).Scan(&hits[i].Preview)
+		var matchSource, matchDocKind string
+		e = tx.QueryRowContext(ctx, `SELECT substr(body,max(instr(folded,?)-24,1),512), source, doc_kind FROM history_search_docs WHERE item_seq=? ORDER BY (instr(folded,?)>0) DESC, (source='base') DESC, id LIMIT 1`, term, hits[i].Item.Seq, term).Scan(&hits[i].Preview, &matchSource, &matchDocKind)
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			err = e
 			return
+		}
+		if e == nil {
+			if matchSource == "base" {
+				hits[i].MatchKind = "base"
+			} else {
+				hits[i].MatchKind = matchDocKind
+			}
 		}
 	}
 	return

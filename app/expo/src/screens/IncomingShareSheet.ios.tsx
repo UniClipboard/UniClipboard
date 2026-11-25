@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState } from 'react-native';
+import { Alert, AppState, Linking } from 'react-native';
+import { applicationId } from 'expo-application';
 import {
   Button as SwiftUIButton,
   HStack,
@@ -41,6 +42,7 @@ import { iosColors, iosKindTints } from '@/theme/iosDesignTokens';
 const TERTIARY_LABEL = iosColors?.tertiaryLabel ?? '#8E8E93';
 const SELECTED_ROW_BACKGROUND = iosColors?.tertiarySystemFill ?? '#E5E5EA';
 const SHEET_BACKGROUND = iosColors?.systemGroupedBackground ?? '#F2F2F7';
+const SHARE_URL = applicationId ? `${applicationId.toLowerCase()}://share` : null;
 
 export function IncomingShareSheet() {
   const { t } = useTranslation();
@@ -61,19 +63,21 @@ export function IncomingShareSheet() {
       const current = await unicEngineNative.listIncomingShares();
       if (seq === request.current) setItems(current);
     } catch {
-      // A later foreground transition or native event retries the read.
+      // A later foreground transition or share URL retries the read.
     }
   }, []);
 
   useEffect(() => {
-    const shares = unicEngineNative.addIncomingShareListener(() => void reload());
+    const link = Linking.addEventListener('url', ({ url }) => {
+      if (url.toLowerCase() === SHARE_URL) void reload();
+    });
     const app = AppState.addEventListener('change', (state) => {
       if (state === 'active') void reload();
     });
     void reload();
     return () => {
       request.current++;
-      shares.remove();
+      link.remove();
       app.remove();
     };
   }, [reload]);

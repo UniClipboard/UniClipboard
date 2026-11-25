@@ -19,7 +19,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: 5581c52d46bc1ba9b97f0428e7ebb5b36d569035
+verified: d0df051a4ef500368dfd5e5ae60e82ae5fccf5a3
 ---
 # 仓库布局与依赖边界
 
@@ -260,6 +260,12 @@ it to the existing migration session. Android share intents and the iOS
 Share Extension stage items for confirmation in the main application.
 The iOS extension uses the file URL to recover the file name and type when
 the share provider offers the payload as a file URL.
+After staging succeeds, the iOS extension requests a handoff using the host
+bundle identifier as the URL scheme and `share` as the URL host. The URL
+carries no shared content. The confirmation sheet reads the App Group queue
+on mount, on receipt of the share URL, and when the app becomes active.
+If iOS declines the handoff, the staged items remain available when the user
+opens the app.
 The main application owns the Engine. It uses the same processing path
 for local saves and device-targeted sends. Local saves request no backend
 dispatch. The Android foreground service keeps the app-owned Engine active

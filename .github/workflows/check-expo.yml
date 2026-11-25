@@ -122,8 +122,8 @@ jobs:
         run: |
           base=https://github.com/mobile-dev-inc/Maestro/releases/download/cli-2.10.0
           cd "$RUNNER_TEMP"
-          curl -fsSLO "$base/maestro.zip"
-          curl -fsSLO "$base/checksums_sha256.txt"
+          curl --retry 2 --retry-all-errors -fsSLO "$base/maestro.zip"
+          curl --retry 2 --retry-all-errors -fsSLO "$base/checksums_sha256.txt"
           grep 'maestro.zip$' checksums_sha256.txt | shasum -a 256 -c
           unzip -q maestro.zip
           echo "$RUNNER_TEMP/maestro/bin" >> "$GITHUB_PATH"

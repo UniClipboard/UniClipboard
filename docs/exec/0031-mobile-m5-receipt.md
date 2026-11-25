@@ -66,7 +66,10 @@ The first [hosted iOS run](https://github.com/UniClipboard/UniClipboard/actions/
 passed setup on iPhone Duo and failed its clipboard history assertion. The
 same local live suite passed on an iPhone 17 Pro simulator with iOS 27.0.
 CI now creates that simulator explicitly. The suite checks the pasteboard
-fixture before starting the history flow.
+fixture before starting the history flow. The
+[next iOS job](https://github.com/UniClipboard/UniClipboard/actions/runs/45534358566/job/138937188768)
+stopped during a lost release-asset connection. Both Maestro downloads now
+use bounded retries and retain the SHA-256 check.
 
 The iOS workflows use the [GitHub-hosted Xcode 27 image](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md).
 

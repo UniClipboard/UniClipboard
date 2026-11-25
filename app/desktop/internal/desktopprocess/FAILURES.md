@@ -28,7 +28,7 @@ Replay with `UNIC_ROLE_E2E=1 go test -race ./app/desktop/internal/desktopprocess
 - GREEN: three independent OS processes answer private IPC; a duplicate owner exits; GUI crash releases its kernel lock; a recreated GUI has a new PID while tray retains its PID; explicit close removes role endpoints; the forged executable is rejected by OS peer verification.
 - The role receipt includes PID, role-acquisition time, profile and executable path/hash. Role-acquisition time is not a claimed kernel process-creation timestamp.
 - Unix checks the peer UID/PID through the existing `peercred` dependency. Linux resolves `/proc/<pid>/exe`; macOS resolves `proc_pidpath`. Windows resolves named-pipe client/server PID and `QueryFullProcessImageName`.
-- A running process caches its first executable hash and refuses IPC after its installed executable changes. New processes cannot silently adopt an old executable generation.
+- A running process caches its first executable hash alongside its OS file identity (device/volume, inode/file index, size, timestamps), re-hashing whenever metadata changes, and refuses IPC after its installed executable changes. New processes cannot silently adopt an old executable generation.
 - Windows pipes restrict the DACL to the current user. The existing pipe library rejects remote clients. Unix sockets use a hashed profile endpoint inside a private, owner-checked `/tmp/unic-desktop-<uid>` directory to stay within macOS socket path limits.
 - macOS process execution with race instrumentation passed. Windows amd64 and Linux amd64 compilation passed. `go vet` and repository-pinned golangci-lint passed.
 - Native Windows/macOS/Linux tray interaction, OS focus, global shortcuts and paste are outside this fixture.

@@ -22,7 +22,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: beee08c4db89cb326015f4b59f3093eaf7a24e9c
+verified: 28d51b0f0d4cc5ba650e45ed908b749380e78d40
 ---
 # Headless service and desktop integration
 
@@ -234,7 +234,7 @@ The launcher resolves `unicd` beside its executable. A profile transition lock s
 
 Lightweight GUI close transfers a tray-owned service to standalone ownership without restarting it. The tray writes the strict release command and closes its exclusive owner pipe. The service requires the exact command followed by EOF before changing ownership; ordinary EOF still cancels a desktop-owned service. The tray uses existing `GET /v1/service` to confirm the same generation, PID and directory now report `standalone`. It then drops its owned-service handle. An uncertain acknowledgement is resolved by querying that generation, never by stopping or restarting the service. A previously borrowed standalone service needs no transfer.
 
-Role ownership uses live kernel locks and private IPC rather than PID files. Unix endpoints are owner-only sockets in a private per-user runtime directory. Windows endpoints are named pipes restricted to the current user SID. Requests bind the canonical profile, role, executable path and SHA-256. The transport verifies the peer PID and executable through the OS. A different profile, installation or executable build cannot activate an existing role. Runtime state stays profile-scoped; Engine remains the only history owner.
+Role ownership uses live kernel locks and private IPC rather than PID files. Unix endpoints are owner-only sockets in a private per-user runtime directory. Windows endpoints are named pipes restricted to the current user SID. Requests bind the canonical profile, role, executable path and SHA-256. The transport verifies the peer PID and executable through the OS, reusing the cached executable SHA-256 only while the resolved path keeps its initial OS file identity (device/volume, inode/file index, size and timestamps) and re-hashing on any change. A different profile, installation or executable build cannot activate an existing role. Runtime state stays profile-scoped; Engine remains the only history owner.
 
 A GUI or quick-panel crash leaves tray integration active. The next request creates the missing UI role. A tray crash releases its native registrations and closes its owned-service pipe. Existing UI clients reconnect after a later desktop launch recreates the tray. Service recovery renews the adapter session and establishes a fresh clipboard baseline; it never applies disconnected backlog. See the [process design](../exec/desktop-process-design.md) for ownership and failure policy. Native focus, tray clicks and receiving-application paste require separate platform evidence.
 

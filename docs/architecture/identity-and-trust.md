@@ -33,7 +33,7 @@ paths:
   - internal/session/probe.go
   - internal/plugins/tailcat
   - plugin/rpc/identity.go
-verified: 24a39cb2b20254bfbc3848cd1f4f9d6dc3a61701
+verified: 5581c52d46bc1ba9b97f0428e7ebb5b36d569035
 ---
 # 设备身份、信任与配对
 

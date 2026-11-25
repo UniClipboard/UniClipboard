@@ -90,3 +90,41 @@ func dial(ctx context.Context, root string, role Role) (net.Conn, error) {
 func configureRoleProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | windows.CREATE_NO_WINDOW}
 }
+
+func statFileStamp(path string) (fileStamp, bool) {
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return fileStamp{}, false
+	}
+	handle, err := windows.CreateFile(name, 0, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	if err != nil {
+		return fileStamp{}, false
+	}
+	defer func() { _ = windows.CloseHandle(handle) }()
+	return handleFileStamp(handle)
+}
+
+func fdFileStamp(f *os.File) (fileStamp, bool) {
+	return handleFileStamp(windows.Handle(f.Fd()))
+}
+
+func handleFileStamp(handle windows.Handle) (fileStamp, bool) {
+	var info windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(handle, &info); err != nil {
+		return fileStamp{}, false
+	}
+	return fileStamp{
+		dev:       uint64(info.VolumeSerialNumber),
+		ino:       (uint64(info.FileIndexHigh) << 32) | uint64(info.FileIndexLow),
+		size:      int64((uint64(info.FileSizeHigh) << 32) | uint64(info.FileSizeLow)),
+		mtimeSec:  int64(info.LastWriteTime.HighDateTime),
+		mtimeNsec: int64(info.LastWriteTime.LowDateTime),
+	}, true
+}
+
+func isPeerClosedPlatform(err error) bool {
+	return errors.Is(err, windows.ERROR_BROKEN_PIPE) ||
+		errors.Is(err, windows.ERROR_NO_DATA) ||
+		errors.Is(err, windows.ERROR_PIPE_NOT_CONNECTED) ||
+		errors.Is(err, windows.WSAECONNRESET)
+}

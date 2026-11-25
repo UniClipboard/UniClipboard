@@ -114,9 +114,17 @@ jobs:
           packages: >-
             platform-tools ndk;27.1.12297006 platforms;android-36 build-tools;36.0.0
             emulator system-images;android-36;google_apis;x86_64
-      - name: Select Android NDK
+      - name: Configure Android emulator
         if: matrix.platform == 'android'
-        run: echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.1.12297006" >> "$GITHUB_ENV"
+        shell: bash
+        run: |
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/unic-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          avdmanager create avd --force --name unic-ci --device pixel_7 --package 'system-images;android-36;google_apis;x86_64'
+          test -s "$ANDROID_AVD_HOME/unic-ci.ini"
+          "$ANDROID_HOME/emulator/emulator" -list-avds | grep -Fx unic-ci
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.1.12297006" >> "$GITHUB_ENV"
       - name: Install pinned Maestro CLI
         shell: bash
         run: |
@@ -156,13 +164,17 @@ jobs:
         shell: bash
         run: |
           mkdir -p e2e/results
-          printf 'no\n' | avdmanager create avd -n unic-ci -k 'system-images;android-36;google_apis;x86_64'
           sudo chmod a+rw /dev/kvm
           "$ANDROID_HOME/emulator/emulator" -avd unic-ci -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > e2e/results/emulator.log 2>&1 &
+          emulator_pid=$!
 
           wait_for_emulator() {
             local stable=0
             for _ in {1..100}; do
+              if ! kill -0 "$emulator_pid" 2>/dev/null; then
+                cat e2e/results/emulator.log >&2
+                return 1
+              fi
               if [[ $(timeout 5s adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r') == 1 ]]; then
                 stable=$((stable + 1))
                 if [[ $stable == 5 ]]; then return 0; fi

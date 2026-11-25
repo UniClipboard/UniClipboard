@@ -14,7 +14,7 @@ Pod::Spec.new do |s|
   s.dependency 'ExpoModulesCore'
   s.vendored_frameworks = 'Frameworks/UnicCore.xcframework'
   s.source_files   = '*.{h,m,swift}'
-  s.frameworks     = 'Network', 'Security', 'UIKit', 'UniformTypeIdentifiers'
+  s.frameworks     = 'AVFoundation', 'Network', 'Security', 'UIKit', 'UniformTypeIdentifiers', 'VisionKit'
   s.libraries      = 'resolv'
 
   s.pod_target_xcconfig = {

@@ -4,13 +4,19 @@ on:
     paths:
       - 'tools/package/**'
       - 'tools/release/**'
+      - '!tools/release/android_release.py'
+      - '!tools/release/ios_profiles.py'
+      - '!tools/release/mobile.py'
+      - '!tools/release/prepare_release.py'
       - 'packaging/**'
       - 'e2e/packaging/**'
+      - '!e2e/packaging/CASES.md'
       - 'internal/localpaths/**'
       - 'internal/releaseinfo/**'
-      - 'release/**'
       - 'app/desktop/cmd/unic-desktop/**'
       - 'app/desktop/internal/appupdates/**'
+      - 'app/desktop/internal/appicons/**'
+      - 'app/desktop/boardui/assets/**'
       - 'internal/desktopupdate/**'
       - 'app/service/cmd/unicd/update*.go'
       - 'app/desktop/e2e/updateprobe/**'
@@ -21,10 +27,15 @@ on:
       - '.github/workflows/prepare-legacy-desktop-alpha.yml'
       - '.github/workflows/release-cli.yml'
       - '.github/workflows/release-desktop.yml'
-      - '.github/release-notes/**'
+      - '.github/release-notes/desktop.md.tmpl'
+      - '!**/README*.md'
+      - '!**/AGENTS.md'
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   github-release:
     name: GitHub Release page process acceptance

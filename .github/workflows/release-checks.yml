@@ -1,0 +1,71 @@
+name: Release checks
+
+on:
+  pull_request:
+    paths:
+      - 'release/**'
+      - 'tools/release/prepare_release.py'
+      - 'tools/release/mobile.py'
+      - 'tools/release/android_release.py'
+      - 'tools/release/ios_profiles.py'
+      - 'tools/ci/validate_release.py'
+      - 'e2e/release/prepare_release_test.py'
+      - 'e2e/release/mobile_delivery_test.py'
+      - '.github/workflows/prepare-release.yml'
+      - '.github/workflows/release-on-merge.yml'
+      - '.github/workflows/release-android.yml'
+      - '.github/workflows/release-ios.yml'
+      - '.github/workflows/release-checks.yml'
+      - '.github/prompts/prepare-release-changelog.codex.md'
+      - '.github/release-notes/android.md.tmpl'
+  push:
+    branches: [main]
+    paths:
+      - 'release/**'
+      - 'tools/release/prepare_release.py'
+      - 'tools/release/mobile.py'
+      - 'tools/release/android_release.py'
+      - 'tools/release/ios_profiles.py'
+      - 'tools/ci/validate_release.py'
+      - 'e2e/release/prepare_release_test.py'
+      - 'e2e/release/mobile_delivery_test.py'
+      - '.github/workflows/prepare-release.yml'
+      - '.github/workflows/release-on-merge.yml'
+      - '.github/workflows/release-android.yml'
+      - '.github/workflows/release-ios.yml'
+      - '.github/workflows/release-checks.yml'
+      - '.github/prompts/prepare-release-changelog.codex.md'
+      - '.github/release-notes/android.md.tmpl'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  release-metadata-and-tooling:
+    name: Release metadata and tooling checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: tools/release/requirements.txt
+      - name: Validate release metadata and release PR branch
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: python3 tools/ci/validate_release.py --head-ref "$HEAD_REF"
+      - name: Test prepare-release and merge-dispatch workflows
+        run: python3 -m unittest e2e/release/prepare_release_test.py
+      - name: Test mobile delivery tooling
+        run: |
+          python3 -m pip install -r tools/release/requirements.txt
+          python3 e2e/release/mobile_delivery_test.py

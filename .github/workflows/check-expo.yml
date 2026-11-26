@@ -3,33 +3,65 @@ name: Mobile build and acceptance
 on:
   pull_request:
     paths:
-      - app/expo/**
-      - bindings/**
-      - engine/**
-      - internal/**
-      - go.mod
-      - go.sum
-      - release/products.toml
-      - tools/release/mobile.py
-      - .github/workflows/check-expo.yml
+      - 'app/expo/**'
+      - 'bindings/**'
+      - 'engine/**'
+      - 'plugin/**'
+      - 'sourceapp/**'
+      - 'internal/**'
+      - '!internal/climigration/**'
+      - '!internal/clipboardintegration/**'
+      - '!internal/desktopupdate/**'
+      - '!internal/localapi/**'
+      - '!internal/localcontent/**'
+      - '!internal/nativeboard/**'
+      - '!internal/pairnotice/**'
+      - '!internal/servicelaunch/**'
+      - '!internal/servicelifecycle/**'
+      - '!internal/testboard/**'
+      - '!internal/waylandwire/**'
+      - '!internal/webtransfer/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/check-expo.yml'
+      - '!**/README*.md'
+      - '!**/AGENTS.md'
   push:
     branches: [main]
     paths:
-      - app/expo/**
-      - bindings/**
-      - engine/**
-      - internal/**
-      - go.mod
-      - go.sum
-      - release/products.toml
-      - tools/release/mobile.py
-      - .github/workflows/check-expo.yml
+      - 'app/expo/**'
+      - 'bindings/**'
+      - 'engine/**'
+      - 'plugin/**'
+      - 'sourceapp/**'
+      - 'internal/**'
+      - '!internal/climigration/**'
+      - '!internal/clipboardintegration/**'
+      - '!internal/desktopupdate/**'
+      - '!internal/localapi/**'
+      - '!internal/localcontent/**'
+      - '!internal/nativeboard/**'
+      - '!internal/pairnotice/**'
+      - '!internal/servicelaunch/**'
+      - '!internal/servicelifecycle/**'
+      - '!internal/testboard/**'
+      - '!internal/waylandwire/**'
+      - '!internal/webtransfer/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/check-expo.yml'
+      - '!**/README*.md'
+      - '!**/AGENTS.md'
   schedule:
     - cron: '20 3 * * 2'
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   EXPO_NO_TELEMETRY: '1'

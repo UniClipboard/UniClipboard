@@ -50,7 +50,11 @@ paths:
   - .github/workflows/release-ios.yml
   - .github/workflows/prepare-release.yml
   - .github/workflows/release-on-merge.yml
+  - .github/workflows/release-checks.yml
+  - .github/workflows/repo-docs-check.yml
+  - .github/workflows/check-nix.yml
   - .github/prompts/prepare-release-changelog.codex.md
+  - tools/ci
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
 verified: cfcb67e9f6de223543116787f47e1cb1749a9449
@@ -324,7 +328,24 @@ The packaged-process E2E uses a temporary home, pseudoterminals and fixed encryp
 
 Git attributes require LF checkout bytes for release TOML metadata on every platform. Metadata digests cover the original file bytes. The real Git checkout regression enables `core.autocrlf=true` and verifies that checkout preserves the canonical metadata bytes before building candidates.
 
-`build-cli.yml` runs for PRs, main/v2 pushes, manual requests and reusable calls. PR candidates use the actual PR head rather than a synthetic merge SHA. Explicit distribution builds import the existing Apple certificate into a temporary keychain, sign CLI executables before hashing and remove the keychain after construction. Its callers provide an exact source SHA. It checks the metadata digest, source identity, required target set and native executable receipts before `npm pack`. CI builds do not publish.
+`build-cli.yml` runs on scoped CLI/core/release-tooling PRs and main pushes, as well as unfiltered manual requests and reusable calls. PR candidates use the actual PR head rather than a synthetic merge SHA. Explicit distribution builds import the existing Apple certificate into a temporary keychain, sign CLI executables before hashing and remove the keychain after construction. Its callers provide an exact source SHA. It checks the metadata digest, source identity, required target set and native executable receipts before `npm pack`. CI builds do not publish.
+
+### PR check trigger boundaries
+
+Every PR-triggered workflow declares explicit path filters so unrelated changes (such as documentation updates or release-preparation PRs touching only `release/**`) do not trigger heavy cross-platform builds:
+
+| Workflow | File | Trigger scope |
+|---|---|---|
+| PR checks | `.github/workflows/pr-checks.yml` | Root Go module code, Desktop E2E harness/cases, Go lint/build config and `tools/ci/**`. Its `changes` job (`tools/ci/pr_changes.py`) gates `lint`, `test`, `headless` and `desktop-e2e` independently; `merge_group` and `workflow_dispatch` run all jobs. |
+| Build CLI | `.github/workflows/build-cli.yml` | Headless CLI/service/core Go code, `e2e/headless/**` and CLI release/packaging scripts. `workflow_dispatch` and `workflow_call` stay unfiltered. |
+| Package process acceptance | `.github/workflows/package-acceptance.yml` | Desktop packaging, installers, updaters, app icons/license assets, Desktop release-note template and Desktop packaging/release workflows (excluding `release/**` and mobile/prepare-release scripts). |
+| Mobile build and acceptance | `.github/workflows/check-expo.yml` | `app/expo/**`, `bindings/**` and core Go packages transitively imported by `bindings/` (excluding desktop/service-only `internal/*` packages and `release/products.toml`). |
+| Nix flake check | `.github/workflows/check-nix.yml` | `flake.nix`, `nix/**`, `go.mod`, `go.sum`, `packaging/linux/**`, Desktop icons/assets and workflow changes. |
+| Docs Check (`docs-site`) | `.github/workflows/docs-check.yml` | `docs-site/**` and workflow changes. |
+| Repo docs check | `.github/workflows/repo-docs-check.yml` | Repository Markdown docs (`docs/**`, `AGENTS.md`, `README*.md`, `CONTRIBUTING.md`, `SECURITY.md`) and `tools/docscheck/**`, running `go run ./tools/docscheck`. |
+| Release checks | `.github/workflows/release-checks.yml` | `release/**`, `prepare-release` / `release-on-merge` / mobile release workflows, prompt/templates and `tools/release/{prepare_release,mobile,android_release,ios_profiles}.py`. Runs fast metadata/notes/branch validation (`tools/ci/validate_release.py`) plus `prepare_release_test.py` and `mobile_delivery_test.py`. |
+
+`tools/ci/pr_changes_test.py` verifies both the `pr-checks.yml` job classifier and the workflow `paths:` trigger matrix against representative PR file sets.
 
 `release-cli.yml` supports alpha and direct stable publication. When `candidate_run_id` is supplied, the publish job acquires the canonical candidate directly. Otherwise the workflow checks for a durable record for the selected version/build and restores its exact package files when it exists. It awaits the reusable build when no record exists. It stages the manifest and packages in a draft GitHub release before publishing to npm. The product tag is `cli/v<version>-build.<number>` and must reference the accepted source SHA. Existing assets are compared and never overwritten. Incomplete staging fails before npm publication, and recovery requires the original candidate artifacts.
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime"
 
 	"github.com/egoist/mygo"
 
@@ -24,9 +25,48 @@ type trayController struct {
 	updatePending func(notifications.PendingSummary)
 }
 
+type trayHost interface {
+	SetIcon(png []byte, template bool) error
+	SetToolTip(tip string)
+	SetMenu(m *mygo.Menu)
+	PopUpMenu()
+	OnClick(fn func()) func()
+	OnRightClick(fn func()) func()
+	Destroy()
+}
+
+type trayHooks struct {
+	onThemeUpdated func(func()) func()
+	watchTheme     func(context.Context, func())
+	onWillQuit     func(func())
+	runOnMain      func(func())
+}
+
+// trayMenuOnRightClick reports whether the platform requires keeping Tray.Menu
+// unset so primary clicks reach OnClick, popping up the menu only on secondary
+// click. On macOS, NSStatusItem swallows clicks whenever a menu is attached.
+// Windows always routes left clicks to OnClick and right clicks to the attached
+// menu; Linux AppIndicator requires a persistent menu and routes activation to
+// OnClick via SetActivatable.
+func trayMenuOnRightClick(goos string) bool {
+	return goos == "darwin"
+}
+
 func setupTray(ctx context.Context, cfg config.Desktop) *trayController {
+	return setupTrayWith(ctx, cfg, runtime.GOOS, func(opts mygo.TrayOptions) (trayHost, error) {
+		return mygo.NewTray(opts)
+	}, trayHooks{
+		onThemeUpdated: mygo.Theme.OnUpdated,
+		watchTheme:     trayicon.WatchTheme,
+		onWillQuit:     func(fn func()) { mygo.App.OnWillQuit(func(*mygo.QuitEvent) { fn() }) },
+		runOnMain:      mygo.RunOnMain,
+	})
+}
+
+func setupTrayWith(ctx context.Context, cfg config.Desktop, goos string, createTray func(mygo.TrayOptions) (trayHost, error), hooks trayHooks) *trayController {
 	language := cfg.Language
 	var pending notifications.PendingSummary
+	rightClickMenu := trayMenuOnRightClick(goos)
 
 	buildTooltip := func(lang string, p notifications.PendingSummary) string {
 		base := i18n.Translate(lang, "跨设备剪贴板同步")
@@ -58,7 +98,7 @@ func setupTray(ctx context.Context, cfg config.Desktop) *trayController {
 		if checkDesktopUpdates != nil {
 			items = append(items, &mygo.MenuItem{Label: tr("检查更新"), Click: func(*mygo.MenuItem, *mygo.Window) { checkDesktopUpdates() }})
 		}
-		items = append(items, mygo.Separator(), &mygo.MenuItem{Label: tr("退出整个应用"), Role: mygo.RoleQuit})
+		items = append(items, mygo.Separator(), &mygo.MenuItem{Label: tr("退出"), Role: mygo.RoleQuit})
 		return mygo.NewMenu(items)
 	}
 
@@ -71,17 +111,29 @@ func setupTray(ctx context.Context, cfg config.Desktop) *trayController {
 		logHostFailure()
 		return noop
 	}
-	tray, err := mygo.NewTray(mygo.TrayOptions{
+	currentMenu := menu(language, pending)
+	opts := mygo.TrayOptions{
 		ID:             "unic-desktop",
 		Icon:           raw,
 		IconIsTemplate: template,
 		ToolTip:        buildTooltip(language, pending),
-		Menu:           menu(language, pending),
-	})
+	}
+	if !rightClickMenu {
+		opts.Menu = currentMenu
+	}
+	tray, err := createTray(opts)
 	if err != nil {
 		// Some desktop sessions do not provide a tray host.
 		logHostFailure()
 		return noop
+	}
+	tray.OnClick(func() { showDesktop() })
+	if rightClickMenu {
+		tray.OnRightClick(func() {
+			tray.SetMenu(currentMenu)
+			defer tray.SetMenu(nil)
+			tray.PopUpMenu()
+		})
 	}
 	icon := trayicon.New(tray.SetIcon)
 	if err := icon.SetStyle(cfg.TrayIcon); err != nil {
@@ -89,7 +141,7 @@ func setupTray(ctx context.Context, cfg config.Desktop) *trayController {
 	}
 	themeCtx, cancelTheme := context.WithCancel(ctx)
 	refresh := func() {
-		mygo.RunOnMain(func() {
+		hooks.runOnMain(func() {
 			if themeCtx.Err() == nil {
 				if err := icon.Refresh(); err != nil {
 					logHostFailure()
@@ -97,14 +149,17 @@ func setupTray(ctx context.Context, cfg config.Desktop) *trayController {
 			}
 		})
 	}
-	stopTheme := mygo.Theme.OnUpdated(refresh)
-	trayicon.WatchTheme(themeCtx, refresh)
-	mygo.App.OnWillQuit(func(*mygo.QuitEvent) { cancelTheme(); stopTheme(); tray.Destroy() })
+	stopTheme := hooks.onThemeUpdated(refresh)
+	hooks.watchTheme(themeCtx, refresh)
+	hooks.onWillQuit(func() { cancelTheme(); stopTheme(); tray.Destroy() })
 	return &trayController{
 		updateConfig: func(current config.Desktop) {
 			if current.Language != language {
 				language = current.Language
-				tray.SetMenu(menu(language, pending))
+				currentMenu = menu(language, pending)
+				if !rightClickMenu {
+					tray.SetMenu(currentMenu)
+				}
 				tray.SetToolTip(buildTooltip(language, pending))
 			}
 			if err := icon.SetStyle(current.TrayIcon); err != nil {
@@ -116,7 +171,10 @@ func setupTray(ctx context.Context, cfg config.Desktop) *trayController {
 				return
 			}
 			pending = current
-			tray.SetMenu(menu(language, pending))
+			currentMenu = menu(language, pending)
+			if !rightClickMenu {
+				tray.SetMenu(currentMenu)
+			}
 			tray.SetToolTip(buildTooltip(language, pending))
 		},
 	}

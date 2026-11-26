@@ -173,7 +173,7 @@ See [desktop runtime](../../docs/architecture/desktop-runtime.md).
 
 Build `go build -o dist/unic-desktop ./app/desktop/cmd/unic-desktop`.
 Run `unic-desktop` to start or contact the persistent tray. The launcher reads the saved startup mode. The tray borrows an existing standalone profile service, or starts an owned service when absent. Use `unic-desktop-demo` for the existing isolated UI fixture.
-GUI close releases that process. Tray Open creates or activates the GUI. Explicit application Quit stops tray integration, both UI roles and only the tray-owned service.
+GUI close releases that process. Left-clicking the tray icon or choosing Open from the tray menu creates or activates the GUI. Explicit application Quit stops tray integration, both UI roles and only the tray-owned service.
 See [headless architecture](../../docs/architecture/headless.md).
 
 ## Startup and runtime modes

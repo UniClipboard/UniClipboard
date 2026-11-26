@@ -862,6 +862,12 @@ func (w *worker) handle(ctx context.Context, r request) (any, error) {
 			return nil, fmt.Errorf("invalid_request")
 		}
 		return w.observeAuto(ctx, v)
+	case "send_with_progress":
+		v, err := decodeValue[sendProgressRequest](r.Value)
+		if err != nil || v.Fixture == "" || v.Key == "" {
+			return nil, fmt.Errorf("invalid_request")
+		}
+		return w.sendWithProgress(ctx, v)
 	case "channel_policy":
 		v, err := decodeValue[channelPolicyRequest](r.Value)
 		if err != nil {
@@ -1008,5 +1014,172 @@ func (w *worker) observeAuto(ctx context.Context, v observeAutoRequest) (observe
 		}
 	}
 	out.ElapsedMS = float64(time.Since(t0)) / float64(time.Millisecond)
+	return out, nil
+}
+
+func (w *worker) sendWithProgress(ctx context.Context, v sendProgressRequest) (sendProgressResult, error) {
+	f, ok := w.fixtures[v.Fixture]
+	if !ok {
+		return sendProgressResult{}, fmt.Errorf("unknown_fixture")
+	}
+	var snap clip.Snapshot
+	for i, p := range f.Meta.Parts {
+		if p.Kind == "file" {
+			snap.Files = append(snap.Files, clip.File{Path: f.Paths[i], Name: p.Name, Size: p.Size})
+		} else {
+			data, err := os.ReadFile(f.Paths[i])
+			if err != nil {
+				return sendProgressResult{}, fmt.Errorf("fixture_read_failed")
+			}
+			snap.Parts = append(snap.Parts, clip.Part{Format: p.MIME, Data: data})
+		}
+	}
+
+	evCtx, cancelEv := context.WithCancel(ctx)
+	var opEventsMu sync.Mutex
+	var opEvents int
+	evDone := make(chan struct{})
+	go func() {
+		defer close(evDone)
+		_ = w.client.Events(evCtx, func(ev api.Event) {
+			if ev.Kind == "operations" {
+				opEventsMu.Lock()
+				opEvents++
+				opEventsMu.Unlock()
+			}
+		})
+	}()
+	defer func() {
+		cancelEv()
+		<-evDone
+	}()
+	// Give SSE subscription a moment to establish before submission starts.
+	select {
+	case <-ctx.Done():
+		return sendProgressResult{}, ctx.Err()
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	t0 := time.Now()
+	sub, err := w.client.Submit(ctx, api.SubmitInput{RequestID: v.Key, Snapshot: snap})
+	if err != nil {
+		return sendProgressResult{}, fmt.Errorf("submit_failed: %w", err)
+	}
+	out := sendProgressResult{
+		HistoryID:   sub.HistoryID,
+		OperationID: sub.OperationID,
+		Monotonic:   true,
+	}
+	if sub.OperationID == "" {
+		out.ElapsedMS = float64(time.Since(t0)) / float64(time.Millisecond)
+		return out, fmt.Errorf("no_operation_created: disp=%s", sub.SyncDisposition)
+	}
+
+	timeout := time.Duration(v.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 120 * time.Second
+	}
+	deadline := time.Now().Add(timeout)
+	var lastBytes int64 = -1
+	var lastSample *progressSample
+	recordSample := func(op engine.Operation) {
+		if op.HistoryID != "" {
+			out.OperationHistoryID = op.HistoryID
+		}
+		if len(op.Targets) == 0 {
+			return
+		}
+		tgt := op.Targets[0]
+		s := progressSample{
+			State:        tgt.State,
+			ReceiptStage: tgt.ReceiptStage,
+		}
+		if tgt.Progress != nil {
+			s.BytesSent = tgt.Progress.BytesSent
+			s.TotalBytes = tgt.Progress.TotalBytes
+			s.PartIndex = tgt.Progress.PartIndex
+			s.PartCount = tgt.Progress.PartCount
+			if lastBytes >= 0 && s.BytesSent < lastBytes {
+				out.Monotonic = false
+			}
+			lastBytes = s.BytesSent
+			if s.TotalBytes > 0 && s.BytesSent > 0 && s.BytesSent < s.TotalBytes {
+				out.SawIntermediate = true
+			}
+		}
+		if tgt.State == engine.TargetSending && tgt.ReceiptStage == engine.ReceiptStageLocalWritten {
+			out.SawAwaitingReceipt = true
+		}
+		if lastSample == nil || *lastSample != s {
+			cp := s
+			lastSample = &cp
+			out.Samples = append(out.Samples, s)
+		}
+	}
+
+	var finalOp engine.Operation
+	for time.Now().Before(deadline) {
+		if ops, err := w.client.Operations(ctx, api.OperationsFilter{HistoryID: string(sub.HistoryID)}); err == nil {
+			for _, op := range ops {
+				if op.ID == sub.OperationID {
+					out.FoundByHistoryQuery = true
+					recordSample(op)
+					finalOp = op
+					break
+				}
+			}
+		}
+		if !out.FoundByActiveQuery {
+			if ops, err := w.client.Operations(ctx, api.OperationsFilter{Active: true}); err == nil {
+				for _, op := range ops {
+					if op.ID == sub.OperationID {
+						out.FoundByActiveQuery = true
+						break
+					}
+				}
+			}
+		}
+		if finalOp.ID == "" {
+			if op, err := w.client.Operation(ctx, string(sub.OperationID)); err == nil {
+				recordSample(op)
+				finalOp = op
+			}
+		}
+		if finalOp.ID != "" && finalOp.Done() {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return out, ctx.Err()
+		case <-time.After(15 * time.Millisecond):
+		}
+	}
+
+	// Allow final SSE event flush.
+	select {
+	case <-ctx.Done():
+	case <-time.After(100 * time.Millisecond):
+	}
+	opEventsMu.Lock()
+	out.OperationEvents = opEvents
+	opEventsMu.Unlock()
+
+	out.ElapsedMS = float64(time.Since(t0)) / float64(time.Millisecond)
+	out.Outcome = finalOp.Outcome
+	if len(finalOp.Targets) > 0 {
+		tgt := finalOp.Targets[0]
+		out.FinalState = tgt.State
+		out.FinalReceiptStage = tgt.ReceiptStage
+		if tgt.Progress != nil {
+			out.FinalBytesSent = tgt.Progress.BytesSent
+			out.FinalTotalBytes = tgt.Progress.TotalBytes
+		}
+		if tgt.Error != nil {
+			out.FinalErrorCode = tgt.Error.Code
+		}
+	}
+	if !finalOp.Done() {
+		return out, fmt.Errorf("operation_timeout")
+	}
 	return out, nil
 }

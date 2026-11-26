@@ -91,9 +91,10 @@ type targetOutcome struct {
 	Error                    string              `json:"error,omitempty"`
 }
 type manifest struct {
-	DirectoryChecks     []directoryCheck     `json:"directory_checks,omitempty"`
-	WakeChecks          []wakeCheck          `json:"wake_checks,omitempty"`
-	BindingPolicyChecks []bindingPolicyCheck `json:"binding_policy_checks,omitempty"`
+	DirectoryChecks        []directoryCheck        `json:"directory_checks,omitempty"`
+	WakeChecks             []wakeCheck             `json:"wake_checks,omitempty"`
+	BindingPolicyChecks    []bindingPolicyCheck    `json:"binding_policy_checks,omitempty"`
+	TransferProgressChecks []transferProgressCheck `json:"transfer_progress_checks,omitempty"`
 	KeepPrivate         bool                 `json:"keep_private"`
 	PrivateRemoved      bool                 `json:"controller_private_removed"`
 	Outcomes            []targetOutcome      `json:"target_outcomes"`

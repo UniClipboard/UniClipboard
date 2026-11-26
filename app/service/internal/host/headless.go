@@ -3,10 +3,13 @@ package host
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
+
+const activeOperationRecentWindow = 10 * time.Second
 
 func (n *Node) Submission(ctx context.Context, id string) (engine.SubmissionResult, error) {
 	n.submissions.mu.Lock()
@@ -32,6 +35,39 @@ func (n *Node) Submission(ctx context.Context, id string) (engine.SubmissionResu
 func (n *Node) Operation(ctx context.Context, id string) (engine.Operation, error) {
 	v, e := n.e.GetOperation(ctx, engine.OperationID(id))
 	return v, apiErr0(e)
+}
+
+func (n *Node) Operations(ctx context.Context, filter api.OperationsFilter) ([]engine.Operation, error) {
+	all, e := n.e.ListOperations(ctx)
+	if e != nil {
+		return nil, apiErr0(e)
+	}
+	now := time.Now()
+	out := make([]engine.Operation, 0, len(all))
+	for _, op := range all {
+		if filter.HistoryID != "" && string(op.HistoryID) != filter.HistoryID {
+			continue
+		}
+		if filter.Active {
+			switch op.Kind {
+			case engine.OperationSend:
+				if op.Done() && now.Sub(time.UnixMilli(op.UpdatedAtMs)) > activeOperationRecentWindow {
+					continue
+				}
+			case engine.OperationReceive:
+				if op.Done() {
+					continue
+				}
+			default:
+				continue
+			}
+		}
+		out = append(out, op)
+	}
+	return out, nil
+}
+func (n *Node) DiscardReceive(ctx context.Context, id string) error {
+	return apiErr0(n.e.DiscardReceive(ctx, engine.OperationID(id)))
 }
 func (n *Node) Capabilities(ctx context.Context) (engine.Capabilities, error) {
 	v, e := n.e.GetCapabilities(ctx)

@@ -827,6 +827,11 @@ func (c *controller) runScenarios(ctx context.Context) error {
 			return err
 		}
 	}
+	if enabled["transfer-progress"] {
+		if err := c.transferProgressMatrix(ctx); err != nil {
+			return err
+		}
+	}
 	if enabled["isolation"] {
 		return c.isolation(ctx)
 	}

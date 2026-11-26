@@ -97,13 +97,37 @@ BackendIDs=nil 表示全部启用后端；非 nil 空切片非法，JSON 适配�
 ```go
 type ApplyKind string
 type SyncTargetKind string
+type ReceiptStage string // "", "local_written", "remote_received", "remote_discarded"
+type TransferProgress struct {
+    BytesSent  int64
+    TotalBytes int64
+    PartIndex  int
+    PartCount  int
+}
 type TargetStatus struct {
-    BackendID PluginID
-    TargetKind SyncTargetKind
-    TargetID string
-    PeerID DeviceID
-    State TargetState
-    Error *Error
+    BackendID    PluginID
+    TargetKind   SyncTargetKind
+    TargetID     string
+    PeerID       DeviceID
+    State        TargetState // queued, sending, sent, discarded, failed, superseded
+    ReceiptStage ReceiptStage
+    Progress     *TransferProgress
+    Error        *Error
+}
+type ReceiveState string // receiving, committed, discarded, failed
+type ReceiveProgress struct {
+    BytesReceived int64
+    TotalBytes    int64
+    PartIndex     int
+    PartCount     int
+}
+type ReceiveOperation struct {
+    BackendID   PluginID
+    PeerID      DeviceID
+    State       ReceiveState
+    ContentKind string
+    FileCount   int
+    Progress    ReceiveProgress
 }
 ```
 

@@ -16,27 +16,50 @@ import (
 	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
-func (h *peerHelper) Send(ctx context.Context, s rpc.Send, host plugin.SendHost) error {
+func (h *peerHelper) Send(ctx context.Context, s rpc.Send, host plugin.SendHost) (rpc.SendResult, error) {
 	if name, ok := strings.CutPrefix(s.Clip.WireID, "recv:"); ok {
-		return h.inbound(ctx, name, s)
+		return rpc.SendResult{State: rpc.SendSent}, h.inbound(ctx, name, s)
 	}
 	g, err := host.Authorize(ctx)
 	if err != nil {
 		h.log("authorize-refused " + s.DispatchID)
-		return err
+		return rpc.SendResult{}, err
+	}
+	var declared uint64
+	for _, p := range s.Clip.Parts {
+		declared += uint64(p.Size)
 	}
 	sum, total := sha256.New(), 0
 	for i := range s.Clip.Parts {
 		rc, err := host.OpenPart(ctx, g.GrantID, i)
 		if err != nil {
-			return err
+			return rpc.SendResult{}, err
 		}
 		n, err := io.Copy(sum, rc)
 		_ = rc.Close()
 		if err != nil {
-			return err
+			return rpc.SendResult{}, err
 		}
 		total += int(n)
+		if s.Clip.WireID == "progress" {
+			idx := i
+			if err := host.ReportProgress(ctx, rpc.SendProgress{
+				GrantID: g.GrantID, Stage: rpc.SendStageSending,
+				BytesSent: rpc.U64(total), TotalBytes: rpc.U64(declared), PartIndex: &idx,
+			}); err != nil {
+				return rpc.SendResult{}, err
+			}
+		}
+	}
+	if s.Clip.WireID == "progress" {
+		if err := host.ReportProgress(ctx, rpc.SendProgress{
+			GrantID: g.GrantID, Stage: rpc.SendStageAwaitingReceipt,
+			BytesSent: rpc.U64(declared), TotalBytes: rpc.U64(declared),
+		}); err != nil {
+			return rpc.SendResult{}, err
+		}
+		h.log(fmt.Sprintf("sent %s %d %x", s.DispatchID, total, sum.Sum(nil)[:4]))
+		return rpc.SendResult{State: rpc.SendSent, ReceiptStage: rpc.ReceiptRemoteReceived}, nil
 	}
 	if s.Clip.WireID == "dup" {
 		if rc, err := host.OpenPart(ctx, g.GrantID, 0); err == nil {
@@ -47,15 +70,16 @@ func (h *peerHelper) Send(ctx context.Context, s rpc.Send, host plugin.SendHost)
 		}
 	}
 	h.log(fmt.Sprintf("sent %s %d %x", s.DispatchID, total, sum.Sum(nil)[:4]))
-	return nil
+	return rpc.SendResult{State: rpc.SendSent, ReceiptStage: rpc.ReceiptLocalWritten}, nil
 }
 
 type fakeSource struct {
-	mu     sync.Mutex
-	parts  [][]byte
-	refuse error
-	grants int
-	opens  int
+	mu       sync.Mutex
+	parts    [][]byte
+	refuse   error
+	grants   int
+	opens    int
+	progress []rpc.SendProgress
 }
 
 const testGrant = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -78,6 +102,13 @@ func (f *fakeSource) OpenPart(_ context.Context, g string, i int) (io.ReadCloser
 	}
 	f.opens++
 	return io.NopCloser(bytes.NewReader(f.parts[i])), nil
+}
+
+func (f *fakeSource) ReportProgress(_ context.Context, p rpc.SendProgress) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.progress = append(f.progress, p)
+	return nil
 }
 
 const (
@@ -108,7 +139,7 @@ func TestPeerSendStreamsPartsUnderGrant(t *testing.T) {
 	big := bytes.Repeat([]byte("0123456789abcdef"), 40000) // > one flow-control window
 	parts := [][]byte{[]byte("hello"), big, {}}
 	src := &fakeSource{parts: parts}
-	if err := p.(plugin.PeerDispatcher).Send(context.Background(), testSend("w1", parts...), src); err != nil {
+	if _, err := p.(plugin.PeerDispatcher).Send(context.Background(), testSend("w1", parts...), src); err != nil {
 		t.Fatal(err)
 	}
 	sum := sha256.New()
@@ -126,7 +157,7 @@ func TestPeerSendStreamsPartsUnderGrant(t *testing.T) {
 func TestPeerSendRefusedBeforeAnyByte(t *testing.T) {
 	p, dir := boundPeer(t)
 	src := &fakeSource{parts: [][]byte{[]byte("x")}, refuse: rpc.NewError("source_changed")}
-	err := p.(plugin.PeerDispatcher).Send(context.Background(), testSend("w1", []byte("x")), src)
+	_, err := p.(plugin.PeerDispatcher).Send(context.Background(), testSend("w1", []byte("x")), src)
 	var re *rpc.Error
 	if !asRPC(err, &re) || re.Code != "source_changed" {
 		t.Fatalf("want source_changed, got %v", err)
@@ -136,7 +167,7 @@ func TestPeerSendRefusedBeforeAnyByte(t *testing.T) {
 		t.Fatal("a part was opened without a grant")
 	}
 	// The session survives a refused send.
-	if err := p.(plugin.PeerDispatcher).Send(context.Background(), testSend("w2", []byte("y")), &fakeSource{parts: [][]byte{[]byte("y")}}); err != nil {
+	if _, err := p.(plugin.PeerDispatcher).Send(context.Background(), testSend("w2", []byte("y")), &fakeSource{parts: [][]byte{[]byte("y")}}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -144,10 +175,82 @@ func TestPeerSendRefusedBeforeAnyByte(t *testing.T) {
 func TestPeerPartOpensOnlyOnce(t *testing.T) {
 	p, dir := boundPeer(t)
 	src := &fakeSource{parts: [][]byte{[]byte("x")}}
-	if err := p.(plugin.PeerDispatcher).Send(context.Background(), testSend("dup", []byte("x")), src); err != nil {
+	if _, err := p.(plugin.PeerDispatcher).Send(context.Background(), testSend("dup", []byte("x")), src); err != nil {
 		t.Fatal(err)
 	}
 	waitLog(t, dir, "dup-refused")
+}
+
+func TestPeerSendProgressAndRemoteReceipt(t *testing.T) {
+	p, _ := boundPeer(t)
+	parts := [][]byte{[]byte("hello"), []byte("world!")}
+	src := &fakeSource{parts: parts}
+	res, err := p.(plugin.PeerDispatcher).Send(context.Background(), testSend("progress", parts...), src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.State != rpc.SendSent || res.ReceiptStage != rpc.ReceiptRemoteReceived {
+		t.Fatalf("result = %+v, want sent/remote_received", res)
+	}
+	src.mu.Lock()
+	got := append([]rpc.SendProgress(nil), src.progress...)
+	src.mu.Unlock()
+	if len(got) != 3 {
+		t.Fatalf("progress events = %+v, want 3 (part0, part1, awaiting_receipt)", got)
+	}
+	if got[0].Stage != rpc.SendStageSending || got[0].BytesSent != 5 || got[0].TotalBytes != 11 {
+		t.Fatalf("progress[0] = %+v", got[0])
+	}
+	if got[1].Stage != rpc.SendStageSending || got[1].BytesSent != 11 || got[1].TotalBytes != 11 {
+		t.Fatalf("progress[1] = %+v", got[1])
+	}
+	if got[2].Stage != rpc.SendStageAwaitingReceipt || got[2].BytesSent != 11 || got[2].TotalBytes != 11 {
+		t.Fatalf("progress[2] = %+v", got[2])
+	}
+}
+
+func TestSendProgressValidationRejections(t *testing.T) {
+	p := &Proxy{}
+	in := testSend("w", []byte("abcd"))
+	a := &activeSend{in: in, src: &fakeSource{parts: [][]byte{[]byte("abcd")}}, totalBytes: 4, grant: testGrant, opened: map[int]bool{}}
+	p.sends = map[uint64]*activeSend{1: a}
+	call := func(parent uint64, v any) *rpc.Call {
+		b, _ := json.Marshal(v)
+		return &rpc.Call{Parent: parent, Params: b}
+	}
+	code := func(err error) string {
+		var re *rpc.Error
+		if asRPC(err, &re) {
+			return re.Code
+		}
+		return fmt.Sprint(err)
+	}
+	badGrant := strings.Repeat("b", 64)
+	if _, err := p.sendProgress(context.Background(), call(99, rpc.SendProgress{GrantID: testGrant, Stage: rpc.SendStageSending, BytesSent: 1, TotalBytes: 4})); code(err) != rpc.CodePermission {
+		t.Fatalf("wrong parent: %v", err)
+	}
+	if _, err := p.sendProgress(context.Background(), call(1, rpc.SendProgress{GrantID: badGrant, Stage: rpc.SendStageSending, BytesSent: 1, TotalBytes: 4})); code(err) != rpc.CodePermission {
+		t.Fatalf("wrong grant: %v", err)
+	}
+	if _, err := p.sendProgress(context.Background(), call(1, rpc.SendProgress{GrantID: testGrant, Stage: rpc.SendStageSending, BytesSent: 1, TotalBytes: 5})); code(err) != rpc.CodeInvalidArgument {
+		t.Fatalf("mismatched total: %v", err)
+	}
+	badIdx := 1
+	if _, err := p.sendProgress(context.Background(), call(1, rpc.SendProgress{GrantID: testGrant, Stage: rpc.SendStageSending, BytesSent: 1, TotalBytes: 4, PartIndex: &badIdx})); code(err) != rpc.CodeInvalidArgument {
+		t.Fatalf("out of range part_index: %v", err)
+	}
+	if _, err := p.sendProgress(context.Background(), call(1, rpc.SendProgress{GrantID: testGrant, Stage: rpc.SendStageSending, BytesSent: 2, TotalBytes: 4})); err != nil {
+		t.Fatalf("valid progress: %v", err)
+	}
+	if _, err := p.sendProgress(context.Background(), call(1, rpc.SendProgress{GrantID: testGrant, Stage: rpc.SendStageSending, BytesSent: 1, TotalBytes: 4})); code(err) != rpc.CodeConflict {
+		t.Fatalf("decreasing bytes_sent: %v", err)
+	}
+	if _, err := p.sendProgress(context.Background(), call(1, rpc.SendProgress{GrantID: testGrant, Stage: rpc.SendStageAwaitingReceipt, BytesSent: 4, TotalBytes: 4})); err != nil {
+		t.Fatalf("awaiting_receipt: %v", err)
+	}
+	if _, err := p.sendProgress(context.Background(), call(1, rpc.SendProgress{GrantID: testGrant, Stage: rpc.SendStageSending, BytesSent: 4, TotalBytes: 4})); code(err) != rpc.CodeConflict {
+		t.Fatalf("reverting stage after awaiting_receipt: %v", err)
+	}
 }
 
 // The handlers must refuse anything that does not match a live send.

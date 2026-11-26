@@ -32,6 +32,19 @@ type ActionOutput struct {
 	Applied    bool                    `json:"applied"`
 	ApplyError *engine.Error           `json:"apply_error,omitempty"`
 }
+type OperationsFilter struct {
+	Active    bool
+	HistoryID string
+}
+
+type OperationsLister interface {
+	Operations(context.Context, OperationsFilter) ([]engine.Operation, error)
+}
+
+type ReceiveDiscarder interface {
+	DiscardReceive(context.Context, string) error
+}
+
 type HeadlessBackend interface {
 	Submit(context.Context, SubmitInput) (engine.SubmissionResult, error)
 	Submission(context.Context, string) (engine.SubmissionResult, error)
@@ -41,6 +54,26 @@ type HeadlessBackend interface {
 	DismissReceived(context.Context, string) error
 	Capabilities(context.Context) (engine.Capabilities, error)
 	ExecuteAction(context.Context, string, string, ActionInput) (ActionOutput, error)
+}
+
+func (c *Client) Operations(ctx context.Context, filter OperationsFilter) (out []engine.Operation, err error) {
+	q := url.Values{}
+	if filter.Active {
+		q.Set("active", "true")
+	}
+	if filter.HistoryID != "" {
+		q.Set("history_id", filter.HistoryID)
+	}
+	path := "/v1/operations"
+	if encoded := q.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	err = c.do(ctx, "GET", path, nil, &out)
+	return
+}
+
+func (c *Client) DiscardReceive(ctx context.Context, id string) error {
+	return c.do(ctx, "POST", "/v1/operations/"+url.PathEscape(id)+"/discard", nil, nil)
 }
 
 func (c *Client) Submit(ctx context.Context, v SubmitInput) (out engine.SubmissionResult, err error) {

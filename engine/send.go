@@ -3,12 +3,15 @@ package engine
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/directory"
 	"github.com/uniclipboard/unic/internal/peerbackend"
 	"github.com/uniclipboard/unic/plugin/rpc"
 )
+
+const opProgressEventInterval = 200 * time.Millisecond
 
 // sendSet is what will go out: the parts of a content that the sync settings
 // allow, fixed at submission.
@@ -85,9 +88,10 @@ func checkLimits(set sendSet, lim Limits) *Error {
 	return nil
 }
 
-// reportTarget records how a send fares towards one target and finishes the
-// operation when every target is final and no backend can still register more.
-func (e *Engine) reportTarget(id OperationID, k targetKey, st TargetState, cause error) {
+// reportTargetReceipt records how a send fares towards one target (including
+// its verified receipt stage) and finishes the operation when every target is
+// final and no backend can still register more.
+func (e *Engine) reportTargetReceipt(id OperationID, k targetKey, st TargetState, stage ReceiptStage, cause error) {
 	e.mu.Lock()
 	o := e.ops.byID[id]
 	if o == nil {
@@ -105,6 +109,12 @@ func (e *Engine) reportTarget(id OperationID, k targetKey, st TargetState, cause
 		return
 	}
 	t.State = st
+	if stage != "" {
+		t.ReceiptStage = stage
+	}
+	if (st == TargetSent || st == TargetDiscarded) && t.Progress != nil {
+		t.Progress.BytesSent = t.Progress.TotalBytes
+	}
 	if st == TargetFailed {
 		t.Error = e.sendFailure(cause)
 	}
@@ -113,6 +123,44 @@ func (e *Engine) reportTarget(id OperationID, k targetKey, st TargetState, cause
 	if done != nil {
 		e.cs.unref(done)
 		e.opFinished(id)
+	}
+}
+
+// reportTargetProgress updates in-memory byte/part progress for one in-flight
+// target and coalesces EventOperations notifications to avoid event-queue floods.
+func (e *Engine) reportTargetProgress(id OperationID, k targetKey, stage ReceiptStage, p TransferProgress) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	o := e.ops.byID[id]
+	if o == nil {
+		return
+	}
+	var t *TargetStatus
+	for i := range o.op.Targets {
+		if x := &o.op.Targets[i]; x.BackendID == k.backend && x.TargetKind == k.kind && x.TargetID == k.id {
+			t = x
+		}
+	}
+	if t == nil || t.State.final() {
+		return
+	}
+	if p.TotalBytes < 0 || p.BytesSent < 0 || p.BytesSent > p.TotalBytes {
+		return
+	}
+	if t.Progress != nil && p.BytesSent < t.Progress.BytesSent {
+		return
+	}
+	stageChanged := stage != "" && stage != t.ReceiptStage
+	if stage != "" {
+		t.ReceiptStage = stage
+	}
+	cp := p
+	t.Progress = &cp
+	now := time.Now()
+	o.op.UpdatedAtMs = now.UnixMilli()
+	if stageChanged || o.lastProgressEvent.IsZero() || now.Sub(o.lastProgressEvent) >= opProgressEventInterval {
+		o.lastProgressEvent = now
+		e.commitObjsLocked([]ObjectRef{{Type: "operation", ID: string(o.op.ID)}}, EventOperations)
 	}
 }
 

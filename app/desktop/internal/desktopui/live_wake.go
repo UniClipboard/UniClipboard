@@ -82,6 +82,9 @@ func (l *liveState) scheduleWake(d *viewState) {
 	if d.page == "settings" && d.settings.Value == "quickPanel" && !d.shortcuts.loading && !d.shortcuts.nextRead.IsZero() && (due.IsZero() || d.shortcuts.nextRead.Before(due)) {
 		due = d.shortcuts.nextRead
 	}
+	if !l.opsLoading && !l.opsNextRefresh.IsZero() && (due.IsZero() || l.opsNextRefresh.Before(due)) {
+		due = l.opsNextRefresh
+	}
 	l.wakeMu.Lock()
 	defer l.wakeMu.Unlock()
 	if l.ctx.Err() != nil || due.Equal(l.wakeDue) {

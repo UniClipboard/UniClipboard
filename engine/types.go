@@ -222,6 +222,7 @@ type OperationKind string
 const (
 	OperationPairing OperationKind = "pairing"
 	OperationSend    OperationKind = "send"
+	OperationReceive OperationKind = "receive"
 )
 
 // Phase is how far an operation is.
@@ -235,6 +236,7 @@ const (
 	PhaseFailed      Phase = "failed"
 	PhaseQueued      Phase = "queued"
 	PhaseSending     Phase = "sending"
+	PhaseReceiving   Phase = "receiving"
 	PhaseCompleted   Phase = "completed"
 )
 
@@ -255,6 +257,7 @@ type Operation struct {
 	ID          OperationID    `json:"id"`
 	RequestID   RequestID      `json:"request_id"`
 	Kind        OperationKind  `json:"kind"`
+	HistoryID   HistoryID      `json:"history_id,omitempty"`
 	CreatedAtMs int64          `json:"created_at_ms"`
 	UpdatedAtMs int64          `json:"updated_at_ms"`
 	Phase       Phase          `json:"phase"`
@@ -263,6 +266,8 @@ type Operation struct {
 	// Send operations only:
 	Targets []TargetStatus `json:"targets,omitempty"`
 	Outcome Outcome        `json:"outcome,omitempty"`
+	// Receive operations only:
+	Receive *ReceiveOperation `json:"receive,omitempty"`
 }
 
 // Done reports whether the operation reached a final phase.
@@ -303,23 +308,74 @@ type TargetState string
 const (
 	TargetQueued     TargetState = "queued"
 	TargetSending    TargetState = "sending"
-	TargetSent       TargetState = "sent" // every byte was written to the connection; says nothing about the other side
+	TargetSent       TargetState = "sent"      // reached delivery stage indicated by ReceiptStage
+	TargetDiscarded  TargetState = "discarded" // remote peer cleanly received and discarded under its policy/dedup
 	TargetFailed     TargetState = "failed"
 	TargetSuperseded TargetState = "superseded" // a newer submission replaced it before it started
 )
 
 func (t TargetState) final() bool {
-	return t == TargetSent || t == TargetFailed || t == TargetSuperseded
+	return t == TargetSent || t == TargetDiscarded || t == TargetFailed || t == TargetSuperseded
+}
+
+// ReceiptStage records the highest verified delivery stage for one target.
+// It never asserts remote OS clipboard writes or user paste.
+type ReceiptStage string
+
+const (
+	ReceiptStageLocalWritten    ReceiptStage = "local_written"
+	ReceiptStageRemoteReceived  ReceiptStage = "remote_received"
+	ReceiptStageRemoteDiscarded ReceiptStage = "remote_discarded"
+)
+
+// TransferProgress is the in-memory byte/part progress of one target transfer.
+// It is never persisted to SQLite and contains no filenames, paths or content.
+type TransferProgress struct {
+	BytesSent  int64 `json:"bytes_sent"`
+	TotalBytes int64 `json:"total_bytes"`
+	PartIndex  int   `json:"part_index,omitempty"`
+	PartCount  int   `json:"part_count,omitempty"`
+}
+
+// ReceiveState is the lifecycle state of an inbound transfer operation.
+type ReceiveState string
+
+const (
+	ReceiveReceiving ReceiveState = "receiving"
+	ReceiveCommitted ReceiveState = "committed"
+	ReceiveDiscarded ReceiveState = "discarded"
+	ReceiveFailed    ReceiveState = "failed"
+)
+
+// ReceiveProgress is the in-memory byte/part progress of one inbound transfer.
+// It is never persisted to SQLite and contains no filenames, paths or content.
+type ReceiveProgress struct {
+	BytesReceived int64 `json:"bytes_received"`
+	TotalBytes    int64 `json:"total_bytes"`
+	PartIndex     int   `json:"part_index,omitempty"`
+	PartCount     int   `json:"part_count,omitempty"`
+}
+
+// ReceiveOperation tracks an in-flight or recently completed inbound peer transfer.
+type ReceiveOperation struct {
+	BackendID   PluginID        `json:"backend_id"`
+	PeerID      DeviceID        `json:"peer_id"`
+	State       ReceiveState    `json:"state"`
+	ContentKind string          `json:"content_kind,omitempty"`
+	FileCount   int             `json:"file_count,omitempty"`
+	Progress    ReceiveProgress `json:"progress"`
 }
 
 // TargetStatus is the progress towards one device.
 type TargetStatus struct {
-	BackendID  PluginID       `json:"backend_id,omitempty"`
-	TargetKind SyncTargetKind `json:"target_kind,omitempty"`
-	TargetID   string         `json:"target_id,omitempty"` // opaque; for a device the DeviceID
-	PeerID     DeviceID       `json:"peer_id,omitempty"`   // devices only, kept for older clients
-	State      TargetState    `json:"state"`
-	Error      *Error         `json:"error,omitempty"`
+	BackendID    PluginID          `json:"backend_id,omitempty"`
+	TargetKind   SyncTargetKind    `json:"target_kind,omitempty"`
+	TargetID     string            `json:"target_id,omitempty"` // opaque; for a device the DeviceID
+	PeerID       DeviceID          `json:"peer_id,omitempty"`   // devices only, kept for older clients
+	State        TargetState       `json:"state"`
+	ReceiptStage ReceiptStage      `json:"receipt_stage,omitempty"`
+	Progress     *TransferProgress `json:"progress,omitempty"`
+	Error        *Error            `json:"error,omitempty"`
 }
 
 // Outcome summarizes a finished send.

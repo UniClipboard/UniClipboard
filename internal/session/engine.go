@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -50,10 +51,12 @@ type Transport interface {
 }
 
 type Config struct {
-	Observer     syncdiag.Observer
-	Transport    Transport
-	Logf         func(format string, args ...any)
-	ProbeTimeout time.Duration // optional override for ping liveness timeout (defaults to 4s)
+	Observer       syncdiag.Observer
+	Transport      Transport
+	Logf           func(format string, args ...any)
+	ProbeTimeout   time.Duration // optional override for ping liveness timeout (defaults to 4s)
+	AckTimeout     time.Duration // optional override for clip_ack wait timeout (defaults to 30s)
+	DisableClipAck bool          // test-only: omit "clip_ack" from wire.Hello.Caps to exercise legacy peers
 }
 
 var (
@@ -65,8 +68,12 @@ var (
 )
 
 const (
-	handshakeTimeout = 15 * time.Second
-	eventTimeout     = 5 * time.Second
+	handshakeTimeout    = 15 * time.Second
+	eventTimeout        = 5 * time.Second
+	defaultAckTimeout   = 30 * time.Second
+	progressMinInterval = 200 * time.Millisecond
+	progressMinBytes    = 256 << 10
+	maxAckIDBytes       = 128
 )
 
 // Backend is the session layer. The Engine binds it, then drives it with
@@ -533,9 +540,13 @@ func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, 
 	}
 	bodyConn := &bodyDeadlineConn{Conn: conn}
 	w := wire.NewConn(bodyConn)
+	var localCaps []string
+	if !b.cfg.DisableClipAck {
+		localCaps = []string{wire.CapClipAck}
+	}
 	werr := make(chan error, 1)
 	go func() {
-		werr <- w.WriteJSON(wire.Hello{T: "hello", Version: wire.Version, H: mine, Name: b.selfName(), Addr: own})
+		werr <- w.WriteJSON(wire.Hello{T: "hello", Version: wire.Version, H: mine, Name: b.selfName(), Addr: own, Caps: localCaps})
 	}()
 	var h wire.Hello
 	if err := readTyped(w, "hello", &h); err != nil {
@@ -597,9 +608,11 @@ func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, 
 	}
 	var s *session
 	if local && dec.SessionToken != nil {
+		clipAckCap := !b.cfg.DisableClipAck && slices.Contains(h.Caps, wire.CapClipAck)
 		s = &session{
 			b: b, r: r, conn: conn, w: w, bodyConn: bodyConn, connID: connID, token: *dec.SessionToken, peerID: dec.PeerID, outgoing: outgoing,
 			trustRev: uint64(dec.TrustRevision), wlock: make(chan struct{}, 1), pongSem: make(chan struct{}, 1),
+			clipAckCap: clipAckCap, ackQueue: make(chan wire.ClipAck, 32),
 			done: make(chan struct{}), exited: make(chan struct{}),
 		}
 		bodyConn.lastRxNs = &s.lastRxUnixNs
@@ -708,6 +721,10 @@ type session struct {
 	probes       map[string]chan struct{}
 	pongSem      chan struct{}
 	pongWG       sync.WaitGroup
+	clipAckCap   bool
+	ackMu        sync.Mutex
+	ackWaiters   map[string]chan string
+	ackQueue     chan wire.ClipAck
 	link         peerLinkCache // guarded by b.mu
 	done         chan struct{}
 	exited       chan struct{} // closed when serving ended and the Engine was told
@@ -812,9 +829,12 @@ func (b *Backend) establish(r *runState, s *session) bool {
 func (b *Backend) serve(s *session) {
 	introDone := make(chan struct{})
 	go func() { defer close(introDone); s.introduceLoop() }()
+	ackDone := make(chan struct{})
+	go func() { defer close(ackDone); s.ackLoop() }()
 	err := b.recvLoop(s)
 	s.closeWith(reason(err))
 	<-introDone
+	<-ackDone
 	s.pongWG.Wait()
 	b.endObservation(s)
 	b.mu.Lock()
@@ -914,38 +934,149 @@ func (s *session) sendIntroductions() error {
 
 // ---- sending ----
 
+func (b *Backend) ackBudget() time.Duration {
+	if b.cfg.AckTimeout > 0 {
+		return b.cfg.AckTimeout
+	}
+	return defaultAckTimeout
+}
+
+func (s *session) registerAckWaiter(id string) (chan string, func()) {
+	ch := make(chan string, 1)
+	s.ackMu.Lock()
+	if s.ackWaiters == nil {
+		s.ackWaiters = map[string]chan string{}
+	}
+	s.ackWaiters[id] = ch
+	s.ackMu.Unlock()
+	return ch, func() {
+		s.ackMu.Lock()
+		if s.ackWaiters[id] == ch {
+			delete(s.ackWaiters, id)
+		}
+		s.ackMu.Unlock()
+	}
+}
+
+func (s *session) handleClipAck(raw []byte) {
+	var msg wire.ClipAck
+	if err := json.Unmarshal(raw, &msg); err != nil || msg.ID == "" || len(msg.ID) > maxAckIDBytes {
+		return
+	}
+	switch msg.Status {
+	case wire.ClipAckReceived, wire.ClipAckDiscarded, wire.ClipAckFailed:
+	default:
+		return
+	}
+	s.ackMu.Lock()
+	ch := s.ackWaiters[msg.ID]
+	if ch != nil {
+		delete(s.ackWaiters, msg.ID)
+	}
+	s.ackMu.Unlock()
+	if ch != nil {
+		select {
+		case ch <- msg.Status:
+		default:
+		}
+	}
+}
+
+func (s *session) enqueueAck(ack wire.ClipAck) {
+	if !s.clipAckCap || s.ackQueue == nil || ack.ID == "" {
+		return
+	}
+	select {
+	case s.ackQueue <- ack:
+	case <-s.done:
+	default:
+	}
+}
+
+func (s *session) ackLoop() {
+	if s.ackQueue == nil {
+		return
+	}
+	for {
+		select {
+		case <-s.done:
+			return
+		case ack := <-s.ackQueue:
+			ctx, cancel := context.WithTimeout(s.r.ctx, eventTimeout)
+			if !s.acquireWrite(ctx) {
+				cancel()
+				if s.isDone() {
+					return
+				}
+				continue
+			}
+			_ = s.conn.SetWriteDeadline(time.Now().Add(eventTimeout))
+			err := s.w.WriteJSON(ack)
+			_ = s.conn.SetWriteDeadline(time.Time{})
+			s.releaseWrite()
+			cancel()
+			if err != nil {
+				s.closeWith(reason(err))
+				return
+			}
+			s.markTx()
+		}
+	}
+}
+
 // Send writes one clip to the connection s names. The Engine authorizes it
 // last, immediately before the first byte, and hands out each part once.
-func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) (failure error) {
+func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) (result rpc.SendResult, failure error) {
 	b.publication.RLock()
 	b.mu.Lock()
 	sess := b.sessions[m.PeerID]
 	b.mu.Unlock()
 	b.publication.RUnlock()
 	if sess == nil || sess.isDone() {
-		return rpc.NewError(rpc.CodeNotFound)
+		return rpc.SendResult{}, rpc.NewError(rpc.CodeNotFound)
 	}
 	if sess.connID != m.ConnectionID || subtle.ConstantTimeCompare([]byte(sess.token), []byte(m.SessionToken)) != 1 {
-		return rpc.NewError(rpc.CodeConflict)
+		return rpc.SendResult{}, rpc.NewError(rpc.CodeConflict)
 	}
 	g, err := src.Authorize(ctx, rpc.Authorize{DispatchID: m.DispatchID, ContentHandle: m.ContentHandle, ConnectionID: m.ConnectionID, SessionToken: m.SessionToken})
 	if err != nil {
-		return err
+		return rpc.SendResult{}, err
 	}
 	epoch := b.epoch()
 	size, kind := clipMeasurement(m.Clip.Parts)
 	b.emit(syncdiag.Record{Epoch: epoch, Kind: "transfer_size", Direction: "outgoing", Declared: size, ContentKind: kind})
 	startPath := sess.startPath(epoch)
 	var body wire.BodyObservation
+	var lastReportedBytes int64 = -1
+	var lastReportedAt time.Time
+	body.OnProgress = func(bytesSent int64, partIndex int) {
+		if bytesSent <= lastReportedBytes || bytesSent > size {
+			return
+		}
+		now := time.Now()
+		if lastReportedBytes >= 0 && bytesSent < size && bytesSent-lastReportedBytes < progressMinBytes && now.Sub(lastReportedAt) < progressMinInterval {
+			return
+		}
+		lastReportedBytes = bytesSent
+		lastReportedAt = now
+		pidx := partIndex
+		_ = src.ReportProgress(ctx, rpc.SendProgress{
+			GrantID:    g.GrantID,
+			Stage:      rpc.SendStageSending,
+			BytesSent:  rpc.U64(bytesSent),
+			TotalBytes: rpc.U64(size),
+			PartIndex:  &pidx,
+		})
+	}
 	defer func() {
-		result := "succeeded"
+		res := "succeeded"
 		if failure != nil {
-			result = "failed"
+			res = "failed"
 			if ctx.Err() != nil {
-				result = "cancelled"
+				res = "cancelled"
 			}
 		}
-		b.emit(syncdiag.Record{Epoch: epoch, Kind: "transfer", Direction: "outgoing", Result: result, Declared: size, Bytes: body.Bytes, Duration: body.Duration(), Path: startPath})
+		b.emit(syncdiag.Record{Epoch: epoch, Kind: "transfer", Direction: "outgoing", Result: res, Declared: size, Bytes: body.Bytes, Duration: body.Duration(), Path: startPath})
 	}()
 	var open []io.Closer
 	defer func() {
@@ -958,7 +1089,7 @@ func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) (
 	for i, p := range m.Clip.Parts {
 		rc, err := src.OpenPart(ctx, g.GrantID, i)
 		if err != nil {
-			return err
+			return rpc.SendResult{}, err
 		}
 		open = append(open, rc)
 		op := wire.OutPart{Size: int64(p.Size), R: &srcReader{r: rc, fail: &srcErr}}
@@ -969,40 +1100,79 @@ func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) (
 		}
 		out[i] = op
 	}
+	var ackCh chan string
+	if sess.clipAckCap {
+		var cleanupAck func()
+		ackCh, cleanupAck = sess.registerAckWaiter(m.Clip.WireID)
+		defer cleanupAck()
+	}
 	if !sess.acquireWrite(ctx) {
 		if ctx.Err() != nil {
-			return rpc.NewError(rpc.CodeCancelled)
+			return rpc.SendResult{}, rpc.NewError(rpc.CodeCancelled)
 		}
-		return rpc.NewError(rpc.CodeUnavailable)
+		return rpc.SendResult{}, rpc.NewError(rpc.CodeUnavailable)
 	}
-	defer sess.releaseWrite()
 	sess.bodyActive.Store(true)
-	defer sess.bodyActive.Store(false)
 	if sess.bodyConn != nil {
 		sess.bodyConn.writingBody = true
-		defer func() { sess.bodyConn.writingBody = false; _ = sess.conn.SetWriteDeadline(time.Time{}) }()
 	}
-	stop := context.AfterFunc(ctx, func() { sess.closeWith("cancellation") }) // a cancelled send leaves the stream out of step
-	defer stop()
-	if err := sess.w.SendApplicationStream(m.Clip.WireID, m.Clip.Origin, int64(m.Clip.AtMs), m.Clip.Hash, out, m.Clip.SourceApplication, &body); err != nil {
+	stop := context.AfterFunc(ctx, func() { sess.closeWith("cancellation") }) // a cancelled write leaves the stream out of step
+	writeErr := sess.w.SendApplicationStream(m.Clip.WireID, m.Clip.Origin, int64(m.Clip.AtMs), m.Clip.Hash, out, m.Clip.SourceApplication, &body)
+	stop()
+	if sess.bodyConn != nil {
+		sess.bodyConn.writingBody = false
+		_ = sess.conn.SetWriteDeadline(time.Time{})
+	}
+	sess.bodyActive.Store(false)
+	// Release the write lock immediately once the body is written so concurrent
+	// bidirectional sends and inbound clip_ack writes can never deadlock.
+	sess.releaseWrite()
+	if writeErr != nil {
 		if srcErr != nil {
 			sess.closeWith("io_failure") // the stream may be out of step: start over
-			return srcErr                // the content failed, not the network
+			return rpc.SendResult{}, srcErr
 		}
 		var ne net.Error
 		switch {
 		case ctx.Err() != nil:
 			sess.closeWith("cancellation")
-			return rpc.NewError(rpc.CodeCancelled)
-		case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
+			return rpc.SendResult{}, rpc.NewError(rpc.CodeCancelled)
+		case errors.Is(writeErr, context.DeadlineExceeded), errors.As(writeErr, &ne) && ne.Timeout():
 			sess.closeWith("timeout")
-			return rpc.NewError(rpc.CodeTimeout)
+			return rpc.SendResult{}, rpc.NewError(rpc.CodeTimeout)
 		default:
-			sess.closeWith(reason(err))
-			return rpc.NewError(rpc.CodeUnavailable)
+			sess.closeWith(reason(writeErr))
+			return rpc.SendResult{}, rpc.NewError(rpc.CodeUnavailable)
 		}
 	}
-	return nil
+	if !sess.clipAckCap {
+		return rpc.SendResult{State: rpc.SendSent, ReceiptStage: rpc.ReceiptLocalWritten}, nil
+	}
+	_ = src.ReportProgress(ctx, rpc.SendProgress{
+		GrantID:    g.GrantID,
+		Stage:      rpc.SendStageAwaitingReceipt,
+		BytesSent:  rpc.U64(size),
+		TotalBytes: rpc.U64(size),
+	})
+	ackTimer := time.NewTimer(b.ackBudget())
+	defer ackTimer.Stop()
+	select {
+	case status := <-ackCh:
+		switch status {
+		case wire.ClipAckReceived:
+			return rpc.SendResult{State: rpc.SendSent, ReceiptStage: rpc.ReceiptRemoteReceived}, nil
+		case wire.ClipAckDiscarded:
+			return rpc.SendResult{State: rpc.SendSent, ReceiptStage: rpc.ReceiptRemoteDiscarded}, nil
+		default:
+			return rpc.SendResult{}, rpc.NewError(rpc.CodeUnavailable)
+		}
+	case <-sess.done:
+		return rpc.SendResult{}, rpc.NewError(rpc.CodeUnavailable)
+	case <-ctx.Done():
+		return rpc.SendResult{}, rpc.NewError(rpc.CodeCancelled)
+	case <-ackTimer.C:
+		return rpc.SendResult{}, rpc.NewError(rpc.CodeTimeout)
+	}
 }
 
 // ---- receiving ----
@@ -1020,6 +1190,10 @@ func (b *Backend) recvLoop(s *session) error {
 		}
 		if typ == "pong" {
 			s.handlePong(raw)
+			continue
+		}
+		if typ == "clip_ack" {
+			s.handleClipAck(raw)
 			continue
 		}
 		if typ == "introduce" {
@@ -1067,9 +1241,16 @@ func (b *Backend) receive(s *session, m *wire.Clip) error {
 		s.bodyConn.body = true
 		defer func() { s.bodyConn.body = false; _ = s.conn.SetReadDeadline(time.Time{}) }()
 	}
+	discardAndAck := func() error {
+		if err := s.w.Discard(m); err != nil {
+			return err
+		}
+		s.enqueueAck(wire.ClipAck{T: "clip_ack", ID: m.ID, Status: wire.ClipAckDiscarded})
+		return nil
+	}
 	rcv := b.receiver()
 	if rcv == nil {
-		return s.w.Discard(m)
+		return discardAndAck()
 	}
 	o := rpc.ReceiveOpen{ConnectionID: s.connID, SessionToken: s.token,
 		Clip: rpc.Clip{SourceApplication: m.SourceApplication.Clone(), WireID: m.ID, Origin: m.Origin, AtMs: rpc.U64(max(m.TS, 0)), Hash: m.Hash}}
@@ -1083,7 +1264,7 @@ func (b *Backend) receive(s *session, m *wire.Clip) error {
 		o.Clip.Parts = append(o.Clip.Parts, cp)
 	}
 	if o.Validate() != nil {
-		return s.w.Discard(m) // malformed for the Engine: read and drop
+		return discardAndAck() // malformed for the Engine: read and drop
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1096,7 +1277,7 @@ func (b *Backend) receive(s *session, m *wire.Clip) error {
 	}()
 	g, err := rcv.OpenReceive(ctx, o)
 	if err != nil || g.Decision != rpc.DecisionAccept || g.ReceiveID == nil {
-		return s.w.Discard(m)
+		return discardAndAck()
 	}
 	epoch := b.epoch()
 	size, kind := clipMeasurement(o.Clip.Parts)
@@ -1106,14 +1287,23 @@ func (b *Backend) receive(s *session, m *wire.Clip) error {
 	parts := &recvParts{w: s.w, m: m, observation: body}
 	result, recvErr := rcv.Receive(ctx, *g.ReceiveID, parts)
 	var drainErr error
-	if recvErr != nil {
+	switch {
+	case recvErr != nil:
 		// An aborted batch must not wait for a peer to finish the rejected body.
 		// Returning an error closes the session and releases its readers.
 		drainErr = recvErr
-	} else if result != rpc.OutcomeCommit {
-		drainErr = rpc.NewError(rpc.CodeUnavailable)
-	} else {
+	case result == rpc.OutcomeCommit:
 		drainErr = parts.drain()
+		if drainErr == nil {
+			s.enqueueAck(wire.ClipAck{T: "clip_ack", ID: m.ID, Status: wire.ClipAckReceived})
+		}
+	case result == rpc.OutcomeDiscard:
+		drainErr = parts.drain()
+		if drainErr == nil {
+			s.enqueueAck(wire.ClipAck{T: "clip_ack", ID: m.ID, Status: wire.ClipAckDiscarded})
+		}
+	default:
+		drainErr = rpc.NewError(rpc.CodeUnavailable)
 	}
 	status := "succeeded"
 	if recvErr != nil || result != rpc.OutcomeCommit || drainErr != nil {

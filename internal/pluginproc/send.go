@@ -18,28 +18,35 @@ var _ plugin.PeerDispatcher = peerM{}
 
 const maxOpenParts = 4 // streams a send may hold open at once
 
-func (m peerM) Send(ctx context.Context, s rpc.Send, src plugin.SendSource) error {
+func (m peerM) Send(ctx context.Context, s rpc.Send, src plugin.SendSource) (rpc.SendResult, error) {
 	return m.p.send(ctx, s, src)
 }
 
 type activeSend struct {
-	mu     sync.Mutex
-	in     rpc.Send
-	src    plugin.SendSource
-	grant  string
-	opened map[int]bool
-	live   int
+	mu         sync.Mutex
+	in         rpc.Send
+	src        plugin.SendSource
+	totalBytes uint64
+	grant      string
+	opened     map[int]bool
+	live       int
+	lastBytes  uint64
+	awaiting   bool
 }
 
-func (p *Proxy) send(ctx context.Context, in rpc.Send, src plugin.SendSource) error {
+func (p *Proxy) send(ctx context.Context, in rpc.Send, src plugin.SendSource) (rpc.SendResult, error) {
 	if err := in.Validate(); err != nil {
-		return err
+		return rpc.SendResult{}, err
 	}
 	s := p.current()
 	if s == nil {
-		return ErrUnavailable
+		return rpc.SendResult{}, ErrUnavailable
 	}
-	a := &activeSend{in: in, src: src, opened: map[int]bool{}}
+	var total uint64
+	for _, pt := range in.Clip.Parts {
+		total += uint64(pt.Size)
+	}
+	a := &activeSend{in: in, src: src, totalBytes: total, opened: map[int]bool{}}
 	var res rpc.SendResult
 	var root uint64
 	id, err := s.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodSend, Timeout: p.callTimeout(ctx, p.opts.SendTimeout),
@@ -59,10 +66,13 @@ func (p *Proxy) send(ctx context.Context, in rpc.Send, src plugin.SendSource) er
 		p.bmu.Unlock()
 	}
 	if err != nil {
-		return err
+		return rpc.SendResult{}, err
 	}
 	s.conn.ReleaseRoot(id)
-	return res.Validate()
+	if err := res.Validate(); err != nil {
+		return rpc.SendResult{}, err
+	}
+	return res, nil
 }
 
 func (p *Proxy) sendFor(c *rpc.Call) *activeSend {
@@ -165,4 +175,42 @@ func (p *Proxy) openSendPart(ctx context.Context, c *rpc.Call) (any, error) {
 		}
 	}()
 	return d, nil
+}
+
+func (p *Proxy) sendProgress(ctx context.Context, c *rpc.Call) (any, error) {
+	var in rpc.SendProgress
+	if err := rpc.Decode(c.Params, &in); err != nil || in.Validate() != nil {
+		return nil, rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	a := p.sendFor(c)
+	if a == nil {
+		return nil, rpc.NewError(rpc.CodePermission)
+	}
+	a.mu.Lock()
+	switch {
+	case a.grant == "" || a.grant == "pending" || !eqSecret(a.grant, in.GrantID):
+		a.mu.Unlock()
+		return nil, rpc.NewError(rpc.CodePermission)
+	case uint64(in.TotalBytes) != a.totalBytes:
+		a.mu.Unlock()
+		return nil, rpc.NewError(rpc.CodeInvalidArgument)
+	case in.PartIndex != nil && *in.PartIndex >= len(a.in.Clip.Parts):
+		a.mu.Unlock()
+		return nil, rpc.NewError(rpc.CodeInvalidArgument)
+	case uint64(in.BytesSent) < a.lastBytes:
+		a.mu.Unlock()
+		return nil, rpc.NewError(rpc.CodeConflict)
+	case a.awaiting && in.Stage == rpc.SendStageSending:
+		a.mu.Unlock()
+		return nil, rpc.NewError(rpc.CodeConflict)
+	}
+	a.lastBytes = uint64(in.BytesSent)
+	if in.Stage == rpc.SendStageAwaitingReceipt {
+		a.awaiting = true
+	}
+	a.mu.Unlock()
+	if err := a.src.ReportProgress(ctx, in); err != nil {
+		return nil, err
+	}
+	return rpc.Empty{}, nil
 }

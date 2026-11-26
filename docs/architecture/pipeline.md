@@ -53,7 +53,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: bdda951036c215ea52636344140e293190d590b0
+verified: ec47690c1b3976f1bb2505d7d9ac510b22c57406
 ---
 # Clipboard pipeline and local history
 

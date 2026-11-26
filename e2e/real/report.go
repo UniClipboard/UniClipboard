@@ -91,34 +91,35 @@ type targetOutcome struct {
 	Error                    string              `json:"error,omitempty"`
 }
 type manifest struct {
-	DirectoryChecks     []directoryCheck     `json:"directory_checks,omitempty"`
-	WakeChecks          []wakeCheck          `json:"wake_checks,omitempty"`
-	BindingPolicyChecks []bindingPolicyCheck `json:"binding_policy_checks,omitempty"`
-	KeepPrivate         bool                 `json:"keep_private"`
-	PrivateRemoved      bool                 `json:"controller_private_removed"`
-	Outcomes            []targetOutcome      `json:"target_outcomes"`
-	PlannedMeasurements int                  `json:"planned_measurements"`
-	PayloadBound        int64                `json:"planned_payload_bytes_upper_bound"`
-	Version             int                  `json:"version"`
-	RunID               string               `json:"run_id"`
-	Mode                string               `json:"mode"`
-	Status              string               `json:"status"`
-	Started             time.Time            `json:"started_at"`
-	Finished            time.Time            `json:"finished_at"`
-	Source              sourceIdentity       `json:"source"`
-	SnapshotUnchanged   bool                 `json:"snapshot_unchanged"`
-	Go                  string               `json:"go"`
-	ControllerSHA       string               `json:"controller_sha256"`
-	Nodes               []nodeEvidence       `json:"nodes"`
-	MachineCount        int                  `json:"distinct_machine_identities"`
-	SharedHostControl   bool                 `json:"shared_host_control"`
-	Suite               suiteConfig          `json:"suite"`
-	Checks              []string             `json:"checks"`
-	Calibrations        []calibration        `json:"calibrations"`
-	Samples             []sample             `json:"samples"`
-	Failure             string               `json:"failure,omitempty"`
-	CleanupErrors       []string             `json:"cleanup_errors,omitempty"`
-	Limits              []string             `json:"limits"`
+	DirectoryChecks        []directoryCheck        `json:"directory_checks,omitempty"`
+	WakeChecks             []wakeCheck             `json:"wake_checks,omitempty"`
+	BindingPolicyChecks    []bindingPolicyCheck    `json:"binding_policy_checks,omitempty"`
+	TransferProgressChecks []transferProgressCheck `json:"transfer_progress_checks,omitempty"`
+	KeepPrivate            bool                    `json:"keep_private"`
+	PrivateRemoved         bool                    `json:"controller_private_removed"`
+	Outcomes               []targetOutcome         `json:"target_outcomes"`
+	PlannedMeasurements    int                     `json:"planned_measurements"`
+	PayloadBound           int64                   `json:"planned_payload_bytes_upper_bound"`
+	Version                int                     `json:"version"`
+	RunID                  string                  `json:"run_id"`
+	Mode                   string                  `json:"mode"`
+	Status                 string                  `json:"status"`
+	Started                time.Time               `json:"started_at"`
+	Finished               time.Time               `json:"finished_at"`
+	Source                 sourceIdentity          `json:"source"`
+	SnapshotUnchanged      bool                    `json:"snapshot_unchanged"`
+	Go                     string                  `json:"go"`
+	ControllerSHA          string                  `json:"controller_sha256"`
+	Nodes                  []nodeEvidence          `json:"nodes"`
+	MachineCount           int                     `json:"distinct_machine_identities"`
+	SharedHostControl      bool                    `json:"shared_host_control"`
+	Suite                  suiteConfig             `json:"suite"`
+	Checks                 []string                `json:"checks"`
+	Calibrations           []calibration           `json:"calibrations"`
+	Samples                []sample                `json:"samples"`
+	Failure                string                  `json:"failure,omitempty"`
+	CleanupErrors          []string                `json:"cleanup_errors,omitempty"`
+	Limits                 []string                `json:"limits"`
 }
 
 func writeJSON(path string, v any) error {

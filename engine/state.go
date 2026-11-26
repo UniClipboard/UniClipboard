@@ -47,6 +47,10 @@ func (o Operation) clone() Operation {
 	if o.Targets != nil {
 		ts := make([]TargetStatus, len(o.Targets))
 		for i, t := range o.Targets {
+			if t.Progress != nil {
+				p := *t.Progress
+				t.Progress = &p
+			}
 			if t.Error != nil {
 				e := *t.Error
 				t.Error = &e
@@ -54,6 +58,10 @@ func (o Operation) clone() Operation {
 			ts[i] = t
 		}
 		o.Targets = ts
+	}
+	if o.Receive != nil {
+		r := *o.Receive
+		o.Receive = &r
 	}
 	return o
 }

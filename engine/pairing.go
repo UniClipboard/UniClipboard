@@ -514,6 +514,24 @@ func (e *Engine) GetOperation(ctx context.Context, id OperationID) (Operation, e
 	return o.op.clone(), nil
 }
 
+// ListOperations returns all operations currently retained by this instance,
+// newest first.
+func (e *Engine) ListOperations(ctx context.Context) ([]Operation, error) {
+	release, gerr := e.enter(ctx)
+	if gerr != nil {
+		return nil, gerr
+	}
+	defer release()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.ops.prune(time.Now(), e.res.OperationTTL)
+	list := e.ops.list()
+	for i, j := 0, len(list)-1; i < j; i, j = i+1, j-1 {
+		list[i], list[j] = list[j], list[i]
+	}
+	return list, nil
+}
+
 // anyConnected: a live session with the device through any backend.
 func (e *Engine) anyConnected(id string) bool {
 	e.mu.Lock()

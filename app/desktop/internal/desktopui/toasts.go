@@ -82,6 +82,7 @@ func (d *viewState) syncStateToasts() {
 		d.toasts.Dismiss(toastIDConfigInvalid)
 		d.toasts.Dismiss(toastIDPendingDevices)
 		d.syncRestartToast(false, false, "", "")
+		d.syncReceiveToasts()
 		return
 	}
 
@@ -164,6 +165,9 @@ func (d *viewState) syncStateToasts() {
 
 	// 4. Pending device approval guidance when viewing other pages.
 	d.syncPendingDeviceToast()
+
+	// 5. Active inbound receive progress toasts (dismissing discards transfer).
+	d.syncReceiveToasts()
 }
 
 func (d *viewState) syncPendingDeviceToast() {

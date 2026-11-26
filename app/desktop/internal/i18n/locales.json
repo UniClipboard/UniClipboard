@@ -8866,5 +8866,137 @@
     "ja": "このデスクトップセッションではクリップボードをバックグラウンドで監視できません。履歴からのコピーは引き続き利用できます。",
     "pt-BR": "O monitoramento da área de transferência em segundo plano não está disponível nesta sessão. Você ainda pode copiar itens do histórico.",
     "ru": "В этом сеансе фоновое отслеживание буфера обмена недоступно. Копирование из истории по-прежнему работает."
+  },
+  "传输进度": {
+    "en": "Transfer progress",
+    "ja": "転送状況",
+    "pt-BR": "Progresso da transferência",
+    "ru": "Ход передачи"
+  },
+  "正在传输": {
+    "en": "Sending",
+    "ja": "送信中",
+    "pt-BR": "Enviando",
+    "ru": "Отправка"
+  },
+  "正在传输…": {
+    "en": "Sending…",
+    "ja": "送信中…",
+    "pt-BR": "Enviando…",
+    "ru": "Отправка…"
+  },
+  "排队中": {
+    "en": "Queued",
+    "ja": "待機中",
+    "pt-BR": "Na fila",
+    "ru": "В очереди"
+  },
+  "等待对端确认…": {
+    "en": "Waiting for confirmation…",
+    "ja": "相手の確認待ち…",
+    "pt-BR": "Aguardando confirmação…",
+    "ru": "Ожидание подтверждения…"
+  },
+  "对端已接收": {
+    "en": "Received",
+    "ja": "相手が受信済み",
+    "pt-BR": "Recebido",
+    "ru": "Получено"
+  },
+  "对端未接纳": {
+    "en": "Declined by device",
+    "ja": "相手デバイスが拒否",
+    "pt-BR": "Recusado pelo dispositivo",
+    "ru": "Отклонено устройством"
+  },
+  "未收到对端确认": {
+    "en": "Unconfirmed",
+    "ja": "受信未確認",
+    "pt-BR": "Sem confirmação",
+    "ru": "Нет подтверждения"
+  },
+  "本地已写出，但未收到对端确认": {
+    "en": "Data was written locally, but the device did not confirm receipt.",
+    "ja": "データは送信されましたが、相手デバイスからの受信確認を受信できませんでした。",
+    "pt-BR": "Os dados foram enviados localmente, mas o dispositivo não confirmou o recebimento.",
+    "ru": "Данные отправлены локально, но устройство не подтвердило получение."
+  },
+  "已被新内容替代": {
+    "en": "Superseded",
+    "ja": "新しい内容で上書き済み",
+    "pt-BR": "Substituído",
+    "ru": "Заменено новым содержимым"
+  },
+  "已送达 %d/%d 台设备": {
+    "en": "Received on %d of %d devices",
+    "ja": "%d/%d 台のデバイスが受信",
+    "pt-BR": "Recebido em %d de %d dispositivos",
+    "ru": "Получено на %d из %d устройств"
+  },
+  "正在传输到 %d 台设备": {
+    "en": "Sending to %d devices",
+    "ja": "%d 台のデバイスに送信中",
+    "pt-BR": "Enviando para %d dispositivos",
+    "ru": "Отправка на %d устройств"
+  },
+  "正在接收…": {
+    "en": "Receiving…",
+    "ja": "受信中…",
+    "pt-BR": "Recebendo…",
+    "ru": "Получение…"
+  },
+  "放弃接收": {
+    "en": "Discard transfer",
+    "ja": "受信を中止",
+    "pt-BR": "Descartar transferência",
+    "ru": "Отменить получение"
+  },
+  "正在接收来自 %s 的文件": {
+    "en": "Receiving file from %s",
+    "ja": "%s からファイルを受信中",
+    "pt-BR": "Recebendo arquivo de %s",
+    "ru": "Получение файла от %s"
+  },
+  "正在接收 %d 个文件（来自 %s）": {
+    "en": "Receiving %d files from %s",
+    "ja": "%d 件のファイルを受信中（%s）",
+    "pt-BR": "Recebendo %d arquivos de %s",
+    "ru": "Получение %d файлов от %s"
+  },
+  "正在接收来自 %s 的文件夹": {
+    "en": "Receiving folder from %s",
+    "ja": "%s からフォルダを受信中",
+    "pt-BR": "Recebendo pasta de %s",
+    "ru": "Получение папки от %s"
+  },
+  "正在接收来自 %s 的图片": {
+    "en": "Receiving image from %s",
+    "ja": "%s から画像を受信中",
+    "pt-BR": "Recebendo imagem de %s",
+    "ru": "Получение изображения от %s"
+  },
+  "正在接收来自 %s 的内容": {
+    "en": "Receiving from %s",
+    "ja": "%s から受信中",
+    "pt-BR": "Recebendo de %s",
+    "ru": "Получение от %s"
+  },
+  "已取消": {
+    "en": "Cancelled",
+    "ja": "キャンセル済み",
+    "pt-BR": "Cancelado",
+    "ru": "Отменено"
+  },
+  "源文件已变更或不存在": {
+    "en": "Source file changed or missing",
+    "ja": "元のファイルが変更されたか見つかりません",
+    "pt-BR": "O arquivo de origem foi alterado ou não foi encontrado",
+    "ru": "Исходный файл изменён или отсутствует"
+  },
+  "超出大小限制": {
+    "en": "Size limit exceeded",
+    "ja": "サイズ上限を超えています",
+    "pt-BR": "Limite de tamanho excedido",
+    "ru": "Превышен лимит размера"
   }
 }

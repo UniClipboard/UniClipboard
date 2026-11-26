@@ -123,6 +123,6 @@ func (p *Plugin) PairingAddress(ctx context.Context, purpose string) (string, er
 func (p *Plugin) Connect(ctx context.Context, c rpc.Connect) (rpc.ConnectResult, error) {
 	return p.b.Connect(ctx, c)
 }
-func (p *Plugin) Send(ctx context.Context, s rpc.Send, src plugin.SendSource) error {
+func (p *Plugin) Send(ctx context.Context, s rpc.Send, src plugin.SendSource) (rpc.SendResult, error) {
 	return p.b.Send(ctx, s, src)
 }

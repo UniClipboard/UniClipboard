@@ -156,6 +156,7 @@ func (s stubSendSource) Authorize(context.Context, rpc.Authorize) (rpc.SendGrant
 func (s stubSendSource) OpenPart(context.Context, string, int) (io.ReadCloser, error) {
 	return io.NopCloser(bytes.NewReader(s.data)), nil
 }
+func (s stubSendSource) ReportProgress(context.Context, rpc.SendProgress) error { return nil }
 
 type recordingObserver struct {
 	mu      sync.Mutex
@@ -188,7 +189,7 @@ func TestSendTimeoutReturnsTimeoutCodeAndSessionReason(t *testing.T) {
 	}
 	b.sessions["p1"] = s
 
-	err := b.Send(context.Background(), rpc.Send{
+	_, err := b.Send(context.Background(), rpc.Send{
 		DispatchID: "d1", OperationID: "op1", PeerID: "p1",
 		ConnectionID: "c1", SessionToken: tok, ContentHandle: "h1",
 		Clip: rpc.Clip{

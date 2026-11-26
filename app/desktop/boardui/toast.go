@@ -64,7 +64,12 @@ type ToastOptions struct {
 	Status      NotificationStatus
 	// Loading replaces the leading status glyph with a spinner tinted to the status color.
 	Loading bool
-	Actions []ToastAction
+	// Progress, when non-nil, displays the 3px bottom progress bar at [0..1]
+	// instead of a countdown timer bar (typically paired with ToastPersistent).
+	Progress *float32
+	// CloseLabel overrides ToasterProps.CloseLabel for this toast's close button.
+	CloseLabel string
+	Actions    []ToastAction
 	// Duration overrides the Toaster default. Zero uses ToasterProps.Duration (default 5s);
 	// a negative duration (ToastPersistent) disables auto-dismiss.
 	Duration time.Duration
@@ -82,6 +87,8 @@ type toastRecord struct {
 	timestamp      string
 	status         NotificationStatus
 	loading        bool
+	progress       *float32
+	closeLabel     string
 	actions        []ToastAction
 	duration       time.Duration
 	nonDismissible bool
@@ -91,6 +98,21 @@ type toastRecord struct {
 	resolvedDuration time.Duration
 	remaining        time.Duration
 	lastTick         time.Time
+}
+
+func cloneFloat32Ptr(v *float32) *float32 {
+	if v == nil {
+		return nil
+	}
+	c := *v
+	return &c
+}
+
+func float32PtrEqual(a, b *float32) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // ToastStore holds caller-owned toast items for one Toaster region.
@@ -125,6 +147,8 @@ func (s *ToastStore) Show(title string, opts ToastOptions) string {
 		timestamp:      opts.Timestamp,
 		status:         status,
 		loading:        opts.Loading,
+		progress:       cloneFloat32Ptr(opts.Progress),
+		closeLabel:     opts.CloseLabel,
 		actions:        slices.Clone(opts.Actions),
 		duration:       opts.Duration,
 		nonDismissible: opts.NonDismissible,
@@ -210,7 +234,8 @@ func (s *ToastStore) SyncPersistent(id, title string, opts ToastOptions) {
 	if idx := s.indexOf(id); idx >= 0 {
 		cur := &s.items[idx]
 		if cur.title == title && cur.description == opts.Description && cur.timestamp == opts.Timestamp &&
-			cur.status == status && cur.loading == opts.Loading && cur.nonDismissible == opts.NonDismissible {
+			cur.status == status && cur.loading == opts.Loading && cur.nonDismissible == opts.NonDismissible &&
+			float32PtrEqual(cur.progress, opts.Progress) && cur.closeLabel == opts.CloseLabel {
 			cur.actions = slices.Clone(opts.Actions)
 			cur.onDismiss = opts.OnDismiss
 			return
@@ -222,6 +247,8 @@ func (s *ToastStore) SyncPersistent(id, title string, opts ToastOptions) {
 		cur.timestamp = opts.Timestamp
 		cur.status = status
 		cur.loading = opts.Loading
+		cur.progress = cloneFloat32Ptr(opts.Progress)
+		cur.closeLabel = opts.CloseLabel
 		cur.actions = slices.Clone(opts.Actions)
 		cur.nonDismissible = opts.NonDismissible
 		cur.onDismiss = opts.OnDismiss
@@ -561,9 +588,17 @@ func (k Kit) Toaster(c *ui.Context, store *ToastStore, p ToasterProps) {
 				for i := range store.items {
 					rec := store.items[i]
 					timed := rec.resolvedDuration > 0
+					showBar := timed
 					var progress float32
-					if timed {
+					if rec.progress != nil {
+						showBar = true
+						progress = *rec.progress
+					} else if timed {
 						progress = float32(rec.remaining) / float32(rec.resolvedDuration)
+					}
+					itemCloseLabel := closeLabel
+					if rec.closeLabel != "" {
+						itemCloseLabel = rec.closeLabel
 					}
 					itemKey := fmt.Sprintf("toast-%s-%d", rec.id, rec.revision)
 					res := k.Notification(c.Key(itemKey), NotificationProps{
@@ -574,9 +609,9 @@ func (k Kit) Toaster(c *ui.Context, store *ToastStore, p ToasterProps) {
 						Loading:        rec.loading,
 						Actions:        rec.actions,
 						NonDismissible: rec.nonDismissible,
-						CloseLabel:     closeLabel,
+						CloseLabel:     itemCloseLabel,
 						Progress:       progress,
-						ShowBar:        timed,
+						ShowBar:        showBar,
 					})
 					if !reduceMotion {
 						enterY, exitY := float32(12), float32(8)

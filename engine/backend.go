@@ -82,6 +82,10 @@ type backendHost interface {
 	Register(targets []targetKey) *Error
 	// Report tells how a registered target fares; cause may be any error.
 	Report(k targetKey, st TargetState, cause error)
+	// ReportReceipt reports a target transition together with a verified receipt stage.
+	ReportReceipt(k targetKey, st TargetState, stage ReceiptStage, cause error)
+	// ReportProgress reports throttled in-flight transfer progress for a target.
+	ReportProgress(k targetKey, stage ReceiptStage, p TransferProgress)
 }
 
 type syncBackend interface {
@@ -115,6 +119,9 @@ func (h *dispatchHost) Register(keys []targetKey) *Error {
 		}
 		o.manual = h.req.Origin == OriginExplicit && h.req.action == nil && !h.req.restored
 		o.kind = diagnosticKind(h.c)
+		if h.req.history != "" {
+			o.op.HistoryID = h.req.history
+		}
 		if entry := e.submissions[h.req.RequestID]; entry != nil {
 			o.cancel = entry.cancel
 		}
@@ -133,8 +140,18 @@ func (h *dispatchHost) Register(keys []targetKey) *Error {
 }
 
 func (h *dispatchHost) Report(k targetKey, st TargetState, cause error) {
+	h.ReportReceipt(k, st, "", cause)
+}
+
+func (h *dispatchHost) ReportReceipt(k targetKey, st TargetState, stage ReceiptStage, cause error) {
 	if h.op != nil {
-		h.e.reportTarget(h.op.op.ID, k, st, cause)
+		h.e.reportTargetReceipt(h.op.op.ID, k, st, stage, cause)
+	}
+}
+
+func (h *dispatchHost) ReportProgress(k targetKey, stage ReceiptStage, p TransferProgress) {
+	if h.op != nil {
+		h.e.reportTargetProgress(h.op.op.ID, k, stage, p)
 	}
 }
 

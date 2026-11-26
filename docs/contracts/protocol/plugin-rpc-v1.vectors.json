@@ -306,6 +306,39 @@
       }
     },
     {
+      "schema": "sync_send_progress",
+      "payload": {
+        "grant_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "stage": "sending",
+        "bytes_sent": "524288",
+        "total_bytes": "1048576",
+        "part_index": 0
+      }
+    },
+    {
+      "schema": "sync_send_progress",
+      "payload": {
+        "grant_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "stage": "awaiting_receipt",
+        "bytes_sent": "1048576",
+        "total_bytes": "1048576"
+      }
+    },
+    {
+      "schema": "sync_send_result",
+      "payload": {
+        "state": "sent",
+        "receipt_stage": "remote_received"
+      }
+    },
+    {
+      "schema": "sync_send_result",
+      "payload": {
+        "state": "sent",
+        "receipt_stage": "remote_discarded"
+      }
+    },
+    {
       "schema": "sync_receive_open",
       "payload": {
         "connection_id": "conn-1",
@@ -1164,6 +1197,34 @@
         "trust_revision": "1"
       },
       "reason": "allow needs a session token"
+    },
+    {
+      "schema": "sync_send_progress",
+      "payload": {
+        "grant_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "stage": "sending",
+        "bytes_sent": "200",
+        "total_bytes": "100"
+      },
+      "reason": "bytes_sent exceeds total_bytes"
+    },
+    {
+      "schema": "sync_send_progress",
+      "payload": {
+        "grant_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "stage": "awaiting_receipt",
+        "bytes_sent": "50",
+        "total_bytes": "100"
+      },
+      "reason": "awaiting_receipt requires bytes_sent equal to total_bytes"
+    },
+    {
+      "schema": "sync_send_result",
+      "payload": {
+        "state": "sent",
+        "receipt_stage": "remote_applied"
+      },
+      "reason": "unknown receipt_stage"
     }
   ],
   "golden_frames": [

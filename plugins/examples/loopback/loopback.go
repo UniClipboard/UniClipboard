@@ -421,48 +421,48 @@ func (p *Peer) serve(peer string, s *tcpSess) {
 	}
 }
 
-func (p *Peer) Send(ctx context.Context, s rpc.Send, h plugin.SendHost) error {
+func (p *Peer) Send(ctx context.Context, s rpc.Send, h plugin.SendHost) (rpc.SendResult, error) {
 	if _, err := os.Stat("crash-send"); err == nil {
 		_ = os.Remove("crash-send")
 		os.Exit(3)
 	}
 	if _, err := os.Stat("fail-send"); err == nil {
-		return rpc.NewError(rpc.CodeUnavailable)
+		return rpc.SendResult{}, rpc.NewError(rpc.CodeUnavailable)
 	}
 	p.mu.Lock()
 	sess := p.conns[s.PeerID]
 	p.mu.Unlock()
 	if sess == nil {
-		return rpc.NewError(rpc.CodeNotFound)
+		return rpc.SendResult{}, rpc.NewError(rpc.CodeNotFound)
 	}
 	if sess.conn != s.ConnectionID {
-		return rpc.NewError(rpc.CodeConflict)
+		return rpc.SendResult{}, rpc.NewError(rpc.CodeConflict)
 	}
 	g, err := h.Authorize(ctx)
 	p.trace("authorize-send", "", err)
 	if err != nil {
-		return err
+		return rpc.SendResult{}, err
 	}
 	sess.wmu.Lock()
 	defer sess.wmu.Unlock()
 	if err := sendMsg(sess.nc, tcpMsg{Clip: &s.Clip}); err != nil {
-		return rpc.NewError(rpc.CodeUnavailable)
+		return rpc.SendResult{}, rpc.NewError(rpc.CodeUnavailable)
 	}
 	for i := range s.Clip.Parts {
 		r, err := h.OpenPart(ctx, g.GrantID, i)
 		if err != nil {
-			return err
+			return rpc.SendResult{}, err
 		}
 		b, err := io.ReadAll(r)
 		_ = r.Close()
 		if err != nil {
-			return err
+			return rpc.SendResult{}, err
 		}
 		if err := writeFrame(sess.nc, b); err != nil {
-			return rpc.NewError(rpc.CodeUnavailable)
+			return rpc.SendResult{}, rpc.NewError(rpc.CodeUnavailable)
 		}
 	}
-	return nil
+	return rpc.SendResult{State: rpc.SendSent, ReceiptStage: rpc.ReceiptLocalWritten}, nil
 }
 
 // New returns a loopback-only, unencrypted peer backend for process acceptance.

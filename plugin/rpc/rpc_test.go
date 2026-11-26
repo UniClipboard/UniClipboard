@@ -96,6 +96,7 @@ var decoders = map[string]func(raw []byte) error{
 	"sync_authorize":             func(b []byte) error { r := new(Authorize); return firstErr(Decode(b, r), r.Validate()) },
 	"sync_send_grant":            func(b []byte) error { r := new(SendGrant); return firstErr(Decode(b, r), r.Validate()) },
 	"sync_open_send_part":        func(b []byte) error { r := new(OpenSendPart); return firstErr(Decode(b, r), r.Validate()) },
+	"sync_send_progress":         func(b []byte) error { r := new(SendProgress); return firstErr(Decode(b, r), r.Validate()) },
 	"sync_send_result":           func(b []byte) error { r := new(SendResult); return firstErr(Decode(b, r), r.Validate()) },
 	"sync_receive_open":          func(b []byte) error { r := new(ReceiveOpen); return firstErr(Decode(b, r), r.Validate()) },
 	"sync_receive_grant":         func(b []byte) error { r := new(ReceiveGrant); return firstErr(Decode(b, r), r.Validate()) },

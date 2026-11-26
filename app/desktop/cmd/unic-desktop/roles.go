@@ -61,16 +61,6 @@ var capturePublicTarget = func() panelActivation {
 	return a
 }
 
-type clipboardReply struct {
-	Mark    string `json:"mark"`
-	Failure string `json:"failure"`
-}
-type clipboardRequest struct {
-	ID                string `json:"id"`
-	Plain             bool   `json:"plain"`
-	Mark              string `json:"mark"`
-	InterruptComplete bool   `json:"interrupt_complete,omitempty"`
-}
 type roleStatus struct {
 	Ready                bool           `json:"ready"`
 	SetupRequired        bool           `json:"setup_required"`

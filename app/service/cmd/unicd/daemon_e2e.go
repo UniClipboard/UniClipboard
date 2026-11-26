@@ -42,6 +42,7 @@ func configureDaemon(o *host.Options) error {
 	if os.Getenv("UNIC_E2E_FAST_DIAGNOSTICS") == "1" {
 		o.Observability.MetricsInterval = 500 * time.Millisecond
 		o.Observability.LogInterval = 100 * time.Millisecond
+		o.Observability.TraceInterval = 200 * time.Millisecond
 	}
 	if os.Getenv("UNIC_E2E_DIAGNOSTICS") == "1" {
 		tr, e := newE2ETransport()

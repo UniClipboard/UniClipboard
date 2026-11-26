@@ -136,24 +136,44 @@ func (e *Engine) logPipelineFailure(ctx context.Context, stage DiagnosticStage, 
 	)
 }
 
-func (e *Engine) claimApplyDiagnosticLocked(t *applyTicket, result DiagnosticResult, code Code) *DiagnosticRecord {
+func (e *Engine) claimApplyDiagnosticLocked(t *applyTicket, result DiagnosticResult, code Code) (*DiagnosticRecord, func(TraceSpanFinish)) {
 	if t.diagnosticRecorded {
-		return nil
+		return nil, nil
 	}
 	t.diagnosticRecorded = true
+	endTrace := t.traceEnd
+	t.traceEnd = nil
 	end := t.ended
 	if end.IsZero() {
 		end = time.Now()
 	}
-	return &DiagnosticRecord{Stage: "apply", Result: result, Backend: "none", ContentKind: t.kind, Code: code, Duration: end.Sub(t.started)}
+	return &DiagnosticRecord{Stage: "apply", Result: result, Backend: "none", ContentKind: t.kind, Code: code, Duration: end.Sub(t.started)}, endTrace
+}
+func (e *Engine) attachApplyTrace(t *applyTicket, kind DiagnosticContentKind, end func(TraceSpanFinish)) {
+	if end == nil {
+		return
+	}
+	e.mu.Lock()
+	alreadyRecorded := t.diagnosticRecorded
+	if !alreadyRecorded {
+		t.traceEnd = end
+	}
+	e.mu.Unlock()
+	if alreadyRecorded {
+		end(TraceSpanFinish{Result: "cancelled", Code: CodeCancelled, ContentKind: kind})
+	}
 }
 func (e *Engine) emitCancelledApply(ctx context.Context) {
 	e.mu.Lock()
 	var r *DiagnosticRecord
+	var endTrace func(TraceSpanFinish)
 	if t := e.ticket; t != nil && t.dead {
-		r = e.claimApplyDiagnosticLocked(t, "cancelled", CodeCancelled)
+		r, endTrace = e.claimApplyDiagnosticLocked(t, "cancelled", CodeCancelled)
 	}
 	e.mu.Unlock()
+	if endTrace != nil && r != nil {
+		endTrace(TraceSpanFinish{Result: r.Result, Code: r.Code, ContentKind: r.ContentKind})
+	}
 	if r != nil {
 		e.diagnostic(ctx, *r)
 	}

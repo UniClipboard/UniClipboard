@@ -25,7 +25,10 @@ module.exports = ({ config }) => {
       buildNumber: String(ios.build_number),
       entitlements: {
         ...config.ios.entitlements,
-        "com.apple.security.application-groups": [`group.${ios.application_id}.incoming-share`],
+        "com.apple.security.application-groups": [
+          `group.${ios.application_id}.incoming-share`,
+          `group.${ios.application_id}`,
+        ],
         "keychain-access-groups": [`$(AppIdentifierPrefix)${ios.application_id}`],
       },
       infoPlist: {

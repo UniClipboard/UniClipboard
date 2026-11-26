@@ -2,6 +2,7 @@ package observability
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strconv"
@@ -17,6 +18,9 @@ import (
 	"github.com/uniclipboard/unic/engine"
 )
 
+// Compile-time verification that Controller implements engine.Tracer.
+var _ engine.Tracer = (*Controller)(nil)
+
 // Link-time override is reserved for synthetic acceptance builds. There is no
 // runtime environment or TOML sampling override. Production roots sample at 1%.
 var traceSampleRatio = "0.01"
@@ -31,6 +35,16 @@ type localTrace struct {
 	parent     trace.SpanContext
 }
 
+var allowedSpans = map[string]bool{
+	"unic.submission":   true,
+	"unic.observe":      true,
+	"unic.action":       true,
+	"unic.commit":       true,
+	"unic.sync.send":    true,
+	"unic.sync.receive": true,
+	"unic.apply":        true,
+}
+
 func (g *generation) initTraces(ctx context.Context, endpoint string, client *http.Client, headers map[string]string) error {
 	ratio, err := strconv.ParseFloat(traceSampleRatio, 64)
 	if err != nil || !(ratio >= 0 && ratio <= 1) {
@@ -42,10 +56,11 @@ func (g *generation) initTraces(ctx context.Context, endpoint string, client *ht
 		return err
 	}
 	limits := sdktrace.NewSpanLimits()
-	limits.AttributeCountLimit = 2
+	limits.AttributeCountLimit = 5
 	limits.AttributeValueLengthLimit = 64
-	// No caller receives an SDK span. Only the fixed completion attributes below
-	// can be added. Parent context is carried through a private host-only key.
+	// No caller receives an SDK span. Only the fixed allowlisted completion
+	// attributes below can be added. Parent context is carried through a
+	// private host-only key or sanitized W3C traceparent on unic.sync.receive.
 	g.traceProvider = sdktrace.NewTracerProvider(sdktrace.WithResource(g.resource), sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio))), sdktrace.WithRawSpanLimits(limits), sdktrace.WithSpanProcessor(g))
 	return nil
 }
@@ -53,20 +68,83 @@ func (g *generation) initTraces(ctx context.Context, endpoint string, client *ht
 // StartSubmission is called only after unique host submission admission. It
 // intentionally ignores caller OTel context, baggage and socket metadata.
 func (c *Controller) StartSubmission(ctx context.Context) (context.Context, func(engine.DiagnosticResult, engine.Code)) {
-	c.mu.Lock()
-	g := c.traces
-	c.mu.Unlock()
-	return startTrace(ctx, g, trace.SpanContext{}, "unic.submission")
-}
-func (c *Controller) StartCommit(ctx context.Context) (context.Context, func(engine.DiagnosticResult, engine.Code)) {
-	parent, ok := ctx.Value(traceContextKey{}).(localTrace)
-	if !ok {
-		return ctx, func(engine.DiagnosticResult, engine.Code) {}
+	next, end := c.StartSpan(ctx, engine.TraceSpanSpec{Name: "unic.submission"})
+	return next, func(result engine.DiagnosticResult, code engine.Code) {
+		end(engine.TraceSpanFinish{Result: result, Code: code})
 	}
-	return startTrace(ctx, parent.generation, parent.parent, "unic.commit")
 }
-func startTrace(ctx context.Context, g *generation, parent trace.SpanContext, name string) (context.Context, func(engine.DiagnosticResult, engine.Code)) {
-	noop := func(engine.DiagnosticResult, engine.Code) {}
+
+// InheritTrace copies only the local trace generation/parent handle onto dst
+// without retaining arbitrary caller context values or cancellation.
+func (c *Controller) InheritTrace(dst, src context.Context) context.Context {
+	if dst == nil {
+		dst = context.Background()
+	}
+	if src == nil {
+		return dst
+	}
+	if parent, ok := src.Value(traceContextKey{}).(localTrace); ok {
+		return context.WithValue(dst, traceContextKey{}, parent)
+	}
+	return dst
+}
+
+// TraceParent returns a W3C Trace Context v00 traceparent only when ctx carries
+// an active, sampled span in a live generation. Unsampled traffic returns "".
+func (c *Controller) TraceParent(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	lt, ok := ctx.Value(traceContextKey{}).(localTrace)
+	if !ok || lt.generation == nil || !lt.parent.IsValid() || !lt.parent.IsSampled() {
+		return ""
+	}
+	lt.generation.mu.Lock()
+	active := lt.generation.active
+	lt.generation.mu.Unlock()
+	if !active {
+		return ""
+	}
+	return "00-" + lt.parent.TraceID().String() + "-" + lt.parent.SpanID().String() + "-01"
+}
+
+// StartSpan starts an allowlisted span bound to the current or inherited trace
+// generation. Unapproved span names and attributes are ignored.
+func (c *Controller) StartSpan(ctx context.Context, spec engine.TraceSpanSpec) (context.Context, func(engine.TraceSpanFinish)) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	noop := func(engine.TraceSpanFinish) {}
+	if !allowedSpans[spec.Name] {
+		return ctx, noop
+	}
+	var g *generation
+	var parent trace.SpanContext
+	remote := false
+	switch {
+	case spec.Name == "unic.submission":
+		// Always start a fresh local root; ignore caller/socket headers.
+		c.mu.Lock()
+		g = c.traces
+		c.mu.Unlock()
+	case spec.Name == "unic.sync.receive" && spec.RemoteParent != "":
+		c.mu.Lock()
+		g = c.traces
+		c.mu.Unlock()
+		if sc, ok := parseTraceParent(spec.RemoteParent); ok {
+			parent = sc
+			remote = true
+		}
+	default:
+		if lt, ok := ctx.Value(traceContextKey{}).(localTrace); ok && lt.generation != nil {
+			g = lt.generation
+			parent = lt.parent
+		} else {
+			c.mu.Lock()
+			g = c.traces
+			c.mu.Unlock()
+		}
+	}
 	if g == nil {
 		return ctx, noop
 	}
@@ -77,35 +155,131 @@ func startTrace(ctx context.Context, g *generation, parent trace.SpanContext, na
 	}
 	clean := context.Background()
 	if parent.IsValid() {
-		clean = trace.ContextWithSpanContext(clean, parent)
+		if remote {
+			clean = trace.ContextWithRemoteSpanContext(clean, parent)
+		} else {
+			clean = trace.ContextWithSpanContext(clean, parent)
+		}
 	}
-	_, span := g.traceProvider.Tracer("unic.observability", trace.WithInstrumentationVersion("1")).Start(clean, name)
+	_, span := g.traceProvider.Tracer("unic.observability", trace.WithInstrumentationVersion("1")).Start(clean, spec.Name, trace.WithSpanKind(otelSpanKind(spec.Kind)))
 	g.mu.Unlock()
 	next := context.WithValue(ctx, traceContextKey{}, localTrace{g, span.SpanContext()})
 	var once sync.Once
-	return next, func(result engine.DiagnosticResult, code engine.Code) {
+	return next, func(finish engine.TraceSpanFinish) {
 		once.Do(func() {
-			switch result {
-			case "succeeded":
-				code = ""
-			case "cancelled":
-				code = engine.CodeCancelled
-			case "failed":
-				if !validCode(string(code)) {
-					code = engine.CodeInternal
-				}
-			default:
-				result = "failed"
-				code = engine.CodeInternal
-			}
-			span.SetAttributes(attribute.String("result", string(result)))
+			result, code := normalizeTraceOutcome(finish.Result, finish.Code)
+			attrs := make([]attribute.KeyValue, 0, 5)
+			attrs = append(attrs, attribute.String("result", string(result)))
 			if code != "" {
-				span.SetAttributes(attribute.String("code", string(code)))
+				attrs = append(attrs, attribute.String("code", string(code)))
+			}
+			backend := finish.Backend
+			if backend == "" {
+				backend = spec.Backend
+			}
+			if validTraceBackend(backend) {
+				attrs = append(attrs, attribute.String("backend", string(backend)))
+			}
+			kind := finish.ContentKind
+			if kind == "" {
+				kind = spec.ContentKind
+			}
+			if validTraceContentKind(kind) {
+				attrs = append(attrs, attribute.String("content_kind", string(kind)))
+			}
+			if finish.ActionCategory == "builtin" || finish.ActionCategory == "external" {
+				attrs = append(attrs, attribute.String("action_category", finish.ActionCategory))
+			}
+			span.SetAttributes(attrs...)
+			if result == "failed" || result == "rejected" || result == "cancelled" {
 				span.SetStatus(otelcodes.Error, "")
 			}
 			span.End()
 		})
 	}
+}
+
+func otelSpanKind(k engine.TraceSpanKind) trace.SpanKind {
+	switch k {
+	case engine.TraceSpanClient:
+		return trace.SpanKindClient
+	case engine.TraceSpanServer:
+		return trace.SpanKindServer
+	case engine.TraceSpanProducer:
+		return trace.SpanKindProducer
+	case engine.TraceSpanConsumer:
+		return trace.SpanKindConsumer
+	default:
+		return trace.SpanKindInternal
+	}
+}
+
+func normalizeTraceOutcome(result engine.DiagnosticResult, code engine.Code) (engine.DiagnosticResult, engine.Code) {
+	switch result {
+	case "succeeded", "superseded", "duplicate", "policy_filtered":
+		return result, ""
+	case "cancelled":
+		return "cancelled", engine.CodeCancelled
+	case "deferred":
+		if !validCode(string(code)) {
+			code = ""
+		}
+		return "deferred", code
+	case "failed", "rejected":
+		if !validCode(string(code)) {
+			code = engine.CodeInternal
+		}
+		return result, code
+	default:
+		return "failed", engine.CodeInternal
+	}
+}
+
+func validTraceBackend(b engine.DiagnosticBackend) bool {
+	return b == "none" || b == "tailcat" || b == "external"
+}
+
+func validTraceContentKind(k engine.DiagnosticContentKind) bool {
+	switch k {
+	case "text", "image", "files", "mixed", "unknown":
+		return true
+	}
+	return false
+}
+
+// parseTraceParent strictly parses W3C Trace Context v00 traceparent values.
+func parseTraceParent(s string) (trace.SpanContext, bool) {
+	if len(s) != 55 || s[0] != '0' || s[1] != '0' || s[2] != '-' || s[35] != '-' || s[52] != '-' {
+		return trace.SpanContext{}, false
+	}
+	for _, part := range []string{s[3:35], s[36:52], s[53:55]} {
+		for i := 0; i < len(part); i++ {
+			c := part[i]
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+				return trace.SpanContext{}, false
+			}
+		}
+	}
+	var tid trace.TraceID
+	if _, err := hex.Decode(tid[:], []byte(s[3:35])); err != nil || !tid.IsValid() {
+		return trace.SpanContext{}, false
+	}
+	var sid trace.SpanID
+	if _, err := hex.Decode(sid[:], []byte(s[36:52])); err != nil || !sid.IsValid() {
+		return trace.SpanContext{}, false
+	}
+	var fb [1]byte
+	if _, err := hex.Decode(fb[:], []byte(s[53:55])); err != nil {
+		return trace.SpanContext{}, false
+	}
+	flags := trace.TraceFlags(fb[0] & byte(trace.FlagsSampled))
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    tid,
+		SpanID:     sid,
+		TraceFlags: flags,
+		Remote:     true,
+	})
+	return sc, sc.IsValid()
 }
 
 func (g *generation) OnStart(context.Context, sdktrace.ReadWriteSpan) {}
@@ -123,7 +297,11 @@ func (g *generation) OnEnd(span sdktrace.ReadOnlySpan) {
 }
 func (g *generation) runTraces() {
 	defer func() { g.cleanup(); close(g.done) }()
-	timer := time.NewTicker(traceExportPeriod)
+	period := traceExportPeriod
+	if g.c.opts.TraceInterval > 0 {
+		period = g.c.opts.TraceInterval
+	}
+	timer := time.NewTicker(period)
 	defer timer.Stop()
 	batch := make([]sdktrace.ReadOnlySpan, 0, traceBatchCapacity)
 	export := func(ctx context.Context) {

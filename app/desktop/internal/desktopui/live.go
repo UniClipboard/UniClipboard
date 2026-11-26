@@ -1239,8 +1239,26 @@ func (d *viewState) clearLiveRelayAccessKey(cfg config.Config, after func()) {
 }
 
 func (d *viewState) saveLiveConfigTOMLThen(cfg config.Config, clearRelayAccessKey bool, after func()) {
+	if d.live.busy {
+		return
+	}
 	revision := d.live.config.Revision
+	prevCfg := d.live.config.Config
+	d.live.config.Config = cfg
+	d.projectLiveConfig()
 	client := d.live.client
+	rollback := func(ctx context.Context) {
+		select {
+		case d.live.results <- func() {
+			if d.live.config.Revision == revision {
+				d.live.config.Config = prevCfg
+				d.projectLiveConfig()
+			}
+		}:
+			d.live.wake()
+		case <-ctx.Done():
+		}
+	}
 	d.mutate(func(ctx context.Context) error {
 		var raw []byte
 		if clearRelayAccessKey {
@@ -1248,11 +1266,13 @@ func (d *viewState) saveLiveConfigTOMLThen(cfg config.Config, clearRelayAccessKe
 			var err error
 			raw, err = config.Set(cfg, "sync.relay.access_key", `""`)
 			if err != nil {
+				rollback(ctx)
 				return err
 			}
 		} else {
 			var buf bytes.Buffer
 			if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
+				rollback(ctx)
 				return err
 			}
 			raw = buf.Bytes()
@@ -1274,12 +1294,18 @@ func (d *viewState) saveLiveConfigTOMLThen(cfg config.Config, clearRelayAccessKe
 			case <-ctx.Done():
 				return ctx.Err()
 			}
+		} else {
+			rollback(ctx)
 		}
 		if err == nil && state.ApplyError != "" {
 			return &api.Error{Message: "saved but not applied", Reason: "config_apply_failed"}
 		}
 		return err
 	}, "设置已保存")
+	if !d.live.busy && d.live.config.Revision == revision {
+		d.live.config.Config = prevCfg
+		d.projectLiveConfig()
+	}
 }
 func (d *viewState) projectLiveConfig() {
 	c := d.live.config.Config
@@ -1306,7 +1332,12 @@ func (d *viewState) newLiveCode() {
 		code, err := client.NewCodeVia(ctx, backend)
 		if err == nil {
 			select {
-			case d.live.results <- func() { d.live.code = code; d.inviteCode = code.Code }:
+			case d.live.results <- func() {
+				d.live.code = code
+				d.inviteCode = code.Code
+				d.live.ticket = ""
+				d.live.ticketAttempted = false
+			}:
 				d.live.wake()
 			case <-ctx.Done():
 				return ctx.Err()

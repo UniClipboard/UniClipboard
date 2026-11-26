@@ -215,6 +215,9 @@ func (p *quickPanelState) applySearch() {
 		p.pendingPreview = ""
 		p.selected = 0
 		p.hovered = -1
+		p.gridTop = 0
+		p.revealSelection = true
+		p.keyboard = true
 		p.update()
 		p.normalizeFilters()
 		l := p.live.d.live

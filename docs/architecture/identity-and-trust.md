@@ -29,6 +29,8 @@ paths:
   - app/desktop/cmd/unic-desktop/gui.go
   - app/desktop/internal/desktopui/live.go
   - app/desktop/internal/desktopui/live_devices.go
+  - app/desktop/internal/desktopui/devices.go
+  - app/desktop/internal/desktopui/pairing_qr.go
   - internal/session/engine.go
   - internal/session/probe.go
   - internal/plugins/tailcat
@@ -89,6 +91,7 @@ The desktop process owns no second Engine or identity store.
 The normal desktop uses the approved mygo composition and opens history directly.
 `desktopui/live_devices.go` submits the displayed fingerprint, device revision and complete binding revision set through the shared client.
 While an invitation or a join-wait task is open and a request is pending, the desktop shows the approval (name, fingerprint, Accept and Reject) inside that task panel. The user does not return to the device sheet. A successful `Approve` closes the task and selects the new device. Reject closes the task. The device sheet still lists pending requests as a fallback.
+Inside the desktop invitation panel (`desktopui/devices.go`, `desktopui/pairing_qr.go`), desktop renders a local, integer-scaled QR code for mobile scanning alongside both the 6-digit pairing code (`NNN-NNN`) and the explicit full pairing ticket (`unic-pair:…`). Generating the QR code never performs network I/O or logs the secret, and closing, cancelling, switching channels, or entering inline approval clears the cached QR bitmap and secret payload immediately.
 The host applies the global file-sync switch when projecting backend policy; this restriction does not grant or revoke device trust.
 A newly trusted device emits the categorical `pairing_completed` product event after the trust transaction succeeds.
 The event contains no device identity, fingerprint, binding context or pairing material. See [observability](observability.md).

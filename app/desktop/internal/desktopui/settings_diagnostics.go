@@ -176,7 +176,7 @@ func (d *viewState) diagnosticsSettings(c *ui.Context, k desktopkit.Kit, cfg *co
 	if !s.busy && time.Now().After(s.nextRead) {
 		d.refreshDiagnostics()
 	}
-	disabled := l.busy || s.busy
+	disabled := l.showBusy() || s.busy
 
 	// 1. Unified Telemetry & Privacy group.
 	k.SettingsGroup(c.Key("diagnostic-signals"), desktopkit.SettingsGroupProps{
@@ -208,7 +208,7 @@ func (d *viewState) diagnosticsSettings(c *ui.Context, k desktopkit.Kit, cfg *co
 			if k.Switch(c, &cfg.Telemetry.Enabled, desktopkit.SwitchProps{
 				Label:    d.tr("发送使用数据与诊断"),
 				Disabled: disabled,
-			}).Changed() {
+			}).Changed() && !l.busy {
 				*changed = true
 			}
 		})
@@ -246,7 +246,7 @@ func (d *viewState) diagnosticsSettings(c *ui.Context, k desktopkit.Kit, cfg *co
 				if k.Switch(c, sig.value, desktopkit.SwitchProps{
 					Label:    d.tr(sig.label),
 					Disabled: disabled,
-				}).Changed() {
+				}).Changed() && !l.busy {
 					*changed = true
 				}
 			})
@@ -297,7 +297,7 @@ func (d *viewState) diagnosticsSettings(c *ui.Context, k desktopkit.Kit, cfg *co
 					Value:    row.value,
 					Disabled: disabled,
 					Items:    levelItems,
-				}).Changed {
+				}).Changed && !l.busy {
 					*changed = true
 				}
 				if overrideActive {

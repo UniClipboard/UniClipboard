@@ -339,7 +339,20 @@ func validateTrees(spans []*tracepb.Span, want int) bool {
 		if len(s.TraceId) != 16 || len(s.SpanId) != 8 || s.EndTimeUnixNano < s.StartTimeUnixNano {
 			return false
 		}
-		if len(s.Events) > 0 || len(s.Links) > 0 || s.TraceState != "" || s.Status.GetMessage() != "" || len(s.Attributes) != 1 || s.Attributes[0].Key != "result" || s.Attributes[0].Value.GetStringValue() != "succeeded" {
+		if len(s.Events) > 0 || len(s.Links) > 0 || s.TraceState != "" || s.Status.GetMessage() != "" {
+			return false
+		}
+		gotResult := ""
+		for _, a := range s.Attributes {
+			switch a.Key {
+			case "result":
+				gotResult = a.Value.GetStringValue()
+			case "content_kind", "backend", "action_category":
+			default:
+				return false
+			}
+		}
+		if gotResult != "succeeded" {
 			return false
 		}
 		if s.Name == "unic.submission" && len(s.ParentSpanId) == 0 {

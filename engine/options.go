@@ -62,6 +62,9 @@ type Options struct {
 	// ProductEvents receives finite completed-action records outside the state mutex.
 	// It must return immediately. Nil disables product event collection.
 	ProductEvents func(context.Context, ProductEvent)
+	// Tracer receives bounded, allowlisted span lifecycle callbacks outside the
+	// state mutex using standard-library and public Engine types only.
+	Tracer Tracer
 
 	// Plugins run in this process, in this order, before the engine is
 	// returned: Init and Start happen in New, Close when the engine closes.

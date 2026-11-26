@@ -314,6 +314,7 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		Logger:           diagnostics.controller.Logger(),
 		Diagnostics:      diagnostics.controller.Record,
 		ProductEvents:    diagnostics.controller.ProductEvent,
+		Tracer:           diagnostics.controller,
 		Plugins: []engine.PluginInstance{
 			{Plugin: peer, Builtin: true},
 			{Plugin: classifier},
@@ -807,6 +808,10 @@ func (m *Engine) CommitContent(token *CancelToken, reqJSON string) (string, erro
 	}
 	ctx, cancel := withToken(token)
 	defer cancel()
+	var endTrace func(engine.DiagnosticResult, engine.Code)
+	if _, existsErr := m.e.GetSubmission(ctx, dto.RequestID); existsErr != nil {
+		ctx, endTrace = m.diagnostics.controller.StartSubmission(ctx)
+	}
 	res, err := m.e.CommitContent(ctx, engine.CommitRequest{
 		CancelOnContext: dto.CancelOnContext,
 		RequestID:       dto.RequestID,
@@ -815,6 +820,9 @@ func (m *Engine) CommitContent(token *CancelToken, reqJSON string) (string, erro
 		DeviceIDs:       dto.DeviceIDs,
 		LocalOnly:       dto.LocalOnly,
 	})
+	if endTrace != nil {
+		endTrace(traceOutcome(err))
+	}
 	if err != nil {
 		return "", wrapErr(err)
 	}
@@ -837,6 +845,10 @@ func (m *Engine) ResendHistoryItem(token *CancelToken, reqJSON string) (string, 
 	}
 	ctx, cancel := withToken(token)
 	defer cancel()
+	var endTrace func(engine.DiagnosticResult, engine.Code)
+	if _, existsErr := m.e.GetSubmission(ctx, dto.RequestID); existsErr != nil {
+		ctx, endTrace = m.diagnostics.controller.StartSubmission(ctx)
+	}
 	res, err := m.e.SendHistory(ctx, engine.SendHistoryRequest{
 		CancelOnContext: dto.CancelOnContext,
 		RequestID:       dto.RequestID,
@@ -844,6 +856,9 @@ func (m *Engine) ResendHistoryItem(token *CancelToken, reqJSON string) (string, 
 		BackendIDs:      dto.BackendIDs,
 		DeviceIDs:       dto.DeviceIDs,
 	})
+	if endTrace != nil {
+		endTrace(traceOutcome(err))
+	}
 	if err != nil {
 		return "", wrapErr(err)
 	}

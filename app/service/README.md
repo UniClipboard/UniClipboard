@@ -5,10 +5,9 @@ Packaged archives expose the `uniclip` alias for `unic`: a relative symlink on m
 
 ```sh
 go build -o dist/ ./app/service/cmd/unic ./app/service/cmd/unicd
-UNIC_HOME=/absolute/private/state dist/unic migrate --help
-# Import v1 history, or explicitly initialize when there is no v1 source:
-UNIC_HOME=/absolute/private/state dist/unic migrate --initialize-empty --json
-echo hello | UNIC_HOME=/absolute/private/state dist/unic send --to all --json
+dist/unic init                         # initialize default profile (or use -p/--profile NAME)
+dist/unic daemon start                 # keep unicd running in the background
+echo hello | dist/unic send --to all --json
 ```
 
 Send and receive without pairing (for example with the page at `try.uniclipboard.app`):
@@ -19,10 +18,9 @@ unic recv 482913                  # on the other side; a link works too
 unic send --to laptop "hello"     # to one paired device; --to all reaches every paired device
 ```
 
-`unic` starts a temporary `unicd` from the same directory when a command needs one and none runs.
-It stops that service after the last command using it finishes. A `unicd` you start yourself, and the desktop's service, are never stopped by `unic`.
-Run `UNIC_HOME=/absolute/private/state dist/unicd` to keep receiving content between commands.
-`unic help` marks each command `[local]`, `[service]`, `[service+clipboard]` or `[offline]`.
+`unic` starts a temporary `unicd` from the same directory when a service command needs one and none runs.
+It stops that service after the last command using it finishes. A `unicd` managed via `unic daemon start` (or run directly) and the desktop's service are never stopped by ordinary `unic` commands.
+Use `unic daemon start|stop|restart|status|logs` to control the background service, `unic status` to inspect state without launching a temporary daemon, `unic doctor` to diagnose profile/daemon health, and `unic completion bash|zsh|fish` for shell completions.
 Commands that wait for another device (`device add`, `dev logs level --for`) keep a temporary service running for a bounded window and say so on stderr.
 `send` waits for its own send to finish and exits 4 when the content was committed but the send was not fully completed.
 

@@ -50,7 +50,7 @@ paths:
   - bindings/e2e/mobile-diagnostics
   - bindings/scripts/build-mobile.sh
   - app/expo/src/screens/settings/DiagnosticsSettings.tsx
-verified: 5581c52d46bc1ba9b97f0428e7ebb5b36d569035
+verified: 5c0ec8215c90a58b30c7e1df56d4ba78e023c435
 ---
 # Client logs, metrics, traces and product analytics
 
@@ -59,17 +59,19 @@ Current workspace implementation and acceptance scope are recorded in the [PostH
 
 ## Current behavior
 
-The in-process mobile binding instantiates the same controller per Engine.
-It subscribes to categorical Engine diagnostics, product events and the
-built-in sync collector. The Boolean `mobile-telemetry.json` in the private
-profile holds the upload preference. An absent preference defaults to
-enabled. An unreadable preference disables upload. The native settings page
-shares the recent local worker's redacted JSON records from memory through
-the operating system share sheet. Production binding builds accept the same
-validated PostHog Cloud host and ingestion-only token as service builds.
-Missing deployment metadata leaves local diagnostics active. Mobile emits
-the shared logs, metrics and product-event hooks. Explicit submission span
-creation is still service-owned.
+The in-process mobile binding instantiates the same controller per Engine with
+`service.name=unic-mobile`.
+It subscribes to categorical Engine diagnostics, product events, the
+`engine.Options.Tracer` hook, and the built-in sync collector. The Boolean
+`mobile-telemetry.json` in the private profile holds the upload preference. An
+absent preference defaults to enabled. An unreadable preference disables upload.
+The native settings page shares the recent local worker's redacted JSON records
+from memory through the operating system share sheet. Production binding builds
+accept the same validated PostHog Cloud host and ingestion-only token as service
+builds. Missing deployment metadata leaves local diagnostics active. Mobile
+emits the shared logs, metrics, product-event, and trace hooks (`unic.submission`,
+`unic.observe`, `unic.action`, `unic.commit`, `unic.sync.send`,
+`unic.sync.receive`, and `unic.apply`).
 
 - `host.Open` constructs diagnostics before `engine.New`. It injects a structured logger and a callback using public Engine types.
 - Engine produces bounded categorical records at observation admission, processor completion, unique submission completion, send queue departure, send completion, receive completion, and apply ticket completion or invalidation.
@@ -87,15 +89,21 @@ creation is still service-owned.
 - OTel v1.47 merges environment Resource attributes even with `WithResource`. Metrics replace Resource before export. The private logs HTTP transport replaces Resource using the standard OTLP protobuf before sending. Both keep only service name/version, OS type, and architecture.
 - Export failures update local counters and finite error categories. Exporter degradation messages only enter the bounded local path and respect the local level. They are rate-limited and never feed the failing exporter.
 
-## Explicit submission traces
+## Distributed, pipeline and mobile traces
 
-`host.commitExplicit` starts `unic.submission` after the unique host admission
-cache. A nested `unic.commit` measures the Engine `CommitContent` call. Import
-failures produce only a failed root. A repeated request returns the first result
-without another root or child. Neither span waits for network send completion.
-The public Engine and device/plugin wire interfaces remain unchanged.
+Both the service (`service.name=unicd`) and the in-process mobile binding (`service.name=unic-mobile`) inject their `observability.Controller` into `engine.Options.Tracer`, a pure standard-library/Engine-type hook with zero OTel dependencies in `engine/`.
 
-The service owns the OTel v1.47 TracerProvider and matching official HTTP trace
+- **Roots and local spans**:
+  - `unic.submission`: started by `host.commitExplicit` or mobile `CommitContent` / `CommitSharedItem` / `ResendHistoryItem` after unique admission. Import failures produce only a failed root; idempotent retries produce no extra spans.
+  - `unic.observe`: started inside Engine `runSubmission` only when `ObserveClipboard` admits a real clipboard change (`baseline`, `unchanged`, `empty`, `echo` and duplicate sequence retries create no span).
+  - `unic.action`: started inside Engine `runSubmission` for each unique admitted `RunAction` execution with `action_category=builtin|external`.
+  - `unic.commit`: child of `unic.submission`, `unic.observe` or `unic.action` (or local root when invoked directly), measuring processing, persistence and dispatch; ended before `entry.done` closes so child timing stays contained in its parent.
+  - `unic.sync.send` (`client`): child of `unic.commit` per target send execution, tagged with `backend` and `content_kind`.
+  - `unic.sync.receive` (`server`): created at `admitReceive` (or early `OpenReceive` limit rejection), parented to the validated remote W3C `traceparent` when present.
+  - `unic.apply`: child of `unic.sync.receive` for received `BeginApply` tickets (when the receive was sampled), or independently sampled root for `BeginApplyHistory`, ended on `ReportApplyResult` or ticket invalidation (`cancelled`).
+- **Cross-device propagation**: When `unic.sync.send` is sampled, Engine writes W3C Trace Context v00 `traceparent` (`00-<32hex>-<16hex>-01`) into optional `rpc.Clip.TraceParent` and built-in `wire.Clip.TraceParent` (wire version remains 1). Unsampled sends (99% in production) omit the field. The built-in session layer sanitizes inbound `wire.Clip.TraceParent` before RPC admission; malformed peer headers are silently discarded as empty and never reject valid clips. `tracestate` and `baggage` are never propagated or accepted.
+
+Each host owns an OTel v1.47 TracerProvider and matching official HTTP trace
 exporter. It uses `ParentBased(TraceIDRatioBased(0.01))`, one 256-span queue and
 at most 128 spans in an export batch. The worker exports every five seconds or
 at batch capacity. It never waits for queue space. Overload can drop individual
@@ -104,19 +112,21 @@ sampler overrides used in synthetic builds are unavailable through TOML or
 runtime environment. The [trace receipt](../exec/observability-traces.md) records
 matched cost measurements and the sampling/capacity rationale.
 
-Root creation ignores caller OTel context, baggage and socket metadata. A private
-host context carries only the local generation and parent SpanContext to the
-commit call. Span names are fixed. The only attributes are finite `result` and
-optional Engine `code`. Spans contain no events, links or status descriptions.
-The final protobuf transport replaces Resource and removes Scope attributes,
-including any SDK-added environment values. There is no propagation into device
-or plugin protocols and no automatic capture, Action, migration or paste roots.
+Local host roots ignore caller OTel context, baggage and socket metadata. A private
+context key carries only the local generation and SpanContext across Engine
+boundaries. Span names are fixed to the seven names above. Allowed attributes
+are strictly `result`, optional Engine `code`, `backend`, `content_kind`, and
+`action_category` (SpanLimits: 5 attributes, 64 bytes max). Spans contain no
+events, links or status descriptions. The final protobuf transport replaces
+Resource and removes Scope attributes, including any SDK-added environment
+values.
 
 A trace generation follows the same disable barrier as logs and metrics. Disable
 detaches admission, cancels in-flight HTTP, discards pending spans and waits for
-worker/SDK/transport cleanup. A child cannot attach to a re-enabled generation.
-Local process totals expose drops and finite export failures in `traces` state;
-health metrics include `signal=traces` when metrics are enabled.
+worker/SDK/transport cleanup. A child (including a pending receipt's retained
+trace context) cannot attach to a re-enabled generation. Local process totals
+expose drops and finite export failures in `traces` state; health metrics
+include `signal=traces` when metrics are enabled.
 
 ## Offline log archive
 
@@ -236,7 +246,7 @@ passive path samples over a forced local DERP.
 
 ## Gaps
 
-- The [trace receipt](../exec/observability-traces.md) records the first explicit-submission slice. Cross-device propagation, reliable offline upload, crash reports, and production Collector deployment remain open.
+- Hosted PostHog Cloud trace upload/read-back (`observability-traces-hosted.md`), reliable offline upload, crash reports, and production Collector deployment remain open.
 - PostHog delta counts and histogram sums are verified locally across processes. US Cloud read-back also confirms a combined commit delta of 10 and histogram sample counts of 3 and 7. A pathless cumulative Collector still needs isolated stream identity before multi-client deployment.
 - Release assembly supports an ingestion-only project token bound to its exact endpoint. US Cloud / UniClipboard (722858) is selected and verified using isolated production builds; the ingestion token remains in private local build configuration, outside source and receipts. No production credential-store UI is shipped.
 - Nonvisual acceptance uses the real session/wire protocol over the host's local TCP test transport. It does not establish public DERP, native clipboard, true system sleep, or Windows/Linux native acceptance.

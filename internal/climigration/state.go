@@ -35,8 +35,8 @@ func Read(dir string) (State, error) {
 	}
 	var state State
 	if json.Unmarshal(raw, &state) != nil || (state.Status != "pending" && state.Status != "complete") ||
-		(state.Status == "complete" && state.Outcome != "imported" && state.Outcome != "no_source") {
-		return State{}, errors.New("invalid CLI migration state; run unic migrate --help and complete an explicit import")
+		(state.Status == "complete" && state.Outcome != "imported" && state.Outcome != "no_source" && state.Outcome != "fresh") {
+		return State{}, errors.New("invalid CLI initialization state; run `unic init` or `unic migrate --help`")
 	}
 	return state, nil
 }
@@ -56,7 +56,7 @@ func Required(dir string) error {
 type RequiredError struct{}
 
 func (*RequiredError) Error() string {
-	return "Migration initialization is required before using this profile. Run unic migrate --help. Import v1 history with unic migrate --json. If no v1 source exists, explicitly initialize with unic migrate --initialize-empty --json."
+	return "profile is not initialized yet; run `unic init` to get started (or `unic migrate` to import UniClipboard v1 history)"
 }
 
 // Write publishes one receipt atomically. Callers serialize with the

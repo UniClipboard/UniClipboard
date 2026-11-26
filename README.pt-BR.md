@@ -93,6 +93,8 @@
 - **Android**: baixe e instale o APK pelo [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) (sem planos de publicação na Google Play no momento).
 - **Somente CLI**: execute `npm install -g @uniclipboard/cli`.
 
+[![Packaging status](https://repology.org/badge/vertical-allrepos/uniclipboard.svg)](https://repology.org/project/uniclipboard/versions)
+
 **2. Conecte um segundo dispositivo**
 
 No primeiro dispositivo, abra **Dispositivos → Adicionar dispositivo** e anote o código de 6 dígitos. Digite-o no segundo dispositivo. Quando os dois mostrarem a mesma impressão digital, clique em **Aceitar** em cada um.

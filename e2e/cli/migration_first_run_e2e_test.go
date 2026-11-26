@@ -97,7 +97,7 @@ func TestMigrationFirstRun(t *testing.T) {
 		t.Helper()
 		code, _, stderr := call(home, "", "status", "--json")
 		var result map[string]any
-		if code != 6 || json.Unmarshal([]byte(stderr), &result) != nil || result["reason"] != "migration_required" || result["next_command"] != "unic migrate --help" {
+		if code != 6 || json.Unmarshal([]byte(stderr), &result) != nil || result["reason"] != "migration_required" || result["next_command"] != "unic init" {
 			t.Fatalf("expected actionable migration refusal: %d %s", code, stderr)
 		}
 		for _, name := range []string{"unic.sock", "unic.db"} {
@@ -138,7 +138,7 @@ func TestMigrationFirstRun(t *testing.T) {
 	}
 	// Starting and retiring a temporary service is repeated across fresh processes.
 	for range 2 {
-		code, _, stderr = call(a, "", "status", "--json")
+		code, _, stderr = call(a, "", "device", "list", "--json")
 		if code != 0 {
 			t.Fatalf("completed state lost after restart %d %s", code, stderr)
 		}

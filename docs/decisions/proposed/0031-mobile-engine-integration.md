@@ -75,7 +75,7 @@ bindings/mobile/ (嵌套 Go module，薄绑定层：句柄 / 取消 / 事件 / �
 
 移动端首次安装与旧版历史迁移沿用 [0026](0026-first-install-setup.md) 与 [0011](0011-v1-history-migration.md) 的全部业务语义（三段逻辑页：欢迎 → 迁移 → 结果；后台只读检测不触达剪贴板与凭据；显式确认后才解锁；导入与校验分阶段展示、不虚构剩余时间；支持安全停止、中断保留已提交记录、幂等续跑与五种终态区分），双端界面与交互分别遵循 [iOS 原型](../../../prototype/setup-ios.html) 与 [Android 原型](../../../prototype/setup-android.html)：
 
-- **复用统一迁移实现**：`bindings/mobile` 暴露独立的 `MigrationSession` 封装根仓库 `internal/v1migration` 的 `Source.Run`，提供检测、预检、分阶段进度回调与安全停止（`Stop`），不另写移动端导入器。
+- **复用统一迁移实现**：`bindings/mobile` 暴露独立的 `MigrationSession` 封装根仓库 `internal/v1migration`（桌面 v1 加密备份）与 `internal/mobilemigration`（旧版移动端 Expo SQLite `uniclipboard.db` 历史与附件），提供检测、预检、分阶段进度回调与安全停止（`Stop`），按需在首次覆盖升级检测到旧版移动端数据库时自动离线迁移并校验。
 - **启动门控与独占所有权**：
   - 首次安装或存在未完成 `setup` 标记时，在调用 `Engine.Start` 之前完成 Setup 门控；迁移期间不启动网络同步，不注册或观察系统剪贴板。
   - 已有非空 `unic.db` 且无未完成标记的存量 v2 安装直接进入历史，不重复弹 Setup。

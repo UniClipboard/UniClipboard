@@ -36,6 +36,7 @@ type ClipPart struct {
 // Clip is the wire clip header the backend writes after being authorized.
 type Clip struct {
 	SourceApplication *sourceapp.Application `json:"source_application,omitempty"`
+	TraceParent       string                 `json:"traceparent,omitempty"`
 	WireID            string                 `json:"wire_id"`
 	Origin            string                 `json:"origin"`
 	AtMs              U64                    `json:"at_ms"`
@@ -43,8 +44,39 @@ type Clip struct {
 	Parts             []ClipPart             `json:"parts"`
 }
 
+func validTraceParent(s string) bool {
+	if len(s) != 55 || s[0] != '0' || s[1] != '0' || s[2] != '-' || s[35] != '-' || s[52] != '-' {
+		return false
+	}
+	check := func(part string) (nonZero bool, ok bool) {
+		for i := 0; i < len(part); i++ {
+			c := part[i]
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+				return false, false
+			}
+			if c != '0' {
+				nonZero = true
+			}
+		}
+		return nonZero, true
+	}
+	tNZ, ok := check(s[3:35])
+	if !ok || !tNZ {
+		return false
+	}
+	sNZ, ok := check(s[36:52])
+	if !ok || !sNZ {
+		return false
+	}
+	_, ok = check(s[53:55])
+	return ok
+}
+
 func (c Clip) Validate() error {
 	if c.SourceApplication.Validate() != nil {
+		return NewError(CodeInvalidArgument)
+	}
+	if c.TraceParent != "" && !validTraceParent(c.TraceParent) {
 		return NewError(CodeInvalidArgument)
 	}
 	if !validID(c.WireID) || !validID(c.Origin) || !hex64Re.MatchString(c.Hash) || len(c.Parts) == 0 || len(c.Parts) > MaxClipParts {

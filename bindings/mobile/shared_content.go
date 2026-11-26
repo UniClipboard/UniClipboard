@@ -28,8 +28,13 @@ func (m *Engine) CommitSharedItem(dir, deviceIDsJSON string) (string, error) {
 		return marshalJSON(existing)
 	}
 
+	ctx, endTrace := m.diagnostics.controller.StartSubmission(ctx)
+	var traceErr error
+	defer func() { endTrace(traceOutcome(traceErr)) }()
+
 	manifest, err := os.Open(filepath.Join(dir, "entry.json"))
 	if err != nil {
+		traceErr = err
 		return "", wrapErr(err)
 	}
 	var item struct {
@@ -41,6 +46,7 @@ func (m *Engine) CommitSharedItem(dir, deviceIDsJSON string) (string, error) {
 	err = json.NewDecoder(io.LimitReader(manifest, 2<<20)).Decode(&item)
 	_ = manifest.Close()
 	if err != nil {
+		traceErr = err
 		return "", wrapErr(err)
 	}
 
@@ -53,15 +59,18 @@ func (m *Engine) CommitSharedItem(dir, deviceIDsJSON string) (string, error) {
 	case "file":
 		file, err := os.Open(filepath.Join(dir, "payload"))
 		if err != nil {
+			traceErr = err
 			return "", wrapErr(err)
 		}
 		defer file.Close()
 		info, err := file.Stat()
 		if err != nil {
+			traceErr = err
 			return "", wrapErr(err)
 		}
 		if !info.Mode().IsRegular() {
-			return "", wrapErr(errors.New("invalid share payload"))
+			traceErr = errors.New("invalid share payload")
+			return "", wrapErr(traceErr)
 		}
 		if item.MIME == engine.MimePNG {
 			in.Representations = []engine.RepresentationInput{{
@@ -73,11 +82,13 @@ func (m *Engine) CommitSharedItem(dir, deviceIDsJSON string) (string, error) {
 			}}
 		}
 	default:
-		return "", wrapErr(errors.New("invalid share item type"))
+		traceErr = errors.New("invalid share item type")
+		return "", wrapErr(traceErr)
 	}
 
 	handle, err := m.e.ImportContent(ctx, in)
 	if err != nil {
+		traceErr = err
 		return "", wrapErr(err)
 	}
 	defer func() { _ = m.e.ReleaseContent(ctx, handle.LeaseID) }()
@@ -88,6 +99,7 @@ func (m *Engine) CommitSharedItem(dir, deviceIDsJSON string) (string, error) {
 		LocalOnly: devices == nil,
 	})
 	if err != nil {
+		traceErr = err
 		return "", wrapErr(err)
 	}
 	return marshalJSON(result)

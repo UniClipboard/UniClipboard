@@ -28,7 +28,8 @@ func (d *viewState) smartPreviewSettings(c *ui.Context, k desktopkit.Kit, cfg co
 		ps.excludedDraft = strings.Join(s.ExcludedDomains, ", ")
 		ps.excludedError = ""
 	}
-	busy := l.busy
+	busy := l.showBusy()
+	logicBusy := l.busy
 	enabled := cfg.PluginEnabled(builtinpreview.ID)
 	linkOn := s.LinkPreviewEnabled()
 	favOn := s.FetchFaviconEnabled()
@@ -116,7 +117,7 @@ func (d *viewState) smartPreviewSettings(c *ui.Context, k desktopkit.Kit, cfg co
 				Disabled:    busy || !enabled || !linkOn,
 				Error:       d.tr(ps.excludedError),
 			})
-			if field.Submitted && !busy {
+			if field.Submitted && !logicBusy {
 				domains := parseExcludedDomainsDraft(ps.excludedDraft)
 				candidate := s
 				candidate.ExcludedDomains = domains

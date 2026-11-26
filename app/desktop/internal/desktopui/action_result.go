@@ -85,45 +85,7 @@ func encodeActionQRImage(raw string) *image.NRGBA {
 	if len(target) > actionQRMediumCutoff {
 		level = qrcode.Low
 	}
-	code, err := qrcode.New(target, level)
-	if err != nil {
-		return nil
-	}
-	matrix := code.Bitmap()
-	n := len(matrix)
-	if n == 0 {
-		return nil
-	}
-	scale := max(1, (actionQRMinPixels+n-1)/n)
-	side := n * scale
-	img := image.NewNRGBA(image.Rect(0, 0, side, side))
-	for i := 0; i < len(img.Pix); i += 4 {
-		img.Pix[i] = 255
-		img.Pix[i+1] = 255
-		img.Pix[i+2] = 255
-		img.Pix[i+3] = 255
-	}
-	for row := 0; row < n; row++ {
-		line := matrix[row]
-		for col := 0; col < len(line); col++ {
-			if !line[col] {
-				continue
-			}
-			y0 := row * scale
-			x0 := col * scale
-			for dy := 0; dy < scale; dy++ {
-				off := (y0+dy)*img.Stride + x0*4
-				for dx := 0; dx < scale; dx++ {
-					p := off + dx*4
-					img.Pix[p] = 0
-					img.Pix[p+1] = 0
-					img.Pix[p+2] = 0
-					img.Pix[p+3] = 255
-				}
-			}
-		}
-	}
-	return img
+	return encodeQRMatrixImage(target, level, actionQRMinPixels)
 }
 
 func newActionResultQR(img *image.NRGBA) *ui.Bitmap {
@@ -296,7 +258,7 @@ func (d *viewState) actionResultDialog(c *ui.Context, k desktopkit.Kit) {
 				if k.Button(c.Key("copy-result"), copyLabel, desktopkit.ButtonProps{
 					Icon:     desktopkit.IconCopy,
 					Variant:  copyVariant,
-					Disabled: d.live != nil && d.live.busy,
+					Disabled: d.live != nil && d.live.showBusy(),
 				}).Clicked() {
 					targetID := d.actionResult.historyID
 					d.copyHistoryID(targetID, func() {

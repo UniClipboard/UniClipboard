@@ -236,6 +236,7 @@ type viewState struct {
 	pending                                                               []pendingDevice
 	candidates                                                            []deviceCandidate
 	inviteCode, inviteMode, connectInput, renameValue, deviceNote         string
+	pairingQR                                                             pairingQRCache
 	renaming, deviceDetailOpen, restartPending                            bool
 	options                                                               map[string]bool
 	choices                                                               map[string]string

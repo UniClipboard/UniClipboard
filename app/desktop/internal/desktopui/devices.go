@@ -551,6 +551,9 @@ func (d *viewState) openPairingSheet(forDeviceID, preferredChannel string) {
 }
 
 func (d *viewState) setDeviceTask(task string) {
+	if task != "invite" {
+		d.clearPairingQR()
+	}
 	if d.live != nil {
 		if d.deviceTask == "invite" && task != "invite" {
 			d.cancelLiveInvitation()
@@ -892,7 +895,7 @@ func (d *viewState) devicesPage(c *ui.Context, k desktopkit.Kit) {
 			if refreshBusy {
 				refreshLabel = d.tr("检测中…")
 			}
-			refreshDisabled := d.refreshingDevices || (d.live != nil && d.live.busy)
+			refreshDisabled := d.refreshingDevices || (d.live != nil && d.live.showBusy())
 			if tm.Narrow {
 				if k.ToolbarIconButton(c.Key("refresh-devices"), desktopkit.ToolbarIconButtonProps{
 					Icon:     desktopkit.IconRetry,
@@ -1081,7 +1084,7 @@ func (d *viewState) deviceOverviewCanvas(c *ui.Context, k desktopkit.Kit, winWid
 					k.Text(c.Key("t"), d.tr("全局同步已关闭"), desktopkit.TextProps{Role: desktopkit.RoleCallout, Emphasized: true}).TextColor(fg)
 					k.Text(c.Key("s"), d.tr("所有同步渠道与设备路径当前不传输剪贴板内容，本机历史与配对管理不受影响。"), desktopkit.TextProps{Role: desktopkit.RoleCaption}).TextColor(fg)
 				})
-				if k.Button(c.Key("enable-sync"), d.tr("开启同步"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Disabled: d.live != nil && d.live.busy}).Clicked() {
+				if k.Button(c.Key("enable-sync"), d.tr("开启同步"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Disabled: d.live != nil && d.live.showBusy()}).Clicked() {
 					if d.live != nil {
 						d.enableLiveGlobalSync()
 					} else {
@@ -1342,7 +1345,7 @@ func (d *viewState) deviceOverviewCanvas(c *ui.Context, k desktopkit.Kit, winWid
 								}
 								k.Text(c, sub, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Truncate: true})
 							})
-							if k.Button(c.Key("ignore"), d.tr("忽略"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Disabled: d.live != nil && d.live.busy}).Clicked() {
+							if k.Button(c.Key("ignore"), d.tr("忽略"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Disabled: d.live != nil && d.live.showBusy()}).Clicked() {
 								if d.live != nil {
 									client := d.live.client
 									d.mutate(func(ctx context.Context) error { return client.IgnoreCandidate(ctx, cd.id, true) }, "已忽略")
@@ -1351,7 +1354,7 @@ func (d *viewState) deviceOverviewCanvas(c *ui.Context, k desktopkit.Kit, winWid
 									d.ensureDeviceSelection()
 								}
 							}
-							if k.Button(c.Key("join"), d.tr("连接"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Size: desktopkit.SizeSmall, Disabled: d.live != nil && d.live.busy}).Clicked() {
+							if k.Button(c.Key("join"), d.tr("连接"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Size: desktopkit.SizeSmall, Disabled: d.live != nil && d.live.showBusy()}).Clicked() {
 								if d.live != nil {
 									d.pairLive(cd.id, cd.backendID)
 								} else {
@@ -1516,7 +1519,8 @@ func (d *viewState) trustedDeviceDetail(c *ui.Context, k desktopkit.Kit, v *devi
 	unbound := d.unboundRunningPairingChannels(*v)
 	allPaused := len(auth) > 0 && !slices.ContainsFunc(auth, func(b deviceBinding) bool { return b.syncEnabled })
 	showBatchPause := len(auth) >= 2
-	busy := d.live != nil && d.live.busy
+	busy := d.live != nil && d.live.showBusy()
+	logicBusy := d.live != nil && d.live.busy
 
 	ui.Column(c.Key("trusted-detail")).Gap(14).Children(func() {
 		// 1. Hero Card
@@ -1635,7 +1639,7 @@ func (d *viewState) trustedDeviceDetail(c *ui.Context, k desktopkit.Kit, v *devi
 					Icon:     desktopkit.IconAdd,
 					Tooltip:  addTip,
 					Disabled: len(unbound) == 0 || busy,
-				}).Clicked() {
+				}).Clicked() && !logicBusy {
 					d.openPairingSheet(v.id, unbound[0].id)
 				}
 			})
@@ -1646,7 +1650,7 @@ func (d *viewState) trustedDeviceDetail(c *ui.Context, k desktopkit.Kit, v *devi
 					k.Text(c, d.tr("暂无已授权同步路径"), desktopkit.TextProps{Emphasized: true})
 					k.Text(c, d.tr("设备信任仍然保留，但目前不会同步任何内容。通过同步渠道重新关联即可恢复。"), footnote).TextAlign(ui.Center)
 					if len(d.runningPairingChannels()) > 0 {
-						if k.Button(c.Key("add-first-path"), d.tr("添加同步路径"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Size: desktopkit.SizeSmall, Icon: desktopkit.IconAdd, Disabled: busy}).Clicked() {
+						if k.Button(c.Key("add-first-path"), d.tr("添加同步路径"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Size: desktopkit.SizeSmall, Icon: desktopkit.IconAdd, Disabled: busy}).Clicked() && !logicBusy {
 							pref := ""
 							if len(unbound) > 0 {
 								pref = unbound[0].id
@@ -1787,11 +1791,13 @@ func (d *viewState) trustedDeviceDetail(c *ui.Context, k desktopkit.Kit, v *devi
 									case "policy":
 										d.openPluginSettings(b.instanceID)
 									case "remove":
-										chName := d.channelDisplayName(b.instanceID)
-										d.confirm = fmt.Sprintf(d.tr("移除 %s 路径？"), chName)
-										d.confirmDesc = fmt.Sprintf(d.tr("仅移除与「%s」通过 %s 的同步路径。设备信任与其他同步路径将保留，日后可重新配对添加。"), v.displayName(), chName)
-										d.confirmLabel = d.tr("移除路径")
-										d.confirmID = "binding:" + v.id + ":" + b.id
+										if !logicBusy {
+											chName := d.channelDisplayName(b.instanceID)
+											d.confirm = fmt.Sprintf(d.tr("移除 %s 路径？"), chName)
+											d.confirmDesc = fmt.Sprintf(d.tr("仅移除与「%s」通过 %s 的同步路径。设备信任与其他同步路径将保留，日后可重新配对添加。"), v.displayName(), chName)
+											d.confirmLabel = d.tr("移除路径")
+											d.confirmID = "binding:" + v.id + ":" + b.id
+										}
 									}
 								})
 							})
@@ -1846,7 +1852,7 @@ func (d *viewState) trustedDeviceDetail(c *ui.Context, k desktopkit.Kit, v *devi
 			} else {
 				ui.Spacer(c)
 			}
-			if k.Button(c.Key("remove-device"), d.tr("移除设备"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Size: desktopkit.SizeSmall, Icon: desktopkit.IconDelete, Disabled: busy}).Clicked() {
+			if k.Button(c.Key("remove-device"), d.tr("移除设备"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Size: desktopkit.SizeSmall, Icon: desktopkit.IconDelete, Disabled: busy}).Clicked() && !logicBusy {
 				d.confirm = fmt.Sprintf(d.tr("移除「%s」？"), v.displayName())
 				d.confirmDesc = d.tr("将撤销此设备的信任并移除全部同步路径。对方需要重新配对并批准。已同步到对方的内容无法撤回。")
 				d.confirmLabel = d.tr("移除设备")
@@ -2047,7 +2053,8 @@ func (d *viewState) externalChannelDetail(c *ui.Context, k desktopkit.Kit, id st
 	if ch == nil {
 		return
 	}
-	busy := d.live != nil && d.live.busy
+	busy := d.live != nil && d.live.showBusy()
+	logicBusy := d.live != nil && d.live.busy
 	ui.Column(c.Key("ext-ch-detail")).Gap(14).Children(func() {
 		// Hero Card
 		ui.Row(c.Key("hero")).Padding(13, 14).Radius(12).Gap(12).AlignItems(ui.Center).
@@ -2143,7 +2150,7 @@ func (d *viewState) externalChannelDetail(c *ui.Context, k desktopkit.Kit, id st
 		})
 
 		ui.Row(c.Key("ch-actions")).Justify(ui.End).Padding(4, 0, 0, 0).Children(func() {
-			if k.Button(c.Key("remove-ch"), d.tr("移除渠道"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Size: desktopkit.SizeSmall, Icon: desktopkit.IconDelete, Disabled: busy}).Clicked() {
+			if k.Button(c.Key("remove-ch"), d.tr("移除渠道"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Size: desktopkit.SizeSmall, Icon: desktopkit.IconDelete, Disabled: busy}).Clicked() && !logicBusy {
 				d.confirm = fmt.Sprintf(d.tr("移除外部渠道「%s」？"), ch.name)
 				if ch.remoteRevocation {
 					d.confirmDesc = d.tr("将停用并尝试退出远端群组，退出成功后清除本机记录；若退出失败将保留并标示异常。")
@@ -2158,7 +2165,8 @@ func (d *viewState) externalChannelDetail(c *ui.Context, k desktopkit.Kit, id st
 }
 
 func (d *viewState) inlineRenameBox(c *ui.Context, k desktopkit.Kit, label, placeholder, hint string, allowEmpty bool, onCommit func(string)) {
-	busy := d.live != nil && d.live.busy
+	busy := d.live != nil && d.live.showBusy()
+	logicBusy := d.live != nil && d.live.busy
 	ui.Column(c).Padding(10, 12).Radius(10).Gap(8).
 		Background(deviceInspectorCardBg(k)).Border(1, k.Color("accent-400")).Children(func() {
 		r := k.FormField(c.Key("field"), desktopkit.FormFieldProps{
@@ -2170,13 +2178,14 @@ func (d *viewState) inlineRenameBox(c *ui.Context, k desktopkit.Kit, label, plac
 			Disabled:    busy,
 		})
 		trimmed := strings.TrimSpace(d.renameValue)
-		canSave := !busy && (allowEmpty || trimmed != "")
+		canSaveVisual := !busy && (allowEmpty || trimmed != "")
+		canSave := !logicBusy && (allowEmpty || trimmed != "")
 		save := r.Submitted && canSave
 		ui.Row(c.Key("acts")).Gap(8).Justify(ui.End).Children(func() {
 			if k.Button(c.Key("cancel"), d.tr("取消"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall}).Clicked() || r.Escaped {
 				d.renaming = false
 			}
-			if k.Button(c.Key("save"), d.tr("保存"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Size: desktopkit.SizeSmall, Disabled: !canSave}).Clicked() {
+			if k.Button(c.Key("save"), d.tr("保存"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Size: desktopkit.SizeSmall, Disabled: !canSaveVisual}).Clicked() && canSave {
 				save = true
 			}
 		})
@@ -2202,7 +2211,7 @@ func (d *viewState) pendingDetail(c *ui.Context, k desktopkit.Kit, id string) {
 		return
 	}
 	p := d.pending[i]
-	busy := d.live != nil && d.live.busy
+	busy := d.live != nil && d.live.showBusy()
 	ui.Column(c.Key("pending-detail")).Gap(14).Children(func() {
 		bg, edge := deviceAccentSurface(k)
 		ui.Row(c.Key("p-hero")).Padding(13, 14).Radius(12).Gap(12).AlignItems(ui.Center).Background(bg).Border(1, edge).Children(func() {
@@ -2275,7 +2284,7 @@ func (d *viewState) candidateDetail(c *ui.Context, k desktopkit.Kit, id string) 
 		return
 	}
 	cd := d.candidates[i]
-	busy := d.live != nil && d.live.busy
+	busy := d.live != nil && d.live.showBusy()
 	ui.Column(c.Key("cand-detail")).Gap(14).Children(func() {
 		ui.Row(c.Key("c-hero")).Padding(13, 14).Radius(12).Gap(12).AlignItems(ui.Center).
 			Background(deviceInspectorCardBg(k)).Border(1, deviceCardBorder(k)).Children(func() {
@@ -2415,24 +2424,50 @@ func (d *viewState) pairCodeBoxes(c *ui.Context, k desktopkit.Kit, code string) 
 	for len(digits) < 6 {
 		digits += "·"
 	}
-	box := ui.Row(c.Key("code-boxes")).Padding(16, 10).Radius(14).Gap(6).
-		Justify(ui.Center).AlignItems(ui.Center).
-		Background(deviceInsetBg(k, false)).
-		Border(1, deviceCardBorder(k))
-	box.Children(func() {
+	ui.Row(c.Key("code-boxes")).Gap(4).AlignItems(ui.Center).Children(func() {
 		for i := 0; i < 6; i++ {
 			if i == 3 {
-				k.Text(c.Key("dash"), "-", desktopkit.TextProps{Tone: desktopkit.ToneTertiary, Emphasized: true}).Padding(0, 2)
+				k.Text(c.Key("dash"), "-", desktopkit.TextProps{Tone: desktopkit.ToneTertiary, Emphasized: true}).Padding(0, 1)
 			}
-			tile := ui.Row(c.Key(i)).Size(44, 54).Radius(10).Justify(ui.Center).AlignItems(ui.Center).
+			tile := ui.Row(c.Key(i)).Size(29, 38).Radius(8).Justify(ui.Center).AlignItems(ui.Center).
 				Background(deviceCardBg(k)).
 				Border(1, deviceCardBorderHover(k))
 			if !k.Dark {
 				tile.Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, .05))
 			}
 			tile.Children(func() {
-				k.Text(c, string(digits[i]), desktopkit.TextProps{Large: true, Monospace: true, Emphasized: true})
+				ui.Text(c, string(digits[i])).Font("monospace").FontSize(17).FontWeight(600).TextColor(k.Color("text-primary"))
 			})
+		}
+	})
+}
+
+func (d *viewState) pairingQRFrame(c *ui.Context, k desktopkit.Kit, raw string, qrSize, pad float32, showLoading, busy bool) {
+	if bm := d.pairingQRBitmap(raw); bm != nil {
+		ui.Box(c.Key("qr-frame")).Padding(pad).Radius(10).
+			Background(ui.RGB(255, 255, 255)).
+			Border(1, deviceCardBorder(k)).Shrink(0).Children(func() {
+			ui.Image(c.Key("qr-image"), bm).Size(qrSize, qrSize).Fit(ui.Contain).
+				Role(ui.RoleImage).Label(d.tr("配对二维码"))
+		})
+		return
+	}
+	outer := qrSize + pad*2
+	ui.Column(c.Key("qr-placeholder")).Size(outer, outer).Padding(10).Radius(10).Gap(6).
+		Justify(ui.Center).AlignItems(ui.Center).
+		Background(deviceCardBg(k)).
+		Border(1, deviceCardBorder(k)).Shrink(0).Children(func() {
+		k.Icon(c.Key("ic"), desktopkit.IconPhone, 18).TextColor(k.Color("text-tertiary"))
+		if showLoading {
+			k.Text(c.Key("lbl"), d.tr("正在生成…"), desktopkit.TextProps{
+				Role: desktopkit.RoleCaption,
+				Tone: desktopkit.ToneTertiary,
+			}).TextAlign(ui.Center)
+		} else if !busy {
+			k.Text(c.Key("lbl"), d.tr("暂无二维码"), desktopkit.TextProps{
+				Role: desktopkit.RoleCaption,
+				Tone: desktopkit.ToneTertiary,
+			}).TextAlign(ui.Center)
 		}
 	})
 }
@@ -2481,7 +2516,8 @@ func (d *viewState) deviceTaskSheet(c *ui.Context, k desktopkit.Kit) {
 
 func (d *viewState) pairingSheetBody(c *ui.Context, k desktopkit.Kit) {
 	avail := d.runningPairingChannels()
-	busy := d.live != nil && d.live.busy
+	busy := d.live != nil && d.live.showBusy()
+	logicBusy := d.live != nil && d.live.busy
 	var targetDev *device
 	if d.deviceTaskForID != "" {
 		targetDev = d.deviceByID(d.deviceTaskForID)
@@ -2507,6 +2543,7 @@ func (d *viewState) pairingSheetBody(c *ui.Context, k desktopkit.Kit) {
 
 	// Case 1: Precise inline approval (Live)
 	if inline := d.matchingInlinePending(); inline != nil {
+		d.clearPairingQR()
 		d.approvalTask(c, k, *inline)
 		return
 	}
@@ -2551,7 +2588,7 @@ func (d *viewState) pairingSheetBody(c *ui.Context, k desktopkit.Kit) {
 					Value:    &selected,
 					Items:    items,
 					Disabled: busy,
-				}).Changed {
+				}).Changed && !logicBusy {
 					d.setActivePairingChannel(selected, d.deviceTask == "invite")
 					activeCh = selected
 				}
@@ -2564,14 +2601,34 @@ func (d *viewState) pairingSheetBody(c *ui.Context, k desktopkit.Kit) {
 		switch d.deviceTask {
 		case "invite":
 			ticket := d.inviteMode == "ticket"
-			intro := d.tr("在另一台设备的 UniClipboard 中输入下方一次性配对码，随后核对指纹即可完成关联。")
+			intro := d.tr("在另一台设备的 UniClipboard 中扫码或输入下方一次性配对码，随后核对指纹即可完成关联。")
+			if ticket {
+				intro = d.tr("使用手机端扫描下方二维码，或复制完整票据到另一台设备，随后核对指纹即可完成关联。")
+			}
 			if targetDev != nil {
-				intro = fmt.Sprintf(d.tr("在「%s」上输入下方配对码或票据，核对指纹后将为其新增此同步路径。"), targetDev.displayName())
+				intro = fmt.Sprintf(d.tr("在「%s」上扫码或输入下方配对码或票据，核对指纹后将为其新增此同步路径。"), targetDev.displayName())
 			}
 			k.Text(c, intro, secondary)
 
+			showLoading := d.live != nil && d.live.showBusy()
 			if !ticket {
-				d.pairCodeBoxes(c, k, d.inviteCode)
+				ui.Row(c.Key("code-card")).Padding(14).Radius(14).Gap(14).AlignItems(ui.Center).
+					Background(deviceInsetBg(k, false)).
+					Border(1, deviceCardBorder(k)).Children(func() {
+					d.pairingQRFrame(c.Key("code-qr"), k, d.inviteCode, pairingCodeQRSize, pairingCodeQRPadding, showLoading, busy)
+					ui.Column(c.Key("code-info")).Gap(8).Grow(1).MinWidth(0).Children(func() {
+						k.Text(c.Key("code-lbl"), d.tr("6 位配对码"), desktopkit.TextProps{
+							Role:       desktopkit.RoleCaption,
+							Tone:       desktopkit.ToneSecondary,
+							Emphasized: true,
+						})
+						d.pairCodeBoxes(c, k, d.inviteCode)
+						k.Text(c.Key("scan-hint"), d.tr("使用手机端扫码，或手动输入配对码"), desktopkit.TextProps{
+							Role: desktopkit.RoleCaption,
+							Tone: desktopkit.ToneTertiary,
+						})
+					})
+				})
 				ui.Row(c.Key("meta")).AlignItems(ui.Center).Gap(6).Children(func() {
 					ui.Box(c.Key("dot")).Size(7, 7).Radius(3.5).Background(k.Color("accent-500")).Shrink(0)
 					if d.live != nil {
@@ -2596,14 +2653,24 @@ func (d *viewState) pairingSheetBody(c *ui.Context, k desktopkit.Kit) {
 				if d.live != nil {
 					ticketText = d.live.ticket
 				}
-				ui.Column(c.Key("ticket-box")).Padding(12, 14).Radius(12).Gap(10).
+				ui.Column(c.Key("ticket-box")).Padding(12, 14).Radius(14).Gap(10).
 					Background(deviceInsetBg(k, false)).
 					Border(1, deviceCardBorder(k)).Children(func() {
-					if ticketText != "" {
-						k.Text(c, ticketText, desktopkit.TextProps{Monospace: true, Truncate: true})
-					}
-					ui.Row(c.Key("ticket-act")).Justify(ui.End).Children(func() {
-						if k.Button(c.Key("copy-ticket"), d.tr("复制票据"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Icon: desktopkit.IconCopy, Disabled: ticketText == ""}).Clicked() {
+					ui.Column(c.Key("ticket-qr-wrap")).Gap(6).AlignItems(ui.Center).Children(func() {
+						d.pairingQRFrame(c.Key("ticket-qr"), k, ticketText, pairingTicketQRSize, pairingTicketQRPad, showLoading, busy)
+						k.Text(c.Key("ticket-qr-hint"), d.tr("使用手机端扫码配对，或复制下方完整票据"), desktopkit.TextProps{
+							Role: desktopkit.RoleCaption,
+							Tone: desktopkit.ToneSecondary,
+						}).TextAlign(ui.Center)
+					})
+					ui.Row(c.Key("ticket-act")).Padding(6, 8).Radius(10).Gap(8).AlignItems(ui.Center).
+						Background(deviceCardBg(k)).Border(1, deviceCardBorder(k)).Children(func() {
+						if ticketText != "" {
+							k.Text(c, ticketText, desktopkit.TextProps{Monospace: true, Truncate: true}).Grow(1).MinWidth(0)
+						} else {
+							ui.Spacer(c)
+						}
+						if k.Button(c.Key("copy-ticket"), d.tr("复制票据"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Icon: desktopkit.IconCopy, Disabled: ticketText == ""}).Shrink(0).Clicked() {
 							d.copyDeviceText(ticketText, "已复制完整票据")
 						}
 					})
@@ -2684,7 +2751,7 @@ func (d *viewState) pairingSheetBody(c *ui.Context, k desktopkit.Kit) {
 			if r.Edited {
 				d.fieldError = ""
 			}
-			submit := (r.Submitted && kind != "" && !busy) || k.Button(c.Key("go"), d.tr("连接设备"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: kind == "" || busy}).FillWidth().Clicked()
+			submit := ((r.Submitted && kind != "") || k.Button(c.Key("go"), d.tr("连接设备"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: kind == "" || busy}).FillWidth().Clicked()) && !logicBusy
 			if submit {
 				if d.live != nil {
 					d.pairLive(strings.TrimSpace(d.connectInput), "")
@@ -2746,7 +2813,8 @@ func (d *viewState) pairingSheetBody(c *ui.Context, k desktopkit.Kit) {
 
 // approvalTask shows the fingerprint approval inside the pairing task, so the user need not leave it.
 func (d *viewState) approvalTask(c *ui.Context, k desktopkit.Kit, p pendingDevice) {
-	busy := d.live != nil && d.live.busy
+	busy := d.live != nil && d.live.showBusy()
+	logicBusy := d.live != nil && d.live.busy
 	existing := d.isExistingPendingDevice(p.id)
 	ui.Column(c.Key("live-approval")).Gap(14).Children(func() {
 		bg, edge := deviceAccentSurface(k)
@@ -2770,7 +2838,7 @@ func (d *viewState) approvalTask(c *ui.Context, k desktopkit.Kit, p pendingDevic
 		d.fingerprintGrid(c, k, p.fingerprint, false)
 		k.Text(c, d.tr("名称由对方自报，未经验证。"), footnote)
 		ui.Row(c.Key("acts")).Gap(8).Justify(ui.End).Children(func() {
-			if k.Button(c.Key("deny"), d.tr("拒绝"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Size: desktopkit.SizeSmall, Disabled: busy}).Clicked() {
+			if k.Button(c.Key("deny"), d.tr("拒绝"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Size: desktopkit.SizeSmall, Disabled: busy}).Clicked() && !logicBusy {
 				if d.live != nil {
 					if existing {
 						d.rejectLivePendingPaths(p.id)

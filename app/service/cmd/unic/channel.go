@@ -15,10 +15,26 @@ import (
 )
 
 func runChannelPair(ctx context.Context, c *api.Client, args []string) error {
-	if len(args) < 1 || len(args) > 2 || (len(args) == 2 && args[1] != "--resume") {
-		return errors.New("usage: unic channel pair INSTANCE [--resume]")
+	var resume bool
+	asJSON := globalJSON
+	var pos []string
+	for _, a := range args {
+		switch a {
+		case "--resume":
+			resume = true
+		case "--json":
+			asJSON = true
+		default:
+			if strings.HasPrefix(a, "-") {
+				return usageError("usage: unic channel pair <instance> [--resume] [--json]")
+			}
+			pos = append(pos, a)
+		}
 	}
-	req := api.ChannelPairRequest{BackendID: args[0], Resume: len(args) == 2}
+	if len(pos) != 1 {
+		return usageError("usage: unic channel pair <instance> [--resume] [--json]")
+	}
+	req := api.ChannelPairRequest{BackendID: pos[0], Resume: resume}
 	if !req.Resume {
 		fd := int(os.Stdin.Fd())
 		var raw []byte
@@ -40,5 +56,9 @@ func runChannelPair(ctx context.Context, c *api.Client, args []string) error {
 	if err != nil {
 		return err
 	}
-	return json.NewEncoder(os.Stdout).Encode(out)
+	if asJSON || !outTTY {
+		return json.NewEncoder(os.Stdout).Encode(out)
+	}
+	fmt.Printf("%s paired channel %s (%s)\n", style(outTTY, sOK, "✓"), out.Name, out.ID)
+	return nil
 }

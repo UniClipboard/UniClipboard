@@ -161,7 +161,7 @@ func awaitPairing(ctx context.Context, c *api.Client, p api.PairResult) error {
 		case ctx.Err() != nil:
 			return &incompleteError{"interrupted; approval is still pending and cannot complete after this temporary service stops"}
 		case wctx.Err() != nil:
-			return &incompleteError{fmt.Sprintf("approval still pending after %s; run a persistent unicd to wait longer", pairingWindow)}
+			return &incompleteError{fmt.Sprintf("approval still pending after %s; run `unic daemon start` to wait longer", pairingWindow)}
 		case errors.Is(err, api.ErrNoDaemon):
 			return &incompleteError{"the service stopped before approval; the request may remain pending"}
 		default:
@@ -180,7 +180,7 @@ func holdInvitation(ctx context.Context, c *api.Client, code api.Code) error {
 	if !current.temporary() {
 		return nil
 	}
-	fmt.Fprintf(os.Stderr, "keeping the temporary service running until %s so another device can join (Ctrl+C to stop).\nStart unicd yourself to keep the code usable after this command.\n", code.Expires().Format("15:04:05"))
+	fmt.Fprintf(os.Stderr, "keeping the temporary service running until %s so another device can join (Ctrl+C to stop).\nRun `unic daemon start` to keep the code usable after this command.\n", code.Expires().Format("15:04:05"))
 	wctx, cancel := context.WithDeadline(ctx, code.Expires().Add(time.Second))
 	defer cancel()
 	for {

@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/clip"
 	"github.com/uniclipboard/unic/internal/observability"
+	"github.com/uniclipboard/unic/internal/testboard"
 
 	collecttrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	tracepb "go.opentelemetry.io/proto/otlp/trace/v1"
@@ -261,8 +263,8 @@ func traceSpans(t *testing.T, h *observabilityRun) []*tracepb.Span {
 						t.Fatal("caller trace parent accepted")
 					}
 					for _, a := range span.Attributes {
-						if a.Key != "result" && a.Key != "code" {
-							t.Fatal("unexpected trace attribute")
+						if a.Key != "result" && a.Key != "code" && a.Key != "backend" && a.Key != "content_kind" && a.Key != "action_category" {
+							t.Fatalf("unexpected trace attribute %q", a.Key)
 						}
 					}
 				}
@@ -426,4 +428,279 @@ func buildTraceCLI(t *testing.T, h *observabilityRun) string {
 		t.Fatalf("production CLI build: %v: %s", e, b)
 	}
 	return out
+}
+
+func buildTraceE2EDaemon(t *testing.T, h *observabilityRun, ratio string) string {
+	t.Helper()
+	h.traceSamplingRatio = ratio
+	root, err := repoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(h.dir, "unicd-e2e")
+	args := []string{"build", "-tags", "unic_e2e", "-o", out}
+	if os.Getenv("UNIC_TRACE_RACE") == "1" {
+		args = append(args, "-race")
+	}
+	if ratio != "" {
+		args = append(args, "-ldflags", "-X github.com/uniclipboard/unic/internal/observability.traceSampleRatio="+ratio)
+	}
+	args = append(args, "./app/service/cmd/unicd")
+	cmd := exec.Command("go", args...)
+	cmd.Dir = root
+	if b, e := cmd.CombinedOutput(); e != nil {
+		t.Fatalf("e2e trace daemon build: %v: %s", e, b)
+	}
+	return out
+}
+
+func spanAttrMap(s *tracepb.Span) map[string]string {
+	out := make(map[string]string, len(s.Attributes))
+	for _, a := range s.Attributes {
+		out[a.Key] = a.Value.GetStringValue()
+	}
+	return out
+}
+
+func TestTracesDistributedAndPipeline(t *testing.T) {
+	if os.Getenv("UNIC_E2E") == "" {
+		t.Skip("set UNIC_E2E=1")
+	}
+	a := newObservabilityRun(t)
+	b := newObservabilityRun(t)
+	a.artifactName = "traces-dist-alpha"
+	b.artifactName = "traces-dist-beta"
+	exe := buildTraceE2EDaemon(t, a, "1")
+	cliExe := buildTraceCLI(t, a)
+	a.executable, b.executable = exe, exe
+	a.cliExecutable, b.cliExecutable = cliExe, cliExe
+
+	cfgOf := func(url string) string {
+		return fmt.Sprintf("[logging]\nlevel=\"info\"\n[telemetry]\nenabled=true\nendpoint=%q\n[telemetry.logs]\nenabled=false\n[telemetry.metrics]\nenabled=false\n[telemetry.analytics]\nenabled=false\n[telemetry.traces]\nenabled=true\n", url)
+	}
+	a.startConfig(t, cfgOf(a.server.URL))
+	b.startConfig(t, cfgOf(b.server.URL))
+	// Wait for the directory clipboard adapters to attach on both nodes.
+	for _, h := range []*observabilityRun{a, b} {
+		h.eventually(t, func() bool {
+			var caps struct {
+				Host struct {
+					Observe string `json:"observe"`
+					Apply   string `json:"apply"`
+				} `json:"host"`
+			}
+			_ = json.Unmarshal(h.get(t, "/v1/capabilities"), &caps)
+			return caps.Host.Observe == "available" && caps.Host.Apply == "available"
+		})
+	}
+	pairSyncServices(t, a, b)
+
+	// 1. Automatic clipboard capture on alpha -> cross-device propagation -> receive + apply on beta.
+	a.mu.Lock()
+	a.traceSince = time.Now()
+	a.mu.Unlock()
+	b.mu.Lock()
+	b.traceSince = time.Now()
+	b.mu.Unlock()
+
+	if err := testboard.Dir(filepath.Join(a.home, "board")).Write(clip.Snapshot{
+		Parts: []clip.Part{{Format: "text/plain", Data: []byte("trace-dist-auto-canary")}},
+	}); err != nil {
+		t.Fatalf("mock clipboard write: %v", err)
+	}
+	b.eventually(t, func() bool {
+		got, err := testboard.Dir(filepath.Join(b.home, "board")).Read()
+		if err != nil {
+			return false
+		}
+		for _, p := range got.Parts {
+			if p.Format == "text/plain" && string(p.Data) == "trace-dist-auto-canary" {
+				return true
+			}
+		}
+		return false
+	})
+
+	var obsSpan, commitSpan, sendSpan *tracepb.Span
+	a.eventually(t, func() bool {
+		obsSpan, commitSpan, sendSpan = nil, nil, nil
+		for _, s := range traceSpans(t, a) {
+			switch s.Name {
+			case "unic.observe":
+				obsSpan = s
+			case "unic.commit":
+				commitSpan = s
+			case "unic.sync.send":
+				sendSpan = s
+			}
+		}
+		return obsSpan != nil && commitSpan != nil && sendSpan != nil
+	})
+	if len(obsSpan.ParentSpanId) != 0 || !bytes.Equal(commitSpan.ParentSpanId, obsSpan.SpanId) || !bytes.Equal(sendSpan.ParentSpanId, commitSpan.SpanId) {
+		t.Fatalf("broken sender observe/commit/send hierarchy")
+	}
+	if !bytes.Equal(obsSpan.TraceId, commitSpan.TraceId) || !bytes.Equal(commitSpan.TraceId, sendSpan.TraceId) {
+		t.Fatalf("sender spans do not share trace ID")
+	}
+	if sendSpan.Kind != tracepb.Span_SPAN_KIND_CLIENT {
+		t.Fatalf("expected unic.sync.send kind=CLIENT, got %v", sendSpan.Kind)
+	}
+	if attrs := spanAttrMap(sendSpan); attrs["backend"] != "tailcat" || attrs["content_kind"] != "text" || attrs["result"] != "succeeded" {
+		t.Fatalf("unexpected send attrs: %+v", attrs)
+	}
+
+	var recvSpan, applySpan *tracepb.Span
+	b.eventually(t, func() bool {
+		recvSpan, applySpan = nil, nil
+		for _, s := range traceSpans(t, b) {
+			if !bytes.Equal(s.TraceId, sendSpan.TraceId) {
+				continue
+			}
+			switch s.Name {
+			case "unic.sync.receive":
+				recvSpan = s
+			case "unic.apply":
+				applySpan = s
+			}
+		}
+		return recvSpan != nil && applySpan != nil
+	})
+	if recvSpan.Kind != tracepb.Span_SPAN_KIND_SERVER || !bytes.Equal(recvSpan.ParentSpanId, sendSpan.SpanId) {
+		t.Fatalf("cross-device receive parent/kind mismatch: kind=%v", recvSpan.Kind)
+	}
+	if !bytes.Equal(applySpan.ParentSpanId, recvSpan.SpanId) {
+		t.Fatalf("receiver apply span not parented to unic.sync.receive")
+	}
+	if attrs := spanAttrMap(recvSpan); attrs["backend"] != "tailcat" || attrs["content_kind"] != "text" || attrs["result"] != "succeeded" {
+		t.Fatalf("unexpected receive attrs: %+v", attrs)
+	}
+	if attrs := spanAttrMap(applySpan); attrs["content_kind"] != "text" || attrs["result"] != "succeeded" {
+		t.Fatalf("unexpected apply attrs: %+v", attrs)
+	}
+
+	// 2. Built-in Action trace + idempotency on alpha.
+	var hist struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	a.eventually(t, func() bool {
+		_ = json.Unmarshal(a.get(t, "/v1/history?limit=10"), &hist)
+		return len(hist.Items) > 0
+	})
+	histID := hist.Items[0].ID
+
+	a.mu.Lock()
+	a.traceSince = time.Now()
+	a.mu.Unlock()
+	actBody := `{"request_id":"trace-action-req-1"}`
+	for i := 0; i < 2; i++ {
+		code, raw := a.request(t, "POST", "/v1/history/"+histID+"/actions/builtin.text/upper", actBody)
+		if code != 200 {
+			t.Fatalf("action call %d failed: %d %s", i, code, raw)
+		}
+	}
+	var actSpans []*tracepb.Span
+	a.eventually(t, func() bool {
+		actSpans = nil
+		for _, s := range traceSpans(t, a) {
+			if s.Name == "unic.action" {
+				actSpans = append(actSpans, s)
+			}
+		}
+		return len(actSpans) >= 1
+	})
+	time.Sleep(500 * time.Millisecond)
+	allActSpans := traceSpans(t, a)
+	actSpans = nil
+	for _, s := range allActSpans {
+		if s.Name == "unic.action" {
+			actSpans = append(actSpans, s)
+		}
+	}
+	var actCommits []*tracepb.Span
+	if len(actSpans) > 0 {
+		for _, s := range allActSpans {
+			if s.Name == "unic.commit" && bytes.Equal(s.TraceId, actSpans[0].TraceId) {
+				actCommits = append(actCommits, s)
+			}
+		}
+	}
+	if len(actSpans) != 1 || len(actCommits) != 1 {
+		t.Fatalf("expected 1 unic.action and 1 unic.commit after idempotent retry, got actions=%d commits=%d", len(actSpans), len(actCommits))
+	}
+	if attrs := spanAttrMap(actSpans[0]); attrs["action_category"] != "builtin" || attrs["result"] != "succeeded" || attrs["content_kind"] != "text" {
+		t.Fatalf("unexpected action attrs: %+v", attrs)
+	}
+	if !bytes.Equal(actCommits[0].ParentSpanId, actSpans[0].SpanId) {
+		t.Fatalf("action commit not parented to unic.action")
+	}
+
+	// 3. Explicit submission cross-device propagation.
+	a.mu.Lock()
+	a.traceSince = time.Now()
+	a.mu.Unlock()
+	b.mu.Lock()
+	b.traceSince = time.Now()
+	b.mu.Unlock()
+	traceSubmit(t, a, "trace-dist-explicit-1")
+
+	var subSpan, subCommitSpan, subSendSpan *tracepb.Span
+	a.eventually(t, func() bool {
+		subSpan, subCommitSpan, subSendSpan = nil, nil, nil
+		for _, s := range traceSpans(t, a) {
+			switch s.Name {
+			case "unic.submission":
+				subSpan = s
+			case "unic.commit":
+				subCommitSpan = s
+			case "unic.sync.send":
+				subSendSpan = s
+			}
+		}
+		return subSpan != nil && subCommitSpan != nil && subSendSpan != nil
+	})
+	if !bytes.Equal(subCommitSpan.ParentSpanId, subSpan.SpanId) || !bytes.Equal(subSendSpan.ParentSpanId, subCommitSpan.SpanId) {
+		t.Fatalf("explicit submission sender chain mismatch")
+	}
+	var subRecvSpan, subApplySpan *tracepb.Span
+	b.eventually(t, func() bool {
+		subRecvSpan, subApplySpan = nil, nil
+		for _, s := range traceSpans(t, b) {
+			if !bytes.Equal(s.TraceId, subSpan.TraceId) {
+				continue
+			}
+			switch s.Name {
+			case "unic.sync.receive":
+				subRecvSpan = s
+			case "unic.apply":
+				subApplySpan = s
+			}
+		}
+		return subRecvSpan != nil && subApplySpan != nil
+	})
+	if !bytes.Equal(subRecvSpan.ParentSpanId, subSendSpan.SpanId) || !bytes.Equal(subApplySpan.ParentSpanId, subRecvSpan.SpanId) {
+		t.Fatalf("explicit submission cross-device receiver chain mismatch")
+	}
+
+	// 4. Explicit history apply on alpha produces a root unic.apply span.
+	a.mu.Lock()
+	a.traceSince = time.Now()
+	a.mu.Unlock()
+	if code, raw := a.request(t, "POST", "/v1/history/"+histID+"/use", ""); code != 200 {
+		t.Fatalf("use history failed: %d %s", code, raw)
+	}
+	var histApply *tracepb.Span
+	a.eventually(t, func() bool {
+		for _, s := range traceSpans(t, a) {
+			if s.Name == "unic.apply" && len(s.ParentSpanId) == 0 {
+				histApply = s
+				return true
+			}
+		}
+		return false
+	})
+	if attrs := spanAttrMap(histApply); attrs["result"] != "succeeded" || attrs["content_kind"] != "text" {
+		t.Fatalf("unexpected history apply attrs: %+v", attrs)
+	}
 }

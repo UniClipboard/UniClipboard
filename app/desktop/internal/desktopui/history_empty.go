@@ -456,7 +456,7 @@ func (d *viewState) trySampleCopy() {
 	if l.busy {
 		return
 	}
-	l.busy = true
+	l.startBusy("")
 	request := newRequestID()
 	snap := clip.Snapshot{Parts: []clip.Part{{Format: clip.Text, Data: []byte(sampleText)}}}
 	go func() {
@@ -465,7 +465,7 @@ func (d *viewState) trySampleCopy() {
 		out, err := l.client.Submit(ctx, api.SubmitInput{RequestID: request, Snapshot: snap})
 		select {
 		case l.results <- func() {
-			l.busy = false
+			l.stopBusy()
 			if err != nil {
 				l.message = "无法创建示例内容，请稍后重试。"
 				d.toastError(d.tr(l.message), desktopkit.ToastOptions{ID: toastIDLiveMessage})

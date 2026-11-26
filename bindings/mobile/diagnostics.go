@@ -32,9 +32,26 @@ func newMobileDiagnostics(dir string) *mobileDiagnostics {
 		cfg.Telemetry.Enabled = err == nil && json.Unmarshal(raw, &enabled) == nil && enabled != nil && *enabled
 	}
 	opts := observability.ReleaseOptions(cfg.Telemetry.Endpoint)
-	opts.Dir, opts.Config, opts.LocalOutput = dir, cfg, d.appendLog
+	opts.Dir, opts.Config, opts.ServiceName, opts.LocalOutput = dir, cfg, "unic-mobile", d.appendLog
 	d.controller = observability.New(opts)
 	return d
+}
+
+func traceOutcome(err error) (engine.DiagnosticResult, engine.Code) {
+	if err == nil {
+		return "succeeded", ""
+	}
+	var ee *engine.Error
+	if errors.As(err, &ee) && ee != nil {
+		if ee.Code == engine.CodeCancelled {
+			return "cancelled", engine.CodeCancelled
+		}
+		return "failed", ee.Code
+	}
+	if errors.Is(err, context.Canceled) {
+		return "cancelled", engine.CodeCancelled
+	}
+	return "failed", engine.CodeInternal
 }
 
 func (d *mobileDiagnostics) appendLog(record []byte) {

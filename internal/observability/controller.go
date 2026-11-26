@@ -19,12 +19,14 @@ type Options struct {
 	LocalOutput       func([]byte)
 	Dir               string
 	Config            Config
+	ServiceName       string
 	Version           string
 	Changed           func()
 	Token             func(context.Context) (string, error)
 	MetricsInterval   time.Duration
 	LogInterval       time.Duration
 	AnalyticsInterval time.Duration
+	TraceInterval     time.Duration
 }
 type Controller struct {
 	syncEpoch      uint64

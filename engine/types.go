@@ -1,5 +1,7 @@
 package engine
 
+import "context"
+
 // Identifiers are opaque, case-sensitive strings. Never derive anything from
 // their content.
 type (
@@ -310,7 +312,8 @@ type SubmitRequest struct {
 	// devices (sorted, validated by CommitContent). Other backend kinds send nothing.
 	DeviceIDs []DeviceID
 
-	action *actionRun // set by RunAction only
+	action   *actionRun      // set by RunAction only
+	traceCtx context.Context // optional local trace parent captured before locking
 }
 
 // TargetState is how far content got towards one device.

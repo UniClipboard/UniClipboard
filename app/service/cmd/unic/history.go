@@ -64,13 +64,13 @@ func historyCmd(ctx context.Context, c *api.Client, args []string, io historyIO)
 		fs := flags("send", io)
 		to := fs.String("to", "all", "target device or all")
 		request := fs.String("request-id", "", "idempotency key")
-		asJSON := fs.Bool("json", false, "print submission result")
+		asJSON := fs.Bool("json", globalJSON, "print submission result")
 		pos, err := parse(fs, rest)
 		if err != nil {
-			return err
+			return usageError(err.Error())
 		}
 		if len(pos) != 1 {
-			return fmt.Errorf("usage: unic history send REF --to DEVICE|all")
+			return usageError("usage: unic history send REF --to DEVICE|all")
 		}
 		item, err := h.resolve(ctx, pos[0])
 		if err != nil {
@@ -136,13 +136,13 @@ func historyCmd(ctx context.Context, c *api.Client, args []string, io historyIO)
 	case "use":
 		fs := flags("use", io)
 		request := fs.String("request-id", "", "idempotency key (30 minute window)")
-		asJSON := fs.Bool("json", false, "print local and network results separately")
+		asJSON := fs.Bool("json", globalJSON, "print local and network results separately")
 		pos, err := parse(fs, rest)
 		if err != nil {
-			return err
+			return usageError(err.Error())
 		}
 		if len(pos) != 1 {
-			return fmt.Errorf("usage: unic history use <ref> [--request-id KEY] [--json]")
+			return usageError("usage: unic history use <ref> [--request-id KEY] [--json]")
 		}
 		it, err := h.resolve(ctx, pos[0])
 		if err != nil {
@@ -247,13 +247,13 @@ func (h *hist) list(ctx context.Context, args []string) error {
 	tag := fs.String("tag", "", "only entries with this tag")
 	limit := fs.Int("limit", 20, "how many entries")
 	fs.IntVar(limit, "n", 20, "how many entries")
-	asJSON := fs.Bool("json", false, "print JSON")
+	asJSON := fs.Bool("json", globalJSON, "print JSON")
 	pos, err := parse(fs, args)
 	if err != nil {
-		return err
+		return usageError(err.Error())
 	}
 	if len(pos) > 0 {
-		return errors.New("usage: unic history list [flags]")
+		return usageError("usage: unic history list [flags]")
 	}
 	if *limit < 1 {
 		return errors.New("limit must be at least 1")
@@ -317,10 +317,10 @@ func size(n int64) string {
 func (h *hist) show(ctx context.Context, args []string) error {
 	fs := flags("show", h.io)
 	part := fs.Int("part", -1, "part index")
-	asJSON := fs.Bool("json", false, "print the entry's details")
+	asJSON := fs.Bool("json", globalJSON, "print the entry's details")
 	pos, err := parse(fs, args)
 	if err != nil {
-		return err
+		return usageError(err.Error())
 	}
 	ref := "@1"
 	switch len(pos) {

@@ -1,0 +1,28 @@
+appId: app.uniclipboard.shell
+name: Legacy mobile auto-migration complete and enter history
+---
+- extendedWaitUntil:
+    visible:
+      id: setup-enter-history
+    timeout: 45000
+- tapOn:
+    id: setup-enter-history
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: home-add-menu
+          timeout: 30000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: main-tab-Preferences
+          timeout: 30000
+- extendedWaitUntil:
+    visible: ".*Legacy mobile migration fixture — pinned.*"
+    timeout: 20000

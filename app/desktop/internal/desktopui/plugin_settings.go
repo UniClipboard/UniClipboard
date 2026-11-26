@@ -240,7 +240,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	instance := cfg.Plugins.Instances[p.id]
 	toggle := func(id, label, desc string, on *bool) {
 		k.SettingsRow(c.Key(id), desktopkit.SettingsRowProps{Label: d.tr(label), Description: d.tr(desc)}, nil, func() {
-			if k.Switch(c, on, desktopkit.SwitchProps{Label: d.tr(label), Disabled: l.busy}).Changed() {
+			if k.Switch(c, on, desktopkit.SwitchProps{Label: d.tr(label), Disabled: l.showBusy()}).Changed() && !l.busy {
 				changed = true
 			}
 		})
@@ -278,7 +278,7 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 				{Value: "continue", Label: d.tr("继续处理")},
 				{Value: "block_sync", Label: d.tr("禁止同步此条目")},
 			}
-			if k.Select(c, desktopkit.SelectProps{Label: d.tr("处理失败时"), Value: &policy, Items: items, Disabled: l.busy}).Changed {
+			if k.Select(c, desktopkit.SelectProps{Label: d.tr("处理失败时"), Value: &policy, Items: items, Disabled: l.showBusy()}).Changed && !l.busy {
 				instance.OnError = policy
 				if policy == "inherit" {
 					instance.OnError = ""
@@ -320,7 +320,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 			})
 			k.Text(c.Key("s"), d.tr("浏览官方与社区扩展，一键在线安装剪贴板动作、整理工具与同步方式。"), secondary)
 		})
-		if k.Button(c.Key("open-marketplace"), d.tr("浏览插件市场"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconPackage, Disabled: l.busy}).Clicked() {
+		if k.Button(c.Key("open-marketplace"), d.tr("浏览插件市场"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconPackage, Disabled: l.showBusy()}).Clicked() && !l.busy {
 			p.view = "marketplace"
 			p.installError = ""
 			p.installNotice = ""
@@ -391,7 +391,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 							if installing {
 								btnLabel = d.tr("正在安装…")
 							}
-							if k.Button(c.Key("quick-install-"+pick.ID), btnLabel, desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconDownload, Busy: installing, Disabled: l.busy || p.installingID != ""}).Clicked() {
+							if k.Button(c.Key("quick-install-"+pick.ID), btnLabel, desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconDownload, Busy: installing, Disabled: l.showBusy() || p.installingID != ""}).Clicked() {
 								d.installMarketplacePlugin(api.PluginInstallRequest{
 									Repository: pick.Repository,
 									Ref:        pick.Ref,
@@ -449,7 +449,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 						ui.Row(c.Key("ctrl")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
 							if canUpdate {
 								updating := p.installingID == item.ID
-								if k.Button(c.Key("update-"+item.ID), d.tr("更新"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Busy: updating, Disabled: l.busy || p.installingID != ""}).Clicked() {
+								if k.Button(c.Key("update-"+item.ID), d.tr("更新"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Busy: updating, Disabled: l.showBusy() || p.installingID != ""}).Clicked() {
 									d.installMarketplacePlugin(api.PluginInstallRequest{
 										Repository: cat.Repository,
 										Ref:        cat.Ref,
@@ -463,7 +463,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 							if isConfigurable {
 								detailIcon = desktopkit.IconSettings
 							}
-							if k.Button(c.Key("open-"+item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: detailIcon, Label: item.ID, Tooltip: displayName, Disabled: l.busy}).Clicked() {
+							if k.Button(c.Key("open-"+item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: detailIcon, Label: item.ID, Tooltip: displayName, Disabled: l.showBusy()}).Clicked() && !l.busy {
 								p.id = item.ID
 								p.view = ""
 								p.detailTechOpen = false
@@ -471,14 +471,14 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 								p.channelPair = weTypePairing{}
 							}
 							if item.Source != "local" {
-								if k.Button(c.Key("uninstall-"+item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconDelete, Label: d.tr("卸载") + displayName, Tooltip: d.tr("卸载"), Disabled: l.busy}).Clicked() {
+								if k.Button(c.Key("uninstall-"+item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconDelete, Label: d.tr("卸载") + displayName, Tooltip: d.tr("卸载"), Disabled: l.showBusy()}).Clicked() && !l.busy {
 									p.uninstallOpen = true
 									p.uninstallID = item.ID
 									p.uninstallName = displayName
 								}
 							}
 							on := item.Configured
-							if k.Switch(c.Key("enable-"+item.ID), &on, desktopkit.SwitchProps{Label: d.tr("启用") + displayName, Disabled: l.busy}).Changed() {
+							if k.Switch(c.Key("enable-"+item.ID), &on, desktopkit.SwitchProps{Label: d.tr("启用") + displayName, Disabled: l.showBusy()}).Changed() && !l.busy {
 								d.setExternalPluginEnabled(*cfg, item.ID, on)
 							}
 						})
@@ -510,13 +510,13 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 					if entry.id == "builtin.tailcat" || entry.id == builtinpreview.ID {
 						icon = desktopkit.IconSettings
 					}
-					if k.Button(c.Key("open-"+entry.id), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: icon, Label: d.tr(entry.name), Tooltip: d.tr(entry.name), Disabled: l.busy}).Clicked() {
+					if k.Button(c.Key("open-"+entry.id), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: icon, Label: d.tr(entry.name), Tooltip: d.tr(entry.name), Disabled: l.showBusy()}).Clicked() && !l.busy {
 						p.id = entry.id
 						p.view = ""
 						p.form = nil
 					}
 					on := cfg.PluginEnabled(entry.id)
-					if k.Switch(c.Key("enable-"+entry.id), &on, desktopkit.SwitchProps{Label: d.tr("启用") + d.tr(entry.name), Disabled: l.busy}).Changed() {
+					if k.Switch(c.Key("enable-"+entry.id), &on, desktopkit.SwitchProps{Label: d.tr("启用") + d.tr(entry.name), Disabled: l.showBusy()}).Changed() && !l.busy {
 						instance := cfg.Plugins.Instances[entry.id]
 						instance.Enabled = &on
 						cfg.Plugins.Instances[entry.id] = instance
@@ -535,7 +535,7 @@ func (d *viewState) syncPluginPolicy(c *ui.Context, k desktopkit.Kit, id string,
 	changed := false
 	toggle := func(key, label, desc string, on *bool) {
 		k.SettingsRow(c.Key(key), desktopkit.SettingsRowProps{Label: d.tr(label), Description: d.tr(desc)}, nil, func() {
-			if k.Switch(c, on, desktopkit.SwitchProps{Label: d.tr(label), Disabled: l.busy}).Changed() {
+			if k.Switch(c, on, desktopkit.SwitchProps{Label: d.tr(label), Disabled: l.showBusy()}).Changed() && !l.busy {
 				changed = true
 			}
 		})
@@ -566,7 +566,7 @@ func (d *viewState) syncPluginPolicy(c *ui.Context, k desktopkit.Kit, id string,
 			instance.Sync.Files = &files
 		}
 		k.SettingsRow(c.Key("threshold"), desktopkit.SettingsRowProps{Label: d.tr("自动文件传输阈值（MB）"), Description: d.tr("0 表示不增加限制。逐个文件检查。任一文件超限时跳过整次自动发送。主动发送不受此阈值限制。") + " " + d.tr("输入后按回车保存。")}, nil, func() {
-			field := k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("自动文件传输阈值（MB）"), Value: &p.threshold, Disabled: l.busy, Error: d.tr(p.thresholdError)})
+			field := k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("自动文件传输阈值（MB）"), Value: &p.threshold, Disabled: l.showBusy(), Error: d.tr(p.thresholdError)})
 			if field.Submitted && !l.busy {
 				value, err := strconv.ParseInt(strings.TrimSpace(p.threshold), 10, 64)
 				if err != nil || value < 0 || value > 4096 {

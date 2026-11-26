@@ -126,6 +126,7 @@ type applyTicket struct {
 	ended              time.Time
 	kind               DiagnosticContentKind
 	diagnosticRecorded bool
+	traceEnd           func(TraceSpanFinish)
 	userRestore        bool
 	sourceKind         string
 	token              ApplyToken
@@ -407,32 +408,42 @@ func (e *Engine) BeginApply(ctx context.Context, req ApplyRequest) (ApplyTicket,
 	}
 	defer release()
 	e.obsMu.Lock()
-	defer e.obsMu.Unlock()
 	e.mu.Lock()
-	defer e.mu.Unlock()
 
+	unlock := func() {
+		e.mu.Unlock()
+		e.obsMu.Unlock()
+	}
 	if e.life != LifecycleRunning {
+		unlock()
 		return ApplyTicket{}, newErr(CodeInvalidState, "the engine is not running")
 	}
 	if e.runtime == RuntimeSuspended {
+		unlock()
 		return ApplyTicket{}, newErr(CodeSuspended, "the host suspended networking")
 	}
 	switch e.host.Apply {
 	case AbilityAvailable:
 	case AbilityPermissionRequired:
+		unlock()
 		return ApplyTicket{}, newErr(CodePermissionDenied, "the system denies writing the clipboard")
 	case AbilityUnavailable:
+		unlock()
 		return ApplyTicket{}, retryable(newErr(CodeUnavailable, "the host cannot write the clipboard now"))
 	default:
+		unlock()
 		return ApplyTicket{}, newErr(CodeUnsupported, "the host cannot write the clipboard")
 	}
 	if !e.settings.Value.Sync.Enabled {
+		unlock()
 		return ApplyTicket{}, newErr(CodeSyncDisabled, "sync is paused")
 	}
 	if e.ticket != nil {
+		unlock()
 		return ApplyTicket{}, newErr(CodeInUse, "another application is under way")
 	}
 	if req.ExpectedEpoch != e.obs.epoch || (req.ExpectedEpoch != "" && req.ExpectedSequence != e.obs.seq) {
+		unlock()
 		return ApplyTicket{}, newErr(CodeConflict, "the clipboard changed since the last observation")
 	}
 	var rc *receipt
@@ -442,17 +453,28 @@ func (e *Engine) BeginApply(ctx context.Context, req ApplyRequest) (ApplyTicket,
 		}
 	}
 	if rc == nil {
+		unlock()
 		return ApplyTicket{}, newErr(CodeNotFound, "no such received content (it may have expired)")
 	}
 	if !e.appliable(rc.c, e.policyLocked(rc.backend)) {
+		unlock()
 		return ApplyTicket{}, newErr(CodeUnsupported, "nothing in this content can be applied here")
 	}
-	t := &applyTicket{started: time.Now(), kind: diagnosticKind(rc.c), token: ApplyToken(e.newID()), receipt: rc.ReceiptID, content: rc.c.id, rc: rc}
+	kind := diagnosticKind(rc.c)
+	parentTrace := rc.traceCtx
+	t := &applyTicket{started: time.Now(), kind: kind, token: ApplyToken(e.newID()), receipt: rc.ReceiptID, content: rc.c.id, rc: rc}
 	t.lease = e.newLease(rc.c)
 	rc.locked, rc.ApplyState = true, ApplyApplying
 	e.ticket = t
 	e.commitLocked(EventApply, EventReceived)
-	return ApplyTicket{Token: t.token, ContentID: t.content, LeaseID: t.lease}, nil
+	out := ApplyTicket{Token: t.token, ContentID: t.content, LeaseID: t.lease}
+	unlock()
+	if parentTrace == nil {
+		parentTrace = context.Background()
+	}
+	_, endTrace := e.startSpan(parentTrace, TraceSpanSpec{Name: "unic.apply", ContentKind: kind})
+	e.attachApplyTrace(t, kind, endTrace)
+	return out, nil
 }
 
 // appliable reports whether some part can be written by this host under the
@@ -485,6 +507,7 @@ func (e *Engine) appliable(c *contentObj, sy BackendSyncPolicy) bool {
 // baseline. Reporting the same result again succeeds.
 func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
 	var diagnostic *DiagnosticRecord
+	var endTrace func(TraceSpanFinish)
 	var restored bool
 	var remote bool
 	var sourceKind string
@@ -494,6 +517,9 @@ func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
 		}
 		if remote {
 			e.productEvent(ctx, ProductEvent{Name: "remote_content_applied", Result: "succeeded"})
+		}
+		if endTrace != nil && diagnostic != nil {
+			endTrace(TraceSpanFinish{Result: diagnostic.Result, Code: diagnostic.Code, ContentKind: diagnostic.ContentKind})
 		}
 		if diagnostic != nil {
 			e.diagnostic(ctx, *diagnostic)
@@ -560,7 +586,7 @@ func (e *Engine) ReportApplyResult(ctx context.Context, r ApplyResult) error {
 			result = "cancelled"
 			code = CodeCancelled
 		}
-		diagnostic = e.claimApplyDiagnosticLocked(t, result, code)
+		diagnostic, endTrace = e.claimApplyDiagnosticLocked(t, result, code)
 		restored = t.userRestore && !t.dead && state == ApplyApplied
 		sourceKind = t.sourceKind
 		remote = t.rc != nil && t.rc.PeerID != "" && t.rc.ChannelID == "" && !t.dead && state == ApplyApplied

@@ -66,6 +66,7 @@ type targetKey struct {
 // of a commit (the transfer identity of 0007 §6).
 type backendView struct {
 	workContext   context.Context // owned submission lifetime; nil for short-lived callers
+	traceCtx      context.Context // local trace parent from unic.commit; detached from cancellation
 	set           sendSet
 	id            string
 	tsMs          int64
@@ -296,6 +297,7 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 	cs.mu.Unlock()
 	host := &dispatchHost{e: e, req: req, hash: hash, c: c}
 	transfer, tsMs := wire.NewID(), time.Now().UnixMilli()
+	dispatchTrace := e.inheritTrace(context.Background(), ctx)
 	manual := req.Origin == OriginExplicit
 	files := hasFiles(c)
 
@@ -331,6 +333,7 @@ func (e *Engine) dispatchProcessed(ctx context.Context, req SubmitRequest, hash 
 			var filtered bool
 			queued, err := b.Submit(ctx, backendView{
 				workContext:   workContext,
+				traceCtx:      dispatchTrace,
 				set:           set,
 				id:            transfer,
 				tsMs:          tsMs,

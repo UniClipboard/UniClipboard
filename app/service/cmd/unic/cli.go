@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -19,6 +20,7 @@ import (
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
+	"github.com/uniclipboard/unic/internal/servicelifecycle"
 )
 
 func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
@@ -62,22 +64,21 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		}
 		return json.NewEncoder(os.Stdout).Encode(state)
 	case "status":
-		st, err := c.Status(short)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("device  %s (%s)\n", st.Name, st.ID)
-		printPeers(st.Peers)
-		printPending(st.Pending)
+		return runStatus(ctx, args, globalJSON)
 
 	case "channel pair":
 		return runChannelPair(short, c, args)
+	case "channel add":
+		return runChannelAdd(short, c, args)
+	case "channel pause", "channel resume", "channel remove":
+		action := strings.TrimPrefix(l.Name, "channel ")
+		return runChannelManage(short, c, append([]string{action}, args...))
 
 	case "device addr":
 		backend := ""
 		if len(args) != 0 {
 			if len(args) != 2 || args[0] != "--backend" || args[1] == "" {
-				return errors.New("usage: unic device addr [--backend INSTANCE]")
+				return usageError("usage: unic device addr [--backend INSTANCE]")
 			}
 			backend = args[1]
 		}
@@ -87,12 +88,12 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		}
 		fmt.Println(ticket)
 		if current.temporary() {
-			fmt.Fprintln(os.Stderr, "this address works only while a unic service runs; start unicd to keep it reachable.")
+			fmt.Fprintln(os.Stderr, "this address works only while a unic service runs; run `unic daemon start` to keep it reachable.")
 		}
 
 	case "dev cache":
 		if len(args) > 1 || (len(args) == 1 && args[0] != "--json") {
-			return fmt.Errorf("usage: unic dev cache [--json]")
+			return usageError("usage: unic dev cache [--json]")
 		}
 		state, err := c.FileCache(short)
 		if err != nil {
@@ -100,7 +101,10 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		}
 		return json.NewEncoder(os.Stdout).Encode(state)
 	case "config path":
-		p, err := paths.Config()
+		if len(args) != 0 {
+			return usageError("usage: unic config path")
+		}
+		p, err := paths.ResolveConfig()
 		if err != nil {
 			return err
 		}
@@ -108,7 +112,7 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		return nil
 	case "config":
 		if len(args) != 0 && (len(args) != 1 || args[0] != "--json") && (len(args) != 3 || args[0] != "set") && (len(args) != 2 || args[0] != "apply") {
-			return fmt.Errorf("usage: unic config [--json|set <key> <TOML-value>|apply <file>] | unic config path")
+			return usageError("usage: unic config [--json|set <key> <TOML-value>|apply <file>] | unic config path")
 		}
 		st, err := c.Config(short)
 		if err != nil {
@@ -129,7 +133,7 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 				return err
 			}
 		}
-		if len(args) == 1 && args[0] == "--json" {
+		if globalJSON || (len(args) == 1 && args[0] == "--json") {
 			return json.NewEncoder(os.Stdout).Encode(st)
 		}
 		if st.ApplyError != "" {
@@ -140,7 +144,7 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 			fmt.Printf("# ERROR, last edit not applied (the settings below are the previous ones):\n#   %s\n", st.Error)
 		}
 		if len(st.RestartRequired) > 0 {
-			fmt.Printf("# restart unicd to apply: %s\n", strings.Join(st.RestartRequired, ", "))
+			fmt.Printf("# run `unic daemon restart` to apply: %s\n", strings.Join(st.RestartRequired, ", "))
 		}
 		return toml.NewEncoder(os.Stdout).Encode(st.Config)
 
@@ -209,17 +213,35 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		}
 		return errors.New("unknown binding action")
 	case "device backends":
-		if len(args) != 0 {
-			return errors.New("usage: unic device backends")
+		asJSON := globalJSON
+		for _, a := range args {
+			if a == "--json" {
+				asJSON = true
+			} else {
+				return usageError("usage: unic device backends [--json]")
+			}
 		}
 		backends, err := c.SyncBackends(short)
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(os.Stdout).Encode(backends)
+		if asJSON || !outTTY {
+			return json.NewEncoder(os.Stdout).Encode(backends)
+		}
+		if len(backends) == 0 {
+			fmt.Println("no sync backends configured")
+			return nil
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		_, _ = fmt.Fprintln(w, "ID\tIMPLEMENTATION\tTRANSPORT\tPAIRING\tSTATE")
+		for _, b := range backends {
+			_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s\n", b.ID, b.ImplementationID, b.TransportKind, b.Pairing, b.State)
+		}
+		return w.Flush()
 
 	case "device list":
-		var asJSON, refresh bool
+		asJSON := globalJSON
+		var refresh bool
 		for _, a := range args {
 			switch a {
 			case "--json":
@@ -227,7 +249,7 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 			case "--refresh":
 				refresh = true
 			default:
-				return errors.New("usage: unic device list [--refresh] [--json]")
+				return usageError("usage: unic device list [--refresh] [--json]")
 			}
 		}
 		var st api.Status
@@ -247,6 +269,9 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 		}
 		printPeers(st.Peers)
 		printPending(st.Pending)
+
+	case "device rename":
+		return runDeviceRename(short, c, args)
 
 	case "device add":
 		backend := ""
@@ -337,78 +362,30 @@ func runCLI(ctx context.Context, c *api.Client, l leaf, args []string) error {
 			fmt.Println("rejected")
 		}
 
-	case "device suggestions":
-		cs, err := c.Candidates(short)
-		if err != nil {
-			return err
-		}
-		if len(cs) == 0 {
-			fmt.Println("no suggested devices")
-		}
-		for _, d := range cs {
-			state := ""
-			switch {
-			case d.Ignored:
-				state = "  [ignored]"
-			case d.Requested:
-				state = "  [pairing requested]"
-			}
-			fmt.Printf("%s  %s  via %s (%s)%s\n", d.ID, d.Name, strings.Join(d.IntroducedBy, ", "), d.BackendID, state)
-		}
+	case "device suggest":
+		return runDeviceSuggest(short, c, args)
 
-	case "device suggest-pair", "device suggest-ignore", "device suggest-restore":
-		if len(args) < 1 || (l.Name == "device suggest-pair" && len(args) != 2) {
-			return fmt.Errorf("usage: unic device suggest-pair <id> <backend-id> | unic %s <id>", l.Name)
-		}
-		switch l.Name {
-		case "device suggest-pair":
-			p, err := c.PairCandidate(short, args[0], args[1])
-			if err != nil {
-				return err
-			}
-			fmt.Printf("requested %s; it connects once both sides approve.\nFingerprint: %s  (compare it on both devices)\n", p.Name, p.Fingerprint)
-		default:
-			if err := c.IgnoreCandidate(short, args[0], l.Name == "device suggest-ignore"); err != nil {
-				return err
-			}
-			fmt.Println("ok")
-		}
+	case "device suggestions":
+		return runDeviceSuggest(short, c, append([]string{"list"}, args...))
+
+	case "device suggest-pair":
+		return runDeviceSuggest(short, c, append([]string{"pair"}, args...))
+
+	case "device suggest-ignore":
+		return runDeviceSuggest(short, c, append([]string{"ignore"}, args...))
+
+	case "device suggest-restore":
+		return runDeviceSuggest(short, c, append([]string{"restore"}, args...))
 
 	case "device channel-add":
-		if len(args) != 2 {
-			return errors.New("usage: unic device channel-add INSTANCE NAME")
-		}
-		channel, err := c.AddChannel(short, api.ChannelAdd{BackendID: args[0], Name: args[1]})
-		if err != nil {
-			return err
-		}
-		return json.NewEncoder(os.Stdout).Encode(channel)
+		return runChannelAdd(short, c, args)
 
 	case "device channel":
-		if len(args) != 3 {
-			return errors.New("usage: unic device channel pause|resume|remove ID REVISION")
-		}
-		revision, err := strconv.ParseInt(args[2], 10, 64)
-		if err != nil || revision <= 0 {
-			return errors.New("invalid channel revision")
-		}
-		switch args[0] {
-		case "pause", "resume":
-			enabled := args[0] == "resume"
-			channel, err := c.UpdateChannel(short, args[1], api.ChannelUpdate{Revision: revision, Enabled: &enabled})
-			if err != nil {
-				return err
-			}
-			return json.NewEncoder(os.Stdout).Encode(channel)
-		case "remove":
-			return c.RemoveChannel(short, args[1], revision)
-		default:
-			return errors.New("expected pause, resume, or remove")
-		}
+		return runChannelManage(short, c, args)
 
 	case "device remove":
 		if len(args) != 1 {
-			return fmt.Errorf("usage: unic device remove <id>")
+			return usageError("usage: unic device remove <id>")
 		}
 		if err := c.Unpair(short, args[0]); err != nil {
 			return err
@@ -579,3 +556,265 @@ func isSixDigits(s string) bool {
 	}
 	return true
 }
+
+func runStatus(ctx context.Context, args []string, asJSONDefault bool) error {
+	fs := flag.NewFlagSet("status", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	asJSON := fs.Bool("json", asJSONDefault, "output JSON")
+	pos, err := parse(fs, args)
+	if err != nil || len(pos) != 0 {
+		return usageError("usage: unic status [--json]")
+	}
+	dir, err := paths.CanonicalDir()
+	if err != nil {
+		return err
+	}
+	socket, err := paths.ResolveSocket()
+	if err != nil {
+		return err
+	}
+	profileName, _ := paths.ActiveProfile()
+	raw := api.NewClient(socket)
+	pctx, pcancel := context.WithTimeout(ctx, probeTimeout)
+	inst, serr := raw.Service(pctx)
+	pcancel()
+
+	if errors.Is(serr, api.ErrNoDaemon) {
+		if *asJSON {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{
+				"profile":   profileName,
+				"directory": dir,
+				"daemon":    map[string]any{"running": false},
+			})
+		}
+		fmt.Printf("profile   %s (%s)\n", profileName, dir)
+		fmt.Printf("daemon    stopped\n")
+		note("run `unic daemon start` for continuous background sync")
+		return nil
+	}
+	if serr != nil {
+		return fmt.Errorf("inspect existing unicd: %w", serr)
+	}
+	if inst.Directory != dir {
+		return errors.New("socket belongs to a different state directory")
+	}
+
+	qctx, qcancel := context.WithTimeout(ctx, 5*time.Second)
+	st, err := raw.Status(qctx)
+	qcancel()
+	if err != nil {
+		return err
+	}
+	var caps *capabilitiesSummary
+	cctx, ccancel := context.WithTimeout(ctx, probeTimeout)
+	if c, cerr := raw.Capabilities(cctx); cerr == nil {
+		v := capabilitiesView(c)
+		caps = &v
+	}
+	ccancel()
+
+	if *asJSON {
+		payload := map[string]any{
+			"profile":   profileName,
+			"directory": dir,
+			"daemon": map[string]any{
+				"running":       true,
+				"mode":          inst.Mode,
+				"pid":           inst.PID,
+				"started_at_ms": inst.StartedAtMs,
+				"leases":        inst.Leases,
+			},
+			"id":      st.ID,
+			"name":    st.Name,
+			"peers":   st.Peers,
+			"pending": st.Pending,
+		}
+		if caps != nil {
+			payload["clipboard"] = caps
+		}
+		return json.NewEncoder(os.Stdout).Encode(payload)
+	}
+
+	uptime := formatDurationShort(time.Since(time.UnixMilli(inst.StartedAtMs)))
+	fmt.Printf("profile   %s (%s)\n", profileName, dir)
+	fmt.Printf("daemon    running (%s, pid %d, up %s)\n", inst.Mode, inst.PID, uptime)
+	fmt.Printf("device    %s (%s)\n", st.Name, st.ID)
+	if caps != nil {
+		fmt.Printf("clipboard %s\n", caps.Summary)
+	}
+	fmt.Println()
+	printPeers(st.Peers)
+	printPending(st.Pending)
+	return nil
+}
+
+func runDeviceRename(ctx context.Context, c *api.Client, args []string) error {
+	fs := flag.NewFlagSet("device rename", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	clearName := fs.Bool("clear", false, "clear custom name and revert to reported name")
+	asJSON := fs.Bool("json", globalJSON, "output JSON")
+	pos, err := parse(fs, args)
+	if err != nil {
+		return usageError("usage: unic device rename <id> [NAME] [--clear] [--json]")
+	}
+	if (*clearName && len(pos) != 1) || (!*clearName && len(pos) < 2) {
+		return usageError("usage: unic device rename <id> [NAME] [--clear] [--json]")
+	}
+	id, err := resolveDevice(ctx, c, pos[0])
+	if err != nil {
+		return err
+	}
+	st, err := c.Status(ctx)
+	if err != nil {
+		return err
+	}
+	var rev int64
+	for _, p := range st.Peers {
+		if p.ID == id {
+			rev = p.Revision
+			break
+		}
+	}
+	if rev <= 0 {
+		return fmt.Errorf("device %q has no valid revision", id)
+	}
+	newName := ""
+	if !*clearName {
+		newName = strings.Join(pos[1:], " ")
+	}
+	updated, err := c.RenamePeer(ctx, id, api.PeerRename{Revision: rev, Name: newName})
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return json.NewEncoder(os.Stdout).Encode(updated)
+	}
+	fmt.Printf("renamed %s -> %s\n", updated.ID, updated.Name)
+	return nil
+}
+
+func runDeviceSuggest(ctx context.Context, c *api.Client, args []string) error {
+	sub := "list"
+	rest := args
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		sub = args[0]
+		rest = args[1:]
+	}
+	switch sub {
+	case "list", "ls":
+		asJSON := globalJSON
+		for _, a := range rest {
+			if a == "--json" {
+				asJSON = true
+			} else {
+				return usageError("usage: unic device suggest [list] [--json]")
+			}
+		}
+		cs, err := c.Candidates(ctx)
+		if err != nil {
+			return err
+		}
+		if asJSON {
+			return json.NewEncoder(os.Stdout).Encode(cs)
+		}
+		if len(cs) == 0 {
+			fmt.Println("no suggested devices")
+			return nil
+		}
+		for _, d := range cs {
+			state := ""
+			switch {
+			case d.Ignored:
+				state = "  [ignored]"
+			case d.Requested:
+				state = "  [pairing requested]"
+			}
+			fmt.Printf("%s  %s  via %s (%s)%s\n", d.ID, d.Name, strings.Join(d.IntroducedBy, ", "), d.BackendID, state)
+		}
+		return nil
+	case "pair":
+		if len(rest) != 2 {
+			return usageError("usage: unic device suggest pair <id> <backend-id>")
+		}
+		p, err := c.PairCandidate(ctx, rest[0], rest[1])
+		if err != nil {
+			return err
+		}
+		fmt.Printf("requested %s; it connects once both sides approve.\nFingerprint: %s  (compare it on both devices)\n", p.Name, p.Fingerprint)
+		return nil
+	case "ignore", "restore":
+		if len(rest) != 1 {
+			return usageError(fmt.Sprintf("usage: unic device suggest %s <id>", sub))
+		}
+		if err := c.IgnoreCandidate(ctx, rest[0], sub == "ignore"); err != nil {
+			return err
+		}
+		fmt.Println("ok")
+		return nil
+	default:
+		return usageError("usage: unic device suggest [list | pair <id> <backend-id> | ignore <id> | restore <id>]")
+	}
+}
+
+func runChannelAdd(ctx context.Context, c *api.Client, args []string) error {
+	fs := flag.NewFlagSet("channel add", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	asJSON := fs.Bool("json", globalJSON, "output JSON")
+	pos, err := parse(fs, args)
+	if err != nil || len(pos) != 2 {
+		return usageError("usage: unic channel add <instance> <name> [--json]")
+	}
+	channel, err := c.AddChannel(ctx, api.ChannelAdd{BackendID: pos[0], Name: pos[1]})
+	if err != nil {
+		return err
+	}
+	if *asJSON || !outTTY {
+		return json.NewEncoder(os.Stdout).Encode(channel)
+	}
+	fmt.Printf("%s added channel %s (%s)\n", style(outTTY, sOK, "✓"), channel.Name, channel.ID)
+	return nil
+}
+
+func runChannelManage(ctx context.Context, c *api.Client, args []string) error {
+	if len(args) < 1 {
+		return usageError("usage: unic channel pause|resume|remove <id> <revision> [--json]")
+	}
+	action := args[0]
+	fs := flag.NewFlagSet("channel "+action, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	asJSON := fs.Bool("json", globalJSON, "output JSON")
+	pos, err := parse(fs, args[1:])
+	if err != nil || len(pos) != 2 {
+		return usageError(fmt.Sprintf("usage: unic channel %s <id> <revision>", action))
+	}
+	revision, err := strconv.ParseInt(pos[1], 10, 64)
+	if err != nil || revision <= 0 {
+		return usageError("invalid channel revision")
+	}
+	switch action {
+	case "pause", "resume":
+		enabled := action == "resume"
+		channel, err := c.UpdateChannel(ctx, pos[0], api.ChannelUpdate{Revision: revision, Enabled: &enabled})
+		if err != nil {
+			return err
+		}
+		if *asJSON || !outTTY {
+			return json.NewEncoder(os.Stdout).Encode(channel)
+		}
+		fmt.Printf("%s channel %s %sd\n", style(outTTY, sOK, "✓"), channel.ID, action)
+		return nil
+	case "remove":
+		if err := c.RemoveChannel(ctx, pos[0], revision); err != nil {
+			return err
+		}
+		if *asJSON {
+			return json.NewEncoder(os.Stdout).Encode(map[string]any{"removed": true, "id": pos[0]})
+		}
+		fmt.Println("removed")
+		return nil
+	default:
+		return usageError("expected pause, resume, or remove")
+	}
+}
+
+var _ = servicelifecycle.ModeStandalone

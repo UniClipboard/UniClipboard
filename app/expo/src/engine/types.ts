@@ -50,20 +50,28 @@ export class EngineError extends Error {
   }
 }
 
+export type MigrationSourceKind = "v1_vault" | "mobile_sqlite" | "";
+
 export interface SetupFlowState {
   complete: boolean;
   source: string;
+  source_kind?: MigrationSourceKind;
+  requires_unlock?: boolean;
   default_source: string;
 }
 
 export interface SourceDetectionResult {
   status: "none" | "found" | "invalid" | "error";
   source: string;
+  source_kind?: MigrationSourceKind;
+  requires_unlock?: boolean;
 }
 
 export interface CustomSourceSelectionResult {
   cancelled: boolean;
   source?: string;
+  source_kind?: MigrationSourceKind;
+  requires_unlock?: boolean;
 }
 
 export interface MigrationProgress {

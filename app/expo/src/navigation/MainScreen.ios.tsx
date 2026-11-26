@@ -10,8 +10,10 @@ import {
 } from "@react-navigation/bottom-tabs/unstable";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useTranslation } from "react-i18next";
+import { useEngineStore } from "@/engine/store";
 import { useTheme } from "@/hooks/useTheme";
 import { HomeView } from "@/screens/HomeView";
+import { needsDeviceApproval } from "@/screens/pairing/pairingUtils";
 import { SettingsScreen } from "@/screens/SettingsScreen";
 import { DevicesScreen } from "@/screens/DevicesScreen";
 import type {
@@ -71,6 +73,9 @@ export function MainScreen() {
   const { theme } = useTheme();
   const [homeImmersive, setHomeImmersive] = useState(false);
   const [searchRequestId, setSearchRequestId] = useState(0);
+  const pendingApprovalCount = useEngineStore((s) =>
+    s.mode === "live" ? s.devices.filter(needsDeviceApproval).length : 0,
+  );
 
   const screenOptions = useMemo<NativeBottomTabNavigationOptions>(
     () => ({
@@ -106,6 +111,7 @@ export function MainScreen() {
         options={{
           title: t("nav.devices"),
           tabBarIcon: { type: "sfSymbol", name: "laptopcomputer.and.iphone" },
+          tabBarBadge: pendingApprovalCount > 0 ? pendingApprovalCount : undefined,
         }}
       >
         {({ route }) => <DevicesScreen {...route.params} />}

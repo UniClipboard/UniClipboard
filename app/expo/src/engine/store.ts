@@ -1205,11 +1205,14 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
   }),
 
   approveDevice: async (device, verifiedFingerprint) => {
+    const allBindings = device.bindings ?? [];
+    const pendingBindings = allBindings.filter((b) => b.state === "pending");
+    const targetBindings = pendingBindings.length > 0 ? pendingBindings : allBindings;
     await unicEngineNative.approveDevice({
       id: device.id,
       expected_revision: device.revision,
       expected_fingerprint: verifiedFingerprint,
-      bindings: (device.bindings ?? []).map((b) => ({
+      bindings: targetBindings.map((b) => ({
         id: b.id,
         expected_revision: b.revision,
       })),

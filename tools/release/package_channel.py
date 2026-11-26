@@ -287,6 +287,10 @@ def main():
         if args.operation == "select":
             with args.github_output.open("a", encoding="utf-8") as stream:
                 print(f"joint={str(selected is not None).lower()}", file=stream)
+                print(
+                    f"tag={selected[1] if selected is not None else ''}",
+                    file=stream,
+                )
         elif selected is None:
             raise ValueError("standalone CLI release has no Desktop packages")
         else:

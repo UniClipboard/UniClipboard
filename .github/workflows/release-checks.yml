@@ -8,15 +8,18 @@ on:
       - 'tools/release/release.py'
       - 'tools/release/mobile.py'
       - 'tools/release/android_release.py'
+      - 'tools/release/gitcode_mirror.py'
       - 'tools/release/ios_profiles.py'
       - 'tools/release/requirements.txt'
       - 'tools/ci/validate_release.py'
       - 'e2e/release/prepare_release_test.py'
       - 'e2e/release/mobile_delivery_test.py'
+      - 'e2e/release/gitcode_mirror_test.py'
       - '.github/workflows/prepare-release.yml'
       - '.github/workflows/release-on-merge.yml'
       - '.github/workflows/release-android.yml'
       - '.github/workflows/release-ios.yml'
+      - '.github/workflows/mirror-gitcode.yml'
       - '.github/workflows/release-checks.yml'
       - '.github/prompts/prepare-release-changelog.codex.md'
       - '.github/release-notes/android.md.tmpl'
@@ -28,15 +31,18 @@ on:
       - 'tools/release/release.py'
       - 'tools/release/mobile.py'
       - 'tools/release/android_release.py'
+      - 'tools/release/gitcode_mirror.py'
       - 'tools/release/ios_profiles.py'
       - 'tools/release/requirements.txt'
       - 'tools/ci/validate_release.py'
       - 'e2e/release/prepare_release_test.py'
       - 'e2e/release/mobile_delivery_test.py'
+      - 'e2e/release/gitcode_mirror_test.py'
       - '.github/workflows/prepare-release.yml'
       - '.github/workflows/release-on-merge.yml'
       - '.github/workflows/release-android.yml'
       - '.github/workflows/release-ios.yml'
+      - '.github/workflows/mirror-gitcode.yml'
       - '.github/workflows/release-checks.yml'
       - '.github/prompts/prepare-release-changelog.codex.md'
       - '.github/release-notes/android.md.tmpl'
@@ -73,3 +79,5 @@ jobs:
         run: |
           python3 -m pip install -r tools/release/requirements.txt
           python3 e2e/release/mobile_delivery_test.py
+      - name: Test GitCode mirror tooling
+        run: python3 -m unittest e2e/release/gitcode_mirror_test.py

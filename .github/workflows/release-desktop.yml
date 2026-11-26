@@ -90,6 +90,8 @@ jobs:
     runs-on: ubuntu-24.04
     environment: Production
     timeout-minutes: 60
+    outputs:
+      published_tag: ${{ steps.published_tag.outputs.tag }}
     env:
       DESKTOP_NOTES: ${{ inputs.joint && inputs.channel == 'stable' && 'dist/catalogue/desktop-notes.json' || 'release/desktop-notes.json' }}
       DESKTOP_TEMPLATE: ${{ inputs.joint && inputs.channel == 'stable' && 'dist/catalogue/release-template.md' || '.github/release-notes/desktop.md.tmpl' }}
@@ -248,6 +250,12 @@ jobs:
           PREVIOUS_TAG: ${{ inputs.previous_tag }}
         run: |
           python3 tools/release/github_desktop.py publish --manifest dist/catalogue/release-manifest.json --cli-manifest dist/cli-input/release-manifest.json --notes "$DESKTOP_NOTES" --template "$DESKTOP_TEMPLATE" --output dist/github-page --channel "$CHANNEL" --previous-tag "$PREVIOUS_TAG" --publication dist/publication.json --promotion dist/promotion.json
+      - name: Record published GitHub Release tag
+        id: published_tag
+        if: inputs.operation == 'promote' || (inputs.operation == 'publish' && inputs.channel == 'alpha')
+        run: |
+          tag=$(python3 -c 'import json; print(json.load(open("dist/github-page/github-receipt.json"))["tag"])')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - name: Record the verified Alpha selection
         if: inputs.joint && inputs.operation == 'promote' && inputs.channel == 'alpha'
         env:
@@ -268,3 +276,20 @@ jobs:
             dist/github-page/SHA256SUMS.txt
             dist/catalogue/release-manifest.json
           if-no-files-found: warn
+  dispatch-gitcode-mirror:
+    needs: deliver
+    if: ${{ success() && !inputs.joint && needs.deliver.outputs.published_tag != '' && github.repository == 'UniClipboard/UniClipboard' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch GitCode mirror from default branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TAG_NAME: ${{ needs.deliver.outputs.published_tag }}
+        run: |
+          gh workflow run mirror-gitcode.yml --repo "$GITHUB_REPOSITORY" \
+            --ref "$DEFAULT_BRANCH" -f tag_name="$TAG_NAME"
+          echo "Dispatched mirror-gitcode.yml for $TAG_NAME from $DEFAULT_BRANCH." >> "$GITHUB_STEP_SUMMARY"

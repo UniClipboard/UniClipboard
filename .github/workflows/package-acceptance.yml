@@ -5,6 +5,7 @@ on:
       - 'tools/package/**'
       - 'tools/release/**'
       - '!tools/release/android_release.py'
+      - '!tools/release/gitcode_mirror.py'
       - '!tools/release/ios_profiles.py'
       - '!tools/release/mobile.py'
       - '!tools/release/prepare_release.py'

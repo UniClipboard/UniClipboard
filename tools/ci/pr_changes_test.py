@@ -338,6 +338,14 @@ class WorkflowTriggerMatrixTests(unittest.TestCase):
             {"check-nix.yml"},
         )
 
+    def test_gitcode_mirror_change_runs_only_release_checks(self):
+        files = [
+            ".github/workflows/mirror-gitcode.yml",
+            "tools/release/gitcode_mirror.py",
+            "e2e/release/gitcode_mirror_test.py",
+        ]
+        self.assertEqual(pr_trigger_workflows(files), {"release-checks.yml"})
+
     def test_desktop_only_internal_does_not_trigger_mobile(self):
         self.assertEqual(
             pr_trigger_workflows(["internal/localapi/api.go"]),

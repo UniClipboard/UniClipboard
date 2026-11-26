@@ -985,7 +985,7 @@ func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) (
 	}
 	stop := context.AfterFunc(ctx, func() { sess.closeWith("cancellation") }) // a cancelled send leaves the stream out of step
 	defer stop()
-	if err := sess.w.SendApplicationStream(m.Clip.WireID, m.Clip.Origin, int64(m.Clip.AtMs), m.Clip.Hash, out, m.Clip.SourceApplication, &body); err != nil {
+	if err := sess.w.SendClipStream(m.Clip.WireID, m.Clip.Origin, int64(m.Clip.AtMs), m.Clip.Hash, out, m.Clip.SourceApplication, m.Clip.TraceParent, &body); err != nil {
 		if srcErr != nil {
 			sess.closeWith("io_failure") // the stream may be out of step: start over
 			return srcErr                // the content failed, not the network
@@ -1073,7 +1073,7 @@ func (b *Backend) receive(s *session, m *wire.Clip) error {
 		return s.w.Discard(m)
 	}
 	o := rpc.ReceiveOpen{ConnectionID: s.connID, SessionToken: s.token,
-		Clip: rpc.Clip{SourceApplication: m.SourceApplication.Clone(), WireID: m.ID, Origin: m.Origin, AtMs: rpc.U64(max(m.TS, 0)), Hash: m.Hash}}
+		Clip: rpc.Clip{SourceApplication: m.SourceApplication.Clone(), TraceParent: wire.SanitizeTraceParent(m.TraceParent), WireID: m.ID, Origin: m.Origin, AtMs: rpc.U64(max(m.TS, 0)), Hash: m.Hash}}
 	for i, p := range m.Parts {
 		cp := rpc.ClipPart{Index: i, Size: rpc.U64(p.Size)}
 		if p.Kind == "file" {

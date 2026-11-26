@@ -140,7 +140,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		}
 	}()
 	opts := engine.Options{
-		Logger: diagnostics.Logger(), Diagnostics: diagnostics.Record, ProductEvents: diagnostics.ProductEvent,
+		Logger: diagnostics.Logger(), Diagnostics: diagnostics.Record, ProductEvents: diagnostics.ProductEvent, Tracer: diagnostics,
 		DataDir:                o.Dir,
 		CacheDir:               filepath.Join(o.Dir, "inbox", "file-cache"),
 		StoreReceivedFile:      storeReceived,

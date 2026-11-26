@@ -79,12 +79,46 @@ type PartMeta struct {
 // Clip announces a clipboard change made on Origin.
 type Clip struct {
 	SourceApplication *sourceapp.Application `json:"source_application,omitempty"`
+	TraceParent       string                 `json:"traceparent,omitempty"`
 	T                 string                 `json:"t"` // "clip"
 	ID                string                 `json:"id"`
 	Origin            string                 `json:"origin"`
 	TS                int64                  `json:"ts"` // unix milliseconds on the origin
 	Hash              string                 `json:"hash"`
 	Parts             []PartMeta             `json:"parts"`
+}
+
+// SanitizeTraceParent returns s if it is a valid W3C Trace Context v00
+// traceparent with non-zero trace and span IDs, or empty otherwise.
+// Malformed values from peers are silently dropped so sync never breaks.
+func SanitizeTraceParent(s string) string {
+	if len(s) != 55 || s[0] != '0' || s[1] != '0' || s[2] != '-' || s[35] != '-' || s[52] != '-' {
+		return ""
+	}
+	isLowerHex := func(part string) (nonZero bool, ok bool) {
+		for i := 0; i < len(part); i++ {
+			c := part[i]
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+				return false, false
+			}
+			if c != '0' {
+				nonZero = true
+			}
+		}
+		return nonZero, true
+	}
+	traceNonZero, ok := isLowerHex(s[3:35])
+	if !ok || !traceNonZero {
+		return ""
+	}
+	spanNonZero, ok := isLowerHex(s[36:52])
+	if !ok || !spanNonZero {
+		return ""
+	}
+	if _, ok := isLowerHex(s[53:55]); !ok {
+		return ""
+	}
+	return s
 }
 
 // Conn wraps a stream with message framing. Reads and writes may happen
@@ -164,7 +198,13 @@ func (c *Conn) SendStreamObserved(id, origin string, ts int64, hash string, part
 
 // SendApplicationStream preserves provenance without changing body framing or hashes.
 func (c *Conn) SendApplicationStream(id, origin string, ts int64, hash string, parts []OutPart, app *sourceapp.Application, obs *BodyObservation) error {
-	m := Clip{SourceApplication: app.Clone(), T: "clip", ID: id, Origin: origin, TS: ts, Hash: hash}
+	return c.SendClipStream(id, origin, ts, hash, parts, app, "", obs)
+}
+
+// SendClipStream preserves provenance and optional W3C traceparent without
+// changing body framing, hashes or wire version.
+func (c *Conn) SendClipStream(id, origin string, ts int64, hash string, parts []OutPart, app *sourceapp.Application, traceParent string, obs *BodyObservation) error {
+	m := Clip{SourceApplication: app.Clone(), TraceParent: SanitizeTraceParent(traceParent), T: "clip", ID: id, Origin: origin, TS: ts, Hash: hash}
 	for _, p := range parts {
 		m.Parts = append(m.Parts, PartMeta{Kind: p.Kind, Name: p.Name, Size: p.Size})
 	}

@@ -218,4 +218,12 @@ The RPC reader accepts a receive root before its child requests, but their handl
 Built-in `peer_sessions` connections support lightweight authenticated control frames `{"t":"ping","id":"<nonce>"}` and `{"t":"pong","id":"<nonce>"}` (wire version remains 1). No periodic background probes run while idle:
 
 - When `NetworkGeneration` advances (e.g. host sleep/wake or interface change), the built-in session backend resets dial backoff for disconnected peers and launches a bounded asynchronous `ping`/`pong` warmup probe (4s timeout) on each live session. Sessions that fail to respond while idle are closed promptly so fresh recovery starts before the next clipboard copy. Active bulk body transfers with recent I/O progress are not falsely closed by a concurrent probe.
+
+## Distributed trace propagation
+
+`rpc.Clip` and the built-in `wire.Clip` header (wire version remains 1) carry an optional `traceparent` string (`json:"traceparent,omitempty"`) formatted per W3C Trace Context v00 (`00-<32 lowercase hex>-<16 lowercase hex>-<2 lowercase hex>` with non-zero trace and span IDs). `tracestate` and `baggage` are prohibited.
+
+- Engine sets `traceparent` only when the outbound `unic.sync.send` span is sampled; unsampled sends omit the field.
+- The built-in session layer sanitizes inbound `wire.Clip.TraceParent` before `sync_host.receive_open`: malformed peer values are silently discarded as empty and never reject a valid clip.
+- External `peer_sessions` backends may omit or pass through `traceparent` on `rpc.Clip`; protocol compatibility with older peers and plugins is preserved. See section 13 of the [observability contract](observability-contract.md#13-sampled-distributed-pipeline-and-mobile-traces).
 - Optional in-process capability `plugin.PeerLinkInspector` (`LinkSnapshots`, `ProbePeers`) exposes sanitized per-peer link status (`connected` / `connecting` / `disconnected`, finite path category `direct` / `derp` / `peer_relay` / `unknown`, `latency_ms`, and `last_checked_ms`) for explicit user-triggered connection refreshes. For `builtin.tailcat`, incoming paths use fresh `Server.Status()` snapshots and outgoing active checks may run one bounded `Client.DiscoPing` exclusively during explicit manual refresh, reducing the result to a finite category inside `internal/tcnet` without feeding passive OTLP path metrics. Backends that do not implement `PeerLinkInspector` continue to work unchanged.

@@ -199,17 +199,32 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 			entry.cancel()
 		}
 	}()
+	ctx = e.inheritTrace(ctx, req.traceCtx)
 	commitKind := diagnosticKind(c)
 	origin := pipelineOrigin{kind: "explicit"}
 	if req.Origin == OriginClipboard {
 		origin.kind = "local_system"
 	}
+	var rootEnd func(TraceSpanFinish)
+	var actionCategory string
 	var failure *Error
-	if req.action != nil {
+	switch {
+	case req.action != nil:
+		actionCategory = "external"
+		if req.action.act.plugin.id == "builtin.text" {
+			actionCategory = "builtin"
+		}
+		ctx, rootEnd = e.startSpan(ctx, TraceSpanSpec{Name: "unic.action"})
 		origin = pipelineOrigin{kind: "action", pluginID: string(req.action.act.plugin.id)}
 		c, failure = req.action.produce(ctx, e)
+	case req.Origin == OriginClipboard:
+		ctx, rootEnd = e.startSpan(ctx, TraceSpanSpec{Name: "unic.observe", ContentKind: commitKind})
 	}
-	if req.history != "" {
+	var commitEnd func(TraceSpanFinish)
+	if failure == nil {
+		ctx, commitEnd = e.startSpan(ctx, TraceSpanSpec{Name: "unic.commit", ContentKind: commitKind})
+	}
+	if failure == nil && req.history != "" {
 		c, failure = e.loadHistoryContentFor(req.history, true)
 	}
 	if c != nil {
@@ -268,6 +283,15 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 			e.notifyObservers(plugin.EventCommitted, string(historyID))
 		}
 	}
+	outcome, code := diagnosticOutcome(failure)
+	// End commit/action/observe spans before publishing entry.done so child timing
+	// stays strictly contained inside caller submission spans.
+	if commitEnd != nil {
+		commitEnd(TraceSpanFinish{Result: outcome, Code: code, ContentKind: commitKind})
+	}
+	if rootEnd != nil {
+		rootEnd(TraceSpanFinish{Result: outcome, Code: code, ContentKind: commitKind, ActionCategory: actionCategory})
+	}
 	e.mu.Lock()
 	if id != "" {
 		entry.stage = "sending"
@@ -283,13 +307,8 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	if gateHeld {
 		e.commitGate.RUnlock()
 	}
-	outcome, code := diagnosticOutcome(failure)
 	if req.action != nil {
-		category := "external"
-		if req.action.act.plugin.id == "builtin.text" {
-			category = "builtin"
-		}
-		e.productEvent(ctx, ProductEvent{Name: "action_completed", Result: string(outcome), Code: code, ContentKind: commitKind, ActionCategory: category})
+		e.productEvent(ctx, ProductEvent{Name: "action_completed", Result: string(outcome), Code: code, ContentKind: commitKind, ActionCategory: actionCategory})
 	} else if req.Origin == OriginExplicit && id == "" {
 		result := string(outcome)
 		if failure == nil {
@@ -326,6 +345,7 @@ func waitSubmission(ctx context.Context, entry *submissionEntry) (OperationID, e
 }
 
 func (e *Engine) submit(ctx context.Context, req SubmitRequest) (OperationID, error) {
+	req.traceCtx = e.inheritTrace(context.Background(), ctx)
 	e.mu.Lock()
 	entry, err := e.startSubmissionLocked(req)
 	e.mu.Unlock()
@@ -388,6 +408,7 @@ func (e *Engine) SendHistory(ctx context.Context, req SendHistoryRequest) (Submi
 }
 
 func (e *Engine) commitExplicit(ctx context.Context, req SubmitRequest, cancelOnContext bool) (SubmissionResult, error) {
+	req.traceCtx = e.inheritTrace(context.Background(), ctx)
 	e.mu.Lock()
 	entry, err := e.startSubmissionLocked(req)
 	e.mu.Unlock()

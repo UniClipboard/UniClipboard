@@ -87,15 +87,19 @@ func (c *Controller) newGeneration(i int) (*generation, error) {
 		g.records = make(chan sdklog.Record, 1024)
 		g.diagnostics = make(chan metricRecord, 1024)
 	}
+	serviceName := "unicd"
+	if c.opts.ServiceName == "unic-mobile" {
+		serviceName = "unic-mobile"
+	}
 	version := safeVersion(c.opts.Version)
 	if version == "" {
 		version = "dev"
 	}
-	g.resource = resource.NewSchemaless(attribute.String("service.name", "unicd"), attribute.String("service.version", version), attribute.String("os.type", runtime.GOOS), attribute.String("host.arch", runtime.GOARCH))
+	g.resource = resource.NewSchemaless(attribute.String("service.name", serviceName), attribute.String("service.version", version), attribute.String("os.type", runtime.GOOS), attribute.String("host.arch", runtime.GOARCH))
 	// A private client overrides SDK environment TLS/proxy/timeout settings.
 	// Root CAs follow the host trust store (SSL_CERT_FILE is used by E2E).
 	g.transport = &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 3 * time.Second, KeepAlive: 30 * time.Second}).DialContext, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12}, TLSHandshakeTimeout: 3 * time.Second, MaxIdleConnsPerHost: 1, MaxConnsPerHost: 1, IdleConnTimeout: 30 * time.Second}
-	wireResource := &resourcepb.Resource{Attributes: []*common.KeyValue{resourceAttribute("service.name", "unicd"), resourceAttribute("service.version", version), resourceAttribute("os.type", runtime.GOOS), resourceAttribute("host.arch", runtime.GOARCH)}}
+	wireResource := &resourcepb.Resource{Attributes: []*common.KeyValue{resourceAttribute("service.name", serviceName), resourceAttribute("service.version", version), resourceAttribute("os.type", runtime.GOOS), resourceAttribute("host.arch", runtime.GOARCH)}}
 	g.wire = &privateTransport{next: g.transport, resource: wireResource}
 	client := &http.Client{Transport: g.wire, Timeout: 3 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	headers := map[string]string{}

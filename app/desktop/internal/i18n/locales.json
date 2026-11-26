@@ -9130,5 +9130,77 @@
     "ja": "入力カーソルに追従",
     "pt-BR": "Seguir cursor de texto",
     "ru": "У текстового курсора"
+  },
+  "前往配置": {
+    "en": "Configure",
+    "ja": "設定を開く",
+    "pt-BR": "Configurar",
+    "ru": "Настроить"
+  },
+  "取消安装": {
+    "en": "Cancel Install",
+    "ja": "インストールをキャンセル",
+    "pt-BR": "Cancelar instalação",
+    "ru": "Отменить установку"
+  },
+  "取消更新": {
+    "en": "Cancel Update",
+    "ja": "更新をキャンセル",
+    "pt-BR": "Cancelar atualização",
+    "ru": "Отменить обновление"
+  },
+  "已取消安装「%s」": {
+    "en": "Canceled installing \"%s\"",
+    "ja": "「%s」のインストールをキャンセルしました",
+    "pt-BR": "Instalação de \"%s\" cancelada",
+    "ru": "Установка «%s» отменена"
+  },
+  "已取消更新「%s」": {
+    "en": "Canceled updating \"%s\"",
+    "ja": "「%s」の更新をキャンセルしました",
+    "pt-BR": "Atualização de \"%s\" cancelada",
+    "ru": "Обновление «%s» отменено"
+  },
+  "更新失败：": {
+    "en": "Update failed: ",
+    "ja": "更新に失敗しました：",
+    "pt-BR": "Falha na atualização: ",
+    "ru": "Ошибка обновления: "
+  },
+  "正在取消…": {
+    "en": "Canceling…",
+    "ja": "キャンセル中…",
+    "pt-BR": "Cancelando…",
+    "ru": "Отмена…"
+  },
+  "正在安装": {
+    "en": "Installing",
+    "ja": "インストール中",
+    "pt-BR": "Instalando",
+    "ru": "Установка"
+  },
+  "正在安装「%s」…": {
+    "en": "Installing \"%s\"…",
+    "ja": "「%s」をインストール中…",
+    "pt-BR": "Instalando \"%s\"…",
+    "ru": "Установка «%s»…"
+  },
+  "正在更新": {
+    "en": "Updating",
+    "ja": "更新中",
+    "pt-BR": "Atualizando",
+    "ru": "Обновление"
+  },
+  "正在更新…": {
+    "en": "Updating…",
+    "ja": "更新中…",
+    "pt-BR": "Atualizando…",
+    "ru": "Обновление…"
+  },
+  "正在更新「%s」…": {
+    "en": "Updating \"%s\"…",
+    "ja": "「%s」を更新中…",
+    "pt-BR": "Atualizando \"%s\"…",
+    "ru": "Обновление «%s»…"
   }
 }

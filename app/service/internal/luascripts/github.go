@@ -61,6 +61,9 @@ func fetch(ctx context.Context, target string, limit int64) (io.ReadCloser, erro
 	req.Header.Set("Accept", "application/vnd.github+json")
 	res, err := githubHTTP.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		return nil, errors.New("GitHub request failed")
 	}
 	if res.StatusCode != http.StatusOK || res.ContentLength > limit {
@@ -90,6 +93,9 @@ func (g githubRepo) commit(ctx context.Context, ref string) (string, error) {
 	}
 	defer func() { _ = body.Close() }()
 	raw, err := io.ReadAll(body)
+	if err != nil && ctx.Err() != nil {
+		return "", ctx.Err()
+	}
 	var commit struct{ SHA string }
 	if err != nil || len(raw) > limit || json.Unmarshal(raw, &commit) != nil || !commitPattern.MatchString(commit.SHA) {
 		return "", errors.New("invalid GitHub commit response")
@@ -106,12 +112,18 @@ func (g githubRepo) source(ctx context.Context, commit, dest string) error {
 		return err
 	}
 	defer func() { _ = body.Close() }()
-	return extractTarGzip(body, dest, true)
+	return extractTarGzip(ctx, body, dest, true)
 }
 
-func extractTarGzip(body io.Reader, dest string, stripRoot bool) error {
+func extractTarGzip(ctx context.Context, body io.Reader, dest string, stripRoot bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	z, err := gzip.NewReader(body)
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return errors.New("invalid plugin gzip archive")
 	}
 	defer func() { _ = z.Close() }()
@@ -122,15 +134,27 @@ func extractTarGzip(body io.Reader, dest string, stripRoot bool) error {
 	}
 	var archiveRoot string
 	for count := 0; ; count++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		h, err := r.Next()
 		if errors.Is(err, io.EOF) {
 			_, err := io.Copy(io.Discard, limited)
+			if err != nil && ctx.Err() != nil {
+				return ctx.Err()
+			}
 			if err != nil || limited.N == 0 || count == 0 || (stripRoot && archiveRoot == "") {
 				return errors.New("invalid or oversized plugin archive")
 			}
 			return nil
 		}
-		if err != nil || count >= 10000 || h.Size < 0 || h.Size > archiveLimit || len(h.Name) > 1024 {
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return errors.New("invalid or oversized plugin archive")
+		}
+		if count >= 10000 || h.Size < 0 || h.Size > archiveLimit || len(h.Name) > 1024 {
 			return errors.New("invalid or oversized plugin archive")
 		}
 		// GitHub codeload emits a global PAX metadata entry before its source

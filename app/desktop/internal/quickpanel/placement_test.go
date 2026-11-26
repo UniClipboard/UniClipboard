@@ -58,6 +58,14 @@ func TestPhysicalPointToDIPMixedDPI(t *testing.T) {
 	if !ok || d.ID != 3 || pt != (Point{X: -1000, Y: 300}) {
 		t.Fatalf("left monitor point = %+v on %d (ok=%v), want (-1000,300) on 3", pt, d.ID, ok)
 	}
+
+	// Missing physical monitor mapping must never pass raw physical coordinates through as DIPs.
+	if _, _, ok := PhysicalPointToDIP(Point{X: 1920, Y: 1080}, nil, displays); ok {
+		t.Fatal("PhysicalPointToDIP succeeded without physical monitors")
+	}
+	if _, _, ok := PhysicalRectToDIP(Rect{X: 100, Y: 100, Width: 20, Height: 20}, nil, displays); ok {
+		t.Fatal("PhysicalRectToDIP succeeded without physical monitors")
+	}
 }
 
 func TestResolvePlacementCenterSelectsActiveWindowThenCursorDisplay(t *testing.T) {

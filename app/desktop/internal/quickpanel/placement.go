@@ -228,12 +228,8 @@ func effectiveWorkArea(d Display) Rect {
 // PhysicalPointToDIP converts a physical pixel point into mygo's unified DIP space
 // using the matching monitor's physical origin and DIP origin/scale factor.
 func PhysicalPointToDIP(pt Point, monitors []PhysicalMonitor, displays []Display) (Point, Display, bool) {
-	if len(displays) == 0 {
+	if len(displays) == 0 || len(monitors) == 0 {
 		return Point{}, Display{}, false
-	}
-	if len(monitors) == 0 {
-		d := nearestDisplayToPoint(pt, displays)
-		return pt, d, true
 	}
 	mon, ok := bestPhysicalMonitor(Rect{X: pt.X, Y: pt.Y, Width: 1, Height: 1}, monitors)
 	if !ok {
@@ -253,12 +249,8 @@ func PhysicalPointToDIP(pt Point, monitors []PhysicalMonitor, displays []Display
 // PhysicalRectToDIP converts a physical pixel rectangle into mygo's unified DIP
 // space on the monitor that overlaps it the most (or nearest).
 func PhysicalRectToDIP(r Rect, monitors []PhysicalMonitor, displays []Display) (Rect, Display, bool) {
-	if len(displays) == 0 {
+	if len(displays) == 0 || len(monitors) == 0 {
 		return Rect{}, Display{}, false
-	}
-	if len(monitors) == 0 {
-		d := nearestDisplayToPoint(Point{X: r.X + r.Width/2, Y: r.Y + r.Height/2}, displays)
-		return r, d, true
 	}
 	mon, ok := bestPhysicalMonitor(r, monitors)
 	if !ok {
@@ -297,18 +289,6 @@ func findDisplayByID(id int64, displays []Display) (Display, bool) {
 	return Display{}, false
 }
 
-func nearestDisplayToPoint(pt Point, displays []Display) Display {
-	best := displays[0]
-	bestDist := int64(math.MaxInt64)
-	for _, d := range displays {
-		dist := rectPointDistSq(d.Bounds, pt)
-		if dist < bestDist {
-			best, bestDist = d, dist
-		}
-	}
-	return best
-}
-
 func bestPhysicalMonitor(r Rect, monitors []PhysicalMonitor) (PhysicalMonitor, bool) {
 	if len(monitors) == 0 {
 		return PhysicalMonitor{}, false
@@ -331,21 +311,6 @@ func bestPhysicalMonitor(r Rect, monitors []PhysicalMonitor) (PhysicalMonitor, b
 		}
 	}
 	return monitors[bestIdx], true
-}
-
-func rectPointDistSq(b Rect, p Point) int64 {
-	var dx, dy int64
-	if p.X < b.X {
-		dx = int64(b.X - p.X)
-	} else if p.X >= b.X+b.Width {
-		dx = int64(p.X - (b.X + b.Width - 1))
-	}
-	if p.Y < b.Y {
-		dy = int64(b.Y - p.Y)
-	} else if p.Y >= b.Y+b.Height {
-		dy = int64(p.Y - (b.Y + b.Height - 1))
-	}
-	return dx*dx + dy*dy
 }
 
 func rectRectDistSq(a, b Rect) int64 {

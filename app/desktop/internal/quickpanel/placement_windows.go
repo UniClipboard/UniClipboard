@@ -242,7 +242,7 @@ func (p *windowsPlatform) CapturePlacement(mode string, target Target) (Placemen
 			}
 		}
 	}
-	return anchor, len(anchor.Monitors) > 0 || anchor.HasCursor || anchor.HasWindow
+	return anchor, len(anchor.Monitors) > 0
 }
 
 func (p *windowsPlatform) probeCaretOrInput(fgHwnd uintptr, windowRect Rect) (AnchorKind, Rect, bool) {
@@ -269,13 +269,9 @@ func (p *windowsPlatform) probeCaretOrInput(fgHwnd uintptr, windowRect Rect) (An
 		}
 	}
 
-	// Layer 2: MSAA AccessibleObjectFromWindow(OBJID_CARET).
-	if r, ok := probeMSAACaret(focusHwnd, fgHwnd, windowRect); ok {
-		return AnchorCaret, r, true
-	}
-
-	// Layer 3: UI Automation (CUIAutomation8) with bounded timeout.
-	return p.probeUIACaret(windowRect)
+	// Layer 2 & 3: MSAA + UI Automation on the bounded background worker so a
+	// hung or slow target never blocks opening the Quick Panel past uiaProbeBudget.
+	return p.probeAccessibilityCaret(fgHwnd, focusHwnd, windowRect)
 }
 
 func probeMSAACaret(focusHwnd, fgHwnd uintptr, windowRect Rect) (Rect, bool) {
@@ -326,7 +322,10 @@ func probeMSAACaret(focusHwnd, fgHwnd uintptr, windowRect Rect) (Rect, bool) {
 }
 
 type uiaProbeReq struct {
+	fgHwnd     uintptr
+	focusHwnd  uintptr
 	windowRect Rect
+	deadline   time.Time
 	reply      chan uiaProbeResp
 }
 
@@ -375,7 +374,7 @@ func (p *windowsPlatform) Close() {
 	}
 }
 
-func (p *windowsPlatform) probeUIACaret(windowRect Rect) (AnchorKind, Rect, bool) {
+func (p *windowsPlatform) probeAccessibilityCaret(fgHwnd, focusHwnd uintptr, windowRect Rect) (AnchorKind, Rect, bool) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		return AnchorNone, Rect{}, false
 	}
@@ -384,7 +383,13 @@ func (p *windowsPlatform) probeUIACaret(windowRect Rect) (AnchorKind, Rect, bool
 		return AnchorNone, Rect{}, false
 	}
 	reply := make(chan uiaProbeResp, 1)
-	req := uiaProbeReq{windowRect: windowRect, reply: reply}
+	req := uiaProbeReq{
+		fgHwnd:     fgHwnd,
+		focusHwnd:  focusHwnd,
+		windowRect: windowRect,
+		deadline:   time.Now().Add(uiaProbeBudget),
+		reply:      reply,
+	}
 	select {
 	case w.req <- req:
 	default:
@@ -406,41 +411,53 @@ func (w *uiaWorker) run() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
-	if ole32.Load() != nil || coInitializeEx.Find() != nil || coCreateInstance.Find() != nil {
-		w.drainDisabled()
-		return
+	comInit := false
+	if ole32.Load() == nil && coInitializeEx.Find() == nil {
+		hr, _, _ := coInitializeEx.Call(0, coinitMultithreaded)
+		comInit = int32(uint32(hr)) >= 0
 	}
-	hr, _, _ := coInitializeEx.Call(0, coinitMultithreaded)
-	comInit := int32(uint32(hr)) >= 0
 	if comInit {
 		defer coUninitialize.Call()
 	}
 
-	uia := createUIAutomation()
-	if uia == 0 {
-		w.drainDisabled()
-		return
+	var uia uintptr
+	if ole32.Load() == nil && coCreateInstance.Find() == nil {
+		uia = createUIAutomation()
 	}
-	defer comRelease(uia)
+	if uia != 0 {
+		defer comRelease(uia)
+	}
 
 	for {
 		select {
 		case <-w.stop:
 			return
 		case req := <-w.req:
+			if time.Now().After(req.deadline) {
+				req.reply <- uiaProbeResp{}
+				continue
+			}
+			// Layer 2: MSAA AccessibleObjectFromWindow(OBJID_CARET).
+			if r, ok := probeMSAACaret(req.focusHwnd, req.fgHwnd, req.windowRect); ok {
+				if fg, _, _ := getForeground.Call(); fg == req.fgHwnd {
+					req.reply <- uiaProbeResp{kind: AnchorCaret, rect: r, ok: true}
+					continue
+				}
+			}
+			if uia == 0 || time.Now().After(req.deadline) {
+				req.reply <- uiaProbeResp{}
+				continue
+			}
+			// Layer 3: UI Automation (CUIAutomation8).
 			kind, rect, ok := queryUIACaret(uia, req.windowRect)
+			if ok {
+				if fg, _, _ := getForeground.Call(); fg != req.fgHwnd {
+					ok = false
+					kind = AnchorNone
+					rect = Rect{}
+				}
+			}
 			req.reply <- uiaProbeResp{kind: kind, rect: rect, ok: ok}
-		}
-	}
-}
-
-func (w *uiaWorker) drainDisabled() {
-	for {
-		select {
-		case <-w.stop:
-			return
-		case req := <-w.req:
-			req.reply <- uiaProbeResp{}
 		}
 	}
 }

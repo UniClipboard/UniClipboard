@@ -91,9 +91,10 @@ jobs:
           security create-keychain -p "$password" "$keychain"
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
-          security import "$signing/distribution.p12" -k "$keychain" -P "$IOS_DISTRIBUTION_PASSWORD" -T /usr/bin/codesign
+          security import "$signing/distribution.p12" -P "$IOS_DISTRIBUTION_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain"
+          security find-identity -v -p codesigning "$keychain"
           if [[ -n "$IOS_APP_PROFILE" || -n "$IOS_SHARE_PROFILE" || -n "$IOS_KEYBOARD_PROFILE" ]]; then
             : "${IOS_APP_PROFILE:?}" "${IOS_SHARE_PROFILE:?}" "${IOS_KEYBOARD_PROFILE:?}"
             printf '%s' "$IOS_APP_PROFILE" | base64 -D > "$signing/app.mobileprovision"

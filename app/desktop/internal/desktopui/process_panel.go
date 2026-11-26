@@ -36,6 +36,7 @@ type ProcessPanel struct {
 type panelResume struct {
 	query, kind          string
 	pasteFailure         string
+	favoriteOnly         bool
 	chips                []qpFilter
 	windowZoom, textZoom int
 }
@@ -89,10 +90,13 @@ func (p *ProcessPanel) newOpenState(favorites bool) *quickPanelState {
 	q.live.d.language = q.live.d.live.config.Config.Desktop.Language
 	q.live.d.devices = []device{{id: "local"}}
 	q.query, q.kind, q.chips = p.resume.query, p.resume.kind, p.resume.chips
+	q.favoriteOnly = p.resume.favoriteOnly
 	q.windowZoom, q.textZoom = p.resume.windowZoom, p.resume.textZoom
 	q.pasteFailure = p.resume.pasteFailure
 	p.resume = panelResume{}
-	q.setFavoriteFilter(favorites)
+	if favorites {
+		q.setFavoriteFilter(true)
+	}
 	q.normalizeFilters()
 	return q
 }
@@ -218,7 +222,7 @@ func (p *ProcessPanel) release(q *quickPanelState, destroy bool) {
 	if p.state != q {
 		return
 	}
-	p.resume = panelResume{query: q.query, kind: q.kind, chips: slices.Clone(q.chips), windowZoom: q.windowZoom, textZoom: q.textZoom}
+	p.resume = panelResume{query: q.query, kind: q.kind, favoriteOnly: q.favoriteOnly, chips: slices.Clone(q.chips), windowZoom: q.windowZoom, textZoom: q.textZoom}
 	if !q.visible && q.live != nil && q.live.system != nil {
 		p.resume.pasteFailure = q.live.system.FailureMessage()
 	}

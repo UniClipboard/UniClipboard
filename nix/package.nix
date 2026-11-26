@@ -13,7 +13,7 @@
   version ? (builtins.fromTOML (builtins.readFile ../release/products.toml)).products.desktop.version,
   buildNumber ? toString (builtins.fromTOML (builtins.readFile ../release/products.toml)).products.desktop.build_number,
   sourceRev ? "unknown",
-  vendorHash ? "sha256-TeTSGCDctFIs4nb/0hkbMs+az+3ThqhsO+lFcU0QwvU=",
+  vendorHash ? "sha256-pIYoBwMFqCZ5taiq86k2BUdLvrBPLXML7C/yIV1escM=",
 }:
 
 let

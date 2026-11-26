@@ -150,7 +150,7 @@ func (p *quickPanelState) panel(c *ui.Context) {
 			}
 			qpKeycap(c, shortcut, a)
 			ui.Spacer(c)
-			b := ui.ButtonBase(c.Key("actions")).Label(p.tr("操作")).Row().Gap(6).AlignItems(ui.Center)
+			b := ui.ButtonBase(c.Key("actions")).Label(p.tr("操作")).KeepFocus().Row().Gap(6).AlignItems(ui.Center)
 			b.Children(func() {
 				ui.Text(c, p.tr("操作")).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
 				hint := p.commandLabel() + "K"
@@ -175,26 +175,41 @@ func (p *quickPanelState) panel(c *ui.Context) {
 func (p *quickPanelState) searchRow(c *ui.Context, k desktopkit.Kit, a qpPalette) {
 	qpSlow := p.live != nil && p.live.d.live.showForegroundLoading()
 	qpPending := !p.queryDue.IsZero() || (p.live != nil && p.live.d.live.foregroundLoading)
-	ui.Row(c).Height(48).Shrink(0).PaddingX(14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(a.border).Children(func() {
+	var overrides map[string][]string
+	if p.live != nil {
+		overrides = p.live.d.live.config.Config.Desktop.Shortcuts
+	}
+	ui.Row(c).Height(48).Shrink(0).PaddingX(14).Gap(8).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(a.border).Children(func() {
 		if qpSlow {
 			ui.Spinner(c.Key("search-spin")).Size(16, 16).TextColor(a.primary).Shrink(0).AccessHidden(true)
 		} else {
 			k.Icon(c, desktopkit.IconSearch, 16).TextColor(a.foreground)
 		}
 		for i, f := range p.chips {
-			b := ui.ButtonBase(c.Key(f.dimension + f.value)).Label(p.tr("移除 ") + p.filterLabel(f)).Height(24).PaddingX(8).Radius(6).Background(a.muted)
-			b.Children(func() { ui.Text(c, p.filterLabel(f)).FontSize(12.5 * zoomScale(p.textZoom)).TextColor(a.primary) })
+			b := ui.ButtonBase(c.Key(f.dimension + f.value)).Label(p.tr("移除 ") + p.filterLabel(f)).KeepFocus().Height(24).PaddingX(8).Radius(6).Background(a.muted).Shrink(0)
+			b.Children(func() {
+				ui.Text(c, p.filterLabel(f)).FontSize(12.5 * zoomScale(p.textZoom)).TextColor(a.primary).SingleLine()
+			})
 			b.OnClick(func() {
 				p.chips = append(p.chips[:i], p.chips[i+1:]...)
 				p.queryChanged()
 				p.suggestOpen = false
+				p.suggestFocused = false
 				p.input.Focus()
 			})
 		}
-		in := ui.TextInputBase(c.Key("search"), &p.query).Label(p.tr("搜索快捷面板")).Placeholder(p.tr("搜索，或输入 # 标签  @ 设备  / 类型")).PlaceholderColor(a.quiet).FontSize(15 * zoomScale(p.textZoom)).Height(32).Grow(1).MinWidth(0).AutoFocus()
-		in.Bind(&p.input).OnChange(p.queryChanged)
+		in := ui.TextInputBase(c.Key("search"), &p.query).Label(p.tr("搜索快捷面板")).Placeholder(p.tr("搜索，或输入 # 标签  / 类型  @ 设备  on: 时间")).PlaceholderColor(a.quiet).ReadOnly(p.menu != "").FontSize(15 * zoomScale(p.textZoom)).Height(32).Grow(1).MinWidth(0).AutoFocus()
+		p.queryStart, p.queryEnd = in.TextSelection()
+		in.Bind(&p.input).OnChange(func() {
+			if p.menu != "" {
+				return
+			}
+			p.queryStart = len([]rune(p.query))
+			p.queryEnd = p.queryStart
+			p.queryChanged()
+		})
 		p.bindKeys(c, in)
-		if p.query != "" || p.kind != "" || len(p.chips) > 0 {
+		if p.hasActiveFilter() {
 			cnt := ui.Text(c.Key("qp-count"), func() string {
 				if len(p.suggestions()) > 0 {
 					return fmt.Sprintf(p.tr("%d 条文字匹配"), len(p.rows))
@@ -214,7 +229,28 @@ func (p *quickPanelState) searchRow(c *ui.Context, k desktopkit.Kit, a qpPalette
 				cnt.Opacity(cntA)
 			}
 		}
-		b := ui.ButtonBase(c.Key("type")).Label(p.tr("切换类型")).Row().Gap(6).AlignItems(ui.Center).Shrink(0)
+		favHint := shortcutHint(overrides, desktopkeys.PanelFavoritesFilter)
+		favTip := p.tr("仅看已收藏")
+		if favHint != "" {
+			favTip += " (" + favHint + ")"
+		}
+		favBtn := ui.ButtonBase(c.Key("favorites-toggle")).Label(p.tr("仅看已收藏")).Tooltip(favTip).KeepFocus().Height(24).Radius(6).PaddingX(6).Row().Gap(4).AlignItems(ui.Center).Shrink(0)
+		starInk := a.quiet
+		if p.favoriteOnly {
+			starInk = p.colors.Color(c.Theme().Dark, "status-yellow-text")
+			favBtn.Background(a.muted)
+		} else if favBtn.Hovered() {
+			favBtn.Background(a.muted)
+		}
+		favBtn.Children(func() {
+			ui.Text(c, "★").FontSize(12.5 * zoomScale(p.textZoom)).TextColor(starInk).SingleLine()
+			if p.favoriteOnly {
+				ui.Text(c, p.tr("已收藏")).FontSize(11.5 * zoomScale(p.textZoom)).FontWeight(600).TextColor(a.foreground).SingleLine()
+			}
+		})
+		favBtn.OnClick(func() { p.toggleFavoriteFilter(); p.input.Focus() })
+
+		b := ui.ButtonBase(c.Key("type")).Label(p.tr("切换类型")).KeepFocus().Row().Gap(6).AlignItems(ui.Center).Shrink(0)
 		b.Children(func() {
 			label := p.kind
 			if label == "" {
@@ -224,8 +260,8 @@ func (p *quickPanelState) searchRow(c *ui.Context, k desktopkit.Kit, a qpPalette
 			qpKeycap(c, "⇥", a)
 		})
 		b.OnClick(func() { p.tab(false); p.input.Focus() })
-		if p.query != "" || p.kind != "" || len(p.chips) > 0 {
-			ui.ButtonBase(c.Key("clear")).Label(p.tr("清空")).Size(18, 18).Children(func() { ui.Text(c, "×").FontSize(16 * zoomScale(p.textZoom)).TextColor(a.quiet) }).OnClick(func() { p.clear(); p.input.Focus() })
+		if p.hasActiveFilter() {
+			ui.ButtonBase(c.Key("clear")).Label(p.tr("清空")).KeepFocus().Size(18, 18).Children(func() { ui.Text(c, "×").FontSize(16 * zoomScale(p.textZoom)).TextColor(a.quiet) }).OnClick(func() { p.clear(); p.input.Focus() })
 		}
 		k.TopHairlineProgress(c.Key("qp-progress"), qpSlow || !p.queryDue.IsZero())
 	})
@@ -241,8 +277,9 @@ func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
 		overrides = p.live.d.live.config.Config.Desktop.Shortcuts
 	}
 	commands := shortcutCommands(overrides, map[string]func(){
-		desktopkeys.PanelActions: p.openActions,
-		desktopkeys.PanelClear:   p.clear,
+		desktopkeys.PanelActions:         p.openActions,
+		desktopkeys.PanelClear:           p.clear,
+		desktopkeys.PanelFavoritesFilter: p.toggleFavoriteFilter,
 		desktopkeys.PanelFavorite: func() {
 			if p.active() != nil && p.queryDue.IsZero() {
 				p.runAction("favorite")
@@ -253,13 +290,173 @@ func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
 		desktopkeys.PanelTextIn:    func() { p.textZoom = min(4, p.textZoom+1) },
 		desktopkeys.PanelTextOut:   func() { p.textZoom = max(-2, p.textZoom-1) },
 	})
+	menuCommands := shortcutCommands(overrides, map[string]func(){
+		desktopkeys.PanelActions: p.openActions,
+	})
 	bind := func(mods ui.Modifiers, key ui.Key, fn func()) { handlers[binding{mods, key}] = fn }
+	command := ui.Cmd
+	if runtime.GOOS != "darwin" {
+		command = ui.Ctrl
+	}
+	enter := func(plain, keep bool) {
+		if p.mode == "disconnected" {
+			p.mode = "history"
+			p.applySearch()
+			return
+		}
+		if p.menu != "" && !plain && !keep {
+			rows := p.actions()
+			if len(rows) > p.cursor && rows[p.cursor].enabled {
+				p.runAction(rows[p.cursor].id)
+			}
+			return
+		}
+		if len(p.suggestions()) > 0 && !plain && !keep {
+			options := p.suggestions()
+			at := 0
+			if p.suggestFocused && p.suggestCursor >= 0 && p.suggestCursor < len(options) {
+				at = p.suggestCursor
+			}
+			p.accept(options[at])
+			return
+		}
+		if len(p.rows) == 0 && !plain && !keep {
+			options := p.relaxations()
+			if len(options) > 0 {
+				p.relax(options[min(p.relaxCursor, len(options)-1)].dimension)
+			}
+			return
+		}
+		p.menu = ""
+		p.restore(true, plain, keep)
+	}
+	stepGridHorizontal := func(right bool) {
+		if p.kind != "图片" || p.menu != "" || len(p.rows) == 0 {
+			return
+		}
+		at := p.selected
+		if !right && at%3 > 0 {
+			at--
+		}
+		if right && at%3 < 2 {
+			at++
+		}
+		p.selectRow(at)
+	}
+	selStart, selEnd := in.TextSelection()
 	in.OnTextKey(func(key ui.TextKey) bool {
 		if !p.visible {
 			return false
 		}
 		p.query = key.Text()
+		p.queryStart, p.queryEnd = selStart, selEnd
 		before := p.query
+
+		// When the action menu is open, handle menu navigation and lock the
+		// search box so stray character keys never wipe out the menu.
+		if p.menu != "" {
+			if p.keySequence.take(shortcutStroke{key.Mods, key.Key}, menuCommands) {
+				p.update()
+				return true
+			}
+			switch {
+			case key.Mods == 0 && key.Key == ui.KeyEscape:
+				p.escape()
+			case (key.Mods == 0 && key.Key == ui.KeyUp) || (key.Mods == ui.Ctrl && key.Key == ui.KeyP):
+				p.navigate(false)
+			case (key.Mods == 0 && key.Key == ui.KeyDown) || (key.Mods == ui.Ctrl && key.Key == ui.KeyN):
+				p.navigate(true)
+			case key.Mods == 0 && key.Key == ui.KeyEnter:
+				enter(false, false)
+			case key.Mods == 0 && key.Key == ui.KeyRight:
+				rows := p.actions()
+				if p.cursor >= 0 && p.cursor < len(rows) && rows[p.cursor].enabled && rows[p.cursor].id == "devices" {
+					p.runAction("devices")
+				}
+			case key.Mods == 0 && (key.Key == ui.KeyLeft || key.Key == ui.KeyBackspace):
+				if p.menu == "devices" {
+					p.menu = "main"
+					p.cursor = 0
+					p.update()
+				}
+			case key.Mods == command && key.Key == ui.KeyQ:
+				if p.live != nil && p.live.system != nil {
+					p.live.system.Dismiss(true)
+				}
+				p.visible = false
+				p.update()
+			}
+			return true
+		}
+
+		// Live query-dependent shortcuts evaluated against current key.Text().
+		if before == "" {
+			switch {
+			case key.Mods == 0 && key.Key == ui.KeyBackspace:
+				if len(p.chips) > 0 {
+					p.chips = p.chips[:len(p.chips)-1]
+					p.queryChanged()
+					p.suggestOpen = false
+					p.suggestFocused = false
+					p.update()
+					return true
+				}
+				if p.kind != "" {
+					p.kind = ""
+					p.queryChanged()
+					p.suggestOpen = false
+					p.suggestFocused = false
+					p.update()
+					return true
+				}
+				if p.favoriteOnly {
+					p.favoriteOnly = false
+					p.queryDue = time.Time{}
+					p.applySearch()
+					p.update()
+					return true
+				}
+			case key.Mods == command && key.Key == ui.KeyV:
+				p.restore(true, false, false)
+				p.update()
+				return true
+			case key.Mods == (command|ui.Shift) && key.Key == ui.KeyV:
+				p.restore(true, true, false)
+				p.update()
+				return true
+			case key.Mods == 0 && key.Key == ui.KeyHome:
+				if len(p.rows) > 0 {
+					p.selectRow(0)
+					return true
+				}
+			case key.Mods == 0 && key.Key == ui.KeyEnd:
+				if len(p.rows) > 0 {
+					p.selectRow(len(p.rows) - 1)
+					return true
+				}
+			case key.Mods == 0 && (key.Key == ui.KeyLeft || key.Key == ui.KeyRight) && p.kind == "图片":
+				stepGridHorizontal(key.Key == ui.KeyRight)
+				return true
+			}
+		}
+		if key.Mods == command && key.Key == ui.KeyC {
+			if selStart == selEnd {
+				p.restore(false, false, false)
+				p.update()
+				return true
+			}
+			return false
+		}
+		if key.Mods == command && key.Key == ui.Key0 {
+			if p.toggleImageActualSize() {
+				return true
+			}
+			if runtime.GOOS == "linux" {
+				p.selectAndPaste(9, false)
+				return true
+			}
+		}
+
 		taken := p.keySequence.take(shortcutStroke{key.Mods, key.Key}, commands)
 		if !taken {
 			fn := handlers[binding{key.Mods, key.Key}]
@@ -274,10 +471,6 @@ func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
 		p.update()
 		return true
 	})
-	command := ui.Cmd
-	if runtime.GOOS != "darwin" {
-		command = ui.Ctrl
-	}
 	bind(0, ui.KeyEscape, p.escape)
 	bind(0, ui.KeyTab, func() { p.tab(false) })
 	bind(ui.Shift, ui.KeyTab, func() { p.tab(true) })
@@ -285,72 +478,49 @@ func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
 	bind(0, ui.KeyDown, func() { p.navigate(true) })
 	bind(ui.Ctrl, ui.KeyN, func() { p.navigate(true) })
 	bind(ui.Ctrl, ui.KeyP, func() { p.navigate(false) })
-	enter := func(plain, keep bool) {
-		if p.mode == "disconnected" {
-			p.mode = "history"
-			p.applySearch()
-			return
+	bind(0, ui.KeyPageUp, func() { p.pageNavigate(false) })
+	bind(0, ui.KeyPageDown, func() { p.pageNavigate(true) })
+	bind(ui.Alt, ui.KeyHome, func() {
+		if len(p.rows) > 0 {
+			p.selectRow(0)
 		}
-		if p.menu != "" && !plain && !keep {
-			rows := p.actions()
-			if len(rows) > p.cursor && rows[p.cursor].enabled {
-				p.runAction(rows[p.cursor].id)
-			}
-			return
+	})
+	bind(ui.Alt, ui.KeyEnd, func() {
+		if len(p.rows) > 0 {
+			p.selectRow(len(p.rows) - 1)
 		}
-		if p.suggestFocused && !plain && !keep {
-			options := p.suggestions()
-			if len(options) > p.suggestCursor {
-				p.accept(options[p.suggestCursor])
-			}
-			return
+	})
+	bind(command, ui.KeyHome, func() {
+		if len(p.rows) > 0 {
+			p.selectRow(0)
 		}
-		if len(p.rows) == 0 && !plain && !keep {
-			options := p.relaxations()
-			if len(options) > 0 {
-				p.relax(options[min(p.relaxCursor, len(options)-1)].dimension)
-			}
-			return
+	})
+	bind(command, ui.KeyEnd, func() {
+		if len(p.rows) > 0 {
+			p.selectRow(len(p.rows) - 1)
 		}
-		p.menu = ""
-		p.restore(true, plain, keep)
-	}
+	})
+	bind(ui.Alt, ui.KeyLeft, func() { stepGridHorizontal(false) })
+	bind(ui.Alt, ui.KeyRight, func() { stepGridHorizontal(true) })
+	bind(ui.Alt, ui.KeyUp, func() { p.scrollPreview(-120) })
+	bind(ui.Alt, ui.KeyDown, func() { p.scrollPreview(120) })
+	bind(ui.Shift, ui.KeyPageUp, func() { p.scrollPreview(-220) })
+	bind(ui.Shift, ui.KeyPageDown, func() { p.scrollPreview(220) })
+	bind(ui.Ctrl, ui.KeySpace, p.togglePreviewNow)
+	bind(ui.Alt, ui.KeySpace, p.togglePreviewNow)
+	bind(ui.Alt, ui.Key0, func() { p.toggleImageActualSize() })
 	bind(0, ui.KeyEnter, func() { enter(false, false) })
 	bind(ui.Shift, ui.KeyEnter, func() { enter(true, false) })
 	bind(command, ui.KeyEnter, func() { enter(false, true) })
 	bind(command|ui.Shift, ui.KeyEnter, func() { enter(false, true) })
-	if p.query == "" {
-		bind(0, ui.KeyBackspace, func() {
-			if p.menu == "devices" {
-				p.menu = "main"
-				p.cursor = 0
-			} else if len(p.chips) > 0 {
-				p.chips = p.chips[:len(p.chips)-1]
-				p.queryChanged()
-				p.suggestOpen = false
-			} else if p.kind != "" {
-				p.kind = ""
-				p.queryChanged()
-				p.suggestOpen = false
-			}
-		})
-		bind(command, ui.KeyV, func() { p.restore(true, false, false) })
-		bind(command|ui.Shift, ui.KeyV, func() { p.restore(true, true, false) })
-	}
 	bind(command|ui.Shift, ui.KeyBackspace, func() { p.runAction("delete") })
 	if runtime.GOOS == "linux" {
 		bind(ui.Alt, ui.KeyBackspace, func() { p.runAction("delete") })
 		bind(ui.Alt, ui.KeyEnter, func() { enter(true, false) })
 		for i, key := range []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9, ui.Key0} {
-			if key == ui.Key0 {
-				bind(command, key, func() { p.selectAndPaste(i, false) })
-			}
-			bind(command|ui.Alt, key, func() { p.selectAndPaste(i, true) })
+			idx := i
+			bind(command|ui.Alt, key, func() { p.selectAndPaste(idx, true) })
 		}
-	}
-	start, end := in.TextSelection()
-	if start == end {
-		bind(command, ui.KeyC, func() { p.restore(false, false, false) })
 	}
 	bind(command, ui.KeyO, func() {
 		e := p.active()
@@ -361,29 +531,22 @@ func (p *quickPanelState) bindKeys(c *ui.Context, in ui.Element) {
 	bind(command|ui.Shift, ui.KeyO, func() { p.host("main") })
 	bind(command, ui.KeyComma, func() { p.host("settings") })
 	for i, key := range []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9} {
+		idx := i
 		for _, plain := range []bool{false, true} {
+			isPlain := plain
 			mods := command
-			if plain {
+			if isPlain {
 				mods |= ui.Shift
 			}
 			bind(mods, key, func() {
-				p.selectAndPaste(i, plain)
-			})
-		}
-	}
-	for _, key := range []ui.Key{ui.KeyLeft, ui.KeyRight} {
-		if p.menu == "devices" && key == ui.KeyLeft {
-			bind(0, key, func() { p.menu = "main"; p.cursor = 0 })
-		} else if p.kind == "图片" && p.query == "" && p.menu == "" {
-			bind(0, key, func() {
-				at := p.selected
-				if key == ui.KeyLeft && at%3 > 0 {
-					at--
+				if !isPlain && len(p.rows) == 0 && len(p.suggestions()) == 0 {
+					opts := p.relaxations()
+					if idx < len(opts) {
+						p.relax(opts[idx].dimension)
+						return
+					}
 				}
-				if key == ui.KeyRight && at%3 < 2 {
-					at++
-				}
-				p.selectRow(at)
+				p.selectAndPaste(idx, isPlain)
 			})
 		}
 	}
@@ -413,15 +576,18 @@ func (p *quickPanelState) suggestionList(c *ui.Context, a qpPalette, options []q
 			ui.Text(c, note).FontSize(11 * zoomScale(p.textZoom)).TextColor(a.quiet)
 		})
 	}
-	heading(p.tr("建议"), p.tr("按顺序接受 ⇥"))
+	heading(p.tr("建议"), p.tr("↑↓ 选择 · ⏎/⇥ 接受"))
 	cursor := 0
-	if p.suggestFocused {
+	if p.suggestFocused && p.suggestCursor >= 0 && p.suggestCursor < len(options) {
 		cursor = p.suggestCursor
 	}
-	start := max(0, cursor-2)
-	for i := start; i < min(len(options), start+3); i++ {
+	const maxVisible = 5
+	start := max(0, min(cursor-maxVisible+1, max(0, len(options)-maxVisible)))
+	end := min(len(options), start+maxVisible)
+	labels := map[string]string{"favorite": "收藏", "type": "类型", "tag": "标签", "source": "设备", "time": "时间", "extension": "扩展名"}
+	for i := start; i < end; i++ {
 		f := options[i]
-		b := ui.ButtonBase(c.Key("suggest-"+f.dimension+f.value)).Label(p.tr("建议：")+p.filterLabel(f)).Height(30).FillWidth().Padding(0, 8, 0, 6).Radius(7).Row().AlignItems(ui.Center).Gap(8)
+		b := ui.ButtonBase(c.Key("suggest-"+f.dimension+f.value)).Label(p.tr("建议：")+p.filterLabel(f)).KeepFocus().Height(30).FillWidth().Padding(0, 8, 0, 6).Radius(7).Row().AlignItems(ui.Center).Gap(8)
 		if cursor == i {
 			b.Background(a.muted)
 		}
@@ -429,14 +595,17 @@ func (p *quickPanelState) suggestionList(c *ui.Context, a qpPalette, options []q
 			ui.Column(c).Width(16)
 			ui.Text(c, f.matched).Font("monospace").FontSize(11.5 * zoomScale(p.textZoom)).PaddingX(5).Radius(4).Background(a.muted).MaxLines(1)
 			ui.Text(c, "→").FontSize(12.5 * zoomScale(p.textZoom)).TextColor(a.quiet)
-			labels := map[string]string{"type": "类型", "tag": "标签", "source": "设备", "time": "时间"}
 			ui.Text(c, p.tr(labels[f.dimension])).FontSize(12.5 * zoomScale(p.textZoom)).TextColor(a.quiet)
 			ui.Text(c, p.filterLabel(f)).FontSize(12.5*zoomScale(p.textZoom)).Bold().TextColor(a.primary).Padding(1, 7).Radius(5).Background(a.muted).Grow(1).MinWidth(0).MaxLines(1)
-			qpKeycap(c, "⇥", a)
+			if cursor == i {
+				qpKeycap(c, "⏎", a)
+			} else {
+				qpKeycap(c, "⇥", a)
+			}
 		})
 		b.OnClick(func() { p.accept(f); p.input.Focus() })
 	}
-	if hidden := len(options) - min(len(options), start+3); hidden > 0 {
+	if hidden := len(options) - end; hidden > 0 {
 		ui.Text(c, fmt.Sprintf(p.tr("还有 %d 条"), hidden)).FontSize(11*zoomScale(p.textZoom)).TextColor(a.quiet).Padding(4, 8)
 	}
 	heading(p.tr("文字匹配"), "")
@@ -553,7 +722,7 @@ func (p *quickPanelState) resultRow(c *ui.Context, k desktopkit.Kit, a qpPalette
 		ink = a.white
 		quiet = a.white.Alpha(.78)
 	}
-	b := ui.ButtonBase(c).Label(p.tr("历史：")+e.title).FillWidth().Height(30).Shrink(0).Padding(0, 10, 0, 6).Radius(7).Row().Gap(8).AlignItems(ui.Center).TextColor(ink)
+	b := ui.ButtonBase(c).Label(p.tr("历史：")+e.title).KeepFocus().FillWidth().Height(30).Shrink(0).Padding(0, 10, 0, 6).Radius(7).Row().Gap(8).AlignItems(ui.Center).TextColor(ink)
 	if selected {
 		b.Background(a.primary)
 	} else if b.Hovered() && !p.keyboard {
@@ -639,7 +808,7 @@ func (p *quickPanelState) imageGrid(c *ui.Context, k desktopkit.Kit, a qpPalette
 						continue
 					}
 					e := p.rows[at]
-					b := ui.ButtonBase(c.Key(e.id)).Label(p.tr("图片：")+e.title).Grow(1).MinWidth(0).Height(86).Padding(2).Radius(7).Border(2, a.border).Clip()
+					b := ui.ButtonBase(c.Key(e.id)).Label(p.tr("图片：")+e.title).KeepFocus().Grow(1).MinWidth(0).Height(86).Padding(2).Radius(7).Border(2, a.border).Clip()
 					if at == p.selected {
 						b.BorderColor(a.primary)
 					}
@@ -681,7 +850,7 @@ func (p *quickPanelState) emptyView(c *ui.Context, a qpPalette) {
 	} else if p.query != "" {
 		title = p.tr("没有匹配“") + p.query + p.tr("”的内容")
 		hint = p.tr("试试其他关键词或筛选条件")
-	} else if p.kind != "" || len(p.chips) > 0 {
+	} else if p.hasActiveFilter() {
 		title = p.tr("没有符合条件的内容")
 		hint = p.tr("试试其他关键词或筛选条件")
 	}
@@ -689,25 +858,25 @@ func (p *quickPanelState) emptyView(c *ui.Context, a qpPalette) {
 		ui.Text(c, title).Role(ui.RoleHeading).FontSize(15 * zoomScale(p.textZoom)).Bold()
 		ui.Text(c, hint).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
 		if p.mode == "disconnected" {
-			ui.Button(c, p.tr("立即重连")).OnClick(func() { p.mode = "history"; p.applySearch(); p.update() })
-		} else if p.query != "" || p.kind != "" || len(p.chips) > 0 {
+			ui.Button(c, p.tr("立即重连")).KeepFocus().OnClick(func() { p.mode = "history"; p.applySearch(); p.update() })
+		} else if p.hasActiveFilter() {
 			options := p.relaxations()
 			if len(options) > 0 {
 				ui.Text(c, p.tr("试试放宽：")).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
 				for i, r := range options {
-					b := ui.ButtonBase(c.Key(r.dimension)).Label(r.label).FillWidth().Height(30).Radius(7).PaddingX(10).Row().Gap(8).AlignItems(ui.Center)
+					b := ui.ButtonBase(c.Key(r.dimension)).Label(r.label).KeepFocus().FillWidth().Height(30).Radius(7).PaddingX(10).Row().Gap(8).AlignItems(ui.Center)
 					if i == p.relaxCursor {
 						b.Background(a.muted)
 					}
 					b.Children(func() {
-						ui.Text(c, fmt.Sprint(i+1)).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
+						qpKeycap(c, p.commandLabel()+fmt.Sprint(i+1), a)
 						ui.Text(c, r.label).FontSize(13 * zoomScale(p.textZoom)).Grow(1)
 						ui.Text(c, fmt.Sprintf(p.tr("%d 条"), r.count)).FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
 					})
 					b.OnClick(func() { p.relax(r.dimension); p.input.Focus() })
 				}
 			}
-			ui.Button(c, p.tr("清空筛选")).OnClick(func() { p.clear(); p.input.Focus() })
+			ui.Button(c, p.tr("清空筛选")).KeepFocus().OnClick(func() { p.clear(); p.input.Focus() })
 		} else {
 			ui.Text(c, p.tr("随时唤起  ")+p.commandLabel()+"Ctrl+V").FontSize(12 * zoomScale(p.textZoom)).TextColor(a.quiet)
 		}
@@ -743,12 +912,16 @@ func (p *quickPanelState) satellite(c *ui.Context) {
 		} else {
 			header.Padding(qpSatelliteHeaderPadTop, qpSatelliteHeaderPadSide, qpSatelliteHeaderPadBot, qpSatelliteHeaderPadSide)
 		}
-		scroll := k.Scroll(c.Key("satellite-scroll-" + p.menu + "-" + e.id)).Grow(1).MinHeight(0)
+		if p.lastPreviewID != e.id {
+			p.lastPreviewID = e.id
+			p.satelliteScroll.Y = 0
+		}
+		scroll := k.Scroll(c.Key("satellite-scroll-" + p.menu + "-" + e.id)).TrackScroll(&p.satelliteScroll).Grow(1).MinHeight(0)
 		scroll.Children(func() {
 			if p.menu != "" {
 				ui.Column(c).FillWidth().Padding(qpSatelliteMenuListPad).Gap(qpSatelliteMenuRowGap).Children(func() {
 					for i, row := range p.actions() {
-						b := ui.ButtonBase(c.Key(row.id)).Label(p.actionLabel(row)).Disabled(!row.enabled).FillWidth().Height(qpSatelliteMenuRowHeight).PaddingX(10).Radius(7).Row().Gap(8).AlignItems(ui.Center)
+						b := ui.ButtonBase(c.Key(row.id)).Label(p.actionLabel(row)).KeepFocus().Disabled(!row.enabled).FillWidth().Height(qpSatelliteMenuRowHeight).PaddingX(10).Radius(7).Row().Gap(8).AlignItems(ui.Center)
 						if i == p.cursor {
 							b.Background(a.primary).TextColor(a.white)
 						}

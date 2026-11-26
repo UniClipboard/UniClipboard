@@ -152,11 +152,16 @@ func (d *viewState) hasExtraSourceFilter() bool {
 	return true
 }
 
+func (d *viewState) hasExtraFavoriteFilter() bool {
+	return d.search.favorite && d.nav.Value != "pinned"
+}
+
 func (d *viewState) hasActiveSearchOrFilter() bool {
 	return strings.TrimSpace(d.query) != "" ||
 		(d.kind != "" && d.kind != "all") ||
 		(d.timeRange != "" && d.timeRange != "all") ||
 		d.search.extension != "" ||
+		d.hasExtraFavoriteFilter() ||
 		d.hasExtraTagFilter() ||
 		d.hasExtraSourceFilter()
 }
@@ -337,8 +342,23 @@ func (d *viewState) buildRelaxationCandidates() []historyRelaxation {
 		})
 	}
 
+	if d.hasExtraFavoriteFilter() {
+		trial := *d
+		trial.search.favorite = false
+		out = append(out, historyRelaxation{
+			id:    "favorite",
+			label: d.tr("移除「仅看已收藏」限制"),
+			query: trial.historySearchQuery(),
+			count: d.candidateMatchCount(trial),
+			apply: func() {
+				d.search.favorite = false
+				d.search.refresh(d)
+			},
+		})
+	}
+
 	qTrim := strings.TrimSpace(d.query)
-	if qTrim != "" && (d.kind != "" || d.timeRange != "" || d.search.extension != "" || d.hasExtraSourceFilter() || d.hasExtraTagFilter()) {
+	if qTrim != "" && (d.kind != "" || d.timeRange != "" || d.search.extension != "" || d.hasExtraFavoriteFilter() || d.hasExtraSourceFilter() || d.hasExtraTagFilter()) {
 		trial := *d
 		trial.query = ""
 		trial.search.buffer = ""
@@ -835,6 +855,12 @@ func (d *viewState) activeConstraintChips() []emptyConstraintChip {
 		chips = append(chips, emptyConstraintChip{
 			id: "ext", field: d.tr("扩展名"), value: "." + d.search.extension, kind: desktopkit.SearchKindOther,
 			remove: func() { d.search.extension = ""; d.search.refresh(d) },
+		})
+	}
+	if d.hasExtraFavoriteFilter() {
+		chips = append(chips, emptyConstraintChip{
+			id: "favorite", field: d.tr("范围"), value: "★ " + d.tr("已收藏"), kind: desktopkit.SearchKindOther,
+			remove: func() { d.search.favorite = false; d.search.refresh(d) },
 		})
 	}
 	return chips

@@ -415,7 +415,11 @@ func scenarioHistorySearchProcess(t *testing.T) {
 	quick.query = ""
 	quick.chips = []qpFilter{{dimension: "tag", value: "work"}, {dimension: "tag", value: "design"}}
 	quick.applySearch()
-	wait("quick union", func() bool { quick.live.poll(quick); return !quick.live.d.live.loading && len(quick.rows) == 3 })
+	wait("quick intersection", func() bool {
+		quick.live.poll(quick)
+		return !quick.live.d.live.loading && len(quick.rows) == 1 && quick.rows[0].id == longID
+	})
+	quick.chips = nil
 	quick.query = "no-such-content"
 	quick.applySearch()
 	quick.query = "foo bar"
@@ -424,7 +428,7 @@ func scenarioHistorySearchProcess(t *testing.T) {
 		quick.live.poll(quick)
 		return !quick.live.d.live.loading && len(quick.rows) == 1 && quick.rows[0].id == phrase
 	})
-	checks = append(checks, "quick-panel phrase/union queries use real global search and discard obsolete generations")
+	checks = append(checks, "quick-panel phrase/intersection queries use real global search and discard obsolete generations")
 	serial := quick.live.d.live.appliedSerial
 	quick.live.d.live.nextRefresh = time.Time{}
 	quick.live.poll(quick)

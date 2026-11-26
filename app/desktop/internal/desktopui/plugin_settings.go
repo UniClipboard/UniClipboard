@@ -37,6 +37,8 @@ type builtinPluginSettings struct {
 	uninstallID, uninstallName              string
 	rollbackOpen                            bool
 	rollbackID, rollbackName, rollbackVer   string
+	mirrorCustomOpen                        bool
+	mirrorDraft, mirrorSynced, mirrorError  string
 	form                                    *pluginSettingsForm
 	classification                          classificationSettings
 	preview                                 previewSettingsState

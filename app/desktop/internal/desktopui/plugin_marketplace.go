@@ -19,6 +19,7 @@ import (
 const (
 	pluginInstallTimeout      = 3 * time.Minute
 	pluginConfigToastDuration = 8 * time.Second
+	officialPluginMirrorURL   = "https://plugins.uniclipboard.app"
 )
 
 type pluginInstallTask struct {
@@ -924,11 +925,84 @@ func (d *viewState) pluginsAdvancedView(c *ui.Context, k desktopkit.Kit, cfg con
 				{Value: "continue", Label: d.tr("继续处理")},
 				{Value: "block_sync", Label: d.tr("禁止同步此条目")},
 			}
-			if k.Select(c, desktopkit.SelectProps{Label: d.tr("当插件运行出错时"), Value: &policy, Items: items, Disabled: l.showBusy()}).Changed && !l.busy {
+			if k.Select(c.Key("global-on-error-select"), desktopkit.SelectProps{Label: d.tr("当插件运行出错时"), Value: &policy, Items: items, Disabled: l.showBusy()}).Changed && !l.busy {
 				cfg.Plugins.OnError = policy
 				d.saveLiveConfig(cfg)
 			}
 		})
+	})
+
+	p := &d.pluginSettings
+	savedMirror := strings.TrimSpace(cfg.Plugins.MirrorURL)
+	if p.mirrorSynced != savedMirror {
+		p.mirrorSynced = savedMirror
+		p.mirrorDraft = savedMirror
+		p.mirrorError = ""
+		p.mirrorCustomOpen = savedMirror != "" && savedMirror != officialPluginMirrorURL
+	}
+	mirrorMode := "direct"
+	switch {
+	case p.mirrorCustomOpen:
+		mirrorMode = "custom"
+	case savedMirror == officialPluginMirrorURL:
+		mirrorMode = "official"
+	case savedMirror != "":
+		mirrorMode = "custom"
+	}
+	k.SettingsGroup(c.Key("plugin-mirror-group"), desktopkit.SettingsGroupProps{Title: d.tr("插件市场镜像")}, func() {
+		k.SettingsRow(c.Key("plugin-mirror-select"), desktopkit.SettingsRowProps{
+			Label:       d.tr("下载源"),
+			Description: d.tr("用于加速插件市场目录与安装包下载（官方镜像：plugins.uniclipboard.app）；不可达或未收录时自动回退直连 GitHub。立即生效。"),
+		}, nil, func() {
+			items := []desktopkit.SelectItem{
+				{Value: "direct", Label: d.tr("直连 GitHub")},
+				{Value: "official", Label: d.tr("官方镜像")},
+				{Value: "custom", Label: d.tr("自定义镜像")},
+			}
+			if k.Select(c.Key("plugin-mirror-mode"), desktopkit.SelectProps{Label: d.tr("下载源"), Value: &mirrorMode, Items: items, Disabled: l.showBusy()}).Changed && !l.busy {
+				p.mirrorError = ""
+				switch mirrorMode {
+				case "direct":
+					p.mirrorCustomOpen = false
+					p.mirrorDraft = ""
+					cfg.Plugins.MirrorURL = ""
+					d.saveLiveConfig(cfg)
+				case "official":
+					p.mirrorCustomOpen = false
+					p.mirrorDraft = officialPluginMirrorURL
+					cfg.Plugins.MirrorURL = officialPluginMirrorURL
+					d.saveLiveConfig(cfg)
+				case "custom":
+					p.mirrorCustomOpen = true
+					if p.mirrorDraft == "" || p.mirrorDraft == officialPluginMirrorURL {
+						p.mirrorDraft = ""
+					}
+				}
+			}
+		})
+		if mirrorMode == "custom" {
+			ui.Column(c.Key("plugin-mirror-custom")).Padding(10, 14).Gap(8).Children(func() {
+				k.FormField(c.Key("mirror-url-input"), desktopkit.FormFieldProps{
+					Label:       d.tr("镜像地址"),
+					Value:       &p.mirrorDraft,
+					Placeholder: officialPluginMirrorURL,
+					Error:       p.mirrorError,
+					Disabled:    l.showBusy(),
+				})
+				ui.Row(c.Key("mirror-url-actions")).Justify(ui.End).Gap(8).Children(func() {
+					if k.Button(c.Key("save-mirror"), d.tr("保存"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.showBusy()}).Clicked() && !l.busy {
+						next := strings.TrimSpace(p.mirrorDraft)
+						if !strings.HasPrefix(next, "https://") {
+							p.mirrorError = d.tr("请输入有效的 HTTPS 镜像地址。")
+							return
+						}
+						p.mirrorError = ""
+						cfg.Plugins.MirrorURL = next
+						d.saveLiveConfig(cfg)
+					}
+				})
+			})
+		}
 	})
 }
 

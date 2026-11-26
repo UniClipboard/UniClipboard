@@ -18,7 +18,7 @@ func (d *viewState) historySearchQuery() engine.HistorySearchQuery {
 	}
 	base := d.liveQuery()
 	q := engine.HistorySearchQuery{Tags: selectedSearchTags(d.tag), TagMatch: "all", CreatedFromMs: base.FromMs, CreatedBeforeMs: base.BeforeMs}
-	favorite := d.nav.Value == "pinned"
+	favorite := d.nav.Value == "pinned" || d.search.favorite
 	for _, w := range searchWords(d.query) {
 		if w.dimension == "tag" && w.partial == plugin.TagFavorite {
 			favorite = true
@@ -57,8 +57,26 @@ func searchSource(value string) engine.HistorySearchSource {
 		return engine.HistorySearchSource{Kind: "device", DeviceID: engine.DeviceID(value)}
 	}
 }
+func mergeSearchCandidates(base, extra []engine.HistorySearchCandidate) []engine.HistorySearchCandidate {
+	if len(extra) == 0 {
+		return slices.Clone(base)
+	}
+	out := slices.Clone(base)
+	seen := make(map[string]bool, len(out))
+	for _, c := range out {
+		seen[c.Value] = true
+	}
+	for _, c := range extra {
+		if !seen[c.Value] {
+			seen[c.Value] = true
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 func (l *liveState) loadCatalogue(d *viewState) {
-	prefix := d.search.buffer
+	prefix := ""
 	field := ""
 	w, active := d.search.active()
 	if !active {
@@ -70,13 +88,19 @@ func (l *liveState) loadCatalogue(d *viewState) {
 		}
 	}
 	if active {
-		prefix = w.partial
 		field = map[string]string{"tag": "tag", "source": "source", "extension": "extension"}[w.dimension]
-		if field == "" {
-			prefix = ""
+		if field != "" {
+			prefix = w.partial
 		}
 	}
-	keyBytes, _ := json.Marshal([]any{field, prefix, l.appliedSerial})
+	// When the unfiltered base page for this serial is already complete (<=200 items),
+	// keep all candidates in memory so local multilingual and Chinese pinyin matching
+	// never loses matches due to backend raw-value prefix filtering.
+	needBase := l.catalogueBase == nil || l.catalogueBaseSerial != l.appliedSerial
+	if !needBase && (field == "" || prefix == "" || l.catalogueComplete[field]) {
+		return
+	}
+	keyBytes, _ := json.Marshal([]any{needBase, field, prefix, l.appliedSerial})
 	key := string(keyBytes)
 	if key == l.catalogueKey {
 		return
@@ -88,25 +112,43 @@ func (l *liveState) loadCatalogue(d *viewState) {
 	ctx, cancel := context.WithTimeout(l.ctx, 6*time.Second)
 	l.catalogueCancel = cancel
 	client := l.client
+	serial := l.appliedSerial
+	prevBase := l.catalogueBase
+	prevComplete := l.catalogueComplete
 	go func() {
 		defer cancel()
+		base := map[string][]engine.HistorySearchCandidate{}
+		complete := map[string]bool{}
 		values := map[string][]engine.HistorySearchCandidate{}
 		for _, f := range []string{"tag", "source", "extension"} {
-			p := ""
-			if field == "" || field == f {
-				p = prefix
+			if needBase {
+				page, e := client.ListHistorySearchCandidates(ctx, engine.HistorySearchCandidatesRequest{Field: f, Prefix: "", Limit: 200})
+				if e != nil {
+					return
+				}
+				base[f] = page.Candidates
+				complete[f] = page.NextCursor == ""
+			} else {
+				base[f] = prevBase[f]
+				complete[f] = prevComplete[f]
 			}
-			page, e := client.ListHistorySearchCandidates(ctx, engine.HistorySearchCandidatesRequest{Field: f, Prefix: p, Limit: 200})
-			if e != nil {
-				return
+			values[f] = base[f]
+			if !complete[f] && field == f && prefix != "" {
+				page, e := client.ListHistorySearchCandidates(ctx, engine.HistorySearchCandidatesRequest{Field: f, Prefix: prefix, Limit: 200})
+				if e != nil {
+					return
+				}
+				values[f] = mergeSearchCandidates(base[f], page.Candidates)
 			}
-			values[f] = page.Candidates
 		}
 		select {
 		case l.results <- func() {
 			if key != l.catalogueKey {
 				return
 			}
+			l.catalogueBase = base
+			l.catalogueComplete = complete
+			l.catalogueBaseSerial = serial
 			l.catalogue = values
 			if l.queryOverride == nil && d.search.initialized {
 				d.search.change(d, d.search.start, d.search.end)
@@ -162,6 +204,7 @@ func (d *viewState) liveSearchValues() []searchCandidate {
 	for _, v := range [][2]string{{"text", "文本"}, {"richtext", "富文本"}, {"image", "图片"}, {"file", "文件"}, {"folder", "文件夹"}} {
 		add("type", v[0], v[1])
 	}
+	add("favorite", plugin.TagFavorite, "已收藏")
 	for _, f := range []struct{ field, dim string }{{"tag", "tag"}, {"source", "source"}, {"extension", "extension"}} {
 		for _, v := range d.live.catalogue[f.field] {
 			label := v.Label
@@ -179,7 +222,7 @@ func (d *viewState) liveSearchValues() []searchCandidate {
 			add("tag", tag.id, d.tagLabel(tag.id))
 		}
 	}
-	for _, v := range [][2]string{{"today", "今天"}, {"yesterday", "昨天"}, {"last_7d", "最近 7 天"}, {"last_30d", "最近 30 天"}, {"this_week", "本周"}, {"this_month", "本月"}} {
+	for _, v := range [][2]string{{"today", "今天"}, {"yesterday", "昨天"}, {"day_before_yesterday", "前天"}, {"last_7d", "最近 7 天"}, {"last_30d", "最近 30 天"}, {"this_week", "本周"}, {"last_week", "上周"}, {"this_month", "本月"}, {"last_month", "上月"}} {
 		add("time", v[0], v[1])
 	}
 	return out

@@ -9046,5 +9046,53 @@
     "ja": "スマートフォンでスキャンするか、下の完全チケットをコピー",
     "pt-BR": "Escaneie no celular para parear ou copie o bilhete completo abaixo",
     "ru": "Отсканируйте телефоном для сопряжения или скопируйте полный билет ниже"
+  },
+  "切换仅看已收藏": {
+    "en": "Toggle favorites filter",
+    "ja": "お気に入りのみ表示を切り替え",
+    "pt-BR": "Alternar filtro de favoritos",
+    "ru": "Переключить фильтр избранного"
+  },
+  "仅看已收藏": {
+    "en": "Favorites only",
+    "ja": "お気に入りのみ",
+    "pt-BR": "Somente favoritos",
+    "ru": "Только избранное"
+  },
+  "快捷筛选": {
+    "en": "Quick filters",
+    "ja": "クイックフィルター",
+    "pt-BR": "Filtros rápidos",
+    "ru": "Быстрые фильтры"
+  },
+  "移除「仅看已收藏」限制": {
+    "en": "Remove Favorites-only filter",
+    "ja": "「お気に入りのみ」条件を解除",
+    "pt-BR": "Remover filtro de favoritos",
+    "ru": "Убрать фильтр «Только избранное»"
+  },
+  "去掉 ★ 已收藏": {
+    "en": "Remove ★ Favorites",
+    "ja": "★ お気に入りを解除",
+    "pt-BR": "Remover ★ Favoritos",
+    "ru": "Убрать ★ Избранное"
+  },
+  "去掉扩展名限制": {
+    "en": "Remove extension filter",
+    "ja": "拡張子条件を解除",
+    "pt-BR": "Remover filtro de extensão",
+    "ru": "Убрать фильтр по расширению"
+  },
+  "搜索，或输入 # 标签  / 类型  @ 设备  on: 时间": {
+    "en": "Search, or type # tag  / type  @ device  on: time",
+    "ja": "検索、または # タグ  / 種類  @ デバイス  on: 期間",
+    "pt-BR": "Pesquise ou digite # etiqueta  / tipo  @ dispositivo  on: período",
+    "ru": "Поиск или # метка  / тип  @ устройство  on: время"
+  },
+  "↑↓ 选择 · ⏎/⇥ 接受": {
+    "en": "↑↓ select · ⏎/⇥ apply",
+    "ja": "↑↓ 選択 · ⏎/⇥ 適用",
+    "pt-BR": "↑↓ selecionar · ⏎/⇥ aplicar",
+    "ru": "↑↓ выбор · ⏎/⇥ применить"
   }
 }

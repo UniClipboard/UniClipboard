@@ -98,7 +98,7 @@ func (p *quickPanelState) imagePreview(c *ui.Context, k desktopkit.Kit, a qpPale
 			if p.actualSize {
 				label = p.tr("完整显示")
 			}
-			ui.ButtonBase(c.Key("zoom")).Label(label).Disabled(opacity <= 0).Absolute().Right(12).Bottom(12).Height(28).PaddingX(10).Radius(6).Background(a.background).Opacity(opacity).Children(func() { ui.Text(c, label).FontSize(12) }).OnClick(toggle)
+			ui.ButtonBase(c.Key("zoom")).Label(label).Disabled(opacity <= 0).KeepFocus().Absolute().Right(12).Bottom(12).Height(28).PaddingX(10).Radius(6).Background(a.background).Opacity(opacity).Children(func() { ui.Text(c, label).FontSize(12) }).OnClick(toggle)
 		}
 	})
 	if e.kind == "文件" {

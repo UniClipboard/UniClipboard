@@ -34,9 +34,10 @@ const (
 	Tags          = "clipboard.editTags"
 	Actions       = "clipboard.actions"
 	Send          = "clipboard.send"
-	PanelFavorite = "quickPanel.favorite"
-	PanelActions  = "quickPanel.actions"
-	PanelClear    = "quickPanel.clear"
+	PanelFavorite        = "quickPanel.favorite"
+	PanelFavoritesFilter = "quickPanel.favoritesFilter"
+	PanelActions         = "quickPanel.actions"
+	PanelClear           = "quickPanel.clear"
 )
 
 type Action struct {
@@ -67,6 +68,7 @@ func ActionsForPlatform() []Action {
 		{Actions, History, "动作", []string{"mod+k"}},
 		{Send, History, "发送到设备", []string{"mod+shift+d"}},
 		{PanelFavorite, Panel, "切换收藏", []string{"mod+shift+f"}},
+		{PanelFavoritesFilter, Panel, "切换仅看已收藏", []string{"mod+f"}},
 		{PanelActions, Panel, "打开动作菜单", []string{"mod+k"}},
 		{PanelClear, Panel, "清空搜索和筛选", []string{"mod+backspace"}},
 	}

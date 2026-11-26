@@ -3,6 +3,7 @@ package desktopui
 import (
 	"context"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -10,6 +11,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
 	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 type quickLive struct {
@@ -28,23 +30,51 @@ func newLiveQuick(ctx context.Context, client *api.Client, theme string, root fu
 	return p
 }
 func (p *quickPanelState) searchQuery() engine.HistorySearchQuery {
-	q := engine.HistorySearchQuery{TextTerms: queryLiteral(p.query), TagMatch: "any"}
+	q := engine.HistorySearchQuery{TextTerms: queryLiteral(p.literalQuery()), TagMatch: "all"}
 	add := func(dim, value string) {
 		switch dim {
 		case "type":
-			m := map[string]engine.HistorySearchType{"文本": "text", "富文本": "richtext", "图片": "image", "文件": "files"}
-			if t := m[value]; t != "" {
-				q.Types = append(q.Types, t)
+			switch value {
+			case "文本":
+				q.Types = append(q.Types, "text")
+			case "富文本":
+				q.Types = append(q.Types, "richtext")
+			case "图片":
+				q.Types = append(q.Types, "image")
+			case "文件":
+				q.Types = append(q.Types, "files")
+			case "文件夹":
+				q.Types = append(q.Types, "directory", "directory_reference")
 			}
 		case "tag":
-			q.Tags = append(q.Tags, value)
+			if !slices.Contains(q.Tags, value) {
+				q.Tags = append(q.Tags, value)
+			}
 		case "source":
 			q.Sources = append(q.Sources, searchSource(value))
 		case "time":
-			d := viewState{timeRange: map[string]string{"今天": "today", "昨天": "yesterday", "前天": "day_before_yesterday", "本周": "this_week", "上周": "last_week", "本月": "this_month", "上月": "last_month"}[value]}
+			d := viewState{timeRange: map[string]string{
+				"今天":    "today",
+				"昨天":    "yesterday",
+				"前天":    "day_before_yesterday",
+				"最近 7 天": "last_7d",
+				"最近 30 天": "last_30d",
+				"本周":    "this_week",
+				"上周":    "last_week",
+				"本月":    "this_month",
+				"上月":    "last_month",
+			}[value]}
 			t := d.liveQuery()
 			q.CreatedFromMs, q.CreatedBeforeMs = t.FromMs, t.BeforeMs
+		case "extension":
+			ext := strings.TrimPrefix(strings.ToLower(value), ".")
+			if ext != "" && !slices.Contains(q.Extensions, ext) {
+				q.Extensions = append(q.Extensions, ext)
+			}
 		}
+	}
+	if p.favoriteOnly {
+		add("tag", plugin.TagFavorite)
 	}
 	if p.kind != "" {
 		add("type", p.kind)
@@ -179,17 +209,28 @@ func (p *quickPanelState) liveRelaxations() []qpRelaxation {
 		dims = append(dims, dim)
 		queries = append(queries, trial)
 	}
+	add("favorite", p.favoriteOnly, func(q *engine.HistorySearchQuery) {
+		q.Tags = slices.DeleteFunc(q.Tags, func(t string) bool { return t == plugin.TagFavorite })
+	})
 	add("type", len(q.Types) > 0, func(q *engine.HistorySearchQuery) { q.Types = nil })
-	add("tag", len(q.Tags) > 0, func(q *engine.HistorySearchQuery) { q.Tags = nil })
+	hasNonFavTag := slices.ContainsFunc(q.Tags, func(t string) bool { return t != plugin.TagFavorite })
+	add("tag", hasNonFavTag, func(q *engine.HistorySearchQuery) {
+		if p.favoriteOnly {
+			q.Tags = []string{plugin.TagFavorite}
+		} else {
+			q.Tags = nil
+		}
+	})
 	add("time", q.CreatedFromMs > 0 || q.CreatedBeforeMs > 0, func(q *engine.HistorySearchQuery) { q.CreatedFromMs = 0; q.CreatedBeforeMs = 0 })
 	add("source", len(q.Sources) > 0, func(q *engine.HistorySearchQuery) { q.Sources = nil })
+	add("extension", len(q.Extensions) > 0, func(q *engine.HistorySearchQuery) { q.Extensions = nil })
 	l := p.live.d.live
 	l.requestCounts(queries)
 	out := []qpRelaxation{}
-	labels := map[string]string{"type": "去掉所有类型", "tag": "去掉所有标签", "time": "时间范围扩大到全部", "source": "包含所有设备"}
+	labels := map[string]string{"favorite": "去掉 ★ 已收藏", "type": "去掉所有类型", "tag": "去掉所有标签", "time": "时间范围扩大到全部", "source": "包含所有设备", "extension": "去掉扩展名限制"}
 	for i, q := range queries {
 		if n, ok := l.counts[searchQueryKey(q)]; ok && n > 0 {
-			out = append(out, qpRelaxation{dimension: dims[i], label: labels[dims[i]], count: int(n)})
+			out = append(out, qpRelaxation{dimension: dims[i], label: p.tr(labels[dims[i]]), count: int(n)})
 		}
 	}
 	if len(out) > 3 {
@@ -215,6 +256,8 @@ func (p *quickPanelState) liveAction(id string) {
 		p.restore(true, false, false)
 	case "plain":
 		p.restore(true, true, false)
+	case "keep":
+		p.restore(true, false, true)
 	case "copy":
 		p.restore(false, false, false)
 	case "delete":

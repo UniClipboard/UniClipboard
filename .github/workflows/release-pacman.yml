@@ -1,0 +1,85 @@
+name: Release pacman repository
+run-name: pacman repository from joint release ${{ inputs.release_run_id }}/${{ inputs.release_run_attempt }}
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful joint release run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Successful joint release attempt
+        required: true
+        default: '1'
+        type: string
+      publish:
+        description: Publish or submit a verified Stable build (Alpha always previews)
+        type: boolean
+        default: false
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: release-package-pacman
+  queue: max
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/package-release
+        id: release
+        with:
+          run-id: ${{ inputs.release_run_id }}
+          run-attempt: ${{ inputs.release_run_attempt }}
+          channel: pacman
+          publish: ${{ inputs.publish }}
+      - if: ${{ !cancelled() && steps.release.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacman-definitions
+          path: dist/channel/
+          overwrite: true
+          if-no-files-found: error
+
+  publish:
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: pacman-production
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: pacman-definitions
+          path: dist/channel
+      - name: Sign and advance the pacman repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACMAN_SIGNING_ENABLED: ${{ vars.PACMAN_SIGNING_ENABLED }}
+          PACMAN_SIGNING_FINGERPRINT: ${{ vars.PACMAN_SIGNING_FINGERPRINT }}
+          PACMAN_GPG_PRIVATE_KEY: ${{ secrets.PACMAN_GPG_PRIVATE_KEY }}
+        run: |
+          [[ "$PACMAN_SIGNING_ENABLED" == true ]]
+          docker run --rm --tmpfs /run/keys:mode=0700 -v "$PWD:/work" -w /work \
+            -e GH_TOKEN -e PACMAN_SIGNING_FINGERPRINT -e PACMAN_GPG_PRIVATE_KEY \
+            archlinux:base-devel bash tools/release/package-pacman.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pacman-publication
+          path: |
+            dist/channel/signed/
+            dist/channel/pacman-publication.json
+          overwrite: true
+          if-no-files-found: ignore

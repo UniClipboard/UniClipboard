@@ -1,0 +1,55 @@
+name: Prepare package-manager release
+description: Verify a successful joint release and render exact package definitions
+inputs:
+  run-id:
+    description: Successful joint release run ID
+    required: true
+  run-attempt:
+    description: Joint release attempt
+    required: true
+  channel:
+    description: Package manager identifier
+    required: true
+  publish:
+    description: Request publication to the eligible channels
+    required: true
+outputs:
+  publish:
+    description: Whether the workflow can publish this selection
+    value: ${{ steps.prepare.outputs.publish }}
+  track:
+    description: Verified Desktop release track
+    value: ${{ steps.prepare.outputs.track }}
+  tag:
+    description: Verified Desktop release tag
+    value: ${{ steps.prepare.outputs.tag }}
+  version:
+    description: Verified Desktop product version
+    value: ${{ steps.prepare.outputs.version }}
+  build:
+    description: Verified Desktop build number
+    value: ${{ steps.prepare.outputs.build }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.13'
+    - id: prepare
+      shell: bash
+      env:
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        GH_TOKEN: ${{ github.token }}
+        RELEASE_RUN: ${{ inputs.run-id }}
+        RELEASE_ATTEMPT: ${{ inputs.run-attempt }}
+        PACKAGE_CHANNEL: ${{ inputs.channel }}
+        REQUEST_PUBLISH: ${{ inputs.publish }}
+      run: |
+        args=()
+        if [[ "$REQUEST_PUBLISH" == true ]]; then
+          [[ "$GITHUB_REF" == "refs/heads/$DEFAULT_BRANCH" ]]
+          args+=(--publish)
+        fi
+        python tools/release/package_channel.py prepare --run-id "$RELEASE_RUN" \
+          --attempt "$RELEASE_ATTEMPT" --channel "$PACKAGE_CHANNEL" --output dist/channel \
+          --github-output "$GITHUB_OUTPUT" "${args[@]}"

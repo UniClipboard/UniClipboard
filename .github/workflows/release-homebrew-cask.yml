@@ -1,0 +1,97 @@
+name: Release Homebrew official Cask
+run-name: Homebrew official Cask from joint release ${{ inputs.release_run_id }}/${{ inputs.release_run_attempt }}
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful joint release run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Successful joint release attempt
+        required: true
+        default: '1'
+        type: string
+      publish:
+        description: Publish or submit a verified Stable build (Alpha always previews)
+        type: boolean
+        default: false
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: release-package-homebrew-cask
+  queue: max
+jobs:
+  prepare:
+    runs-on: macos-15
+    timeout-minutes: 35
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+      version: ${{ steps.release.outputs.version }}
+      build: ${{ steps.release.outputs.build }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/package-release
+        id: release
+        with:
+          run-id: ${{ inputs.release_run_id }}
+          run-attempt: ${{ inputs.release_run_attempt }}
+          channel: homebrew-cask
+          publish: ${{ inputs.publish }}
+      - name: Validate the official Cask definition
+        run: brew style --only-cops Cask dist/channel/homebrew-cask/uniclipboard.rb
+      - if: ${{ !cancelled() && steps.release.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-cask-definitions
+          path: dist/channel/
+          overwrite: true
+          if-no-files-found: error
+
+  submit:
+    needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: homebrew-cask-production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          name: homebrew-cask-definitions
+          path: dist/channel
+      - name: Record the human review required by Homebrew Cask
+        id: review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          reviewer=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/approvals" \
+            --jq 'map(select(.state == "approved" and .user.type == "User" and any(.environments[]; .name == "homebrew-cask-production"))) | first | .user | select(. != null) | "\(.login) <\(.id)+\(.login)@users.noreply.github.com>"')
+          test -n "$reviewer"
+          printf 'author=%s\n' "$reviewer" >> "$GITHUB_OUTPUT"
+      - name: Submit the stable Cask update
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_CASK_TOKEN }}
+          PACKAGE_FORK: UniClipboard/homebrew-cask
+          PRODUCT_VERSION: ${{ needs.prepare.outputs.version }}
+          PRODUCT_BUILD: ${{ needs.prepare.outputs.build }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          PACKAGE_COAUTHOR: ${{ steps.review.outputs.author }}
+        run: |
+          export PR_BODY_FILE="$RUNNER_TEMP/cask-pr.md"
+          {
+            printf 'Update UniClipboard to %s (build %s).\n\nRelease: https://github.com/UniClipboard/UniClipboard/releases/tag/%s\n\n' \
+              "$PRODUCT_VERSION" "$PRODUCT_BUILD" "$RELEASE_TAG"
+            cat .github/release-notes/homebrew-cask-pr.md
+          } > "$PR_BODY_FILE"
+          bash tools/release/package-github.sh pr Homebrew/homebrew-cask "uniclipboard ${PRODUCT_VERSION},${PRODUCT_BUILD}" \
+            dist/channel/homebrew-cask/uniclipboard.rb=Casks/u/uniclipboard.rb

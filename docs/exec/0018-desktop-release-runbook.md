@@ -129,3 +129,60 @@ Follow the default branch cutover above before dispatching the dedicated release
 After production prerequisites and explicit remote-write authorization, run `Release Desktop` with `operation=github-draft`, the accepted candidate run ID and optional `previous_tag`. This stages a draft only. It does not upload to R2, change a channel or publish the page. macOS production signing/notarization and raw updater signing remain required even for remote staging. Windows Authenticode may remain unsigned. Use `publish` and `promote` as described above to complete delivery.
 
 Replay nonpublishing process acceptance with `python3 e2e/packaging/github_release.py`. It uses the actual `gh` executable against an isolated HTTP service and emits `.cache/github-release-e2e/report.json`, a page preview and checksums. It does not prove live GitHub creation, production-token permissions or publication.
+
+
+## Package-manager distribution
+
+On the default branch, a completed and successful joint release starts
+**Dispatch package-manager releases**. Each destination has its own Actions
+run. Alpha prepares preview definitions and packages. COPR Alpha submits to
+`uniclipboard-alpha`. Stable requests
+publication or upstream submission. npm remains part of the joint release.
+
+Retry one destination with the original joint run ID and attempt:
+
+```sh
+gh workflow run release-homebrew-tap.yml --ref main \
+  -f release_run_id=123456789 -f release_run_attempt=1 -f publish=true
+```
+
+Use `publish=false` to prepare definitions and build packages without
+mutating a destination. Retain the original run artifacts until distribution
+completes. An older Stable selection cannot overwrite the current selection.
+
+| Workflow | Destination and credentials |
+|---|---|
+| `release-homebrew-tap.yml` | Update the Cask and locked CLI Formula together in `UniClipboard/homebrew-tap`. `HOMEBREW_TAP_TOKEN` needs Contents write on the Tap. |
+| `release-homebrew-cask.yml` | Submit a Cask update from `UniClipboard/homebrew-cask`. Use `HOMEBREW_CASK_TOKEN` with access to that fork and upstream PRs. Configure required reviewers on `homebrew-cask-production`. Approve after reviewing the rendered Cask and its `zap` paths. The approver is recorded as a co-author and handles upstream replies. |
+| `release-scoop.yml` | Submit to Scoop Extras. Set `SCOOP_FORK` to an existing pushable fork and configure `SCOOP_TOKEN`. After the migration, Scoop can also track numbered Stable tags through its manifest. |
+| `release-winget.yml` | Validate and submit both architectures through WinGetCreate. Configure `WINGET_TOKEN`. |
+| `release-chocolatey.yml` | Pack and submit to the Chocolatey community repository. Configure `CHOCOLATEY_API_KEY`. |
+| `release-aur.yml` | Build and update the project-owned `uniclipboard-git` source package. Use `AUR_SSH_PRIVATE_KEY` and the verified Ed25519 entry in `AUR_HOST_FINGERPRINTS`. The build also saves the separate binary recipe. |
+| `release-pacman.yml` | Publish the signed x86_64 repository at `pacman-stable-x86_64`. Use the `pacman-production` environment and its `PACMAN_SIGNING_ENABLED`, `PACMAN_SIGNING_FINGERPRINT` and `PACMAN_GPG_PRIVATE_KEY`. The GitHub channel release must allow index updates. A client rejects a mixed index and signature during update. If the update stops in that state, restore the matching signed pair from the workflow artifact before retrying. |
+| `release-copr.yml` | Build an SRPM with both verified RPMs and submit to the existing `uniclipboard` (Stable) or `uniclipboard-alpha` (Alpha) project. Configure `COPR_LOGIN`, `COPR_TOKEN` and `COPR_USERNAME`. |
+| `release-snap.yml` | Build on both Linux architectures before uploading to Snap Store Stable. Configure `SNAPCRAFT_STORE_CREDENTIALS` for the registered `uniclipboard` snap. |
+| `release-nix.yml` | Build the pinned flake on both architectures and publish its source archive to `nix/v<version>-build.<build>`. |
+| `release-flatpak.yml` | Build both Flatpak bundles and publish them to `flatpak/v<version>-build.<build>`. Flathub requires its own human-authored submission. |
+
+Install the first-party Nix flake from the versioned
+`uniclipboard-nix.tar.gz` attachment with
+`nix profile install tarball+<asset-URL>`. Install the matching first-party
+Flatpak attachment with `flatpak install --user <bundle-file>` after making
+the specified GNOME runtime available. Each Release includes
+`SHA256SUMS.txt` linked to the exact Desktop catalogue.
+
+For upstream PRs or moderated stores, use the workflow log to find the
+submission. Check the destination index to confirm the package is publicly
+installable. The joint release and its dispatch do not wait for external
+moderation.
+
+Replay read-only preparation for an existing successful joint run:
+
+```sh
+python3 e2e/packaging/channel_release.py --run-id 45712164931 --attempt 1
+(cd .cache/channel-release-e2e && shasum -a 256 -c SHA256SUMS.txt)
+```
+
+This check uses real GitHub Actions receipts and release bytes while the
+source artifacts remain available. It emits a definition and catalogue
+digest report for every channel.

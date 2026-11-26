@@ -10,7 +10,7 @@ depends=('gtk3' 'libappindicator-gtk3')
 makedepends=('git' 'go' 'python')
 provides=('uniclipboard')
 conflicts=('uniclipboard' 'uniclipboard-bin')
-source=('uniclipboard::git+https://github.com/UniClipboard/UniClipboard.git#branch=v2')
+source=('uniclipboard::git+https://github.com/UniClipboard/UniClipboard.git#branch=main')
 sha256sums=('SKIP')
 options=('!strip' '!debug' '!lto')
 

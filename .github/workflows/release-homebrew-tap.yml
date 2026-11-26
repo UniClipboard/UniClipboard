@@ -1,0 +1,60 @@
+name: Release Homebrew Tap
+run-name: Homebrew Tap from joint release ${{ inputs.release_run_id }}/${{ inputs.release_run_attempt }}
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful joint release run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Successful joint release attempt
+        required: true
+        default: '1'
+        type: string
+      publish:
+        description: Publish or submit a verified Stable build (Alpha always previews)
+        type: boolean
+        default: false
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: release-package-homebrew-tap
+  queue: max
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/package-release
+        id: release
+        with:
+          run-id: ${{ inputs.release_run_id }}
+          run-attempt: ${{ inputs.release_run_attempt }}
+          channel: homebrew-tap
+          publish: ${{ inputs.publish }}
+      - name: Validate both definitions
+        run: |
+          brew style --only-cops Cask dist/channel/homebrew-tap/uniclipboard.rb
+          brew style --only-cops FormulaAudit dist/channel/homebrew-tap/Formula/uniclipboard.rb
+      - name: Update the Tap Cask and Formula in one commit
+        if: steps.release.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          PRODUCT_VERSION: ${{ steps.release.outputs.version }}
+          PRODUCT_BUILD: ${{ steps.release.outputs.build }}
+        run: |
+          bash tools/release/package-github.sh push UniClipboard/homebrew-tap "Release UniClipboard ${PRODUCT_VERSION}-build.${PRODUCT_BUILD}" \
+            dist/channel/homebrew-tap/uniclipboard.rb=Casks/uniclipboard.rb \
+            dist/channel/homebrew-tap/Formula/uniclipboard.rb=Formula/uniclipboard.rb
+      - if: ${{ !cancelled() && steps.release.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-tap-definitions
+          path: dist/channel/
+          overwrite: true
+          if-no-files-found: error

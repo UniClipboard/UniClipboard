@@ -1,0 +1,72 @@
+name: Release COPR
+run-name: COPR from joint release ${{ inputs.release_run_id }}/${{ inputs.release_run_attempt }}
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful joint release run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Successful joint release attempt
+        required: true
+        default: '1'
+        type: string
+      publish:
+        description: Submit to the matching Alpha or Stable COPR project
+        type: boolean
+        default: false
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: release-package-copr
+  queue: max
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/package-release
+        id: release
+        with:
+          run-id: ${{ inputs.release_run_id }}
+          run-attempt: ${{ inputs.release_run_attempt }}
+          channel: copr
+          publish: ${{ inputs.publish }}
+      - name: Build a source RPM with both exact binary payloads
+        run: |
+          docker run --rm -v "$PWD/dist/channel/copr:/work" -w /work fedora:44 bash -ec '
+            dnf -y install rpm-build
+            rpmbuild -bs --define "_sourcedir /work/payloads" --define "_srcrpmdir /work" uniclipboard.spec
+          '
+      - name: Submit the source RPM and wait for the COPR build
+        if: steps.release.outputs.publish == 'true'
+        env:
+          RELEASE_TRACK: ${{ steps.release.outputs.track }}
+          COPR_LOGIN: ${{ secrets.COPR_LOGIN }}
+          COPR_TOKEN: ${{ secrets.COPR_TOKEN }}
+          COPR_USERNAME: ${{ secrets.COPR_USERNAME }}
+        run: |
+          python tools/release/package_channel.py check-current --track "$RELEASE_TRACK" --manifest dist/channel/release-manifest.json
+          if [[ "$RELEASE_TRACK" == alpha ]]; then project=uniclipboard-alpha; else project=uniclipboard; fi
+          docker run --rm -v "$PWD/dist/channel/copr:/work:ro" -w /work \
+            -e COPR_LOGIN -e COPR_TOKEN -e COPR_USERNAME -e COPR_PROJECT="$project" fedora:44 bash -ec '
+              test -n "$COPR_LOGIN" && test -n "$COPR_TOKEN" && test -n "$COPR_USERNAME"
+              dnf -y install copr-cli
+              umask 077
+              mkdir -p ~/.config
+              printf "[copr-cli]\nlogin = %s\ntoken = %s\nusername = %s\ncopr_url = https://copr.fedorainfracloud.org\n" \
+                "$COPR_LOGIN" "$COPR_TOKEN" "$COPR_USERNAME" > ~/.config/copr
+              copr-cli build "$COPR_USERNAME/$COPR_PROJECT" ./*.src.rpm
+            '
+      - if: ${{ !cancelled() && steps.release.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: copr-definitions
+          path: dist/channel/
+          overwrite: true
+          if-no-files-found: error

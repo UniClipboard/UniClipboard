@@ -1,0 +1,64 @@
+name: Release Chocolatey
+run-name: Chocolatey from joint release ${{ inputs.release_run_id }}/${{ inputs.release_run_attempt }}
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful joint release run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Successful joint release attempt
+        required: true
+        default: '1'
+        type: string
+      publish:
+        description: Publish or submit a verified Stable build (Alpha always previews)
+        type: boolean
+        default: false
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: release-package-chocolatey
+  queue: max
+jobs:
+  release:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/package-release
+        id: release
+        with:
+          run-id: ${{ inputs.release_run_id }}
+          run-attempt: ${{ inputs.release_run_attempt }}
+          channel: chocolatey
+          publish: ${{ inputs.publish }}
+      - name: Pack the Chocolatey definition
+        shell: pwsh
+        run: |
+          Set-Location dist/channel/chocolatey
+          choco pack uniclipboard.nuspec --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Submit the Chocolatey package
+        if: steps.release.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          if (-not $env:CHOCO_API_KEY) { throw 'CHOCOLATEY_API_KEY is required' }
+          python tools/release/package_channel.py check-current --manifest dist/channel/release-manifest.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $package = Get-ChildItem dist/channel/chocolatey -Filter '*.nupkg'
+          choco push $package.FullName --source https://push.chocolatey.org/ --api-key $env:CHOCO_API_KEY --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - if: ${{ !cancelled() && steps.release.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: chocolatey-definitions
+          path: dist/channel/
+          overwrite: true
+          if-no-files-found: error

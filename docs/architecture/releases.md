@@ -48,6 +48,7 @@ paths:
   - .github/workflows/check-expo.yml
   - .github/workflows/release-android.yml
   - .github/workflows/release-ios.yml
+  - .github/workflows/mirror-gitcode.yml
   - .github/workflows/prepare-release.yml
   - .github/workflows/release-on-merge.yml
   - .github/workflows/release-checks.yml
@@ -57,7 +58,7 @@ paths:
   - tools/ci
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: fb7d3d0b42e8a420da9d1c6c80757b016d24c3cd
+verified: 836a8b1c4f5fbae2cc3e8d221da370e57f226a43
 ---
 # Product builds and CLI releases
 
@@ -192,6 +193,14 @@ After a successful joint release on the default branch, `dispatch-package-releas
 Alpha runs prepare definitions and build preview packages. COPR submits to its separate Alpha project. Stable runs can publish or submit after rechecking the current Stable selection and native acceptance. Each workflow can be retried independently against the same joint run. Registry review and public package availability have separate outcomes.
 
 The publication destinations are the project Homebrew Tap, Homebrew Cask, Scoop Extras, Chocolatey, WinGet, the project-owned AUR source package, the signed x86_64 pacman repository, COPR and the Snap Store. Nix and Flatpak publish versioned first-party assets through GitHub Releases. See the [delivery runbook](../exec/0018-desktop-release-runbook.md#package-manager-distribution) for credentials, retry inputs and first-party installation.
+
+### GitCode release mirroring
+
+GitHub Releases and R2 remain authoritative. `.github/workflows/mirror-gitcode.yml` mirrors the FlareRelease-registered artifacts of a published Desktop (`desktop/v<version>-build.<build>`, six updater archives) or Android (`android/v<version>-build.<build>`, production APK) release to GitCode and registers each verified copy with FlareRelease (`PUT /api/mirrors`) so mainland China downloads can redirect to it.
+
+`tools/release/gitcode_mirror.py prepare` validates that the GitHub Release is published (not draft), verifies the immutable `release-manifest.json` (Desktop) or `candidate.json` (Android) metadata asset and cross-checks artifact sizes and SHA-256 digests against the GitHub Release assets without downloading the installers onto the runner. Because `mkdir700/gitcode-release-mirror` (pinned at `5055ef17b7302e27ca53cbe5f6e44722f7e55f6b`, `v1.0.0`) forbids `/` in GitCode tags, the workflow maps `desktop/v<ver>-build.<n>` and `android/v<ver>-build.<n>` to `desktop-v<ver>-build.<n>` and `android-v<ver>-build.<n>`.
+
+The Action runs inside the main-only `mirror` environment over SSH to the Shanghai relay host, which fetches each artifact from R2 (`https://release.uniclipboard.app/artifacts/<product>/<ver>/build.<n>/<file>`), verifies its SHA-256, uploads or reuses identical GitCode assets without overwriting, and reads them back anonymously. `tools/release/gitcode_mirror.py register` then runs on the GitHub runner so FlareRelease Access credentials never leave GitHub, sending `product`, `version`, `buildNumber`, `filename`, `provider: "gitcode"`, `downloadUrl`, `size`, `sha256` and `source` only for receipt entries with status `mirrored` or `reused`, exact digest/size match, and a plain HTTPS GitCode/AtomGit URL. Joint Desktop releases dispatch `mirror-gitcode.yml` on the default branch from `dispatch-package-releases.yml`; standalone `release-desktop.yml` and `release-android.yml` publications dispatch it on the default branch after GitHub Release publication; human-published releases re-dispatch via `redispatch-from-release`. Live end-to-end mirroring for numbered builds requires FlareRelease's `PUT /api/mirrors` endpoint to accept `buildNumber` and the Shanghai host allow-list (`/etc/gitcode-release-mirror/config.json`) to admit `.update.tar.gz` (and `.apk` for Android). See the [delivery runbook](../exec/0018-desktop-release-runbook.md#gitcode-release-mirroring).
 
 `go run ./tools/package -product cli` builds `unic` and `unicd` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
 
@@ -357,7 +366,7 @@ Every PR-triggered workflow declares explicit path filters so unrelated changes 
 | Nix flake check | `.github/workflows/check-nix.yml` | `flake.nix`, `nix/**`, `go.mod`, `go.sum`, `packaging/linux/**`, Desktop icons/assets and workflow changes. |
 | Docs Check (`docs-site`) | `.github/workflows/docs-check.yml` | `docs-site/**` and workflow changes. |
 | Repo docs check | `.github/workflows/repo-docs-check.yml` | Repository Markdown docs (`docs/**`, `AGENTS.md`, `README*.md`, `CONTRIBUTING.md`, `SECURITY.md`) and `tools/docscheck/**`, running `go run ./tools/docscheck`. |
-| Release checks | `.github/workflows/release-checks.yml` | `release/**`, `prepare-release` / `release-on-merge` / mobile release workflows, prompt/templates and `tools/release/{prepare_release,mobile,android_release,ios_profiles}.py`. Runs fast metadata/notes/branch validation (`tools/ci/validate_release.py`) plus `prepare_release_test.py` and `mobile_delivery_test.py`. |
+| Release checks | `.github/workflows/release-checks.yml` | `release/**`, `prepare-release` / `release-on-merge` / mobile release / `mirror-gitcode` workflows, prompt/templates and `tools/release/{prepare_release,mobile,android_release,gitcode_mirror,ios_profiles}.py`. Runs fast metadata/notes/branch validation (`tools/ci/validate_release.py`) plus `prepare_release_test.py`, `mobile_delivery_test.py` and `gitcode_mirror_test.py`. |
 
 `tools/ci/pr_changes_test.py` verifies both the `pr-checks.yml` job classifier and the workflow `paths:` trigger matrix against representative PR file sets.
 
@@ -403,8 +412,10 @@ CLI assembly, publication and promotion share the pinned npm download cache. Des
 | `internal/localpaths` | Shared v1 source location without directory creation. |
 | `tools/package` | Go CLI builds/aliases, exact Desktop staging, native formats, channel definitions and repository construction. |
 | `tools/release/release.py` | Assembly, native smoke, npm publish/promote and durable build records. |
+| `tools/release/gitcode_mirror.py` | Published release validation, R2 mirror source assembly and FlareRelease `PUT /api/mirrors` registration for Desktop and Android. |
 | `.github/workflows/build-cli.yml` | Native CLI target construction and acceptance. |
 | `.github/workflows/release-cli.yml` | Candidate recovery, reusable build and npm publication. |
+| `.github/workflows/mirror-gitcode.yml` | Main-only SSH relay mirror to GitCode and FlareRelease mirror registration for Desktop and Android. |
 | `.github/workflows/promote.yml` | Exact npm build promotion. |
 | `e2e/release` | Real Go/npm processes, disposable registry and GitHub command fixture. |
 
@@ -422,7 +433,7 @@ The report records source hashes, process observations and assertions. Acceptanc
 
 ## Gaps
 
-Stable advancement requires the exact Desktop acceptance and publication receipts described above. Each distribution format has its own availability and acceptance evidence. Native sandbox GUI, package refresh and real-OS clipboard, file and network acceptance remain separate checks. GitCode delivery is deferred.
+Stable advancement requires the exact Desktop acceptance and publication receipts described above. Each distribution format has its own availability and acceptance evidence. Native sandbox GUI, package refresh and real-OS clipboard, file and network acceptance remain separate checks. GitCode mirror workflow, tooling and offline process tests are implemented; live end-to-end mirroring for numbered builds still requires FlareRelease `PUT /api/mirrors` `buildNumber` support and Shanghai relay host allow-list updates for `.update.tar.gz` and `.apk`.
 
 Mobile candidate builds, simulator runs, production signing, Store upload and rollout each have their own acceptance gate. The [mobile release preparation receipt](../exec/0031-mobile-m5-receipt.md) records candidate builds and simulator observations. The [iPhone receipt](../exec/0031-mobile-m2-receipt.md#ios-physical-device-acceptance) records the physical-device scenarios tested so far.
 

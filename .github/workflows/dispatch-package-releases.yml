@@ -19,6 +19,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       joint: ${{ steps.selection.outputs.joint }}
+      tag: ${{ steps.selection.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -59,3 +60,21 @@ jobs:
           gh workflow run "release-${PACKAGE_CHANNEL}.yml" --repo "$GITHUB_REPOSITORY" \
             --ref "$DEFAULT_BRANCH" -f release_run_id="$RELEASE_RUN" \
             -f release_run_attempt="$RELEASE_ATTEMPT" -f publish=true
+
+  dispatch-gitcode-mirror:
+    needs: select
+    if: needs.select.outputs.joint == 'true' && needs.select.outputs.tag != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Start GitCode release mirror workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TAG_NAME: ${{ needs.select.outputs.tag }}
+        run: |
+          gh workflow run mirror-gitcode.yml --repo "$GITHUB_REPOSITORY" \
+            --ref "$DEFAULT_BRANCH" -f tag_name="$TAG_NAME"
+          echo "Dispatched mirror-gitcode.yml for $TAG_NAME from $DEFAULT_BRANCH." >> "$GITHUB_STEP_SUMMARY"

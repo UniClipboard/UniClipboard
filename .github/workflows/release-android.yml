@@ -224,6 +224,8 @@ jobs:
     permissions:
       contents: write
     timeout-minutes: 25
+    outputs:
+      published_tag: ${{ steps.published_tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -328,6 +330,11 @@ jobs:
             --generated-notes dist/generated-notes.md \
             --publication dist/publication.json \
             "${args[@]}"
+      - name: Record published GitHub Release tag
+        id: published_tag
+        run: |
+          tag=$(python3 -c 'import json; print(json.load(open("dist/github-page/github-receipt.json"))["tag"])')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -339,3 +346,21 @@ jobs:
             dist/github-page/release-notes.md
             dist/github-page/SHA256SUMS.txt
           if-no-files-found: warn
+
+  dispatch-gitcode-mirror:
+    needs: deliver
+    if: ${{ success() && inputs.publish && needs.deliver.outputs.published_tag != '' && github.repository == 'UniClipboard/UniClipboard' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch GitCode mirror from default branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TAG_NAME: ${{ needs.deliver.outputs.published_tag }}
+        run: |
+          gh workflow run mirror-gitcode.yml --repo "$GITHUB_REPOSITORY" \
+            --ref "$DEFAULT_BRANCH" -f tag_name="$TAG_NAME"
+          echo "Dispatched mirror-gitcode.yml for $TAG_NAME from $DEFAULT_BRANCH." >> "$GITHUB_STEP_SUMMARY"

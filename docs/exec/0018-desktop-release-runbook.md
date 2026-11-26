@@ -186,3 +186,24 @@ python3 e2e/packaging/channel_release.py --run-id 45712164931 --attempt 1
 This check uses real GitHub Actions receipts and release bytes while the
 source artifacts remain available. It emits a definition and catalogue
 digest report for every channel.
+
+## GitCode release mirroring
+
+After a published Desktop or Android release completes, `.github/workflows/mirror-gitcode.yml` is dispatched on `main` to copy the FlareRelease-registered artifacts (Desktop's 6 updater archives or Android's production APK) from R2 to GitCode via `mkdir700/gitcode-release-mirror@5055ef17b7302e27ca53cbe5f6e44722f7e55f6b` (`v1.0.0`) and register each verified copy with FlareRelease (`PUT /api/mirrors`).
+
+GitHub tags map `/` to `-` on GitCode (`desktop/v2.0.0-build.11` -> `desktop-v2.0.0-build.11`, `android/v3.0.0-build.206` -> `android-v3.0.0-build.206`) because the Action forbids `/` in release tags.
+
+Retry or backfill a published release manually from `main`:
+
+```sh
+gh workflow run mirror-gitcode.yml --ref main -f tag_name=desktop/v2.0.0-build.11
+gh workflow run mirror-gitcode.yml --ref main -f tag_name=android/v3.0.0-build.206
+```
+
+### Required configuration and external prerequisites
+
+- `mirror` environment (deployment branch restricted to `main`): `GITCODE_MIRROR_ACTION_SSH_KEY` (secret) and `GITCODE_MIRROR_ACTION_SSH_USER` (variable).
+- Repository variables: `MIRROR_SSH_HOST`, `MIRROR_SSH_KNOWN_HOSTS`, optional `MIRROR_SSH_PORT` (default `22`), `GITCODE_OWNER`, `GITCODE_REPO`, optional Android overrides `GITCODE_ANDROID_OWNER` / `GITCODE_ANDROID_REPO`, optional `UPDATE_SERVER_URL` (default `https://release.uniclipboard.app`), optional `FLARE_RELEASE_ADMIN_URL` (default `https://release-admin.uniclipboard.app`).
+- Shared organization secrets: `GITCODE_RELEASE_TOKEN`, `FLARE_RELEASE_ACCESS_CLIENT_ID`, `FLARE_RELEASE_ACCESS_CLIENT_SECRET`.
+- **FlareRelease prerequisite**: update `UniClipboard/FlareRelease` `PUT /api/mirrors` (and `POST /api/mirrors/revoke`) to accept optional `buildNumber` and match `r.build_number = ?` instead of hardcoding `r.build_number IS NULL`. Public redirect (`findMirrorRedirect`) already matches by `a.r2_key`.
+- **Shanghai relay host prerequisite**: update `/etc/gitcode-release-mirror/config.json` `fileNamePattern` to allow `.update.tar.gz` (Linux/Windows v2 Desktop updaters) and `.apk` (Android), and ensure `allowedRepositories` includes the target Android repository if `GITCODE_ANDROID_REPO` differs from `GITCODE_REPO`. `allowedSourcePrefixes` (`https://release.uniclipboard.app/artifacts/`) already admits v2 Desktop and Android R2 URLs.

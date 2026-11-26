@@ -284,31 +284,33 @@ func (d *viewState) editShortcuts(c *ui.Context, k desktopkit.Kit, cfg *localcon
 					if caption == "" {
 						caption = d.tr("关闭")
 					}
-					trigger := k.Button(c.Key("edit"), caption, desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Disabled: d.live.busy})
-					if trigger.Clicked() {
+					trigger := k.Button(c.Key("edit"), caption, desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Disabled: d.live.showBusy()})
+					if trigger.Clicked() && !d.live.busy {
 						*editor = shortcutEditor{id: action.ID}
 					}
 					if editor.id == action.ID {
 						changed = d.recordShortcut(c.Key("record"), k, cfg, trigger) || changed
 					}
 					_, command := k.ToolbarIconMenu(c.Key("binding-menu"), desktopkit.ToolbarIconMenuProps{
-						Label: d.tr("更多操作"), Icon: desktopkit.IconMore, Disabled: d.live.busy,
+						Label: d.tr("更多操作"), Icon: desktopkit.IconMore, Disabled: d.live.showBusy(),
 						Items: []desktopkit.MenuEntry{
-							{ID: "reset", Label: d.tr("恢复默认"), Disabled: d.live.busy || cfg.Desktop.Shortcuts[action.ID] == nil},
-							{ID: "clear", Label: d.tr("清除绑定"), Disabled: d.live.busy || len(keys) == 0},
+							{ID: "reset", Label: d.tr("恢复默认"), Disabled: d.live.showBusy() || cfg.Desktop.Shortcuts[action.ID] == nil},
+							{ID: "clear", Label: d.tr("清除绑定"), Disabled: d.live.showBusy() || len(keys) == 0},
 						},
 					})
-					switch command {
-					case "reset":
-						changed = d.applyShortcut(cfg, action.ID, nil) || changed
-					case "clear":
-						changed = d.applyShortcut(cfg, action.ID, []string{}) || changed
+					if !d.live.busy {
+						switch command {
+						case "reset":
+							changed = d.applyShortcut(cfg, action.ID, nil) || changed
+						case "clear":
+							changed = d.applyShortcut(cfg, action.ID, []string{}) || changed
+						}
 					}
 				})
 			}
 		})
 	}
-	if k.Button(c.Key("reset-shortcuts"), d.tr("全部恢复默认"), desktopkit.ButtonProps{Disabled: d.live.busy || len(cfg.Desktop.Shortcuts) == 0}).Clicked() {
+	if k.Button(c.Key("reset-shortcuts"), d.tr("全部恢复默认"), desktopkit.ButtonProps{Disabled: d.live.showBusy() || len(cfg.Desktop.Shortcuts) == 0}).Clicked() && !d.live.busy {
 		cfg.Desktop.Shortcuts = nil
 		*editor = shortcutEditor{}
 		changed = true
@@ -383,7 +385,7 @@ func (d *viewState) recordShortcut(c *ui.Context, k desktopkit.Kit, cfg *localco
 			ui.Text(c.Key("hint"), d.tr("Enter 确认 · Esc 取消")).FontSize(11).TextColor(k.Color("text-secondary"))
 			if k.Button(c.Key("save"), d.tr("确认"), desktopkit.ButtonProps{
 				Variant: desktopkit.Primary, Size: desktopkit.SizeSmall,
-				Disabled: d.live.busy || editor.value == "",
+				Disabled: d.live.showBusy() || editor.value == "",
 			}).Clicked() {
 				changed = save()
 			}

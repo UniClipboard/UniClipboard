@@ -12,7 +12,8 @@ import (
 // application to every native window through mygo's shared theme source.
 func (d *viewState) liveAppearanceContent(c *ui.Context, k desktopkit.Kit, cfg *config.Config) bool {
 	changed := false
-	busy := d.live.busy
+	busy := d.live.showBusy()
+	logicBusy := d.live.busy
 
 	// 1. Visual Color Mode cards (matching prototype/settings.html).
 	k.SettingsGroup(c.Key("appearance"), desktopkit.SettingsGroupProps{
@@ -67,7 +68,7 @@ func (d *viewState) liveAppearanceContent(c *ui.Context, k desktopkit.Kit, cfg *
 						})
 					})
 				})
-				if card.Clicked() && !busy && !selected {
+				if card.Clicked() && !logicBusy && !selected {
 					cfg.Desktop.ColorMode = m.id
 					changed = true
 				}
@@ -89,7 +90,7 @@ func (d *viewState) liveAppearanceContent(c *ui.Context, k desktopkit.Kit, cfg *
 					{Value: "cat", Label: d.tr("经典猫头")},
 				},
 			})
-			if seg.Changed && !busy {
+			if seg.Changed && !logicBusy {
 				changed = true
 			}
 		})
@@ -107,7 +108,7 @@ func (d *viewState) liveAppearanceContent(c *ui.Context, k desktopkit.Kit, cfg *
 			if k.Switch(c, &cfg.Desktop.SystemWindowFrame, desktopkit.SwitchProps{
 				Label:    d.tr("使用系统边框"),
 				Disabled: busy,
-			}).Changed() {
+			}).Changed() && !logicBusy {
 				changed = true
 			}
 		})

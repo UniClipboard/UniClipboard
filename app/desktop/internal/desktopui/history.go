@@ -1032,7 +1032,7 @@ func (d *viewState) historyActionsFor(id, placement, idPrefix string) []desktopk
 				ID:       idPrefix + action.Key,
 				Label:    d.tr(action.Title),
 				Subtitle: d.actionPluginLabel(action.PluginID),
-				Disabled: d.live.busy,
+				Disabled: d.live.showBusy(),
 			})
 		}
 	}
@@ -1055,7 +1055,7 @@ func (d *viewState) historyItemMenu(ids []string) []desktopkit.MenuEntry {
 	sendDisabled := len(ids) != 1 || len(sendChildren) == 0 || sendChildren[0].Disabled
 	entries := []desktopkit.MenuEntry{
 		{ID: "copy", Label: d.tr("复制"), Icon: desktopkit.IconCopy, Disabled: len(ids) != 1},
-		{ID: "pin", Label: pinLabel, Icon: desktopkit.IconPin, Disabled: len(ids) == 0 || d.live != nil && d.live.busy},
+		{ID: "pin", Label: pinLabel, Icon: desktopkit.IconPin, Disabled: len(ids) == 0 || d.live != nil && d.live.showBusy()},
 		{ID: "send", Label: d.tr("发送到"), Icon: desktopkit.IconSend, Disabled: sendDisabled, Children: sendChildren},
 	}
 	if len(ids) == 1 {
@@ -1064,7 +1064,7 @@ func (d *viewState) historyItemMenu(ids []string) []desktopkit.MenuEntry {
 				ID:       "actions",
 				Label:    d.tr("动作"),
 				Icon:     desktopkit.IconEdit,
-				Disabled: d.live != nil && d.live.busy,
+				Disabled: d.live != nil && d.live.showBusy(),
 				Children: actionChildren,
 			})
 		}

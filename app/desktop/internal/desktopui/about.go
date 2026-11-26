@@ -244,7 +244,8 @@ func (d *viewState) aboutContent(c *ui.Context, k desktopkit.Kit) {
 	channel := d.currentUpdateChannel()
 	ver, _ := d.aboutVersionParts()
 	badgeChannel := parseAboutChannel(ver, channel)
-	busy := d.live != nil && d.live.busy
+	busy := d.live != nil && d.live.showBusy()
+	logicBusy := d.live != nil && d.live.busy
 	isExternalOwner := status.Owner != "" && status.Owner != "direct"
 
 	// 1. App header: icon + title + channel badge + version + check-for-updates button.
@@ -267,7 +268,7 @@ func (d *viewState) aboutContent(c *ui.Context, k desktopkit.Kit) {
 			})
 			k.Text(c.Key("version"), fmt.Sprintf(d.tr("版本 %s"), d.aboutDisplayVersion()), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary})
 		})
-		if k.Button(c.Key("check-update"), d.tr("检查更新"), desktopkit.ButtonProps{Variant: desktopkit.Standard, Size: desktopkit.SizeSmall, Icon: desktopkit.IconUpdate, Disabled: busy}).Clicked() {
+		if k.Button(c.Key("check-update"), d.tr("检查更新"), desktopkit.ButtonProps{Variant: desktopkit.Standard, Size: desktopkit.SizeSmall, Icon: desktopkit.IconUpdate, Disabled: busy}).Clicked() && !logicBusy {
 			if d.live == nil {
 				d.about.updateNotice = "当前已是最新版本。"
 				d.toastInfo(d.tr(d.about.updateNotice), desktopkit.ToastOptions{ID: "about-update"})
@@ -292,7 +293,7 @@ func (d *viewState) aboutContent(c *ui.Context, k desktopkit.Kit) {
 			Label:       d.tr("自动检查更新"),
 			Description: d.tr("应用启动时自动检查是否有新版本"),
 		}, nil, func() {
-			if k.Switch(c, &autoCheck, desktopkit.SwitchProps{Label: d.tr("自动检查更新"), Disabled: prefsDisabled}).Changed() {
+			if k.Switch(c, &autoCheck, desktopkit.SwitchProps{Label: d.tr("自动检查更新"), Disabled: prefsDisabled}).Changed() && !logicBusy {
 				if d.live == nil {
 					d.options["autoCheckUpdate"] = autoCheck
 				} else if d.about.updateSetPrefs != nil {
@@ -311,7 +312,7 @@ func (d *viewState) aboutContent(c *ui.Context, k desktopkit.Kit) {
 			Label:       d.tr("后台下载更新"),
 			Description: downloadDesc,
 		}, nil, func() {
-			if k.Switch(c, &autoDownload, desktopkit.SwitchProps{Label: d.tr("后台下载更新"), Disabled: prefsDisabled || !autoCheck}).Changed() {
+			if k.Switch(c, &autoDownload, desktopkit.SwitchProps{Label: d.tr("后台下载更新"), Disabled: prefsDisabled || !autoCheck}).Changed() && !logicBusy {
 				if d.live == nil {
 					d.options["autoDownloadUpdate"] = autoDownload
 				} else if d.about.updateSetPrefs != nil {
@@ -335,7 +336,7 @@ func (d *viewState) aboutContent(c *ui.Context, k desktopkit.Kit) {
 					{Value: "alpha", Label: d.tr("内测版")},
 				},
 			})
-			if res.Changed && selectedChannel != channel {
+			if res.Changed && !logicBusy && selectedChannel != channel {
 				if selectedChannel == "alpha" {
 					d.about.pendingChannel = "alpha"
 					d.about.alphaWarningOpen = true

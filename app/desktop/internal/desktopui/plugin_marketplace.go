@@ -96,6 +96,9 @@ func (d *viewState) installedExternalPlugin(id string) (api.PluginInfo, bool) {
 }
 
 func (d *viewState) setExternalPluginEnabled(cfg config.Config, id string, on bool) {
+	if d.live.busy {
+		return
+	}
 	if item, ok := d.installedExternalPlugin(id); on && ok && item.LiveStart && item.RunningVersion == "" {
 		d.startExternalPlugin(id)
 		return
@@ -115,6 +118,9 @@ func (d *viewState) setExternalPluginEnabled(cfg config.Config, id string, on bo
 	if on {
 		cfg.Plugins.Order = append(cfg.Plugins.Order, id)
 	}
+	if idx := slices.IndexFunc(d.live.externalPlugins, func(item api.PluginInfo) bool { return item.ID == id }); idx >= 0 {
+		d.live.externalPlugins[idx].Configured = on
+	}
 	d.saveLiveConfig(cfg)
 }
 
@@ -126,11 +132,11 @@ func (d *viewState) startExternalPlugin(id string) {
 	}
 	p.installError = ""
 	p.installNotice = ""
-	l.busy = true
+	l.startBusy("")
 	if !l.enqueueWithin(func(ctx context.Context) func() {
 		info, err := l.client.StartPlugin(ctx, id)
 		return func() {
-			l.busy = false
+			l.stopBusy()
 			l.nextRefresh = time.Time{}
 			if err != nil {
 				p.installError = d.tr("启动失败") + " · " + liveErrorMessage(err)
@@ -145,7 +151,7 @@ func (d *viewState) startExternalPlugin(id string) {
 			}
 		}
 	}, 15*time.Second) {
-		l.busy = false
+		l.stopBusy()
 	}
 }
 
@@ -161,7 +167,7 @@ func (d *viewState) installMarketplacePlugin(req api.PluginInstallRequest, displ
 	p.installingID = trackID
 	p.installError = ""
 	p.installNotice = ""
-	l.busy = true
+	l.startBusy("")
 	client := l.client
 	if !l.enqueueWithin(func(ctx context.Context) func() {
 		info, err := client.InstallPlugin(ctx, req)
@@ -172,7 +178,7 @@ func (d *viewState) installMarketplacePlugin(req api.PluginInstallRequest, displ
 			saved, _ = client.Config(ctx)
 		}
 		return func() {
-			l.busy = false
+			l.stopBusy()
 			p.installingID = ""
 			if err != nil {
 				p.installError = d.tr("安装失败：") + err.Error()
@@ -212,7 +218,7 @@ func (d *viewState) installMarketplacePlugin(req api.PluginInstallRequest, displ
 			p.manualRepo, p.manualRef, p.manualPath = "", "", ""
 		}
 	}, pluginInstallTimeout) {
-		l.busy = false
+		l.stopBusy()
 		p.installingID = ""
 	}
 }
@@ -225,7 +231,7 @@ func (d *viewState) uninstallExternalPlugin(id, displayName string) {
 	}
 	p.installError = ""
 	p.installNotice = ""
-	l.busy = true
+	l.startBusy("")
 	client := l.client
 	if !l.enqueue(func(ctx context.Context) func() {
 		err := client.UninstallPlugin(ctx, id)
@@ -236,7 +242,7 @@ func (d *viewState) uninstallExternalPlugin(id, displayName string) {
 			saved, _ = client.Config(ctx)
 		}
 		return func() {
-			l.busy = false
+			l.stopBusy()
 			p.uninstallOpen = false
 			if err != nil {
 				p.installError = d.tr("卸载失败：") + err.Error()
@@ -257,7 +263,7 @@ func (d *viewState) uninstallExternalPlugin(id, displayName string) {
 			d.toastInfo(p.installNotice, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 		}
 	}) {
-		l.busy = false
+		l.stopBusy()
 	}
 }
 
@@ -269,7 +275,7 @@ func (d *viewState) rollbackExternalPlugin(id, displayName string) {
 	}
 	p.installError = ""
 	p.installNotice = ""
-	l.busy = true
+	l.startBusy("")
 	client := l.client
 	if !l.enqueue(func(ctx context.Context) func() {
 		_, err := client.RollbackPlugin(ctx, id)
@@ -278,7 +284,7 @@ func (d *viewState) rollbackExternalPlugin(id, displayName string) {
 			plugins, _ = client.Plugins(ctx)
 		}
 		return func() {
-			l.busy = false
+			l.stopBusy()
 			p.rollbackOpen = false
 			if err != nil {
 				p.installError = d.tr("回滚失败：") + err.Error()
@@ -292,7 +298,7 @@ func (d *viewState) rollbackExternalPlugin(id, displayName string) {
 			d.toastSuccess(p.installNotice, desktopkit.ToastOptions{ID: toastIDPluginFeedback})
 		}
 	}) {
-		l.busy = false
+		l.stopBusy()
 	}
 }
 
@@ -426,7 +432,7 @@ func (d *viewState) pluginsMarketplaceWorkspace(c *ui.Context, k desktopkit.Kit)
 				// Sticky subtle footer on left pane (developer manual install tucked cleanly here).
 				ui.Row(c.Key("market-footer")).Padding(8, 16).Background(deviceToolbarBg(k)).InsetShadow(0, 1, 0, 0, k.Color("separator-border")).Justify(ui.SpaceBetween).AlignItems(ui.Center).Shrink(0).Children(func() {
 					k.Text(c.Key("note"), d.tr("从市场安装的插件都会在本地进行完整性校验。"), footnote)
-					if k.Button(c.Key("market-manual-link"), d.tr("开发者：从链接手动安装"), desktopkit.ButtonProps{Variant: desktopkit.Link, Disabled: l.busy}).Clicked() {
+					if k.Button(c.Key("market-manual-link"), d.tr("开发者：从链接手动安装"), desktopkit.ButtonProps{Variant: desktopkit.Link, Disabled: l.showBusy()}).Clicked() && !l.busy {
 						p.manualOpen = true
 						p.installError = ""
 					}
@@ -551,7 +557,7 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 					if installing {
 						lbl = d.tr("正在安装…")
 					}
-					if k.Button(c.Key("m-install"), lbl, desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconDownload, Busy: installing, Disabled: l.busy || p.installingID != ""}).Clicked() {
+					if k.Button(c.Key("m-install"), lbl, desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconDownload, Busy: installing, Disabled: l.showBusy() || p.installingID != ""}).Clicked() {
 						d.installMarketplacePlugin(api.PluginInstallRequest{
 							Repository: entry.Repository,
 							Ref:        entry.Ref,
@@ -565,7 +571,7 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 						if installing {
 							lbl = d.tr("正在安装…")
 						}
-						if k.Button(c.Key("m-update"), lbl, desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconUpdate, Busy: installing, Disabled: l.busy || p.installingID != ""}).Clicked() {
+						if k.Button(c.Key("m-update"), lbl, desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconUpdate, Busy: installing, Disabled: l.showBusy() || p.installingID != ""}).Clicked() {
 							d.installMarketplacePlugin(api.PluginInstallRequest{
 								Repository: entry.Repository,
 								Ref:        entry.Ref,
@@ -580,11 +586,11 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 						if inst.LiveStart && inst.RunningVersion == "" {
 							label = "启动"
 						}
-						if k.Button(c.Key("m-enable"), d.tr(label), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy}).Clicked() {
+						if k.Button(c.Key("m-enable"), d.tr(label), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.showBusy()}).Clicked() {
 							d.setExternalPluginEnabled(cfg, inst.ID, true)
 						}
 					} else {
-						if k.Button(c.Key("m-disable"), d.tr("停用"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
+						if k.Button(c.Key("m-disable"), d.tr("停用"), desktopkit.ButtonProps{Disabled: l.showBusy()}).Clicked() {
 							d.setExternalPluginEnabled(cfg, inst.ID, false)
 						}
 					}
@@ -593,7 +599,7 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 						if isWeType(inst) && inst.Configured && d.channelForPlugin(inst.ID) == nil {
 							label, icon = "加入共享空间", desktopkit.IconLink
 						}
-						if k.Button(c.Key("m-options"), d.tr(label), desktopkit.ButtonProps{Icon: icon, Disabled: l.busy}).Clicked() {
+						if k.Button(c.Key("m-options"), d.tr(label), desktopkit.ButtonProps{Icon: icon, Disabled: l.showBusy()}).Clicked() && !l.busy {
 							p.id = inst.ID
 							p.view = ""
 							p.form = nil
@@ -601,7 +607,7 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 						}
 					}
 					if inst.Source != "local" {
-						if k.Button(c.Key("m-uninstall"), d.tr("卸载"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Icon: desktopkit.IconDelete, Disabled: l.busy}).Clicked() {
+						if k.Button(c.Key("m-uninstall"), d.tr("卸载"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Icon: desktopkit.IconDelete, Disabled: l.showBusy()}).Clicked() && !l.busy {
 							p.uninstallOpen = true
 							p.uninstallID = inst.ID
 							p.uninstallName = entry.Name
@@ -702,13 +708,13 @@ func (d *viewState) pluginsAdvancedView(c *ui.Context, k desktopkit.Kit, cfg con
 				Label:       fmt.Sprintf("%d. %s", idx+1, nameOf(id)),
 				Description: id,
 			}, nil, func() {
-				if k.Button(c.Key("up-"+id), d.tr("上移"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: idx == 0 || l.busy}).Clicked() {
+				if k.Button(c.Key("up-"+id), d.tr("上移"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: idx == 0 || l.showBusy()}).Clicked() && !l.busy {
 					next := slices.Clone(order)
 					next[idx-1], next[idx] = next[idx], next[idx-1]
 					cfg.Plugins.Order = next
 					d.saveLiveConfig(cfg)
 				}
-				if k.Button(c.Key("down-"+id), d.tr("下移"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: idx == len(order)-1 || l.busy}).Clicked() {
+				if k.Button(c.Key("down-"+id), d.tr("下移"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: idx == len(order)-1 || l.showBusy()}).Clicked() && !l.busy {
 					next := slices.Clone(order)
 					next[idx+1], next[idx] = next[idx], next[idx+1]
 					cfg.Plugins.Order = next
@@ -731,7 +737,7 @@ func (d *viewState) pluginsAdvancedView(c *ui.Context, k desktopkit.Kit, cfg con
 				{Value: "continue", Label: d.tr("继续处理")},
 				{Value: "block_sync", Label: d.tr("禁止同步此条目")},
 			}
-			if k.Select(c, desktopkit.SelectProps{Label: d.tr("当插件运行出错时"), Value: &policy, Items: items, Disabled: l.busy}).Changed {
+			if k.Select(c, desktopkit.SelectProps{Label: d.tr("当插件运行出错时"), Value: &policy, Items: items, Disabled: l.showBusy()}).Changed && !l.busy {
 				cfg.Plugins.OnError = policy
 				d.saveLiveConfig(cfg)
 			}
@@ -752,30 +758,30 @@ func (d *viewState) pluginManualInstallDialog(c *ui.Context, k desktopkit.Kit) {
 			Label:       d.tr("仓库链接"),
 			Value:       &p.manualRepo,
 			Placeholder: "https://github.com/owner/unic-plugin-slug",
-			Disabled:    l.busy,
+			Disabled:    l.showBusy(),
 		})
 		k.FormField(c.Key("manual-ref"), desktopkit.FormFieldProps{
 			Label:       d.tr("版本 Ref（可选）"),
 			Value:       &p.manualRef,
 			Placeholder: d.tr("留空使用默认分支"),
-			Disabled:    l.busy,
+			Disabled:    l.showBusy(),
 		})
 		k.FormField(c.Key("manual-path"), desktopkit.FormFieldProps{
 			Label:       d.tr("子目录（可选）"),
 			Value:       &p.manualPath,
 			Placeholder: "plugins/example",
-			Disabled:    l.busy,
+			Disabled:    l.showBusy(),
 		})
 		k.Checkbox(c.Key("manual-build"), &p.manualBuild, desktopkit.CheckboxProps{
 			Label:    d.tr("无预编译产物时从源码构建"),
-			Disabled: l.busy,
+			Disabled: l.showBusy(),
 		})
 		k.Checkbox(c.Key("manual-enable"), &p.manualEnable, desktopkit.CheckboxProps{
 			Label:    d.tr("安装后自动启用"),
-			Disabled: l.busy,
+			Disabled: l.showBusy(),
 		})
 		ui.Row(c.Key("manual-actions")).Justify(ui.End).Gap(8).Children(func() {
-			if k.Button(c.Key("manual-cancel"), d.tr("取消"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
+			if k.Button(c.Key("manual-cancel"), d.tr("取消"), desktopkit.ButtonProps{Disabled: l.showBusy()}).Clicked() && !l.busy {
 				p.manualOpen = false
 			}
 			repo := strings.TrimSpace(p.manualRepo)
@@ -784,8 +790,9 @@ func (d *viewState) pluginManualInstallDialog(c *ui.Context, k desktopkit.Kit) {
 			if installing {
 				label = d.tr("正在安装…")
 			}
+			canSubmitVisual := strings.HasPrefix(repo, "https://github.com/") && !l.showBusy() && p.installingID == ""
 			canSubmit := strings.HasPrefix(repo, "https://github.com/") && !l.busy && p.installingID == ""
-			if k.Button(c.Key("manual-submit"), label, desktopkit.ButtonProps{Variant: desktopkit.Primary, Busy: installing, Disabled: !canSubmit}).Clicked() {
+			if k.Button(c.Key("manual-submit"), label, desktopkit.ButtonProps{Variant: desktopkit.Primary, Busy: installing, Disabled: !canSubmitVisual}).Clicked() && canSubmit {
 				d.installMarketplacePlugin(api.PluginInstallRequest{
 					Repository: repo,
 					Ref:        strings.TrimSpace(p.manualRef),
@@ -809,7 +816,7 @@ func (d *viewState) pluginConfirmDialogs(c *ui.Context, k desktopkit.Kit) {
 		CancelLabel:       d.tr("取消"),
 		Destructive:       true,
 		KeepOpenOnConfirm: true,
-		ConfirmDisabled:   l.busy,
+		ConfirmDisabled:   l.showBusy(),
 	}, nil); res.Confirmed {
 		d.uninstallExternalPlugin(p.uninstallID, p.uninstallName)
 	}
@@ -820,7 +827,7 @@ func (d *viewState) pluginConfirmDialogs(c *ui.Context, k desktopkit.Kit) {
 		ConfirmLabel:      d.tr("确认回滚"),
 		CancelLabel:       d.tr("取消"),
 		KeepOpenOnConfirm: true,
-		ConfirmDisabled:   l.busy,
+		ConfirmDisabled:   l.showBusy(),
 	}, nil); res.Confirmed {
 		d.rollbackExternalPlugin(p.rollbackID, p.rollbackName)
 	}

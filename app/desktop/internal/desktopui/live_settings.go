@@ -28,7 +28,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 	}
 	toggle := func(id, label, desc string, value *bool, dim, disabled bool) {
 		k.SettingsRow(c.Key(id), desktopkit.SettingsRowProps{Label: label, Description: desc, Dim: dim}, nil, func() {
-			if k.Switch(c, value, desktopkit.SwitchProps{Label: label, Disabled: l.busy || disabled}).Changed() {
+			if k.Switch(c, value, desktopkit.SwitchProps{Label: label, Disabled: l.showBusy() || disabled}).Changed() && !l.busy {
 				changed = true
 			}
 		})
@@ -47,7 +47,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 				opts = append(opts, desktopkit.SelectItem{Value: strconv.Itoa(n), Label: text})
 			}
 			v := strconv.Itoa(*value)
-			if k.Select(c, desktopkit.SelectProps{Label: label, Value: &v, Items: opts, Disabled: l.busy || disabled}).Changed {
+			if k.Select(c, desktopkit.SelectProps{Label: label, Value: &v, Items: opts, Disabled: l.showBusy() || disabled}).Changed && !l.busy {
 				*value, _ = strconv.Atoi(v)
 				changed = true
 			}
@@ -97,12 +97,12 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 				if k.Select(c, desktopkit.SelectProps{
 					Label:    d.tr("运行模式"),
 					Value:    &cfg.Desktop.Mode,
-					Disabled: l.busy,
+					Disabled: l.showBusy(),
 					Items: []desktopkit.SelectItem{
 						{Value: "normal", Label: d.tr("常规模式")},
 						{Value: "lightweight", Label: d.tr("轻量模式")},
 					},
-				}).Changed {
+				}).Changed && !l.busy {
 					changed = true
 				}
 			})
@@ -117,8 +117,8 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 				settingsFooterBar(c.Key("login-retry"), k, msg, true, func() {
 					if k.Button(c.Key("retry-login"), d.tr("重新应用登录启动设置"), desktopkit.ButtonProps{
 						Size:     desktopkit.SizeSmall,
-						Disabled: l.busy,
-					}).Clicked() && l.retryLogin != nil {
+						Disabled: l.showBusy(),
+					}).Clicked() && !l.busy && l.retryLogin != nil {
 						l.retryLogin()
 					}
 				})
@@ -177,7 +177,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 						pill := ui.ButtonBase(c.Key("tag-"+tag.id)).
 							Label(d.tr("保留 ")+label).
 							Selected(selected).
-							Disabled(l.busy || dim).
+							Disabled(l.showBusy() || dim).
 							Height(26).Padding(0, 9).Radius(13).Gap(5).
 							AlignItems(ui.Center).
 							FocusRingColor(k.Color("border-focus-ring")).FocusRingOffset(1)
@@ -234,7 +234,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 				if k.Select(c, desktopkit.SelectProps{
 					Label:    d.tr("全局快捷键"),
 					Value:    &cfg.Desktop.QuickPanelShortcut,
-					Disabled: l.busy,
+					Disabled: l.showBusy(),
 					Items: []desktopkit.SelectItem{
 						{Value: "Ctrl+Alt+V", Label: "Ctrl+Alt+V"},
 						{Value: "Cmd+Ctrl+V", Label: "Command+Ctrl+V"},
@@ -242,7 +242,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 						{Value: "CmdOrCtrl+Shift+Space", Label: "Command/Ctrl+Shift+Space"},
 						{Value: "", Label: d.tr("关闭")},
 					},
-				}).Changed {
+				}).Changed && !l.busy {
 					changed = true
 				}
 			})
@@ -250,12 +250,12 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 				Label: d.tr("双击修饰键打开快捷面板"),
 			}, nil, func() {
 				if k.Select(c, desktopkit.SelectProps{
-					Label: d.tr("双击修饰键打开快捷面板"), Value: &cfg.Desktop.QuickPanelDoubleTap, Disabled: l.busy,
+					Label: d.tr("双击修饰键打开快捷面板"), Value: &cfg.Desktop.QuickPanelDoubleTap, Disabled: l.showBusy(),
 					Items: []desktopkit.SelectItem{
 						{Value: "", Label: d.tr("关闭")}, {Value: "alt", Label: "Option / Alt"},
 						{Value: "control", Label: "Ctrl"}, {Value: "meta", Label: "Command / Win / Super"},
 					},
-				}).Changed {
+				}).Changed && !l.busy {
 					changed = true
 				}
 			})
@@ -277,8 +277,8 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 						settingsPill(c.Key("conflict-pill"), k, pillText, desktopkit.StatusWarning, true, false)
 						if k.Button(c.Key("retry-shortcut"), d.tr("重试注册快捷键"), desktopkit.ButtonProps{
 							Size:     desktopkit.SizeSmall,
-							Disabled: l.busy,
-						}).Clicked() && d.retryQuickShortcut != nil {
+							Disabled: l.showBusy(),
+						}).Clicked() && !l.busy && d.retryQuickShortcut != nil {
 							d.retryQuickShortcut()
 						}
 					} else if effective != "" {

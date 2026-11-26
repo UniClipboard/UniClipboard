@@ -1230,11 +1230,30 @@ func (d *viewState) saveLiveConfig(cfg config.Config) {
 	d.saveLiveConfigThen(cfg, nil)
 }
 func (d *viewState) saveLiveConfigThen(cfg config.Config, after func()) {
+	if d.live.busy {
+		return
+	}
 	revision := d.live.config.Revision
+	prevCfg := d.live.config.Config
+	d.live.config.Config = cfg
+	d.projectLiveConfig()
 	client := d.live.client
+	rollback := func(ctx context.Context) {
+		select {
+		case d.live.results <- func() {
+			if d.live.config.Revision == revision {
+				d.live.config.Config = prevCfg
+				d.projectLiveConfig()
+			}
+		}:
+			d.live.wake()
+		case <-ctx.Done():
+		}
+	}
 	d.mutate(func(ctx context.Context) error {
 		var buf bytes.Buffer
 		if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
+			rollback(ctx)
 			return err
 		}
 		state, err := client.SaveConfig(ctx, revision, buf.Bytes())
@@ -1254,12 +1273,18 @@ func (d *viewState) saveLiveConfigThen(cfg config.Config, after func()) {
 			case <-ctx.Done():
 				return ctx.Err()
 			}
+		} else {
+			rollback(ctx)
 		}
 		if err == nil && state.ApplyError != "" {
 			return &api.Error{Message: "saved but not applied", Reason: "config_apply_failed"}
 		}
 		return err
 	}, "设置已保存")
+	if !d.live.busy && d.live.config.Revision == revision {
+		d.live.config.Config = prevCfg
+		d.projectLiveConfig()
+	}
 }
 func (d *viewState) projectLiveConfig() {
 	c := d.live.config.Config

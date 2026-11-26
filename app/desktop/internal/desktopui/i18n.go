@@ -37,7 +37,7 @@ func (d *viewState) languageRow(c *ui.Context, k desktopkit.Kit) {
 			{Value: "zh-CN", Label: "简体中文"}, {Value: "en", Label: "English"},
 			{Value: "ja", Label: "日本語"}, {Value: "pt-BR", Label: "Português (Brasil)"}, {Value: "ru", Label: "Русский"},
 		}
-		if k.Select(c, desktopkit.SelectProps{Label: d.tr("界面语言"), Value: &value, Items: items, Disabled: d.live != nil && d.live.busy}).Changed {
+		if k.Select(c, desktopkit.SelectProps{Label: d.tr("界面语言"), Value: &value, Items: items, Disabled: d.live != nil && d.live.showBusy()}).Changed {
 			if d.live == nil {
 				d.language = value
 			} else {

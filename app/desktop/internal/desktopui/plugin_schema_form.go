@@ -149,7 +149,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 	k.SettingsGroup(c.Key("external-plugin-control"), desktopkit.SettingsGroupProps{}, func() {
 		if item.LiveStart && item.RunningVersion == "" && !item.NeedsSettings {
 			k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{Label: d.tr("启动")}, nil, func() {
-				if k.Button(c.Key("start"), d.tr("启动"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.busy}).Clicked() {
+				if k.Button(c.Key("start"), d.tr("启动"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.showBusy()}).Clicked() {
 					d.startExternalPlugin(item.ID)
 				}
 			})
@@ -164,7 +164,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 			Label:       d.tr("启用"),
 			Description: description,
 		}, nil, func() {
-			if k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.busy}).Changed() {
+			if k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.showBusy()}).Changed() && !l.busy {
 				d.setExternalPluginEnabled(cfg, item.ID, on)
 			}
 		})
@@ -230,7 +230,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 		}
 		f := p.form
 		if !f.ready {
-			if k.Button(c.Key("load-plugin-settings"), d.tr("重试"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
+			if k.Button(c.Key("load-plugin-settings"), d.tr("重试"), desktopkit.ButtonProps{Disabled: l.showBusy()}).Clicked() {
 				d.refreshPluginForm(item.ID, f, nil)
 			}
 		} else {
@@ -239,10 +239,10 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 				valid = d.pluginFormObject(c, k, f, &f.schema, f.values, "")
 			})
 			ui.Row(c).Gap(8).Children(func() {
-				if k.Button(c.Key("reload-plugin-settings"), d.tr("重新加载"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
+				if k.Button(c.Key("reload-plugin-settings"), d.tr("重新加载"), desktopkit.ButtonProps{Disabled: l.showBusy()}).Clicked() {
 					d.refreshPluginForm(item.ID, f, nil)
 				}
-				if k.Button(c.Key("save-plugin-settings"), d.tr("保存"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: !valid || l.busy}).Clicked() {
+				if k.Button(c.Key("save-plugin-settings"), d.tr("保存"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: !valid || l.showBusy()}).Clicked() && !l.busy {
 					raw, err := json.Marshal(f.values)
 					if err != nil || len(raw) > settings.MaxConfigBytes {
 						f.message = "插件设置超过大小限制。"
@@ -295,7 +295,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 					Label:       d.tr("回滚至上一版本"),
 					Description: "v" + item.PreviousVersion,
 				}, nil, func() {
-					if k.Button(c.Key("rollback-btn"), d.tr("回滚"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
+					if k.Button(c.Key("rollback-btn"), d.tr("回滚"), desktopkit.ButtonProps{Disabled: l.showBusy()}).Clicked() && !l.busy {
 						p.rollbackOpen = true
 						p.rollbackID = item.ID
 						p.rollbackName = title
@@ -308,7 +308,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 					Label:       d.tr("卸载插件"),
 					Description: d.tr("重启时移除程序文件，保留剪贴板历史与本地配置。"),
 				}, nil, func() {
-					if k.Button(c.Key("uninstall-btn"), d.tr("卸载"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Icon: desktopkit.IconDelete, Disabled: l.busy}).Clicked() {
+					if k.Button(c.Key("uninstall-btn"), d.tr("卸载"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Icon: desktopkit.IconDelete, Disabled: l.showBusy()}).Clicked() && !l.busy {
 						p.uninstallOpen = true
 						p.uninstallID = item.ID
 						p.uninstallName = title
@@ -329,9 +329,9 @@ func (d *viewState) createPluginInstance(c *ui.Context, k desktopkit.Kit, item a
 		}, nil, func() {
 			ui.Row(c.Key("create-instance-controls")).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
 				ui.Box(c.Key("instance-id")).Width(200).Children(func() {
-					k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("实例 ID"), Value: &p.instanceName, Placeholder: "example.work", Disabled: l.busy})
+					k.TextField(c, desktopkit.TextFieldProps{Label: d.tr("实例 ID"), Value: &p.instanceName, Placeholder: "example.work", Disabled: l.showBusy()})
 				})
-				if k.Button(c.Key("create-instance-btn"), d.tr("创建实例"), desktopkit.ButtonProps{Disabled: l.busy || strings.TrimSpace(p.instanceName) == ""}).Clicked() {
+				if k.Button(c.Key("create-instance-btn"), d.tr("创建实例"), desktopkit.ButtonProps{Disabled: l.showBusy() || strings.TrimSpace(p.instanceName) == ""}).Clicked() {
 					in := api.PluginInstanceCreate{ID: strings.TrimSpace(p.instanceName), ImplementationID: item.ImplementationID, Revision: l.config.Revision}
 					d.mutate(func(ctx context.Context) error { _, err := l.client.CreatePluginInstance(ctx, in); return err }, "实例已创建。请配置并启用。")
 				}
@@ -345,7 +345,7 @@ func (d *viewState) refreshPluginForm(id string, f *pluginSettingsForm, edit *ap
 	if l.busy {
 		return
 	}
-	l.busy = true
+	l.startBusy("")
 	if !l.enqueue(func(ctx context.Context) func() {
 		var state api.PluginSettings
 		var err error
@@ -355,7 +355,7 @@ func (d *viewState) refreshPluginForm(id string, f *pluginSettingsForm, edit *ap
 			state, err = l.client.SavePluginSettings(ctx, id, *edit)
 		}
 		return func() {
-			l.busy = false
+			l.stopBusy()
 			if err == nil {
 				err = f.load(state)
 			}
@@ -368,7 +368,7 @@ func (d *viewState) refreshPluginForm(id string, f *pluginSettingsForm, edit *ap
 			}
 		}
 	}) {
-		l.busy = false
+		l.stopBusy()
 	}
 }
 
@@ -573,9 +573,9 @@ func (d *viewState) pluginFormField(c *ui.Context, k desktopkit.Kit, f *pluginSe
 	} else {
 		text := fmt.Sprint(value)
 		if field.UI != nil && field.UI.Widget == "textarea" {
-			ui.TextArea(c.Key("textarea"), &text).Label(label).Disabled(d.live.busy).Height(88).FillWidth()
+			ui.TextArea(c.Key("textarea"), &text).Label(label).Disabled(d.live.showBusy()).Height(88).FillWidth()
 		} else {
-			k.TextField(c.Key("input"), desktopkit.TextFieldProps{Label: label, Value: &text, Disabled: d.live.busy})
+			k.TextField(c.Key("input"), desktopkit.TextFieldProps{Label: label, Value: &text, Disabled: d.live.showBusy()})
 		}
 		value = text
 	}
@@ -595,9 +595,9 @@ func (d *viewState) pluginNumberField(c *ui.Context, k desktopkit.Kit, field *se
 		if settings.ValidateField(field, json.Number(text)) != nil {
 			hint = d.tr("请输入有效数值。")
 		}
-		k.TextField(c.Key("number"), desktopkit.TextFieldProps{Label: label, Value: &text, Error: hint, Disabled: d.live.busy})
+		k.TextField(c.Key("number"), desktopkit.TextFieldProps{Label: label, Value: &text, Error: hint, Disabled: d.live.showBusy()})
 		number, err := strconv.ParseFloat(text, 64)
-		if ui.Stepper(c.Key("stepper"), &number, minimum, maximum, 1).Label(label).Disabled(d.live.busy || err != nil || hint != "").Changed() {
+		if ui.Stepper(c.Key("stepper"), &number, minimum, maximum, 1).Label(label).Disabled(d.live.showBusy() || err != nil || hint != "").Changed() {
 			text = strconv.FormatFloat(number, 'f', -1, 64)
 		}
 	})

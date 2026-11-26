@@ -53,7 +53,7 @@ paths:
   - .github/prompts/prepare-release-changelog.codex.md
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 614156f1f533b121c25825f70281dfc6bad910ad
+verified: cfcb67e9f6de223543116787f47e1cb1749a9449
 ---
 # Product builds and CLI releases
 
@@ -104,7 +104,7 @@ before rollout.
 
 Run **Prepare Release** (`.github/workflows/prepare-release.yml`) with `platform` (`desktop`, `cli`, `mobile`, `android`, or `ios`), `channel` (`alpha` or `stable`), optional canonical semver `version` (defaults to the current product version in `release/products.toml`), and optional `base_branch` (defaults to `main`). `tools/release/prepare_release.py` computes the next unused build number and previous published comparison tag, updates `release/products.toml` (preserving LF bytes and unrelated sections), initializes bilingual Markdown changelog skeletons under `release/changelogs/<platform>/v<version>-build.<number>.md` (and `.zh.md`), and for `desktop` initializes `release/desktop-notes.json`.
 
-The `changelog` job uses `openai/codex-action@v1` with the existing `CODEX_API_ENDPOINT` and `CODEX_API_KEY` secrets and `.github/prompts/prepare-release-changelog.codex.md` to generate user-facing English and Chinese changelogs (plus `release/desktop-notes.json` for `desktop`). It validates that Codex only touched the expected changelog files, replaced all placeholders, and did not introduce `<!--` markers into `release/desktop-notes.json`. The `publish` job pushes branch `release/<platform>-<channel>-v<version>-build.<number>` and opens a release PR against `base_branch`.
+The `changelog` job uses `openai/codex-action@v1` with the explicit model `gpt-5.6-luna`, the `CODEX_API_ENDPOINT` and `CODEX_API_KEY` secrets, and `.github/prompts/prepare-release-changelog.codex.md` to generate user-facing English and Chinese changelogs (plus `release/desktop-notes.json` for `desktop`). It validates that Codex only touched the expected changelog files, replaced all placeholders, and did not introduce `<!--` markers into `release/desktop-notes.json`. The `publish` job pushes branch `release/<platform>-<channel>-v<version>-build.<number>` and opens a release PR against `base_branch`.
 
 When a release PR from the repository is merged into the default branch, **Release on PR Merge** (`.github/workflows/release-on-merge.yml`) validates the branch name against `release/products.toml` and the finalized changelog files on the merge commit, dispatches the matching release workflow(s), and deletes the merged release branch:
 

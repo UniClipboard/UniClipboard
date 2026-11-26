@@ -232,6 +232,7 @@ jobs:
         uses: openai/codex-action@v1
         with:
           safety-strategy: drop-sudo
+          model: gpt-5.6-luna
           responses-api-endpoint: ${{ secrets.CODEX_API_ENDPOINT || 'https://api.openai.com/v1/responses' }}
           openai-api-key: ${{ env.CODEX_API_KEY }}
           prompt: ${{ steps.render-prompt.outputs.prompt }}

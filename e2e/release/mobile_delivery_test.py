@@ -58,10 +58,16 @@ def test_mobile_candidate_apk(temp: Path):
         "#!/usr/bin/env bash\n"
         "echo \"package: name='app.uniclipboard.android' versionCode='205' versionName='3.0.0' compileSdkVersion='36'\"\n",
     )
+    legacy_sha = "fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c"
     apksigner = temp / "fake-apksigner"
     write_executable(
         apksigner,
         "#!/usr/bin/env bash\n"
+        "if [ \"$1\" = \"lineage\" ]; then\n"
+        f"  echo 'Signer #1 in lineage certificate SHA-256 digest: {legacy_sha}'\n"
+        "  echo 'Signer #2 in lineage certificate SHA-256 digest: 743578a9932abe04e37865a3d5e4c54fb7f7ede27b69c88e7603453993d0dc22'\n"
+        "  exit 0\n"
+        "fi\n"
         "echo 'Verifies'\n"
         "echo 'Verified using v2 scheme (APK Signature Scheme v2): true'\n"
         "echo 'Verified using v3 scheme (APK Signature Scheme v3): true'\n",
@@ -79,6 +85,7 @@ def test_mobile_candidate_apk(temp: Path):
         aapt2=str(aapt2),
         apksigner=str(apksigner),
         architecture="arm64-v8a",
+        require_v3_rotation_from=legacy_sha,
         metadata_path=meta,
         published_at="2026-11-26T08:00:00Z",
         source_sha="a" * 40,
@@ -91,6 +98,25 @@ def test_mobile_candidate_apk(temp: Path):
     assert data["version"] == "3.0.0"
     assert data["build_number"] == 205
     assert data["artifact"]["name"] == apk.name
+
+    # Reject mismatched legacy rotation lineage root.
+    try:
+        mobile.candidate(
+            "android",
+            apk,
+            temp / "bad-lineage.json",
+            aapt2=str(aapt2),
+            apksigner=str(apksigner),
+            architecture="arm64-v8a",
+            require_v3_rotation_from="0" * 64,
+            metadata_path=meta,
+            source_sha="a" * 40,
+            fixture=True,
+        )
+    except ValueError as err:
+        assert "lineage" in str(err)
+    else:
+        raise AssertionError("expected lineage mismatch failure")
 
     # Reject APK containing unexpected ABI.
     bad_apk = temp / "bad.apk"

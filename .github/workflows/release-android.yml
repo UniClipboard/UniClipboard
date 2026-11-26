@@ -112,9 +112,18 @@ jobs:
           : "${ANDROID_UPLOAD_KEYSTORE:?}" "${ANDROID_UPLOAD_STORE_PASSWORD:?}" "${ANDROID_UPLOAD_KEY_PASSWORD:?}" "${ANDROID_UPLOAD_KEY_ALIAS:?}"
           umask 077
           keystore=$(mktemp)
+          lineage=$(mktemp)
           aligned=$(mktemp --suffix=.apk)
-          trap 'rm -f "$keystore" "$aligned"' EXIT
+          trap 'rm -f "$keystore" "$lineage" "$aligned"' EXIT
           printf '%s' "$ANDROID_UPLOAD_KEYSTORE" | base64 --decode > "$keystore"
+          legacy_keystore=app/expo/android/app/debug.keystore
+          legacy_expected_sha256=fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c
+          legacy_actual_sha256=$(keytool -list -v -keystore "$legacy_keystore" -alias androiddebugkey -storepass android \
+            | awk '/SHA256:/ {gsub(/:/, "", $2); print tolower($2); exit}')
+          if [[ "$legacy_actual_sha256" != "$legacy_expected_sha256" ]]; then
+            echo "error: legacy Android debug.keystore SHA-256 mismatch: got $legacy_actual_sha256" >&2
+            exit 1
+          fi
           cfg=$(python3 -B tools/release/mobile.py config)
           version=$(printf '%s' "$cfg" | jq -er .android.version)
           build=$(printf '%s' "$cfg" | jq -er .android.build_number)
@@ -124,18 +133,46 @@ jobs:
           apk_name="unic-android-${version}-${build}-arm64-v8a.apk"
           apk_out="dist/mobile-android/${apk_name}"
           "$build_tools/zipalign" -p -f 4 "$unsigned_apk" "$aligned"
+          "$build_tools/apksigner" rotate \
+            --out "$lineage" \
+            --old-signer \
+              --ks "$legacy_keystore" \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --set-installed-data true \
+              --set-shared-uid false \
+              --set-permission true \
+              --set-rollback false \
+              --set-auth false \
+            --new-signer \
+              --ks "$keystore" \
+              --ks-key-alias "$ANDROID_UPLOAD_KEY_ALIAS" \
+              --ks-pass env:ANDROID_UPLOAD_STORE_PASSWORD \
+              --key-pass env:ANDROID_UPLOAD_KEY_PASSWORD
           "$build_tools/apksigner" sign \
+            --v1-signing-enabled false \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --rotation-min-sdk-version 28 \
+            --lineage "$lineage" \
+            --ks "$legacy_keystore" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --next-signer \
             --ks "$keystore" \
+            --ks-key-alias "$ANDROID_UPLOAD_KEY_ALIAS" \
             --ks-pass env:ANDROID_UPLOAD_STORE_PASSWORD \
             --key-pass env:ANDROID_UPLOAD_KEY_PASSWORD \
-            --ks-key-alias "$ANDROID_UPLOAD_KEY_ALIAS" \
             --out "$apk_out" \
             "$aligned"
-          "$build_tools/apksigner" verify --verbose "$apk_out"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk_out"
           python3 -B tools/release/mobile.py record-candidate android "$apk_out" dist/mobile-android/candidate.json \
             --aapt2 "$build_tools/aapt2" \
             --apksigner "$build_tools/apksigner" \
-            --architecture arm64-v8a
+            --architecture arm64-v8a \
+            --require-v3-rotation-from "$legacy_expected_sha256"
           checksum_files=("$apk_name" candidate.json)
           if [[ "$BUILD_AAB" == true ]]; then
             aab_name="unic-android-${version}-${build}.aab"

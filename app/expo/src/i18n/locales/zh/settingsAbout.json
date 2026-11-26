@@ -31,7 +31,8 @@
     "downloading": "下载中 {{percent}}%",
     "canceled": "已取消下载",
     "failed": "下载失败",
-    "noSuitableApk": "找不到适合当前设备的 APK"
+    "noSuitableApk": "找不到适合当前设备的 APK",
+    "needsInstallPermission": "请在系统设置中允许安装未知应用，然后返回再次点击更新"
   },
   "cancelDownload": {
     "title": "取消下载",

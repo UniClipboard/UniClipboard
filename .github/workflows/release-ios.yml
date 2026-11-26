@@ -137,6 +137,7 @@ jobs:
           }, ARGV[1])
           RUBY
           archive="$RUNNER_TEMP/UniClipboard.xcarchive"
+          export UNIC_PYTHON="$(command -v python3)"
           xcodebuild -workspace app/expo/ios/UniClipboard.xcworkspace -scheme UniClipboard \
             -configuration Release -destination 'generic/platform=iOS' -archivePath "$archive" archive
           # PATH prefix avoids Homebrew rsync shadowing system rsync during IPA export.

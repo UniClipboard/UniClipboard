@@ -45,6 +45,11 @@ type NativeEvents = {
   onMigrationProgress: (payload: MigrationProgress) => void;
   onClipboardChanged: (payload: ClipboardChangedEvent) => void;
   onBackgroundSyncStateChanged: (payload: { reason: string }) => void;
+  onUpdateDownloadProgress: (payload: {
+    progress: number;
+    bytesReceived: number;
+    totalBytes: number;
+  }) => void;
 };
 
 export type TelemetryState = { configured_enabled: boolean; effective_enabled: boolean };
@@ -132,6 +137,16 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   listCandidates(): Promise<string>;
   pairCandidate(reqJSON: string): Promise<string>;
   ignoreCandidate(deviceID: string, ignored: boolean): Promise<void>;
+
+  checkAndroidUpdate?(channel: string): Promise<string>;
+  downloadAndInstallAndroidUpdate?(
+    url: string,
+    filename: string,
+    expectedSha256: string | null,
+    versionKey: string,
+  ): Promise<string>;
+  cancelAndroidUpdateDownload?(): Promise<void>;
+  cleanAndroidUpdateCache?(keepVersionKey: string | null): Promise<void>;
 }
 
 const nativeMod = requireOptionalNativeModule<NativeUnicEngineModule>("UnicEngine");
@@ -500,4 +515,58 @@ export const unicEngineNative = {
     callString(() => requireMod().pairCandidate(JSON.stringify(req))),
   ignoreCandidate: (deviceID: string, ignored: boolean) =>
     callVoid(() => requireMod().ignoreCandidate(deviceID, ignored)),
+
+  addUpdateDownloadProgressListener: (
+    cb: (payload: { progress: number; bytesReceived: number; totalBytes: number }) => void,
+  ) => {
+    if (!nativeMod) return { remove: () => {} };
+    return nativeMod.addListener("onUpdateDownloadProgress", cb);
+  },
+  checkAndroidUpdate: (channel: "alpha" | "stable") =>
+    callJSON<{
+      found: boolean;
+      channel: "alpha" | "stable";
+      manifest?: Record<string, unknown>;
+      supported_abis: string[];
+    }>(() => {
+      const mod = requireMod();
+      if (!mod.checkAndroidUpdate) {
+        throw new EngineError({ code: "unsupported", message: "android update check unavailable" });
+      }
+      return mod.checkAndroidUpdate(channel);
+    }),
+  downloadAndInstallAndroidUpdate: (
+    url: string,
+    filename: string,
+    expectedSha256: string | null,
+    versionKey: string,
+  ) =>
+    callJSON<{
+      status: "installer_launched" | "needs_install_permission";
+      cached: boolean;
+      path: string;
+    }>(() => {
+      const mod = requireMod();
+      if (!mod.downloadAndInstallAndroidUpdate) {
+        throw new EngineError({
+          code: "unsupported",
+          message: "android update download unavailable",
+        });
+      }
+      return mod.downloadAndInstallAndroidUpdate(url, filename, expectedSha256, versionKey);
+    }),
+  cancelAndroidUpdateDownload: () =>
+    callVoid(async () => {
+      const mod = nativeMod;
+      if (mod?.cancelAndroidUpdateDownload) {
+        await mod.cancelAndroidUpdateDownload();
+      }
+    }),
+  cleanAndroidUpdateCache: (keepVersionKey?: string | null) =>
+    callVoid(async () => {
+      const mod = nativeMod;
+      if (mod?.cleanAndroidUpdateCache) {
+        await mod.cleanAndroidUpdateCache(keepVersionKey ?? null);
+      }
+    }),
 };

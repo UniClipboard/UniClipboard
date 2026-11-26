@@ -57,7 +57,7 @@ paths:
   - tools/ci
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: cfcb67e9f6de223543116787f47e1cb1749a9449
+verified: 905c9598b4beacf287f851e120b7c214c279a942
 ---
 # Product builds and CLI releases
 
@@ -74,9 +74,14 @@ checks, transitively native Release builds, and the live Engine Maestro suite.
 It saves native receipts separately from the Expo bundle verification.
 
 The **Android release** workflow builds a signed `arm64-v8a` production APK
-(zipaligned and signed with `apksigner` using the Play/release upload key,
-validated with `aapt2` and `apksigner verify`) and optionally builds a
-dual-ABI (`arm64-v8a,x86_64`) Google Play AAB validated with `bundletool`. When
+(zipaligned and signed with `apksigner` using APK Signature Scheme v3 key
+rotation from the legacy Expo `debug.keystore` to `ANDROID_UPLOAD_KEYSTORE`
+with `--rotation-min-sdk-version 28` and rollback disabled on the legacy key,
+validated with `aapt2`, `apksigner verify`, and `apksigner lineage`) and
+optionally builds a dual-ABI (`arm64-v8a,x86_64`) Google Play AAB validated
+with `bundletool`. Android v3 Settings → About includes an in-app updater that
+checks `/v1/android/{stable,alpha}.json`, verifies downloaded APK SHA-256
+digests natively, and launches the system installer via `FileProvider`. When
 `publish` is enabled, a separate `Production` delivery job stages an immutable
 GitHub Release (`android/v<version>-build.<build>`, prerelease for `alpha`),
 uploads the APK and `candidate.json` to R2 with create-only conditional writes

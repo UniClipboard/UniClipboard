@@ -29,6 +29,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopui"
+	"github.com/uniclipboard/unic/app/desktop/internal/notifications"
 	"github.com/uniclipboard/unic/app/desktop/internal/windowchrome"
 
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -212,6 +213,18 @@ func runGUI(settings *config.Manager) error {
 		if g.win != nil {
 			g.win.Show()
 			g.win.Focus()
+		}
+	})
+	guiNotifier := notifications.New(notifications.Options{})
+	mygo.App.OnNotificationClick(func(id string) {
+		route := guiNotifier.ResolveRoute(id)
+		if route != "" {
+			session.navigate(route)
+		}
+		if g.win != nil {
+			g.win.Show()
+			g.win.Focus()
+			g.win.Invalidate()
 		}
 	})
 	mygo.App.WhenReady(func() {

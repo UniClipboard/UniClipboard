@@ -8704,5 +8704,173 @@
     "ja": "パスのスイッチはこの経路を一時停止または再開します。下のポリシーはこのデバイスの自動同期と受信を制御します（手動送信には適用されず、変更は次の転送から有効になります）。",
     "pt-BR": "A chave pausa ou retoma este caminho. A política abaixo controla a sincronização automática e o recebimento neste dispositivo; envios manuais a ignoram e as alterações valem apenas para novas transferências.",
     "ru": "Переключатель приостанавливает или возобновляет этот путь. Политика ниже управляет автосинхронизацией и приемом на этом устройстве; ручная отправка ее игнорирует, а изменения действуют только для новых передач."
+  },
+  "通知测试": {
+    "en": "Test Notification",
+    "ja": "テスト通知",
+    "pt-BR": "Notificação de teste",
+    "ru": "Тестовое уведомление"
+  },
+  "系统通知已正常工作。点击可返回通知设置。": {
+    "en": "System notifications are working. Click to return to Notification settings.",
+    "ja": "システム通知は正常に動作しています。クリックすると通知設定に戻ります。",
+    "pt-BR": "As notificações do sistema estão funcionando. Clique para voltar às configurações de notificação.",
+    "ru": "Системные уведомления работают. Нажмите, чтобы вернуться к настройкам уведомлений."
+  },
+  "待批准设备请求 (%d)": {
+    "en": "Pending device requests (%d)",
+    "ja": "承認待ちのデバイス要求 (%d)",
+    "pt-BR": "Solicitações de dispositivo pendentes (%d)",
+    "ru": "Ожидающие запросы устройств (%d)"
+  },
+  "待批准设备请求 (%d)…": {
+    "en": "Pending Device Requests (%d)…",
+    "ja": "承認待ちのデバイス要求 (%d)…",
+    "pt-BR": "Solicitações de dispositivo pendentes (%d)…",
+    "ru": "Ожидающие запросы устройств (%d)…"
+  },
+  "%d 台设备正在等待批准": {
+    "en": "%d devices waiting for approval",
+    "ja": "%d 台のデバイスが承認を待っています",
+    "pt-BR": "%d dispositivos aguardando aprovação",
+    "ru": "Ожидают одобрения устройства: %d"
+  },
+  "请前往设备管理核对双端指纹后批准。": {
+    "en": "Open Device Management to verify fingerprints on both devices before approving.",
+    "ja": "デバイス管理を開き、双方のフィンガープリントを確認してから承認してください。",
+    "pt-BR": "Abra o Gerenciamento de dispositivos para verificar as impressões digitais em ambos os dispositivos antes de aprovar.",
+    "ru": "Откройте управление устройствами и сверьте отпечатки на обоих устройствах перед одобрением."
+  },
+  "前往核对": {
+    "en": "Review",
+    "ja": "確認する",
+    "pt-BR": "Revisar",
+    "ru": "Проверить"
+  },
+  "通知开关": {
+    "en": "Notification Preferences",
+    "ja": "通知の設定",
+    "pt-BR": "Preferências de notificação",
+    "ru": "Параметры уведомлений"
+  },
+  "系统通知": {
+    "en": "System Notifications",
+    "ja": "システム通知",
+    "pt-BR": "Notificações do sistema",
+    "ru": "Системные уведомления"
+  },
+  "接收来自 UniClipboard 的系统级桌面通知。关闭后仍会在应用内保留红点提醒。": {
+    "en": "Show desktop system notifications from UniClipboard. In-app badges and indicators stay active when turned off.",
+    "ja": "UniClipboard からのシステム通知を表示します。オフにしてもアプリ内のバッジと案内は引き続き表示されます。",
+    "pt-BR": "Exibe notificações do sistema do UniClipboard. Os selos e avisos no aplicativo continuam ativos quando desativado.",
+    "ru": "Показывать системные уведомления от UniClipboard. При отключении индикаторы и подсказки внутри приложения сохраняются."
+  },
+  "新设备配对与路径请求": {
+    "en": "Device Pairing & Sync Path Requests",
+    "ja": "新規デバイスのペアリングと同期パス要求",
+    "pt-BR": "Solicitações de pareamento e caminhos de sincronização",
+    "ru": "Запросы сопряжения и новых путей синхронизации"
+  },
+  "有新设备请求加入或新增同步路径时发送系统通知。": {
+    "en": "Notify when a device requests to join or add a new sync path.",
+    "ja": "新しいデバイスが参加または同期パスの追加を要求したときに通知します。",
+    "pt-BR": "Notifica quando um dispositivo solicita entrada ou um novo caminho de sincronização.",
+    "ru": "Уведомлять при запросе нового устройства на подключение или добавление пути синхронизации."
+  },
+  "系统通知权限": {
+    "en": "System Notification Permission",
+    "ja": "システム通知の許可",
+    "pt-BR": "Permissão de notificações do sistema",
+    "ru": "Разрешение системных уведомлений"
+  },
+  "系统通知状态": {
+    "en": "Notification Status",
+    "ja": "システム通知の状態",
+    "pt-BR": "Status das notificações",
+    "ru": "Состояние уведомлений"
+  },
+  "尚未授权": {
+    "en": "Not Requested",
+    "ja": "未設定",
+    "pt-BR": "Não solicitado",
+    "ru": "Не запрошено"
+  },
+  "当前环境不支持": {
+    "en": "Unavailable in This Environment",
+    "ja": "この環境では利用不可",
+    "pt-BR": "Indisponível neste ambiente",
+    "ru": "Недоступно в этой среде"
+  },
+  "仅读取当前应用的系统通知状态，不会主动弹窗。点击「发送测试通知」可验证通知送达或触发首次系统授权。": {
+    "en": "Reads the current notification status passively without prompting. Click Send Test Notification to verify delivery or trigger the initial system prompt.",
+    "ja": "現在の通知状態を確認するだけで、許可ダイアログは表示しません。「テスト通知を送信」で通知の配信確認または初回のシステム許可を行えます。",
+    "pt-BR": "Lê o status atual das notificações sem exibir alertas. Clique em Enviar notificação de teste para verificar a entrega ou acionar a permissão inicial do sistema.",
+    "ru": "Проверяет текущее состояние уведомлений без запроса разрешения. Нажмите «Отправить тестовое уведомление», чтобы проверить доставку или вызвать системный запрос."
+  },
+  "如在系统设置中更改了通知权限，请点击刷新以更新状态。": {
+    "en": "If you changed notification permissions in System Settings, click Refresh to update the status.",
+    "ja": "システム設定で通知の許可を変更した場合は、更新をクリックして状態を反映してください。",
+    "pt-BR": "Se você alterou as permissões nas Configurações do Sistema, clique em Atualizar para ver o status mais recente.",
+    "ru": "Если вы изменили разрешения в системных настройках, нажмите «Обновить» для проверки статуса."
+  },
+  "仅打包后的桌面应用支持系统通知；应用内红点与弹窗指引仍会正常显示。": {
+    "en": "Native system notifications require a packaged desktop app. In-app badges and prompts remain active.",
+    "ja": "ネイティブのシステム通知にはパッケージ化されたデスクトップアプリが必要です。アプリ内のバッジと案内は引き続き表示されます。",
+    "pt-BR": "Notificações nativas do sistema exigem o aplicativo empacotado. Selos e avisos no aplicativo continuam funcionando.",
+    "ru": "Системные уведомления доступны только в собранном пакете приложения. Индикаторы и подсказки внутри приложения продолжают работать."
+  },
+  "当前运行环境不支持原生系统通知。": {
+    "en": "Native system notifications are not available in this runtime environment.",
+    "ja": "現在の実行環境ではネイティブのシステム通知を利用できません。",
+    "pt-BR": "Notificações nativas do sistema não estão disponíveis neste ambiente.",
+    "ru": "В текущей среде выполнения системные уведомления недоступны."
+  },
+  "系统已关闭本应用通知权限，请在系统设置中重新允许。": {
+    "en": "Notifications are disabled for this app in System Settings. Re-enable them there to receive alerts.",
+    "ja": "システム設定でこのアプリの通知がオフになっています。受け取るにはシステム設定で許可してください。",
+    "pt-BR": "As notificações estão desativadas para este aplicativo nas Configurações do Sistema. Ative-as lá para receber alertas.",
+    "ru": "Уведомления для этого приложения отключены в системных настройках. Включите их там, чтобы получать оповещения."
+  },
+  "发送测试通知": {
+    "en": "Send Test Notification",
+    "ja": "テスト通知を送信",
+    "pt-BR": "Enviar notificação de teste",
+    "ru": "Отправить тестовое уведомление"
+  },
+  "通知权限状态读取失败，请重试。": {
+    "en": "Could not read notification permission status. Please try again.",
+    "ja": "通知の許可状態を読み取れませんでした。もう一度お試しください。",
+    "pt-BR": "Não foi possível ler o status de permissão de notificações. Tente novamente.",
+    "ru": "Не удалось проверить разрешение на уведомления. Повторите попытку."
+  },
+  "无法打开系统通知设置，请手动在系统设置中查看。": {
+    "en": "Could not open System Notification Settings. Please open it manually.",
+    "ja": "システムの通知設定を開けませんでした。手動で開いて確認してください。",
+    "pt-BR": "Não foi possível abrir as configurações de notificação do sistema. Abra-as manualmente.",
+    "ru": "Не удалось открыть системные настройки уведомлений. Откройте их вручную."
+  },
+  "已请求打开系统通知设置。调整后请点击刷新查看最新状态。": {
+    "en": "Opened System Notification Settings. Click Refresh after making changes.",
+    "ja": "システムの通知設定を開きました。変更後に更新をクリックして状態を確認してください。",
+    "pt-BR": "As configurações de notificação do sistema foram abertas. Clique em Atualizar após fazer alterações.",
+    "ru": "Запрошено открытие системных настроек уведомлений. После изменения нажмите «Обновить»."
+  },
+  "当前运行环境不支持系统通知。": {
+    "en": "System notifications are not supported in this environment.",
+    "ja": "この環境ではシステム通知はサポートされていません。",
+    "pt-BR": "Notificações do sistema não são compatíveis com este ambiente.",
+    "ru": "Системные уведомления не поддерживаются в этой среде."
+  },
+  "测试通知发送失败，请检查系统通知权限后重试。": {
+    "en": "Could not deliver the test notification. Check system notification permissions and try again.",
+    "ja": "テスト通知を送信できませんでした。システムの通知許可を確認してもう一度お試しください。",
+    "pt-BR": "Falha ao enviar a notificação de teste. Verifique as permissões do sistema e tente novamente.",
+    "ru": "Не удалось отправить тестовое уведомление. Проверьте системные разрешения и повторите попытку."
+  },
+  "已发送测试通知。": {
+    "en": "Test notification sent.",
+    "ja": "テスト通知を送信しました。",
+    "pt-BR": "Notificação de teste enviada.",
+    "ru": "Тестовое уведомление отправлено."
   }
 }

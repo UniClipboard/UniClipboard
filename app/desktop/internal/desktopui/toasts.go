@@ -1,6 +1,8 @@
 package desktopui
 
 import (
+	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -17,6 +19,7 @@ const (
 	toastIDLiveMessage    = "live-message"
 	toastIDPluginFeedback = "plugin-feedback"
 	toastIDWeTypePair     = "wetype-pair"
+	toastIDPendingDevices = "pending-devices"
 )
 
 // ShowToast pushes a notification into the shared BoardUI Toaster on the view thread.
@@ -77,6 +80,7 @@ func (d *viewState) syncStateToasts() {
 	if l == nil {
 		d.toasts.Dismiss(toastIDApplyError)
 		d.toasts.Dismiss(toastIDConfigInvalid)
+		d.toasts.Dismiss(toastIDPendingDevices)
 		d.syncRestartToast(false, false, "", "")
 		return
 	}
@@ -157,6 +161,57 @@ func (d *viewState) syncStateToasts() {
 	default:
 		d.syncRestartToast(false, false, "", "")
 	}
+
+	// 4. Pending device approval guidance when viewing other pages.
+	d.syncPendingDeviceToast()
+}
+
+func (d *viewState) syncPendingDeviceToast() {
+	l := d.live
+	if l == nil || len(l.pending) == 0 || len(d.pending) == 0 {
+		d.dismissedPending = ""
+		d.toasts.Dismiss(toastIDPendingDevices)
+		return
+	}
+	if d.page == "devices" {
+		d.toasts.Dismiss(toastIDPendingDevices)
+		return
+	}
+	keys := make([]string, 0, len(d.pending))
+	for _, p := range d.pending {
+		keys = append(keys, fmt.Sprintf("%s:%d", p.id, p.revision))
+	}
+	slices.Sort(keys)
+	key := strings.Join(keys, ",")
+	if d.dismissedPending == key {
+		return
+	}
+	first := d.pending[0]
+	var title string
+	if len(d.pending) == 1 {
+		if d.isExistingPendingDevice(first.id) {
+			title = fmt.Sprintf("%s %s", first.name, d.tr("请求新增同步路径"))
+		} else {
+			title = fmt.Sprintf("%s %s", first.name, d.tr("请求加入同步网络"))
+		}
+	} else {
+		title = fmt.Sprintf(d.tr("%d 台设备正在等待批准"), len(d.pending))
+	}
+	targetID := first.id
+	d.toasts.SyncPersistent(toastIDPendingDevices, title, desktopkit.ToastOptions{
+		Status:      desktopkit.ToastInformation,
+		Description: d.tr("请前往设备管理核对双端指纹后批准。"),
+		OnDismiss: func() {
+			d.dismissedPending = key
+		},
+		Actions: []desktopkit.ToastAction{{
+			Label:   d.tr("前往核对"),
+			Variant: "primary",
+			OnClick: func() {
+				d.openPendingDevice(targetID)
+			},
+		}},
+	})
 }
 
 func (d *viewState) syncRestartToast(active, restartService bool, key, title string) {

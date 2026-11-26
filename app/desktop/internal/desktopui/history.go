@@ -66,13 +66,18 @@ func (d *viewState) sidebar(c *ui.Context, k desktopkit.Kit) {
 	if d.live != nil {
 		overrides = d.live.config.Config.Desktop.Shortcuts
 	}
+	manageItem := desktopkit.SidebarNavItem{ID: "manage", Label: d.tr("管理设备…"), Icon: desktopkit.IconDevices}
+	if n := len(d.pending); n > 0 {
+		manageItem.Badge = fmt.Sprint(n)
+		manageItem.BadgeTone = desktopkit.StatusCritical
+	}
 	k.SidebarNav(c, &d.nav, desktopkit.SidebarNavProps{Label: d.tr("资料库"), Sections: []desktopkit.SidebarNavSection{
 		{ID: "library", Items: []desktopkit.SidebarNavItem{{ID: "all", Label: d.tr("全部项目"), Icon: desktopkit.IconHistory, Count: d.historyCountLabel()}, {ID: "pinned", Label: d.tr("已收藏"), Icon: desktopkit.IconPin, Count: favoriteCount}}},
 		{ID: "tags", Title: d.tr("标签"), Items: tags, Action: &desktopkit.NavAction{Label: d.tr("管理标签"), Icon: desktopkit.IconAdd}, More: &desktopkit.NavAction{Label: fmt.Sprintf(d.tr("全部标签 · %d"), len(d.tags))}},
 		{ID: "devices", Title: d.tr("设备"), Items: devices},
 	}, Announcement: func() desktopkit.AnnouncementResult {
 		return d.sidebarAnnouncement(c.Key("sidebar-announcement"), k)
-	}, Footer: []desktopkit.SidebarNavItem{{ID: "manage", Label: d.tr("管理设备…"), Icon: desktopkit.IconDevices}, {ID: "settings", Label: d.tr("设置…"), Icon: desktopkit.IconSettings, ShortcutHint: shortcutHint(overrides, desktopkeys.Settings)}}}).Grow(1)
+	}, Footer: []desktopkit.SidebarNavItem{manageItem, {ID: "settings", Label: d.tr("设置…"), Icon: desktopkit.IconSettings, ShortcutHint: shortcutHint(overrides, desktopkeys.Settings)}}}).Grow(1)
 	if cmd, _ := d.nav.Command(); cmd == desktopkit.NavSectionAction || cmd == desktopkit.NavMore {
 		d.tagsOpen = true
 	}
@@ -80,8 +85,12 @@ func (d *viewState) sidebar(c *ui.Context, k desktopkit.Kit) {
 		d.notice = ""
 		switch {
 		case d.nav.Value == "manage":
-			d.page = "devices"
-			d.nav.Value = "all"
+			if d.live != nil && len(d.pending) > 0 {
+				d.openPendingDevice("")
+			} else {
+				d.page = "devices"
+				d.nav.Value = "all"
+			}
 		case d.nav.Value == "settings":
 			d.page = "settings"
 			d.nav.Value = "all"
@@ -152,11 +161,16 @@ func (d *viewState) history(c *ui.Context, k desktopkit.Kit) {
 		subtitle = ""
 	}
 	subtitleMuted := !coldLoading && d.live != nil && d.live.showForegroundLoading() && d.live.displayedKey != d.liveQueryKey()
+	var sidebarBadge *desktopkit.StatusTone
+	if len(d.pending) > 0 {
+		crit := desktopkit.StatusCritical
+		sidebarBadge = &crit
+	}
 	k.SplitView(c, desktopkit.SplitViewProps{ContentScale: zoomScale(d.zoomStep), ToolbarTrailing: trailing,
 		Title: d.historyHeadingTitle(), Subtitle: subtitle, SubtitleMuted: subtitleMuted,
 		ToolbarLoading: d.live != nil && d.live.showForegroundLoading(),
 		Sidebar:        func() { d.sidebar(c, k) }, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact,
-		SidebarToggleLabel: d.tr("切换侧栏"), DetailOpen: &d.detailOpen, BackLabel: d.tr("返回历史"),
+		SidebarToggleLabel: d.tr("切换侧栏"), SidebarBadge: sidebarBadge, DetailOpen: &d.detailOpen, BackLabel: d.tr("返回历史"),
 		DrawerOpen:       gridDrawerOpen,
 		DrawerLabel:      d.tr("历史详情"),
 		DrawerWidth:      436,

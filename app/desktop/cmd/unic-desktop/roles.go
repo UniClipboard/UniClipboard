@@ -119,6 +119,7 @@ type trayRuntime struct {
 	login                   func(bool) (bool, string)
 	checkUpdates            func()
 	updatePrefs             func(updatePrefsRequest) updateStatus
+	testNotification        func(context.Context) error
 	quit                    func()
 	opening                 sync.Mutex
 	panelLaunch             sync.Mutex
@@ -236,10 +237,10 @@ func (r *trayRuntime) start(ctx context.Context, entering bool) error {
 	r.adapterCancel = cancel
 	r.adapterDone = make(chan struct{})
 	if useDaemonClipboard {
-		enabled, err := api.NewClient(r.socket).EnableDesktopNotifications(ctx)
-		if err == nil && !enabled {
-			go notifyPending(adapterCtx, r.socket, func() string { return r.settings.Current().Desktop.Language })
-		}
+		// While the Desktop tray process is active in normal mode, it owns
+		// native system notifications via mygo (supporting foreground banners
+		// and click-to-navigate). Disable any prior daemon fallback subscription.
+		_ = api.NewClient(r.socket).DisableDesktopNotifications(ctx)
 		close(r.adapterDone)
 	} else {
 		done := r.adapterDone
@@ -500,6 +501,11 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 			return nil, err
 		}
 		r.runtimeMu.Lock()
+		if useDaemonClipboard {
+			// Lightweight GUI close retires the tray and leaves unicd running
+			// alone; hand macOS pairing notification delivery back to unicd.
+			_, _ = api.NewClient(r.socket).EnableDesktopNotifications(ctx)
+		}
 		if r.service != nil {
 			if err := r.service.Detach(ctx); err != nil {
 				r.runtimeMu.Unlock()
@@ -627,6 +633,16 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 		st := r.state.Updates
 		r.mu.Unlock()
 		return st, nil
+	case "test-notification":
+		select {
+		case <-r.nativeReady:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		if r.testNotification == nil {
+			return nil, errors.ErrUnsupported
+		}
+		return nil, r.testNotification(ctx)
 	case "clipboard-apply":
 		var in clipboardRequest
 		if err := json.Unmarshal(raw, &in); err != nil {

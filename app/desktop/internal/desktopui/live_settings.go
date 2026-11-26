@@ -299,6 +299,9 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 		})
 		d.shortcutPermissionSettings(c, k)
 
+	case "notifications":
+		d.notificationSettingsContent(c, k, &cfg, &changed)
+
 	case "about":
 		d.aboutContent(c, k)
 

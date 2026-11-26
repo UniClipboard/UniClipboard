@@ -9,7 +9,17 @@ func (k Kit) SidebarNavCompact(c *ui.Context, st *NavState, p SidebarNavProps) u
 			if it.Icon == "" {
 				return
 			}
-			k.navRailButton(c.Key(it.ID), st, it.Label, it.Icon, st.Value == it.ID, func() { st.pick(it.ID) })
+			var dot *StatusTone
+			if it.Badge != "" {
+				tone := it.BadgeTone
+				if tone == StatusNeutral {
+					tone = StatusCritical
+				}
+				dot = &tone
+			} else if it.Indicator != nil {
+				dot = it.Indicator
+			}
+			k.navRailButton(c.Key(it.ID), st, it.Label, it.Icon, st.Value == it.ID, dot, func() { st.pick(it.ID) })
 		}
 		var sectioned []SidebarNavSection
 		for _, s := range p.Sections {
@@ -37,7 +47,7 @@ func (k Kit) SidebarNavCompact(c *ui.Context, st *NavState, p SidebarNavProps) u
 }
 
 // navRailButton 是 40x36 的图标按钮，选中时带底色与 3x16 强调条。
-func (k Kit) navRailButton(c *ui.Context, st *NavState, label string, icon IconName, current bool, onClick func()) ui.Element {
+func (k Kit) navRailButton(c *ui.Context, st *NavState, label string, icon IconName, current bool, dot *StatusTone, onClick func()) ui.Element {
 	b := ui.Row(c).Size(40, 36).Justify(ui.Center).AlignItems(ui.Center).Shrink(0).Radius(6).
 		Label(label).Role(ui.RoleListItem)
 	b.AccessSelected(current)
@@ -49,6 +59,9 @@ func (k Kit) navRailButton(c *ui.Context, st *NavState, label string, icon IconN
 	b.DrawOver(func(p *ui.Painter, rc ui.Rect) {
 		if current {
 			p.Fill(ui.Rect{X: rc.X, Y: rc.Y + rc.H/2 - 8, W: 3, H: 16}, k.Color("accent-500"), 1.5)
+		}
+		if dot != nil {
+			p.Fill(ui.Rect{X: rc.X + rc.W - 11, Y: rc.Y + 6, W: 7, H: 7}, k.navStatusColor(*dot), 3.5)
 		}
 	})
 	b.Children(func() {

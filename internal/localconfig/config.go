@@ -93,15 +93,33 @@ type Desktop struct {
 	// TagColors maps SHA-256 tag identifiers to local presentation colors. It stores no tag names.
 	TagColors map[string]string `toml:"tag_colors,omitempty" json:"tag_colors,omitempty"`
 	// TagSidebar uses the same hashed identifiers as TagColors.
-	TagSidebar          map[string]bool     `toml:"tag_sidebar,omitempty" json:"tag_sidebar,omitempty"`
-	Language            string              `toml:"language" json:"language"`
-	Shortcuts           map[string][]string `toml:"shortcuts,omitempty" json:"shortcuts,omitempty"`
-	QuickPanelDoubleTap string              `toml:"quick_panel_double_tap,omitempty" json:"quick_panel_double_tap,omitempty"`
-	QuickPanelShortcut  string              `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
-	Mode                string              `toml:"mode" json:"mode"`
-	LaunchAtLogin       bool                `toml:"launch_at_login" json:"launch_at_login"`
-	StartInBackground   bool                `toml:"start_in_background" json:"start_in_background"`
-	SystemWindowFrame   bool                `toml:"system_window_frame" json:"system_window_frame"`
+	TagSidebar          map[string]bool      `toml:"tag_sidebar,omitempty" json:"tag_sidebar,omitempty"`
+	Language            string               `toml:"language" json:"language"`
+	Shortcuts           map[string][]string  `toml:"shortcuts,omitempty" json:"shortcuts,omitempty"`
+	QuickPanelDoubleTap string               `toml:"quick_panel_double_tap,omitempty" json:"quick_panel_double_tap,omitempty"`
+	QuickPanelShortcut  string               `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
+	Mode                string               `toml:"mode" json:"mode"`
+	LaunchAtLogin       bool                 `toml:"launch_at_login" json:"launch_at_login"`
+	StartInBackground   bool                 `toml:"start_in_background" json:"start_in_background"`
+	SystemWindowFrame   bool                 `toml:"system_window_frame" json:"system_window_frame"`
+	Notifications       DesktopNotifications `toml:"notifications" json:"notifications"`
+}
+
+// DesktopNotifications configures desktop system and in-app notifications.
+// Omitted booleans default to true (enabled).
+type DesktopNotifications struct {
+	Enabled       *bool `toml:"enabled,omitempty" json:"enabled,omitempty"`
+	DevicePairing *bool `toml:"device_pairing,omitempty" json:"device_pairing,omitempty"`
+}
+
+// EnabledOrDefault reports whether desktop notifications are globally enabled.
+func (n DesktopNotifications) EnabledOrDefault() bool {
+	return n.Enabled == nil || *n.Enabled
+}
+
+// DevicePairingEnabled reports whether pairing/approval notifications are enabled.
+func (n DesktopNotifications) DevicePairingEnabled() bool {
+	return n.EnabledOrDefault() && (n.DevicePairing == nil || *n.DevicePairing)
 }
 
 // History configures live cleanup and the startup storage budget.
@@ -516,6 +534,9 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # quick_panel_double_tap = ""  # off, alt, control, or meta
 # [desktop.shortcuts]
 # "clipboard.search" = ["mod+f"]  # [] disables the binding
+# [desktop.notifications]
+# enabled = true         # master switch for desktop system notifications
+# device_pairing = true  # notify when a device requests to join or add a sync path
 
 # Logging and PostHog/OTLP upload. All four remote signals default on.
 # Traces use a fixed 1% root sample when enabled.

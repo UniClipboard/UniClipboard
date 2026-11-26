@@ -131,7 +131,9 @@ type SplitViewProps struct {
 	// SidebarToggleLabel names the action the toggle performs now ("Hide sidebar" ...);
 	// SidebarToggleHint is a display-only shortcut hint appended to its tooltip.
 	SidebarToggleLabel, SidebarToggleHint string
-	Search                                func()
+	// SidebarBadge draws a corner status dot on the sidebar toggle when the sidebar is hidden.
+	SidebarBadge *StatusTone
+	Search       func()
 	// SearchCentered places Search in the centered omnibar slot of the 52-DIP toolbar
 	// between the leading heading and trailing controls (U1 unified search+filter bar).
 	SearchCentered bool
@@ -279,6 +281,12 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			iconColor = k.Color("foreground-icon-primary")
 		}
 		b.Children(func() { k.Icon(c, IconSidebar, 16).TextColor(iconColor).AccessHidden(true) })
+		if p.SidebarBadge != nil && hidden {
+			tone := *p.SidebarBadge
+			b.DrawOver(func(pt *ui.Painter, rc ui.Rect) {
+				pt.Fill(ui.Rect{X: rc.X + rc.W - 8, Y: rc.Y + 3, W: 6.5, H: 6.5}, k.layStatusColor(tone), 3.25)
+			})
+		}
 		if b.Clicked() {
 			*p.SidebarHidden = !*p.SidebarHidden
 			res.SidebarToggled = true

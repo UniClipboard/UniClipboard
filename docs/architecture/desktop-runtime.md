@@ -16,6 +16,7 @@ paths:
   - app/desktop/internal/desktopkit
   - app/desktop/boardui
   - app/desktop/internal/i18n
+  - app/desktop/internal/notifications
   - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
   - internal/localconfig
@@ -54,7 +55,7 @@ verified: abaabeb8668de2dd86096472e17d40a80974f9d3
 The UI-free service loads `config.toml` and exposes the effective saved configuration over its local socket.
 CLI changes and file edits use the same validation and Engine settings.
 
-The independent GUI process uses the production `desktopui` renderer with live service data. While active, the tray process owns global shortcuts, login intent and the service-lifetime pipe. On macOS a bundled service delivers pairing notifications after Desktop opt-in. Other platforms and unbundled macOS services use tray delivery. macOS Desktop opts in the sole native clipboard adapter inside unicd. Other platforms host it in the tray. The quick panel runs in a third Desktop OS process with windowless standby. The separate `unicd` process owns Engine. Manual activation always opens the GUI. Normal GUI close keeps tray and service. Lightweight GUI close retires all Desktop roles and leaves only unicd.
+The independent GUI process uses the production `desktopui` renderer with live service data. While active, the tray process owns global shortcuts, login intent, Desktop system notifications (`app/desktop/internal/notifications`), pending-request tray/badge state and the service-lifetime pipe. In normal mode on all platforms, the tray delivers native system notifications with foreground banners and click-to-navigate routing to Device Management (and disables any prior macOS daemon fallback subscription). On macOS in lightweight mode (when the tray is not running), a bundled `unicd` service delivers fallback pairing notifications after Desktop opt-in and honors `desktop.notifications`. macOS Desktop opts in the sole native clipboard adapter inside unicd. Other platforms host it in the tray. The quick panel runs in a third Desktop OS process with windowless standby. The separate `unicd` process owns Engine. Manual activation always opens the GUI. Normal GUI close keeps tray and service. Lightweight GUI close retires all Desktop roles and leaves only unicd.
 Fresh profiles show first-install setup and optional v1 migration before normal runtime startup. Completed setup and established v2 profiles open history directly. There is no recurring unlock flow. The marker, source detection and exclusive migration lifecycle are described in the [live desktop composition](overview.md#live-desktop-composition).
 Settings > Storage > Migrate from v1 reopens the migration flow. The GUI requests a serialized tray pause. The tray closes its quick panel and unregisters its shortcut. It retires the tray-owned adapter on platforms that use one. It stops and waits for its owned service, including the in-service adapter on macOS, before permitting offline import. The pause and pending setup marker form the migration admission barrier before the GUI shows migration. A marker write failure prevents migration. Cancellation or process exit preserves this pending state; reopening Desktop returns to migration with its selected source. Import completion alone does not complete setup. Explicit entry starts the normal runtime again and persists completion after service readiness. An external target owner blocks import before credential access; it is not automatically stopped by migration.
 General, Sync and Storage controls save through the revision-checked local configuration API.
@@ -195,9 +196,11 @@ The [Desktop source application receipt](../exec/desktop-source-application.md) 
 ## Settings
 
 Settings organizes active categories into three grouped sidebar sections:
-General & Experience (`general`, `appearance`, `quickPanel`), Sync & Data
+General & Experience (`general`, `appearance`, `shortcuts`, `quickPanel`, `notifications`), Sync & Data
 (`sync`, `storage`, `plugins`), and Diagnostics & System (`diagnostics`,
 `about`), removing unimplemented placeholder categories from the navigation.
+
+Settings > Notifications exposes `desktop.notifications.enabled` and `desktop.notifications.device_pairing` (both defaulting on and applying immediately without a restart), passive system notification status reading, an explicit test notification trigger, and an Open System Settings action. When pending device or sync-path approval requests exist, the GUI highlights the Manage Devices sidebar entry with a red numeric badge (and a red dot on the collapsed sidebar toggle and compact navigation rail), updates the Dock/app badge count, shows a dismissible actionable guidance toast with a direct jump to fingerprint verification when viewing other pages, and surfaces a top tray menu shortcut.
 
 Settings > Appearance exposes `desktop.color_mode` as `system`, `light` or
 `dark` (default `system`) via visual theme cards, alongside `desktop.tray_icon`
@@ -254,6 +257,8 @@ The actual paste owner retains its existing permission checks. See the
 | `desktop.launch_at_login` | `false` | The running tray applies login registration; actual OS status is displayed separately. |
 | `desktop.tray_icon` | `"glyph"` | Immediately select `glyph` or `cat`; no restart required. |
 | `desktop.start_in_background` | `false` | Normal login startup only: true omits the GUI, false opens it. Manual activation always opens the GUI; explicit `--background` always omits it after setup. |
+| `desktop.notifications.enabled` | `true` | Master switch for native Desktop system notifications; applies immediately without a restart. In-app badges and prompts remain visible. |
+| `desktop.notifications.device_pairing` | `true` | Send system notifications when a device requests to join or add a sync path; applies immediately without a restart. |
 | `sync.enabled` | `true` | Pause content sends and receives. Keep connections and local history. |
 | `sync.automatic` | `true` | Send new observed copies. Local history, manual sends, receives, and Actions remain independent. |
 | `sync.on_restore` | `false` | After a successful explicit history restore, dispatch the restored content once. |

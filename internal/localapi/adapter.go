@@ -94,3 +94,9 @@ func (c *Client) EnableDesktopNotifications(ctx context.Context) (enabled bool, 
 	err = c.do(ctx, http.MethodPost, "/v1/desktop/notifications/enable", nil, &enabled)
 	return
 }
+
+// DisableDesktopNotifications releases daemon-owned pair notifications when a
+// Desktop tray process takes over native notification delivery.
+func (c *Client) DisableDesktopNotifications(ctx context.Context) error {
+	return c.do(ctx, http.MethodPost, "/v1/desktop/notifications/disable", nil, nil)
+}

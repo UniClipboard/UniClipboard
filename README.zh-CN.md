@@ -1,11 +1,11 @@
 <div align="center">
 
-<img src="app/desktop/internal/appicons/unic-logo.svg" alt="UniClipboard" width="112" height="112" />
+<img src="app/desktop/internal/appicons/unic-logo.svg" alt="Unic" width="112" height="112" />
 
 # 复制一次，每台设备都能粘贴
 
 <p>
-  <strong>UniClipboard</strong> 在你的设备之间直接同步文字、图片、文件和文件夹。<br />
+  <strong>Unic（原名 UniClipboard）</strong> 在你的设备之间直接同步文字、图片、文件和文件夹。<br />
   端到端加密，无需账号，不经过云端。
 </p>
 
@@ -30,13 +30,13 @@
   </small>
 </p>
 
-![UniClipboard 跨设备界面展示（桌面、平板与手机）](docs/assets/product-overview.png)
+![Unic 跨设备界面展示（桌面、平板与手机）](docs/assets/product-overview.png)
 
 </div>
 
 ---
 
-## 为什么选择 UniClipboard
+## 为什么选择 Unic
 
 - **跨平台**：支持 Windows、macOS、Linux、iOS 和 Android 互相同步。设备在同一 Wi-Fi 或不同网络里都能连上。
 - **不经过云端**：设备之间加密直连，不需要注册账号。剪贴板历史只保存在你自己的设备上。
@@ -129,7 +129,7 @@ unic history list                 # 查看历史
 
 ## 隐私
 
-- 设备之间端到端加密传输，UniClipboard 不运营存储你剪贴板内容的服务器。
+- 设备之间端到端加密传输，Unic 不运营存储你剪贴板内容的服务器。
 - 新设备必须由你核对指纹并手动批准。设备移除后会立即失去访问权限。
 - 剪贴板内容、文件路径和设备地址不会写入日志。
 - 匿名诊断数据不包含剪贴板内容和设备身份。可以在 **设置 → 诊断与隐私** 中随时关闭。

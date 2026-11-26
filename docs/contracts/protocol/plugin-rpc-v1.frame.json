@@ -85,6 +85,7 @@
     "sync_host.introduce": "sync_introduce",
     "sync_host.authorize_send": "sync_authorize",
     "sync_host.open_send_part": "sync_open_send_part",
+    "sync_host.send_progress": "sync_send_progress",
     "sync_host.receive_open": "sync_receive_open",
     "sync_host.receive": "sync_receive",
     "sync_host.receive_part": "sync_receive_part"
@@ -108,6 +109,7 @@
     "sync_host.introduce": "empty",
     "sync_host.authorize_send": "sync_send_grant",
     "sync_host.open_send_part": "stream",
+    "sync_host.send_progress": "empty",
     "sync_host.receive_open": "sync_receive_grant",
     "sync_host.receive": "sync_receive_result",
     "sync_host.receive_part": "empty"
@@ -124,6 +126,7 @@
     "sync_host.introduce": "plugin_to_engine",
     "sync_host.authorize_send": "plugin_to_engine",
     "sync_host.open_send_part": "plugin_to_engine",
+    "sync_host.send_progress": "plugin_to_engine",
     "sync_host.receive_open": "plugin_to_engine",
     "sync_host.receive": "plugin_to_engine",
     "sync_host.receive_part": "plugin_to_engine"

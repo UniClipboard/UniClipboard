@@ -27,36 +27,42 @@ func (b *bodies) Next(context.Context) (int, io.ReadCloser, error) {
 	return b.i - 1, io.NopCloser(bytes.NewReader(b.d[b.i-1])), nil
 }
 
-func (f *fakePeer) Send(ctx context.Context, s rpc.Send, src plugin.SendSource) error {
+func (f *fakePeer) Send(ctx context.Context, s rpc.Send, src plugin.SendSource) (rpc.SendResult, error) {
 	f.sends.Add(1)
 	if f.hold != nil {
 		<-f.hold
 	}
 	g, err := src.Authorize(ctx, rpc.Authorize{DispatchID: s.DispatchID, ContentHandle: s.ContentHandle, ConnectionID: s.ConnectionID, SessionToken: s.SessionToken})
 	if err != nil {
-		return err
+		return rpc.SendResult{}, err
 	}
 	var data [][]byte
 	for i := range s.Clip.Parts {
 		r, err := src.OpenPart(ctx, g.GrantID, i)
 		if err != nil {
-			return err
+			return rpc.SendResult{}, err
 		}
 		b, _ := io.ReadAll(r)
 		_ = r.Close()
 		data = append(data, b)
 	}
 	if _, err := src.OpenPart(ctx, g.GrantID, 0); err == nil {
-		return rpc.NewError(rpc.CodeInternal) // a part opens once
+		return rpc.SendResult{}, rpc.NewError(rpc.CodeInternal) // a part opens once
 	}
 	peer := f.peer
 	gr, err := peer.recv.OpenReceive(ctx, rpc.ReceiveOpen{ConnectionID: f.peerConn, SessionToken: f.peerTok, Clip: s.Clip})
 	if err != nil || gr.Decision != rpc.DecisionAccept {
 		f.lastErr, f.lastDec = err, gr.Decision
-		return err
+		if err != nil {
+			return rpc.SendResult{}, err
+		}
+		return rpc.SendResult{State: rpc.SendSent, ReceiptStage: rpc.ReceiptLocalWritten}, nil
 	}
 	_, err = peer.recv.Receive(ctx, *gr.ReceiveID, &bodies{d: data})
-	return err
+	if err != nil {
+		return rpc.SendResult{}, err
+	}
+	return rpc.SendResult{State: rpc.SendSent, ReceiptStage: rpc.ReceiptRemoteReceived}, nil
 }
 
 func TestPeerSendReceiveLoopback(t *testing.T) {

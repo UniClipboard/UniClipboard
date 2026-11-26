@@ -9,7 +9,9 @@ import (
 // SendStreamObserved call; headers and buffering overhead are excluded.
 type BodyObservation struct {
 	Bytes       int64
+	PartIndex   int
 	First, Last time.Time
+	OnProgress  func(bytesSent int64, partIndex int)
 }
 
 func (o *BodyObservation) Duration() time.Duration {
@@ -32,5 +34,8 @@ func (w payloadWriter) Write(p []byte) (int, error) {
 	}
 	w.o.Last = time.Now()
 	w.o.Bytes += int64(n)
+	if n > 0 && w.o.OnProgress != nil {
+		w.o.OnProgress(w.o.Bytes, w.o.PartIndex)
+	}
 	return n, err
 }

@@ -102,8 +102,10 @@ type gui struct {
 // The E2E build overrides both initial and post-startup window dimensions.
 var desktopWindowWidth, desktopWindowHeight = 1100, 720
 
-// Production packaging sets this to UniClipboard. Development instances use a
-// distinct single-instance identity as well as their separate default data root.
+const desktopProductName = "Unic"
+
+// Packaging sets this to the product display name. The default preserves the
+// development login registration and stays distinct from packaged applications.
 var desktopAppName = "UniClipboard Development"
 var newDesktopBoard = func() clipboardintegration.Board { return board.MyGo{} }
 
@@ -274,7 +276,7 @@ func runGUI(settings *config.Manager) error {
 			}
 		}
 
-		opts := mygo.WindowOptions{Title: "unic", Width: desktopWindowWidth, Height: desktopWindowHeight, UseContentSize: true, MinWidth: 600, MinHeight: 480, Content: ui.View(view)}
+		opts := mygo.WindowOptions{Title: desktopProductName, Width: desktopWindowWidth, Height: desktopWindowHeight, UseContentSize: true, MinWidth: 600, MinHeight: 480, Content: ui.View(view)}
 		windowchrome.Configure(&opts, runtime.GOOS, session.windowFrame)
 		if flow.Required() {
 			opts.Width, opts.Height = setupWindowWidth, setupWindowHeight

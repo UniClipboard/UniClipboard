@@ -69,11 +69,10 @@ func setupTrayWith(ctx context.Context, cfg config.Desktop, goos string, createT
 	rightClickMenu := trayMenuOnRightClick(goos)
 
 	buildTooltip := func(lang string, p notifications.PendingSummary) string {
-		base := i18n.Translate(lang, "跨设备剪贴板同步")
 		if p.Count > 0 {
-			return fmt.Sprintf("%s · %s", base, fmt.Sprintf(i18n.Translate(lang, "待批准设备请求 (%d)"), p.Count))
+			return desktopProductName + " · " + fmt.Sprintf(i18n.Translate(lang, "待批准设备请求 (%d)"), p.Count)
 		}
-		return base
+		return desktopProductName
 	}
 	menu := func(lang string, p notifications.PendingSummary) *mygo.Menu {
 		tr := func(text string) string { return i18n.Translate(lang, text) }

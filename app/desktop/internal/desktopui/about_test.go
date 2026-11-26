@@ -125,7 +125,7 @@ func TestAboutHeaderAndLinks(t *testing.T) {
 		savePNG("about-dark.png", darkTT)
 	}
 	for _, want := range []string{
-		"UniClipboard",
+		"Unic",
 		"Stable",
 		"版本 2.0.0 (1)",
 		"检查更新",
@@ -384,7 +384,7 @@ func TestAboutSponsorsAsyncLifecycle(t *testing.T) {
 
 	tt := ui.NewTesterWith(d.view, 1100, 900, ui.TesterOptions{})
 	// Immediately visible with heading and loading skeletons while async fetch is in flight.
-	if !tt.HasText("赞助者") || !tt.HasText("感谢以下朋友的赞助支持，让 UniClipboard 持续向前。") {
+	if !tt.HasText("赞助者") || !tt.HasText("感谢以下朋友的赞助支持，让 Unic 持续向前。") {
 		t.Fatal("sponsors section should render loading state immediately")
 	}
 	if tt.HasText("Grace Hopper") {

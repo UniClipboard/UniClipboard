@@ -1,11 +1,11 @@
 <div align="center">
 
-<img src="app/desktop/internal/appicons/unic-logo.svg" alt="UniClipboard" width="112" height="112" />
+<img src="app/desktop/internal/appicons/unic-logo.svg" alt="Unic" width="112" height="112" />
 
 # Copie uma vez. Cole em qualquer dispositivo.
 
 <p>
-  O <strong>UniClipboard</strong> sincroniza texto, imagens, arquivos e pastas diretamente entre seus dispositivos.<br />
+  O <strong>Unic (anteriormente UniClipboard)</strong> sincroniza texto, imagens, arquivos e pastas diretamente entre seus dispositivos.<br />
   Criptografia de ponta a ponta. Sem conta. Sem nuvem.
 </p>
 
@@ -30,13 +30,13 @@
   </small>
 </p>
 
-![UniClipboard no desktop, tablet e celular](docs/assets/product-overview.png)
+![Unic no desktop, tablet e celular](docs/assets/product-overview.png)
 
 </div>
 
 ---
 
-## Por que o UniClipboard
+## Por que o Unic
 
 - **Multiplataforma**: sincroniza entre Windows, macOS, Linux, iOS e Android, na mesma rede Wi-Fi ou em redes diferentes.
 - **Sem nuvem**: os dispositivos se conectam diretamente por canais criptografados. Sem cadastro. O histórico fica só nos seus dispositivos.
@@ -129,7 +129,7 @@ Veja todos os comandos no [guia da CLI](app/service/README.md).
 
 ## Privacidade
 
-- O conteúdo é criptografado de ponta a ponta entre dispositivos. O UniClipboard não mantém servidores que guardem sua área de transferência.
+- O conteúdo é criptografado de ponta a ponta entre dispositivos. O Unic não mantém servidores que guardem sua área de transferência.
 - Você confere uma impressão digital e aprova cada novo dispositivo. Um dispositivo removido perde o acesso na hora.
 - Conteúdo copiado, caminhos de arquivos e endereços de dispositivos nunca vão para os logs.
 - O diagnóstico anônimo não inclui conteúdo nem identidade do dispositivo. Desative quando quiser em **Configurações → Diagnóstico e privacidade**.

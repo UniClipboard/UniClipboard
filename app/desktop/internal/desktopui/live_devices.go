@@ -34,6 +34,7 @@ func (d *viewState) approveLive(id string, accept bool) {
 					d.deviceTask = ""
 					d.deviceTaskForID = ""
 					d.live.join = nil
+					d.clearPairingQR()
 					d.deviceList.Value, d.deviceDetailOpen = peer.ID, false
 				}
 			}:
@@ -206,9 +207,10 @@ func (d *viewState) cancelLiveInvitation() {
 	l.ticket = ""
 	l.code = api.Code{}
 	d.inviteCode = ""
+	d.clearPairingQR()
 	l.enqueue(func(ctx context.Context) func() {
 		_ = l.client.CancelCode(ctx)
-		return func() { l.code = api.Code{}; l.ticket = ""; d.inviteCode = "" }
+		return func() { l.code = api.Code{}; l.ticket = ""; d.inviteCode = ""; d.clearPairingQR() }
 	})
 }
 

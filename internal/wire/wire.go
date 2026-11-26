@@ -28,17 +28,24 @@ const (
 	MaxFileBytes = 2 << 30  // one file
 	MaxTotal     = 4 << 30  // whole clipboard message
 	MaxParts     = 4096
+
+	CapClipAck = "clip_ack"
+
+	ClipAckReceived  = "received"
+	ClipAckDiscarded = "discarded"
+	ClipAckFailed    = "failed"
 )
 
 // Hello opens every connection, in both directions. H is the identity
 // protocol's Hello (internal/identity); Name and Addr are what the sender
 // reports about itself and are never evidence of identity.
 type Hello struct {
-	T       string `json:"t"` // "hello"
-	Version int    `json:"v"`
-	H       []byte `json:"h"`
-	Name    string `json:"name,omitempty"`
-	Addr    string `json:"addr,omitempty"` // the sender's own address, so the peer can dial back (a secret)
+	T       string   `json:"t"` // "hello"
+	Version int      `json:"v"`
+	H       []byte   `json:"h"`
+	Name    string   `json:"name,omitempty"`
+	Addr    string   `json:"addr,omitempty"` // the sender's own address, so the peer can dial back (a secret)
+	Caps    []string `json:"caps,omitempty"` // optional negotiated wire v1 capabilities (e.g. "clip_ack")
 }
 
 // Proof follows the hellos: the sender's signature over the handshake
@@ -67,6 +74,15 @@ type Ping struct {
 type Pong struct {
 	T  string `json:"t"` // "pong"
 	ID string `json:"id"`
+}
+
+// ClipAck reports the receiver's Engine receive outcome for one Clip ID on a
+// session where both peers negotiated CapClipAck. It carries no filenames,
+// policy reasons, or error text.
+type ClipAck struct {
+	T      string `json:"t"`      // "clip_ack"
+	ID     string `json:"id"`     // wire.Clip.ID
+	Status string `json:"status"` // "received", "discarded", or "failed"
 }
 
 // PartMeta announces one blob that follows a Clip message.
@@ -218,7 +234,10 @@ func (c *Conn) SendClipStream(id, origin string, ts int64, hash string, parts []
 	if obs != nil {
 		dst = payloadWriter{w: c.w, o: obs}
 	}
-	for _, p := range parts {
+	for i, p := range parts {
+		if obs != nil {
+			obs.PartIndex = i
+		}
 		if _, err := io.CopyN(dst, p.R, p.Size); err != nil {
 			return err
 		}

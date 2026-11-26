@@ -116,7 +116,7 @@ func recvPeer(t *testing.T, r *fakeRecv) (plugin.Plugin, string) {
 func trigger(t *testing.T, p plugin.Plugin, name string, parts ...[]byte) {
 	t.Helper()
 	s := testSend("recv:"+name, parts...)
-	if err := p.(plugin.PeerDispatcher).Send(context.Background(), s, &fakeSource{}); err != nil {
+	if _, err := p.(plugin.PeerDispatcher).Send(context.Background(), s, &fakeSource{}); err != nil {
 		_ = 0
 		t.Fatal(err)
 	}

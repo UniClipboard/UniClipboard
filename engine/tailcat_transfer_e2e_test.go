@@ -55,10 +55,10 @@ func (p *observedTailcat) SetPeerAuthority(a plugin.PeerAuthority) {
 	p.Plugin.SetPeerAuthority(p.barrier)
 }
 
-func (p *observedTailcat) Send(ctx context.Context, in rpc.Send, src plugin.SendSource) error {
+func (p *observedTailcat) Send(ctx context.Context, in rpc.Send, src plugin.SendSource) (rpc.SendResult, error) {
 	close(p.started)
 	defer close(p.ended)
-	err := p.Plugin.Send(ctx, in, src)
+	res, err := p.Plugin.Send(ctx, in, src)
 	code := "success"
 	if err != nil {
 		code = "unclassified"
@@ -70,7 +70,7 @@ func (p *observedTailcat) Send(ctx context.Context, in rpc.Send, src plugin.Send
 	p.mu.Lock()
 	p.sendErr = code
 	p.mu.Unlock()
-	return err
+	return res, err
 }
 
 func TestTailcatConnectedPublicationDeliversEverything(t *testing.T) {

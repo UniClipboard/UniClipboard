@@ -18,7 +18,7 @@
 5. 方法允许并发调用。状态变更在明确提交点原子生效；核心不在持锁期间调用宿主代码。SDK 不指定 UI 线程。
 6. context 只控制本次调用和其直接 I/O，不充当实例生命周期。context 取消后，已提交操作继续存在；取消不回滚信任与成功导入的资源。
 7. 普通查询和事件不含设备地址、票据、剪贴板正文、文件内容或绝对路径。内容只能显式读取，地址和配对码只能显式获取。日志和错误必须脱敏，包括第三方错误。
-8. The built-in peer-session wire uses version 1. It does not provide remote application acknowledgments, resumable transfers or reliable offline delivery. See the [history contract](history-contract.md) for local queries.
+8. The built-in peer-session wire uses version 1. When both peers negotiate `clip_ack`, the receiver acknowledges verified Engine receive commit (or clean discard); wire v1 still does not provide remote OS clipboard/paste acknowledgments, resumable transfers or reliable offline delivery. See the [history contract](history-contract.md) for local queries and [sync backend contract](sync-backend-contract.md#transfer-progress-reporting-and-remote-receipt-ack-0034).
 
 ### Multiple sync backends
 
@@ -142,6 +142,8 @@ func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (Submissi
 func (e *Engine) GetSubmission(ctx context.Context, id RequestID) (SubmissionResult, error)
 func (e *Engine) SubmitContent(ctx context.Context, req SubmitRequest) (OperationID, error)
 func (e *Engine) GetOperation(ctx context.Context, id OperationID) (Operation, error)
+func (e *Engine) ListOperations(ctx context.Context) ([]Operation, error)
+func (e *Engine) DiscardReceive(ctx context.Context, id OperationID) error
 func (e *Engine) ListReceived(ctx context.Context) ([]ReceivedContent, error)
 func (e *Engine) DismissReceived(ctx context.Context, id ReceiptID) error
 func (e *Engine) ListHistory(ctx context.Context, req ListHistoryRequest) (HistoryPage, error)
@@ -260,9 +262,10 @@ created / stopped ─Close─> closed <────停止并释放完成──�
 
 - 无在线目标报 `no_targets`，不创建排队任务，不做离线补发。
 - 提交点为创建 operation 并持有内部内容引用；返回后调用者可释放 LeaseID。显式提交即使内容相同也可发送一次。
-- `Operation` 含 ID、RequestID、Kind、CreatedAtMs、UpdatedAtMs、Phase、Targets、Outcome、Error。发送 Targets 中每项有 PeerID、state、结构化错误；state 为 queued/sending/sent/failed/superseded。运行中总 Phase 为 queued/sending，全部目标终止后为 completed；Outcome 为 success/partial/failed/superseded，只有全部 sent 才为 success，全部 superseded 才为 superseded，sent 和其他终态混合为 partial，其余为 failed。
+- `Operation` 含 ID、RequestID、Kind、可选 HistoryID（关联持久历史条目）、CreatedAtMs、UpdatedAtMs、Phase、Targets、Outcome、Error。发送 Targets 中每项有 BackendID、TargetKind、TargetID、PeerID、State、可选 ReceiptStage（`local_written`/`remote_received`/`remote_discarded`）、可选内存态 Progress（`BytesSent`/`TotalBytes`/`PartIndex`/`PartCount`，不写 SQLite 且不含文件名/路径）与结构化错误；State 为 `queued`/`sending`/`sent`/`discarded`/`failed`/`superseded`。运行中总 Phase 为 queued/sending，全部目标终止后为 completed；Outcome 为 success/partial/failed/superseded，只有全部 sent 才为 success，全部 superseded 才为 superseded，sent 和其他终态（含 discarded）混合为 partial，其余为 failed。
 - 每个设备最多一个在途、一个待发内容；新提交替换同设备未开始的待发项，被替换目标标记 superseded。不能静默丢任务。
-- sent 仅表示完整字节写出本地传输。不能显示为“对方已复制”或“已应用”。连接中断的当前发送失败，重连不自动重发。
+- `ReceiptStage=remote_received` 表示对端 Engine 已完整接收、校验并提交；`ReceiptStage=local_written` 表示仅完成本地传输层写出（例如旧版对端不支持回执，或写完后等待回执失败/超时时的不确定远端结果）。两者均不能显示为“对方已复制”或“已粘贴”。连接中断或等待回执超时的发送失败，重连不自动重发。纯进度更新对 `EventOperations` 按 200 ms 合并节流，离散状态切换与终态立即发布。
+- 入站 `peer_sessions` 传输同样由内存态 `Operation`（`Kind=receive`、`Phase=receiving` → `completed`）跟踪：`Operation.Receive` 携带 `BackendID`、`PeerID`、`State`（`receiving`/`committed`/`discarded`/`failed`）、`ContentKind`、`FileCount` 与 `ReceiveProgress`（`BytesReceived`/`TotalBytes`/`PartIndex`/`PartCount`，不写 SQLite 且不含文件名/路径/正文）。调用 `DiscardReceive(ctx, id)` 可中止在途接收：立即停止写盘、清理未发布暂存与预留、将操作转为 `discarded` 并向后端返回 `outcome=discarded`（未知 ID 返回 `not_found`，非接收操作返回 `invalid_argument`，已提交完成返回 `conflict`，已放弃幂等成功）。
 - Submit、Join、Pair 的 RequestID 必填，实例内幂等：保留期内相同类型和语义参数返回相同 OperationID，不重复执行；参数不同报 conflict。重复识别先于租约有效性验证；内部仅保留敏感参数的不可逆校验值，不存储到公共 DTO。超出保留期后调用者须用新 RequestID，不承诺去重。
 - 其他方法除明确声明幂等外，不提供隐式重试；context 超时不能被解释为“操作一定未提交”。
 

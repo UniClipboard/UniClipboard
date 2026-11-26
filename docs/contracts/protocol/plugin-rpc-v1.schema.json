@@ -1326,11 +1326,51 @@
       ],
       "additionalProperties": false
     },
+    "sync_send_progress": {
+      "type": "object",
+      "properties": {
+        "grant_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "stage": {
+          "enum": [
+            "sending",
+            "awaiting_receipt"
+          ]
+        },
+        "bytes_sent": {
+          "$ref": "#/$defs/uint64"
+        },
+        "total_bytes": {
+          "$ref": "#/$defs/uint64"
+        },
+        "part_index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        }
+      },
+      "required": [
+        "grant_id",
+        "stage",
+        "bytes_sent",
+        "total_bytes"
+      ],
+      "additionalProperties": false
+    },
     "sync_send_result": {
       "type": "object",
       "properties": {
         "state": {
           "const": "sent"
+        },
+        "receipt_stage": {
+          "enum": [
+            "local_written",
+            "remote_received",
+            "remote_discarded"
+          ]
         }
       },
       "required": [

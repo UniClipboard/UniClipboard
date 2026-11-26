@@ -239,6 +239,7 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 				}
 				emitQueue("started")
 				h.Report(k, TargetSending, nil)
+				h.ReportProgress(k, "", TransferProgress{BytesSent: 0, TotalBytes: pv.set.total, PartCount: len(pv.set.parts)})
 				sendSpanCtx, endSend := e.startSpan(e.inheritTrace(ctx, pv.traceCtx), TraceSpanSpec{
 					Name:        "unic.sync.send",
 					Kind:        TraceSpanClient,
@@ -257,9 +258,9 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 				// surviving session instead of failing.
 				cur := s
 				for attempt := 0; ; attempt++ {
-					src := &peerSendSource{b: b, v: pv, conn: cur.conn, token: cur.token}
+					src := &peerSendSource{b: b, v: pv, conn: cur.conn, token: cur.token, h: h, key: k, totalBytes: pv.set.total, partCount: len(pv.set.parts)}
 					started := time.Now()
-					err := b.sendOver(ctx, disp, src, cur, pv, targetClip)
+					res, err := b.sendOver(ctx, disp, src, cur, pv, targetClip)
 					var outcome DiagnosticResult
 					var code Code
 					switch {
@@ -281,12 +282,19 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 					unsent := !src.authorized()
 					src.close()
 					if err == nil {
-						h.Report(k, TargetSent, nil)
+						switch res.ReceiptStage {
+						case rpc.ReceiptRemoteReceived:
+							h.ReportReceipt(k, TargetSent, ReceiptStageRemoteReceived, nil)
+						case rpc.ReceiptRemoteDiscarded:
+							h.ReportReceipt(k, TargetDiscarded, ReceiptStageRemoteDiscarded, nil)
+						default:
+							h.ReportReceipt(k, TargetSent, ReceiptStageLocalWritten, nil)
+						}
 						return
 					}
 					next, ok := b.survivor(cur)
 					if !unsent || !ok || attempt >= 2 {
-						h.Report(k, TargetFailed, err)
+						h.ReportReceipt(k, TargetFailed, "", err)
 						return
 					}
 					cur = next
@@ -302,11 +310,15 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 }
 
 // sendOver dispatches the clip over one session.
-func (b *peerProcBackend) sendOver(ctx context.Context, disp plugin.PeerDispatcher, src *peerSendSource, s session, v backendView, clip rpc.Clip) error {
+func (b *peerProcBackend) sendOver(ctx context.Context, disp plugin.PeerDispatcher, src *peerSendSource, s session, v backendView, clip rpc.Clip) (rpc.SendResult, error) {
+	mode := "automatic"
+	if v.manual {
+		mode = "explicit"
+	}
 	msg := rpc.Send{DispatchID: randHex(16), OperationID: v.id, PeerID: s.peerID, ConnectionID: s.conn, SessionToken: s.token,
-		ContentHandle: randHex(32), Clip: clip, BackendID: string(b.id), Mode: "automatic"}
+		ContentHandle: randHex(32), Clip: clip, BackendID: string(b.id), Mode: mode}
 	if err := msg.Validate(); err != nil {
-		return err
+		return rpc.SendResult{}, err
 	}
 	return disp.Send(ctx, msg, src)
 }
@@ -328,16 +340,22 @@ func (s *peerSendSource) authorized() bool {
 	return s.grant != ""
 }
 
-// peerSendSource answers the backend's authorize/open requests for one send.
+// peerSendSource answers the backend's authorize/open/progress requests for one send.
 type peerSendSource struct {
-	b     *peerProcBackend
-	v     backendView
-	conn  string
-	token string
+	b          *peerProcBackend
+	v          backendView
+	conn       string
+	token      string
+	h          backendHost
+	key        targetKey
+	totalBytes int64
+	partCount  int
 
-	mu      sync.Mutex
-	grant   string
-	handles []io.ReadCloser // opened at authorization, one per part
+	mu        sync.Mutex
+	grant     string
+	handles   []io.ReadCloser // opened at authorization, one per part
+	lastBytes uint64
+	awaiting  bool
 }
 
 func (s *peerSendSource) close() {
@@ -443,4 +461,52 @@ func (s *peerSendSource) OpenPart(_ context.Context, grantID string, index int) 
 	h := s.handles[index]
 	s.handles[index] = nil
 	return h, nil
+}
+
+// ReportProgress validates and forwards monotonic send progress to the Engine operation.
+func (s *peerSendSource) ReportProgress(_ context.Context, p rpc.SendProgress) error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	switch {
+	case s.grant == "" || subtle.ConstantTimeCompare([]byte(p.GrantID), []byte(s.grant)) != 1:
+		s.mu.Unlock()
+		return rpc.NewError(rpc.CodePermission)
+	case uint64(p.TotalBytes) != uint64(s.totalBytes):
+		s.mu.Unlock()
+		return rpc.NewError(rpc.CodeInvalidArgument)
+	case p.PartIndex != nil && *p.PartIndex >= s.partCount:
+		s.mu.Unlock()
+		return rpc.NewError(rpc.CodeInvalidArgument)
+	case uint64(p.BytesSent) < s.lastBytes:
+		s.mu.Unlock()
+		return rpc.NewError(rpc.CodeConflict)
+	case s.awaiting && p.Stage == rpc.SendStageSending:
+		s.mu.Unlock()
+		return rpc.NewError(rpc.CodeConflict)
+	}
+	s.lastBytes = uint64(p.BytesSent)
+	if p.Stage == rpc.SendStageAwaitingReceipt {
+		s.awaiting = true
+	}
+	s.mu.Unlock()
+	if s.h == nil {
+		return nil
+	}
+	var stage ReceiptStage
+	if p.Stage == rpc.SendStageAwaitingReceipt {
+		stage = ReceiptStageLocalWritten
+	}
+	partIdx := 0
+	if p.PartIndex != nil {
+		partIdx = *p.PartIndex
+	}
+	s.h.ReportProgress(s.key, stage, TransferProgress{
+		BytesSent:  int64(p.BytesSent),
+		TotalBytes: s.totalBytes,
+		PartIndex:  partIdx,
+		PartCount:  s.partCount,
+	})
+	return nil
 }

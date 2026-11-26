@@ -118,9 +118,14 @@ func (e *Engine) linkHistory(hid HistoryID, opID OperationID, results []BackendS
 	e.mu.Lock()
 	o := e.ops.byID[opID]
 	if o != nil {
+		changed := o.op.HistoryID != hid
 		o.history, o.results = hid, results
+		o.op.HistoryID = hid
 		targets = append(targets, o.op.Targets...)
 		o.recorded = o.op.Phase == PhaseCompleted
+		if changed && hid != "" {
+			e.commitObjsLocked([]ObjectRef{{Type: "operation", ID: string(o.op.ID)}}, EventOperations)
+		}
 	}
 	e.mu.Unlock()
 	e.recordSync(hid, results, targets)

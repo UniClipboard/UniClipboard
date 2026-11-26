@@ -85,6 +85,10 @@ func (n *Node) pumpEvents(ctx context.Context) {
 				for _, o := range ev.Objects { // ids only: clients fetch the record again
 					n.hub.emit(api.Event{Kind: "history", Info: o.ID})
 				}
+			case engine.EventOperations:
+				for _, o := range ev.Objects {
+					n.hub.emit(api.Event{Kind: "operations", Info: o.ID})
+				}
 			case engine.EventPairingCode:
 				n.hub.emit(api.Event{Kind: "code"})
 			}

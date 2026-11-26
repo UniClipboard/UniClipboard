@@ -11,9 +11,17 @@ const (
 	MethodSend          = "backend.send"             // Engine→backend
 	MethodAuthorizeSend = "sync_host.authorize_send" // backend→Engine
 	MethodOpenSendPart  = "sync_host.open_send_part" // backend→Engine
+	MethodSendProgress  = "sync_host.send_progress"  // backend→Engine
 	MaxClipParts        = 4096
 	MaxClipName         = 1024
 	SendSent            = "sent"
+
+	SendStageSending         = "sending"
+	SendStageAwaitingReceipt = "awaiting_receipt"
+
+	ReceiptLocalWritten    = "local_written"
+	ReceiptRemoteReceived  = "remote_received"
+	ReceiptRemoteDiscarded = "remote_discarded"
 )
 
 // ClipPart describes one wire part, in wire order; Index runs from 0.
@@ -145,13 +153,48 @@ func (o OpenSendPart) Validate() error {
 	return nil
 }
 
+// SendProgress reports throttled outgoing transfer progress under a live
+// backend.send grant. It never carries filenames, paths or content.
+type SendProgress struct {
+	GrantID    string `json:"grant_id"`
+	Stage      string `json:"stage"` // sending or awaiting_receipt
+	BytesSent  U64    `json:"bytes_sent"`
+	TotalBytes U64    `json:"total_bytes"`
+	PartIndex  *int   `json:"part_index,omitempty"`
+}
+
+func (p SendProgress) Validate() error {
+	if !hex64Re.MatchString(p.GrantID) {
+		return NewError(CodeInvalidArgument)
+	}
+	if p.Stage != SendStageSending && p.Stage != SendStageAwaitingReceipt {
+		return NewError(CodeInvalidArgument)
+	}
+	if uint64(p.BytesSent) > uint64(p.TotalBytes) {
+		return NewError(CodeInvalidArgument)
+	}
+	if p.Stage == SendStageAwaitingReceipt && uint64(p.BytesSent) != uint64(p.TotalBytes) {
+		return NewError(CodeInvalidArgument)
+	}
+	if p.PartIndex != nil && (*p.PartIndex < 0 || *p.PartIndex >= MaxClipParts) {
+		return NewError(CodeInvalidArgument)
+	}
+	return nil
+}
+
 type SendResult struct {
-	State string `json:"state"`
+	State        string `json:"state"`
+	ReceiptStage string `json:"receipt_stage,omitempty"`
 }
 
 func (r SendResult) Validate() error {
 	if r.State != SendSent {
 		return NewError(CodeInvalidArgument)
 	}
-	return nil
+	switch r.ReceiptStage {
+	case "", ReceiptLocalWritten, ReceiptRemoteReceived, ReceiptRemoteDiscarded:
+		return nil
+	default:
+		return NewError(CodeInvalidArgument)
+	}
 }

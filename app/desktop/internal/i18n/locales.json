@@ -4055,12 +4055,6 @@
     "pt-BR": "Plugins externos",
     "ru": "Внешние плагины"
   },
-  "退出整个应用": {
-    "en": "Quit",
-    "ja": "アプリケーションを終了",
-    "pt-BR": "Sair do aplicativo",
-    "ru": "Выйти из приложения"
-  },
   "下次启动时生效。轻量模式保留托盘和同步服务。": {
     "en": "Applies on next launch. Lightweight mode keeps the tray and sync service.",
     "ja": "次回の起動時に適用します。軽量モードでもトレイと同期サービスは動作します。",

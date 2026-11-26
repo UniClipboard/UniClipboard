@@ -255,7 +255,7 @@ func parseTraceParent(s string) (trace.SpanContext, bool) {
 	for _, part := range []string{s[3:35], s[36:52], s[53:55]} {
 		for i := 0; i < len(part); i++ {
 			c := part[i]
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 				return trace.SpanContext{}, false
 			}
 		}

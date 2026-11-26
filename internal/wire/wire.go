@@ -114,7 +114,7 @@ func SanitizeTraceParent(s string) string {
 	isLowerHex := func(part string) (nonZero bool, ok bool) {
 		for i := 0; i < len(part); i++ {
 			c := part[i]
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 				return false, false
 			}
 			if c != '0' {

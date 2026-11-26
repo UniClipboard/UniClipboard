@@ -101,7 +101,7 @@
       "sse": "Live push (SSE)"
     },
     "extensions": {
-      "footer": "The share extension lets you send items to UniClipboard directly from the iOS share sheet in other apps.",
+      "footer": "The share extension lets you send items to Unic directly from the iOS share sheet in other apps.",
       "keyboard": "Keyboard",
       "share": "Share",
       "clipboardAccess": "Clipboard access"
@@ -122,7 +122,7 @@
   "analytics": {
     "sectionTitle": "Privacy",
     "consentTitle": "Share anonymous usage and diagnostics",
-    "consentDescription": "Helps improve UniClipboard without collecting clipboard contents or names",
+    "consentDescription": "Helps improve Unic without collecting clipboard contents or names",
     "footer": "App version, system, region, session, paired device count, and diagnostic records without contents or names may be sent. Turning this off stops collection and clears pending data.",
     "reset": "Reset",
     "resetTitle": "Reset statistics identity",

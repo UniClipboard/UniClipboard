@@ -46,7 +46,7 @@ export interface ShareFavoritesGuideSheetProps {
 const GUIDE_STEPS = ['openSheet', 'findMore', 'addFavorite', 'moveToTop'] as const;
 type GuideStep = (typeof GUIDE_STEPS)[number];
 
-const APP_NAME = 'UniClipboard';
+const APP_NAME = 'Unic';
 
 const APP_COLORS = {
   uniclip: settingsTileColors.blue,

@@ -205,6 +205,8 @@ private final class MediaPickerCoordinator: NSObject, UIImagePickerControllerDel
 
 public final class UnicEngineModule: Module {
   private let engineQueue = DispatchQueue(label: "app.uniclipboard.engine", qos: .userInitiated)
+  private let keyboardBridge = KeyboardBridge()
+  private var keyboardSyncWorkItem: DispatchWorkItem?
   private var engine: MobileEngine?
   private var setupSession: MobileMigrationSession?
   private var activeMigrationCancel: MobileCancelToken?
@@ -437,10 +439,22 @@ public final class UnicEngineModule: Module {
   }
 
   private func shutdownEngineInternal() {
+    keyboardSyncWorkItem?.cancel()
+    keyboardSyncWorkItem = nil
     if let eng = engine {
       try? eng.close(nil)
       engine = nil
     }
+  }
+
+  private func scheduleKeyboardSnapshotPublish(delay: TimeInterval = 0.35) {
+    keyboardSyncWorkItem?.cancel()
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, let eng = self.engine else { return }
+      _ = try? self.keyboardBridge.publishSnapshot(engine: eng)
+    }
+    keyboardSyncWorkItem = work
+    engineQueue.asyncAfter(deadline: .now() + delay, execute: work)
   }
 
   private func startNetworkMonitor() {
@@ -596,6 +610,11 @@ public final class UnicEngineModule: Module {
         guard let eng = self.engine else { return }
         self.updateHostCapabilities(eng, foreground: true)
         try? eng.setRuntimeState("active")
+        if self.keyboardBridge.drainPendingActions(engine: eng) > 0 {
+          self.scheduleKeyboardSnapshotPublish(delay: 0.1)
+        } else {
+          self.scheduleKeyboardSnapshotPublish(delay: 0.4)
+        }
         let probe: (Int, Bool, Bool) = DispatchQueue.main.sync {
           let pb = UIPasteboard.general
           return (pb.changeCount, pb.hasStrings, pb.hasImages)
@@ -621,6 +640,9 @@ public final class UnicEngineModule: Module {
         self.observationEpoch = ""
         self.observationSequence = 0
         guard let eng = self.engine else { return }
+        self.keyboardSyncWorkItem?.cancel()
+        self.keyboardSyncWorkItem = nil
+        _ = try? self.keyboardBridge.publishSnapshot(engine: eng)
         self.updateHostCapabilities(eng, foreground: false)
         try? eng.setRuntimeState("suspended")
       }
@@ -781,9 +803,17 @@ public final class UnicEngineModule: Module {
       let sink = EngineEventBridge(
         onEvent: { [weak self] eventJSON in
           self?.sendEvent("onEngineEvent", ["event": eventJSON])
+          if eventJSON.contains("history") || eventJSON.contains("received") || eventJSON.contains("device") {
+            self?.engineQueue.async {
+              self?.scheduleKeyboardSnapshotPublish(delay: 0.35)
+            }
+          }
         },
         onResync: { [weak self] reason in
           self?.sendEvent("onEngineResync", ["reason": reason])
+          self?.engineQueue.async {
+            self?.scheduleKeyboardSnapshotPublish(delay: 0.35)
+          }
         }
       )
       do {
@@ -796,6 +826,7 @@ public final class UnicEngineModule: Module {
         self.lastProbedChangeCount = DispatchQueue.main.sync { UIPasteboard.general.changeCount }
         self.startNetworkMonitor()
         self.startPasteboardObserver()
+        self.scheduleKeyboardSnapshotPublish(delay: 0.2)
         let latest = try callGoString { eng.getState($0) }
         return latest.isEmpty ? snapshotJSON : latest
       } catch let err as UnicModuleException {
@@ -832,6 +863,31 @@ public final class UnicEngineModule: Module {
 
     AsyncFunction("dismissIncomingShare") { (id: String) in
       try IncomingShare().remove(id)
+    }.runOnQueue(engineQueue)
+
+    // ---- iOS Keyboard Extension Bridge ----
+
+    AsyncFunction("getKeyboardExtensionStatus") { () -> String in
+      self.keyboardBridge.statusJSON()
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("setKeyboardPreferences") { (soundEnabled: Bool, hapticEnabled: Bool) -> String in
+      do {
+        try self.keyboardBridge.savePreferences(soundEnabled: soundEnabled, hapticEnabled: hapticEnabled)
+        return self.keyboardBridge.statusJSON()
+      } catch {
+        throw UnicModuleException(formatGoError(error))
+      }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("syncKeyboardSnapshot") { () -> String in
+      let eng = try self.requireEngine()
+      do {
+        let count = try self.keyboardBridge.publishSnapshot(engine: eng)
+        return "{\"count\":\(count)}"
+      } catch {
+        throw UnicModuleException(formatGoError(error))
+      }
     }.runOnQueue(engineQueue)
 
     AsyncFunction("getState") { () -> String in

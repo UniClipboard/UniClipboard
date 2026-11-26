@@ -106,7 +106,7 @@
     "failedBody": "Check access to the backup folder, then try again.",
     "retry": "Retry migration",
     "another": "Choose another folder",
-    "welcome": "Welcome to UniClipboard",
+    "welcome": "Welcome to Unic",
     "slogan": "Make every copy count",
     "skipTitle": "Skip the v1 migration?",
     "skipBody": "V1 data is kept. Start migration later from Settings › Storage.",

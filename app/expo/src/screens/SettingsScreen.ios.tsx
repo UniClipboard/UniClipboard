@@ -13,6 +13,7 @@ import { ClipboardAccessPage } from './settings/ios/ClipboardAccessPage';
 import { ClipboardSettingsGuideSheet } from './settings/ios/ClipboardSettingsGuideSheet';
 import { DiagnosticsPage } from './settings/ios/DiagnosticsPage';
 import { HistoryPage } from './settings/ios/HistoryPage';
+import { KeyboardPage } from './settings/ios/KeyboardPage';
 import { NetworkPage } from './settings/ios/NetworkPage';
 import { PrivacyPage } from './settings/ios/PrivacyPage';
 import { SettingFieldSheet } from './settings/ios/SettingFieldSheet';
@@ -68,6 +69,9 @@ export function SettingsScreen() {
             </NavigationDestination>
             <NavigationDestination value="clipboard">
               <ClipboardAccessPage onOpenSettingsGuide={() => setClipboardGuideVisible(true)} />
+            </NavigationDestination>
+            <NavigationDestination value="keyboard">
+              <KeyboardPage />
             </NavigationDestination>
             <NavigationDestination value="share">
               <SharePage onOpenFavoritesGuide={() => setShareGuideVisible(true)} />

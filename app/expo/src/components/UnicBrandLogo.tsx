@@ -21,7 +21,7 @@ export function UnicBrandLogo({
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel="UniClipboard"
+      accessibilityLabel="Unic"
       style={[
         styles.frame,
         {

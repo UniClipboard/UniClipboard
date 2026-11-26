@@ -1,5 +1,5 @@
 <resources>
-  <string name="unic_background_sync">UniClipboard background sync</string>
+  <string name="unic_background_sync">Unic background sync</string>
   <string name="unic_background_sync_channel_desc">Keeps clipboard sync running in the background</string>
   <string name="unic_background_sync_running">Background sync active</string>
   <string name="unic_background_sync_stopping">Stopping…</string>

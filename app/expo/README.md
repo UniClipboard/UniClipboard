@@ -44,10 +44,12 @@ npm run android -- --device <device-id>
 `npm run prebuild` generates the ignored `ios/` and `android/` directories under
 this directory. The sibling `app/ios` and `app/android` directories are not build
 inputs. The shell uses the isolated identifier `app.uniclipboard.shell` on both
-platforms. Its Share Extension uses the separate
-`group.app.uniclipboard.shell.incoming-share` App Group. A physical-device
-build requires provisioning for the shell and its `.Share` extension. It
-uses separate signing and storage from the released mobile app.
+platforms. Its Share Extension (`.Share`) and iOS Keyboard Extension (`.Keyboard`)
+use the separate `group.app.uniclipboard.shell.incoming-share` App Group
+(`incoming-share/` and `keyboard-bridge/` subdirectories; neither extension links
+Go Engine). A physical-device build requires provisioning for the shell, `.Share`,
+and `.Keyboard` extensions. It uses separate signing and storage from the released
+mobile app.
 
 For Store builds set `UNIC_MOBILE_VARIANT=production` and set
 `UNIC_MOBILE_RELEASE_PLATFORM` to `ios` or `android` for both binding

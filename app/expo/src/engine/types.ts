@@ -468,3 +468,12 @@ export interface BackgroundSyncConfigPatch {
   network?: BackgroundSyncNetwork;
   clipboard_access_method?: ClipboardAccessMethod;
 }
+
+export interface KeyboardExtensionStatus {
+  added: boolean;
+  has_full_access_seen: boolean;
+  last_seen_at_ms?: number;
+  sound_enabled: boolean;
+  haptic_enabled: boolean;
+  extension_bundle_id?: string;
+}

@@ -5,6 +5,7 @@ export type IosSettingsPage =
   | 'storage'
   | 'network'
   | 'clipboard'
+  | 'keyboard'
   | 'share'
   | 'diagnostics'
   | 'privacy'

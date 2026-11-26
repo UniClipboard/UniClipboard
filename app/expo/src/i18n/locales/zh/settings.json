@@ -101,7 +101,7 @@
       "sse": "实时推送 (SSE)"
     },
     "extensions": {
-      "footer": "分享扩展让你在其他 App 中直接通过系统分享面板将内容发送到 UniClipboard。",
+      "footer": "分享扩展让你在其他 App 中直接通过系统分享面板将内容发送到 Unic。",
       "keyboard": "键盘",
       "share": "分享",
       "clipboardAccess": "剪贴板访问权限"
@@ -122,7 +122,7 @@
   "analytics": {
     "sectionTitle": "隐私",
     "consentTitle": "分享匿名使用与诊断数据",
-    "consentDescription": "帮助改进 UniClipboard，不收集剪贴板内容或名称",
+    "consentDescription": "帮助改进 Unic，不收集剪贴板内容或名称",
     "footer": "可能发送应用版本、系统、地区、会话、已配对设备数量，以及不含剪贴板内容或名称的诊断记录。关闭后停止发送并清除待发送数据。",
     "reset": "重置",
     "resetTitle": "重置统计身份",

@@ -10,7 +10,7 @@ const rows: Pick<
 >[] = [
   {
     type: "Text",
-    text: "欢迎使用 UniClipboard。\n这是独立的 Expo UI 壳。所有记录都是演示数据。",
+    text: "欢迎使用 Unic。\n这是独立的 Expo UI 壳。所有记录都是演示数据。",
   },
   { type: "Text", text: "https://uniclipboard.app" },
   {

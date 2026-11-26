@@ -106,7 +106,7 @@
     "failedBody": "Verifique se a pasta de backup está acessível e tente novamente.",
     "retry": "Tentar a migração novamente",
     "another": "Escolher outra pasta",
-    "welcome": "Boas-vindas ao UniClipboard",
+    "welcome": "Boas-vindas ao Unic",
     "slogan": "Aproveite cada cópia",
     "skipTitle": "Pular a migração da versão 1?",
     "skipBody": "Os dados da versão 1 serão mantidos. Inicie a migração depois em Configurações › Armazenamento.",

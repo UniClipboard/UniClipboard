@@ -51,7 +51,13 @@
       "./plugins/withAndroidIncomingShare.js",
       "@bacons/apple-targets",
       "./plugins/withXcode27SceneLifecycle.js",
-      "./plugins/withXcode27DeploymentTargets.js"
+      "./plugins/withXcode27DeploymentTargets.js",
+      [
+        "./plugins/withAppDisplayName.js",
+        {
+          "displayName": "Unic"
+        }
+      ]
     ]
   }
 }

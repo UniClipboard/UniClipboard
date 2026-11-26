@@ -57,24 +57,26 @@ jobs:
           IOS_DISTRIBUTION_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_PASSWORD }}
           IOS_APP_PROFILE: ${{ secrets.IOS_APP_PROFILE }}
           IOS_SHARE_PROFILE: ${{ secrets.IOS_SHARE_PROFILE }}
+          IOS_KEYBOARD_PROFILE: ${{ secrets.IOS_KEYBOARD_PROFILE }}
         shell: bash
         run: |
-          : "${IOS_DISTRIBUTION_P12:?}" "${IOS_DISTRIBUTION_PASSWORD:?}" "${IOS_APP_PROFILE:?}" "${IOS_SHARE_PROFILE:?}"
+          : "${IOS_DISTRIBUTION_P12:?}" "${IOS_DISTRIBUTION_PASSWORD:?}" "${IOS_APP_PROFILE:?}" "${IOS_SHARE_PROFILE:?}" "${IOS_KEYBOARD_PROFILE:?}"
           umask 077
           signing=$(mktemp -d)
           keychain="$signing/unic.keychain-db"
           password=$(openssl rand -hex 24)
-          trap 'security delete-keychain "$keychain" || true; unlink "$signing/distribution.p12"; unlink "$signing/app.mobileprovision"; unlink "$signing/share.mobileprovision"' EXIT
+          trap 'security delete-keychain "$keychain" || true; unlink "$signing/distribution.p12"; unlink "$signing/app.mobileprovision"; unlink "$signing/share.mobileprovision"; unlink "$signing/keyboard.mobileprovision"' EXIT
           printf '%s' "$IOS_DISTRIBUTION_P12" | base64 -D > "$signing/distribution.p12"
           printf '%s' "$IOS_APP_PROFILE" | base64 -D > "$signing/app.mobileprovision"
           printf '%s' "$IOS_SHARE_PROFILE" | base64 -D > "$signing/share.mobileprovision"
+          printf '%s' "$IOS_KEYBOARD_PROFILE" | base64 -D > "$signing/keyboard.mobileprovision"
           security create-keychain -p "$password" "$keychain"
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
           security import "$signing/distribution.p12" -k "$keychain" -P "$IOS_DISTRIBUTION_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain"
-          python3 -B tools/release/ios_profiles.py "$signing/app.mobileprovision" "$signing/share.mobileprovision" > "$signing/profiles.json"
+          python3 -B tools/release/ios_profiles.py "$signing/app.mobileprovision" "$signing/share.mobileprovision" "$signing/keyboard.mobileprovision" > "$signing/profiles.json"
           gem install xcodeproj -v 1.27.0 --no-document
           ruby -rjson -rxcodeproj - "$signing/profiles.json" "$signing/export.plist" <<'RUBY'
           data = JSON.parse(File.read(ARGV[0]))
@@ -92,7 +94,7 @@ jobs:
               seen << id
             end
           end
-          abort 'Expected both production signing targets' unless seen.sort == data.fetch('profiles').keys.sort
+          abort 'Expected all production signing targets' unless seen.sort == data.fetch('profiles').keys.sort
           project.save
           Xcodeproj::Plist.write_to_path({
             'method' => 'app-store-connect', 'signingStyle' => 'manual',

@@ -45,7 +45,7 @@ export function AboutPage() {
               testID="about-name"
               modifiers={[font({ size: 22, weight: 'bold' }), padding({ top: 6 })]}
             >
-              UniClipboard
+              Unic
             </SwiftUIText>
             <SwiftUIText testID="about-version" modifiers={[foregroundStyle('secondary')]}>
               {`${t('ios.about.version')} ${versionText}`}

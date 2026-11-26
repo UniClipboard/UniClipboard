@@ -234,7 +234,7 @@ export function useLiveSettingGroups(
     ] }];
   }
   if (page === "about") return [{ rows: [
-    { id: "about-name", title: "UniClipboard" },
+    { id: "about-name", title: "Unic" },
     { id: "about-version", title: t("settings:ios.about.version"), value: nativeApplicationVersion ?? "—" },
   ] }];
   return [];

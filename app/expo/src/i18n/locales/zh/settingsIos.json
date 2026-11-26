@@ -12,11 +12,11 @@
     },
     "hero": {
       "title": "在输入的地方取用剪贴板",
-      "description": "UniClipboard Keyboard 会显示你在其他设备上复制的内容，点一下即可粘贴到任意 App。"
+      "description": "Unic 键盘会显示你在其他设备上复制的内容，点一下即可粘贴到任意 App。"
     },
     "almostThere": {
       "title": "快好了",
-      "description": "UniClipboard Keyboard 已添加。开启「允许完全访问」后才能显示你的剪贴内容。"
+      "description": "Unic 键盘已添加。开启「允许完全访问」后才能显示你的剪贴内容。"
     },
     "ready": {
       "title": "已就绪",
@@ -25,21 +25,21 @@
     "setup": {
       "title": "设置 · 已完成 {{done}}/3",
       "add": {
-        "title": "添加 UniClipboard Keyboard",
-        "subtitle": "设置 › App › UniClipboard › 键盘"
+        "title": "添加 Unic 键盘",
+        "subtitle": "设置 › App › Unic › 键盘"
       },
       "fullAccess": {
         "title": "允许完全访问",
         "subtitle": "这样才能显示已同步的内容",
-        "path": "键盘 › UniClipboard Keyboard › 允许完全访问",
-        "readsOnly": "只读取 UniClipboard 已同步的内容",
+        "path": "键盘 › Unic › 允许完全访问",
+        "readsOnly": "只读取 Unic 已同步的内容",
         "sendsOnly": "只发送到你空间里的设备",
         "systemWarning": "开启时 iOS 会显示一段通用的提醒。"
       },
       "switch": {
         "title": "切换到它一次",
         "subtitle": "用来确认一切正常",
-        "instructions": "点击输入框，长按地球键，选择「UniClipboard Keyboard」。",
+        "instructions": "点击输入框，长按地球键，选择「Unic」。",
         "placeholder": "点击这里唤起键盘",
         "detected": "已检测到，并已允许完全访问。设置完成。",
         "stillOffHint": "如果键盘里显示“需要「完全访问权限」”，说明完全访问仍未开启。"
@@ -50,7 +50,7 @@
     "howToUse": {
       "title": "使用方式",
       "switchTitle": "切换键盘",
-      "switchDescription": "在任意 App 中长按地球键，选择「UniClipboard Keyboard」。",
+      "switchDescription": "在任意 App 中长按地球键，选择「Unic」。",
       "tryLabel": "在这里试试",
       "tryPlaceholder": "点击这里唤起键盘"
     },
@@ -67,14 +67,14 @@
   },
   "share": {
     "title": "分享",
-    "testMessage": "来自 UniClipboard 的分享测试 👋",
+    "testMessage": "来自 Unic 的分享测试 👋",
     "hero": {
       "title": "从任意 App 发送",
-      "description": "分享内容时选择 UniClipboard。UniClipboard 会打开并带上这项内容，由你选择发送到哪些设备。"
+      "description": "分享内容时选择 Unic。Unic 会打开并带上这项内容，由你选择发送到哪些设备。"
     },
     "flow": {
       "tapShare": "点「分享」",
-      "pickApp": "选 UniClipboard",
+      "pickApp": "选 Unic",
       "chooseDevices": "选择设备"
     },
     "tryButton": "现在试试",
@@ -87,9 +87,9 @@
     },
     "quickAccess": {
       "title": "快速访问",
-      "footer": "无需开启任何开关，安装后 UniClipboard 就会出现在分享面板中。",
+      "footer": "无需开启任何开关，安装后 Unic 就会出现在分享面板中。",
       "favoritesRow": "加入个人收藏",
-      "favoritesRowSubtitle": "让 UniClipboard 排在 App 一行的最前 · 4 步"
+      "favoritesRowSubtitle": "让 Unic 排在 App 一行的最前 · 4 步"
     },
     "guide": {
       "title": "加入个人收藏",
@@ -109,12 +109,12 @@
           "description": "把 App 图标这一行一直向左滑，点末尾的「更多」。"
         },
         "addFavorite": {
-          "title": "把 UniClipboard 加入个人收藏",
-          "description": "点「编辑」，再点 UniClipboard 旁边的绿色加号。"
+          "title": "把 Unic 加入个人收藏",
+          "description": "点「编辑」，再点 Unic 旁边的绿色加号。"
         },
         "moveToTop": {
           "title": "移到最前",
-          "description": "按住 UniClipboard 右侧的拖动柄拖到最上方，然后点「完成」。"
+          "description": "按住 Unic 右侧的拖动柄拖到最上方，然后点「完成」。"
         }
       },
       "illustration": {
@@ -157,9 +157,9 @@
       "message": "请稍后重试。"
     },
     "warning": {
-      "engineLogsMissing": "没有找到 Engine 日志，诊断包缺少 Engine 记录。请重启 UniClipboard 后重新导出。",
-      "engineLogsUnreadable": "找到了 Engine 日志，但部分或全部无法读取，诊断包可能不完整。请重启 UniClipboard 后重新导出。",
-      "engineLogsWrittenNotFound": "Engine 报告已写入日志，但磁盘上找不到文件，诊断包不完整。请重启 UniClipboard 后重新导出。",
+      "engineLogsMissing": "没有找到 Engine 日志，诊断包缺少 Engine 记录。请重启 Unic 后重新导出。",
+      "engineLogsUnreadable": "找到了 Engine 日志，但部分或全部无法读取，诊断包可能不完整。请重启 Unic 后重新导出。",
+      "engineLogsWrittenNotFound": "Engine 报告已写入日志，但磁盘上找不到文件，诊断包不完整。请重启 Unic 后重新导出。",
       "networkLogsIncomplete": "网络日志可能不完整：部分文件未能刷新、读取或校验。本次仅刷新了当前进程，键盘等其他进程未刷新。"
     },
     "capture": {

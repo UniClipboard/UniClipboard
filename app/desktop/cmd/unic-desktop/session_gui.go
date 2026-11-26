@@ -205,19 +205,28 @@ func (s *desktopSession) followHost(ctx context.Context) {
 		err := desktopprocess.Call(probe, s.dir, desktopprocess.Tray, "status", nil, &state)
 		cancel()
 		if err == nil {
-			s.g.mu.Lock()
-			s.g.loginEnabled = state.LoginEnabled
-			s.g.loginError = state.LoginError
-			s.g.shortcut = state.Shortcut
-			s.g.updates = desktopui.UpdateStatus{
+			nextUpdates := desktopui.UpdateStatus{
 				Supported:          state.Updates.Supported,
 				Owner:              state.Updates.Owner,
 				AutoCheckUpdate:    state.Updates.AutoCheckUpdate,
 				AutoDownloadUpdate: state.Updates.AutoDownloadUpdate,
 				AvailableVersion:   state.Updates.AvailableVersion,
 			}
+			s.g.mu.Lock()
+			changed := s.g.loginEnabled != state.LoginEnabled ||
+				s.g.loginError != state.LoginError ||
+				s.g.shortcut != state.Shortcut ||
+				s.g.updates != nextUpdates
+			if changed {
+				s.g.loginEnabled = state.LoginEnabled
+				s.g.loginError = state.LoginError
+				s.g.shortcut = state.Shortcut
+				s.g.updates = nextUpdates
+			}
 			s.g.mu.Unlock()
-			s.g.win.Invalidate()
+			if changed {
+				s.g.win.Invalidate()
+			}
 		}
 		select {
 		case <-ctx.Done():

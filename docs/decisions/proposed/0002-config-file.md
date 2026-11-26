@@ -35,7 +35,7 @@
 | `history.max_bytes` | 4GiB | Restart required; counts history-owned bytes; host references do not count; maximum 8GiB |
 | `history.retention_days` | 180 | Live; 0 disables age cleanup |
 | `history.auto_cleanup` | true | Live; unified history and managed-file cleanup |
-| `history.excluded_tags` | [] | Live; any exact matching tag excludes the record and its managed files |
+| `history.excluded_tags` | `["favorite"]` | Live. Any exact matching tag excludes the record and its managed files. |
 
 大小可写整数(字节)或带单位的字符串(`"512MB"`、`"2GiB"`);上限不得超过协议硬上限(2GB / 4GB)。
 

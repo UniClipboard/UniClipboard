@@ -1802,7 +1802,7 @@ board-set alpha files rejected.bin
 
 **目的**
 
-Verify live count cleanup, tag matching, restart, and removed file settings.
+Verify default favorite protection, live cleanup, restart, and removed file settings.
 
 
 **流程**
@@ -1810,10 +1810,12 @@ Verify live count cleanup, tag matching, restart, and removed file settings.
 1. Disable cleanup and create tagged and untagged local history.
 2. Enable a count limit and protect one tag.
 3. Restart and remove tag protection.
+4. Check count and age cleanup on a fresh profile with a favorite and an ordinary record.
 
 **期望**
 
 - Excluded history survives; oldest eligible records disappear.
+- Favorites survive by default; an explicitly empty exclusion list removes protection.
 - Zero count means unlimited; removed file keys are rejected.
 
 **不应**
@@ -1875,6 +1877,28 @@ u alpha h show @1
 stdout unlimited-four
 u alpha config set history.auto_cleanup true
 ! u alpha h show @1
+
+node-start beta
+u beta dev copy default-favorite
+u beta h tag @1 --add favorite
+u beta dev copy ordinary-history
+u beta config set history.max_items 1
+u beta h show @2
+stdout default-favorite
+u beta h show @1
+stdout ordinary-history
+node-stop beta
+history-age beta 15638400
+node-start beta
+u beta h show @1
+stdout default-favorite
+! u beta h show @2
+u beta config set history.excluded_tags '[]'
+! u beta h show @1
+node-stop beta
+node-start beta
+u beta config --json
+stdout '"excluded_tags":[[:space:]]*\[\]'
 ```
 
 </details>

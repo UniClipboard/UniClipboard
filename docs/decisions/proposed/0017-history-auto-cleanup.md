@@ -11,7 +11,7 @@
 Add four local history settings. The screenshot supplies the first three displayed values below.
 The user replaced the fourth setting with a list of tags excluded from cleanup.
 The user also requires removal of the separate file-cleanup logic and settings. This task replaces them with unified automatic cleanup.
-The implementation uses On, 180 days, Unlimited, and an empty excluded-tag list as defaults.
+The original implementation used On, 180 days, Unlimited, and an empty excluded-tag list as defaults.
 
 | Setting | Screenshot value | Required behavior |
 |---|---|---|

@@ -10,6 +10,7 @@ import (
 
 	"github.com/uniclipboard/unic/internal/rendezvous"
 	"github.com/uniclipboard/unic/internal/wire"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 var errLocked = errors.New("data directory is locked")
@@ -103,7 +104,7 @@ type ResourcePolicy struct {
 func DefaultSettings() Settings {
 	return Settings{
 		FileCache: FileCacheSettings{MaxBytes: 500 << 20},
-		History:   HistoryCleanupSettings{AutoCleanup: true, RetentionDays: 180, ExcludedTags: []string{}},
+		History:   HistoryCleanupSettings{AutoCleanup: true, RetentionDays: 180, ExcludedTags: []string{plugin.TagFavorite}},
 		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: wire.MaxTotal},
 		Sync:      SyncSettings{Enabled: true, Automatic: true, Files: true, Introductions: true},
 	}

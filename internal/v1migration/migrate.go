@@ -97,11 +97,10 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		if runErr = target.ImportHistoryTags(ctx, s.TagNames()); runErr != nil {
 			return
 		}
-		if prefs.protectFavorites {
-			// Persist the exclusion before committing favorites, including
-			// when a later interruption leaves a partially imported profile.
-			importPreferences(ctx, dst, nil, preferences{protectFavorites: true}, &report)
-			prefs.protectFavorites = false
+		if prefs.protectFavorites != nil {
+			// Persist the source cleanup choice before committing favorites.
+			importPreferences(ctx, dst, nil, preferences{protectFavorites: prefs.protectFavorites}, &report)
+			prefs.protectFavorites = nil
 		}
 	}
 	processed := 0

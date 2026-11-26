@@ -50,7 +50,7 @@ paths:
   - .github/workflows/release-ios.yml
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 8dcbf0d45b84e0b58b7e0232b570b7df7f7b6140
+verified: 614156f1f533b121c25825f70281dfc6bad910ad
 ---
 # Product builds and CLI releases
 

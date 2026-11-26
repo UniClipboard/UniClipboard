@@ -4,4 +4,5 @@
   <cache-path name="unic_previews" path="unic-cache/previews/" />
   <cache-path name="unic_exports" path="unic-cache/exports/" />
   <cache-path name="unic_camera" path="unic-cache/camera/" />
+  <cache-path name="unic_updates" path="unic-cache/updates/" />
 </paths>

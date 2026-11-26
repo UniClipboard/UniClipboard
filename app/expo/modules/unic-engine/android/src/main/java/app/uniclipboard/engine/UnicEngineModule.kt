@@ -27,6 +27,10 @@ import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import mobile.CancelToken
 import mobile.Engine
@@ -59,6 +63,8 @@ class UnicEngineModule : Module() {
   private val incomingShare by lazy { IncomingShare(appContextOrThrow()) }
   private var coldShareCaptured = false
   @Volatile private var activeMigrationCancel: CancelToken? = null
+  private val updateScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+  private val appUpdateManager = AppUpdateManager()
 
   private var pendingFolderPromise: Promise? = null
   private var pendingFilePromise: Pair<Promise, String?>? = null
@@ -458,6 +464,7 @@ class UnicEngineModule : Module() {
       "onClipboardChanged",
       "onIncomingShare",
       "onBackgroundSyncStateChanged",
+      "onUpdateDownloadProgress",
     )
 
     OnNewIntent { intent ->
@@ -592,6 +599,8 @@ class UnicEngineModule : Module() {
 
     OnDestroy {
       activeMigrationCancel?.cancel()
+      appUpdateManager.cancelDownload()
+      updateScope.cancel()
       setKeepScreenOn(false)
       // Detach UI only; BackgroundSyncService retains UnicEngineHost so the Go Engine and
       // background clipboard monitor keep running after Activity / JS teardown.
@@ -1513,5 +1522,60 @@ class UnicEngineModule : Module() {
         throw moduleException(t)
       }
     }.runOnQueue(engineScope)
+
+    // ---- Android In-App Updates ----
+
+    AsyncFunction("checkAndroidUpdate") { channel: String ->
+      try {
+        appUpdateManager.checkUpdate(channel, launchOverride("UNIC_UPDATE_BASE_URL"))
+      } catch (ce: CodedException) {
+        throw ce
+      } catch (e: IllegalArgumentException) {
+        throw rawCodeException("invalid_argument", e.message ?: "invalid update request")
+      } catch (t: Throwable) {
+        throw rawCodeException("network", t.message ?: "update check failed")
+      }
+    }.runOnQueue(updateScope)
+
+    AsyncFunction("downloadAndInstallAndroidUpdate") { url: String, filename: String, expectedSha256: String?, versionKey: String ->
+      try {
+        appUpdateManager.downloadAndInstallApk(
+          context = appContextOrThrow(),
+          activity = appContext.currentActivity,
+          url = url,
+          filename = filename,
+          expectedSha256 = expectedSha256,
+          versionKey = versionKey,
+          baseUrlOverride = launchOverride("UNIC_UPDATE_BASE_URL"),
+        ) { progress, bytesReceived, totalBytes ->
+          runCatching {
+            sendEvent(
+              "onUpdateDownloadProgress",
+              mapOf(
+                "progress" to progress,
+                "bytesReceived" to bytesReceived,
+                "totalBytes" to totalBytes,
+              ),
+            )
+          }
+        }
+      } catch (_: UpdateDownloadCancelledException) {
+        throw rawCodeException("cancelled", "update download cancelled")
+      } catch (ce: CodedException) {
+        throw ce
+      } catch (e: IllegalArgumentException) {
+        throw rawCodeException("invalid_argument", e.message ?: "invalid update download request")
+      } catch (t: Throwable) {
+        throw rawCodeException("network", t.message ?: "update download failed")
+      }
+    }.runOnQueue(updateScope)
+
+    AsyncFunction("cancelAndroidUpdateDownload") { ->
+      appUpdateManager.cancelDownload()
+    }
+
+    AsyncFunction("cleanAndroidUpdateCache") { keepVersionKey: String? ->
+      appUpdateManager.cleanCache(appContextOrThrow(), keepVersionKey)
+    }.runOnQueue(updateScope)
   }
 }

@@ -2,7 +2,6 @@ import { CardContextOverlay } from "@/components/CardContextOverlay";
 import { ClipboardDetailModal } from "@/components/ClipboardDetailModal";
 import { ReceiveResultsSheet } from "@/components/ReceiveResultsSheet";
 import { WordPickerOverlay } from "@/components/WordPickerOverlay";
-import { SendSheet } from "@/screens/SendSheet";
 import { HistoryTagEditor } from "./HistoryTagEditor";
 import type { HomeController } from "./useHomeController";
 
@@ -21,12 +20,6 @@ export function HomeOverlays({ c }: { c: HomeController }) {
         onDismiss={c.closeDetailPage}
         c={c}
         item={c.detailPageItem}
-      />
-      <SendSheet
-        visible={c.sendToVisible}
-        onClose={c.closeSendTo}
-        targetItem={c.sendTargetItem}
-        initialDraftText={c.sendDraftText}
       />
       <ReceiveResultsSheet
         visible={c.receiveResultsOpen}

@@ -85,7 +85,7 @@ UNIC_V1_TEST_TARGET="目标目录" go test -v ./app/desktop/internal/host -run '
 - Windows credential lookup is implemented and compile-checked. Real Linux GNOME Secret Service acceptance is recorded below. Native locked-store prompts and Windows native execution remain NOT_RUN. Platform installer/signing acceptance remains separate.
 - The CLI importer and mygo/UI Kit setup wizard are implemented. Decision 0026 supplies source selection, passphrase fallback, progress, cancellation and later Settings migration. Existing macOS complete/partial evidence remains valid; the integrated follow-up below extends it.
 - 丢失文件、损坏密文、超限记录显示部分完成，不生成虚假的可用占位内容。当前报告为数量级，未提供逐条修复界面。
-- 不迁移收藏、设备身份与信任、设置和宿主专用非标准 representation。文件夹以 ZIP 表达。
+- The original implementation excluded favorites and settings. See the [live migration contract](../contracts/history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252) for the current scope. Device identity, trust and host-specific representations remain outside this import. Directory payloads use ZIP.
 - 标签保存名称与关联，不保留旧不透明 tag ID 或标签创建时间；已有目标标签关联不会被覆盖。
 - 源标签变更不更新已导入记录；目标主动删除的映射保留，不会复活。
 - Limits remain 500 MiB plaintext per record, 32 million image pixels and 10,000 file-list rows. The 10,000-record RSS and bounded ENOSPC evidence below measures record-count pressure; it does not establish multi-GiB payload performance.

@@ -48,7 +48,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 8dcbf0d45b84e0b58b7e0232b570b7df7f7b6140
+verified: ec47690c1b3976f1bb2505d7d9ac510b22c57406
 ---
 # Desktop configuration and received files
 
@@ -270,7 +270,7 @@ The actual paste owner retains its existing permission checks. See the
 | `history.auto_cleanup` | `true` | Enable unified history and managed-file cleanup. |
 | `history.retention_days` | `180` | Age from record creation; 0 disables the age limit. Applies to existing records. |
 | `history.max_items` | `0` | Limit eligible records; 0 means unlimited. Excluded records do not count. |
-| `history.excluded_tags` | `[]` | Skip any record with an exact matching tag, including its managed files. |
+| `history.excluded_tags` | `["favorite"]` | Skip any record with an exact matching tag, including its managed files. An explicit list replaces the default. |
 | `history.max_bytes` | `"4GiB"` | Startup history storage budget; a change requires restart. |
 
 When automatic cleanup is off, Desktop retains the saved age, item-count and excluded-tag rules but disables their controls. The cache-quota control remains enabled. Reenabling cleanup makes the retained rules editable again.

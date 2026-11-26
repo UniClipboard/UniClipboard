@@ -300,12 +300,16 @@ func Default() Config {
 	if runtime.GOOS == "darwin" {
 		shortcut = "Cmd+Ctrl+V"
 	}
+	cleanup := engine.DefaultSettings().History
 	return Config{
 		Desktop: Desktop{ColorMode: "system", TrayIcon: "glyph", UpdateChannel: "stable", Language: "zh-CN", Mode: "normal", QuickPanelShortcut: shortcut},
 		Logging: observability.Default().Logging, Telemetry: observability.Default().Telemetry,
-		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
-		Sync:      Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
-		History:   History{AutoCleanup: true, RetentionDays: 180, MaxBytes: 4 << 30, ExcludedTags: []string{}},
+		Limits: Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
+		Sync:   Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
+		History: History{
+			AutoCleanup: cleanup.AutoCleanup, RetentionDays: cleanup.RetentionDays, MaxItems: cleanup.MaxItems,
+			MaxBytes: 4 << 30, ExcludedTags: cleanup.ExcludedTags,
+		},
 		FileCache: FileCache{MaxBytes: 500 << 20},
 	}
 }
@@ -595,7 +599,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # auto_cleanup = true
 # retention_days = 180  # 0: no age limit
 # max_items = 0         # 0: no count limit
-# excluded_tags = []    # any exact matching tag prevents automatic deletion
+# excluded_tags = ["favorite"]  # any exact matching tag prevents automatic deletion
 # max_bytes = "4GiB"
 
 [file_cache]

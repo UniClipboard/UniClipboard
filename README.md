@@ -4,24 +4,30 @@
 
 # Copy once. Paste on every device.
 
-<strong>UniClipboard</strong> syncs your clipboard across your computers.<br />
-No account. No cloud. Barely any memory.
+<p>
+  <strong>UniClipboard</strong> syncs text, images, files, and folders directly across your devices.<br />
+  End-to-end encrypted. No account. No cloud.
+</p>
 
-<a href="#quick-start"><img alt="Get started" src="https://img.shields.io/badge/Get%20started-→-000000?style=for-the-badge" /></a>
-<a href="#features"><img alt="Features" src="https://img.shields.io/badge/Features-555555?style=for-the-badge" /></a>
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><strong>Download</strong></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#quick-start"><strong>Get started</strong></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#features">Features</a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#cli">CLI</a>
+</p>
 
-<table>
-  <tr>
-    <td align="center" width="170"><h2>0</h2>accounts to create</td>
-    <td align="center" width="170"><h2>0</h2>cloud servers holding your content</td>
-    <td align="center" width="170"><h2>14 MB</h2>memory for the background sync service<sup><a href="#benchmarks">1</a></sup></td>
-    <td align="center" width="170"><h2>6 digits</h2>to pair a device, then approve</td>
-  </tr>
-</table>
+<p>
+  <code>Windows</code> &nbsp;<code>macOS</code> &nbsp;<code>Linux</code> &nbsp;<code>CLI</code>
+</p>
 
-Windows · macOS · Linux · CLI　|　Text · Images · Files · Folders
-
-<strong>English</strong> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.zh-TW.md">繁體中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.pt-BR.md">Português (Brasil)</a> | <a href="README.ru.md">Русский</a>
+<p>
+  <small>
+    <strong>English</strong> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.zh-TW.md">繁體中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.pt-BR.md">Português (Brasil)</a> | <a href="README.ru.md">Русский</a>
+  </small>
+</p>
 
 ![UniClipboard across desktop, tablet, and phone](docs/assets/product-overview.png)
 
@@ -40,30 +46,48 @@ Windows · macOS · Linux · CLI　|　Text · Images · Files · Folders
 
 ## Features
 
-| | |
-|---|---|
-| ⚡ **Quick Panel** | Press `⌘ ⌃ V` (`Ctrl Alt V` on Windows / Linux) in any app, pick an item and press Enter to paste it. |
-| 🔍 **Find anything** | Type a keyword, or filter with `#tag`, `@device` or `/type`. Find what you copied months ago. |
-| 🏷️ **Auto-tagging** | Links, emails, colors, version numbers, UUIDs and IP addresses are tagged automatically. Add your own rules. |
-| 📁 **Files and folders** | Send a whole folder with its structure intact, to every device or just one. |
-| 📮 **Send without pairing** | `unic send "text"` prints a transfer link and a 6-digit pickup code when available. The receiver can use either. No device record is kept. |
-| 🧩 **Plugins** | Install plugins in one click from Settings, for example to turn an image or file into a share link. |
-| ⌨️ **Command line** | Use `unic` to send, receive, and filter the history list from a terminal, over SSH, or in scripts. |
-| 🌍 **Languages** | English, 简体中文, 日本語, Português, Русский. Light and dark themes. |
+<table>
+  <tr>
+    <td>⚡ <strong>Quick Panel</strong></td>
+    <td>Press <code>⌘ ⌃ V</code> (<code>Ctrl Alt V</code> on Windows / Linux) in any app, pick an item and press Enter to paste it.</td>
+  </tr>
+  <tr>
+    <td>🔍 <strong>Find anything</strong></td>
+    <td>Type a keyword, or filter with <code>#tag</code>, <code>@device</code> or <code>/type</code>. Find what you copied months ago.</td>
+  </tr>
+  <tr>
+    <td>🏷️ <strong>Auto-tagging</strong></td>
+    <td>Links, emails, colors, version numbers, UUIDs and IP addresses are tagged automatically. Add your own rules.</td>
+  </tr>
+  <tr>
+    <td>📁 <strong>Files and folders</strong></td>
+    <td>Send a whole folder with its structure intact, to every device or just one.</td>
+  </tr>
+  <tr>
+    <td>📮 <strong>Send without pairing</strong></td>
+    <td><code>unic send "text"</code> prints a transfer link and a 6-digit pickup code when available. The receiver can use either. No device record is kept.</td>
+  </tr>
+  <tr>
+    <td>🧩 <strong>Plugins</strong></td>
+    <td>Install plugins in one click from Settings, for example to turn an image or file into a share link.</td>
+  </tr>
+  <tr>
+    <td>⌨️ <strong>Command line</strong></td>
+    <td>Use <code>unic</code> to send, receive, and filter the history list from a terminal, over SSH, or in scripts.</td>
+  </tr>
+  <tr>
+    <td>🌍 <strong>Languages</strong></td>
+    <td>English, 简体中文, 日本語, Português, Русский. Light and dark themes.</td>
+  </tr>
+</table>
 
 <a id="quick-start"></a>
 
 ## Get started in 3 steps
 
-**1. Run it**
+**1. Download and install**
 
-Download the v2 Desktop preview for your platform from [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases). To run from source, use the commands below.
-
-```sh
-git clone https://github.com/UniClipboard/UniClipboard.git
-cd UniClipboard
-make run-desktop
-```
+Download the installer for your platform from [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) (macOS `.dmg`, Windows `.exe`/`.zip`, or Linux `.deb`/`.rpm`/`.AppImage`), then open **UniClipboard**. For CLI only, run `npm install -g @uniclipboard/cli`.
 
 **2. Connect a second device**
 
@@ -72,6 +96,8 @@ On the first device, open **Devices → Add device** and note the 6-digit code. 
 **3. Copy**
 
 Press `Ctrl+C` on one device, then `Ctrl+V` on the other.
+
+<a id="cli"></a>
 
 ## Command line
 

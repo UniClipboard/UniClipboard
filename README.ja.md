@@ -4,24 +4,30 @@
 
 # 一度コピーすれば、どのデバイスでも貼り付け
 
-<strong>UniClipboard</strong> はパソコン間でクリップボードを同期します。<br />
-アカウント不要。クラウドなし。メモリもほとんど使いません。
+<p>
+  <strong>UniClipboard</strong> はテキスト・画像・ファイル・フォルダをデバイス間で直接同期します。<br />
+  エンドツーエンド暗号化。アカウント不要、クラウド不要。
+</p>
 
-<a href="#quick-start"><img alt="はじめる" src="https://img.shields.io/badge/%E3%81%AF%E3%81%98%E3%82%81%E3%82%8B-→-000000?style=for-the-badge" /></a>
-<a href="#features"><img alt="機能" src="https://img.shields.io/badge/%E6%A9%9F%E8%83%BD-555555?style=for-the-badge" /></a>
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><strong>ダウンロード</strong></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#quick-start"><strong>はじめる</strong></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#features">機能</a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#cli">CLI</a>
+</p>
 
-<table>
-  <tr>
-    <td align="center" width="170"><h2>0</h2>作成するアカウント</td>
-    <td align="center" width="170"><h2>0</h2>内容を保存するクラウドサーバー</td>
-    <td align="center" width="170"><h2>14 MB</h2>バックグラウンド同期サービスのメモリ使用量<sup><a href="#benchmarks">1</a></sup></td>
-    <td align="center" width="170"><h2>6 桁</h2>のコードで接続し、承認するだけ</td>
-  </tr>
-</table>
+<p>
+  <code>Windows</code> &nbsp;<code>macOS</code> &nbsp;<code>Linux</code> &nbsp;<code>CLI</code>
+</p>
 
-Windows · macOS · Linux · CLI　|　テキスト · 画像 · ファイル · フォルダ
-
-<a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.zh-TW.md">繁體中文</a> | <strong>日本語</strong> | <a href="README.pt-BR.md">Português (Brasil)</a> | <a href="README.ru.md">Русский</a>
+<p>
+  <small>
+    <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.zh-TW.md">繁體中文</a> | <strong>日本語</strong> | <a href="README.pt-BR.md">Português (Brasil)</a> | <a href="README.ru.md">Русский</a>
+  </small>
+</p>
 
 ![デスクトップ・タブレット・スマートフォンでの UniClipboard](docs/assets/product-overview.png)
 
@@ -40,30 +46,48 @@ Windows · macOS · Linux · CLI　|　テキスト · 画像 · ファイル ·
 
 ## 機能
 
-| | |
-|---|---|
-| ⚡ **クイックパネル** | どのアプリでも `⌘ ⌃ V`（Windows / Linux は `Ctrl Alt V`）で履歴を開き、選んで Enter で貼り付け。 |
-| 🔍 **すぐ見つかる** | キーワード入力、または `#タグ`・`@デバイス`・`/種類` で絞り込み。数か月前のコピーも見つかります。 |
-| 🏷️ **自動タグ付け** | リンク、メール、カラーコード、バージョン番号、UUID、IP アドレスを自動でタグ付け。独自ルールも追加できます。 |
-| 📁 **ファイルとフォルダ** | フォルダを構造ごと送信。全デバイスにも、特定のデバイスにも送れます。 |
-| 📮 **ペアリングなしで送信** | `unic send "テキスト"` は転送リンクを表示します。利用できる場合は、6 桁の受け取りコードも表示します。受け取りにはどちらも使えます。デバイスの記録は残りません。 |
-| 🧩 **プラグイン** | 設定からワンクリックでインストール。例：画像やファイルを共有リンクに変換。 |
-| ⌨️ **コマンドライン** | `unic` でターミナル、SSH、スクリプトから送受信や履歴一覧の絞り込みができます。 |
-| 🌍 **多言語** | English、简体中文、日本語、Português、Русский。ライト／ダークテーマ対応。 |
+<table>
+  <tr>
+    <td>⚡ <strong>クイックパネル</strong></td>
+    <td>どのアプリでも <code>⌘ ⌃ V</code>（Windows / Linux は <code>Ctrl Alt V</code>）で履歴を開き、選んで Enter で貼り付け。</td>
+  </tr>
+  <tr>
+    <td>🔍 <strong>すぐ見つかる</strong></td>
+    <td>キーワード入力、または <code>#タグ</code>・<code>@デバイス</code>・<code>/種類</code> で絞り込み。数か月前のコピーも見つかります。</td>
+  </tr>
+  <tr>
+    <td>🏷️ <strong>自動タグ付け</strong></td>
+    <td>リンク、メール、カラーコード、バージョン番号、UUID、IP アドレスを自動でタグ付け。独自ルールも追加できます。</td>
+  </tr>
+  <tr>
+    <td>📁 <strong>ファイルとフォルダ</strong></td>
+    <td>フォルダを構造ごと送信。全デバイスにも、特定のデバイスにも送れます。</td>
+  </tr>
+  <tr>
+    <td>📮 <strong>ペアリングなしで送信</strong></td>
+    <td><code>unic send "テキスト"</code> は転送リンクを表示します。利用できる場合は、6 桁の受け取りコードも表示します。受け取りにはどちらも使えます。デバイスの記録は残りません。</td>
+  </tr>
+  <tr>
+    <td>🧩 <strong>プラグイン</strong></td>
+    <td>設定からワンクリックでインストール。例：画像やファイルを共有リンクに変換。</td>
+  </tr>
+  <tr>
+    <td>⌨️ <strong>コマンドライン</strong></td>
+    <td><code>unic</code> でターミナル、SSH、スクリプトから送受信や履歴一覧の絞り込みができます。</td>
+  </tr>
+  <tr>
+    <td>🌍 <strong>多言語</strong></td>
+    <td>English、简体中文、日本語、Português、Русский。ライト／ダークテーマ対応。</td>
+  </tr>
+</table>
 
 <a id="quick-start"></a>
 
 ## 3 ステップで開始
 
-**1. 起動する**
+**1. ダウンロードしてインストール**
 
-[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) から、使用するプラットフォームに対応した v2 デスクトッププレビューをダウンロードできます。ソースから起動する場合は、以下のコマンドを実行します。
-
-```sh
-git clone https://github.com/UniClipboard/UniClipboard.git
-cd UniClipboard
-make run-desktop
-```
+[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) からお使いのプラットフォーム向けインストーラー（macOS `.dmg`、Windows `.exe`/`.zip`、Linux `.deb`/`.rpm`/`.AppImage`）をダウンロードし、インストールして **UniClipboard** を起動します。CLI のみ必要な場合は `npm install -g @uniclipboard/cli` を実行してください。
 
 **2. 2 台目のデバイスを接続**
 
@@ -72,6 +96,8 @@ make run-desktop
 **3. コピーする**
 
 一方のデバイスで `Ctrl+C`、もう一方で `Ctrl+V`。
+
+<a id="cli"></a>
 
 ## コマンドライン
 

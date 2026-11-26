@@ -4,24 +4,30 @@
 
 # Copie uma vez. Cole em qualquer dispositivo.
 
-O <strong>UniClipboard</strong> sincroniza a área de transferência entre seus computadores.<br />
-Sem conta. Sem nuvem. Quase sem uso de memória.
+<p>
+  O <strong>UniClipboard</strong> sincroniza texto, imagens, arquivos e pastas diretamente entre seus dispositivos.<br />
+  Criptografia de ponta a ponta. Sem conta. Sem nuvem.
+</p>
 
-<a href="#quick-start"><img alt="Começar" src="https://img.shields.io/badge/Come%C3%A7ar-→-000000?style=for-the-badge" /></a>
-<a href="#features"><img alt="Recursos" src="https://img.shields.io/badge/Recursos-555555?style=for-the-badge" /></a>
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><strong>Download</strong></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#quick-start"><strong>Começar</strong></a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#features">Recursos</a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#cli">CLI</a>
+</p>
 
-<table>
-  <tr>
-    <td align="center" width="170"><h2>0</h2>contas para criar</td>
-    <td align="center" width="170"><h2>0</h2>servidores na nuvem guardando seu conteúdo</td>
-    <td align="center" width="170"><h2>14 MB</h2>de memória para o serviço de sincronização<sup><a href="#benchmarks">1</a></sup></td>
-    <td align="center" width="170"><h2>6 dígitos</h2>para parear um dispositivo e aprovar</td>
-  </tr>
-</table>
+<p>
+  <code>Windows</code> &nbsp;<code>macOS</code> &nbsp;<code>Linux</code> &nbsp;<code>CLI</code>
+</p>
 
-Windows · macOS · Linux · CLI　|　Texto · Imagens · Arquivos · Pastas
-
-<a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.zh-TW.md">繁體中文</a> | <a href="README.ja.md">日本語</a> | <strong>Português (Brasil)</strong> | <a href="README.ru.md">Русский</a>
+<p>
+  <small>
+    <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.zh-TW.md">繁體中文</a> | <a href="README.ja.md">日本語</a> | <strong>Português (Brasil)</strong> | <a href="README.ru.md">Русский</a>
+  </small>
+</p>
 
 ![UniClipboard no desktop, tablet e celular](docs/assets/product-overview.png)
 
@@ -40,30 +46,48 @@ Windows · macOS · Linux · CLI　|　Texto · Imagens · Arquivos · Pastas
 
 ## Recursos
 
-| | |
-|---|---|
-| ⚡ **Painel rápido** | Pressione `⌘ ⌃ V` (`Ctrl Alt V` no Windows / Linux) em qualquer app, escolha um item e pressione Enter para colar. |
-| 🔍 **Encontre tudo** | Digite uma palavra ou filtre com `#etiqueta`, `@dispositivo` ou `/tipo`. Encontre o que copiou há meses. |
-| 🏷️ **Etiquetas automáticas** | Links, e-mails, cores, números de versão, UUIDs e endereços IP recebem etiquetas automaticamente. Crie suas próprias regras. |
-| 📁 **Arquivos e pastas** | Envie uma pasta inteira com a estrutura preservada, para todos os dispositivos ou só um. |
-| 📮 **Envio sem pareamento** | `unic send "texto"` mostra um link de transferência e, quando disponível, um código de 6 dígitos. Quem recebe pode usar um ou outro. Nenhum registro de dispositivo fica salvo. |
-| 🧩 **Plugins** | Instale plugins com um clique nas Configurações, por exemplo para transformar uma imagem ou arquivo em link de compartilhamento. |
-| ⌨️ **Linha de comando** | Use `unic` para enviar, receber e filtrar a lista do histórico pelo terminal, via SSH ou em scripts. |
-| 🌍 **Idiomas** | English, 简体中文, 日本語, Português, Русский. Temas claro e escuro. |
+<table>
+  <tr>
+    <td>⚡ <strong>Painel rápido</strong></td>
+    <td>Pressione <code>⌘ ⌃ V</code> (<code>Ctrl Alt V</code> no Windows / Linux) em qualquer app, escolha um item e pressione Enter para colar.</td>
+  </tr>
+  <tr>
+    <td>🔍 <strong>Encontre tudo</strong></td>
+    <td>Digite uma palavra ou filtre com <code>#etiqueta</code>, <code>@dispositivo</code> ou <code>/tipo</code>. Encontre o que copiou há meses.</td>
+  </tr>
+  <tr>
+    <td>🏷️ <strong>Etiquetas automáticas</strong></td>
+    <td>Links, e-mails, cores, números de versão, UUIDs e endereços IP recebem etiquetas automaticamente. Crie suas próprias regras.</td>
+  </tr>
+  <tr>
+    <td>📁 <strong>Arquivos e pastas</strong></td>
+    <td>Envie uma pasta inteira com a estrutura preservada, para todos os dispositivos ou só um.</td>
+  </tr>
+  <tr>
+    <td>📮 <strong>Envio sem pareamento</strong></td>
+    <td><code>unic send "texto"</code> mostra um link de transferência e, quando disponível, um código de 6 dígitos. Quem recebe pode usar um ou outro. Nenhum registro de dispositivo fica salvo.</td>
+  </tr>
+  <tr>
+    <td>🧩 <strong>Plugins</strong></td>
+    <td>Instale plugins com um clique nas Configurações, por exemplo para transformar uma imagem ou arquivo em link de compartilhamento.</td>
+  </tr>
+  <tr>
+    <td>⌨️ <strong>Linha de comando</strong></td>
+    <td>Use <code>unic</code> para enviar, receber e filtrar a lista do histórico pelo terminal, via SSH ou em scripts.</td>
+  </tr>
+  <tr>
+    <td>🌍 <strong>Idiomas</strong></td>
+    <td>English, 简体中文, 日本語, Português, Русский. Temas claro e escuro.</td>
+  </tr>
+</table>
 
 <a id="quick-start"></a>
 
 ## Comece em 3 passos
 
-**1. Execute**
+**1. Baixe e instale**
 
-Baixe a versão de prévia do Desktop v2 para a sua plataforma no [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases). Para executar a partir do código-fonte, use os comandos abaixo.
-
-```sh
-git clone https://github.com/UniClipboard/UniClipboard.git
-cd UniClipboard
-make run-desktop
-```
+Baixe o instalador para a sua plataforma no [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) (macOS `.dmg`, Windows `.exe`/`.zip` ou Linux `.deb`/`.rpm`/`.AppImage`) e abra o **UniClipboard**. Se precisar apenas da CLI, execute `npm install -g @uniclipboard/cli`.
 
 **2. Conecte um segundo dispositivo**
 
@@ -72,6 +96,8 @@ No primeiro dispositivo, abra **Dispositivos → Adicionar dispositivo** e anote
 **3. Copie**
 
 Pressione `Ctrl+C` em um dispositivo e `Ctrl+V` no outro.
+
+<a id="cli"></a>
 
 ## Linha de comando
 

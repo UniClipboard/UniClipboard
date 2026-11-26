@@ -1262,7 +1262,12 @@ func (d *viewState) newLiveCode() {
 		code, err := client.NewCodeVia(ctx, backend)
 		if err == nil {
 			select {
-			case d.live.results <- func() { d.live.code = code; d.inviteCode = code.Code }:
+			case d.live.results <- func() {
+				d.live.code = code
+				d.inviteCode = code.Code
+				d.live.ticket = ""
+				d.live.ticketAttempted = false
+			}:
 				d.live.wake()
 			case <-ctx.Done():
 				return ctx.Err()

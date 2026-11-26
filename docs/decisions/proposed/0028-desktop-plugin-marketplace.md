@@ -26,6 +26,7 @@
 ### 2. 静态 JSON 市场清单（Registry）+ 本地缓存 + 内置官方兜底
 
 - 市场数据源采用静态 `registry.json`（版本 `version = 1`），默认地址为 `https://raw.githubusercontent.com/UniClipboard/unic-plugins/main/registry.json`，支持通过环境变量 `UNIC_PLUGIN_REGISTRY_URL` 覆盖（`off` 表示禁用远端拉取，仅使用内置目录，便于离线与确定性测试）。
+- 支持通过 `config.toml` 的 `plugins.mirror_url` 或环境变量 `UNIC_PLUGIN_MIRROR_URL` 配置静态镜像站（官方镜像预设 `https://plugins.uniclipboard.app`，镜像同步与部署脚本位于 `UniClipboard/unic-plugins/mirror/`），统一加速目录、Commit 解析、源码归档与 Release 预编译产物下载；镜像仅允许同源 HTTPS 重定向，遇到不可达或 404/429/5xx 时自动回退直连 GitHub，不放松 SHA-256 与归档边界校验，且 `installed.lock` 始终记录规范 GitHub 仓库地址。对已给定 40 位完整 Commit SHA 的安装跳过 `api.github.com` 查询以规避匿名限流。
 - 服务端将校验通过的远端清单缓存到 `$UNIC_HOME/plugins/marketplace-cache.json`（大小上限 512 KiB，默认 TTL 15 分钟，支持显式刷新）。
 - 远端不可达、未发布或格式无效时，服务自动回退到本地有效缓存或客户端内置官方清单（首批包含 `unic.wenshushu`），保证桌面端在离线或无网络环境下仍可浏览并给出明确来源状态（`remote` / `cache` / `bundled`）。
 - **安装底层完全复用现有安全边界**：从市场一键安装底层仍调用 `luascripts.Install`，遵循既有不可变 Commit 锁定、清单校验、预编译优先 + 可选 `--build` 兜底、SHA-256 完整性校验、`installed.lock` 原子写入以及“首次安装默认停用、重启后生效”规则，不引入第二套安装或执行信任模型。

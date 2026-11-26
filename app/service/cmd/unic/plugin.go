@@ -25,7 +25,7 @@ import (
 
 const pluginUsage = `usage: unic plugin <command>
 
-  install <url> [--ref REF] [--path DIR] [--build] [--replace] [--enable]
+  install <url> [--ref REF] [--path DIR] [--mirror URL] [--build] [--replace] [--enable]
   instance add <implementation> <id>  create a disabled instance with independent settings
   list                show installed and configured plugins
   enable <id>         enable at the next service restart
@@ -255,6 +255,9 @@ func pluginInstall(ctx context.Context, args []string, root, cfg string, out io.
 		return errors.New(strings.TrimRight(pluginUsage, "\n"))
 	}
 	opt := luascripts.InstallOptions{Repository: args[0]}
+	if conf, err := loadConfig(cfg); err == nil {
+		opt.MirrorURL = conf.Plugins.MirrorURL
+	}
 	enable := false
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
@@ -264,16 +267,19 @@ func pluginInstall(ctx context.Context, args []string, root, cfg string, out io.
 			opt.Replace = true
 		case "--build":
 			opt.Build = true
-		case "--ref", "--path":
+		case "--ref", "--path", "--mirror":
 			flag := args[i]
 			i++
 			if i == len(args) || args[i] == "" || strings.HasPrefix(args[i], "--") {
 				return errors.New("missing plugin installation option value")
 			}
-			if flag == "--ref" {
+			switch flag {
+			case "--ref":
 				opt.Ref = args[i]
-			} else {
+			case "--path":
 				opt.Path = args[i]
+			case "--mirror":
+				opt.MirrorURL = args[i]
 			}
 		default:
 			return errors.New("unknown plugin installation option")

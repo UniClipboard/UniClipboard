@@ -386,6 +386,163 @@ func TestPluginMarketplaceFlowAndZeroConfigStatus(t *testing.T) {
 	if gotUninstalled != "unic.wenshushu" {
 		t.Fatalf("expected DELETE /v1/plugins/unic.wenshushu, got %q", gotUninstalled)
 	}
+
+	// Open Advanced settings and verify the Plugin Marketplace Mirror selector renders.
+	d.pluginSettings.view = "advanced"
+	tt.Advance(20 * time.Millisecond)
+	if !tt.HasText("插件市场镜像") || !tt.HasText("下载源") {
+		t.Fatalf("expected mirror settings group in advanced view, texts=%v", tt.Texts())
+	}
+}
+
+func TestPluginMirrorSettingsUI(t *testing.T) {
+	dir, err := os.MkdirTemp("", "umir-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "u.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	var mu sync.Mutex
+	cfgState := config.State{Revision: "rev-1", Config: config.Default()}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/status", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.Status{ID: "svc-1", Name: "Test Mac", Peers: []api.PeerStatus{}, Pending: []api.PendingPeer{}})
+	})
+	mux.HandleFunc("GET /v1/config", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		_ = json.NewEncoder(w).Encode(cfgState)
+	})
+	mux.HandleFunc("PUT /v1/config", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Revision string `json:"revision"`
+			TOML     string `json:"toml"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		parsed, err := config.Parse([]byte(body.TOML))
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		mu.Lock()
+		cfgState.Revision = "rev-2"
+		cfgState.Config = parsed
+		out := cfgState
+		mu.Unlock()
+		_ = json.NewEncoder(w).Encode(out)
+	})
+	mux.HandleFunc("GET /v1/plugins", func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode([]api.PluginInfo{}) })
+	mux.HandleFunc("GET /v1/plugins/marketplace", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.PluginMarketplace{Version: 1, Source: "remote", Plugins: []api.MarketplaceEntry{}})
+	})
+	mux.HandleFunc("GET /v1/actions", func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode([]api.Action{}) })
+	mux.HandleFunc("GET /v1/sync-backends", func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode([]api.SyncBackendInfo{}) })
+	mux.HandleFunc("GET /v1/history", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.HistoryPage{Items: []api.HistoryItem{}})
+	})
+	mux.HandleFunc("POST /v1/history/search", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.HistorySearchPage{Hits: []api.HistorySearchHit{}})
+	})
+	mux.HandleFunc("GET /v1/history/tags", func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode([]string{}) })
+	mux.HandleFunc("GET /v1/candidates", func(w http.ResponseWriter, r *http.Request) { _ = json.NewEncoder(w).Encode([]api.Candidate{}) })
+
+	srv := &http.Server{Handler: mux}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	desktop := NewDesktop(ctx, api.NewClient(sock))
+	defer desktop.Close()
+	d := desktop.d
+	d.theme = "light"
+	d.page = "settings"
+	d.settings.Value = "plugins"
+
+	tt := ui.NewTesterWith(desktop.View, 1080, 820, ui.TesterOptions{Dark: false})
+	tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 78})
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		d.live.poll(d)
+		tt.Advance(20 * time.Millisecond)
+		if d.live.loaded && tt.HasText("插件市场") {
+			break
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	if !d.live.loaded {
+		t.Fatal("timeout loading plugins view")
+	}
+
+	shotDir := os.Getenv("UNIC_MIRROR_SHOTS")
+	saveShot := func(name string) {
+		if shotDir == "" {
+			return
+		}
+		if err := os.MkdirAll(shotDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		if err := png.Encode(&out, tt.Image()); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(shotDir, name), out.Bytes(), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Step 1: Open the "更多" toolbar menu on Settings -> Plugins.
+	if err := tt.Click("更多"); err != nil {
+		t.Fatalf("click 更多: %v", err)
+	}
+	tt.Advance(250 * time.Millisecond)
+	saveShot("01-plugins-more-menu.png")
+
+	// Step 2: Enter "执行顺序与高级设置" and open the mirror source selector.
+	if err := tt.Click("执行顺序与高级设置"); err != nil {
+		t.Fatalf("click 执行顺序与高级设置: %v", err)
+	}
+	tt.Advance(250 * time.Millisecond)
+	if !tt.HasText("插件市场镜像") || !tt.HasText("下载源") {
+		t.Fatalf("expected mirror group in advanced view, texts=%v", tt.Texts())
+	}
+	if err := tt.Click("直连 GitHub"); err != nil {
+		t.Fatalf("click 直连 GitHub: %v", err)
+	}
+	tt.Advance(250 * time.Millisecond)
+	saveShot("02-mirror-source-dropdown.png")
+
+	// Step 3: Select Official mirror and confirm config persistence.
+	if err := tt.Click("官方镜像"); err != nil {
+		t.Fatalf("select official mirror: %v", err)
+	}
+	saveDeadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(saveDeadline) {
+		d.live.poll(d)
+		tt.Advance(20 * time.Millisecond)
+		mu.Lock()
+		saved := cfgState.Config.Plugins.MirrorURL
+		mu.Unlock()
+		if saved == officialPluginMirrorURL && !d.live.busy {
+			break
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	mu.Lock()
+	gotMirror := cfgState.Config.Plugins.MirrorURL
+	mu.Unlock()
+	if gotMirror != officialPluginMirrorURL {
+		t.Fatalf("saved mirror_url = %q, want %q", gotMirror, officialPluginMirrorURL)
+	}
+	tt.Advance(250 * time.Millisecond)
+	saveShot("03-mirror-selected-official.png")
 }
 
 func TestPluginMarketplaceToolbarAndCardListLayout(t *testing.T) {

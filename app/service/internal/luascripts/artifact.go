@@ -98,7 +98,7 @@ func (g githubRepo) prepareGo(ctx context.Context, stage, work, bundle string, m
 }
 
 func (g githubRepo) asset(ctx context.Context, stage string, a Artifact, out string) error {
-	body, err := fetch(ctx, g.location+"/releases/download/"+url.PathEscape(a.Release)+"/"+url.PathEscape(a.Asset), archiveLimit)
+	body, err := g.fetch(ctx, g.location+"/releases/download/"+url.PathEscape(a.Release)+"/"+url.PathEscape(a.Asset), archiveLimit)
 	if err != nil {
 		return err
 	}

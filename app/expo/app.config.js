@@ -6,7 +6,10 @@ module.exports = ({ config }) => {
   if (variant === "test") return config;
   if (variant !== "production") throw new Error("Invalid UNIC_MOBILE_VARIANT");
 
-  const { android, ios } = JSON.parse(execFileSync("python3", [
+  const python =
+    process.env.UNIC_PYTHON ||
+    (process.env.pythonLocation ? resolve(process.env.pythonLocation, "bin/python3") : "python3");
+  const { android, ios } = JSON.parse(execFileSync(python, [
     resolve(__dirname, "../../tools/release/mobile.py"), "config",
   ], { encoding: "utf8" }));
   const platform = process.env.UNIC_MOBILE_RELEASE_PLATFORM;

@@ -11,6 +11,7 @@ import (
 	"unsafe"
 
 	"github.com/ebitengine/purego"
+
 	"github.com/uniclipboard/unic/internal/waylandwire"
 )
 

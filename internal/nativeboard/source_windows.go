@@ -65,13 +65,13 @@ func executableIcon(path string) []byte {
 	if n == 0 || icon == 0 {
 		return nil
 	}
-	defer sourceUser32.NewProc("DestroyIcon").Call(icon)
+	defer func() { _, _, _ = sourceUser32.NewProc("DestroyIcon").Call(icon) }()
 	gdi := windows.NewLazySystemDLL("gdi32.dll")
 	dc, _, _ := gdi.NewProc("CreateCompatibleDC").Call(0)
 	if dc == 0 {
 		return nil
 	}
-	defer gdi.NewProc("DeleteDC").Call(dc)
+	defer func() { _, _, _ = gdi.NewProc("DeleteDC").Call(dc) }()
 	info := struct {
 		Size                   uint32
 		Width, Height          int32
@@ -85,9 +85,9 @@ func executableIcon(path string) []byte {
 	if bitmap == 0 || bits == nil {
 		return nil
 	}
-	defer gdi.NewProc("DeleteObject").Call(bitmap)
+	defer func() { _, _, _ = gdi.NewProc("DeleteObject").Call(bitmap) }()
 	old, _, _ := gdi.NewProc("SelectObject").Call(dc, bitmap)
-	defer gdi.NewProc("SelectObject").Call(dc, old)
+	defer func() { _, _, _ = gdi.NewProc("SelectObject").Call(dc, old) }()
 	raw := unsafe.Slice((*byte)(bits), 64*64*4)
 	clear(raw)
 	ok, _, _ := sourceUser32.NewProc("DrawIconEx").Call(dc, 0, 0, icon, 64, 64, 0, 0, 3)

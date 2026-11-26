@@ -38,7 +38,7 @@ func matchAfterTransientLock(client *api.Client, ctx context.Context, mark strin
 			held <- false
 			return
 		}
-		defer destroy.Call(window)
+		defer func() { _, _, _ = destroy.Call(window) }()
 		deadline := time.Now().Add(time.Second)
 		for {
 			result, _, _ := open.Call(window)
@@ -51,7 +51,7 @@ func matchAfterTransientLock(client *api.Client, ctx context.Context, mark strin
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
-		defer closeBoard.Call()
+		defer func() { _, _, _ = closeBoard.Call() }()
 		held <- true
 		select {
 		case <-time.After(125 * time.Millisecond):

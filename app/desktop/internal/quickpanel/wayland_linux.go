@@ -4,9 +4,10 @@ package quickpanel
 
 import (
 	"context"
-	"github.com/uniclipboard/unic/internal/waylandwire"
 	"sync"
 	"time"
+
+	"github.com/uniclipboard/unic/internal/waylandwire"
 )
 
 // waylandCompositorTargetID is an opaque sentinel representing Wayland

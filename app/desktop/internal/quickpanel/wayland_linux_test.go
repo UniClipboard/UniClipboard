@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"github.com/uniclipboard/unic/internal/waylandwire"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/uniclipboard/unic/internal/waylandwire"
 )
 
 type fakeWaylandBackend struct {

@@ -70,8 +70,8 @@ func (*Board) ClipboardAvailable() bool {
 	for {
 		ok, _, _ := openClipboard.Call(0)
 		if ok != 0 {
-			closeClipboard.Call()
-			return true
+			closed, _, _ := closeClipboard.Call()
+			return closed != 0
 		}
 		if time.Now().After(deadline) {
 			return false
@@ -109,12 +109,12 @@ func (*Board) ClipboardChanges(ctx context.Context) <-chan struct{} {
 		if hwnd == 0 {
 			return
 		}
-		defer destroyClipboardWindow.Call(hwnd)
+		defer func() { _, _, _ = destroyClipboardWindow.Call(hwnd) }()
 		ok, _, _ := addClipboardListener.Call(hwnd)
 		if ok == 0 {
 			return
 		}
-		defer removeClipboardListener.Call(hwnd)
+		defer func() { _, _, _ = removeClipboardListener.Call(hwnd) }()
 		done := make(chan struct{})
 		stop := make(chan struct{})
 		defer func() { close(stop); <-done }()
@@ -122,7 +122,7 @@ func (*Board) ClipboardChanges(ctx context.Context) <-chan struct{} {
 			defer close(done)
 			select {
 			case <-ctx.Done():
-				postClipboardMessage.Call(hwnd, closeListenerMessage, 0, 0)
+				_, _, _ = postClipboardMessage.Call(hwnd, closeListenerMessage, 0, 0)
 			case <-stop:
 			}
 		}()

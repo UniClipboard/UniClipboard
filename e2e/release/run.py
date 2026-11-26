@@ -484,8 +484,8 @@ try:
                 and value["program"] == ("unic" if command == "uniclip" else command),
             )
             if command != "unicd":
-                failure = execute([executable, "daemon"], 1)
-                check(command + " preserves failing exit code", failure.returncode == 1)
+                failure = execute([executable, "daemon"], 2)
+                check(command + " preserves failing exit code", failure.returncode == 2)
         accept_migration(ROOT, installed, temp, env, execute, check, report)
         before = len(uploads)
         alpha = copy.deepcopy(

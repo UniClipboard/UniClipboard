@@ -187,7 +187,9 @@ func (p *quickPanelState) searchRow(c *ui.Context, k desktopkit.Kit, a qpPalette
 		}
 		for i, f := range p.chips {
 			b := ui.ButtonBase(c.Key(f.dimension + f.value)).Label(p.tr("移除 ") + p.filterLabel(f)).KeepFocus().Height(24).PaddingX(8).Radius(6).Background(a.muted).Shrink(0)
-			b.Children(func() { ui.Text(c, p.filterLabel(f)).FontSize(12.5 * zoomScale(p.textZoom)).TextColor(a.primary).SingleLine() })
+			b.Children(func() {
+				ui.Text(c, p.filterLabel(f)).FontSize(12.5 * zoomScale(p.textZoom)).TextColor(a.primary).SingleLine()
+			})
 			b.OnClick(func() {
 				p.chips = append(p.chips[:i], p.chips[i+1:]...)
 				p.queryChanged()

@@ -53,15 +53,15 @@ func (p *quickPanelState) searchQuery() engine.HistorySearchQuery {
 			q.Sources = append(q.Sources, searchSource(value))
 		case "time":
 			d := viewState{timeRange: map[string]string{
-				"今天":    "today",
-				"昨天":    "yesterday",
-				"前天":    "day_before_yesterday",
-				"最近 7 天": "last_7d",
+				"今天":      "today",
+				"昨天":      "yesterday",
+				"前天":      "day_before_yesterday",
+				"最近 7 天":  "last_7d",
 				"最近 30 天": "last_30d",
-				"本周":    "this_week",
-				"上周":    "last_week",
-				"本月":    "this_month",
-				"上月":    "last_month",
+				"本周":      "this_week",
+				"上周":      "last_week",
+				"本月":      "this_month",
+				"上月":      "last_month",
 			}[value]}
 			t := d.liveQuery()
 			q.CreatedFromMs, q.CreatedBeforeMs = t.FromMs, t.BeforeMs

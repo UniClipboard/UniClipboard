@@ -5,7 +5,7 @@ import { AppBottomSheet, AppButton, AppHost } from '@/components/ui';
 import { useTheme } from '@/hooks/useTheme';
 import { PairingScanner } from '@/screens/PairingScanner';
 import { showUnavailable } from '@/shell/notice';
-import type { OnboardingScannerController } from './useOnboardingScanner.ios';
+import type { OnboardingScannerController } from './useOnboardingScanner.types';
 
 export function useOnboardingScanner({
   isLive,

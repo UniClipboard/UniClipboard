@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   BackHandler,
   Pressable,
   ScrollView,
@@ -80,6 +81,15 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   const segmented = ONBOARDING_PLATFORM_CONFIG.segmentedCards;
 
   const flow = useOnboardingFlow(onComplete);
+  const scrollProgress = useRef(new Animated.Value(flow.slide)).current;
+  const latestSlideRef = useRef(flow.slide);
+  latestSlideRef.current = flow.slide;
+
+  useEffect(() => {
+    if (flow.step === 'intro') {
+      scrollProgress.setValue(latestSlideRef.current);
+    }
+  }, [flow.step, scrollProgress]);
   const caps = usePlatformCapabilities(
     flow.step === 'capabilities' || flow.step === 'ready',
   );
@@ -143,12 +153,16 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
     rightLabel,
     onRightPress,
     rightTestID,
+    rightOpacity,
+    rightHidden = false,
   }: {
     showBack?: boolean;
     stepBadge?: string;
     rightLabel?: string;
     onRightPress?: () => void;
     rightTestID?: string;
+    rightOpacity?: Animated.AnimatedInterpolation<number>;
+    rightHidden?: boolean;
   }) => (
     <View style={s.topBar}>
       <View style={s.topSide}>
@@ -177,22 +191,29 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
 
       <View style={[s.topSide, s.topSideRight]}>
         {rightLabel && onRightPress ? (
-          <Pressable
-            testID={rightTestID}
-            onPress={onRightPress}
-            disabled={flow.busy || flow.finishing}
-            hitSlop={10}
-            style={({ pressed }) => [s.skipBtn, pressed && { opacity: 0.6 }]}
+          <Animated.View
+            style={rightOpacity ? { opacity: rightOpacity } : undefined}
+            pointerEvents={rightHidden ? 'none' : 'auto'}
+            accessibilityElementsHidden={rightHidden}
+            importantForAccessibility={rightHidden ? 'no-hide-descendants' : 'yes'}
           >
-            <Text
-              style={[
-                s.skipText,
-                { color: segmented ? c.accent : c.textSecondary },
-              ]}
+            <Pressable
+              testID={rightTestID}
+              onPress={onRightPress}
+              disabled={rightHidden || flow.busy || flow.finishing}
+              hitSlop={10}
+              style={({ pressed }) => [s.skipBtn, pressed && { opacity: 0.6 }]}
             >
-              {rightLabel}
-            </Text>
-          </Pressable>
+              <Text
+                style={[
+                  s.skipText,
+                  { color: segmented ? c.accent : c.textSecondary },
+                ]}
+              >
+                {rightLabel}
+              </Text>
+            </Pressable>
+          </Animated.View>
         ) : null}
       </View>
     </View>
@@ -203,19 +224,43 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
   // =========================================================================
   const renderIntro = () => {
     const isLast = flow.slide === SLIDES.length - 1;
+    const skipOpacity = scrollProgress.interpolate({
+      inputRange: [1, 1.85],
+      outputRange: [1, 0],
+      extrapolate: 'clamp',
+    });
+    const secondaryOpacity = scrollProgress.interpolate({
+      inputRange: [1.15, 2],
+      outputRange: [0, 1],
+      extrapolate: 'clamp',
+    });
+    const secondaryTranslateY = scrollProgress.interpolate({
+      inputRange: [1.15, 2],
+      outputRange: [8, 0],
+      extrapolate: 'clamp',
+    });
+
     return (
       <>
         {renderTopBar({
           rightLabel: t('onboarding:guide.skip'),
           onRightPress: () => void flow.finishOnboarding(),
           rightTestID: 'setup-start-clean',
+          rightOpacity: skipOpacity,
+          rightHidden: isLast,
         })}
 
         <PagerView
           ref={pagerRef}
           style={s.pager}
           initialPage={flow.slide}
-          onPageSelected={({ nativeEvent }) => flow.setSlide(nativeEvent.position)}
+          onPageScroll={({ nativeEvent }) => {
+            scrollProgress.setValue(nativeEvent.position + nativeEvent.offset);
+          }}
+          onPageSelected={({ nativeEvent }) => {
+            flow.setSlide(nativeEvent.position);
+            scrollProgress.setValue(nativeEvent.position);
+          }}
           scrollEnabled={!flow.busy && !flow.finishing}
         >
           {/* Slide 1: Welcome */}
@@ -297,22 +342,39 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
               total: SLIDES.length,
             })}
           >
-            {SLIDES.map((kind, idx) => (
-              <Pressable
-                key={kind}
-                hitSlop={8}
-                onPress={() => {
-                  flow.setSlide(idx);
-                  pagerRef.current?.setPage(idx);
-                }}
-                style={[
-                  s.dot,
-                  idx === flow.slide
-                    ? { width: 22, backgroundColor: c.accent }
-                    : { width: 7, backgroundColor: c.separator },
-                ]}
-              />
-            ))}
+            {SLIDES.map((kind, idx) => {
+              const dotWidth = scrollProgress.interpolate({
+                inputRange: [idx - 1, idx, idx + 1],
+                outputRange: [7, 22, 7],
+                extrapolate: 'clamp',
+              });
+              const dotOpacity = scrollProgress.interpolate({
+                inputRange: [idx - 1, idx, idx + 1],
+                outputRange: [0.24, 1, 0.24],
+                extrapolate: 'clamp',
+              });
+              return (
+                <Pressable
+                  key={kind}
+                  hitSlop={8}
+                  onPress={() => {
+                    flow.setSlide(idx);
+                    pagerRef.current?.setPage(idx);
+                  }}
+                >
+                  <Animated.View
+                    style={[
+                      s.dot,
+                      {
+                        width: dotWidth,
+                        opacity: dotOpacity,
+                        backgroundColor: c.accent,
+                      },
+                    ]}
+                  />
+                </Pressable>
+              );
+            })}
           </View>
 
           {flow.error ? (
@@ -342,7 +404,18 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
             />
           </AppHost>
 
-          {isLast ? (
+          <Animated.View
+            style={[
+              s.secondarySlot,
+              {
+                opacity: secondaryOpacity,
+                transform: [{ translateY: secondaryTranslateY }],
+              },
+            ]}
+            pointerEvents={isLast ? 'auto' : 'none'}
+            accessibilityElementsHidden={!isLast}
+            importantForAccessibility={isLast ? 'yes' : 'no-hide-descendants'}
+          >
             <AppHost style={s.secondaryHost} matchContents={{ vertical: true }}>
               <AppButton
                 testID="onboarding-skip"
@@ -350,11 +423,11 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
                 variant="text"
                 fullWidth
                 colors={{ contentColor: segmented ? c.accent : c.textSecondary }}
-                disabled={flow.busy || flow.finishing}
+                disabled={!isLast || flow.busy || flow.finishing}
                 onPress={() => void flow.finishOnboarding()}
               />
             </AppHost>
-          ) : null}
+          </Animated.View>
         </View>
       </>
     );
@@ -1465,5 +1538,6 @@ const s = StyleSheet.create({
     gap: 10,
   },
   primaryHost: { minHeight: 54, width: '100%' },
+  secondarySlot: { height: 44, width: '100%', justifyContent: 'center' },
   secondaryHost: { minHeight: 44, width: '100%' },
 });

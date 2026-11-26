@@ -1,6 +1,6 @@
 import { M3IconButton } from '@/components/android/M3IconButton';
 import { useTheme } from '@/hooks/useTheme';
-import type { OnboardingBackButtonProps } from './OnboardingBackButton.ios';
+import type { OnboardingBackButtonProps } from './OnboardingBackButton.types';
 
 export function OnboardingBackButton({ onPress, disabled, label }: OnboardingBackButtonProps) {
   const { theme } = useTheme();

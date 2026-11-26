@@ -93,6 +93,8 @@
 - **Android**：[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) から APK をダウンロードしてインストールします（現在 Google Play での公開予定はありません）。
 - **CLI のみ**：`npm install -g @uniclipboard/cli` を実行します。
 
+[![Packaging status](https://repology.org/badge/vertical-allrepos/uniclipboard.svg)](https://repology.org/project/uniclipboard/versions)
+
 **2. 2 台目のデバイスを接続**
 
 1 台目で **デバイス → デバイスを追加** を開き、6 桁のコードを控えて 2 台目に入力します。両方に同じフィンガープリントが表示されたら、それぞれで **承認** をクリックします。

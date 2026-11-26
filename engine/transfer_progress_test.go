@@ -59,7 +59,7 @@ func (p *sessionPlugin) SetPeerReceiver(r plugin.PeerReceiver) {
 	}
 	p.b.SetPeerReceiver(r)
 }
-func (p *sessionPlugin) Bind(ctx context.Context, b rpc.Bind) error             { return p.b.Bind(ctx, b) }
+func (p *sessionPlugin) Bind(ctx context.Context, b rpc.Bind) error { return p.b.Bind(ctx, b) }
 func (p *sessionPlugin) ApplyState(ctx context.Context, s rpc.SyncState) error {
 	return p.b.ApplyState(ctx, s)
 }
@@ -487,28 +487,6 @@ func TestProgressEventsAreThrottledAndOutcomeMatrixHandlesDiscarded(t *testing.T
 		t.Fatalf("expected coalesced EventOperations count <= 10, got %d", opEvents)
 	}
 }
-
-type blockingReceivedPlugin struct {
-	hold chan struct{}
-}
-
-func (p *blockingReceivedPlugin) Spec() plugin.Spec {
-	return plugin.Spec{ID: "test.blocker", Version: "1", APIVersion: 1, Capabilities: []string{plugin.CapProcessor}}
-}
-func (p *blockingReceivedPlugin) Init(context.Context, plugin.Host, plugin.Config) error { return nil }
-func (p *blockingReceivedPlugin) Start(context.Context) error                            { return nil }
-func (p *blockingReceivedPlugin) Close(context.Context) error                            { return nil }
-func (p *blockingReceivedPlugin) Process(ctx context.Context, _ plugin.ProcessContext) error {
-	select {
-	case <-p.hold:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-// Keep unused import check satisfied if helper evolves.
-var _ io.Reader
 
 type pacedParts struct {
 	inner plugin.ReceiveParts

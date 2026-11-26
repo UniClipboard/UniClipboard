@@ -194,7 +194,7 @@ func (d *viewState) receiveToastTitle(r *engine.ReceiveOperation) string {
 	case r.ContentKind == "directory":
 		return fmt.Sprintf(d.tr("正在接收来自 %s 的文件夹"), peer)
 	case r.FileCount > 1:
-		return fmt.Sprintf(d.tr("正在接收来自 %s 的 %d 个文件"), peer, r.FileCount)
+		return fmt.Sprintf(d.tr("正在接收 %d 个文件（来自 %s）"), r.FileCount, peer)
 	case r.FileCount == 1 || r.ContentKind == "file":
 		return fmt.Sprintf(d.tr("正在接收来自 %s 的文件"), peer)
 	case r.ContentKind == "image":
@@ -423,9 +423,10 @@ func (d *viewState) renderDeliverySection(c *ui.Context, k desktopkit.Kit, v *en
 			if op, ok := d.live.operationForHistory(v.id); ok && len(op.Targets) > 0 {
 				received, active := 0, 0
 				for _, t := range op.Targets {
-					if t.State == engine.TargetSent {
+					switch t.State {
+					case engine.TargetSent:
 						received++
-					} else if t.State == engine.TargetQueued || t.State == engine.TargetSending {
+					case engine.TargetQueued, engine.TargetSending:
 						active++
 					}
 				}
@@ -443,6 +444,15 @@ func (d *viewState) renderDeliverySection(c *ui.Context, k desktopkit.Kit, v *en
 						k.TransferItem(c.Key(it.ID), it)
 					}
 				})
+				if includeBackends {
+					for _, backend := range v.backendSync {
+						text := backend.BackendID + " · " + d.tr(syncStateLabel(backend.State)) + " · " + d.tr(backend.Disposition)
+						if backend.ErrorCode != "" {
+							text += " · " + backend.ErrorCode
+						}
+						k.Text(c, text, secondary)
+					}
+				}
 				return
 			}
 			k.Text(c, d.tr("同步状态：")+d.tr(syncStateLabel(v.syncState)), secondary)

@@ -173,6 +173,18 @@ func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error
 	return nil
 }
 
+type clipboardReply struct {
+	Mark    string `json:"mark"`
+	Failure string `json:"failure"`
+}
+
+type clipboardRequest struct {
+	ID                string `json:"id"`
+	Plain             bool   `json:"plain"`
+	Mark              string `json:"mark"`
+	InterruptComplete bool   `json:"interrupt_complete,omitempty"`
+}
+
 type countingFixtureBoard struct {
 	base   clipboardintegration.Board
 	writes *atomic.Int64

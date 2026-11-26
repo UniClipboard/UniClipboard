@@ -13,12 +13,12 @@ const receiveProgressEventMinInterval = 200 * time.Millisecond
 // opEntry is one retained operation and the fingerprint of the request that
 // made it. Only a hash of sensitive parameters is kept, never the parameters.
 type opEntry struct {
-	cancel            func() // release the submission context after all targets finish
-	discardReceive    func() // cancel an in-flight inbound peer receive
-	op                Operation
-	hash              [sha256.Size]byte
-	content           *contentObj // a send holds its content until every target is final
-	open              bool        // backends may still register targets; guarded by Engine.mu
+	cancel         func() // release the submission context after all targets finish
+	discardReceive func() // cancel an in-flight inbound peer receive
+	op             Operation
+	hash           [sha256.Size]byte
+	content        *contentObj // a send holds its content until every target is final
+	open           bool        // backends may still register targets; guarded by Engine.mu
 	// history links a send to the record it belongs to, so that the record's
 	// sync summary follows the operation. results are the commit decisions.
 	history           HistoryID

@@ -8963,11 +8963,11 @@
     "pt-BR": "Recebendo arquivo de %s",
     "ru": "Получение файла от %s"
   },
-  "正在接收来自 %s 的 %d 个文件": {
-    "en": "Receiving %2$d files from %1$s",
-    "ja": "%s から %d 個のファイルを受信中",
-    "pt-BR": "Recebendo %2$d arquivos de %1$s",
-    "ru": "Получение %2$d файлов от %1$s"
+  "正在接收 %d 个文件（来自 %s）": {
+    "en": "Receiving %d files from %s",
+    "ja": "%d 件のファイルを受信中（%s）",
+    "pt-BR": "Recebendo %d arquivos de %s",
+    "ru": "Получение %d файлов от %s"
   },
   "正在接收来自 %s 的文件夹": {
     "en": "Receiving folder from %s",
@@ -8986,5 +8986,23 @@
     "ja": "%s から受信中",
     "pt-BR": "Recebendo de %s",
     "ru": "Получение от %s"
+  },
+  "已取消": {
+    "en": "Cancelled",
+    "ja": "キャンセル済み",
+    "pt-BR": "Cancelado",
+    "ru": "Отменено"
+  },
+  "源文件已变更或不存在": {
+    "en": "Source file changed or missing",
+    "ja": "元のファイルが変更されたか見つかりません",
+    "pt-BR": "O arquivo de origem foi alterado ou não foi encontrado",
+    "ru": "Исходный файл изменён или отсутствует"
+  },
+  "超出大小限制": {
+    "en": "Size limit exceeded",
+    "ja": "サイズ上限を超えています",
+    "pt-BR": "Limite de tamanho excedido",
+    "ru": "Превышен лимит размера"
   }
 }

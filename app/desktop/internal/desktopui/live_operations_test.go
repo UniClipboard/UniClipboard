@@ -9,6 +9,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
+	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 func TestTransferTargetItemStatesAndReceipts(t *testing.T) {
@@ -102,16 +103,28 @@ func TestLiveDeliverySectionRendersPerDeviceProgressAndReceipt(t *testing.T) {
 	}
 
 	k := desktopkit.Kit{}
+	detailEntry := &entry{
+		id:        "hist-file-1",
+		syncState: "pending",
+		backendSync: []api.HistoryBackendSync{{
+			BackendID:   "e2e.desktop",
+			State:       "pending",
+			Disposition: "queued",
+		}},
+	}
 	tester := ui.NewTester(func(c *ui.Context) {
 		k.Apply(c)
 		ui.Column(c).Children(func() {
 			d.toolbarTransferStatus(c, k)
-			d.renderDeliverySection(c.Key("delivery"), k, &entry{id: "hist-file-1", syncState: "pending"}, true)
+			d.renderDeliverySection(c.Key("delivery"), k, detailEntry, true)
 		})
 	}, 600, 400)
 	tester.Frame()
 	if !tester.HasText("MacBook Pro") || !tester.HasText("40%") {
 		t.Fatalf("expected per-device 40%% transfer item in delivery section, texts=%v", tester.Texts())
+	}
+	if !tester.HasText("e2e.desktop") {
+		t.Fatalf("expected per-backend summary to remain visible alongside operation targets, texts=%v", tester.Texts())
 	}
 	if _, ok := tester.Find("传输进度"); !ok {
 		t.Fatalf("expected active transfer status indicator in toolbar, texts=%v", tester.Texts())

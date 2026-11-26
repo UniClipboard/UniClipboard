@@ -193,9 +193,9 @@ type viewState struct {
 	tagEditor                                                             tagEditorState
 	actionResult                                                          actionResultState
 	toasts                                                                desktopkit.ToastStore
-	dismissedRestart, dismissedCfgErr, dismissedApply, dismissedPending string
-	receiveToastIDs                                                     map[string]struct{}
-	suppressReceiveToastDiscard                                         bool
+	dismissedRestart, dismissedCfgErr, dismissedApply, dismissedPending   string
+	receiveToastIDs                                                       map[string]struct{}
+	suppressReceiveToastDiscard                                           bool
 	pendingCountChanged                                                   func(int)
 	lastPendingCount                                                      int
 	openURL                                                               func(string) error

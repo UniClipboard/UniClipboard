@@ -3,6 +3,12 @@ name: Legacy mobile auto-migration complete and enter history
 ---
 - extendedWaitUntil:
     visible:
+      id: setup-start-migration
+    timeout: 45000
+- tapOn:
+    id: setup-start-migration
+- extendedWaitUntil:
+    visible:
       id: setup-enter-history
     timeout: 45000
 - tapOn:

@@ -11,6 +11,7 @@ import { M3IconButton } from "@/components/android/M3IconButton";
 import { useEngineStore } from "@/engine/store";
 import { useTheme } from "@/hooks/useTheme";
 import { MigrationSetupScreen } from "@/screens/setup/MigrationSetupScreen";
+import { OnboardingScreen } from "@/screens/OnboardingScreen";
 import { OnboardingPreviewScreen } from "@/screens/OnboardingPreviewScreen";
 import { SettingsScreen } from "@/screens/SettingsScreen";
 import { SettingsSubScreen } from "@/screens/settings/SettingsSubScreen";
@@ -36,6 +37,7 @@ export function AppNavigator() {
   const mode = useEngineStore((s) => s.mode);
   const bootStage = useEngineStore((s) => s.bootStage);
   const bootstrap = useEngineStore((s) => s.bootstrap);
+  const completeSetupAndEnterMain = useEngineStore((s) => s.completeSetupAndEnterMain);
 
   useEffect(() => {
     void bootstrap();
@@ -58,6 +60,10 @@ export function AppNavigator() {
 
   if (mode === "live" && bootStage === "setup") {
     return <MigrationSetupScreen />;
+  }
+
+  if (mode === "live" && bootStage === "onboarding") {
+    return <OnboardingScreen onComplete={completeSetupAndEnterMain} />;
   }
 
   const subScreenTitle = (section: SettingsSubSection) =>

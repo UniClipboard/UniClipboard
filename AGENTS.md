@@ -102,7 +102,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 
 - [可观测性契约](docs/contracts/observability-contract.md): Engine diagnostics, logs, metrics, sampled traces, configuration and lifecycle bounds. See the [0014 receipt](docs/exec/0014-client-observability-otlp.md) and [trace receipt](docs/exec/observability-traces.md).
 
-- [混合中转同步契约](docs/contracts/hybrid-relay-contract.md)：Phase 0–2 已实现（0035）；零知识 E2EE 分块信封与确定性向量、Relay HTTP API v1（支持官方托管与独立自部署 `unic-relay`）、P2P 在线优先与 0 等待回退调度、对齐 0034 进度/回执/`Hello.Caps`/`DiscardReceive`，以及 Level 3 大载荷 P2P 中途恢复位图结算、分块接力续传与断线反向回落。
+- [混合中转同步契约](docs/contracts/hybrid-relay-contract.md)：Phase 0–2 已实现（0035），中转数据面已切至 Direct-to-S3 预签名对象存储直传（对齐 `UniClipboard/relay` Hyper Relay API v2）；包含零知识 E2EE 分块信封与确定性向量、预签名直传/直下与 SSRF/凭据剥离约束、P2P 在线优先与 0 等待回退调度、对齐 0034 进度/回执/`Hello.Caps`/`DiscardReceive`，以及 Level 3 大载荷 P2P 中途恢复位图结算、分块接力续传与断线反向回落。
 
 ### 原型
 

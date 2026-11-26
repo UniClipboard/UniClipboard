@@ -1,23 +1,23 @@
-# 混合中转同步与分块接力契约 v1
+# 混合中转同步与分块接力契约（Direct-to-S3）
 
-- 状态：Phase 0、Phase 1 与 Phase 2 已实现并经 `-race` 端到端验证（`internal/relaycrypto`、确定性向量 `vectors/hybrid-relay-v1.json`、`internal/relayserver`、`cmd/unic-relay`、`internal/relayclient`、`wire.RelayProfile`、`wire.RelayHandoffOffer`/`Ack`/`RelayChunkData`、`engine` 混合路由/共享 `TransferAssembly`/Level 3 P2P 中途位图结算与断线反向回落/接收放弃/吊销、配置与桌面/移动端适配）；Phase 3（官方托管上线与移动端后台真机实测）待实施
+- 状态：Phase 0、Phase 1 与 Phase 2 已实现并经 `-race` 端到端验证（`internal/relaycrypto`、确定性向量、`internal/relayserver`、`cmd/unic-relay`、`internal/relayclient`、`wire.RelayProfile`/`RelayHandoffOffer`/`Ack`/`RelayChunkData`、`engine` 混合路由/共享 `TransferAssembly`/Level 3 P2P 中途位图结算与断线反向回落/接收放弃/吊销、配置与桌面/移动端适配）；中转数据面已切换为 **Direct-to-S3 预签名对象存储直传**（对齐 `UniClipboard/relay` Hyper Relay API v2）；Phase 3（官方托管上线与移动端后台真机实测）待实施
 - 日期：2026-11-26
 - 依据：[身份与信任](../architecture/identity-and-trust.md)、[流水线与本机历史](../architecture/pipeline.md)、[统一身份协议](identity-protocol.md)、[设备契约](device-contract.md)、[流水线提交契约](pipeline-contract.md)、[同步后端业务契约](sync-backend-contract.md)、[Engine 公共契约](engine-contract.md)、[0034 同步发送进度与接收回执](../decisions/proposed/0034-sync-transfer-progress-and-receipt-ack.md)
 
-本文定义 `unic` 混合同步传输（P2P 在线直连优先 + E2EE 临时 HTTP 中转 0 等待回退 + 大载荷统一分块 P2P 接力续传）的密码学格式、Relay HTTP API v1、P2P 接力控制帧、Engine 调度与资源边界。
+本文定义 `unic` 混合同步传输（P2P 在线直连优先 + E2EE 临时中转 Direct-to-S3 0 等待回退 + 大载荷统一分块 P2P 接力续传）的密码学格式、Hyper Relay Direct-to-S3 控制/数据面 API、P2P 接力控制帧、Engine 调度与资源边界。
 
 ---
 
 ## 1. 角色与职责边界
 
-> **两类独立中继程序边界**：本文定义的**混合传输 HTTP 中转服务（`unic-relay`）**是应用层 E2EE 短 TTL 存储转发程序，与 **`builtin.tailcat` 所使用的底层 P2P/DERP 隧道中继节点（如 `derper`）**是两个职责正交、进程与部署完全独立的程序。用户可独立自部署任意其一或同时自部署两者，互不耦合。
+> **两类独立中继程序边界**：本文定义的**混合传输 HTTP 中转服务（`UniClipboard/relay` / `hyper-relay`）**是应用层 E2EE 短 TTL 零知识控制面（配合 S3/COS/R2/MinIO 预签名直传），与 **`builtin.tailcat` 所使用的底层 P2P/DERP 隧道中继节点（如 `derper`）**是两个职责正交、进程与部署完全独立的程序。用户可独立自部署任意其一或同时自部署两者，互不耦合。
 
 | 组件 | 职责 | 明确禁止 |
 |---|---|---|
-| **Engine（含 `internal/relaycrypto`）** | 持有设备身份私钥与信任表；决定每目标路由（P2P 直连 vs 中转回退）；生成 `TransferID`、加密/解密/签验分块与信封；维护共享接收暂存组装器（`TransferAssembly`）、跨通道去重、配额、撤销屏障与单路径策略执行 | 不直接硬编码官方云厂商 SDK；不向日志/事件/错误泄露密钥、令牌、接入密钥、自定义 URL 或正文 |
+| **Engine（含 `internal/relaycrypto`）** | 持有设备身份私钥与信任表；决定每目标路由（P2P 直连 vs 中转回退）；生成 `TransferID`、加密/解密/签验分块与信封；维护共享接收暂存组装器（`TransferAssembly`）、跨通道去重、配额、撤销屏障与单路径策略执行 | 不直接硬编码官方云厂商 SDK；不向日志/事件/错误泄露密钥、令牌、接入密钥、预签名 URL、自定义 URL 或正文 |
 | **内置 P2P 传输（`builtin.tailcat`）** | 维持既有 `peer_sessions` 长连接（经直连或独立 DERP 中继）；在认证会话上交换 `relay_profile`；在 Phase 2 承载 `relay_handoff_*` 与 `relay_chunk_data` 控制/数据帧；响应非阻塞重连提示 `WakePeer` | 不持有设备私钥；不自行绕过 Engine 授信或决定中转回退 |
-| **内置中转客户端（`internal/relayclient`）** | 按 Relay HTTP API v1 执行信封上传、分块并发 PUT/GET、SSE 订阅、消费确认（ACK/DELETE）与投递令牌吊销（类似 `internal/rendezvous`，独立于 `tailcat`、非外部 `pluginproc` 子进程） | 不接触明文剪贴板内容；不依赖 `tailcat`/`tcnet`；不自行放宽 SSRF/大小/超时限制 |
-| **混合 HTTP 中转服务端（官方托管 / 自部署 `unic-relay`）** | 无状态/轻量状态验证请求签名、投递令牌、可选自部署实例准入控制与配额；暂存短 TTL 密文分块；经 SSE 推送新信封事件；在消费确认或 TTL 到期后删除密文 | 不持有任何设备私钥或解密密钥；无法查看明文、文件名、MIME 或来源应用；不作为设备信任权威；不耦合 DERP 隧道转发 |
+| **内置中转客户端（`internal/relayclient`）** | 按 Direct-to-S3 Relay API 执行信封公告、预签名直传 `PUT` + `commit`、预签名直下 `GET`、SSE 订阅、消费确认（ACK/DELETE）与投递令牌吊销；对预签名对象存储 URL 严格执行凭据剥离、SSRF/私网 IP 阻断与脱敏 | 不接触明文剪贴板内容；不依赖 `tailcat`/`tcnet`；不向对象存储发送中转鉴权头；不记录预签名 URL；不自行放宽 SSRF/大小/超时限制 |
+| **混合 HTTP 中转服务端（官方托管 / 自部署 `UniClipboard/relay`）** | 零知识控制面：验证请求签名、投递令牌、可选自部署实例准入控制与配额；签发短时效 AWS SigV4 预签名 PUT/GET URL；在 `commit` 时经 S3 `HeadObject` 校验对象存在性与字节上限并经 SSE 推送事件；在消费确认、取消或 TTL 到期后经 `DeleteObject` 立即清理密文对象 | **不中转密文分块字节流**；不持有任何设备私钥或解密密钥；无法查看明文、文件名、MIME 或来源应用；不作为设备信任权威；不耦合 DERP 隧道转发 |
 | **宿主（桌面 `unicd` / 移动端 `app/expo`）** | 显式装配内置中转客户端并提供中转开关、自部署 URL 与可选接入密钥配置；向用户区分展示直连与中转状态；管理移动端前后台网络与上传保活 | 不在 iOS Share Extension 中启动第二个 Engine 实例 |
 
 ---
@@ -179,24 +179,34 @@ sig          = Ed25519.Sign(sk_sender, "unic/relay-envelope-sig/v1\0" || envelop
 1. **公钥白名单（`allowed_pubkeys`）**：服务端仅允许白名单内的 `X-Unic-PubKey` 执行 Owner Auth（注册/吊销投递令牌、订阅 SSE、拉取与确认消费）；
 2. **实例接入密钥（`X-Unic-Relay-Key`）**：当服务端启用接入密钥时，Owner Auth 与 `Bearer <delivery_token>` 请求均须携带匹配的 `X-Unic-Relay-Key` Header（常量时间比较）；客户端经 `sync.relay.access_key`（或环境变量 `UNIC_RELAY_ACCESS_KEY`）配置，视为秘密字段，绝不写入日志、事件、状态 DTO 或普通错误。
 
-### 3.3 HTTP API v1 端点
+### 3.3 HTTP API（Direct-to-S3 控制面 + 对象存储直传数据面）
 
-所有端点均基于配置的 `<base_url>`（官方默认 `https://relay.uniclipboard.app`）：
+所有控制面端点均基于配置的 `<base_url>`（官方默认 `https://relay.uniclipboard.app`），密文分块字节流**不经过中转服务**，由客户端凭短时效 AWS SigV4 预签名 URL 直连对象存储（Tencent COS / Cloudflare R2 / AWS S3 / Aliyun OSS / MinIO 等）上传与下载：
 
 | 方法与路径 | 鉴权 | 作用 |
 |---|---|---|
-| `PUT /v1/relay/mailboxes/{mailbox_id}/senders/{token_hash}` | Owner Auth | 登记/更新一个允许向本信箱投递的令牌哈希（支持带 `max_bytes` / 备注标签为空） |
+| `GET /healthz` | 无 | 健康检查，返回 `{"status":"ok","service":"hyper-relay","storage":"s3-direct"}` |
+| `PUT /v1/relay/mailboxes/{mailbox_id}/senders/{token_hash}` | Owner Auth | 登记/更新一个允许向本信箱投递的令牌哈希（支持带 `max_bytes`） |
 | `DELETE /v1/relay/mailboxes/{mailbox_id}/senders/{token_hash}` | Owner Auth | 吊销指定对端投递令牌 |
-| `PUT /v1/relay/mailboxes/{mailbox_id}/transfers/{transfer_id}/single` | `Authorization: Bearer <delivery_token>` | **单块快路径（≤ 2 MiB）**：单请求二进制帧 `u32_be(len(envelope_json)) \|\| envelope_json \|\| C[0]`，服务端立即落存并推送 SSE 事件 |
-| `POST /v1/relay/mailboxes/{mailbox_id}/transfers` | `Authorization: Bearer <delivery_token>` | **多分块创建（> 2 MiB）**：提交外层 `envelope` JSON，返回 `{transfer_id, expires_at_ms, max_chunk_bytes}` 并立即推送 SSE `transfer_announced` 事件（允许接收端边传边下） |
-| `PUT /v1/relay/mailboxes/{mailbox_id}/transfers/{transfer_id}/chunks/{index}` | `Authorization: Bearer <delivery_token>` | 上传第 `index` 块密文 `C[index]`（`Content-Type: application/octet-stream`，服务端校验 `SHA256(body) == chunk_hashes[index]`），成功后推送 SSE `chunk_ready` 事件 |
-| `GET /v1/relay/mailboxes/{mailbox_id}/events` | Owner Auth | SSE 长连接（支持 `Last-Event-ID` 补拉），推送 `transfer_announced`、`chunk_ready`、`transfer_single_ready` 心跳与事件 |
+| `POST /v1/relay/mailboxes/{mailbox_id}/transfers` | `Authorization: Bearer <delivery_token>` | **统一创建传输（单块与多分块统一入口）**：提交外层签名 `envelope` JSON，立即推送 SSE `transfer_announced` 事件，返回 `{transfer_id, expires_at_ms, max_chunk_bytes, upload_mode: "presigned", upload_urls: [{index, method, url, headers?, expires_at_ms}, ...]}`（最多内联前 16 块的预签名 `PUT` 授权） |
+| `POST /v1/relay/mailboxes/{mailbox_id}/transfers/{transfer_id}/chunks/{index}/upload-url` | `Authorization: Bearer <delivery_token>` | 为超出内联数量（`index >= 16`）或预签名已过期的分块签发/刷新短时效预签名 `PUT` URL，返回 `{method: "PUT", url, headers?, expires_at_ms}` |
+| *直连对象存储 `PUT <presigned_url>`* | URL 预签名 | 发送端直传第 `index` 块密文 `C[index]` 至 S3 兼容对象存储（严禁携带任何中转鉴权头） |
+| `POST /v1/relay/mailboxes/{mailbox_id}/transfers/{transfer_id}/chunks/{index}/commit` | `Authorization: Bearer <delivery_token>` | 确认第 `index` 块直传完成：服务端执行 S3 `HeadObject` 校验对象存在且大小合法（超限则立即删除对象并返回 `413`），置位可用位图并推送 SSE `chunk_ready` 事件，返回 `204` |
+| `GET /v1/relay/mailboxes/{mailbox_id}/events` | Owner Auth | SSE 长连接（支持 `Last-Event-ID` 补拉与 `: keepalive` 心跳），推送 `transfer_announced` 与 `chunk_ready` 事件 |
 | `GET /v1/relay/mailboxes/{mailbox_id}/transfers` | Owner Auth | 列举当前未过期的待领取传输摘要及可用分块位图（用于冷启动/前台恢复补拉） |
-| `GET /v1/relay/mailboxes/{mailbox_id}/transfers/{transfer_id}/chunks/{index}` | Owner Auth | 下载第 `index` 块密文 `C[index]`（单块传输为 `index=0`） |
-| `POST /v1/relay/mailboxes/{mailbox_id}/transfers/{transfer_id}/ack` | Owner Auth | 接收方确认已完整接收（或已通过 P2P 接力完成），服务端立即删除该传输元数据与全部已存分块 |
-| `DELETE /v1/relay/mailboxes/{mailbox_id}/transfers/{transfer_id}` | Owner Auth 或对应 `delivery_token` | 发送方取消未完成上传或接收方主动拒绝/清理 |
+| `GET /v1/relay/mailboxes/{mailbox_id}/transfers/{transfer_id}/chunks/{index}` | Owner Auth | 为已提交分块 `index` 签发短时效预签名 `GET` URL，返回 `{method: "GET", url, expires_at_ms, size}` |
+| *直连对象存储 `GET <presigned_url>`* | URL 预签名 | 接收端直连下载第 `index` 块密文 `C[index]`（严禁携带任何中转鉴权头；下载后强制校验 `SHA256(C[index]) == chunk_hashes[index]` 与 AEAD） |
+| `POST /v1/relay/mailboxes/{mailbox_id}/transfers/{transfer_id}/ack` | Owner Auth | 接收方确认已完整接收（或已通过 P2P 接力完成），服务端立即 `DeleteObject` 删除对象存储中的全部分块与元数据 |
+| `DELETE /v1/relay/mailboxes/{mailbox_id}/transfers/{transfer_id}` | Owner Auth 或对应 `delivery_token` | 发送方取消未完成上传或接收方主动拒绝/清理，服务端立即 `DeleteObject` 清理全部对象 |
 
-标准错误状态码：`400`（格式/大小越界）、`401`/`403`（签名或令牌无效）、`404`/`410`（不存在或已过期消费）、`409`（重复或冲突）、`413`（超单次/单块上限）、`429`（限流/信箱满）、`5xx`（服务端暂不可用）。客户端一律映射为 Engine 稳定错误码，不透传服务端自由文本。
+#### Direct-to-S3 客户端强制安全约束
+
+1. **严格剥离中转凭据**：请求预签名对象存储 URL 时，绝不发送 `Authorization`、`X-Unic-Relay-Key` 或任何 `X-Unic-*` Header；重定向目标同样剥离敏感 Header。
+2. **预签名 URL 的 SSRF 防护**：默认强制 `https://`（仅在客户端配置为回环测试地址或显式测试模式时允许回环 `http://`），且在拨号阶段验证解析出的实际 IP，拒绝私网、环回、链路本地（含云元数据 `169.254.169.254`）、CGNAT、组播与未指定地址（防范 DNS Rebinding）。
+3. **预签名 URL 脱敏**：预签名 URL 携带临时签名凭据，视为秘密，绝不写入日志、事件、状态 DTO 或错误文本。
+4. **端到端完整性与大小硬边界**：下载前校验服务端申报的 `size <= maxBytes`，读取响应体时仍使用 `LimitReader(maxBytes+1)` 截断保护；解密前强制校验 `SHA256(C[i]) == envelope.chunk_hashes[i]` 与 AES-256-GCM 认证。
+
+标准错误状态码：`400`（格式/大小越界）、`401`/`403`（签名或令牌无效）、`404`/`410`（不存在或已过期消费）、`409`（重复或冲突）、`413`（超单次/单块上限）、`429`（限流/信箱满）、`5xx`（服务端或对象存储暂不可用）。客户端一律映射为 Engine 稳定错误码，不透传服务端自由文本或预签名 URL。
 
 ---
 

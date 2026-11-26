@@ -386,7 +386,7 @@ func TestHybridRelayFallbackSingleAndMultiChunkAndRevocation(t *testing.T) {
 		return false
 	})
 	waitUntil(t, 3*time.Second, "relay server cleaned single transfer", func() bool {
-		return srv.ActiveTransferCount() == 0
+		return srv.ActiveTransferCount() == 0 && srv.StoredObjectCount() == 0
 	})
 
 	// 2b. 0-wait multi-chunk (> 2 MiB) file transfer over E2EE HTTP relay.
@@ -448,7 +448,7 @@ func TestHybridRelayFallbackSingleAndMultiChunkAndRevocation(t *testing.T) {
 		return false
 	})
 	waitUntil(t, 3*time.Second, "relay server cleaned multi transfer", func() bool {
-		return srv.ActiveTransferCount() == 0
+		return srv.ActiveTransferCount() == 0 && srv.StoredObjectCount() == 0
 	})
 
 	// 3. Unpair Phone on Mac: Mac revokes Phone's sender token on relay server,
@@ -604,7 +604,7 @@ func TestHybridRelayMidReceiveDiscardDeletesServerTransfer(t *testing.T) {
 		return err == nil && op.Receive != nil && op.Receive.State == engine.ReceiveDiscarded
 	})
 	waitUntil(t, 5*time.Second, "relay server deleted discarded transfer", func() bool {
-		return srv.ActiveTransferCount() == 0
+		return srv.ActiveTransferCount() == 0 && srv.StoredObjectCount() == 0
 	})
 	page, err := b.ListHistory(ctx, engine.ListHistoryRequest{Limit: 10})
 	if err != nil {
@@ -728,11 +728,11 @@ func TestHybridRelayLevel3MidTransferP2PHandoff(t *testing.T) {
 	releaseGate := func() { releaseOnce.Do(func() { close(chunk2Gate) }) }
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/chunks/") {
+		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/_s3/") {
 			n := httpPutChunks.Add(1)
 			if n >= 3 {
 				gateOnce.Do(func() { close(chunk2Reached) })
-				// Hold HTTP uploads beyond first 2 chunks so P2P recovery triggers Level 3 handoff.
+				// Hold direct S3 uploads beyond first 2 chunks so P2P recovery triggers Level 3 handoff.
 				select {
 				case <-chunk2Gate:
 				case <-r.Context().Done():
@@ -879,7 +879,7 @@ func TestHybridRelayP2PDropMidHandoffReverseFallbackToHTTP(t *testing.T) {
 	releaseGate := func() { releaseOnce.Do(func() { close(gate) }) }
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/chunks/") {
+		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/_s3/") {
 			if httpPutChunks.Add(1) >= 3 {
 				gateOnce.Do(func() { close(gateReached) })
 				select {
@@ -1042,7 +1042,7 @@ func TestHybridRelayMidHandoffDiscardStopsSender(t *testing.T) {
 	releaseGate := func() { releaseOnce.Do(func() { close(gate) }) }
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/chunks/") {
+		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/_s3/") {
 			if httpPutChunks.Add(1) >= 3 {
 				gateOnce.Do(func() { close(gateReached) })
 				select {

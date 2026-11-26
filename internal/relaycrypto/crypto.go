@@ -165,6 +165,20 @@ func TokenHash(deliveryToken string) string {
 	return fmt.Sprintf("%x", sum[:])
 }
 
+// ValidTransferID reports whether id is a valid 16..64 lowercase hex transfer identifier.
+func ValidTransferID(id string) bool {
+	if len(id) < 16 || len(id) > 64 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
 // NewDeliveryToken generates a fresh 256-bit base64url delivery token.
 func NewDeliveryToken() (string, error) {
 	var b [32]byte

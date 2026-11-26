@@ -1,5 +1,6 @@
-// Command unic-relay is the standalone, zero-knowledge Relay HTTP API v1 server
-// for self-hosting hybrid sync transfers (independent of Tailcat DERP nodes).
+// Command unic-relay is the in-memory Direct-to-S3 reference server for local
+// development and integration testing. Production and self-hosted deployments
+// backed by real S3/COS/R2/MinIO object storage live in github.com/UniClipboard/relay.
 package main
 
 import (

@@ -90,8 +90,8 @@
 为同时满足“小内容极致 1-RTT 秒发”与“大文件 P2P 恢复零浪费续传”，所有混合传输采用同一逻辑打包流与分块定义：
 
 - **统一逻辑流**：`u32_be(len(clip_header_json)) || clip_header_json || part[0] || part[1] || ...`（复用现有 `wire.Clip` 元数据与 `clip.Snapshot.Hash` 语义）。
-- **单块快路径（≤ 2 MiB）**：`total_chunks = 1`，单次 HTTPS 请求直接携带签名信封 + 唯一密文块（1 RTT 完成上传，几乎所有文本、链接、截图直接走此路径）。
-- **固定分块路径（> 2 MiB）**：按默认 **1 MiB** 明文块切片独立 AEAD 加密；先 `POST` 提交签名信封（含 `chunk_hashes[0..N-1]`），再以有界并发（默认 2–3）`PUT` 上传分块；每块独立校验、独立记入 `relay_uploaded` 位图。
+- **单块路径（≤ 2 MiB）**：`total_chunks = 1`；通过 `POST .../transfers` 公告签名信封并直接取得内联预签名 PUT URL，直传唯一密文块至对象存储后调用 `commit` 触发 SSE `chunk_ready`，无需经过中转服务代理数据流。
+- **固定分块路径（> 2 MiB）**：按默认 **1 MiB** 明文块切片独立 AEAD 加密；先 `POST` 提交签名信封（含 `chunk_hashes[0..N-1]`）并获取首批（最多 16 块）预签名 PUT URL（超出或过期按需 `POST .../upload-url` 签发），再以有界并发（默认 2–3）直传 S3 兼容对象存储并逐块 `commit`；每块独立校验、独立记入 `relay_uploaded` 位图。
 - **Level 3 结算与 P2P 续传（Phase 2）**：
   - 沿用 [0034](0034-sync-transfer-progress-and-receipt-ack.md) 在 `wire v1` 确立的 `Hello.Caps` 能力协商与无死锁异步控制写队列：Phase 1 协商 `relay_profile`，Phase 2 协商 `relay_handoff`（`wire.Version` 保持为 `1`）。
   - 当大载荷处于 `relay_uploading` 且目标 P2P 会话变为 `connected`（且双方已协商 `relay_handoff`），且剩余未上传量 ≥ 切换门槛（默认 **2 MiB** 或 ≥ 2 块）时：
@@ -103,13 +103,11 @@
 
 ### 5. 服务端架构、用户自部署与成本控制
 
-- **官方托管形态**：建议采用 **Cloudflare Workers + Durable Objects（每信箱轻量事件协调/SSE/限流与令牌校验）+ R2（分块密文存储，配置短生命周期兜底清理）**，与现有 `rendezvous.uniclipboard.app` 同架构栈：
-  - 边缘就近接入降低移动端首包延迟；
-  - R2 免出口流量费，且每个对象默认 10 分钟 TTL、接收端 `ACK` 即刻删除，存储成本极低；
+- **Direct-to-S3 控制面与数据面分离（独立仓库 `UniClipboard/relay`）**：中转服务仅承担零知识控制面（鉴权、信箱元数据、SSE 推送、短时效 AWS SigV4 预签名、`HeadObject` 校验与 `DeleteObject` 清理），**密文分块字节流直接往返客户端与 S3 兼容对象存储**（Cloudflare R2、Tencent COS、AWS S3、Aliyun OSS、MinIO 等）：
+  - 官方托管可运行于 Cloudflare Workers + Durable Objects（控制面/SSE）+ R2/COS（数据面），或轻量 Go `hyper-relay` 容器 + 对象存储，大幅降低中转服务器出口带宽与内存压力；
+  - 对象默认 10 分钟 TTL、接收端 `ACK` / 取消后即刻 `DeleteObject` 删除，并配合存储桶生命周期规则兜底；
   - 单信箱并发未消费对象数、单次上传大小与单位时间请求速率均设硬上限，防止滥用。
-- **用户自部署（Self-Hosting）**：客户端只绑定公开、无供应商锁定的 **Relay HTTP API v1**（HTTPS JSON + 二进制分块 + SSE），与 Tailcat P2P/DERP 中继节点程序完全独立。提供两种官方参考自部署形态：
-  1. **单二进制 Go 服务 / Docker 镜像（`unic-relay`）**：内存或本地临时目录暂存短 TTL 分块，零外部数据库依赖，适合 VPS / NAS / 软路由一键运行；
-  2. **Cloudflare Workers + Durable Objects + R2 模板**：支持一键部署到用户个人 Cloudflare 账号。
+- **用户自部署（Self-Hosting）**：客户端只绑定公开、无供应商锁定的 **Direct-to-S3 Hyper Relay API**（控制面 HTTPS JSON/SSE + 预签名对象存储直传），与 Tailcat P2P/DERP 中继节点程序完全独立。`UniClipboard/relay` 提供 Go `hyper-relay`（Docker / 单二进制 + 任意 S3/MinIO）与 Cloudflare Workers + DO + S3/R2 模板。
 - **自部署配置与公网防白嫖**：
   - 桌面 `config.toml`（及环境变量 `UNIC_RELAY_URL` / `UNIC_RELAY_ACCESS_KEY`，对齐 `UNIC_RENDEZVOUS_URL`）与移动端设置提供 `sync.relay.enabled`、`sync.relay.url`、`sync.relay.max_bytes` 与可选 `sync.relay.access_key`（秘密字段，不进普通日志与事件）；
   - 自部署服务端支持两类可选公网准入控制（不影响零知识 E2EE）：(a) 服务端配置 `allowed_pubkeys` 公钥白名单，仅允许指定设备注册/读取信箱；(b) 服务端配置静态接入密钥（客户端在请求头携带 `X-Unic-Relay-Key`）；

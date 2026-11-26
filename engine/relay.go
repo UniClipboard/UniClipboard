@@ -1568,25 +1568,37 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 		return relaySendResult{}, err
 	}
 
-	// Fast path: 1-RTT single-chunk upload.
-	if totalChunks == 1 {
-		if err := cli.UploadSingle(ctx, plan.route.MailboxID, plan.route.DeliveryToken, env, cts[0]); err != nil {
-			return relaySendResult{}, err
-		}
-		h.ReportProgress(plan.key, "", TransferProgress{BytesSent: plan.view.set.total, TotalBytes: plan.view.set.total, PartCount: len(plan.view.set.parts)})
-		return relaySendResult{state: TargetSent, receiptStage: ReceiptStageRelayStored, route: RouteRelay}, nil
-	}
-
-	// Multi-chunk path: announce envelope then upload chunks with bounded concurrency,
-	// seamlessly settling onto P2P mid-transfer if P2P recovers (Level 3, contract §5).
-	if _, err := cli.CreateTransfer(ctx, plan.route.MailboxID, plan.route.DeliveryToken, env); err != nil {
+	// Direct-to-S3 unified creation: announce envelope and receive inline presigned PUT grants.
+	createResp, err := cli.CreateTransfer(ctx, plan.route.MailboxID, plan.route.DeliveryToken, env)
+	if err != nil {
 		return relaySendResult{}, err
+	}
+	inlineGrants := make(map[int]relayclient.ChunkUploadGrant, len(createResp.UploadURLs))
+	for _, g := range createResp.UploadURLs {
+		inlineGrants[g.Index] = g
+	}
+	grantFor := func(idx int) *relayclient.ChunkUploadGrant {
+		g, ok := inlineGrants[idx]
+		if !ok {
+			return nil
+		}
+		return &g
 	}
 
 	deleteOnAbort := func() {
 		delCtx, cancel := context.WithTimeout(context.Background(), relayCleanupTimeout)
 		_ = cli.DeleteTransferAsSender(delCtx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID)
 		cancel()
+	}
+
+	// Single-chunk path (≤ 2 MiB): direct PUT chunk 0 + commit.
+	if totalChunks == 1 {
+		if err := cli.UploadChunk(ctx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID, 0, cts[0], grantFor(0)); err != nil {
+			deleteOnAbort()
+			return relaySendResult{}, err
+		}
+		h.ReportProgress(plan.key, "", TransferProgress{BytesSent: plan.view.set.total, TotalBytes: plan.view.set.total, PartCount: len(plan.view.set.parts)})
+		return relaySendResult{state: TargetSent, receiptStage: ReceiptStageRelayStored, route: RouteRelay}, nil
 	}
 
 	httpUploaded, _ := relaycrypto.NewBitmap(totalChunks)
@@ -1783,7 +1795,7 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 				}
 				stateMu.Unlock()
 				for _, idx := range uncovered {
-					if uerr := cli.UploadChunk(ctx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID, idx, cts[idx]); uerr != nil {
+					if uerr := cli.UploadChunk(ctx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID, idx, cts[idx], grantFor(idx)); uerr != nil {
 						cleanupAck()
 						deleteOnAbort()
 						return relaySendResult{}, uerr
@@ -1882,7 +1894,7 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 					if httpCtx.Err() != nil {
 						return
 					}
-					if uerr := cli.UploadChunk(httpCtx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID, idx, cts[idx]); uerr != nil {
+					if uerr := cli.UploadChunk(httpCtx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID, idx, cts[idx], grantFor(idx)); uerr != nil {
 						if handoffRequested.Load() && ctx.Err() == nil {
 							return
 						}

@@ -94,6 +94,7 @@ type gui struct {
 	cleanupUI                   cleanupUIState
 	loginEnabled                bool
 	loginError                  string
+	clipboardUnavailable        bool
 	shortcut                    shortcutStatus
 	updates                     desktopui.UpdateStatus
 }

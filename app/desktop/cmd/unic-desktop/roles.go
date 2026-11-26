@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -25,7 +26,11 @@ import (
 
 // Each role enters this function in a separate operating-system process.
 var runRole = runNativeRole
-var useDaemonClipboard = runtime.GOOS == "darwin"
+
+// The isolated desktop automation fixture can substitute a directory adapter.
+var useDaemonClipboard = true
+var runTrayClipboardFixture func(context.Context, *api.Client)
+var useDaemonNotifications = runtime.GOOS == "darwin"
 
 type panelAction string
 
@@ -67,16 +72,17 @@ type clipboardRequest struct {
 	InterruptComplete bool   `json:"interrupt_complete,omitempty"`
 }
 type roleStatus struct {
-	Ready         bool           `json:"ready"`
-	SetupRequired bool           `json:"setup_required"`
-	Paused        bool           `json:"paused,omitempty"`
-	Visible       bool           `json:"visible"`
-	Focused       bool           `json:"focused,omitempty"`
-	ServicePID    int            `json:"service_pid"`
-	Shortcut      shortcutStatus `json:"shortcut"`
-	LoginEnabled  bool           `json:"login_enabled"`
-	LoginError    string         `json:"login_error"`
-	Updates       updateStatus   `json:"updates"`
+	Ready                bool           `json:"ready"`
+	SetupRequired        bool           `json:"setup_required"`
+	Paused               bool           `json:"paused,omitempty"`
+	Visible              bool           `json:"visible"`
+	Focused              bool           `json:"focused,omitempty"`
+	ServicePID           int            `json:"service_pid"`
+	Shortcut             shortcutStatus `json:"shortcut"`
+	LoginEnabled         bool           `json:"login_enabled"`
+	LoginError           string         `json:"login_error"`
+	Updates              updateStatus   `json:"updates"`
+	ClipboardUnavailable bool           `json:"clipboard_unavailable,omitempty"`
 }
 type updateStatus struct {
 	Supported          bool   `json:"supported"`
@@ -111,7 +117,6 @@ type trayRuntime struct {
 	service                 *lifecycle.Process
 	adapterCancel           context.CancelFunc
 	adapterDone             chan struct{}
-	clipboard               *quickpanel.Clipboard
 	mu                      sync.Mutex
 	state                   roleStatus
 	capture                 func() panelActivation
@@ -143,9 +148,6 @@ func newTrayRuntime(ctx context.Context, cancel context.CancelFunc, settings *co
 		return nil, err
 	}
 	r := &trayRuntime{paused: flow.Required(), ctx: ctx, cancel: cancel, dir: dir, socket: socket, executable: executable, settings: settings, nativeReady: make(chan struct{})}
-	if !useDaemonClipboard {
-		r.clipboard = quickpanel.NewClipboard(newDesktopBoard())
-	}
 	return r, nil
 }
 func (r *trayRuntime) status() roleStatus {
@@ -224,8 +226,11 @@ func (r *trayRuntime) start(ctx context.Context, entering bool) error {
 			return err
 		}
 	}
+	var clipboardUnavailable bool
 	if useDaemonClipboard {
-		if err := api.NewClient(r.socket).EnableDesktopClipboard(ctx); err != nil {
+		err := api.NewClient(r.socket).EnableDesktopClipboard(ctx)
+		clipboardUnavailable = api.ReasonOf(err) == api.ReasonClipboardUnsupported
+		if err != nil && !clipboardUnavailable {
 			if service != nil {
 				_ = service.Stop()
 			}
@@ -236,21 +241,22 @@ func (r *trayRuntime) start(ctx context.Context, entering bool) error {
 	r.service = service
 	r.adapterCancel = cancel
 	r.adapterDone = make(chan struct{})
-	if useDaemonClipboard {
-		// While the Desktop tray process is active in normal mode, it owns
-		// native system notifications via mygo (supporting foreground banners
-		// and click-to-navigate). Disable any prior daemon fallback subscription.
+	if useDaemonNotifications {
+		// The running tray owns macOS notifications and click-to-navigate.
 		_ = api.NewClient(r.socket).DisableDesktopNotifications(ctx)
+	}
+	if runTrayClipboardFixture == nil {
 		close(r.adapterDone)
 	} else {
 		done := r.adapterDone
 		go func() {
 			defer close(done)
-			_ = clipboardintegration.RunRemote(adapterCtx, api.NewClient(r.socket), r.clipboard, nil)
+			runTrayClipboardFixture(adapterCtx, api.NewClient(r.socket))
 		}()
 	}
 	r.mu.Lock()
 	r.state.Ready = true
+	r.state.ClipboardUnavailable = clipboardUnavailable
 	r.state.SetupRequired = false
 	r.paused = false
 	r.mu.Unlock()
@@ -501,7 +507,7 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 			return nil, err
 		}
 		r.runtimeMu.Lock()
-		if useDaemonClipboard {
+		if useDaemonNotifications {
 			// Lightweight GUI close retires the tray and leaves unicd running
 			// alone; hand macOS pairing notification delivery back to unicd.
 			_, _ = api.NewClient(r.socket).EnableDesktopNotifications(ctx)
@@ -643,22 +649,6 @@ func (r *trayRuntime) handler(ctx context.Context, command string, raw json.RawM
 			return nil, errors.ErrUnsupported
 		}
 		return nil, r.testNotification(ctx)
-	case "clipboard-apply":
-		var in clipboardRequest
-		if err := json.Unmarshal(raw, &in); err != nil {
-			return nil, err
-		}
-		if r.clipboard == nil {
-			return nil, desktopprocess.ErrUnavailable
-		}
-		mark, err := r.clipboard.Apply(ctx, api.NewClient(r.socket), in.ID, in.Plain)
-		return clipboardReply{Mark: mark, Failure: quickpanel.FailureCode(err)}, nil
-	case "clipboard-matches":
-		var in clipboardRequest
-		if err := json.Unmarshal(raw, &in); err != nil {
-			return nil, err
-		}
-		return r.clipboard != nil && r.clipboard.Matches(in.Mark), nil
 	case "restart", "restart-gui":
 		var action string
 		_ = json.Unmarshal(raw, &action)
@@ -763,14 +753,30 @@ func roleContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
 
-// daemonClipboard coordinates Quick Panel clipboard writes on macOS through
-// unicd's nativeboard adapter, opting in on demand when running standalone.
+// daemonClipboard routes Quick Panel writes through the daemon, with a local
+// explicit-copy path when a Linux compositor cannot provide background access.
 type daemonClipboard struct {
-	daemon *api.Client
+	daemon   *api.Client
+	fallback *clipboardintegration.PanelClipboard
 }
 
-func (r daemonClipboard) Apply(ctx context.Context, _ *api.Client, id string, plain bool) (string, error) {
+func enableDesktopClipboard(ctx context.Context, client *api.Client) error {
+	err := client.EnableDesktopClipboard(ctx)
+	if api.ReasonOf(err) == api.ReasonClipboardUnsupported {
+		return nil
+	}
+	return err
+}
+
+func (r daemonClipboard) Apply(ctx context.Context, client *api.Client, id string, plain bool) (string, error) {
 	if err := r.daemon.EnableDesktopClipboard(ctx); err != nil {
+		if r.fallback != nil && api.ReasonOf(err) == api.ReasonClipboardUnsupported {
+			mark, err := r.fallback.Apply(ctx, client, id, plain)
+			if err != nil {
+				return "", err
+			}
+			return "local:" + mark, nil
+		}
 		return "", quickpanel.ErrClipboard
 	}
 	out, err := r.daemon.ApplyDesktopClipboard(ctx, id, plain)
@@ -780,10 +786,19 @@ func (r daemonClipboard) Apply(ctx context.Context, _ *api.Client, id string, pl
 	return out.Mark, err
 }
 func (r daemonClipboard) Matches(mark string) bool {
+	if local, ok := strings.CutPrefix(mark, "local:"); ok {
+		return r.fallback != nil && r.fallback.Matches(local)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	matches, err := r.daemon.MatchDesktopClipboard(ctx, mark)
 	return err == nil && matches
+}
+
+func (r daemonClipboard) Close() {
+	if r.fallback != nil {
+		r.fallback.Close()
+	}
 }
 
 // closeViews is a shutdown barrier. No PID-only kill is permitted.

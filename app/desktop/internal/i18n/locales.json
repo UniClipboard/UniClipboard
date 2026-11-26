@@ -8866,5 +8866,11 @@
     "ja": "テスト通知を送信しました。",
     "pt-BR": "Notificação de teste enviada.",
     "ru": "Тестовое уведомление отправлено."
+  },
+  "此桌面会话不支持后台剪贴板监听。仍可手动复制历史内容。": {
+    "en": "Background clipboard monitoring is unavailable in this desktop session. You can still copy from history.",
+    "ja": "このデスクトップセッションではクリップボードをバックグラウンドで監視できません。履歴からのコピーは引き続き利用できます。",
+    "pt-BR": "O monitoramento da área de transferência em segundo plano não está disponível nesta sessão. Você ainda pode copiar itens do histórico.",
+    "ru": "В этом сеансе фоновое отслеживание буфера обмена недоступно. Копирование из истории по-прежнему работает."
   }
 }

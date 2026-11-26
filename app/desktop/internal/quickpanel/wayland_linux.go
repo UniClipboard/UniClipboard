@@ -6,6 +6,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/uniclipboard/unic/internal/waylandwire"
 )
 
 // waylandCompositorTargetID is an opaque sentinel representing Wayland
@@ -29,7 +31,7 @@ type waylandPlatform struct {
 }
 
 func newWaylandPlatform() Platform {
-	if sock := waylandSocketPath(); probeWaylandVirtualKeyboard(sock) {
+	if sock := waylandwire.SocketPath(); probeWaylandVirtualKeyboard(sock) {
 		return newWaylandPlatformWithBackend(&waylandVirtualKeyboardBackend{socketPath: sock})
 	}
 	if probeWaylandRemoteDesktopPortal() {

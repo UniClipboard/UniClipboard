@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/uniclipboard/unic/internal/waylandwire"
 )
 
 type fakeWaylandBackend struct {
@@ -187,28 +189,28 @@ func TestWaylandVirtualKeyboardWireProtocol(t *testing.T) {
 					payload := buf[8:size]
 					buf = buf[size:]
 					switch {
-					case oid == wlDisplayID && op == wlOpGetReg:
+					case oid == waylandwire.DisplayID && op == waylandwire.OpGetRegistry:
 						regID = binary.LittleEndian.Uint32(payload[0:4])
 						// Advertise wl_seat and zwp_virtual_keyboard_manager_v1.
 						sendGlobal := func(name uint32, iface string, ver uint32) {
-							s := encodeWaylandString(iface)
+							s := waylandwire.EncodeString(iface)
 							p := make([]byte, 4+len(s)+4)
 							binary.LittleEndian.PutUint32(p[0:4], name)
 							copy(p[4:], s)
 							binary.LittleEndian.PutUint32(p[4+len(s):], ver)
 							msg := make([]byte, 8+len(p))
 							binary.LittleEndian.PutUint32(msg[0:4], regID)
-							binary.LittleEndian.PutUint32(msg[4:8], (uint32(len(msg))<<16)|uint32(wlRegistryEvGlob))
+							binary.LittleEndian.PutUint32(msg[4:8], (uint32(len(msg))<<16)|uint32(waylandwire.RegistryGlobal))
 							copy(msg[8:], p)
 							_, _ = uc.Write(msg)
 						}
 						sendGlobal(10, "wl_seat", 9)
 						sendGlobal(20, "zwp_virtual_keyboard_manager_v1", 1)
-					case oid == wlDisplayID && op == wlOpSync:
+					case oid == waylandwire.DisplayID && op == waylandwire.OpSync:
 						cbID := binary.LittleEndian.Uint32(payload[0:4])
 						msg := make([]byte, 12)
 						binary.LittleEndian.PutUint32(msg[0:4], cbID)
-						binary.LittleEndian.PutUint32(msg[4:8], (12<<16)|uint32(wlCallbackEvDone))
+						binary.LittleEndian.PutUint32(msg[4:8], (12<<16)|uint32(waylandwire.CallbackDone))
 						binary.LittleEndian.PutUint32(msg[8:12], 0)
 						_, _ = uc.Write(msg)
 					case oid == 5 && op == vkMgrOpCreate:
@@ -270,7 +272,7 @@ func TestWaylandVirtualKeyboardLive(t *testing.T) {
 	if os.Getenv("UNIC_TEST_LIVE_WAYLAND_VK") != "1" {
 		t.Skip("set UNIC_TEST_LIVE_WAYLAND_VK=1 to run against a live Wayland compositor")
 	}
-	sock := waylandSocketPath()
+	sock := waylandwire.SocketPath()
 	t.Logf("socket=%q keymapLen=%d", sock, len(defaultWaylandXKBKeymap()))
 	if !probeWaylandVirtualKeyboard(sock) {
 		t.Fatalf("probeWaylandVirtualKeyboard(%q) = false", sock)

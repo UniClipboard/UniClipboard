@@ -1,6 +1,6 @@
 # Desktop application
 
-`unic-desktop` supplies independent tray, GUI and quick-panel OS processes from one executable. The tray owns global shortcuts, notifications and login registration. macOS Desktop enables the native clipboard adapter in unicd. Other platforms host the adapter in the tray.
+`unic-desktop` supplies independent tray, GUI and quick-panel OS processes from one executable. The tray owns global shortcuts, notifications and login registration. Desktop enables the native clipboard adapter in unicd on supported macOS, Windows and Linux sessions.
 `unicd` runs separately and owns Engine, history, configuration and networking.
 The UI-free `unic` CLI and `unicd` live in [the service application](../service/README.md).
 See [headless architecture](../../docs/architecture/headless.md) and the [local service contract](../../docs/contracts/local-service-contract.md).

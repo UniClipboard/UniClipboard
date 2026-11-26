@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
+	api "github.com/uniclipboard/unic/internal/localapi"
 	"github.com/uniclipboard/unic/internal/testboard"
 )
 
@@ -84,7 +86,11 @@ func init() {
 	desktopAppName = fmt.Sprintf("unic E2E %x", sum[:6])
 	if os.Getenv("UNIC_DESKTOP_E2E_GUEST") == "" {
 		useDaemonClipboard = false
+		useDaemonNotifications = false
 		newDesktopBoard = func() clipboardintegration.Board { return testboard.Dir(filepath.Join(profile, "board")) }
+		runTrayClipboardFixture = func(ctx context.Context, client *api.Client) {
+			_ = clipboardintegration.RunRemote(ctx, client, clipboardintegration.NewTrackedBoard(newDesktopBoard()), nil)
+		}
 	} else {
 		if runtime.GOOS != "linux" || os.Getenv("WAYLAND_DISPLAY") == "" {
 			panic("real E2E clipboard requires a Linux Wayland guest")

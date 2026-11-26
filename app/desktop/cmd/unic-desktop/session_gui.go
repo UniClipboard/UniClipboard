@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupui"
+	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 )
 
@@ -135,6 +137,17 @@ func (s *desktopSession) start() {
 				})
 			})
 			screen.SetLoginStatus(func() (bool, string) { s.g.mu.Lock(); defer s.g.mu.Unlock(); return s.g.loginEnabled, s.g.loginError }, func() { s.g.applyLoginSettings(s.settings.Current().Desktop.LaunchAtLogin, true) })
+			if runtime.GOOS == "linux" && useDaemonClipboard {
+				fallback := clipboardintegration.NewPanelClipboard(s.dir, newDesktopBoard())
+				screen.SetClipboardFallback(func() bool {
+					s.g.mu.Lock()
+					defer s.g.mu.Unlock()
+					return s.g.clipboardUnavailable
+				}, func(ctx context.Context, id string) error {
+					_, err := fallback.Apply(ctx, s.g.c, id, false)
+					return err
+				}, fallback.Close)
+			}
 			screen.SetUpdater(
 				func() desktopui.UpdateStatus {
 					s.g.mu.Lock()
@@ -215,11 +228,13 @@ func (s *desktopSession) followHost(ctx context.Context) {
 			s.g.mu.Lock()
 			changed := s.g.loginEnabled != state.LoginEnabled ||
 				s.g.loginError != state.LoginError ||
+				s.g.clipboardUnavailable != state.ClipboardUnavailable ||
 				s.g.shortcut != state.Shortcut ||
 				s.g.updates != nextUpdates
 			if changed {
 				s.g.loginEnabled = state.LoginEnabled
 				s.g.loginError = state.LoginError
+				s.g.clipboardUnavailable = state.ClipboardUnavailable
 				s.g.shortcut = state.Shortcut
 				s.g.updates = nextUpdates
 			}

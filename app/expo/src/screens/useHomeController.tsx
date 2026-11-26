@@ -201,15 +201,20 @@ export function useHomeController(
     [],
   );
   const runHistoryAction = useCallback(
-    (action: () => Promise<unknown>) => {
+    (action: () => Promise<unknown>): Promise<void> => {
       if (engineMode !== "live") {
         showUnavailable();
-        return;
+        return Promise.resolve();
       }
-      void action().catch((error: unknown) => Alert.alert(
-        t("history:media.actionFailed"),
-        error instanceof Error ? error.message : undefined,
-      ));
+      return action().then(
+        () => undefined,
+        (error: unknown) => {
+          Alert.alert(
+            t("history:media.actionFailed"),
+            error instanceof Error ? error.message : undefined,
+          );
+        },
+      );
     },
     [engineMode, t],
   );
@@ -531,9 +536,8 @@ export function useHomeController(
       setShowAddMenu(false);
       runHistoryAction(() => useEngineStore.getState().readSystemClipboardAndCommit());
     },
-    handleSyncHistory: () => {
-      runHistoryAction(() => useEngineStore.getState().readSystemClipboardAndCommit());
-    },
+    handleSyncHistory: () =>
+      runHistoryAction(() => useEngineStore.getState().readSystemClipboardAndCommit()),
     receiveEntryCount: engineMode === "live" ? engineReceived.length : 0,
     receiveResultsOpen,
     setReceiveResultsOpen: (open: boolean) => {

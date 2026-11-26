@@ -38,7 +38,15 @@ def mobile_metadata(platform, metadata_path=METADATA):
     return product
 
 
-def _verify_android_apk(artifact, entries, product, aapt2, apksigner, architecture):
+def _verify_android_apk(
+    artifact,
+    entries,
+    product,
+    aapt2,
+    apksigner,
+    architecture,
+    require_v3_rotation_from=None,
+):
     if "AndroidManifest.xml" not in entries:
         raise ValueError("Android APK candidate is missing AndroidManifest.xml")
     if not aapt2:
@@ -62,7 +70,7 @@ def _verify_android_apk(artifact, entries, product, aapt2, apksigner, architectu
         raise ValueError("APK identity differs from release metadata")
     if apksigner:
         output = subprocess.check_output(
-            [apksigner, "verify", "--verbose", str(artifact)],
+            [apksigner, "verify", "--verbose", "--print-certs", str(artifact)],
             text=True,
             stderr=subprocess.STDOUT,
         )
@@ -71,6 +79,19 @@ def _verify_android_apk(artifact, entries, product, aapt2, apksigner, architectu
             or "Verified using v3 scheme (APK Signature Scheme v3): true" in output
         ):
             raise ValueError("APK signature must include v2 or v3 scheme")
+        if require_v3_rotation_from:
+            expected_old = require_v3_rotation_from.strip().lower()
+            if "Verified using v3 scheme (APK Signature Scheme v3): true" not in output:
+                raise ValueError("APK signature must verify with APK Signature Scheme v3 for key rotation")
+            lineage_out = subprocess.check_output(
+                [apksigner, "lineage", "--print-certs", "--in", str(artifact)],
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+            if f"signer #1 in lineage certificate sha-256 digest: {expected_old}" not in lineage_out.lower():
+                raise ValueError("APK v3 signing lineage does not start from expected legacy certificate")
+            if "signer #2 in lineage certificate sha-256 digest:" not in lineage_out.lower():
+                raise ValueError("APK v3 signing lineage must include rotated release certificate")
 
 
 def _verify_android_aab(artifact, entries, product, bundletool):
@@ -109,6 +130,7 @@ def candidate(
     aapt2=None,
     apksigner=None,
     architecture=None,
+    require_v3_rotation_from=None,
     metadata_path=METADATA,
     published_at=None,
     source_sha=None,
@@ -138,7 +160,15 @@ def candidate(
         entries = set(archive.namelist())
         if platform == "android":
             if fmt == "apk":
-                _verify_android_apk(artifact, entries, product, aapt2, apksigner, arch)
+                _verify_android_apk(
+                    artifact,
+                    entries,
+                    product,
+                    aapt2,
+                    apksigner,
+                    arch,
+                    require_v3_rotation_from=require_v3_rotation_from,
+                )
             else:
                 _verify_android_aab(artifact, entries, product, bundletool)
         else:
@@ -183,6 +213,7 @@ def main():
     record.add_argument("--aapt2")
     record.add_argument("--apksigner")
     record.add_argument("--architecture")
+    record.add_argument("--require-v3-rotation-from")
     record.add_argument("--metadata", type=Path, default=METADATA)
     record.add_argument("--published-at")
     record.add_argument("--source-sha")
@@ -199,6 +230,7 @@ def main():
             aapt2=args.aapt2,
             apksigner=args.apksigner,
             architecture=args.architecture,
+            require_v3_rotation_from=args.require_v3_rotation_from,
             metadata_path=args.metadata,
             published_at=args.published_at,
             source_sha=args.source_sha,

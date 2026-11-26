@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useWindowDimensions } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 import { useHomeController } from './useHomeController';
 import { getLayoutMode } from '@/hooks/useLayoutMode';
@@ -8,6 +9,8 @@ import { HomeExpandedView } from './HomeExpandedView';
 import { getHomeSearchSlots } from './android/homeSearchSlots';
 import { getHomeHistoryCollection } from './android/homeHistoryCollection';
 import type { HomeViewProps } from './HomeView.types';
+import { useMessageStore } from '@/stores/messageStore';
+import { checkForAutomaticAndroidUpdate, cleanOldAndroidUpdateCache } from '@/updates/androidUpdater';
 
 
 
@@ -34,6 +37,7 @@ export function HomeView({
   addMenuOpenSignal,
 }: HomeViewProps) {
   const c = useHomeController(onOpenSettings, { clearFiltersOnCloseSearch: true });
+  const { t, i18n } = useTranslation();
 
   const { width: screenWidth } = useWindowDimensions();
   const mode = getLayoutMode(screenWidth);
@@ -45,6 +49,36 @@ export function HomeView({
   }, [immersive, onImmersiveModeChange]);
 
   useEffect(() => () => onImmersiveModeChange?.(false), [onImmersiveModeChange]);
+
+  useEffect(() => {
+    let active = true;
+    const language = i18n.resolvedLanguage ?? i18n.language ?? 'en';
+    void checkForAutomaticAndroidUpdate(language)
+      .then((result) => {
+        if (!active || !result) return;
+        if (result.hasUpdate) {
+          useMessageStore.getState().showMessage(
+            t('settingsAbout:update.available', { version: result.displayVersion }),
+            'info',
+            {
+              action: {
+                label: t('settingsAbout:update.updateTo', { version: result.latestVersion }),
+                onPress: onOpenAbout,
+              },
+            }
+          );
+          void cleanOldAndroidUpdateCache(result.versionKey).catch(() => {});
+        } else {
+          void cleanOldAndroidUpdateCache(null).catch(() => {});
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+    // Silent once-per-day check on mount only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   if (mode === 'compact') {

@@ -75,6 +75,7 @@ export interface FloatingNavigationItem {
   name: keyof MainTabParamList;
   label: string;
   selected: boolean;
+  hasBadge?: boolean;
   onPress: () => void;
 }
 
@@ -83,6 +84,7 @@ export interface FloatingNavigationColors {
   indicator: string;
   onIndicator: string;
   inactive: string;
+  badge: string;
 }
 
 interface FloatingNavigationBarProps {
@@ -530,6 +532,7 @@ export function FloatingNavigationBar({
               progress={progress}
               extras={extras}
               tint={index === highlightedIndex ? colors.onIndicator : colors.inactive}
+              badgeColor={colors.badge}
               onPress={activate}
             />
           ))}
@@ -548,6 +551,7 @@ function FloatingNavigationButton({
   progress,
   extras,
   tint,
+  badgeColor,
   onPress,
 }: {
   item: FloatingNavigationItem;
@@ -559,6 +563,7 @@ function FloatingNavigationButton({
   progress: SharedValue<number>;
   extras: SharedValue<number[]>;
   tint: string;
+  badgeColor: string;
   onPress: (index: number) => void;
 }) {
   // 图标与标签整组平移到目的地位置,展开时再随起始内边距右移
@@ -589,6 +594,9 @@ function FloatingNavigationButton({
       <Animated.View pointerEvents="none" style={[styles.content, contentStyle]}>
         <View style={styles.icon}>
           <MaterialIcons name={ICONS[item.name]} size={ICON_SIZE} color={tint} />
+          {item.hasBadge ? (
+            <View style={[styles.badgeDot, { backgroundColor: badgeColor }]} />
+          ) : null}
         </View>
         <Animated.View style={[styles.labelSlot, labelStyle]}>
           <Text numberOfLines={1} style={[styles.label, { width: labelWidth, color: tint }]}>
@@ -689,6 +697,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: COLLAPSED_PADDING,
     top: (ITEM_HEIGHT - ICON_SIZE) / 2,
+  },
+  badgeDot: {
+    position: 'absolute',
+    top: -1,
+    right: -2,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   labelSlot: {
     position: 'absolute',

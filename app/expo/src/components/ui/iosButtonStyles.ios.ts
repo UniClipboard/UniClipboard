@@ -14,6 +14,7 @@ import {
   iosOnAccent,
   iosOnAccentColor,
   iosOnSaturatedColor,
+  iosSystemColor,
   iosSystemHex,
 } from '@/theme/iosDesignTokens';
 
@@ -55,6 +56,18 @@ export function iosSecondaryButtonModifiers({
     buttonStyle('bordered'),
     tint(foreground),
     foregroundStyle(foreground),
+    ...(fullWidth ? [frame({ maxWidth: Infinity })] : []),
+  ];
+}
+
+export function iosDestructiveButtonModifiers({
+  fullWidth = false,
+}: IosButtonLayoutOptions = {}): ModifierConfig[] {
+  const red = iosSystemColor('systemRed') ?? '#FF3B30';
+  return [
+    buttonStyle('bordered'),
+    tint(red),
+    foregroundStyle(red),
     ...(fullWidth ? [frame({ maxWidth: Infinity })] : []),
   ];
 }

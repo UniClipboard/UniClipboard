@@ -22,6 +22,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { SendSheetHost } from "@/screens/SendSheetHost";
+import { PairingApprovalHost } from "@/screens/pairing/PairingApprovalHost";
 import type { RootStackParamList, SettingsSubSection } from "./AppNavigator.types";
 export type {
   RootStackParamList,
@@ -151,6 +152,7 @@ export function AppNavigator() {
         </Stack.Navigator>
       </NavigationContainer>
       <SendSheetHost />
+      <PairingApprovalHost />
     </>
   );
 

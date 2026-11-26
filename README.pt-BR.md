@@ -23,6 +23,8 @@ Windows · macOS · Linux · CLI　|　Texto · Imagens · Arquivos · Pastas
 
 <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.zh-TW.md">繁體中文</a> | <a href="README.ja.md">日本語</a> | <strong>Português (Brasil)</strong> | <a href="README.ru.md">Русский</a>
 
+![UniClipboard no desktop, tablet e celular](docs/assets/product-overview.png)
+
 </div>
 
 ---

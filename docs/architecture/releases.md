@@ -57,7 +57,7 @@ paths:
   - tools/ci
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 53da4426578a7bb8c4c218b7c0911be9cba9366c
+verified: fb7d3d0b42e8a420da9d1c6c80757b016d24c3cd
 ---
 # Product builds and CLI releases
 
@@ -128,7 +128,16 @@ When a release PR from the repository is merged into the default branch, **Relea
 Run **Release CLI and Desktop** from the selected release source. Supply
 `channel` and `version`. The entry uses `release-cli.yml` to retain the npm
 trusted publishing identity. Leave `version` empty to release the CLI
-independently.
+independently. When `expected_source` is supplied (for example, the release PR
+merge commit dispatched by `release-on-merge.yml` on `main`), the `plan` job
+verifies that `expected_source` is a 40-character commit SHA that is identical
+to or an ancestor of the dispatched branch HEAD, then propagates that exact
+`source_sha` across planning, CLI/Desktop builds, legacy upgrade verification,
+and Desktop publication/promotion (`desktop_release.py acquire --source-sha`
+independently re-verifies ancestry against the workflow run HEAD). This keeps
+`workflow_run.head_branch` on the default branch for npm OIDC and package
+channel dispatch while preventing concurrent merges to `main` from breaking or
+altering an in-flight release.
 
 Alpha records the source SHA, selected CLI and Desktop build number in a
 create-only Git tag under `joint-release/alpha/`. The planner allocates new

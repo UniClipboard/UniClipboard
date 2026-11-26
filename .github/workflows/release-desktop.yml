@@ -45,6 +45,9 @@ on:
       joint:
         type: boolean
         required: true
+      source_sha:
+        type: string
+        default: ''
 permissions:
   contents: read
   actions: read
@@ -95,8 +98,12 @@ jobs:
         run: exit 1
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
+      - name: Verify source revision
+        env:
+          EXPECTED_SHA: ${{ inputs.source_sha || github.sha }}
+        run: test "$EXPECTED_SHA" = "$(git rev-parse HEAD)"
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -137,12 +144,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
           IN_RUN_BUILD: ${{ inputs.joint && inputs.channel == 'alpha' }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           metadata=release/products.toml
           args=()
           if [[ "$IN_RUN_BUILD" == true ]]; then
             metadata=dist/cli-input/products.toml
             args+=(--current-artifacts dist/desktop-build-artifacts)
+            if [[ -n "$SOURCE_SHA" ]]; then
+              args+=(--source-sha "$SOURCE_SHA")
+            fi
           else
             python3 tools/package/desktop.py fetch-cli --allow-ci --target linux-amd64 --output dist/cli-input
           fi

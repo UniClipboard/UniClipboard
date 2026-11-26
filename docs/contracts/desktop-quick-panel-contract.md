@@ -69,6 +69,21 @@ samples only the selected modifier and the presence of other keys while this
 feature is active. macOS requires Accessibility permission. Windows and native
 X11 support the feature. Wayland cannot observe the global modifier gesture.
 
+`desktop.quick_panel_position` selects where the Quick Panel opens on Windows
+(`"center"`, `"cursor"`, or `"caret"`; defaults to `"center"` when omitted).
+`"center"` centers the panel within the work area of the monitor containing the
+captured active window (falling back to the cursor's monitor, then the primary
+monitor). `"cursor"` opens near the mouse pointer with a small anti-hover
+offset, flipping and clamping inside that monitor's work area. `"caret"` probes
+the active text insertion caret while the external target still owns foreground
+focus (`GetGUIThreadInfo`, MSAA `OBJID_CARET`, and bounded-timeout UI
+Automation `TextPattern2::GetCaretRange` / `TextPattern::GetSelection`),
+anchoring below the caret (or flipping above when bottom space is insufficient);
+when exact caret bounds are unavailable, it anchors below a focused compact
+single-line `Edit`/`ComboBox` control, and otherwise falls back to `"cursor"`.
+UI Automation and MSAA probes read only geometry rectangles and never query
+text content, control names, or window titles.
+
 The quick-panel process registers no global shortcuts and acquires no background observer adapter session. It opts in on demand and uses the native adapter in `unicd` for tracked writes and clipboard checks. On Linux sessions where the daemon cannot enable the adapter, explicit copy can still use the local Desktop board under `unicd`'s bounded application protocol. The panel checks its local write mark if it used that path.
 
 In normal mode, the tray asynchronously prepares a windowless panel process after the Desktop runtime is ready. An activation can join an in-progress start. When the process is unavailable, an activation (from tray or `unic-desktop --quick-panel`) starts it on demand. Each opening starts a view scope and the first history read while the main window is created. The search field accepts input while history loads. The preview flyout is created when a preview or action menu needs it.

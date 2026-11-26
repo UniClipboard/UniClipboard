@@ -40,6 +40,18 @@ auto_file_max_bytes = "100MB"
 	if p.Images || !p.Text || !p.Files || p.AutoFileMaxBytes != 100<<20 {
 		t.Errorf("policy = %+v (omitted booleans must stay true)", p)
 	}
+	if got := c.Desktop.QuickPanelPositionOrDefault(); got != "center" {
+		t.Errorf("default quick_panel_position = %q, want center", got)
+	}
+	for _, pos := range []string{"center", "cursor", "caret"} {
+		parsed, err := Parse([]byte("[desktop]\nquick_panel_position = \"" + pos + "\"\n"))
+		if err != nil {
+			t.Fatalf("parse quick_panel_position=%q: %v", pos, err)
+		}
+		if parsed.Desktop.QuickPanelPosition != pos || parsed.Desktop.QuickPanelPositionOrDefault() != pos {
+			t.Errorf("quick_panel_position = %q, want %q", parsed.Desktop.QuickPanelPosition, pos)
+		}
+	}
 }
 
 func TestParseRejects(t *testing.T) {
@@ -71,6 +83,7 @@ func TestParseRejects(t *testing.T) {
 		"preview on text":     "[plugins.instances.\"builtin.text\".preview]\nlink_preview = false",
 		"preview bad timeout": "[plugins.instances.\"builtin.preview\".preview]\nrequest_timeout_sec = 99",
 		"preview bad domain":  "[plugins.instances.\"builtin.preview\".preview]\nexcluded_domains = [\"bad host\"]",
+		"bad quick panel pos": "[desktop]\nquick_panel_position = \"top\"",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected an error", name)

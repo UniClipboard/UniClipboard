@@ -9046,5 +9046,41 @@
     "ja": "スマートフォンでスキャンするか、下の完全チケットをコピー",
     "pt-BR": "Escaneie no celular para parear ou copie o bilhete completo abaixo",
     "ru": "Отсканируйте телефоном для сопряжения или скопируйте полный билет ниже"
+  },
+  "显示位置": {
+    "en": "Position",
+    "ja": "表示位置",
+    "pt-BR": "Posição",
+    "ru": "Расположение"
+  },
+  "弹出位置": {
+    "en": "Popup position",
+    "ja": "ポップアップ位置",
+    "pt-BR": "Posição de abertura",
+    "ru": "Положение окна"
+  },
+  "选择快捷面板打开时的位置。选“跟随输入框”时，无法获取光标则锚定输入框下方或跟随鼠标。": {
+    "en": "Choose where the Quick Panel opens. With \"Follow text cursor\", it anchors below compact input fields or follows the mouse pointer if the cursor cannot be detected.",
+    "ja": "クイックパネルを開く位置を選択します。「入力カーソルに追従」でカーソルを取得できない場合は、入力欄の下またはマウスポインター付近に表示します。",
+    "pt-BR": "Escolha onde o Painel rápido abre. Com \"Seguir cursor de texto\", ele se alinha abaixo do campo de entrada ou segue o ponteiro do mouse se o cursor não for detectado.",
+    "ru": "Выберите, где открывается быстрая панель. В режиме «У текстового курсора» панель откроется под полем ввода или у указателя мыши, если курсор не удалось определить."
+  },
+  "屏幕中央": {
+    "en": "Screen center",
+    "ja": "画面中央",
+    "pt-BR": "Centro da tela",
+    "ru": "По центру экрана"
+  },
+  "跟随鼠标": {
+    "en": "Follow mouse pointer",
+    "ja": "マウスポインターに追従",
+    "pt-BR": "Seguir ponteiro do mouse",
+    "ru": "У указателя мыши"
+  },
+  "跟随输入框": {
+    "en": "Follow text cursor",
+    "ja": "入力カーソルに追従",
+    "pt-BR": "Seguir cursor de texto",
+    "ru": "У текстового курсора"
   }
 }

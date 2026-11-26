@@ -127,7 +127,7 @@ func newPreviewQuick(data preview.Quick) *quickPanelState {
 	return p
 }
 func (p *QuickPreview) Open(closed func()) *mygo.Window {
-	p.window = openQuickWindow(p.p, closed)
+	p.window = openQuickWindow(p.p, nil, closed)
 	return p.window
 }
 func (p *QuickPreview) Show() {

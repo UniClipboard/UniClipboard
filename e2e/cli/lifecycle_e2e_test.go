@@ -295,7 +295,8 @@ func TestServiceLifecycle(t *testing.T) {
 	scenario("C01", func(t *testing.T) {
 		l := newLab(t, rec, root, "c01")
 		for _, args := range [][]string{
-			{"help"}, {"help", "--json"}, {"config", "path"}, {"plugin", "list"}, {"dev", "logs", "help"}, {"history", "help"},
+			{"help"}, {"help", "--json"}, {"help", "exit-codes"}, {"status"}, {"daemon", "status"}, {"doctor"}, {"profile", "list"}, {"completion", "bash"},
+			{"config", "path"}, {"plugin", "list"}, {"dev", "logs", "help"}, {"history", "help"}, {"device", "--help"}, {"send", "--help"},
 			{"nosuch"}, {"dev", "diagnostics", "bad"}, {"history"}, {"history", "bogus"}, {"dev", "logs"}, {"device", "remove"}, {"send", "-f"}, {"device", "approve", "x"}, {"dev", "submission"}, {"device"}, {"dev"}, {"logs"}, {"copy"},
 			// A source that is neither a 6-digit code nor a link never reaches the service.
 			{"recv", "hello"}, {"recv", "12345"}, {"recv", "tcabcdef"}, {"recv", "unic-pair:abc"},
@@ -326,10 +327,22 @@ func TestServiceLifecycle(t *testing.T) {
 				t.Fatalf("leaf %q has no explicit declaration: %+v", v.Leaf, v)
 			}
 		}
-		// Every command word printed by help must resolve to a declared leaf.
+		// Every command word printed in command sections of help must resolve to a declared leaf.
 		help, _, _ := l.run("help")
+		section := ""
+		cmdSection := func(s string) bool {
+			return s == "Getting Started:" || s == "Clipboard & Sync:" || s == "Devices & Extensions:" || s == "Advanced:"
+		}
 		for line := range strings.SplitSeq(help, "\n") {
-			if !strings.HasPrefix(line, "  ") || strings.TrimSpace(line) == "" {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" {
+				continue
+			}
+			if !strings.HasPrefix(line, "  ") {
+				section = trimmed
+				continue
+			}
+			if !cmdSection(section) {
 				continue
 			}
 			word := strings.Trim(strings.Fields(line)[0], ",")
@@ -350,8 +363,17 @@ func TestServiceLifecycle(t *testing.T) {
 				continue
 			}
 			printed := false
+			sec := ""
 			for line := range strings.SplitSeq(help, "\n") {
-				if strings.HasPrefix(line, "  ") && slices.Contains(strings.FieldsFunc(line, func(r rune) bool { return r == ' ' || r == ',' || r == '(' || r == ')' || r == '|' }), word) {
+				trimmed := strings.TrimSpace(line)
+				if trimmed == "" {
+					continue
+				}
+				if !strings.HasPrefix(line, "  ") {
+					sec = trimmed
+					continue
+				}
+				if cmdSection(sec) && slices.Contains(strings.FieldsFunc(line, func(r rune) bool { return r == ' ' || r == ',' || r == '(' || r == ')' || r == '|' }), word) {
 					printed = true
 				}
 			}
@@ -371,10 +393,10 @@ func TestServiceLifecycle(t *testing.T) {
 	scenario("C03", func(t *testing.T) {
 		l := newLab(t, rec, root, "c03")
 		began := time.Now()
-		out, _, code := l.run("status")
+		out, _, code := l.run("device", "list", "--json")
 		rec.measures["cold_status_ms"] = time.Since(began).Milliseconds()
-		if code != 0 || !strings.Contains(out, "device") {
-			t.Fatalf("cold status failed: %d %q", code, out)
+		if code != 0 || !strings.Contains(out, `"id"`) {
+			t.Fatalf("cold query failed: %d %q", code, out)
 		}
 		if _, err := os.Stat(l.sock); err == nil {
 			t.Fatal("temporary service outlived its last user")
@@ -398,8 +420,8 @@ func TestServiceLifecycle(t *testing.T) {
 		l := newLab(t, rec, root, "c04")
 		sa, inst := l.standalone()
 		warm := time.Now()
-		if out, _, code := l.run("status"); code != 0 || !strings.Contains(out, "device") {
-			t.Fatal("warm status failed")
+		if out, _, code := l.run("device", "list", "--json"); code != 0 || !strings.Contains(out, `"id"`) {
+			t.Fatal("warm query failed")
 		}
 		rec.measures["warm_status_ms"] = time.Since(warm).Milliseconds()
 		if _, _, code := l.run("history", "show", "missing"); code == 0 {
@@ -419,8 +441,8 @@ func TestServiceLifecycle(t *testing.T) {
 		pr, pw := io.Pipe()
 		d := l.spawn("unicd", pr, "--desktop-owned")
 		di := l.waitInstance(20*time.Second, func(v servicelifecycle.Instance) bool { return v.Mode == servicelifecycle.ModeDesktop })
-		if _, _, code := l.run("status"); code != 0 {
-			t.Fatal("status on desktop-owned service failed")
+		if _, _, code := l.run("device", "list", "--json"); code != 0 {
+			t.Fatal("query on desktop-owned service failed")
 		}
 		if v, err := l.instance(); err != nil || v.ID != di.ID || v.Leases != 0 {
 			t.Fatalf("desktop-owned service changed: %+v %v", v, err)
@@ -438,7 +460,7 @@ func TestServiceLifecycle(t *testing.T) {
 		}
 		// C25: a third command is not blocked by the two long-lived streams.
 		began := time.Now()
-		if _, _, code := l.run("status"); code != 0 || time.Since(began) > 5*time.Second {
+		if _, _, code := l.run("device", "list", "--json"); code != 0 || time.Since(began) > 5*time.Second {
 			t.Fatal("a concurrent command was blocked or failed")
 		}
 		l.signal(a, syscall.SIGINT)
@@ -488,8 +510,8 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C10", func(t *testing.T) {
 		l := newLab(t, rec, root, "c10")
-		if _, _, code := l.run("status"); code != 0 {
-			t.Fatal("status failed")
+		if _, _, code := l.run("device", "list", "--json"); code != 0 {
+			t.Fatal("device list failed")
 		}
 		time.Sleep(500 * time.Millisecond)
 		if n := unicdCount(); n != 0 {
@@ -505,8 +527,8 @@ func TestServiceLifecycle(t *testing.T) {
 		first := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		l.signal(holder, syscall.SIGINT)
 		l.waitInstance(10*time.Second, func(v servicelifecycle.Instance) bool { return v.Retiring })
-		out, _, code := l.run("status")
-		if code != 0 || !strings.Contains(out, "device") {
+		out, _, code := l.run("device", "list", "--json")
+		if code != 0 || !strings.Contains(out, `"id"`) {
 			t.Fatalf("a command arriving during retirement failed: %d %q", code, out)
 		}
 		holder.wait(t, 20*time.Second)
@@ -522,7 +544,7 @@ func TestServiceLifecycle(t *testing.T) {
 
 	scenario("C08", func(t *testing.T) {
 		l := newLab(t, rec, root, "c08", "UNIC_E2E_START_DELAY_MS=4000")
-		p := l.unic("status")
+		p := l.unic("device", "list", "--json")
 		time.Sleep(800 * time.Millisecond)
 		l.signal(p, syscall.SIGKILL)
 		p.wait(t, 5*time.Second)
@@ -548,7 +570,7 @@ func TestServiceLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		// binDir stays on PATH: a PATH fallback would find a working unicd.
-		cmd := exec.Command(filepath.Join(lone, "unic"), "status")
+		cmd := exec.Command(filepath.Join(lone, "unic"), "device", "list")
 		cmd.Env = append(slices.Clone(l.env), "PATH="+binDir+":"+os.Getenv("PATH"))
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
@@ -562,7 +584,7 @@ func TestServiceLifecycle(t *testing.T) {
 		l := newLab(t, rec, root, "c12")
 		_ = os.WriteFile(filepath.Join(l.home, "config.toml"), []byte("not = [valid"), 0o600)
 		before := dirNames(l.home)
-		_, stderr, code := l.run("status")
+		_, stderr, code := l.run("device", "list")
 		if code != 1 || !strings.Contains(stderr, "error:") {
 			t.Fatalf("expected a startup failure, got %d %q", code, stderr)
 		}
@@ -582,15 +604,15 @@ func TestServiceLifecycle(t *testing.T) {
 		owner, _ := l.standalone()
 		// The socket vanishes while the Engine lock stays held: the typed in-use exit is retried.
 		_ = os.Remove(l.sock)
-		p := l.unic("status")
+		p := l.unic("device", "list", "--json")
 		time.Sleep(2 * time.Second)
 		if !alive(owner.cmd.Process.Pid) || p.exited() {
 			t.Fatal("the launcher stopped the owner or gave up early")
 		}
 		l.signal(owner, syscall.SIGKILL)
 		p.wait(t, 40*time.Second)
-		if p.code != 0 || !strings.Contains(p.out.String(), "device") {
-			t.Fatalf("status after the lock was released: %d %q %q", p.code, p.out.String(), p.err.String())
+		if p.code != 0 || !strings.Contains(p.out.String(), `"id"`) {
+			t.Fatalf("device list after the lock was released: %d %q %q", p.code, p.out.String(), p.err.String())
 		}
 	})
 
@@ -608,7 +630,7 @@ func TestServiceLifecycle(t *testing.T) {
 			}
 			srv := &http.Server{Handler: handler}
 			go func() { _ = srv.Serve(ln) }()
-			_, stderr, code := l.run("status")
+			_, stderr, code := l.run("device", "list")
 			if code != 1 || (!strings.Contains(stderr, "inspect existing unicd") && !strings.Contains(stderr, "different state directory")) {
 				t.Fatalf("%s: unexpected result %d %q", name, code, stderr)
 			}
@@ -631,9 +653,9 @@ func TestServiceLifecycle(t *testing.T) {
 		if _, err := os.Stat(l.sock); err != nil {
 			t.Fatal("a killed service left no stale socket; the recovery path was not exercised")
 		}
-		out, _, code := l.run("status")
-		if code != 0 || !strings.Contains(out, "device") {
-			t.Fatalf("status over a stale socket: %d", code)
+		out, _, code := l.run("device", "list", "--json")
+		if code != 0 || !strings.Contains(out, `"id"`) {
+			t.Fatalf("device list over a stale socket: %d", code)
 		}
 		if unicdCount() != 0 || first.PID == 0 {
 			t.Fatal("unexpected process state")
@@ -759,7 +781,7 @@ func TestServiceLifecycle(t *testing.T) {
 		inst := l.waitInstance(30*time.Second, func(v servicelifecycle.Instance) bool { return v.Leases == 1 })
 		// The stream holds a lease but not the transition lock: a new command is not delayed.
 		began := time.Now()
-		if _, _, code := l.run("status"); code != 0 || time.Since(began) > 5*time.Second {
+		if _, _, code := l.run("device", "list", "--json"); code != 0 || time.Since(began) > 5*time.Second {
 			t.Fatalf("a command waited behind a long stream: %d after %s", code, time.Since(began))
 		}
 		l.signal(stream, syscall.SIGINT)
@@ -937,7 +959,7 @@ func TestServiceLifecycle(t *testing.T) {
 		if unicdCount() != 0 {
 			t.Fatal("capacity pressure left a service running")
 		}
-		if _, _, code := l.run("status"); code != 0 {
+		if _, _, code := l.run("device", "list", "--json"); code != 0 {
 			t.Fatal("normal capacity did not return after release")
 		}
 	})
@@ -946,8 +968,8 @@ func TestServiceLifecycle(t *testing.T) {
 		// Startup latency is not a failure: a slow but successful start must complete the command.
 		l := newLab(t, rec, root, "c35", "UNIC_E2E_START_DELAY_MS=3000")
 		began := time.Now()
-		out, _, code := l.run("status")
-		if code != 0 || !strings.Contains(out, "device") || time.Since(began) < 3*time.Second {
+		out, _, code := l.run("device", "list", "--json")
+		if code != 0 || !strings.Contains(out, `"id"`) || time.Since(began) < 3*time.Second {
 			t.Fatalf("slow start: %d after %s", code, time.Since(began))
 		}
 	})

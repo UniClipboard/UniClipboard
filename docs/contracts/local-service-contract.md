@@ -140,12 +140,18 @@ On macOS, `POST /v1/desktop/notifications/enable` returns a boolean identifying 
 
 ## Export and CLI behavior
 
+Global flags `-p`/`--profile NAME` (env `UNIC_PROFILE`) and `--json` apply across CLI commands. Named profiles resolve to `<UserConfigDir>/unic-<name>` (or `unic-development-<name>` in development builds), keeping Unix socket paths short; explicit `--profile` overrides `UNIC_HOME` and `UNIC_SOCK`, while `UNIC_HOME` overrides `UNIC_PROFILE`. `unicd` also accepts `--profile NAME`.
+
+`unic init [--name NAME] [--fresh] [--json]` is the primary first-run initialization entry point. `unic daemon start [--foreground]|stop|restart|status|logs` manages a standalone `unicd` generation without implicitly stopping a `desktop`-owned or `cli-temporary` generation. `unic status [--json]` probes the local socket read-only without launching a temporary service. `unic profile [list|path]`, `unic doctor [--json]`, and `unic completion <bash|zsh|fish>` operate locally without starting `unicd`.
+
 `unic send [text]` reads stdin when text is omitted. `-f` submits local file references; `--png PATH` imports PNG.
 `unic dev submission REQUEST_ID` queries a result. `unic recv list|show|dismiss` exposes transient receives.
+`unic device rename ID [NAME] [--clear]` updates or clears a custom peer name via `PATCH /v1/peers/{id}`. `unic device suggest [list|pair|ignore|restore]` manages introduced candidates (retaining `suggestions` and `suggest-*` aliases). `unic channel pair|add|pause|resume|remove` manages external channels.
 `unic history action ID KEY [--apply] [--request-id KEY]` separates execution from application.
 `unic dev copy`, `paste`, `history use`, and Action `--apply` require desktop abilities.
 No adapter yields `unavailable`; unsupported capabilities yield `unsupported`; denied access yields `permission_denied`.
-CLI success exits 0. Operation failures and general syntax errors exit 1. Invoking `unic` with no command exits 2.
+Every command and subcommand accepts `-h`/`--help` locally (exit 0) without requiring profile initialization or acquiring a service.
+CLI success exits 0. Operation failures exit 1. Usage, flag, and unknown-command errors (and invoking `unic` with no command) exit 2.
 Submission and Action JSON expose stable codes and independent commit/network/application results.
 
 `unic history export ID --output DIR` executes in the CLI process.
@@ -274,7 +280,7 @@ The sender reports `delivered` only after a successful hash-verification ACK. Th
 
 ### Exit codes
 
-0 done; 1 failed (also general syntax and wrong-ticket-kind errors); 2 no command (migration has its own usage handling); 3 migration partial; 4 committed but not fully completed; 5 command done but stopping its temporary service failed.
+0 done; 1 operation failed; 2 usage, flag, or unknown-command error (or no command); 3 migration partial; 4 committed but not fully completed; 5 command done but stopping its temporary service failed; 6 profile not initialized.
 
 A directory-in-use startup failure exits `unicd` with code 75.
 Other daemon startup failures exit 1. Invalid daemon arguments exit 2.
@@ -399,24 +405,27 @@ Desktop navigation receipt, environment variable, dry run, or successful service
 never substitutes for this receipt. A verified explicit Desktop import publishes the same migration receipt. A Desktop welcome/skip action does not. This is a CLI admission rule, not an Engine
 or socket API credential. Direct daemon and Desktop lifecycle policies stay separate.
 
-`help`, group help, version and `migrate` remain available. A blocked business
-command exits **6** before contacting or starting a service, sync, or clipboard
+`help`, per-command `-h`/`--help`, version, `init`, `migrate`, `doctor`, `completion`,
+`profile`, `config path`, and `daemon status|stop|logs` remain available before initialization.
+A blocked command exits **6** before contacting or starting a service, sync, or clipboard
 adapter. JSON mode writes an error to stderr with `reason: migration_required`,
-`next_command: unic migrate --help`, and the explicit no-source initialization
-command. Plain text prints the same actionable instructions. No interactive
-answer or default consent is inferred.
+`next_command: unic init`, `initialize_command: unic init --json`, and `migrate_command: unic migrate --help`.
+Plain text prints the same actionable instructions. No interactive answer or default consent is inferred.
 
+- `unic init [--name NAME] [--fresh] [--json]` is the standard CLI initialization command.
+  It validates directory separation, checks default v1 discovery and `UC_PROFILE`, writes
+  default `config.toml` if absent (optionally setting `device_name`), probes exclusive offline
+  Engine ownership, and publishes `cli-migration.json` (`outcome: no_source`). If a nonempty
+  v1 source is detected, `unic init` refuses with `source_present` and guides the user to
+  `unic migrate` or explicit `unic init --fresh` (`outcome: fresh`). A pending v1 import is
+  never bypassed even with `--fresh`. Repeated `unic init` on an initialized profile is idempotent.
 - `unic migrate --source DIR --json` unlocks, imports, reopens and verifies through
   the existing v1 importer. Only an error-free `complete` report publishes CLI
   completion. A partial report exits 3 and keeps the CLI blocked. Failure and
   cancellation exit 1. Dry-run never changes initialization state.
-- `unic migrate --initialize-empty --json` is the explicit no-source completion
-  path. It checks default v1 discovery and the selected `UC_PROFILE` location,
-  accepts an absent path or an empty leftover directory, refuses a nonempty or
-  unreadable source, and refuses a pending import. A
-  custom source must be imported with `--source`. The command does not infer
-  that a custom source elsewhere is absent. It accepts only `--target` and
-  `--json` alongside the explicit initialization option.
+- `unic migrate --initialize-empty --json` remains supported as an explicit no-source
+  completion path for migration scripts; it refuses a nonempty/unreadable v1 source or a
+  pending import and accepts only `--target` and `--json`.
 - Missing/invalid source paths fail before creating pending import state. This
   allows a user who has no v1 data to correct a typo and initialize explicitly.
   Once a valid source import begins, only completion of that source can clear

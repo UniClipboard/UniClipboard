@@ -61,7 +61,7 @@ func runPlugin(ctx context.Context, args []string) error {
 			if err := luascripts.Rollback(root, args[1]); err != nil {
 				return err
 			}
-			_, err = fmt.Fprintln(os.Stdout, args[1], "rolled back; restart unicd to apply")
+			_, err = fmt.Fprintln(os.Stdout, args[1], "rolled back; run `unic daemon restart` to apply")
 			return err
 		case "uninstall":
 			if len(args) != 2 || !luascripts.ValidID(args[1]) {
@@ -113,7 +113,7 @@ func pluginCmd(args []string, root, cfgPath string, out io.Writer) error {
 		if _, err := m.Replace(m.State().Revision, raw.Bytes()); err != nil {
 			return err
 		}
-		_, err = fmt.Fprintln(out, args[3], "created; configure it, then enable it and restart unicd")
+		_, err = fmt.Fprintln(out, args[3], "created; configure it, then enable it and run `unic daemon restart`")
 		return err
 	case "list", "ls":
 		return pluginList(root, cfgPath, out)
@@ -245,7 +245,7 @@ func pluginSet(on bool, id, root, cfgPath string, out io.Writer) error {
 	case !changed:
 		_, _ = fmt.Fprintln(out, id, "is not enabled")
 	default:
-		_, _ = fmt.Fprintf(out, "%s %sd in %s; restart unicd to apply\n", id, map[bool]string{true: "enable", false: "disable"}[on], cfgPath)
+		_, _ = fmt.Fprintf(out, "%s %sd in %s; run `unic daemon restart` to apply\n", id, map[bool]string{true: "enable", false: "disable"}[on], cfgPath)
 	}
 	return nil
 }

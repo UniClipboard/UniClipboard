@@ -78,7 +78,7 @@ A manual no-argument Desktop launch always opens or activates the GUI. In normal
 
 ## Command surface and temporary transfer
 
-The CLI is organized by user intent. `unic send` (`s`) and `unic recv` (`r`) move content. `unic history` (`h`) browses it. `unic device` holds pairing and trust. `unic dev` holds development and diagnosis commands. `unic status`, `config`, `plugin` and `migrate` provide management operations. Old command names are removed without aliases.
+The CLI is organized by user intent with grouped top-level help, uniform per-command `-h`/`--help`, and global flags `-p`/`--profile NAME` and `--json`. `unic init` initializes a profile for first use. `unic daemon start|stop|restart|status|logs` manages a standalone background `unicd`. `unic status` probes the active profile read-only without launching a temporary service. `unic send` (`s`) and `unic recv` (`r`) move content. `unic history` (`h`) browses it. `unic device` holds pairing, trust, renaming, and suggestions. `unic channel` manages external clipboard channels. `unic profile`, `unic doctor`, `unic completion`, `unic config`, `unic plugin`, `unic migrate`, and `unic dev` provide profile, diagnostic, shell-completion, and management operations. Old command names are removed without aliases.
 
 `send --to all|DEVICE` goes through the normal sync path. `CommitRequest.DeviceIDs` limits the send to named paired devices; unknown, repeated or empty selections are `invalid_argument`. Only peer-session backends honor it.
 
@@ -115,11 +115,14 @@ Exact DTOs, budgets and exit codes are in the [local service contract](../contra
 
 ## First CLI use
 
-Every CLI data directory requires explicit migration initialization. Business
-commands refuse with exit 6 (`migration_required`) before service acquisition.
-Run `unic migrate --help`, then complete a verified import. When no known v1
-source exists, use `unic migrate --initialize-empty --json` explicitly. Pending
-imports cannot use that path. Help/version/migration remain accessible. Receipt
+Every CLI data directory requires explicit initialization before business commands
+or starting a daemon. Uninitialized commands refuse with exit 6 (`migration_required`)
+before service acquisition. Run `unic init` to initialize a fresh profile (with
+`unic init --fresh` to explicitly skip detected v1 data, or `unic migrate` to import
+and verify UniClipboard v1 history). `unic migrate --initialize-empty --json` remains
+available as an explicit no-source script path. Pending imports cannot be bypassed.
+Help, version, `init`, `migrate`, `doctor`, `completion`, `profile`, `config path`,
+and `daemon status|stop|logs` remain accessible before initialization. Receipt
 publication and service acquisition share the profile transition lock; acquisition
 rechecks initialization after waiting. Partial, failure, cancellation and dry-run
 never grant permission. Explicit Desktop imports share this gate; welcome/skip
@@ -258,9 +261,10 @@ Directory source preparation runs in Engine outside clipboard polling. Async loc
 
 ## Installation paths and development isolation
 
-`UNIC_HOME` explicitly selects the data directory and takes precedence over portable/default paths.
-Without it, a regular `portable.dat` file beside the resolved executable selects its sibling `data/` directory. A marker symlink or directory is rejected.
-All bundled programs use the same portable resolver. `UNIC_SOCK` remains an explicit socket override; otherwise the socket remains inside the selected data directory and retains native Unix-socket path limits.
+Global `-p`/`--profile NAME` selects `<UserConfigDir>/unic-<name>` (or `unic-development-<name>` for version-`dev` builds) and takes precedence over `UNIC_HOME` and `UNIC_SOCK`. Passing `default` selects the default profile directory.
+Without an explicit `--profile`, `UNIC_HOME` selects the data directory and takes precedence over `UNIC_PROFILE`, portable, and default paths.
+Without `UNIC_HOME` or `UNIC_PROFILE`, a regular `portable.dat` file beside the resolved executable selects its sibling `data/` directory. A marker symlink or directory is rejected.
+All bundled programs use the same portable resolver. `UNIC_SOCK` remains an explicit socket override when `--profile` is not passed; otherwise the socket remains inside the selected data directory and retains native Unix-socket path limits.
 Released executables default to the user configuration directory's `unic/`. Version-`dev` executables default to `unic-development/`.
 Production Desktop staging sets the runtime display name to `Unic`. Windows and Linux explicitly retain the `UniClipboard` mygo login registration key. macOS uses the existing bundle identifier. The raw development entry retains the separate `UniClipboard Development` runtime name and login key.
 These paths are separate from v1 data. Program replacement never imports v1 history or credentials automatically.

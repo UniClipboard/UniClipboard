@@ -184,31 +184,31 @@ func (d *viewState) manualUpdateDetails(owner string) (title, hint, command stri
 			""
 	case "Homebrew":
 		return d.tr("请通过系统包管理器升级"),
-			d.tr("你当前通过 Homebrew 安装了 UniClipboard，请在终端执行以下命令升级："),
+			d.tr("你当前通过 Homebrew 安装了 Unic，请在终端执行以下命令升级："),
 			"brew upgrade --cask uniclipboard"
 	case "Snap":
 		return d.tr("请通过系统包管理器升级"),
-			d.tr("你当前通过 Snap 安装了 UniClipboard，请在终端执行以下命令升级："),
+			d.tr("你当前通过 Snap 安装了 Unic，请在终端执行以下命令升级："),
 			"sudo snap refresh uniclipboard"
 	case "Flatpak":
 		return d.tr("请通过系统包管理器升级"),
-			d.tr("你当前通过 Flatpak 安装了 UniClipboard，请在终端执行以下命令升级："),
+			d.tr("你当前通过 Flatpak 安装了 Unic，请在终端执行以下命令升级："),
 			"flatpak update"
 	case "Scoop":
 		return d.tr("请通过系统包管理器升级"),
-			d.tr("你当前通过 Scoop 安装了 UniClipboard，请在终端执行以下命令升级："),
+			d.tr("你当前通过 Scoop 安装了 Unic，请在终端执行以下命令升级："),
 			"scoop update uniclipboard"
 	case "winget":
 		return d.tr("请通过系统包管理器升级"),
-			d.tr("你当前通过 winget 安装了 UniClipboard，请在终端执行以下命令升级："),
+			d.tr("你当前通过 winget 安装了 Unic，请在终端执行以下命令升级："),
 			"winget upgrade UniClipboard.UniClipboard"
 	case "Chocolatey":
 		return d.tr("请通过系统包管理器升级"),
-			d.tr("你当前通过 Chocolatey 安装了 UniClipboard，请在终端执行以下命令升级："),
+			d.tr("你当前通过 Chocolatey 安装了 Unic，请在终端执行以下命令升级："),
 			"choco upgrade uniclipboard"
 	default:
 		return d.tr("请通过系统包管理器升级"),
-			d.tr("你当前通过系统包管理器安装了 UniClipboard，请使用安装时对应的包管理器进行升级。"),
+			d.tr("你当前通过系统包管理器安装了 Unic，请使用安装时对应的包管理器进行升级。"),
 			""
 	}
 }
@@ -254,7 +254,7 @@ func (d *viewState) aboutContent(c *ui.Context, k desktopkit.Kit) {
 		})
 		ui.Column(c.Key("identity")).Grow(1).Basis(200).MinWidth(0).Gap(4).Children(func() {
 			ui.Row(c.Key("title-row")).Wrap().Gap(8).AlignItems(ui.Center).MinWidth(0).Children(func() {
-				k.Text(c.Key("app-name"), "UniClipboard", desktopkit.TextProps{Role: desktopkit.RoleTitle, Emphasized: true}).Level(2)
+				k.Text(c.Key("app-name"), "Unic", desktopkit.TextProps{Role: desktopkit.RoleTitle, Emphasized: true}).Level(2)
 				badge := ui.Row(c.Key("channel-badge")).Height(22).Padding(0, 9).Radius(11).AlignItems(ui.Center).Shrink(0)
 				if badgeChannel == "stable" {
 					badge.Background(k.Color("background-tertiary-default"))
@@ -379,7 +379,7 @@ func (d *viewState) aboutSponsorsSection(c *ui.Context, k desktopkit.Kit) {
 		ui.Box(c.Key("title")).Padding(0, 2, 0).Children(func() {
 			k.Text(c, d.tr("赞助者"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Emphasized: true}).Level(3)
 		})
-		k.Text(c.Key("thanks"), d.tr("感谢以下朋友的赞助支持，让 UniClipboard 持续向前。"), desktopkit.TextProps{Role: desktopkit.RoleCallout, Tone: desktopkit.ToneSecondary})
+		k.Text(c.Key("thanks"), d.tr("感谢以下朋友的赞助支持，让 Unic 持续向前。"), desktopkit.TextProps{Role: desktopkit.RoleCallout, Tone: desktopkit.ToneSecondary})
 
 		if !d.about.sponsorsLoaded {
 			ui.Row(c.Key("skeletons")).Wrap().Gap(10).MinWidth(0).Children(func() {

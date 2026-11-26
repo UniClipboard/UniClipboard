@@ -114,7 +114,7 @@ Every CLI archive and npm platform package includes the migration importer withi
 
 These requirements are accepted. Desktop staging and format construction are partially implemented; complete native installer and release acceptance remain pending.
 
-The product name is `UniClipboard`. Preserve existing channel package identifiers, including the `uniclipboard` base name and channel-specific identifiers. The Desktop application identifier remains `app.uniclipboard.desktop`.
+The Desktop display name is `Unic`. Preserve existing channel package identifiers, including the `uniclipboard` base name and channel-specific identifiers. The Desktop application identifier remains `app.uniclipboard.desktop`. Preserve existing installation paths and login registration keys when updating the display name.
 Within one distribution channel, v2 replaces the installed v1 program. Official parallel v1/v2 Desktop installation is not a supported mode.
 Alpha and stable share one installation identity. Channel switching replaces program files and preserves v2 user data; it does not authorize automatic downgrade.
 Development builds use a separate installation identity and data directory.

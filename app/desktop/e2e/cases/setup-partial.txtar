@@ -6,7 +6,7 @@
 # Forbidden: Complete-success title for partial import, personal credentials, system clipboard access, fabricated progress, or unavailable retained recording.
 
 start-setup partial
-ui-wait text '欢迎使用 UniClipboard'
+ui-wait text '欢迎使用 Unic'
 observe 2
 screenshot welcome
 ui-click button '开始使用'

@@ -16,7 +16,7 @@ func TestWelcomeShowcaseScenes(t *testing.T) {
 		Render(c, Model{Stage: "welcome", Found: true}, &fields, Actions{Begin: func() { begun++ }})
 	}, 780, 540, ui.TesterOptions{})
 
-	if _, ok := view.AccessByRole(ui.RoleText, "欢迎使用 UniClipboard"); !ok {
+	if _, ok := view.AccessByRole(ui.RoleText, "欢迎使用 Unic"); !ok {
 		t.Fatal("welcome heading missing")
 	}
 	if _, ok := view.AccessByRole(ui.RoleText, "VS Code · 刚刚复制"); !ok {

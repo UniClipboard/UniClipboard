@@ -54,10 +54,10 @@ func TestWindowsResourcesEmbedVersionInfo(t *testing.T) {
 	marker := utf16LE("VS_VERSION_INFO")
 	expected := [][2]string{
 		{"CompanyName", "UniClipboard"},
-		{"FileDescription", "UniClipboard"},
+		{"FileDescription", "Unic"},
 		{"InternalName", "unic-desktop"},
 		{"OriginalFilename", "unic-desktop.exe"},
-		{"ProductName", "UniClipboard"},
+		{"ProductName", "Unic"},
 	}
 	for _, arch := range []string{"amd64", "arm64"} {
 		path := "icon_windows_" + arch + ".syso"

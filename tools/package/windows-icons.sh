@@ -35,11 +35,11 @@ BEGIN
     BLOCK "040904B0"
     BEGIN
       VALUE "CompanyName", "UniClipboard\0"
-      VALUE "FileDescription", "UniClipboard\0"
+      VALUE "FileDescription", "Unic\0"
       VALUE "FileVersion", "$ver_str\0"
       VALUE "InternalName", "unic-desktop\0"
       VALUE "OriginalFilename", "unic-desktop.exe\0"
-      VALUE "ProductName", "UniClipboard\0"
+      VALUE "ProductName", "Unic\0"
       VALUE "ProductVersion", "$ver_str\0"
     END
   END

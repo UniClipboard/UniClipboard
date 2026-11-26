@@ -172,7 +172,7 @@ func (d *viewState) notificationSettingsContent(c *ui.Context, k desktopkit.Kit,
 	k.SettingsGroup(c.Key("notification-switches"), desktopkit.SettingsGroupProps{Title: d.tr("通知开关")}, func() {
 		k.SettingsRow(c.Key("notif-enabled"), desktopkit.SettingsRowProps{
 			Label:       d.tr("系统通知"),
-			Description: d.tr("接收来自 UniClipboard 的系统级桌面通知。关闭后仍会在应用内保留红点提醒。"),
+			Description: d.tr("接收来自 Unic 的系统级桌面通知。关闭后仍会在应用内保留红点提醒。"),
 		}, nil, func() {
 			val := masterOn
 			if k.Switch(c, &val, desktopkit.SwitchProps{Label: d.tr("系统通知"), Disabled: l.busy}).Changed() {

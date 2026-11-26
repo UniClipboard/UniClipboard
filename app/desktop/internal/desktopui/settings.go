@@ -201,7 +201,7 @@ func (d *viewState) settingsContent(c *ui.Context, k desktopkit.Kit) {
 			})
 		})
 		group("startup", d.tr("启动与托盘"), func() {
-			d.switchRow(c, k, "startup", d.tr("登录时启动"), d.tr("登录系统后自动启动 UniClipboard"))
+			d.switchRow(c, k, "startup", d.tr("登录时启动"), d.tr("登录系统后自动启动 Unic"))
 			d.switchRow(c, k, "tray", d.tr("显示托盘图标"), d.tr("在托盘或菜单栏中显示同步状态"))
 			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("托盘图标"), Description: d.tr("更改后立即生效。")}, nil, func() {
 				value := d.choices["trayIcon"]
@@ -254,7 +254,7 @@ func (d *viewState) settingsContent(c *ui.Context, k desktopkit.Kit) {
 		})
 	case "notifications":
 		group("notifications", d.tr("通知开关"), func() {
-			d.switchRow(c, k, "notificationsEnabled", d.tr("系统通知"), d.tr("接收来自 UniClipboard 的系统级桌面通知。关闭后仍会在应用内保留红点提醒。"))
+			d.switchRow(c, k, "notificationsEnabled", d.tr("系统通知"), d.tr("接收来自 Unic 的系统级桌面通知。关闭后仍会在应用内保留红点提醒。"))
 			d.switchRow(c, k, "notificationsDevicePairing", d.tr("新设备配对与路径请求"), d.tr("有新设备请求加入或新增同步路径时发送系统通知。"))
 		})
 	case "sync":

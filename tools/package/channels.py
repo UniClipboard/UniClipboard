@@ -11,7 +11,7 @@ import sys
 from urllib.parse import quote, urlparse
 
 sys.dont_write_bytecode = True
-from desktop import APP_ID, cli, fresh_output, sha  # noqa: E402
+from desktop import APP_ID, APP_NAME, cli, fresh_output, sha  # noqa: E402
 
 CHANNELS = [
     "homebrew-tap",
@@ -174,7 +174,7 @@ end
     url "{intel["url"]}", verified: "github.com/UniClipboard/UniClipboard/"
   end
 
-  name "UniClipboard"
+  name "{APP_NAME}"
   desc "Cross-device clipboard synchronization"
   homepage "https://uniclipboard.app/"
 
@@ -216,7 +216,7 @@ end
                     "homepage": "https://uniclipboard.app",
                     "license": "AGPL-3.0-only",
                     "architecture": architecture,
-                    "shortcuts": [["unic-desktop.exe", "UniClipboard"]],
+                    "shortcuts": [["unic-desktop.exe", APP_NAME]],
                     "persist": "data",
                     "checkver": {
                         "url": "https://api.github.com/repos/UniClipboard/UniClipboard/releases/latest",
@@ -264,6 +264,7 @@ end
                     InstallerType="nullsoft",
                     InstallerSwitches={"Custom": "/MANAGED=winget"},
                     Scope="user",
+                    ProductCode="UniClipboard",
                     Installers=installers,
                     ManifestType="installer",
                 ),
@@ -278,7 +279,7 @@ end
                     common,
                     PackageLocale="en-US",
                     Publisher="UniClipboard",
-                    PackageName="UniClipboard",
+                    PackageName=APP_NAME,
                     License="AGPL-3.0-only",
                     ShortDescription="Cross-device clipboard synchronization",
                     ManifestType="defaultLocale",
@@ -290,7 +291,7 @@ end
             put(
                 "chocolatey/uniclipboard.nuspec",
                 f"""<?xml version="1.0"?>
-<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd"><metadata><id>uniclipboard</id><version>{version}.{build}</version><title>UniClipboard</title><authors>UniClipboard</authors><description>Cross-device clipboard synchronization</description><projectUrl>https://uniclipboard.app</projectUrl><licenseUrl>https://github.com/UniClipboard/UniClipboard/blob/{source}/LICENSE</licenseUrl><requireLicenseAcceptance>false</requireLicenseAcceptance></metadata><files><file src="tools/**" target="tools"/></files></package>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd"><metadata><id>uniclipboard</id><version>{version}.{build}</version><title>{APP_NAME}</title><authors>UniClipboard</authors><description>Cross-device clipboard synchronization</description><projectUrl>https://uniclipboard.app</projectUrl><licenseUrl>https://github.com/UniClipboard/UniClipboard/blob/{source}/LICENSE</licenseUrl><requireLicenseAcceptance>false</requireLicenseAcceptance></metadata><files><file src="tools/**" target="tools"/></files></package>
 """,
             )
             put(
@@ -512,7 +513,7 @@ package() {{
             put(
                 "flatpak/" + APP_ID + ".metainfo.xml",
                 f'''<?xml version="1.0" encoding="UTF-8"?>
-<component type="desktop-application"><id>{APP_ID}</id><name>UniClipboard</name><summary>Cross-device clipboard synchronization</summary><metadata_license>CC0-1.0</metadata_license><project_license>AGPL-3.0-only</project_license><description><p>Synchronize clipboard history between paired devices.</p></description><launchable type="desktop-id">{APP_ID}.desktop</launchable><url type="homepage">https://uniclipboard.app</url><releases><release version="{version}.{build}" date="{getattr(args, "release_date", None) or date.today().isoformat()}"/></releases></component>
+<component type="desktop-application"><id>{APP_ID}</id><name>{APP_NAME}</name><summary>Cross-device clipboard synchronization</summary><metadata_license>CC0-1.0</metadata_license><project_license>AGPL-3.0-only</project_license><description><p>Synchronize clipboard history between paired devices.</p></description><launchable type="desktop-id">{APP_ID}.desktop</launchable><url type="homepage">https://uniclipboard.app</url><releases><release version="{version}.{build}" date="{getattr(args, "release_date", None) or date.today().isoformat()}"/></releases></component>
 ''',
             )
         elif channel == "snap":

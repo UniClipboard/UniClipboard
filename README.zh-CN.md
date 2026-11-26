@@ -23,6 +23,8 @@ Windows · macOS · Linux · 命令行　|　文字 · 图片 · 文件 · 文�
 
 <a href="README.md">English</a> | <strong>简体中文</strong> | <a href="README.zh-TW.md">繁體中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.pt-BR.md">Português (Brasil)</a> | <a href="README.ru.md">Русский</a>
 
+![UniClipboard 跨设备界面展示（桌面、平板与手机）](docs/assets/product-overview.png)
+
 </div>
 
 ---

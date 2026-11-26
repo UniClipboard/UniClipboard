@@ -10,17 +10,18 @@
 </p>
 
 <p>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><strong>ダウンロード</strong></a>
-  &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="#quick-start"><strong>はじめる</strong></a>
-  &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="#features">機能</a>
-  &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="#cli">CLI</a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="ダウンロード" src="https://img.shields.io/badge/%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89-2563eb?style=for-the-badge&logo=github&logoColor=white" /></a>
+  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS%20Beta-1f2937?style=for-the-badge&logo=apple&logoColor=white" /></a>
+  <a href="#quick-start"><img alt="はじめる" src="https://img.shields.io/badge/%E3%81%AF%E3%81%98%E3%82%81%E3%82%8B-4b5563?style=for-the-badge" /></a>
 </p>
 
 <p>
-  <code>Windows</code> &nbsp;<code>macOS</code> &nbsp;<code>Linux</code> &nbsp;<code>CLI</code>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Windows" src="https://img.shields.io/badge/Windows-1f2937?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iIzM4YmRmOCI+PHBhdGggZD0iTTAgMGg3LjR2Ny40SDB6bTguNiAwSDE2djcuNEg4LjZ6TTAgOC42aDcuNFYxNkgwem04LjYgMEgxNlYxNkg4LjZ6Ii8+PC9zdmc+" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="macOS" src="https://img.shields.io/badge/macOS-1f2937?style=flat-square&logo=apple&logoColor=white" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Linux" src="https://img.shields.io/badge/Linux-1f2937?style=flat-square&logo=linux&logoColor=facc15" /></a>
+  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS-Beta-2563eb?style=flat-square&logo=apple&logoColor=white&labelColor=1f2937" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Android" src="https://img.shields.io/badge/Android-1f2937?style=flat-square&logo=android&logoColor=3ddc84" /></a>
+  <a href="#cli"><img alt="CLI" src="https://img.shields.io/badge/CLI-1f2937?style=flat-square&logo=gnubash&logoColor=white" /></a>
 </p>
 
 <p>
@@ -37,7 +38,7 @@
 
 ## UniClipboard を選ぶ理由
 
-- **クロスプラットフォーム**：Windows、macOS、Linux の間で同期。同じ Wi-Fi でも別のネットワークでもつながります。
+- **クロスプラットフォーム**：Windows、macOS、Linux、iOS、Android の間で同期。同じ Wi-Fi でも別のネットワークでもつながります。
 - **クラウドを経由しない**：デバイス同士が暗号化された接続で直接つながります。登録不要で、履歴は自分のデバイスにだけ保存されます。
 - **軽量**：バックグラウンド同期サービスはアイドル時に約 14 MB<sup>[1](#benchmarks)</sup>。Windows ではメインウィンドウが約 34–49 MB<sup>[2](#benchmarks)</sup>。閉じるとそのプロセスは終了します。
 - **何でも同期**：テキスト、画像、ファイル、フォルダごと。
@@ -87,7 +88,10 @@
 
 **1. ダウンロードしてインストール**
 
-[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) からお使いのプラットフォーム向けインストーラー（macOS `.dmg`、Windows `.exe`/`.zip`、Linux `.deb`/`.rpm`/`.AppImage`）をダウンロードし、インストールして **UniClipboard** を起動します。CLI のみ必要な場合は `npm install -g @uniclipboard/cli` を実行してください。
+- **デスクトップ**：[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) から Windows（`.exe`/`.zip`）、macOS（`.dmg`）、Linux（`.deb`/`.rpm`/`.AppImage`）向けインストーラーをダウンロードします。
+- **iOS**：[TestFlight](https://testflight.apple.com/join/nyNQ8dQe) からパブリックベータに参加できます。
+- **Android**：[GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) から APK をダウンロードしてインストールします（現在 Google Play での公開予定はありません）。
+- **CLI のみ**：`npm install -g @uniclipboard/cli` を実行します。
 
 **2. 2 台目のデバイスを接続**
 

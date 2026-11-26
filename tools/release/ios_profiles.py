@@ -12,6 +12,7 @@ from mobile import mobile_metadata
 
 app = mobile_metadata("ios")["application_id"]
 group = f"group.{app}.incoming-share"
+legacy_group = f"group.{app}"
 profiles = {}
 team = None
 directory = Path.home() / "Library/Developer/Xcode/UserData/Provisioning Profiles"
@@ -26,8 +27,11 @@ for bundle, path in zip(bundles, sys.argv[1:], strict=True):
     entitlements = profile["Entitlements"]
     if entitlements["application-identifier"] != team + "." + bundle:
         raise ValueError("iOS production profile application identifier mismatch")
-    if group not in entitlements.get("com.apple.security.application-groups", []):
+    groups = entitlements.get("com.apple.security.application-groups", [])
+    if group not in groups:
         raise ValueError("iOS production share group is missing from the profile")
+    if bundle == app and legacy_group not in groups:
+        raise ValueError("iOS production legacy history App Group is missing from the app profile")
     if entitlements.get("get-task-allow") or profile.get("ProvisionedDevices") or profile.get("ProvisionsAllDevices"):
         raise ValueError("iOS archive export requires App Store distribution profiles")
     profiles[bundle] = profile["Name"]

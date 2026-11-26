@@ -1,0 +1,24 @@
+appId: app.uniclipboard.shell
+name: Legacy mobile restart bypasses Setup and preserves history
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: home-add-menu
+          timeout: 30000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: main-tab-Preferences
+          timeout: 30000
+- assertNotVisible:
+    id: setup-welcome-title
+- extendedWaitUntil:
+    visible: ".*Legacy mobile migration fixture — pinned.*"
+    timeout: 20000

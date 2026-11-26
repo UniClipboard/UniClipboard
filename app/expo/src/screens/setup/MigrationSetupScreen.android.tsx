@@ -1,4 +1,5 @@
-import { Keyboard, ScrollView, StyleSheet, Text, View, type ColorValue } from "react-native";
+import { useEffect } from "react";
+import { BackHandler, Keyboard, ScrollView, StyleSheet, Text, View, type ColorValue } from "react-native";
 import { useTranslation } from "react-i18next";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -39,6 +40,20 @@ export function MigrationSetupScreen() {
   const c = theme.colors;
   const ctrl = useSetupFlowController();
   const report = ctrl.migrationReport;
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (ctrl.setupViewState === "m-importing" || ctrl.setupViewState === "m-verifying") {
+        ctrl.requestStop();
+        return true;
+      }
+      if (ctrl.setupViewState === "m-stopping") {
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [ctrl]);
 
   const renderCardContent = () => {
     switch (ctrl.setupViewState) {
@@ -95,8 +110,46 @@ export function MigrationSetupScreen() {
           </>
         );
 
-      case "w-detected":
       case "w-custom":
+        return (
+          <>
+            <View style={[styles.surfaceCard, { backgroundColor: c.surface }]}>
+              <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
+                {t("migration.chooseTitle")}
+              </Text>
+              <Text style={[styles.cardBody, { color: c.textSecondary }]}>
+                {t("migration.chooseBody")}
+              </Text>
+            </View>
+            <View style={styles.actions}>
+              <AppHost matchContents={{ vertical: true }}>
+                <AppButton
+                  testID="setup-choose-custom-folder"
+                  title={t("migration.choose")}
+                  variant="filled"
+                  colors={{ containerColor: c.accent, contentColor: c.onAccent }}
+                  size="large"
+                  fullWidth
+                  disabled={ctrl.busy}
+                  onPress={() => void ctrl.handleSelectCustomFolder()}
+                />
+              </AppHost>
+              <AppHost matchContents={{ vertical: true }}>
+                <AppButton
+                  testID="setup-skip-migration"
+                  title={ctrl.setupEntryMode === "later" ? t("migration.skipReturn") : t("migration.skip")}
+                  variant="outlined"
+                  size="large"
+                  fullWidth
+                  disabled={ctrl.busy}
+                  onPress={() => void ctrl.handleEnterHistory()}
+                />
+              </AppHost>
+            </View>
+          </>
+        );
+
+      case "w-detected":
         return (
           <>
             <View style={[styles.surfaceCard, { backgroundColor: c.surface }]}>
@@ -106,12 +159,16 @@ export function MigrationSetupScreen() {
                 </Text>
               </View>
               <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
-                {t("migration.detectedTitle")}
+                {ctrl.isMobileSQLiteSource
+                  ? t("migration.mobileDetectedTitle")
+                  : t("migration.detectedTitle")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                {t("migration.detectedBody")}
+                {ctrl.isMobileSQLiteSource
+                  ? t("migration.mobileDetectedBody")
+                  : t("migration.detectedBody")}
               </Text>
-              {ctrl.detectedSourcePath ? (
+              {ctrl.detectedSourcePath && !ctrl.isMobileSQLiteSource ? (
                 <View style={[styles.pathBlock, { backgroundColor: c.surfaceHigh }]}>
                   <Text style={[styles.pathText, { color: c.textSecondary }]} numberOfLines={2}>
                     {ctrl.detectedSourcePath}
@@ -291,7 +348,9 @@ export function MigrationSetupScreen() {
                   ? t("migration.stoppingBody")
                   : isVerifying
                     ? t("migration.verifyingBody")
-                    : t("migration.importingBody")}
+                    : ctrl.isMobileSQLiteSource
+                      ? t("migration.mobileImportingBody")
+                      : t("migration.importingBody")}
               </Text>
               <View style={styles.progressWrap}>
                 <AppHost matchContents={{ vertical: true }}>
@@ -340,7 +399,7 @@ export function MigrationSetupScreen() {
                 {t("migration.done")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                {t("migration.doneBody")}
+                {ctrl.isMobileSQLiteSource ? t("migration.mobileDoneBody") : t("migration.doneBody")}
               </Text>
               {report ? (
                 <View style={styles.metricsGrid}>
@@ -622,6 +681,18 @@ export function MigrationSetupScreen() {
         dismissLabel={t("migration.cancel")}
         onDismiss={ctrl.dismissSkip}
         onDismissAction={ctrl.dismissSkip}
+      />
+
+      <AppAlertDialog
+        visible={ctrl.confirmStopVisible}
+        standalone
+        title={t("migration.stopConfirmTitle")}
+        message={t("migration.stopConfirmBody")}
+        confirmLabel={t("migration.stopConfirmAction")}
+        onConfirm={() => void ctrl.confirmStop()}
+        dismissLabel={t("migration.continueMigration")}
+        onDismiss={ctrl.dismissStop}
+        onDismissAction={ctrl.dismissStop}
       />
     </SafeAreaView>
   );

@@ -52,6 +52,19 @@ that sending is disabled without a device, and that closing the sheet leaves
 the imported content in history. Maestro checks live history search on both
 platforms.
 
+Use `--suite migration` with an Engine-enabled build to exercise automatic
+offline history migration from legacy mobile Expo SQLite (`uniclipboard.db`
+schema v5 in WAL mode, plus attachments under `payloads/`, `clipboards/`, and
+`cache/temp_files/`). The runner generates synthetic fixtures with
+`e2e/fixtures/legacy-mobile/generate.py`, verifies source DB read-only
+integrity (SHA-256 unchanged), exercises partial import → attachment repair →
+idempotent completion → entering History, and confirms cold restart bypasses
+Setup while retaining migrated records. On iOS it covers both App Group
+(`Databases/uniclipboard.db` + extensionless `payloads/`) and zero-override
+sandbox default discovery (`Documents/SQLite/uniclipboard.db`). On Android it
+uses `run-as` for debuggable builds and app external storage plus intent
+overrides for non-debuggable Release APKs.
+
 The runner writes `e2e/results/<run>/receipt.json` on success and failure. It
 records artifact/lockfile/flow hashes, the iOS fixture hash when applicable,
 the device ID, the tool version, and every stage's status. The same directory contains Maestro logs, screenshots and JUnit reports.

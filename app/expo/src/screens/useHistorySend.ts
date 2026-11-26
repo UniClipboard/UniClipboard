@@ -5,7 +5,16 @@ import { parseEngineError, unicEngineNative } from "@/engine/nativeModule";
 import { useEngineStore } from "@/engine/store";
 import type { EngineOperation } from "@/engine/types";
 
-export type HistorySendPhase = "idle" | "preparing" | "queued" | "sending" | "success" | "failed" | "unconfirmed";
+export type HistorySendPhase =
+  | "idle"
+  | "preparing"
+  | "queued"
+  | "sending"
+  | "confirming"
+  | "relay_stored"
+  | "success"
+  | "failed"
+  | "unconfirmed";
 
 export function useHistorySend(visible: boolean, historyID?: string) {
   const { t } = useTranslation();
@@ -84,9 +93,23 @@ export function useHistorySend(visible: boolean, historyID?: string) {
   const queued = Boolean(operationID) && (!operation || operation.phase === "queued");
   const phaseFor = (id: string): HistorySendPhase => {
     if (unconfirmed) return "unconfirmed";
-    const targets = operation?.targets?.filter((target) => target.peer_id === id) ?? [];
-    if (targets.some((target) => target.state === "sent")) return "success";
-    if (targets.some((target) => target.state === "sending")) return "sending";
+    const targets = operation?.targets?.filter(
+      (target) => target.peer_id === id || target.target_id === id,
+    ) ?? [];
+    const sentTargets = targets.filter((target) => target.state === "sent");
+    if (sentTargets.length > 0) {
+      if (sentTargets.every((target) => target.receipt_stage === "relay_stored")) {
+        return "relay_stored";
+      }
+      return "success";
+    }
+    const sendingTargets = targets.filter((target) => target.state === "sending");
+    if (sendingTargets.length > 0) {
+      if (sendingTargets.some((target) => target.receipt_stage === "local_written")) {
+        return "confirming";
+      }
+      return "sending";
+    }
     if (targets.some((target) => target.state === "queued")) return "queued";
     if (done) return "failed";
     if (operationID) return "queued";

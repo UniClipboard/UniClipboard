@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "relay_origin": "https://relay.uniclipboard.app",
+  "keys": {
+    "sender": {
+      "seed": "0101010101010101010101010101010101010101010101010101010101010101",
+      "public": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+      "x25519_public": "1b1b58dd50ea14b60da17b790cd02754d970c9bab864ebb3c0f3016fe51d3f57",
+      "device_id": "q5opsuq3efr3sxg3vlqcgetwvu"
+    },
+    "recipient": {
+      "seed": "0202020202020202020202020202020202020202020202020202020202020202",
+      "public": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+      "x25519_public": "60346e7c911a5f6ba154129174cafe75b294ac3bbd5549632f48cec6266f8410",
+      "device_id": "aujhrfzgxeanamozr3ryy3h3gq",
+      "mailbox_id": "f5jtnxzhp7egc7qi5s7b6xc6745vzblw"
+    }
+  },
+  "transfer": {
+    "transfer_id": "0123456789abcdef0123456789abcdef",
+    "created_ms": 1764124800000,
+    "expires_ms": 1764125400000,
+    "cek": "4242424242424242424242424242424242424242424242424242424242424242",
+    "eph_priv": "3333333333333333333333333333333333333333333333333333333333333333",
+    "eph_pub": "7b0d47d93427f8311160781c7c733fd89f88970aef490d8aa0ee19a4cb8a1b14",
+    "plaintexts_hex": [
+      "68656c6c6f2d72656c61792d6368756e6b2d30",
+      "68656c6c6f2d72656c61792d6368756e6b2d312d66696e616c"
+    ],
+    "ciphertexts_hex": [
+      "459b652de32011b2a477ddc9bf2a8592543423a81a905e95c409107eb9b38a58545422",
+      "607bea3c280696affa587f36670a1ad832c9f9538c8fe8f90ee0b03b7d1b19aefc7037efe4c15e8be1"
+    ],
+    "envelope": {
+      "v": 1,
+      "transfer_id": "0123456789abcdef0123456789abcdef",
+      "sender_id": "q5opsuq3efr3sxg3vlqcgetwvu",
+      "recipient_id": "aujhrfzgxeanamozr3ryy3h3gq",
+      "created_ms": 1764124800000,
+      "expires_ms": 1764125400000,
+      "chunk_size": 1048576,
+      "total_chunks": 2,
+      "total_ciphertext_bytes": 76,
+      "eph_pub": "ew1H2TQn-DERYHgcfHM_2J-IlwrvSQ2KoO4ZpMuKGxQ",
+      "wrapped_cek": "0hvU1ZYeMnuPIBO056X2pr01pFa8kyi6mfnCvy9cDtW_txNIFpo4wrqtVNuUZJPV",
+      "chunk_hashes": [
+        "LC2vFSBrKkhOLBCanED5d5GgFlBeIzFvs7e7DyqLDXg",
+        "scM51nQkUPOBGskPCAF9g7-PPtwo8LhlnOVu-TXbkv8"
+      ],
+      "sig": "Clx8cJrF279sVupzoz_5bV7hcDgprX_rKFhlv8ISWj4Oqf1-xpKcAQEzP0Chf3g4xin3pGbABIeyE1rXEc1-CA"
+    }
+  },
+  "owner_auth": {
+    "method": "GET",
+    "path_and_query": "/v1/relay/mailboxes/f5jtnxzhp7egc7qi5s7b6xc6745vzblw/transfers",
+    "body_hex": "",
+    "now_unix": 1764124800,
+    "nonce": "fixed-vector-nonce-01",
+    "headers": {
+      "PubKey": "gTl3Dqh9F19Wo1Rmw0x-zMuNipG07jeiXfYPW4_Js5Q",
+      "Timestamp": "1764124800",
+      "Nonce": "fixed-vector-nonce-01",
+      "Sig": "vOfOB3jVj6iXO_-A8MOb70md3QmMrBLLK4e2isOYD3i0032wUAqx6R9ThxTAnzuJimuXwAVnH0BkJT2bcmXtCQ"
+    }
+  }
+}

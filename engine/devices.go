@@ -178,6 +178,9 @@ type DeviceBinding struct {
 	// Ticket says the device proved it held a pairing ticket for this path.
 	// It explains how the request arose; it grants nothing.
 	Ticket bool `json:"ticket,omitempty"`
+	// RelayRouteReady reports whether this device has a verified E2EE HTTP relay
+	// fallback route ready while P2P is disconnected (contains no mailbox/token).
+	RelayRouteReady bool `json:"relay_route_ready,omitempty"`
 }
 
 // RenameDeviceRequest sets the user's name for a device; "" clears it.
@@ -285,10 +288,12 @@ func (e *Engine) toBindingWithLinks(b store.Binding, links map[PluginID]map[stri
 			checkedMs = st.LastCheckedMs
 		}
 	}
+	relayReady := b.State == store.BindingAuthorized && b.SyncEnabled && e.relay != nil && e.relay.routeReady(b.DeviceID)
 	return DeviceBinding{ID: b.ID, InstanceID: b.InstanceID, State: b.State, SyncEnabled: b.SyncEnabled,
 		Policy:   fromStoreBindingPolicy(b.Policy),
 		Revision: b.Revision, LastActiveMs: b.LastActiveMs, LastError: b.LastError, Connection: conn,
-		ConnectionPath: path, LatencyMs: latencyMs, LastCheckedMs: checkedMs, Ticket: b.Ticket}
+		ConnectionPath: path, LatencyMs: latencyMs, LastCheckedMs: checkedMs, Ticket: b.Ticket,
+		RelayRouteReady: relayReady}
 }
 
 func (e *Engine) peerLinkSnapshots() map[PluginID]map[string]rpc.PeerLinkStatus {
@@ -532,6 +537,9 @@ func (e *Engine) bindingOp(ctx context.Context, id string, rev int64, reconcile 
 	}
 	if reconcile {
 		e.reconcile()
+		if !b.SyncEnabled && e.relay != nil {
+			e.relay.revokePeer(b.DeviceID, false)
+		}
 	}
 	e.deviceChanged(b.DeviceID)
 	return e.toBinding(b), nil
@@ -554,6 +562,9 @@ func (e *Engine) RemoveBinding(ctx context.Context, req BindingRequest) error {
 	if err := e.st.RemoveBinding(req.ID, req.ExpectedRevision); err != nil {
 		return deviceStoreErr(err)
 	}
+	if e.relay != nil {
+		e.relay.revokePeer(b.DeviceID, true)
+	}
 	e.reconcile()
 	e.deviceChanged(b.DeviceID)
 	return nil
@@ -574,6 +585,9 @@ func (e *Engine) UnpairDevice(ctx context.Context, req UnpairDeviceRequest) erro
 		return deviceStoreErr(err)
 	}
 	_ = e.st.DropIntroducer(req.ID) // what a removed device vouched for no longer counts
+	if e.relay != nil {
+		e.relay.revokePeer(req.ID, true)
+	}
 	e.reconcile()
 	e.deviceChanged(req.ID)
 	e.candidatesChanged(req.ID)

@@ -105,6 +105,7 @@ type Engine struct {
 	actions         []*pipelineAction
 	enrichers       []*pipelineEnricher
 	enrich          *enrichmentScheduler
+	relay           *relayCoordinator
 	observers       []*pipelineObserver // likewise
 	pluginInstances map[PluginID]plugin.Plugin
 	plugins         []plugin.Plugin // closed with the engine
@@ -249,6 +250,7 @@ func New(ctx context.Context, opts Options) (*Engine, error) {
 		dedupInflight: map[store.DedupKey]struct{}{},
 		hist:          hist,
 	}
+	e.relay = newRelayCoordinator(e)
 	e.enrich = newEnrichmentScheduler(e)
 	rv := opts.rendezvous
 	if rv == nil {
@@ -457,6 +459,7 @@ func (e *Engine) startRun(ctx context.Context) error {
 	e.enrich.start(runCtx)
 	close(done) // the backends own their goroutines; the run context only bounds engine work
 	e.syncPeerStates()
+	e.relay.reconcile()
 	return nil
 }
 
@@ -471,6 +474,9 @@ func (e *Engine) stopRun(ctx context.Context) error {
 		cancel()
 		e.commitGate.Lock()   // drain commits that passed their last check
 		e.commitGate.Unlock() //nolint:staticcheck // SA2001: taking and dropping the lock is the barrier
+	}
+	if e.relay != nil {
+		e.relay.stop()
 	}
 	if e.enrich != nil {
 		e.enrich.stop()

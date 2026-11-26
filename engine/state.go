@@ -319,7 +319,12 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 			e.reapCachedFiles()
 		}
 	}()
-	defer e.syncPeerStates() // after unlocking: publish peer policies
+	defer func() {
+		e.syncPeerStates() // after unlocking: publish peer policies
+		if e.relay != nil {
+			e.relay.reconcile()
+		}
+	}()
 	e.hist.mu.Lock()
 	defer e.hist.mu.Unlock()
 	e.mu.Lock()
@@ -348,9 +353,11 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	return e.settingsLocked(), nil
 }
 
-// settingsLocked returns a copy that shares nothing with the live settings.
+// settingsLocked returns a secret-free copy that shares nothing with the live settings.
 func (e *Engine) settingsLocked() SettingsState {
-	return SettingsState{Revision: e.settings.Revision, Value: e.settings.Value.clone()}
+	v := e.settings.Value.clone()
+	v.Sync.Relay.AccessKey = ""
+	return SettingsState{Revision: e.settings.Revision, Value: v}
 }
 
 func (e *Engine) backendIDs() []PluginID {

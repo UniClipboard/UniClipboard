@@ -1,0 +1,708 @@
+package engine_test
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"errors"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/plugins/tailcat"
+	"github.com/uniclipboard/unic/internal/relayserver"
+)
+
+// toggleTransport wraps a loopback TCP transport with a switch to simulate P2P
+// being completely blocked/offline (e.g. mobile cold start or NAT outage) while
+// HTTPS relay remains reachable.
+type toggleTransport struct {
+	mu      sync.Mutex
+	ln      net.Listener
+	addr    string
+	blocked atomic.Bool
+	conns   map[net.Conn]struct{}
+}
+
+func newToggleTransport() *toggleTransport {
+	return &toggleTransport{conns: map[net.Conn]struct{}{}}
+}
+
+func (t *toggleTransport) Start() error {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	t.mu.Lock()
+	t.ln = ln
+	t.addr = ln.Addr().String()
+	t.mu.Unlock()
+	return nil
+}
+
+func (t *toggleTransport) Close() error {
+	t.mu.Lock()
+	ln := t.ln
+	t.ln = nil
+	conns := make([]net.Conn, 0, len(t.conns))
+	for c := range t.conns {
+		conns = append(conns, c)
+	}
+	t.mu.Unlock()
+	for _, c := range conns {
+		_ = c.Close()
+	}
+	if ln != nil {
+		return ln.Close()
+	}
+	return nil
+}
+
+func (t *toggleTransport) Listen(ctx context.Context) (net.Listener, error) {
+	t.mu.Lock()
+	ln := t.ln
+	t.mu.Unlock()
+	if ln == nil {
+		return nil, errors.New("closed")
+	}
+	return &toggleListener{Listener: ln, parent: t}, nil
+}
+
+type toggleListener struct {
+	net.Listener
+	parent *toggleTransport
+}
+
+func (l *toggleListener) Accept() (net.Conn, error) {
+	for {
+		c, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
+		}
+		if l.parent.blocked.Load() {
+			_ = c.Close()
+			continue
+		}
+		l.parent.track(c)
+		return c, nil
+	}
+}
+
+func (t *toggleTransport) track(c net.Conn) {
+	t.mu.Lock()
+	t.conns[c] = struct{}{}
+	t.mu.Unlock()
+}
+
+func (t *toggleTransport) Dial(ctx context.Context, addr string) (net.Conn, error) {
+	if t.blocked.Load() {
+		return nil, errors.New("p2p blocked")
+	}
+	var d net.Dialer
+	c, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	t.track(c)
+	return c, nil
+}
+
+func (t *toggleTransport) Addr() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.addr
+}
+
+func (t *toggleTransport) Binding(addr string) ([]byte, error) {
+	return []byte("toggle-bind:" + addr), nil
+}
+
+func (t *toggleTransport) SetBlocked(on bool) {
+	t.blocked.Store(on)
+	if on {
+		t.mu.Lock()
+		for c := range t.conns {
+			_ = c.Close()
+		}
+		clear(t.conns)
+		t.mu.Unlock()
+	}
+}
+
+func startRelayTestEngine(t *testing.T, name, relayURL string, relayEnabled bool, relayMaxBytes int64, tr *toggleTransport) *engine.Engine {
+	t.Helper()
+	settings := engine.DefaultSettings()
+	settings.DeviceName = name
+	settings.Sync.Relay = engine.RelaySyncSettings{
+		Enabled:  relayEnabled,
+		URL:      relayURL,
+		MaxBytes: relayMaxBytes,
+	}
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng, err := engine.New(context.Background(), engine.Options{
+		DataDir:  dir,
+		Settings: settings,
+		Plugins: []engine.PluginInstance{
+			{Plugin: tailcat.NewOn(tr), Builtin: true},
+		},
+	})
+	if err != nil {
+		t.Fatalf("engine.New(%s): %v", name, err)
+	}
+	if err := eng.Start(context.Background()); err != nil {
+		_ = eng.Close(context.Background())
+		t.Fatalf("engine.Start(%s): %v", name, err)
+	}
+	t.Cleanup(func() { _ = eng.Close(context.Background()) })
+	return eng
+}
+
+func waitUntil(t *testing.T, timeout time.Duration, desc string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", desc)
+}
+
+func pairAndConnect(t *testing.T, a, b *engine.Engine) (aID, bID string) {
+	t.Helper()
+	ctx := context.Background()
+	stA, _ := a.GetState(ctx)
+	stB, _ := b.GetState(ctx)
+	aID, bID = string(stA.Self.ID), string(stB.Self.ID)
+
+	var ticket string
+	waitUntil(t, 5*time.Second, "export ticket", func() bool {
+		tk, err := b.ExportPairingTicket(ctx)
+		if err != nil {
+			return false
+		}
+		ticket = tk.Ticket
+		return ticket != ""
+	})
+
+	if _, err := a.JoinByTicket(ctx, engine.JoinTicketRequest{RequestID: "join-ab", Ticket: ticket}); err != nil {
+		t.Fatalf("JoinByTicket: %v", err)
+	}
+
+	// Approve pending device on both sides.
+	approvePending := func(host *engine.Engine, targetID string) {
+		waitUntil(t, 5*time.Second, "pending device "+targetID, func() bool {
+			ds, err := host.ListDevices(ctx)
+			if err != nil {
+				return false
+			}
+			for _, d := range ds {
+				if d.ID == targetID && len(d.Bindings) > 0 {
+					if d.Trust == "trusted" && d.Bindings[0].State == "authorized" {
+						return true
+					}
+					var bs []engine.BindingRequest
+					for _, bd := range d.Bindings {
+						if bd.State == "pending" {
+							bs = append(bs, engine.BindingRequest{ID: bd.ID, ExpectedRevision: bd.Revision})
+						}
+					}
+					if len(bs) == 0 {
+						return false
+					}
+					_, err := host.ApproveDevice(ctx, engine.ApproveDeviceRequest{
+						ID:                  d.ID,
+						ExpectedRevision:    d.Revision,
+						ExpectedFingerprint: d.Fingerprint,
+						Bindings:            bs,
+					})
+					return err == nil
+				}
+			}
+			return false
+		})
+	}
+	approvePending(b, aID)
+	approvePending(a, bID)
+
+	waitUntil(t, 5*time.Second, "p2p connected", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].Connection == engine.Connected {
+				return true
+			}
+		}
+		return false
+	})
+	return aID, bID
+}
+
+func TestHybridRelayFallbackSingleAndMultiChunkAndRevocation(t *testing.T) {
+	ctx := context.Background()
+	srv := relayserver.New(relayserver.Config{
+		MaxTransferBytes: 10 << 20,
+	})
+	ts := httptest.NewServer(srv)
+	defer func() {
+		srv.Close()
+		ts.Close()
+	}()
+
+	trA, trB := newToggleTransport(), newToggleTransport()
+	a := startRelayTestEngine(t, "Phone", ts.URL, true, 10<<20, trA)
+	b := startRelayTestEngine(t, "Mac", ts.URL, true, 10<<20, trB)
+
+	aID, bID := pairAndConnect(t, a, b)
+
+	// Wait for relay_profile exchange over P2P so both devices report RelayRouteReady.
+	waitUntil(t, 5*time.Second, "relay route ready on Phone", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].RelayRouteReady {
+				return true
+			}
+		}
+		return false
+	})
+
+	// 1. While P2P is ONLINE: sending text must use P2P and make ZERO relay uploads.
+	p2pText := []byte("direct-over-p2p")
+	leaseP2P, err := a.ImportContent(ctx, engine.ContentInput{
+		Representations: []engine.RepresentationInput{{MIME: engine.MimeText, Size: int64(len(p2pText)), Reader: bytes.NewReader(p2pText)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resP2P, err := a.CommitContent(ctx, engine.CommitRequest{RequestID: "req-p2p-1", LeaseID: leaseP2P.LeaseID})
+	if err != nil || resP2P.SyncDisposition != engine.SyncQueued {
+		t.Fatalf("p2p commit failed: res=%+v err=%v", resP2P, err)
+	}
+	waitUntil(t, 5*time.Second, "p2p op complete", func() bool {
+		op, err := a.GetOperation(ctx, resP2P.OperationID)
+		return err == nil && op.Done() && len(op.Targets) == 1 && op.Targets[0].State == engine.TargetSent && op.Targets[0].TransportRoute == engine.RouteP2P
+	})
+	if srv.ActiveTransferCount() != 0 {
+		t.Fatalf("expected 0 relay transfers during P2P send")
+	}
+
+	// 2. Block P2P completely (simulate cold-started phone with P2P offline).
+	trA.SetBlocked(true)
+	trB.SetBlocked(true)
+	waitUntil(t, 5*time.Second, "p2p disconnected on Phone", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].Connection != engine.Connected {
+				return true
+			}
+		}
+		return false
+	})
+
+	// 2a. 0-wait single-chunk (1-RTT) text transfer over E2EE HTTP relay.
+	relayText := []byte("instant-via-e2ee-relay")
+	leaseRelay1, err := a.ImportContent(ctx, engine.ContentInput{
+		Representations: []engine.RepresentationInput{{MIME: engine.MimeText, Size: int64(len(relayText)), Reader: bytes.NewReader(relayText)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resRelay1, err := a.CommitContent(ctx, engine.CommitRequest{
+		RequestID: "req-relay-single",
+		LeaseID:   leaseRelay1.LeaseID,
+		DeviceIDs: []engine.DeviceID{engine.DeviceID(bID)},
+	})
+	if err != nil || resRelay1.SyncDisposition != engine.SyncQueued {
+		t.Fatalf("relay single commit failed: res=%+v err=%v", resRelay1, err)
+	}
+	waitUntil(t, 5*time.Second, "relay single op complete", func() bool {
+		op, err := a.GetOperation(ctx, resRelay1.OperationID)
+		if err != nil || !op.Done() || len(op.Targets) != 1 {
+			return false
+		}
+		tg := op.Targets[0]
+		return tg.State == engine.TargetSent && tg.TransportRoute == engine.RouteRelay && tg.ReceiptStage == engine.ReceiptStageRelayStored
+	})
+
+	// Verify Mac received the text via relay SSE and acked (server cleaned up).
+	waitUntil(t, 5*time.Second, "Mac received relay text", func() bool {
+		page, err := b.ListHistory(ctx, engine.ListHistoryRequest{Limit: 10})
+		if err != nil {
+			return false
+		}
+		for _, it := range page.Items {
+			if it.Origin.Kind == engine.OriginKindRemoteDevice && it.Origin.DeviceID == engine.DeviceID(aID) && it.Kind == engine.HistoryText {
+				ret, rerr := b.RetainHistoryContent(ctx, it.ID)
+				if rerr != nil || len(ret.Content.Parts) == 0 {
+					continue
+				}
+				rc, oerr := b.ReadContent(ctx, ret.LeaseID, ret.Content.Parts[0].ID)
+				if oerr != nil {
+					_ = b.ReleaseContent(ctx, ret.LeaseID)
+					continue
+				}
+				data, _ := io.ReadAll(rc)
+				_ = rc.Close()
+				_ = b.ReleaseContent(ctx, ret.LeaseID)
+				if string(data) == "instant-via-e2ee-relay" {
+					return true
+				}
+			}
+		}
+		return false
+	})
+	waitUntil(t, 3*time.Second, "relay server cleaned single transfer", func() bool {
+		return srv.ActiveTransferCount() == 0
+	})
+
+	// 2b. 0-wait multi-chunk (> 2 MiB) file transfer over E2EE HTTP relay.
+	fileBytes := bytes.Repeat([]byte("unic-hybrid-relay-chunk-test-0123456789!"), (2<<20)/40+5000) // ~2.2 MiB -> 3 chunks
+	wantHash := sha256.Sum256(fileBytes)
+	tmpFile := filepath.Join(t.TempDir(), "sample.bin")
+	if err := os.WriteFile(tmpFile, fileBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	leaseFile, err := a.ImportContent(ctx, engine.ContentInput{
+		Files: []engine.FileInput{{Name: "sample.bin", Size: int64(len(fileBytes)), Source: &memFileSource{path: tmpFile, size: int64(len(fileBytes))}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resFile, err := a.CommitContent(ctx, engine.CommitRequest{
+		RequestID: "req-relay-multi",
+		LeaseID:   leaseFile.LeaseID,
+		DeviceIDs: []engine.DeviceID{engine.DeviceID(bID)},
+	})
+	if err != nil || resFile.SyncDisposition != engine.SyncQueued {
+		t.Fatalf("relay multi commit failed: res=%+v err=%v", resFile, err)
+	}
+	waitUntil(t, 10*time.Second, "relay multi op complete", func() bool {
+		op, err := a.GetOperation(ctx, resFile.OperationID)
+		if err != nil || !op.Done() || len(op.Targets) != 1 {
+			return false
+		}
+		tg := op.Targets[0]
+		return tg.State == engine.TargetSent && tg.TransportRoute == engine.RouteRelay && tg.ReceiptStage == engine.ReceiptStageRelayStored
+	})
+
+	// Verify Mac assembled and committed the multi-chunk file with identical SHA-256.
+	waitUntil(t, 10*time.Second, "Mac received multi-chunk file", func() bool {
+		page, err := b.ListHistory(ctx, engine.ListHistoryRequest{Limit: 10})
+		if err != nil {
+			return false
+		}
+		for _, it := range page.Items {
+			if it.Kind != engine.HistoryFiles || it.Origin.DeviceID != engine.DeviceID(aID) {
+				continue
+			}
+			ret, rerr := b.RetainHistoryContent(ctx, it.ID)
+			if rerr != nil || len(ret.Content.Parts) == 0 {
+				continue
+			}
+			rc, oerr := b.ReadContent(ctx, ret.LeaseID, ret.Content.Parts[0].ID)
+			if oerr != nil {
+				_ = b.ReleaseContent(ctx, ret.LeaseID)
+				continue
+			}
+			got, _ := io.ReadAll(rc)
+			_ = rc.Close()
+			_ = b.ReleaseContent(ctx, ret.LeaseID)
+			if sha256.Sum256(got) == wantHash {
+				return true
+			}
+		}
+		return false
+	})
+	waitUntil(t, 3*time.Second, "relay server cleaned multi transfer", func() bool {
+		return srv.ActiveTransferCount() == 0
+	})
+
+	// 3. Unpair Phone on Mac: Mac revokes Phone's sender token on relay server,
+	// so Phone can no longer upload to Mac's mailbox.
+	dsB, _ := b.ListDevices(ctx)
+	var phoneDev engine.Device
+	for _, d := range dsB {
+		if d.ID == aID {
+			phoneDev = d
+		}
+	}
+	if err := b.UnpairDevice(ctx, engine.UnpairDeviceRequest{ID: phoneDev.ID, ExpectedRevision: phoneDev.Revision}); err != nil {
+		t.Fatalf("UnpairDevice: %v", err)
+	}
+	blockedText := []byte("after-unpair")
+	leaseBlocked, _ := a.ImportContent(ctx, engine.ContentInput{
+		Representations: []engine.RepresentationInput{{MIME: engine.MimeText, Size: int64(len(blockedText)), Reader: bytes.NewReader(blockedText)}},
+	})
+	resBlocked, err := a.CommitContent(ctx, engine.CommitRequest{
+		RequestID: "req-after-unpair",
+		LeaseID:   leaseBlocked.LeaseID,
+		DeviceIDs: []engine.DeviceID{engine.DeviceID(bID)},
+	})
+	if err != nil {
+		t.Fatalf("commit after unpair: %v", err)
+	}
+	if resBlocked.OperationID != "" {
+		waitUntil(t, 5*time.Second, "revoked relay upload fails", func() bool {
+			op, err := a.GetOperation(ctx, resBlocked.OperationID)
+			return err == nil && op.Done() && len(op.Targets) == 1 && op.Targets[0].State == engine.TargetFailed
+		})
+	}
+}
+
+func TestRelayDisabledHasZeroHTTPRequests(t *testing.T) {
+	srv := relayserver.New(relayserver.Config{})
+	ts := httptest.NewServer(srv)
+	defer func() {
+		srv.Close()
+		ts.Close()
+	}()
+	trA := newToggleTransport()
+	_ = startRelayTestEngine(t, "NoRelay", ts.URL, false, 0, trA)
+	time.Sleep(100 * time.Millisecond)
+	if got := srv.RequestCount(); got != 0 {
+		t.Fatalf("expected 0 relay HTTP requests when relay disabled, got %d", got)
+	}
+}
+
+func TestHybridRelayMidReceiveDiscardDeletesServerTransfer(t *testing.T) {
+	ctx := context.Background()
+	srv := relayserver.New(relayserver.Config{MaxTransferBytes: 10 << 20})
+	chunk1Started := make(chan struct{})
+	chunk1Release := make(chan struct{})
+	var once sync.Once
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/chunks/1") {
+			once.Do(func() { close(chunk1Started) })
+			select {
+			case <-chunk1Release:
+			case <-r.Context().Done():
+				return
+			}
+		}
+		srv.ServeHTTP(w, r)
+	})
+	ts := httptest.NewServer(handler)
+	defer func() {
+		select {
+		case <-chunk1Release:
+		default:
+			close(chunk1Release)
+		}
+		srv.Close()
+		ts.Close()
+	}()
+
+	trA, trB := newToggleTransport(), newToggleTransport()
+	a := startRelayTestEngine(t, "PhoneDiscard", ts.URL, true, 10<<20, trA)
+	b := startRelayTestEngine(t, "MacDiscard", ts.URL, true, 10<<20, trB)
+	aID, bID := pairAndConnect(t, a, b)
+
+	waitUntil(t, 5*time.Second, "relay route ready", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].RelayRouteReady {
+				return true
+			}
+		}
+		return false
+	})
+
+	trA.SetBlocked(true)
+	trB.SetBlocked(true)
+	waitUntil(t, 5*time.Second, "p2p offline", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].Connection != engine.Connected {
+				return true
+			}
+		}
+		return false
+	})
+
+	// Send a > 2 MiB file (3 chunks) so receiver downloads chunk 0 then stalls on chunk 1.
+	payload := bytes.Repeat([]byte("discard-me-mid-stream-0123456789abcdefgh"), (2<<20)/40+4000)
+	tmpFile := filepath.Join(t.TempDir(), "discard.bin")
+	if err := os.WriteFile(tmpFile, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := a.ImportContent(ctx, engine.ContentInput{
+		Files: []engine.FileInput{{Name: "discard.bin", Size: int64(len(payload)), Source: &memFileSource{path: tmpFile, size: int64(len(payload))}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.CommitContent(ctx, engine.CommitRequest{
+		RequestID: "req-relay-discard",
+		LeaseID:   lease.LeaseID,
+		DeviceIDs: []engine.DeviceID{engine.DeviceID(bID)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case <-chunk1Started:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for receiver to start chunk 1 download")
+	}
+
+	var recvOpID engine.OperationID
+	waitUntil(t, 5*time.Second, "active receive operation on Mac", func() bool {
+		ops, err := b.ListOperations(ctx)
+		if err != nil {
+			return false
+		}
+		for _, op := range ops {
+			if op.Kind == engine.OperationReceive && op.Receive != nil && op.Receive.PeerID == engine.DeviceID(aID) && op.Receive.State == engine.ReceiveReceiving {
+				recvOpID = op.ID
+				return true
+			}
+		}
+		return false
+	})
+
+	if err := b.DiscardReceive(ctx, recvOpID); err != nil {
+		t.Fatalf("DiscardReceive: %v", err)
+	}
+	close(chunk1Release)
+
+	waitUntil(t, 5*time.Second, "receive op marked discarded", func() bool {
+		op, err := b.GetOperation(ctx, recvOpID)
+		return err == nil && op.Receive != nil && op.Receive.State == engine.ReceiveDiscarded
+	})
+	waitUntil(t, 5*time.Second, "relay server deleted discarded transfer", func() bool {
+		return srv.ActiveTransferCount() == 0
+	})
+	page, err := b.ListHistory(ctx, engine.ListHistoryRequest{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range page.Items {
+		if it.Kind == engine.HistoryFiles && it.Origin.DeviceID == engine.DeviceID(aID) {
+			t.Fatalf("discarded relay file unexpectedly committed to history: %+v", it)
+		}
+	}
+}
+
+func TestHybridRelayRejectsOversizedOfflinePayload(t *testing.T) {
+	ctx := context.Background()
+	srv := relayserver.New(relayserver.Config{MaxTransferBytes: 10 << 20})
+	ts := httptest.NewServer(srv)
+	defer func() {
+		srv.Close()
+		ts.Close()
+	}()
+
+	trA, trB := newToggleTransport(), newToggleTransport()
+	// Configure small 64 KiB relay cap on Phone.
+	a := startRelayTestEngine(t, "PhoneCap", ts.URL, true, 64<<10, trA)
+	b := startRelayTestEngine(t, "MacCap", ts.URL, true, 10<<20, trB)
+	_, bID := pairAndConnect(t, a, b)
+
+	waitUntil(t, 5*time.Second, "relay route ready", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].RelayRouteReady {
+				return true
+			}
+		}
+		return false
+	})
+
+	trA.SetBlocked(true)
+	trB.SetBlocked(true)
+	waitUntil(t, 5*time.Second, "p2p offline", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].Connection != engine.Connected {
+				return true
+			}
+		}
+		return false
+	})
+
+	bigText := bytes.Repeat([]byte("A"), 200<<10) // 200 KiB > 64 KiB relay cap
+	lease, err := a.ImportContent(ctx, engine.ContentInput{
+		Representations: []engine.RepresentationInput{{MIME: engine.MimeText, Size: int64(len(bigText)), Reader: bytes.NewReader(bigText)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := a.CommitContent(ctx, engine.CommitRequest{
+		RequestID: "req-relay-oversized",
+		LeaseID:   lease.LeaseID,
+		DeviceIDs: []engine.DeviceID{engine.DeviceID(bID)},
+	})
+	if err != nil {
+		t.Fatalf("CommitContent: %v", err)
+	}
+	if res.OperationID != "" {
+		waitUntil(t, 5*time.Second, "oversized relay op fails with limit_exceeded", func() bool {
+			op, err := a.GetOperation(ctx, res.OperationID)
+			if err != nil || !op.Done() || len(op.Targets) != 1 {
+				return false
+			}
+			tg := op.Targets[0]
+			return tg.State == engine.TargetFailed && tg.Error != nil && tg.Error.Code == engine.CodeLimitExceeded
+		})
+	}
+	if srv.ActiveTransferCount() != 0 {
+		t.Fatalf("expected 0 relay transfers for oversized payload, got %d", srv.ActiveTransferCount())
+	}
+}
+
+func TestHybridRelayRejectsMismatchedPeerOrigin(t *testing.T) {
+	ctx := context.Background()
+	srv1 := relayserver.New(relayserver.Config{})
+	srv2 := relayserver.New(relayserver.Config{})
+	ts1 := httptest.NewServer(srv1)
+	ts2 := httptest.NewServer(srv2)
+	defer func() {
+		srv1.Close()
+		srv2.Close()
+		ts1.Close()
+		ts2.Close()
+	}()
+
+	trA, trB := newToggleTransport(), newToggleTransport()
+	// Phone trusts ts1; Mac advertises a mailbox on ts2 -> Phone must reject the mismatched origin.
+	a := startRelayTestEngine(t, "PhoneOrigin", ts1.URL, true, 10<<20, trA)
+	b := startRelayTestEngine(t, "MacOtherOrigin", ts2.URL, true, 10<<20, trB)
+	_, bID := pairAndConnect(t, a, b)
+
+	// Allow time for relay_profile frame to arrive and be rejected.
+	time.Sleep(300 * time.Millisecond)
+	ds, err := a.ListDevices(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range ds {
+		if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].RelayRouteReady {
+			t.Fatalf("expected peer with mismatched relay origin to be rejected, but RelayRouteReady=true")
+		}
+	}
+}
+
+type memFileSource struct {
+	path string
+	size int64
+}
+
+func (m *memFileSource) Open(context.Context) (io.ReadCloser, engine.FileMeta, error) {
+	f, err := os.Open(m.path)
+	if err != nil {
+		return nil, engine.FileMeta{}, err
+	}
+	return f, engine.FileMeta{Size: m.size, Version: "v1"}, nil
+}

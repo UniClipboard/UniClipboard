@@ -92,6 +92,7 @@ CREATE INDEX sync_dedup_created ON sync_dedup (created_ms);
 ` + "\n" + annotationSchema + "\n" + deviceSchema), // unified devices and their per-backend-instance bindings (docs/architecture/identity-and-trust.md)
 	execStep(candidateSchema), // devices a peer vouched for (see docs/architecture/identity-and-trust.md)
 	migrateEnricherAndBindingPolicy,
+	execStep(relaySchema), // hybrid E2EE relay routes and per-peer delivery tokens (0035)
 }
 
 func tableExists(tx *sql.Tx, table string) (bool, error) {

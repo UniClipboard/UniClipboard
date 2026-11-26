@@ -262,12 +262,23 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	return n, nil
 }
 
-// toSettings maps the configuration file to engine settings. The environment
-// variable that picks the pairing code service is read here, not in the engine.
+// toSettings maps the configuration file to engine settings. Environment
+// overrides for the pairing code and hybrid relay services are read here,
+// not in the engine.
 func toSettings(c config.Config) engine.Settings {
 	s := c.Settings()
 	if s.RendezvousURL == "" {
 		s.RendezvousURL = os.Getenv("UNIC_RENDEZVOUS_URL")
+	}
+	if s.Sync.Relay.URL == "" {
+		if u := strings.TrimSpace(os.Getenv("UNIC_RELAY_URL")); u != "" {
+			s.Sync.Relay.URL = u
+		}
+	}
+	if s.Sync.Relay.AccessKey == "" {
+		if k := strings.TrimSpace(os.Getenv("UNIC_RELAY_ACCESS_KEY")); k != "" {
+			s.Sync.Relay.AccessKey = k
+		}
 	}
 	return s
 }

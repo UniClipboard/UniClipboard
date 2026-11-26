@@ -84,6 +84,8 @@ type backendHost interface {
 	Report(k targetKey, st TargetState, cause error)
 	// ReportReceipt reports a target transition together with a verified receipt stage.
 	ReportReceipt(k targetKey, st TargetState, stage ReceiptStage, cause error)
+	// ReportRoute sets the transport route classification for a registered target.
+	ReportRoute(k targetKey, route TransportRoute)
 	// ReportProgress reports throttled in-flight transfer progress for a target.
 	ReportProgress(k targetKey, stage ReceiptStage, p TransferProgress)
 }
@@ -146,6 +148,12 @@ func (h *dispatchHost) Report(k targetKey, st TargetState, cause error) {
 func (h *dispatchHost) ReportReceipt(k targetKey, st TargetState, stage ReceiptStage, cause error) {
 	if h.op != nil {
 		h.e.reportTargetReceipt(h.op.op.ID, k, st, stage, cause)
+	}
+}
+
+func (h *dispatchHost) ReportRoute(k targetKey, route TransportRoute) {
+	if h.op != nil {
+		h.e.reportTargetRoute(h.op.op.ID, k, route)
 	}
 }
 

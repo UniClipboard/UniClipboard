@@ -29,7 +29,9 @@ const (
 	MaxTotal     = 4 << 30  // whole clipboard message
 	MaxParts     = 4096
 
-	CapClipAck = "clip_ack"
+	CapClipAck      = "clip_ack"
+	CapRelayProfile = "relay_profile"
+	CapRelayHandoff = "relay_handoff"
 
 	ClipAckReceived  = "received"
 	ClipAckDiscarded = "discarded"
@@ -83,6 +85,20 @@ type ClipAck struct {
 	T      string `json:"t"`      // "clip_ack"
 	ID     string `json:"id"`     // wire.Clip.ID
 	Status string `json:"status"` // "received", "discarded", or "failed"
+}
+
+// RelayProfile advertises this device's E2EE HTTP relay mailbox and a
+// peer-specific revocable delivery token on an authenticated session where
+// both peers negotiated CapRelayProfile (0035). MailboxID and DeliveryToken
+// are secrets and must never be logged.
+type RelayProfile struct {
+	T             string `json:"t"` // "relay_profile"
+	V             int    `json:"v"` // 1
+	RelayOrigin   string `json:"relay_origin"`
+	MailboxID     string `json:"mailbox_id"`
+	DeliveryToken string `json:"delivery_token"`
+	MaxBytes      int64  `json:"max_bytes,omitempty"`
+	Epoch         uint64 `json:"epoch"`
 }
 
 // PartMeta announces one blob that follows a Clip message.

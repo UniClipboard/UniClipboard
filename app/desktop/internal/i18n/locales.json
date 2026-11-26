@@ -8903,6 +8903,12 @@
     "pt-BR": "Recebido",
     "ru": "Получено"
   },
+  "已暂存中转": {
+    "en": "Stored on relay",
+    "ja": "リレーに一時保存済み",
+    "pt-BR": "Armazenado no relay",
+    "ru": "Сохранено на ретрансляторе"
+  },
   "对端未接纳": {
     "en": "Declined by device",
     "ja": "相手デバイスが拒否",

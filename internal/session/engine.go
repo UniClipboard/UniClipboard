@@ -102,9 +102,11 @@ type Backend struct {
 	sessions     map[string]*session
 	dialers      map[string]*dialer
 	dialing      map[string]dialStatus
-	lastChecked  map[string]int64
-	onLinkChange func(string)
-	gen          uint64
+	lastChecked   map[string]int64
+	onLinkChange  func(string)
+	relayProvide  func(peerID string) (plugin.RelayProfile, bool)
+	onRelayPeer   func(peerID string, p plugin.RelayProfile)
+	gen           uint64
 }
 
 // runState is one up period of the network.
@@ -136,6 +138,36 @@ func (b *Backend) logf(f string, a ...any) { b.cfg.Logf(f, a...) }
 
 func (b *Backend) SetPeerAuthority(a plugin.PeerAuthority) { b.mu.Lock(); b.auth = a; b.mu.Unlock() }
 func (b *Backend) SetPeerReceiver(r plugin.PeerReceiver)   { b.mu.Lock(); b.recv = r; b.mu.Unlock() }
+
+func (b *Backend) SetRelayCallbacks(
+	provide func(peerID string) (plugin.RelayProfile, bool),
+	onPeerProfile func(peerID string, p plugin.RelayProfile),
+) {
+	b.mu.Lock()
+	b.relayProvide = provide
+	b.onRelayPeer = onPeerProfile
+	b.mu.Unlock()
+}
+
+func (b *Backend) PushRelayProfiles() {
+	b.mu.Lock()
+	var ss []*session
+	for _, s := range b.sessions {
+		if s.relayProfileCap && !s.isDone() {
+			ss = append(ss, s)
+		}
+	}
+	b.mu.Unlock()
+	for _, s := range ss {
+		s.wakeRelayProfile()
+	}
+}
+
+func (b *Backend) WakePeer(peerID string) {
+	if peerID != "" {
+		b.kick(peerID)
+	}
+}
 
 func (b *Backend) authority() plugin.PeerAuthority { b.mu.Lock(); defer b.mu.Unlock(); return b.auth }
 func (b *Backend) receiver() plugin.PeerReceiver   { b.mu.Lock(); defer b.mu.Unlock(); return b.recv }
@@ -542,7 +574,13 @@ func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, 
 	w := wire.NewConn(bodyConn)
 	var localCaps []string
 	if !b.cfg.DisableClipAck {
-		localCaps = []string{wire.CapClipAck}
+		localCaps = append(localCaps, wire.CapClipAck)
+	}
+	b.mu.Lock()
+	hasRelay := b.relayProvide != nil || b.onRelayPeer != nil
+	b.mu.Unlock()
+	if hasRelay {
+		localCaps = append(localCaps, wire.CapRelayProfile)
 	}
 	werr := make(chan error, 1)
 	go func() {
@@ -609,10 +647,12 @@ func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, 
 	var s *session
 	if local && dec.SessionToken != nil {
 		clipAckCap := !b.cfg.DisableClipAck && slices.Contains(h.Caps, wire.CapClipAck)
+		relayProfileCap := hasRelay && slices.Contains(h.Caps, wire.CapRelayProfile)
 		s = &session{
 			b: b, r: r, conn: conn, w: w, bodyConn: bodyConn, connID: connID, token: *dec.SessionToken, peerID: dec.PeerID, outgoing: outgoing,
 			trustRev: uint64(dec.TrustRevision), wlock: make(chan struct{}, 1), pongSem: make(chan struct{}, 1),
 			clipAckCap: clipAckCap, ackQueue: make(chan wire.ClipAck, 32),
+			relayProfileCap: relayProfileCap, relayWake: make(chan struct{}, 1),
 			done: make(chan struct{}), exited: make(chan struct{}),
 		}
 		bodyConn.lastRxNs = &s.lastRxUnixNs
@@ -721,11 +761,13 @@ type session struct {
 	probes       map[string]chan struct{}
 	pongSem      chan struct{}
 	pongWG       sync.WaitGroup
-	clipAckCap   bool
-	ackMu        sync.Mutex
-	ackWaiters   map[string]chan string
-	ackQueue     chan wire.ClipAck
-	link         peerLinkCache // guarded by b.mu
+	clipAckCap      bool
+	ackMu           sync.Mutex
+	ackWaiters      map[string]chan string
+	ackQueue        chan wire.ClipAck
+	relayProfileCap bool
+	relayWake       chan struct{}
+	link            peerLinkCache // guarded by b.mu
 	done         chan struct{}
 	exited       chan struct{} // closed when serving ended and the Engine was told
 	once         sync.Once
@@ -820,6 +862,9 @@ func (b *Backend) establish(r *runState, s *session) bool {
 	b.wakeObservation()
 	if replaced != nil {
 		replaced.closeWith("state_replacement") // its serve goroutine reports the end
+	}
+	if s.relayProfileCap {
+		s.wakeRelayProfile()
 	}
 	go func() { defer r.wg.Done(); b.serve(s) }()
 	return true
@@ -994,8 +1039,81 @@ func (s *session) enqueueAck(ack wire.ClipAck) {
 	}
 }
 
+func (s *session) wakeRelayProfile() {
+	if !s.relayProfileCap || s.relayWake == nil {
+		return
+	}
+	select {
+	case s.relayWake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *session) sendRelayProfile() error {
+	s.b.mu.Lock()
+	provide := s.b.relayProvide
+	s.b.mu.Unlock()
+	if provide == nil || !s.relayProfileCap {
+		return nil
+	}
+	prof, ok := provide(s.peerID)
+	if !ok || prof.RelayOrigin == "" || prof.MailboxID == "" || prof.DeliveryToken == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(s.r.ctx, eventTimeout)
+	defer cancel()
+	if !s.acquireWrite(ctx) {
+		return nil
+	}
+	_ = s.conn.SetWriteDeadline(time.Now().Add(eventTimeout))
+	err := s.w.WriteJSON(wire.RelayProfile{
+		T:             "relay_profile",
+		V:             1,
+		RelayOrigin:   prof.RelayOrigin,
+		MailboxID:     prof.MailboxID,
+		DeliveryToken: prof.DeliveryToken,
+		MaxBytes:      prof.MaxBytes,
+		Epoch:         prof.Epoch,
+	})
+	_ = s.conn.SetWriteDeadline(time.Time{})
+	s.releaseWrite()
+	if err != nil {
+		return err
+	}
+	s.markTx()
+	return nil
+}
+
+func (s *session) handleRelayProfile(raw []byte) {
+	if !s.relayProfileCap {
+		return
+	}
+	var msg wire.RelayProfile
+	if err := json.Unmarshal(raw, &msg); err != nil || msg.V != 1 {
+		return
+	}
+	if len(msg.RelayOrigin) == 0 || len(msg.RelayOrigin) > 512 ||
+		len(msg.MailboxID) != 32 ||
+		len(msg.DeliveryToken) < 16 || len(msg.DeliveryToken) > 256 ||
+		msg.MaxBytes < 0 {
+		return
+	}
+	s.b.mu.Lock()
+	cb := s.b.onRelayPeer
+	s.b.mu.Unlock()
+	if cb != nil {
+		cb(s.peerID, plugin.RelayProfile{
+			RelayOrigin:   msg.RelayOrigin,
+			MailboxID:     msg.MailboxID,
+			DeliveryToken: msg.DeliveryToken,
+			MaxBytes:      msg.MaxBytes,
+			Epoch:         msg.Epoch,
+		})
+	}
+}
+
 func (s *session) ackLoop() {
-	if s.ackQueue == nil {
+	if s.ackQueue == nil && s.relayWake == nil {
 		return
 	}
 	for {
@@ -1021,6 +1139,11 @@ func (s *session) ackLoop() {
 				return
 			}
 			s.markTx()
+		case <-s.relayWake:
+			if err := s.sendRelayProfile(); err != nil {
+				s.closeWith(reason(err))
+				return
+			}
 		}
 	}
 }
@@ -1195,6 +1318,10 @@ func (b *Backend) recvLoop(s *session) error {
 		}
 		if typ == "clip_ack" {
 			s.handleClipAck(raw)
+			continue
+		}
+		if typ == "relay_profile" {
+			s.handleRelayProfile(raw)
 			continue
 		}
 		if typ == "introduce" {

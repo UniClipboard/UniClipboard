@@ -123,6 +123,7 @@ export interface DeviceBinding {
   last_active_ms?: number;
   last_error?: string;
   connection: "disconnected" | "connecting" | "connected" | string;
+  relay_route_ready?: boolean;
   ticket?: boolean;
 }
 
@@ -183,7 +184,20 @@ export interface EngineOperation {
     | "failed"
     | string;
   error?: EngineErrorPayload;
-  targets?: Array<{ peer_id?: string; state: "queued" | "sending" | "sent" | "failed" | "superseded" }>;
+  targets?: Array<{
+    backend_id?: string;
+    target_id?: string;
+    peer_id?: string;
+    state: "queued" | "sending" | "sent" | "discarded" | "failed" | "superseded";
+    receipt_stage?: "local_written" | "relay_stored" | "remote_received" | "remote_discarded" | string;
+    transport_route?: "p2p" | "relay" | "hybrid" | string;
+    progress?: {
+      bytes_sent: number;
+      total_bytes: number;
+      part_index?: number;
+      part_count?: number;
+    };
+  }>;
   pairing?: {
     peer_id: string;
     awaiting_local_approval: boolean;
@@ -345,8 +359,15 @@ export interface DirectorySyncSettings {
   automatic: boolean;
 }
 
+export interface RelaySyncSettings {
+  enabled: boolean;
+  url?: string;
+  max_bytes?: number;
+}
+
 export interface SyncSettings {
   directories: DirectorySyncSettings;
+  relay?: RelaySyncSettings;
   enabled: boolean;
   automatic: boolean;
   on_restore: boolean;

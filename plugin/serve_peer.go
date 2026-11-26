@@ -35,6 +35,28 @@ type PeerLinkCallbackAware interface {
 	SetLinkStatusChanged(fn func(peerID string))
 }
 
+// RelayProfile describes one peer's E2EE HTTP relay mailbox route and revocable
+// delivery token exchanged over an authenticated peer session (0035).
+type RelayProfile struct {
+	RelayOrigin   string
+	MailboxID     string
+	DeliveryToken string
+	MaxBytes      int64
+	Epoch         uint64
+}
+
+// PeerRelayBridge is an optional in-process hook allowing built-in peer_sessions
+// backends to exchange relay_profile control messages and accept non-blocking
+// dial wakeup hints from Engine's hybrid relay coordinator.
+type PeerRelayBridge interface {
+	SetRelayCallbacks(
+		provide func(peerID string) (RelayProfile, bool),
+		onPeerProfile func(peerID string, p RelayProfile),
+	)
+	PushRelayProfiles()
+	WakePeer(peerID string)
+}
+
 type peerState struct {
 	bound bool
 	bind  rpc.Bind

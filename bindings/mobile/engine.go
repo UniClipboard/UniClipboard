@@ -31,13 +31,15 @@ type EventSink interface {
 
 // Engine wraps *engine.Engine behind a gomobile-safe, JSON-typed boundary.
 type Engine struct {
-	e            *engine.Engine
-	dataDir      string
-	settingsPath string
-	cacheDir     string
-	settingsMu   sync.Mutex
-	previewMu    sync.Mutex
-	diagnostics  *mobileDiagnostics
+	e              *engine.Engine
+	dataDir        string
+	settingsPath   string
+	cacheDir       string
+	settingsMu     sync.Mutex
+	relayURL       string
+	relayAccessKey string
+	previewMu      sync.Mutex
+	diagnostics    *mobileDiagnostics
 
 	subMu     sync.Mutex
 	sub       *engine.Subscription
@@ -50,6 +52,10 @@ type engineConfigDTO struct {
 	CacheDir         string                   `json:"cache_dir,omitempty"`
 	DeviceName       string                   `json:"device_name,omitempty"`
 	RendezvousURL    string                   `json:"rendezvous_url,omitempty"`
+	RelayEnabled     *bool                    `json:"relay_enabled,omitempty"`
+	RelayURL         string                   `json:"relay_url,omitempty"`
+	RelayAccessKey   string                   `json:"relay_access_key,omitempty"`
+	RelayMaxBytes    int64                    `json:"relay_max_bytes,omitempty"`
 	HostCapabilities *engine.HostCapabilities `json:"host_capabilities,omitempty"`
 }
 
@@ -101,6 +107,7 @@ func loadSettingsOrDefault(path string, cfg engineConfigDTO) (engine.Settings, e
 			if saved.RendezvousURL == "" && strings.TrimSpace(cfg.RendezvousURL) != "" {
 				saved.RendezvousURL = strings.TrimSpace(cfg.RendezvousURL)
 			}
+			applyRelayConfigDefaults(&saved, cfg)
 			return saved, nil
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -112,7 +119,27 @@ func loadSettingsOrDefault(path string, cfg engineConfigDTO) (engine.Settings, e
 	if u := strings.TrimSpace(cfg.RendezvousURL); u != "" {
 		def.RendezvousURL = u
 	}
+	applyRelayConfigDefaults(&def, cfg)
 	return def, nil
+}
+
+func applyRelayConfigDefaults(s *engine.Settings, cfg engineConfigDTO) {
+	if s.Sync.Relay.URL == "" {
+		if u := strings.TrimSpace(cfg.RelayURL); u != "" {
+			s.Sync.Relay.URL = u
+		}
+	}
+	if s.Sync.Relay.AccessKey == "" {
+		if k := strings.TrimSpace(cfg.RelayAccessKey); k != "" {
+			s.Sync.Relay.AccessKey = k
+		}
+	}
+	if s.Sync.Relay.MaxBytes == 0 && cfg.RelayMaxBytes > 0 {
+		s.Sync.Relay.MaxBytes = cfg.RelayMaxBytes
+	}
+	if cfg.RelayEnabled != nil && !s.Sync.Relay.Enabled && s.Sync.Relay.URL != "" {
+		s.Sync.Relay.Enabled = *cfg.RelayEnabled
+	}
 }
 
 func saveSettingsAtomic(path string, s any) error {
@@ -253,11 +280,13 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 	}
 	diagnostics.controller.SetSyncCollector(peer.Collect)
 	return &Engine{
-		e:            eng,
-		dataDir:      dataDir,
-		settingsPath: settingsPath,
-		cacheDir:     cacheDir,
-		diagnostics:  diagnostics,
+		e:              eng,
+		dataDir:        dataDir,
+		settingsPath:   settingsPath,
+		cacheDir:       cacheDir,
+		relayURL:       settings.Sync.Relay.URL,
+		relayAccessKey: settings.Sync.Relay.AccessKey,
+		diagnostics:    diagnostics,
 	}, nil
 }
 
@@ -355,6 +384,9 @@ func (m *Engine) UpdateSettings(reqJSON string) (string, error) {
 	if err != nil {
 		return "", wrapErr(errors.New("invalid expected_revision"))
 	}
+	if req.Value.Sync.Relay.AccessKey == "" && req.Value.Sync.Relay.URL == m.relayURL {
+		req.Value.Sync.Relay.AccessKey = m.relayAccessKey
+	}
 	st, err := m.e.UpdateSettings(context.Background(), engine.UpdateSettingsRequest{
 		ExpectedRevision: rev,
 		Value:            req.Value,
@@ -362,6 +394,8 @@ func (m *Engine) UpdateSettings(reqJSON string) (string, error) {
 	if err != nil {
 		return "", wrapErr(err)
 	}
+	m.relayURL = req.Value.Sync.Relay.URL
+	m.relayAccessKey = req.Value.Sync.Relay.AccessKey
 	if serr := saveSettingsAtomic(m.settingsPath, st.Value); serr != nil {
 		return "", wrapErr(serr)
 	}

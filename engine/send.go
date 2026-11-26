@@ -126,6 +126,29 @@ func (e *Engine) reportTargetReceipt(id OperationID, k targetKey, st TargetState
 	}
 }
 
+func (e *Engine) reportTargetRoute(id OperationID, k targetKey, route TransportRoute) {
+	if route == "" {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	o := e.ops.byID[id]
+	if o == nil {
+		return
+	}
+	for i := range o.op.Targets {
+		if x := &o.op.Targets[i]; x.BackendID == k.backend && x.TargetKind == k.kind && x.TargetID == k.id {
+			if x.TransportRoute == route {
+				return
+			}
+			x.TransportRoute = route
+			o.op.UpdatedAtMs = time.Now().UnixMilli()
+			e.commitObjsLocked([]ObjectRef{{Type: "operation", ID: string(id)}}, EventOperations)
+			return
+		}
+	}
+}
+
 // reportTargetProgress updates in-memory byte/part progress for one in-flight
 // target and coalesces EventOperations notifications to avoid event-queue floods.
 func (e *Engine) reportTargetProgress(id OperationID, k targetKey, stage ReceiptStage, p TransferProgress) {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -42,6 +43,39 @@ auto_file_max_bytes = "100MB"
 	}
 }
 
+func TestRelayConfigParseAndRedaction(t *testing.T) {
+	c, err := Parse([]byte(`
+[sync.relay]
+enabled = true
+url = "https://relay.example.com/"
+access_key = "super-secret-relay-key"
+max_bytes = "30MB"
+`))
+	if err != nil {
+		t.Fatalf("Parse relay config: %v", err)
+	}
+	s := c.Settings()
+	if !s.Sync.Relay.Enabled || s.Sync.Relay.URL != "https://relay.example.com/" ||
+		s.Sync.Relay.AccessKey != "super-secret-relay-key" || s.Sync.Relay.MaxBytes != 30<<20 {
+		t.Fatalf("unexpected relay settings: %+v", s.Sync.Relay)
+	}
+	// AccessKey must never leak in GET /v1/config JSON or Engine settings JSON.
+	cfgJSON, err := json.Marshal(Static(c).State())
+	if err != nil {
+		t.Fatalf("marshal config state: %v", err)
+	}
+	if strings.Contains(string(cfgJSON), "super-secret-relay-key") {
+		t.Fatalf("relay access_key leaked in config state JSON: %s", cfgJSON)
+	}
+	engJSON, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("marshal engine settings: %v", err)
+	}
+	if strings.Contains(string(engJSON), "super-secret-relay-key") {
+		t.Fatalf("relay access_key leaked in engine settings JSON: %s", engJSON)
+	}
+}
+
 func TestParseRejects(t *testing.T) {
 	for name, in := range map[string]string{
 		"unknown key":         `devce_name = "x"`,
@@ -71,6 +105,8 @@ func TestParseRejects(t *testing.T) {
 		"preview on text":     "[plugins.instances.\"builtin.text\".preview]\nlink_preview = false",
 		"preview bad timeout": "[plugins.instances.\"builtin.preview\".preview]\nrequest_timeout_sec = 99",
 		"preview bad domain":  "[plugins.instances.\"builtin.preview\".preview]\nexcluded_domains = [\"bad host\"]",
+		"relay bad url":       "[sync.relay]\nenabled = true\nurl = \"ftp://relay.example\"",
+		"relay over hard cap": "[sync.relay]\nenabled = true\nurl = \"https://relay.example\"\nmax_bytes = \"5GiB\"",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected an error", name)

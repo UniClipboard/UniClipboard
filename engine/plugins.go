@@ -206,6 +206,9 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 						}
 					})
 				}
+				if rb, ok := in.Plugin.(plugin.PeerRelayBridge); ok && e.relay != nil {
+					rb.SetRelayCallbacks(e.relay.provideRelayProfile, e.relay.onPeerRelayProfile)
+				}
 				if berr := peerAware.Bind(ctx, pp.bindMsg()); berr != nil {
 					return invalidPlugin(spec.ID, "Bind failed")
 				}

@@ -100,6 +100,24 @@ func (p *Plugin) SetLinkStatusChanged(fn func(peerID string)) {
 		p.b.SetLinkStatusChanged(fn)
 	}
 }
+func (p *Plugin) SetRelayCallbacks(
+	provide func(peerID string) (plugin.RelayProfile, bool),
+	onPeerProfile func(peerID string, prof plugin.RelayProfile),
+) {
+	if p.b != nil {
+		p.b.SetRelayCallbacks(provide, onPeerProfile)
+	}
+}
+func (p *Plugin) PushRelayProfiles() {
+	if p.b != nil {
+		p.b.PushRelayProfiles()
+	}
+}
+func (p *Plugin) WakePeer(peerID string) {
+	if p.b != nil {
+		p.b.WakePeer(peerID)
+	}
+}
 func (p *Plugin) LinkSnapshots() map[string]rpc.PeerLinkStatus {
 	if p.b == nil {
 		return nil

@@ -169,18 +169,19 @@ func stageAndMigrate(root string) {
 	check(err)
 
 	now := time.Now().UnixMilli()
+	day := int64(24 * time.Hour / time.Millisecond)
 	rows := []struct {
 		hash, typ, text, name, uri string
 		size                       int64
 		ts                         int64
 		star, pin, del             int
 	}{
-		{"mob-txt-0", "Text", "Legacy mobile text fixture", "", "", 26, now - 8000, 1, 1, 0},
+		{"mob-txt-0", "Text", "Legacy mobile text fixture", "", "", 26, now - 181*day, 1, 1, 0},
 		{"mob-png-1", "Image", "", "shot.png", "file:///var/mobile/Containers/Data/Application/OLD-UUID/Documents/clipboards/history/Image-mob-png-1/shot.png", int64(len(pngBytes)), now - 7000, 0, 1, 0},
 		{"mob-jpg-2", "Image", "", "cam.jpg", "", int64(len(jpgBytes)), now - 6000, 1, 0, 0},
 		{"mob-heic-3", "Image", "", "live.heic", "", int64(len(heicBytes)), now - 5000, 0, 0, 0},
-		{"mob-doc-4", "File", "", "notes.txt", "", int64(len(docBytes)), now - 4000, 0, 0, 0},
-		{"mob-grp-5", "Group", "", "bundle.zip", "", int64(len(zipBytes)), now - 3000, 0, 0, 0},
+		{"mob-doc-4", "File", "", "notes.txt", "", int64(len(docBytes)), now - 181*day, 0, 0, 0},
+		{"mob-grp-5", "Group", "", "bundle.zip", "", int64(len(zipBytes)), now - 179*day, 0, 0, 0},
 		{"mob-temp-6", "File", "", "clip-temp-6.txt", "file:///data/user/0/app.uniclipboard.android/cache/temp_files/clip-temp-6.txt", int64(len(tempBytes)), now - 2000, 0, 0, 0},
 		{"mob-missing-7", "File", "", "deferred.txt", "", int64(len(repairBytes)), now - 1000, 0, 0, 0},
 		{"mob-deleted-8", "Text", "soft-deleted must stay excluded", "", "", 31, now - 500, 1, 1, 1},
@@ -229,11 +230,13 @@ func stageAndMigrate(root string) {
 	check(sess.MarkComplete())
 
 	check(os.WriteFile(filepath.Join(root, "expected.json"), []byte(encode(map[string]string{
-		"heic_sha256":   shaHex(heicBytes),
-		"doc_sha256":    shaHex(docBytes),
-		"zip_sha256":    shaHex(zipBytes),
-		"temp_sha256":   shaHex(tempBytes),
-		"repair_sha256": shaHex(repairBytes),
+		"old_created_ms":           fmt.Sprint(now - 181*day),
+		"within_window_created_ms": fmt.Sprint(now - 179*day),
+		"heic_sha256":              shaHex(heicBytes),
+		"doc_sha256":               shaHex(docBytes),
+		"zip_sha256":               shaHex(zipBytes),
+		"temp_sha256":              shaHex(tempBytes),
+		"repair_sha256":            shaHex(repairBytes),
 	})), 0o600))
 }
 
@@ -265,6 +268,7 @@ func readAndVerify(root string) {
 				Text string `json:"text"`
 			}](must(m.ReadHistoryTextPreview(string(it.ID), 512)))
 			if preview.Text == "Legacy mobile text fixture" {
+				require(fmt.Sprint(it.CreatedAtMs) == expected["old_created_ms"], "old text creation time changed")
 				require(slices.Equal(it.Tags, []string{"pinned", "starred"}), fmt.Sprintf("unexpected text tags: %v", it.Tags))
 				sawPinnedStarredText = true
 			}
@@ -278,6 +282,12 @@ func readAndVerify(root string) {
 				} `json:"files"`
 			}](must(m.StageHistoryExport(string(it.ID), false)))
 			require(len(staged.Files) == 1, fmt.Sprintf("expected 1 file part, got %d", len(staged.Files)))
+			switch staged.Files[0].Name {
+			case "notes.txt":
+				require(fmt.Sprint(it.CreatedAtMs) == expected["old_created_ms"], "old file creation time changed")
+			case "bundle.zip":
+				require(fmt.Sprint(it.CreatedAtMs) == expected["within_window_created_ms"], "younger file creation time changed")
+			}
 			seenFiles[staged.Files[0].Name] = fileSHA(staged.Files[0].Path)
 			_ = os.RemoveAll(staged.Directory)
 		}
@@ -298,7 +308,7 @@ func readAndVerify(root string) {
 			"wal_readonly_preservation",
 			"partial_repair_idempotence",
 			"cache_temp_files_remapping",
-			"second_process_reopen_and_sha256_readback",
+			"first_open_and_relaunch_preserve_old_history_timestamps_and_payloads",
 		},
 		"items": len(page.Items),
 	}))
@@ -321,7 +331,7 @@ func main() {
 	build.Stdout = os.Stdout
 	build.Stderr = os.Stderr
 	check(build.Run())
-	for _, stage := range []string{"write", "read"} {
+	for _, stage := range []string{"write", "read", "read"} {
 		cmd := exec.Command(bin, stage, dir)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

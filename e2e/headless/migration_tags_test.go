@@ -274,6 +274,7 @@ func TestProductionMigrationTags(t *testing.T) {
 		cfg.DeviceName = "preserved-target"
 		cfg.Desktop.ColorMode = "system"
 		cfg.Telemetry.Analytics.Enabled = true
+		cfg.History.ExcludedTags = []string{"keep-existing"}
 		cfg.Desktop.TagSidebar[colorKey("builtin:link")] = false
 		cfg.Desktop.TagSidebar[colorKey("builtin:image")] = true
 		cfg.Desktop.TagColors[colorKey("Links")] = "blue"
@@ -483,7 +484,7 @@ func TestProductionMigrationTags(t *testing.T) {
 	checkColors(readConfig(filepath.Join(work, "default-colors")), map[string]string{"builtin:link": "blue", "builtin:code": "purple", "builtin:image": "green", "builtin:folder": "gray"})
 	need(t, os.WriteFile(layoutPath, layout, 0600))
 	checks = append(checks, "invalid color layouts and target config report partial; missing layout preserves v1 defaults")
-	// Each failure case uses an independent target and preserves its source snapshot.
+	// An index-only favorite in a schema without persisted favorite state is unsupported.
 	db, err = sql.Open("sqlite", dbpath)
 	need(t, err)
 	_, err = db.Exec("INSERT INTO search_entry_tag VALUES('default','entry-duplicate','favorited')")
@@ -498,6 +499,119 @@ func TestProductionMigrationTags(t *testing.T) {
 	if !reflect.DeepEqual(variantBefore, snapshot()) {
 		t.Fatal("unsupported source changed")
 	}
+
+	// Use the exact v1 favorite column. One favorite has no index row and a
+	// stale index row claims a non-favorite is favorited.
+	db, err = sql.Open("sqlite", dbpath)
+	need(t, err)
+	_, err = db.Exec(`ALTER TABLE clipboard_entry ADD COLUMN is_favorited INTEGER NOT NULL DEFAULT 0;
+UPDATE clipboard_entry SET is_favorited=1 WHERE entry_id IN ('entry-duplicate','entry-file','entry-deleted');
+INSERT INTO search_entry_tag VALUES('default','entry-image','favorited');`)
+	need(t, err)
+	need(t, db.Close())
+	favoriteBefore := snapshot()
+	favoriteTarget := filepath.Join(work, "favorites")
+	favoriteReport := migrate(favoriteTarget, 0)
+	receipt["favorites_report"] = favoriteReport
+	if favoriteReport["verified"] != float64(4) || favoriteReport["unsupported_tags"] != float64(0) {
+		t.Fatal(favoriteReport)
+	}
+	checkFavorites := func(dir string) map[string]engine.HistoryItem {
+		items := read(dir)
+		for record, tags := range expected {
+			want := slices.Clone(tags)
+			if record == "entry-duplicate" || record == "entry-file" {
+				want = append(want, "favorite")
+			}
+			if !slices.Equal(items[record].Tags, want) {
+				t.Fatalf("%s: tags=%v want=%v", record, items[record].Tags, want)
+			}
+		}
+		return items
+	}
+	favoriteItems := checkFavorites(favoriteTarget)
+	wantProtection := []string{"favorite"}
+	if got := readConfig(favoriteTarget).History.ExcludedTags; !slices.Equal(got, wantProtection) {
+		t.Fatalf("default v1 favorite protection was not imported: %v", got)
+	}
+	retry := migrate(target, 0)
+	receipt["favorites_repair_report"] = retry
+	if retry["imported"] != float64(0) || retry["tags_repaired"] != float64(2) {
+		t.Fatal(retry)
+	}
+	for record, item := range checkFavorites(target) {
+		if item.ID != initial[record].ID {
+			t.Fatal("favorite repair changed the history ID", record)
+		}
+	}
+	if got := readConfig(target).History.ExcludedTags; !slices.Equal(got, []string{"keep-existing"}) {
+		t.Fatal("existing V2 cleanup exclusions changed", got)
+	}
+	if repeated := migrate(target, 0); repeated["tags_repaired"] != float64(0) {
+		t.Fatal(repeated)
+	}
+	editedTarget, err := engine.New(ctx, engine.Options{DataDir: target, MigrationMode: true})
+	need(t, err)
+	removed, err := editedTarget.GetItem(ctx, initial["entry-duplicate"].ID)
+	need(t, err)
+	withoutFavorite := []string{"builtin:link"}
+	_, err = editedTarget.UpdateItem(ctx, engine.UpdateItemRequest{ID: removed.ID, ExpectedRevision: removed.Revision, Tags: &withoutFavorite})
+	need(t, err)
+	need(t, editedTarget.Close(ctx))
+	preserved := migrate(target, 3)
+	receipt["favorite_target_edit_report"] = preserved
+	if preserved["tags_repaired"] != float64(0) || preserved["tag_repairs_skipped"] != float64(1) ||
+		!slices.Equal(read(target)["entry-duplicate"].Tags, withoutFavorite) {
+		t.Fatal("migration restored a favorite removed in V2", preserved)
+	}
+	saveConfig(favoriteTarget, func(cfg *config.Config) {
+		cfg.Telemetry.Enabled = false
+		cfg.Sync.Enabled = false
+	})
+	var favoriteCounts []int
+	for restart := 0; restart < 2; restart++ {
+		p := start(t, filepath.Join(work, "unicd"), nil, append(env, "UNIC_HOME="+favoriteTarget), filepath.Join(work, "favorite-daemon.log"))
+		defer p.stop()
+		c := api.NewClient(filepath.Join(favoriteTarget, "unic.sock"))
+		until(t, "favorite daemon", func() bool { _, err := c.HistoryTags(ctx); return err == nil })
+		policy, err := c.Config(ctx)
+		need(t, err)
+		if !policy.Config.History.AutoCleanup || policy.Config.History.RetentionDays != 180 || !slices.Equal(policy.Config.History.ExcludedTags, wantProtection) {
+			t.Fatalf("unexpected running cleanup policy: %+v", policy.Config.History)
+		}
+		favorites, err := c.SearchHistory(ctx, engine.HistorySearchRequest{Query: engine.HistorySearchQuery{Tags: []string{"favorite"}}})
+		need(t, err)
+		all, err := c.ListHistory(ctx, "", "")
+		need(t, err)
+		if len(favorites.Hits) != 2 || len(all.Items) != 2 {
+			t.Fatalf("after cleanup: favorites=%d history=%d", len(favorites.Hits), len(all.Items))
+		}
+		favoriteCounts = append(favoriteCounts, len(favorites.Hits))
+		for _, record := range []string{"entry-duplicate", "entry-file"} {
+			id := string(favoriteItems[record].ID)
+			if !slices.ContainsFunc(favorites.Hits, func(hit api.HistorySearchHit) bool { return hit.Item.ID == id }) {
+				t.Fatal("missing migrated favorite after restart", record)
+			}
+		}
+		p.stop()
+	}
+	receipt["favorite_counts_after_daemon_start"] = favoriteCounts
+	checks = append(checks, "persisted v1 favorites, stale search mirror ignored, old favorites survive two daemon starts, automatic repair is idempotent")
+	if !reflect.DeepEqual(favoriteBefore, snapshot()) {
+		t.Fatal("favorite source changed")
+	}
+
+	settingsPath := filepath.Join(source, "settings.json")
+	need(t, os.WriteFile(settingsPath, []byte(`{"retention_policy":{"skip_pinned":false}}`), 0600))
+	noProtection := filepath.Join(work, "favorites-no-protection")
+	receipt["favorites_without_protection_report"] = migrate(noProtection, 0)
+	checkFavorites(noProtection)
+	if got := readConfig(noProtection).History.ExcludedTags; len(got) != 0 {
+		t.Fatal("source opted out of favorite cleanup protection", got)
+	}
+	checks = append(checks, "v1 opt-out and existing v2 cleanup exclusions are preserved")
+
+	// Each damaged-assignment case uses an independent target.
 	db, err = sql.Open("sqlite", dbpath)
 	need(t, err)
 	_, err = db.Exec("DELETE FROM search_entry_tag WHERE tag_id='favorited'; UPDATE history_tag_assignment SET tags_ct=X'0001'")
@@ -528,7 +642,7 @@ func TestProductionMigrationTags(t *testing.T) {
 	if !reflect.DeepEqual(variantBefore, snapshot()) {
 		t.Fatal("orphaned source changed")
 	}
-	checks = append(checks, "unsupported favorites, corrupted assignments and missing definitions report partial")
+	checks = append(checks, "unsupported index-only favorites, corrupted assignments and missing definitions report partial")
 	receipt["source_unchanged"] = true
 	checks = append(checks, "source profile and implementation checksums unchanged")
 }

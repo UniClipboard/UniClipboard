@@ -114,6 +114,10 @@ The reserved `favorite` tag is local history metadata. Desktop writes it through
 
 The offline v1 importer preserves canonical link, image, folder and code memberships from the profile-scoped v1 search tag table, separately from encrypted custom assignments. The default classifier has no code-detection rule. A custom rule may target `builtin:code`. The importer also preserves palette and hexadecimal colors from the v1 presentation layout through host configuration. Every CLI and Desktop migration automatically fills safe missing tags and colors while preserving target edits, existing color overrides and deletions. See the [history contract](../contracts/history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252).
 
+The importer maps the persisted v1 favorite flag to `favorite`. When v1
+protects favorites from cleanup, the importer fills an unset v2
+`history.excluded_tags` with `["favorite"]` before importing entries.
+
 Windows drive-letter source databases use absolute SQLite file URIs with an empty authority. Source databases remain read-only and query-only.
 
 Offline CLI and Desktop imports share the profile initialization receipt and

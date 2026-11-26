@@ -241,7 +241,14 @@ reserved `builtin:` namespace are rejected as unsupported source format.
 | `image` | `builtin:image` | Preserve membership, including image-file membership |
 | `directory` | `builtin:folder` | Preserve membership; directory payloads remain ZIP imports |
 | `code` | `builtin:code` | Preserve membership; Desktop provides a localized built-in filter |
-| `favorited` | None | Not imported; increment `unsupported_tags` and report `partial` |
+
+The importer reads the persisted favorite flag, `clipboard_entry.is_favorited`,
+when the source schema provides it. It adds the reserved v2 `favorite` tag
+to each live entry with the flag set. The `favorited` search index row is a
+derived copy and does not affect the result when the flag exists. A source
+without the flag column can still be imported. Any profile-scoped
+`favorited` index row in that older schema increments `unsupported_tags`
+and reports `partial`.
 
 The importer preserves custom names, multiple associations and unassigned
 custom definitions. It does not reconstruct or rebuild the v1 search index.
@@ -268,9 +275,9 @@ remaining `tag_mismatches` separately from content verification.
 
 Any later metadata edit may advance `UpdatedAtMs`. Verification still requires
 the original creation time and exact content bytes. It checks the original
-activity time only at revision 1. Remaining tag differences or deleted mapped
-records remain verification failures and report `partial`; they require manual
-review in v2. See the [repeatable process receipt](../exec/2252-v1-migration-tags.md).
+activity time only at revision 1. Skipped repairs for missing source tags and
+verification failures for deleted mapped records report `partial`. Target-only
+tags are preserved. See the [repeatable process receipt](../exec/2252-v1-migration-tags.md).
 
 ### v1 tag color preservation
 
@@ -309,6 +316,16 @@ the Desktop sidebar. For theme and usage events, fields present in
 `desktop-settings.json` take precedence over fields in `settings.json`. The
 display name comes from `settings.json`. The usage preference applies only to
 `telemetry.analytics.enabled`.
+
+For a source with the persisted favorite flag, `settings.json` supplies
+`retention_policy.skip_pinned`. Its v1 default is true. When enabled, the
+importer writes `history.excluded_tags = ["favorite"]` before importing
+history if that v2 field is absent. This exclusion protects the imported
+favorites during startup and subsequent automatic history cleanup. An explicit
+v2 exclusion list takes precedence, including an empty list. Turning off
+`skip_pinned` in v1 leaves v2 exclusions untouched. The import does not
+change the target cleanup switch, retention age, count limit or explicit item
+expiry.
 
 Sidebar visibility comes from `history-tags/layout.v1.json`. An existing layout
 sets visibility for mapped built-in tags and authenticated custom tags. Missing

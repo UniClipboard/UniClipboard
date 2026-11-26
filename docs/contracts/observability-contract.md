@@ -8,7 +8,7 @@
 
 ## 1. 范围与不变量
 
-This implementation provides logs, metrics, sampled submission traces and product events. Cross-device propagation, remote control, crash reports, durable upload and production Collector deployment remain outside scope.
+This implementation provides logs, metrics, sampled traces (covering explicit submissions, automatic clipboard capture, Actions, sync send/receive with cross-device propagation, clipboard application, and mobile bindings) and product events. Remote control, crash reports, durable upload and production Collector deployment remain outside scope.
 `telemetry.traces.enabled` is accepted and defaults to true.
 
 1. All four signals default enabled. The TOML master and each signal switch can disable upload. Log level changes never change these switches.
@@ -427,7 +427,7 @@ SDK 内部队列必须提供可验证的拒绝计数，或由适配层接管唯�
 
 ## 8. 隐私与远程 Resource
 
-Resource 只允许 `service.name=unicd`、`service.version`、`os.type`、`host.arch`。
+Resource 只允许 `service.name`（固定枚举：`unicd` 或移动端 `unic-mobile`）、`service.version`、`os.type`、`host.arch`。
 构建版本只能来自发布元数据，开发版本使用固定 `dev`，不能填本机路径或脏工作区摘要。
 OS 与架构使用构建平台的有限值。禁止默认探测主机名、用户名、进程参数、环境变量和安装路径。
 OTLP 使用标准协议版本；本次不修改 wire、插件 RPC 或数据库业务协议。
@@ -688,44 +688,48 @@ This is a best-effort snapshot of already-written bytes. It does not flush servi
 queues or claim an atomic cross-file view; the last JSONL record can be incomplete
 if export overlaps its write. No new service endpoint or configuration key is added.
 
-## 13. Sampled explicit-submission traces
+## 13. Sampled distributed, pipeline and mobile traces
 
-The service owns the Provider, exporter and processor. The public Engine Options
-and device/plugin protocols gain no OTel types or propagation fields. The exact
-endpoint and release credential binding in section 5 also applies to traces.
-A trace-capable hosted destination must be independently verified before hosted
-acceptance; working logs and metrics do not establish trace capability.
+The service (`unicd`) and the in-process mobile binding (`unic-mobile`) each own their TracerProvider, exporter and processor through `internal/observability`. The public `engine.Options.Tracer` hook uses standard-library and public Engine types only; `engine` gains no OTel dependencies. The exact endpoint and release credential binding in section 5 also applies to traces.
+A trace-capable hosted destination must be independently verified before hosted acceptance; working logs and metrics do not establish trace capability.
 
-| Span | Start/end boundary | Parent |
-|---|---|---|
-| `unic.submission` | Unique admitted explicit host work through its terminal local result | New local root |
-| `unic.commit` | The Engine `CommitContent` call and its returned local result | Same-generation submission |
+### 13.1 Span topology
 
-Import rejection can end the root without a child. Idempotent host retries create
-neither another root nor another commit span. Root and child do not measure send
-or paste completion. Automatic clipboard, Action and migration roots are excluded.
-The root discards incoming trace context, baggage and socket metadata. A private
-context value carries only a local generation and SpanContext. It crosses no wire.
+| Span | Kind | Start/end boundary | Parent |
+|---|---|---|---|
+| `unic.submission` | `internal` | Unique admitted explicit host submission (`host.commitExplicit`, mobile `CommitContent` / `CommitSharedItem` / `ResendHistoryItem`) through its terminal local result | New local root |
+| `unic.observe` | `internal` | Admitted `ObserveClipboard` change that triggers a new submission through commit completion (`baseline`, `unchanged`, `empty`, `echo` and duplicate sequence retries create no span) | New local root |
+| `unic.action` | `internal` | Unique admitted `RunAction` execution through completion (idempotent retries create no span) | New local root |
+| `unic.commit` | `internal` | Unique Engine `runSubmission` commit execution (process, persist and dispatch) through local commit result | Same-generation `unic.submission`, `unic.observe`, `unic.action`, or new local root when invoked directly |
+| `unic.sync.send` | `client` | Per-target sync send execution after dequeue through backend send completion | Same-generation `unic.commit` |
+| `unic.sync.receive` | `server` | Inbound receive admission (`admitReceive`) through body read, verification, processing, persistence and publication (or early rejection/discard) | Valid remote W3C `traceparent` from `rpc.Clip` / `wire.Clip`, or new local root when absent or invalid |
+| `unic.apply` | `internal` | Apply ticket creation (`BeginApply` / `BeginApplyHistory`) through `ReportApplyResult` or ticket invalidation (`cancelled`) | Same-generation `unic.sync.receive` for received `BeginApply`, or new local root for `BeginApplyHistory` and unsampled receives |
 
-Both spans use only `result=succeeded|failed|cancelled` and optional `code` from
-the finite Engine code set. Unknown failures reduce to `internal`. Success omits
-code. Failure sets Error status with an empty description. There are no events,
-links, tracestate, arbitrary attributes or raw errors. Resource is exactly service
-name/version, OS type and architecture. The final OTLP transport replaces Resource
-and strips Scope attributes before network I/O. Body, paths, addresses, identities,
-request IDs, tickets, credentials and clipboard/source metadata are prohibited.
+Import rejection before `CommitContent` can end `unic.submission` without a `unic.commit` child. Idempotent retries create neither duplicate roots nor duplicate `unic.commit` / `unic.action` spans. `unic.commit` ends before publication of `entry.done` so child timing remains contained within `unic.submission`, `unic.observe` and `unic.action`. Local host HTTP/socket headers (`traceparent`, `tracestate`, `baggage`) and socket metadata are always discarded.
 
-Sampling is `ParentBased(TraceIDRatioBased(0.01))`. Children use the root decision.
+### 13.2 Cross-device propagation
+
+Cross-device propagation uses W3C Trace Context v00 `traceparent` only (`00-<32 lowercase hex trace-id>-<16 lowercase hex span-id>-<2 lowercase hex flags>`, with non-zero trace and span IDs). `tracestate` and `baggage` are never propagated or accepted.
+
+- Outbound: `unic.sync.send` writes `traceparent` into optional `rpc.Clip.TraceParent` and built-in `wire.Clip.TraceParent` (wire version remains 1) **only when the local span is sampled** (`flags=01`). Unsampled traffic carries no propagation field (zero extra wire bytes).
+- Inbound: the built-in session layer validates and sanitizes `wire.Clip.TraceParent` before RPC admission. Malformed or non-conforming peer `traceparent` values are silently dropped (treated as empty) and never reject a valid clip or break synchronization.
+- External `peer_sessions` plugins may omit or forward the optional `traceparent` field on `rpc.Clip` without breaking protocol compatibility.
+
+### 13.3 Attributes, sampling, bounds and lifecycle
+
+Spans admit only finite allowlisted attributes (SpanLimits: at most 5 attributes, value length at most 64 bytes):
+
+- `result`: `succeeded|failed|cancelled|superseded|duplicate|policy_filtered|rejected|deferred`
+- `code`: optional finite public `engine.Code` (unknown failures reduce to `internal`; omitted on `succeeded`, `duplicate`, `policy_filtered`, `superseded`)
+- `backend`: optional `none|tailcat|external`
+- `content_kind`: optional `text|image|files|mixed|unknown`
+- `action_category`: optional `builtin|external` (for `unic.action`)
+
+Failure (`failed`, `rejected`, `cancelled`) sets Error status with an empty description. There are no events, links, tracestate, arbitrary attributes or raw errors. Resource is strictly `service.name` (`unicd` or `unic-mobile`), `service.version`, `os.type` and `host.arch`. The final OTLP transport replaces Resource and strips Scope attributes before network I/O. Body, paths, addresses, identities, request IDs, tickets, credentials, plugin names and clipboard/source metadata are prohibited.
+
+Sampling is `ParentBased(TraceIDRatioBased(0.01))`. Local children and remote receivers follow the parent decision when traces are enabled; a sampled remote parent produces a sampled `unic.sync.receive` and `unic.apply` on the receiving device under the same trace ID.
 There is one nonblocking queue of 256 completed spans and a batch of at most 128.
-The worker exports at batch capacity or every five seconds. The official HTTP
-exporter has a three-second timeout, no retries and no redirects. Synthetic E2E
-builds may link an internal sampling override; TOML and runtime environment cannot
-alter it. Queue pressure can independently drop spans and leave partial trees.
-Local `TelemetryState.traces` uses the same SignalState schema as logs/metrics.
-It reports process-total dropped records, finite failures and current admission.
-Health metrics add the `traces` signal without changing existing signal values.
+The worker exports at batch capacity or every five seconds. The official HTTP exporter has a three-second timeout, no retries and no redirects. Synthetic E2E builds may link an internal sampling override; TOML and runtime environment cannot alter it. Queue pressure can independently drop spans and leave partial trees.
+Local `TelemetryState.traces` uses the same SignalState schema as logs/metrics. It reports process-total dropped records, finite failures and current admission. Health metrics include the `traces` signal without changing existing signal values.
 
-Disable closes admission, cancels in-flight export, discards queued/batched spans
-and waits for cleanup. Re-enable creates a new Provider/queue; old contexts cannot
-enter it. Shutdown flushes concurrently with logs, metrics and analytics within
-the existing shared two-second budget. No disk backlog is created.
+Disable closes admission, cancels in-flight export, discards queued/batched spans and waits for cleanup. Re-enable creates a new Provider/queue; old contexts (including retained receipt trace contexts) cannot enter it. Shutdown flushes concurrently with logs, metrics and analytics within the existing shared two-second budget. No disk backlog is created.

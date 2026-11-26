@@ -83,12 +83,20 @@ func (b *peerProcBackend) OpenReceive(_ context.Context, o rpc.ReceiveOpen) (rpc
 			outcome = "rejected"
 		}
 		backend := diagnosticBackend(b.id)
+		_, endTrace := b.e.startSpan(context.Background(), TraceSpanSpec{
+			Name:         "unic.sync.receive",
+			Kind:         TraceSpanServer,
+			RemoteParent: o.Clip.TraceParent,
+			Backend:      backend,
+			ContentKind:  kind,
+		})
+		endTrace(TraceSpanFinish{Result: outcome, Code: code, Backend: backend, ContentKind: kind})
 		b.e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: backend, ContentKind: kind})
 		b.e.logPipelineFailure(context.Background(), "receive", outcome, backend, kind, code)
 		return discard, nil
 	}
 	adm, ok := b.e.admitReceive(receiveRequest{
-		sourceApplication: o.Clip.SourceApplication, backend: b.id, source: DeviceID(peer), origin: o.Clip.Origin,
+		sourceApplication: o.Clip.SourceApplication, traceParent: o.Clip.TraceParent, backend: b.id, source: DeviceID(peer), origin: o.Clip.Origin,
 		transfer: o.Clip.WireID, view: o.Clip.Hash, total: total, parts: parts,
 	})
 	if !ok {

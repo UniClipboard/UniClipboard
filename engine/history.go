@@ -748,39 +748,55 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 		return ApplyTicket{}, historyStoreErr(sourceErr)
 	}
 	e.obsMu.Lock()
-	defer e.obsMu.Unlock()
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	unlock := func() {
+		e.mu.Unlock()
+		e.obsMu.Unlock()
+	}
 	if e.life != LifecycleRunning {
+		unlock()
 		return ApplyTicket{}, newErr(CodeInvalidState, "the engine is not running")
 	}
 	if e.runtime == RuntimeSuspended {
+		unlock()
 		return ApplyTicket{}, newErr(CodeSuspended, "the host suspended the engine")
 	}
 	switch e.host.Apply {
 	case AbilityAvailable:
 	case AbilityPermissionRequired:
+		unlock()
 		return ApplyTicket{}, newErr(CodePermissionDenied, "the system denies writing the clipboard")
 	case AbilityUnavailable:
+		unlock()
 		return ApplyTicket{}, retryable(newErr(CodeUnavailable, "the host cannot write the clipboard now"))
 	default:
+		unlock()
 		return ApplyTicket{}, newErr(CodeUnsupported, "the host cannot write the clipboard")
 	}
 	if e.ticket != nil {
+		unlock()
 		return ApplyTicket{}, newErr(CodeInUse, "another application is under way")
 	}
 	if req.ExpectedEpoch != e.obs.epoch || (req.ExpectedEpoch != "" && req.ExpectedSequence != e.obs.seq) {
+		unlock()
 		return ApplyTicket{}, newErr(CodeConflict, "the clipboard changed since the last observation")
 	}
 	// Local content: the sync type switches do not apply, only what the host can write.
 	if !e.appliable(c, DefaultBackendPolicy()) {
+		unlock()
 		return ApplyTicket{}, newErr(CodeUnsupported, "nothing in this content can be applied here")
 	}
-	t := &applyTicket{started: time.Now(), kind: diagnosticKind(c), token: ApplyToken(e.newID()), content: c.id, history: req.HistoryID, userRestore: req.UserRestore, sourceKind: productSource(item.OriginKind)}
+	kind := diagnosticKind(c)
+	t := &applyTicket{started: time.Now(), kind: kind, token: ApplyToken(e.newID()), content: c.id, history: req.HistoryID, userRestore: req.UserRestore, sourceKind: productSource(item.OriginKind)}
 	t.lease = e.newLease(c)
 	e.ticket = t
 	e.commitLocked(EventApply)
-	return ApplyTicket{Token: t.token, ContentID: t.content, LeaseID: t.lease}, nil
+	out := ApplyTicket{Token: t.token, ContentID: t.content, LeaseID: t.lease}
+	unlock()
+	parentTrace := e.inheritTrace(context.Background(), ctx)
+	_, endTrace := e.startSpan(parentTrace, TraceSpanSpec{Name: "unic.apply", ContentKind: kind})
+	e.attachApplyTrace(t, kind, endTrace)
+	return out, nil
 }
 
 func readBlob(path string, size int64) ([]byte, *Error) {

@@ -240,6 +240,18 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 				emitQueue("started")
 				h.Report(k, TargetSending, nil)
 				h.ReportProgress(k, "", TransferProgress{BytesSent: 0, TotalBytes: pv.set.total, PartCount: len(pv.set.parts)})
+				sendSpanCtx, endSend := e.startSpan(e.inheritTrace(ctx, pv.traceCtx), TraceSpanSpec{
+					Name:        "unic.sync.send",
+					Kind:        TraceSpanClient,
+					Backend:     backend,
+					ContentKind: kind,
+				})
+				sendOutcome, sendCode := DiagnosticResult("failed"), CodeInternal
+				defer func() {
+					endSend(TraceSpanFinish{Result: sendOutcome, Code: sendCode, Backend: backend, ContentKind: kind})
+				}()
+				targetClip := clip
+				targetClip.TraceParent = e.traceParent(sendSpanCtx)
 				// A duplicate connection to the same peer is resolved shortly
 				// after both ends connect: the loser ends before its first byte.
 				// A send that was refused before authorization moves to the
@@ -248,7 +260,7 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 				for attempt := 0; ; attempt++ {
 					src := &peerSendSource{b: b, v: pv, conn: cur.conn, token: cur.token, h: h, key: k, totalBytes: pv.set.total, partCount: len(pv.set.parts)}
 					started := time.Now()
-					res, err := b.sendOver(ctx, disp, src, cur, pv, clip)
+					res, err := b.sendOver(ctx, disp, src, cur, pv, targetClip)
 					var outcome DiagnosticResult
 					var code Code
 					switch {
@@ -262,6 +274,7 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 						e.mu.Unlock()
 						outcome, code = diagnosticOutcome(fe)
 					}
+					sendOutcome, sendCode = outcome, code
 					e.diagnostic(ctx, DiagnosticRecord{Stage: "send", Result: outcome, Backend: backend, ContentKind: kind, Code: code, Duration: time.Since(started)})
 					if outcome == "failed" {
 						e.logPipelineFailure(ctx, "send", outcome, backend, kind, code)

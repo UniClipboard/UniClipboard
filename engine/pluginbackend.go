@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"slices"
+	"sync"
 	"sync/atomic"
 
 	"github.com/uniclipboard/unic/plugin"
@@ -58,23 +59,52 @@ func (b *pluginBackend) Submit(ctx context.Context, v backendView, h backendHost
 	case b.kind == TransportObjectStore:
 		tk = TargetRepository
 	}
-	queued, err := b.sb.Submit(ctx, view, pluginSyncHost{b: b, h: h, kind: tk})
+	syncHost := pluginSyncHost{
+		b:           b,
+		h:           h,
+		kind:        tk,
+		traceCtx:    v.traceCtx,
+		contentKind: diagnosticKind(v.set.c),
+		mu:          &sync.Mutex{},
+		spans:       map[string]func(TraceSpanFinish){},
+	}
+	queued, err := b.sb.Submit(ctx, view, syncHost)
 	switch {
 	case ctx.Err() != nil && err != nil:
+		syncHost.finishRemaining("cancelled", CodeCancelled)
 		return false, ctxErr(ctx.Err())
 	case err != nil:
+		syncHost.finishRemaining("failed", CodeUnavailable)
 		return false, newErr(CodeUnavailable, "the sync backend failed")
 	}
 	return queued, nil
 }
 
 type pluginSyncHost struct {
-	b    *pluginBackend
-	h    backendHost
-	kind SyncTargetKind
+	b           *pluginBackend
+	h           backendHost
+	kind        SyncTargetKind
+	traceCtx    context.Context
+	contentKind DiagnosticContentKind
+	mu          *sync.Mutex
+	spans       map[string]func(TraceSpanFinish)
 }
 
 func (s pluginSyncHost) key(t string) targetKey { return targetKey{s.b.id, s.kind, t} }
+
+func (s pluginSyncHost) finishRemaining(result DiagnosticResult, code Code) {
+	s.mu.Lock()
+	remaining := make([]func(TraceSpanFinish), 0, len(s.spans))
+	for k, end := range s.spans {
+		remaining = append(remaining, end)
+		delete(s.spans, k)
+	}
+	s.mu.Unlock()
+	backend := diagnosticBackend(s.b.id)
+	for _, end := range remaining {
+		end(TraceSpanFinish{Result: result, Code: code, Backend: backend, ContentKind: s.contentKind})
+	}
+}
 
 func (s pluginSyncHost) Register(targets []string) error {
 	if s.b.spec.ExternalChannels {
@@ -98,22 +128,55 @@ func (s pluginSyncHost) Register(targets []string) error {
 	if err := s.h.Register(keys); err != nil {
 		return err
 	}
+	backend := diagnosticBackend(s.b.id)
+	parent := s.traceCtx
+	if parent == nil {
+		parent = context.Background()
+	}
+	for _, t := range targets {
+		_, end := s.b.e.startSpan(parent, TraceSpanSpec{
+			Name:        "unic.sync.send",
+			Kind:        TraceSpanClient,
+			Backend:     backend,
+			ContentKind: s.contentKind,
+		})
+		s.mu.Lock()
+		if _, exists := s.spans[t]; !exists {
+			s.spans[t] = end
+		}
+		s.mu.Unlock()
+	}
 	return nil
 }
 
 func (s pluginSyncHost) Report(target string, st plugin.SyncState, cause error) {
 	var ts TargetState
+	var traceResult DiagnosticResult
+	var traceCode Code
+	terminal := false
 	switch st {
 	case plugin.SyncSending:
 		ts = TargetSending
 	case plugin.SyncSent:
 		ts = TargetSent
+		traceResult, terminal = "succeeded", true
 	case plugin.SyncSuperseded:
 		ts = TargetSuperseded
+		traceResult, terminal = "superseded", true
 	case plugin.SyncFailed:
 		ts = TargetFailed
+		traceResult, traceCode, terminal = "failed", CodeUnavailable, true
 	default:
 		ts = TargetQueued
+	}
+	if terminal {
+		s.mu.Lock()
+		end := s.spans[target]
+		delete(s.spans, target)
+		s.mu.Unlock()
+		if end != nil {
+			end(TraceSpanFinish{Result: traceResult, Code: traceCode, Backend: diagnosticBackend(s.b.id), ContentKind: s.contentKind})
+		}
 	}
 	s.h.Report(s.key(target), ts, cause)
 }

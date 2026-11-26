@@ -195,8 +195,9 @@ func (e *Engine) RunAction(ctx context.Context, req RunActionRequest) (ActionRes
 	if act == nil {
 		return ActionResult{}, newErr(CodeNotFound, "no such action")
 	}
+	traceCtx := e.inheritTrace(context.Background(), ctx)
 	e.mu.Lock()
-	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, action: &actionRun{act: act, source: req.HistoryID}})
+	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, action: &actionRun{act: act, source: req.HistoryID}, traceCtx: traceCtx})
 	e.mu.Unlock()
 	if err != nil {
 		return ActionResult{}, err

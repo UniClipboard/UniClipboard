@@ -27,10 +27,11 @@ func (e *Engine) recvDir() string { return filepath.Join(e.opts.InboxDir, recvDi
 // receipt is an entry of the received list; it holds a reference on its content.
 type receipt struct {
 	ReceivedContent
-	c       *contentObj
-	backend PluginID // the backend it came through; its policy decides what can be applied
-	expires time.Time
-	locked  bool // being applied: must not be evicted (set by the apply flow)
+	c        *contentObj
+	backend  PluginID        // the backend it came through; its policy decides what can be applied
+	traceCtx context.Context // optional local trace parent from unic.sync.receive
+	expires  time.Time
+	locked   bool // being applied: must not be evicted (set by the apply flow)
 }
 
 // receiveRequest is what a backend tells Engine about an incoming clip before
@@ -38,6 +39,7 @@ type receipt struct {
 // sender claims and must equal it, since nothing is forwarded.
 type receiveRequest struct {
 	sourceApplication *sourceapp.Application
+	traceParent       string
 	backend           PluginID
 	source            DeviceID
 	channel           string // set instead of a device when the clip came from an external channel
@@ -59,6 +61,8 @@ type receivePart struct {
 // receiveTicket follows one admitted receive until it ends.
 type receiveTicket struct {
 	sourceApplication *sourceapp.Application
+	traceCtx          context.Context
+	endTrace          func(TraceSpanFinish)
 	started           time.Time
 	kind              DiagnosticContentKind
 	backend           PluginID
@@ -116,10 +120,18 @@ func receivePartsKind(parts []receivePart) DiagnosticContentKind {
 func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admission, accepted bool) {
 	started := time.Now()
 	kind := receivePartsKind(req.parts)
+	backend := diagnosticBackend(req.backend)
+	traceCtx, endTrace := e.startSpan(context.Background(), TraceSpanSpec{
+		Name:         "unic.sync.receive",
+		Kind:         TraceSpanServer,
+		RemoteParent: req.traceParent,
+		Backend:      backend,
+		ContentKind:  kind,
+	})
 	outcome, code := DiagnosticResult("rejected"), CodeInvalidArgument
 	defer func() {
 		if !accepted {
-			backend := diagnosticBackend(req.backend)
+			endTrace(TraceSpanFinish{Result: outcome, Code: code, Backend: backend, ContentKind: kind})
 			e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: backend, ContentKind: kind, Duration: time.Since(started)})
 			if outcome == "failed" || outcome == "rejected" {
 				e.logPipelineFailure(context.Background(), "receive", outcome, backend, kind, code)
@@ -224,6 +236,8 @@ func (e *Engine) admitReceive(req receiveRequest) (admission peerbackend.Admissi
 	}
 	t := receiveTicket{
 		sourceApplication: req.sourceApplication.Clone(),
+		traceCtx:          e.inheritTrace(context.Background(), traceCtx),
+		endTrace:          endTrace,
 		started:           started,
 		kind:              kind,
 		backend:           req.backend,
@@ -293,6 +307,9 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 	outcome, code := DiagnosticResult("failed"), CodeInternal
 	defer func() {
 		backend := diagnosticBackend(t.backend)
+		if t.endTrace != nil {
+			t.endTrace(TraceSpanFinish{Result: outcome, Code: code, Backend: backend, ContentKind: t.kind})
+		}
 		e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: backend, ContentKind: t.kind, Duration: time.Since(t.started)})
 		if outcome == "failed" || outcome == "rejected" {
 			e.logPipelineFailure(context.Background(), "receive", outcome, backend, t.kind, code)
@@ -452,7 +469,7 @@ func (e *Engine) delivered(t receiveTicket, snap clip.Snapshot, dir string, ok b
 		return // the receive is not recorded as done, so it is not delivered either
 	}
 	now := time.Now()
-	rc := &receipt{c: c, backend: t.backend, expires: now.Add(e.res.ReceivedTTL), ReceivedContent: ReceivedContent{
+	rc := &receipt{c: c, backend: t.backend, traceCtx: t.traceCtx, expires: now.Add(e.res.ReceivedTTL), ReceivedContent: ReceivedContent{
 		ReceiptID: ReceiptID(e.newID()), Content: desc, PeerID: peer, ChannelID: t.channel, AutoApply: autoApply, ReceivedAtMs: now.UnixMilli(),
 		ExpiresAtMs: now.Add(e.res.ReceivedTTL).UnixMilli(), ApplyState: ApplyAvailable, HistoryID: hid,
 	}}

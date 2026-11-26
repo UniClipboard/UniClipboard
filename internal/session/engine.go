@@ -1118,7 +1118,7 @@ func (b *Backend) Send(ctx context.Context, m rpc.Send, src plugin.SendSource) (
 		sess.bodyConn.writingBody = true
 	}
 	stop := context.AfterFunc(ctx, func() { sess.closeWith("cancellation") }) // a cancelled write leaves the stream out of step
-	writeErr := sess.w.SendApplicationStream(m.Clip.WireID, m.Clip.Origin, int64(m.Clip.AtMs), m.Clip.Hash, out, m.Clip.SourceApplication, &body)
+	writeErr := sess.w.SendClipStream(m.Clip.WireID, m.Clip.Origin, int64(m.Clip.AtMs), m.Clip.Hash, out, m.Clip.SourceApplication, m.Clip.TraceParent, &body)
 	stop()
 	if sess.bodyConn != nil {
 		sess.bodyConn.writingBody = false
@@ -1254,7 +1254,7 @@ func (b *Backend) receive(s *session, m *wire.Clip) error {
 		return discardAndAck()
 	}
 	o := rpc.ReceiveOpen{ConnectionID: s.connID, SessionToken: s.token,
-		Clip: rpc.Clip{SourceApplication: m.SourceApplication.Clone(), WireID: m.ID, Origin: m.Origin, AtMs: rpc.U64(max(m.TS, 0)), Hash: m.Hash}}
+		Clip: rpc.Clip{SourceApplication: m.SourceApplication.Clone(), TraceParent: wire.SanitizeTraceParent(m.TraceParent), WireID: m.ID, Origin: m.Origin, AtMs: rpc.U64(max(m.TS, 0)), Hash: m.Hash}}
 	for i, p := range m.Parts {
 		cp := rpc.ClipPart{Index: i, Size: rpc.U64(p.Size)}
 		if p.Kind == "file" {

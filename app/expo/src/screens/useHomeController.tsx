@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert, BackHandler } from "react-native";
+import { Alert, BackHandler, Keyboard } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
@@ -149,10 +149,10 @@ export function useHomeController(
     setShowAddMenu(false);
     setIsSearching(true);
   }, []);
-  const openDetailPage = useCallback(
-    (item: ClipboardItem) => setDetailPageId(item.profileHash),
-    [],
-  );
+  const openDetailPage = useCallback((item: ClipboardItem) => {
+    Keyboard.dismiss();
+    setDetailPageId(item.profileHash);
+  }, []);
   const closeDetailPage = useCallback(() => setDetailPageId(null), []);
   const openSendTo = useCallback((item: ClipboardItem) => {
     useSendSheetStore.getState().open({ item });

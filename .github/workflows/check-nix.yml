@@ -1,0 +1,65 @@
+name: Nix flake check
+
+on:
+  pull_request:
+    paths:
+      - flake.nix
+      - nix/**
+      - go.mod
+      - go.sum
+      - release/products.toml
+      - packaging/linux/**
+      - app/desktop/internal/appicons/**
+      - app/desktop/boardui/assets/**
+      - .github/workflows/check-nix.yml
+  push:
+    branches: [main]
+    paths:
+      - flake.nix
+      - nix/**
+      - go.mod
+      - go.sum
+      - release/products.toml
+      - packaging/linux/**
+      - .github/workflows/check-nix.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Source-built Nix flake (linux-amd64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31
+      - name: Evaluate flake outputs
+        run: nix flake check --no-build
+      - name: Build and verify headless CLI package
+        run: |
+          nix build --print-build-logs .#unic -o result-unic
+          ./result-unic/bin/unic --version --json
+          ./result-unic/bin/unicd --version --json
+          ./result-unic/bin/uniclip --version --json
+      - name: Build and verify Desktop package
+        run: |
+          nix build --print-build-logs .#uniclipboard -o result-desktop
+          ./result-desktop/bin/uniclipboard --version --json
+          test -x ./result-desktop/lib/uniclipboard/unic-desktop
+          test -x ./result-desktop/lib/uniclipboard/unic
+          test -x ./result-desktop/lib/uniclipboard/unicd
+          test -L ./result-desktop/lib/uniclipboard/uniclip
+          test -f ./result-desktop/lib/uniclipboard/LICENSE
+          test -f ./result-desktop/lib/uniclipboard/installation.json
+          test -f ./result-desktop/share/applications/app.uniclipboard.desktop.desktop
+          test -f ./result-desktop/share/icons/hicolor/scalable/apps/uniclipboard.svg
+          test -f ./result-desktop/share/icons/hicolor/48x48/apps/uniclipboard.png
+          test -f ./result-desktop/share/icons/hicolor/512x512/apps/uniclipboard.png

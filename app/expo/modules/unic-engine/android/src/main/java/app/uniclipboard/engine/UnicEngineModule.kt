@@ -155,10 +155,39 @@ class UnicEngineModule : Module() {
     return try { fallback.canonicalPath } catch (_: Exception) { fallback.absolutePath }
   }
 
+  private fun legacyMobileConfigJSON(): String {
+    val ctx = appContextOrThrow()
+    ctx.getExternalFilesDir(null)
+    val dbCandidates = org.json.JSONArray()
+    val attachmentRoots = org.json.JSONArray()
+
+    fun putPath(arr: org.json.JSONArray, file: File) {
+      val path = try { file.canonicalPath } catch (_: Exception) { file.absolutePath }
+      arr.put(path)
+    }
+
+    launchOverride("UNIC_MOBILE_LEGACY_DB")?.let { putPath(dbCandidates, File(it)) }
+    putPath(dbCandidates, File(File(ctx.filesDir, "SQLite"), "uniclipboard.db"))
+    putPath(dbCandidates, ctx.getDatabasePath("uniclipboard.db"))
+
+    launchOverride("UNIC_MOBILE_LEGACY_ATTACHMENTS")?.split(File.pathSeparatorChar)?.forEach { segment ->
+      val trimmed = segment.trim()
+      if (trimmed.isNotEmpty()) putPath(attachmentRoots, File(trimmed))
+    }
+    putPath(attachmentRoots, File(ctx.filesDir, "clipboards"))
+    putPath(attachmentRoots, File(ctx.cacheDir, "temp_files"))
+
+    return JSONObject()
+      .put("database_candidates", dbCandidates)
+      .put("attachment_roots", attachmentRoots)
+      .toString()
+  }
+
   private fun ensureSetupSession(): MigrationSession {
     setupSession?.let { return it }
     File(appContextOrThrow().cacheDir, "unic-migration-source").deleteRecursively()
     val created = Mobile.openSetupFlow(dataDirectoryPath(), defaultV1DirectoryPath())
+    created.configureLegacyMobile(legacyMobileConfigJSON())
     setupSession = created
     return created
   }
@@ -200,16 +229,16 @@ class UnicEngineModule : Module() {
     return value as T
   }
 
-  private fun selectMigrationTree(uri: Uri): String {
+  private fun selectMigrationTree(uri: Uri): JSONObject {
     val session = ensureSetupSession()
     val context = appContextOrThrow()
     val staged = stageMigrationTree(context, uri, File(context.cacheDir, "unic-migration-source"))
     try {
-      val result = session.selectSource(staged.canonicalPath)
+      val result = JSONObject(session.selectSource(staged.canonicalPath))
       clearStagedMigrationSource()
       stagedMigrationSource = staged
       stagedMigrationURI = uri
-      return JSONObject(result).getString("source")
+      return result
     } finally {
       if (stagedMigrationSource != staged) staged.deleteRecursively()
     }
@@ -583,8 +612,13 @@ class UnicEngineModule : Module() {
           val uri = payload.data!!.data!!
           engineScope.launch {
             try {
-              val source = selectMigrationTree(uri)
-              promise.resolve(JSONObject().put("cancelled", false).put("source", source).toString())
+              val selected = selectMigrationTree(uri)
+              val response = JSONObject()
+                .put("cancelled", false)
+                .put("source", selected.optString("source"))
+                .put("source_kind", selected.optString("source_kind"))
+                .put("requires_unlock", selected.optBoolean("requires_unlock", false))
+              promise.resolve(response.toString())
             } catch (_: InvalidMigrationTree) {
               promise.reject(rawCodeException("invalid_argument", "invalid v1 backup directory"))
             } catch (_: MigrationTreeTooLarge) {
@@ -724,7 +758,9 @@ class UnicEngineModule : Module() {
       try {
         val result = ensureSetupSession().detectSource(dir)
         val selected = JSONObject(result).optString("source")
-        if (selected.isNotEmpty() && selected != stagedMigrationSource?.canonicalPath) {
+        val stagedPath = stagedMigrationSource?.canonicalPath
+        val insideStaged = stagedPath != null && (selected == stagedPath || selected.startsWith("$stagedPath${File.separator}"))
+        if (selected.isNotEmpty() && !insideStaged) {
           clearStagedMigrationSource()
           stagedMigrationURI = null
         }

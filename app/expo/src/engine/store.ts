@@ -534,6 +534,18 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
         return;
       }
 
+      if (det.status === "found" && det.source_kind === "mobile_sqlite") {
+        set({
+          setupEntryMode: "first-install",
+          bootStage: "setup",
+          setupState,
+          sourceDetection: det,
+          setupViewState: "m-importing",
+        });
+        await get().startMigration(undefined);
+        return;
+      }
+
       set({
         setupEntryMode: "first-install",
         bootStage: "setup",
@@ -575,6 +587,8 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
       const det: SourceDetectionResult = {
         status: "found",
         source: picked.source ?? setupState.source,
+        source_kind: picked.source_kind ?? setupState.source_kind,
+        requires_unlock: picked.requires_unlock ?? setupState.requires_unlock,
       };
       set({
         setupState,

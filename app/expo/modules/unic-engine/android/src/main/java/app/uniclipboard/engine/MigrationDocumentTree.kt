@@ -17,8 +17,11 @@ internal class MigrationTreeTooLarge : IOException("The v1 backup exceeds the st
 internal fun stageMigrationTree(context: Context, uri: Uri, stagingRoot: File): File {
   val root = DocumentFile.fromTreeUri(context, uri)?.takeIf { it.isDirectory }
     ?: throw InvalidMigrationTree()
-  val vault = root.findFile("vault")?.takeIf { it.isDirectory } ?: throw InvalidMigrationTree()
-  if (vault.findFile("keyslot.json")?.isFile != true) throw InvalidMigrationTree()
+  val hasV1Vault = root.findFile("vault")?.takeIf { it.isDirectory }?.findFile("keyslot.json")?.isFile == true
+  val hasLegacyMobileDB = root.findFile("uniclipboard.db")?.isFile == true ||
+    root.findFile("Databases")?.takeIf { it.isDirectory }?.findFile("uniclipboard.db")?.isFile == true ||
+    root.findFile("SQLite")?.takeIf { it.isDirectory }?.findFile("uniclipboard.db")?.isFile == true
+  if (!hasV1Vault && !hasLegacyMobileDB) throw InvalidMigrationTree()
 
   if (!stagingRoot.isDirectory && !stagingRoot.mkdirs()) throw IOException("Cannot create backup staging")
   val staging = File(stagingRoot, "backup-${UUID.randomUUID()}")

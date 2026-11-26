@@ -78,9 +78,14 @@ review and Store publication have their own acceptance states.
 
 The production variant retains `app.uniclipboard.android` and
 `app.uniclipboard.UniClipboard` from the preceding mobile product. The
-initial candidate is `2.5.0 (205)`. The maintained legacy history format,
-device update behavior, Android upload certificate lineage, and iOS
-production provisioning require verification before rollout.
+initial candidate is `2.5.0 (205)`. `internal/mobilemigration` and
+`bindings/mobile` implement read-only discovery and automatic offline import of
+the preceding mobile Expo SQLite history (`uniclipboard.db` plus iOS App Group
+`payloads/` and Android `clipboards/` attachments), and the production iOS app
+declares `group.app.uniclipboard.UniClipboard` alongside its
+`.incoming-share` group. Real Store in-place update behavior, Android upload
+certificate lineage, and iOS production provisioning still require verification
+before rollout.
 
 ### Joint CLI and Desktop delivery
 

@@ -19,8 +19,8 @@ apt-get update >/dev/null
 apt-get install -y "$package" >/dev/null
 /usr/lib/uniclipboard/unic-desktop --version --json > "$work/desktop.json"
 /usr/lib/uniclipboard/unic --version --json > "$work/cli.json"
-/usr/lib/uniclipboard/unic migrate --initialize-empty --json > "$work/initialization.json"
-/usr/lib/uniclipboard/unic status --json > "$work/status.json"
+/usr/lib/uniclipboard/unic init --json > "$work/initialization.json"
+/usr/lib/uniclipboard/unic device list --json > "$work/status.json"
 # The CLI waits for listener retirement. Engine cleanup removes the socket later.
 python3 - "$XDG_CONFIG_HOME/unic/unic.sock" <<'PYSTOP'
 import sys, time

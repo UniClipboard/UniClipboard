@@ -54,11 +54,11 @@ func TestServiceLifecycleResources(t *testing.T) {
 		return home, sock, env
 	}
 	timeStatus := func(bin string, e []string) time.Duration {
-		cmd := exec.Command(filepath.Join(bin, "unic"), "status")
+		cmd := exec.Command(filepath.Join(bin, "unic"), "device", "list", "--json")
 		cmd.Env = e
 		began := time.Now()
 		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("status: %v %s", err, out)
+			t.Fatalf("device list: %v %s", err, out)
 		}
 		return time.Since(began)
 	}
@@ -126,7 +126,7 @@ func TestServiceLifecycleResources(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			cmd := exec.Command(filepath.Join(candDir, "unic"), "status")
+			cmd := exec.Command(filepath.Join(candDir, "unic"), "device", "list", "--json")
 			cmd.Env = ce
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Errorf("burst status: %v %s", err, out)

@@ -47,18 +47,19 @@ func resolveDevice(ctx context.Context, c *api.Client, ref string) (string, erro
 
 func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 	fs := flag.NewFlagSet("send", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
 	request := fs.String("request-id", "", "idempotency key")
 	files := fs.Bool("f", false, "submit files")
 	png := fs.String("png", "", "submit a PNG representation")
-	asJSON := fs.Bool("json", false, "print commit and network result")
+	asJSON := fs.Bool("json", globalJSON, "print commit and network result")
 	to := fs.String("to", "", "all, or a paired device ID or name; omit to start a temporary transfer")
 	// Reuse the existing CLI flag parser for interspersed flags.
 	pos, err := parse(fs, args)
 	if err != nil {
-		return err
+		return usageError(err.Error() + "\n\n" + formatUsageLine(sendUsage))
 	}
 	if *to == "" && *request != "" {
-		return fmt.Errorf("--request-id applies only with --to")
+		return usageError("--request-id applies only with --to")
 	}
 	if *request == "" {
 		*request = rand.Text()
@@ -68,7 +69,7 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 	switch {
 	case *png != "":
 		if *files || len(pos) != 0 {
-			return fmt.Errorf("use either --png, -f, or text")
+			return usageError("use either --png, -f, or text")
 		}
 		data, e := os.ReadFile(*png)
 		if e != nil {
@@ -77,7 +78,7 @@ func runSubmit(ctx context.Context, c *api.Client, args []string) error {
 		s.Parts = []clip.Part{{Format: clip.PNG, Data: data}}
 	case *files:
 		if len(pos) == 0 {
-			return fmt.Errorf("send -f requires files")
+			return usageError("send -f requires one or more files")
 		}
 		for _, p := range pos {
 			abs, e := filepath.Abs(p)
@@ -175,10 +176,10 @@ func runReceive(ctx context.Context, c *api.Client, args []string) error {
 		return runReceived(ctx, c, args)
 	}
 	switch args[0] {
-	case "list", "show", "dismiss":
+	case "list", "show", "dismiss", "--json":
 		return runReceived(ctx, c, args)
 	}
-	asJSON := false
+	asJSON := globalJSON
 	if i := slices.Index(args, "--json"); i >= 0 {
 		asJSON = true
 		args = slices.Delete(slices.Clone(args), i, i+1)
@@ -266,32 +267,65 @@ func runTemporaryTransfer(ctx context.Context, c *api.Client, s clip.Snapshot, a
 }
 
 func runReceived(ctx context.Context, c *api.Client, args []string) error {
-	if len(args) == 0 || args[0] == "list" {
+	if len(args) == 0 || args[0] == "list" || args[0] == "--json" {
+		asJSON := globalJSON
+		rest := args
+		if len(rest) > 0 && rest[0] == "list" {
+			rest = rest[1:]
+		}
+		for _, a := range rest {
+			if a == "--json" {
+				asJSON = true
+			} else {
+				return usageError("usage: unic recv [list] [--json]")
+			}
+		}
 		v, e := c.Received(ctx)
 		if e != nil {
 			return e
 		}
-		return json.NewEncoder(os.Stdout).Encode(v)
+		if asJSON || !outTTY {
+			return json.NewEncoder(os.Stdout).Encode(v)
+		}
+		if len(v) == 0 {
+			fmt.Fprintln(os.Stderr, "no transient received items")
+			return nil
+		}
+		for _, it := range v {
+			src := string(it.PeerID)
+			if src == "" && it.ChannelID != "" {
+				src = "channel:" + it.ChannelID
+			}
+			if src == "" {
+				src = "external"
+			}
+			exp := ""
+			if it.ExpiresAtMs > 0 {
+				exp = "  expires " + time.UnixMilli(it.ExpiresAtMs).Format("15:04:05")
+			}
+			fmt.Printf("%s  %s  from=%s  parts=%d%s\n", it.ReceiptID, size(it.Content.TotalSize), src, len(it.Content.Parts), exp)
+		}
+		return nil
 	}
 	switch args[0] {
 	case "show":
 		if len(args) < 2 || len(args) > 3 {
-			return fmt.Errorf("usage: unic recv show ID [PART]")
+			return usageError("usage: unic recv show ID [PART]")
 		}
 		part := 0
 		if len(args) == 3 {
 			v, e := strconv.Atoi(args[2])
 			if e != nil || v < 0 {
-				return fmt.Errorf("invalid part")
+				return usageError("invalid part")
 			}
 			part = v
 		}
 		return c.CopyReceivedContent(ctx, args[1], part, os.Stdout)
 	case "dismiss":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: unic recv dismiss ID")
+			return usageError("usage: unic recv dismiss ID")
 		}
 		return c.DismissReceived(ctx, args[1])
 	}
-	return fmt.Errorf("usage: unic recv list|show|dismiss")
+	return usageError("usage: unic recv list|show|dismiss")
 }

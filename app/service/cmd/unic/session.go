@@ -288,7 +288,7 @@ func (s *session) spawn(ctx context.Context, exe string) (*child, servicelifecyc
 	cmd := exec.Command(exe, "--cli-temporary")
 	servicelaunch.ConfigureProcess(cmd)
 	// Preserve the selected profile and socket. The command's own stdin stays untouched.
-	cmd.Env = append(os.Environ(), "UNIC_HOME="+s.dir, "UNIC_SOCK="+s.socket)
+	cmd.Env = daemonEnv(s.dir, s.socket)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = read, logFile, logFile
 	if err := cmd.Start(); err != nil {
 		_ = write.Close()

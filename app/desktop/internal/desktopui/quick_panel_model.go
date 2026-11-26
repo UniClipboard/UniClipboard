@@ -216,7 +216,8 @@ func (p *quickPanelState) matches(e qpEntry, skip int) bool {
 	for dim, values := range groups {
 		if dim == "tag" {
 			for _, v := range values {
-				if !slices.Contains(e.tags, v) && !((v == "收藏" || v == plugin.TagFavorite) && e.favorite) {
+				hasTag := slices.Contains(e.tags, v) || ((v == "收藏" || v == plugin.TagFavorite) && e.favorite)
+				if !hasTag {
 					return false
 				}
 			}

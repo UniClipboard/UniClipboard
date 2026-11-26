@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Alert, Pressable, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { AppBottomSheet, AppButton, AppHost } from "@/components/ui";
 import { parseEngineError } from "@/engine/nativeModule";
@@ -8,15 +8,19 @@ import { useTheme } from "@/hooks/useTheme";
 import type { ClipboardItem } from "@/types/clipboard";
 import { formatFileSize } from "@/utils";
 import { showUnavailable } from "@/shell/notice";
+import { useHistorySend } from "./useHistorySend";
+import { useSendDevices } from "./useSendDevices";
 
 export function SendSheet({
   visible,
   onClose,
+  onDidDismiss,
   targetItem,
   initialDraftText,
 }: {
   visible: boolean;
   onClose: () => void;
+  onDidDismiss: () => void;
   targetItem?: ClipboardItem | null;
   initialDraftText?: string | null;
 }) {
@@ -26,22 +30,20 @@ export function SendSheet({
   });
   const { theme } = useTheme();
   const mode = useEngineStore((s) => s.mode);
-  const devices = useEngineStore((s) => s.devices);
   const [draftText, setDraftText] = useState("");
-  const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const { trustedDevices, selectedDeviceIds, toggleDeviceSelection } = useSendDevices(visible);
+  const historySend = useHistorySend(visible, targetItem?.profileHash);
 
   useEffect(() => {
     if (visible) {
       setDraftText(initialDraftText ?? "");
-    } else {
-      setSelectedDeviceIds([]);
     }
   }, [visible, initialDraftText, targetItem?.profileHash]);
 
   if (mode !== "live") {
     return (
-      <AppBottomSheet visible={visible} onDismiss={onClose}>
+      <AppBottomSheet visible={visible} onDismiss={onClose} onDidDismiss={onDidDismiss}>
         <View style={{ padding: 16, gap: 16 }}>
           <Text
             accessibilityRole="header"
@@ -87,35 +89,10 @@ export function SendSheet({
     );
   }
 
-  const trustedDevices = devices.filter((d) => d.trust === "trusted");
   const targetType = targetItem ? t(`errors:contentType.${targetItem.type.toLowerCase()}`, {
     defaultValue: t("errors:contentType.unknown"),
   }) : "";
   const targetIds = selectedDeviceIds.length > 0 ? selectedDeviceIds : undefined;
-
-  const toggleDeviceSelection = (id: string) => {
-    setSelectedDeviceIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-    );
-  };
-
-  const handleResendTargetItem = async () => {
-    if (!targetItem || submitting) return;
-    setSubmitting(true);
-    try {
-      await useEngineStore
-        .getState()
-        .resendHistoryItem(targetItem.profileHash, targetIds);
-      onClose();
-    } catch (err) {
-      Alert.alert(
-        t("home:detail.sendTo"),
-        errorMessage(err),
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
 
   const handleCommitText = async () => {
     const trimmed = draftText.trim();
@@ -174,7 +151,7 @@ export function SendSheet({
   };
 
   return (
-    <AppBottomSheet visible={visible} onDismiss={onClose}>
+    <AppBottomSheet visible={visible} onDismiss={onClose} onDidDismiss={onDidDismiss}>
       <View style={{ padding: 16, gap: 12 }}>
         <Text
           accessibilityRole="header"
@@ -184,7 +161,7 @@ export function SendSheet({
             fontWeight: "700",
           }}
         >
-          {targetItem ? t("share:compose.forwardTitle") : t("share:compose.sendTitle")}
+          {targetItem ? t("home:detail.sendTo") : t("share:compose.sendTitle")}
         </Text>
 
         {targetItem ? (
@@ -229,37 +206,42 @@ export function SendSheet({
         {trustedDevices.length > 0 ? (
           <View style={{ gap: 8 }}>
             <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
-              {t("share:compose.targets")}
+              {t(targetItem ? "share:send.selectHint" : "share:compose.targets")}
             </Text>
-            {trustedDevices.map((dev) => {
-              const selected = selectedDeviceIds.includes(dev.id);
-              const connected = dev.bindings?.some((b) => b.connection === "connected");
-              return (
-                <Pressable
-                  key={dev.id}
-                  onPress={() => toggleDeviceSelection(dev.id)}
-                  style={{
-                    padding: 14,
-                    borderRadius: 14,
-                    backgroundColor: selected
-                      ? theme.colors.accentContainer
-                      : theme.colors.surface,
-                  }}
-                >
-                  <Text style={{ color: theme.colors.textPrimary, fontWeight: "600" }}>
-                    {dev.name || dev.reported_name || dev.id.slice(0, 8)}
-                    {selected ? " ✓" : ""}
-                  </Text>
-                  <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>
-                    {connected ? t("share:compose.connected") : t("share:compose.offline")}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            <ScrollView style={{ maxHeight: 240 }} contentContainerStyle={{ gap: 8 }}>
+              {trustedDevices.map((dev) => {
+                const selected = selectedDeviceIds.includes(dev.id);
+                const connected = dev.bindings?.some((b) => b.connection === "connected");
+                const phase = targetItem && selected ? historySend.phaseFor(dev.id) : "idle";
+                const status = phase === "idle"
+                  ? t(connected ? "share:compose.connected" : "share:compose.offline")
+                  : t(`share:send.targetState.${phase}`);
+                return (
+                  <Pressable
+                    key={dev.id}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: selected }}
+                    disabled={submitting || historySend.busy || historySend.done}
+                    onPress={() => toggleDeviceSelection(dev.id)}
+                    style={{
+                      padding: 14,
+                      borderRadius: 14,
+                      backgroundColor: selected ? theme.colors.accentContainer : theme.colors.surface,
+                    }}
+                  >
+                    <Text style={{ color: theme.colors.textPrimary, fontWeight: "600" }}>
+                      {dev.name || dev.reported_name || dev.id.slice(0, 8)}
+                      {selected ? " ✓" : ""}
+                    </Text>
+                    <Text style={{ color: theme.colors.textSecondary, fontSize: 12 }}>{status}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
         ) : (
           <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
-            {t("share:compose.noTargets")}
+            {t(targetItem ? "share:send.noDevices" : "share:compose.noTargets")}
           </Text>
         )}
 
@@ -268,14 +250,13 @@ export function SendSheet({
             <AppButton
               testID="send-resend-item"
               title={
-                selectedDeviceIds.length > 0
-                  ? t("share:compose.sendSelected", { count: selectedDeviceIds.length })
-                  : t("share:compose.sendAll")
+                historySend.busy ? historySend.waitingLabel
+                  : t(historySend.done ? "share:send.done" : "share:send.sendAll")
               }
               variant="filled"
               fullWidth
-              disabled={submitting}
-              onPress={() => void handleResendTargetItem()}
+              disabled={historySend.busy || (!historySend.done && selectedDeviceIds.length === 0)}
+              onPress={() => historySend.done ? onClose() : void historySend.send(selectedDeviceIds)}
             />
           </AppHost>
         ) : (

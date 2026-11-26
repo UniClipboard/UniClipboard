@@ -25,16 +25,11 @@ struct IncomingShare {
       let right = (try? rhs.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast
       return left == right ? lhs.lastPathComponent < rhs.lastPathComponent : left < right
     }
-    let summaries: [[String: String]] = ordered.compactMap { url in
+    let ids = ordered.compactMap { url -> String? in
       let id = url.lastPathComponent
-      guard let dir = item(id),
-            let data = try? Data(contentsOf: dir.appendingPathComponent("entry.json")),
-            let entry = (try? JSONSerialization.jsonObject(with: data)) as? [String: String],
-            let kind = entry["kind"],
-            let label = (kind == "text" ? entry["text"] : entry["name"]) else { return nil }
-      return ["id": id, "kind": kind, "label": String(label.prefix(160))]
+      return item(id) == nil ? nil : id
     }
-    return String(decoding: try JSONSerialization.data(withJSONObject: summaries), as: UTF8.self)
+    return String(decoding: try JSONSerialization.data(withJSONObject: ids), as: UTF8.self)
   }
 
   func remove(_ id: String) throws {

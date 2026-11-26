@@ -23,6 +23,7 @@ import {
 } from "@/utils/historyFilters";
 import { useShellStore } from "@/shell/store";
 import { showUnavailable } from "@/shell/notice";
+import { useSendSheetStore } from "./sendSheetStore";
 
 function filterLiveItems(
   records: ClipboardItem[],
@@ -74,11 +75,6 @@ export function useHomeController(
   const [detailPageId, setDetailPageId] = useState<string | null>(null);
   const [wordPickerTarget, setWordPickerTarget] =
     useState<WordPickerOverlayProps | null>(null);
-  const [sendToVisible, setSendToVisible] = useState(false);
-  const [sendTargetItem, setSendTargetItem] = useState<ClipboardItem | null>(
-    null,
-  );
-  const [sendDraftText, setSendDraftText] = useState<string | null>(null);
   const [receiveResultsOpen, setReceiveResultsOpen] = useState(false);
   const listRef = useRef<AnimatedCardGridHandle>(null);
   const {
@@ -158,20 +154,11 @@ export function useHomeController(
     [],
   );
   const closeDetailPage = useCallback(() => setDetailPageId(null), []);
-  const openSendTo = useCallback((item?: ClipboardItem) => {
-    setSendDraftText(null);
-    setSendTargetItem(item ?? null);
-    setSendToVisible(true);
+  const openSendTo = useCallback((item: ClipboardItem) => {
+    useSendSheetStore.getState().open({ item });
   }, []);
-  const openSendToText = useCallback((text?: string) => {
-    setSendTargetItem(null);
-    setSendDraftText(typeof text === "string" ? text : null);
-    setSendToVisible(true);
-  }, []);
-  const closeSendTo = useCallback(() => {
-    setSendToVisible(false);
-    setSendTargetItem(null);
-    setSendDraftText(null);
+  const openSendToText = useCallback((draftText: string) => {
+    useSendSheetStore.getState().open({ draftText });
   }, []);
   const handleContextDismiss = useCallback(() => setContextTarget(null), []);
   const handleItemDelete = useCallback(
@@ -516,7 +503,7 @@ export function useHomeController(
     },
     handleBatchSendTo: () => {
       const first = items.find((it) => selectedIds.has(it.profileHash));
-      openSendTo(first);
+      if (first) openSendTo(first);
     },
     handleBatchDelete: () => {
       if (engineMode === "live") {
@@ -572,11 +559,6 @@ export function useHomeController(
     detailPageItem,
     openDetailPage,
     closeDetailPage,
-    sendToVisible,
-    sendTargetItem,
-    sendDraftText,
-    openSendTo,
-    closeSendTo,
     openSendToText,
   };
 }

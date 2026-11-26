@@ -40,6 +40,7 @@
     "sending": "Sending…",
     "success": "Sent",
     "failed": "Send failed",
+    "notStarted": "Sending did not start.",
     "offlineTitle": "Can't send",
     "offline": "The device is offline. Try again when it is online.",
     "selectHint": "Choose devices to send to",
@@ -48,6 +49,7 @@
     "unconfirmed": "Result unconfirmed. Check the existing transfer.",
     "checkExisting": "Check existing transfer",
     "targetState": {
+      "queued": "Queued",
       "preparing": "Preparing…",
       "sending": "Sending",
       "confirming": "Waiting for confirmation…",
@@ -57,11 +59,6 @@
     }
   },
   "incoming": {
-    "title": "Shared with Unic",
-    "save": "Save on this device",
-    "send": "Send to selected device",
-    "savedWithoutSend": "Saved on this device. Sending did not start.",
-    "sendNotStarted": "Sending did not start.",
     "notSaved": "The item was not saved to history.",
     "failed": "Could not process shared content"
   },
@@ -70,15 +67,12 @@
     "emptyClipboard": "The clipboard is empty or already synced.",
     "readClipboard": "Read system clipboard",
     "sendFile": "Send file",
-    "forwardTitle": "Send history item",
     "sendTitle": "Save or send clipboard content",
     "textHint": "Enter text to save or send…",
     "targets": "Choose devices. With none selected, sync settings determine the targets.",
     "connected": "Connected",
     "offline": "Offline or connecting",
     "noTargets": "No paired devices. Content will be saved to this device.",
-    "sendSelected": "Send to selected devices ({{count}})",
-    "sendAll": "Send to all online devices",
     "commitText": "Save and send text",
     "chooseFile": "Choose file to send"
   }

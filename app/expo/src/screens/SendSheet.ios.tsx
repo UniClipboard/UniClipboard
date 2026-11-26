@@ -40,7 +40,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import type { SFSymbol } from 'sf-symbols-typescript';
 
-import { IosBottomSheet, IosSheetForm, SheetHeader } from '@/components/ui';
+import { IosBottomSheet, IosSheetForm, SheetCircleButton, SheetHeader } from '@/components/ui';
 import {
   iosProminentButtonModifiers,
   iosSaturatedButtonPalette,
@@ -55,13 +55,13 @@ import { showUnavailable } from '@/shell/notice';
 import { iosColors, iosKindTints } from '@/theme/iosDesignTokens';
 import type { ClipboardItem } from '@/types/clipboard';
 import { formatFileSize } from '@/utils';
+import { useHistorySend, type HistorySendPhase } from './useHistorySend';
+import { useSendDevices } from './useSendDevices';
 
 const TERTIARY_LABEL = iosColors?.tertiaryLabel ?? '#8E8E93';
 const IMAGE_PREVIEW_SIZE = 64;
 const SELECTED_ROW_BACKGROUND = iosColors?.tertiarySystemFill ?? '#E5E5EA';
 const SHEET_BACKGROUND = iosColors?.systemGroupedBackground ?? '#F2F2F7';
-
-type TargetDeliveryPhase = 'idle' | 'sending' | 'success' | 'failed';
 
 /**
  * Native iOS Send sheet aligned with upstream `ShareSendSheet.ios.tsx`.
@@ -70,22 +70,24 @@ type TargetDeliveryPhase = 'idle' | 'sending' | 'success' | 'failed';
 export function SendSheet({
   visible,
   onClose,
+  onDidDismiss,
   targetItem,
   initialDraftText,
 }: {
   visible: boolean;
   onClose: () => void;
+  onDidDismiss: () => void;
   targetItem?: ClipboardItem | null;
   initialDraftText?: string | null;
 }) {
   const { t } = useTranslation();
   const mode = useEngineStore((s) => s.mode);
-  const devices = useEngineStore((s) => s.devices);
   const [draftText, setDraftText] = useState('');
   const draftState = useNativeState('');
-  const [selectedDeviceIds, setSelectedDeviceIds] = useState<string[]>([]);
-  const [phase, setPhase] = useState<TargetDeliveryPhase>('idle');
+  const [phase, setPhase] = useState<HistorySendPhase>('idle');
   const [refreshing, setRefreshing] = useState(false);
+  const { trustedDevices, selectedDeviceIds, toggleDeviceSelection } = useSendDevices(visible);
+  const historySend = useHistorySend(visible, targetItem?.profileHash);
 
   const imagePreview = useHistoryImagePreview(targetItem ?? null, visible);
 
@@ -96,7 +98,6 @@ export function SendSheet({
       draftState.set(next);
       setPhase('idle');
     } else {
-      setSelectedDeviceIds([]);
       setPhase('idle');
     }
   }, [visible, initialDraftText, targetItem?.profileHash, draftState]);
@@ -126,6 +127,7 @@ export function SendSheet({
         standalone
         visible={visible}
         onDismiss={onClose}
+        onDidDismiss={onDidDismiss}
         detents={['large']}
         backgroundColor={SHEET_BACKGROUND}
       >
@@ -206,35 +208,11 @@ export function SendSheet({
     );
   }
 
-  const trustedDevices = devices.filter((d) => d.trust === 'trusted');
-  const isSending = phase === 'sending';
-  const isDone = phase === 'success';
-  const hasFailed = phase === 'failed';
+  const isSending = targetItem ? historySend.busy : phase === 'sending';
+  const isDone = targetItem ? historySend.done : phase === 'success';
+  const hasFailed = !targetItem && phase === 'failed';
   const locked = isSending || isDone;
   const targetIds = selectedDeviceIds.length > 0 ? selectedDeviceIds : undefined;
-
-  const toggleDeviceSelection = (id: string) => {
-    if (locked) return;
-    setSelectedDeviceIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
-  const handleResendTargetItem = async () => {
-    if (!targetItem || isSending) return;
-    if (isDone) {
-      onClose();
-      return;
-    }
-    setPhase('sending');
-    try {
-      await useEngineStore.getState().resendHistoryItem(targetItem.profileHash, targetIds);
-      setPhase('success');
-    } catch (err) {
-      setPhase('failed');
-      Alert.alert(t('home:detail.sendTo'), errorMessage(err));
-    }
-  };
 
   const handleCommitText = async () => {
     const trimmed = draftText.trim();
@@ -289,11 +267,12 @@ export function SendSheet({
   };
 
   const canSend = targetItem
-    ? trustedDevices.length > 0
+    ? selectedDeviceIds.length > 0
     : Boolean(draftText.trim());
   const footerEnabled = isDone || hasFailed || canSend;
+  const waitingLabel = targetItem ? historySend.waitingLabel : t('share:send.sending');
   const footerLabel = isSending
-    ? t('share:send.sending')
+    ? waitingLabel
     : isDone
       ? t('share:send.done')
       : hasFailed
@@ -307,6 +286,7 @@ export function SendSheet({
       standalone
       visible={visible}
       onDismiss={onClose}
+      onDidDismiss={onDidDismiss}
       detents={['large']}
       interactiveDismissDisabled={isSending}
       backgroundColor={SHEET_BACKGROUND}
@@ -318,7 +298,13 @@ export function SendSheet({
           background(SHEET_BACKGROUND),
         ]}
       >
-        <SheetHeader title={pageTitle} />
+        <SheetHeader
+          title={pageTitle}
+          right={
+            <SheetCircleButton testID="send-close" systemName="xmark" onPress={onClose}
+              accessibilityLabel={t('common:action.close')} disabled={!targetItem && isSending} />
+          }
+        />
         <IosSheetForm modifiers={[frame({ maxWidth: Infinity, maxHeight: Infinity })]}>
           {targetItem ? (
             <Section title={`${t('share:send.title')} (1)`}>
@@ -396,14 +382,14 @@ export function SendSheet({
             ) : (
               trustedDevices.map((dev) => {
                 const selected = selectedDeviceIds.includes(dev.id);
-                const targeted =
-                  selectedDeviceIds.length === 0 || selected;
+                const targeted = selected || (!targetItem && selectedDeviceIds.length === 0);
+                const devicePhase = targetItem ? historySend.phaseFor(dev.id) : phase;
                 return (
                   <SendTargetRow
                     key={dev.id}
                     device={dev}
                     selected={selected}
-                    phase={targeted ? phase : 'idle'}
+                    phase={targeted ? devicePhase : 'idle'}
                     locked={locked}
                     onToggle={toggleDeviceSelection}
                   />
@@ -415,10 +401,14 @@ export function SendSheet({
 
         <SwiftUIButton
           testID={targetItem ? 'send-resend-item' : 'send-commit-text'}
-          onPress={() => void (targetItem ? handleResendTargetItem() : handleCommitText())}
+          onPress={() => {
+            if (isDone) onClose();
+            else if (targetItem) void historySend.send(selectedDeviceIds);
+            else void handleCommitText();
+          }}
           modifiers={[
             ...iosProminentButtonModifiers(
-              isDone ? iosSaturatedButtonPalette(iosKindTints.image) : undefined,
+              !targetItem && isDone ? iosSaturatedButtonPalette(iosKindTints.image) : undefined,
               { fullWidth: true }
             ),
             controlSize('large'),
@@ -429,7 +419,7 @@ export function SendSheet({
           <HStack spacing={8} modifiers={[frame({ minHeight: 48, maxWidth: Infinity })]}>
             <Spacer />
             {isSending ? <ProgressView /> : null}
-            {isDone ? (
+            {!targetItem && isDone ? (
               <Image systemName="checkmark.circle.fill" size={18} color="#FFFFFF" />
             ) : null}
             <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>{footerLabel}</SwiftUIText>
@@ -547,7 +537,7 @@ function SendTargetRow({
 }: {
   device: EngineDevice;
   selected: boolean;
-  phase: TargetDeliveryPhase;
+  phase: HistorySendPhase;
   locked: boolean;
   onToggle: (id: string) => void;
 }) {
@@ -557,16 +547,9 @@ function SendTargetRow({
   const connected = device.bindings?.some((b) => b.connection === 'connected');
   const displayName = device.name || device.reported_name || device.id.slice(0, 8);
 
-  const statusText =
-    phase === 'sending'
-      ? t('share:send.targetState.sending')
-      : phase === 'success'
-        ? t('share:send.targetState.success')
-        : phase === 'failed'
-          ? t('share:send.targetState.failed')
-          : connected
-            ? t('share:compose.connected')
-            : t('share:compose.offline');
+  const statusText = phase === 'idle'
+    ? t(connected ? 'share:compose.connected' : 'share:compose.offline')
+    : t(`share:send.targetState.${phase}`);
 
   const fillFraction = phase === 'success' || phase === 'failed' ? 1 : 0;
   const fillColor =

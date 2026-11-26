@@ -124,6 +124,9 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 	if req.action != nil {
 		key = "action\x00" + req.action.act.key() + "\x00" + string(req.action.source)
 	}
+	if req.history != "" {
+		key = "history\x00" + string(req.history) + backendKey(req.BackendIDs) + deviceKey(req.DeviceIDs)
+	}
 	hash := sha256.Sum256([]byte(key))
 	now := time.Now()
 	e.pruneSubmissionsLocked(now)
@@ -138,7 +141,7 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 		if old.op.Kind != OperationSend || old.hash != hash {
 			return nil, newErr(CodeConflict, "this RequestID was used for a different request")
 		}
-		entry := &submissionEntry{hash: hash, id: old.op.ID, disp: SyncQueued, done: make(chan struct{}), finished: now}
+		entry := &submissionEntry{hash: hash, history: req.history, id: old.op.ID, disp: SyncQueued, done: make(chan struct{}), finished: now}
 		close(entry.done)
 		return entry, nil
 	}
@@ -146,8 +149,8 @@ func (e *Engine) startSubmissionLocked(req SubmitRequest) (*submissionEntry, *Er
 		return nil, err
 	}
 	// Validate before eviction so rejected input cannot displace a cached result.
-	var c *contentObj // an action produces its content inside the submission
-	if req.action == nil {
+	var c *contentObj // actions and history sends load content inside the submission
+	if req.action == nil && req.history == "" {
 		e.cs.mu.Lock()
 		l := e.cs.leases[req.LeaseID]
 		if l == nil {
@@ -206,6 +209,9 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 		origin = pipelineOrigin{kind: "action", pluginID: string(req.action.act.plugin.id)}
 		c, failure = req.action.produce(ctx, e)
 	}
+	if req.history != "" {
+		c, failure = e.loadHistoryContentFor(req.history, true)
+	}
 	if c != nil {
 		commitKind = diagnosticKind(c)
 	}
@@ -223,7 +229,11 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	e.setSubmissionStage(entry, "processing")
 	var processed *processedContent
 	if failure == nil {
-		processed, failure = e.processContent(ctx, pipelineCaptured, c, origin)
+		if req.history != "" {
+			processed = &processedContent{c: c, policy: pipelinePolicy{Sync: true}}
+		} else {
+			processed, failure = e.processContent(ctx, pipelineCaptured, c, origin)
+		}
 		if failure == nil && req.action != nil {
 			processed.policy.Persist = true // the host applies the result through its history item
 		}
@@ -232,7 +242,7 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	var disp SyncDisposition
 	var results []BackendSubmissionResult
 	var syncErr *Error
-	var historyID HistoryID
+	historyID := req.history
 	gateHeld := false
 	if failure == nil {
 		e.commitGate.RLock()
@@ -254,7 +264,9 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 	}
 	if historyID != "" && failure == nil {
 		e.linkHistory(historyID, id, results)
-		e.notifyObservers(plugin.EventCommitted, string(historyID))
+		if req.history == "" {
+			e.notifyObservers(plugin.EventCommitted, string(historyID))
+		}
 	}
 	e.mu.Lock()
 	if id != "" {
@@ -346,17 +358,43 @@ func (e *Engine) CommitContent(ctx context.Context, req CommitRequest) (Submissi
 	if ierr != nil {
 		return SubmissionResult{}, ierr
 	}
-	devs, derr := e.normalizeDeviceIDs(req.DeviceIDs)
+	devs, derr := e.normalizeDeviceIDs(req.DeviceIDs, false)
 	if derr != nil {
 		return SubmissionResult{}, derr
 	}
+	return e.commitExplicit(ctx, SubmitRequest{RequestID: req.RequestID, LeaseID: req.LeaseID, Origin: OriginExplicit, BackendIDs: ids, DeviceIDs: devs, localOnly: req.LocalOnly}, req.CancelOnContext)
+}
+
+// SendHistory sends an existing history record without creating another record
+// or running its processors again. Normal sync policy and target checks apply.
+func (e *Engine) SendHistory(ctx context.Context, req SendHistoryRequest) (SubmissionResult, error) {
+	release, err := e.enter(ctx)
+	if err != nil {
+		return SubmissionResult{}, err
+	}
+	defer release()
+	if !validExternalSubmissionID(req.RequestID) || req.HistoryID == "" || len(req.DeviceIDs) == 0 {
+		return SubmissionResult{}, newErr(CodeInvalidArgument, "history send requires a RequestID, a HistoryID and selected devices")
+	}
+	ids, err := e.normalizeBackendIDs(req.BackendIDs)
+	if err != nil {
+		return SubmissionResult{}, err
+	}
+	devs, err := e.normalizeDeviceIDs(req.DeviceIDs, true)
+	if err != nil {
+		return SubmissionResult{}, err
+	}
+	return e.commitExplicit(ctx, SubmitRequest{RequestID: req.RequestID, history: req.HistoryID, Origin: OriginExplicit, BackendIDs: ids, DeviceIDs: devs}, req.CancelOnContext)
+}
+
+func (e *Engine) commitExplicit(ctx context.Context, req SubmitRequest, cancelOnContext bool) (SubmissionResult, error) {
 	e.mu.Lock()
-	entry, err := e.startSubmissionLocked(SubmitRequest{RequestID: req.RequestID, LeaseID: req.LeaseID, Origin: OriginExplicit, BackendIDs: ids, DeviceIDs: devs, localOnly: req.LocalOnly})
+	entry, err := e.startSubmissionLocked(req)
 	e.mu.Unlock()
 	if err != nil {
 		return SubmissionResult{}, err
 	}
-	if req.CancelOnContext && entry.cancel != nil {
+	if cancelOnContext && entry.cancel != nil {
 		context.AfterFunc(ctx, entry.cancel)
 	}
 	select {
@@ -395,7 +433,7 @@ func (e *Engine) GetSubmission(ctx context.Context, id RequestID) (SubmissionRes
 
 // normalizeDeviceIDs validates an explicit device selection: nil means every
 // device, an empty list is an error, unknown, revoked or repeated IDs are errors.
-func (e *Engine) normalizeDeviceIDs(ids []DeviceID) ([]DeviceID, *Error) {
+func (e *Engine) normalizeDeviceIDs(ids []DeviceID, trusted bool) ([]DeviceID, *Error) {
 	if ids == nil {
 		return nil, nil
 	}
@@ -410,8 +448,12 @@ func (e *Engine) normalizeDeviceIDs(ids []DeviceID) ([]DeviceID, *Error) {
 		if i > 0 && out[i-1] == id {
 			return nil, newErr(CodeInvalidArgument, "DeviceIDs has a repeated ID")
 		}
-		if _, err := e.loadDevice(string(id)); err != nil {
+		device, err := e.loadDevice(string(id))
+		if err != nil {
 			return nil, newErr(CodeInvalidArgument, "unknown device")
+		}
+		if trusted && device.Trust != DeviceTrustTrusted {
+			return nil, newErr(CodeInvalidArgument, "device is not paired")
 		}
 	}
 	return out, nil

@@ -40,6 +40,7 @@
     "sending": "Enviando…",
     "success": "Enviado",
     "failed": "Falha no envio",
+    "notStarted": "O envio não começou.",
     "offlineTitle": "Não foi possível enviar",
     "offline": "O dispositivo está offline. Tente novamente quando ele estiver online.",
     "selectHint": "Escolha os dispositivos de destino",
@@ -48,6 +49,7 @@
     "unconfirmed": "Result unconfirmed. Check the existing transfer.",
     "checkExisting": "Check existing transfer",
     "targetState": {
+      "queued": "Na fila",
       "preparing": "Preparando…",
       "sending": "Enviando",
       "confirming": "Aguardando confirmação…",
@@ -57,11 +59,6 @@
     }
   },
   "incoming": {
-    "title": "Compartilhado com o Unic",
-    "save": "Salvar neste dispositivo",
-    "send": "Enviar ao dispositivo selecionado",
-    "savedWithoutSend": "Salvo neste dispositivo. O envio não começou.",
-    "sendNotStarted": "O envio não começou.",
     "notSaved": "O item não foi salvo no histórico.",
     "failed": "Não foi possível processar o conteúdo compartilhado"
   },
@@ -70,15 +67,12 @@
     "emptyClipboard": "A área de transferência está vazia ou já foi sincronizada.",
     "readClipboard": "Ler a área de transferência",
     "sendFile": "Enviar arquivo",
-    "forwardTitle": "Enviar item do histórico",
     "sendTitle": "Salvar ou enviar conteúdo",
     "textHint": "Digite o texto a salvar ou enviar…",
     "targets": "Escolha os dispositivos. Sem seleção, os destinos seguem as configurações de sincronização.",
     "connected": "Conectado",
     "offline": "Offline ou conectando",
     "noTargets": "Não há dispositivos pareados. O conteúdo será salvo neste dispositivo.",
-    "sendSelected": "Enviar aos dispositivos selecionados ({{count}})",
-    "sendAll": "Enviar a todos os dispositivos online",
     "commitText": "Salvar e enviar texto",
     "chooseFile": "Escolher arquivo para enviar"
   }

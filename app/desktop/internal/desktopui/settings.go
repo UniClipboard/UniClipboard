@@ -139,7 +139,7 @@ func (d *viewState) settingsPage(c *ui.Context, k desktopkit.Kit) {
 			}
 		}
 	}
-	k.SplitView(c, desktopkit.SplitViewProps{Toolbar: toolbar, ToolbarTrailing: d.trailingToolbar(c), Title: title, TitleLeading: titleLeading, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
+	k.SplitView(c, desktopkit.SplitViewProps{ContentScale: zoomScale(d.zoomStep), Toolbar: toolbar, ToolbarTrailing: d.trailingToolbar(c), Title: title, TitleLeading: titleLeading, SidebarHidden: &d.sidebarHidden, SidebarOverlay: d.compact, SidebarToggleLabel: d.tr("切换设置侧栏"), Sidebar: func() {
 		k.SidebarNav(c, &d.settings, desktopkit.SidebarNavProps{Label: d.tr("设置"), Sections: sections, Footer: []desktopkit.SidebarNavItem{{ID: "back", Label: d.tr("返回历史"), Icon: desktopkit.IconBack, ShortcutHint: "Esc"}}}).Grow(1)
 		if d.settings.Changed() {
 			d.shortcutEditor = shortcutEditor{}

@@ -59,7 +59,7 @@ Run visual/native work only in an explicitly authorized, coordinated environment
 9. Open Connect Device. Verify unknown input stays disabled. Try the error fixture `000-000`, then `482-913`. Exercise approval and rejection. Confirm local-device removal remains blocked.
 10. Open the tag editor. Use arrows, Return, Tab/Shift+Tab color selection and Escape. Verify creation, duplicate-name handling, custom-tag detach and protected built-in tags. Open the manager and inspect filtering/sorting, fixed columns and context actions. Preview-only actions must stay distinct from real-service capabilities.
 11. Open all settings categories. Change light/dark, language and available controls. Verify disabled/busy state and error/hint layout. The preview retains values only for the session; production persistence is tested separately.
-12. Resize to 1000 and 700 DIP widths. Exercise overlay sidebar, one-pane history navigation and narrow device details. Check clipped focus rings, long translated labels, command hit targets and scrolling.
+12. Resize to 860 and 700 DIP widths. Exercise overlay sidebar, one-pane history navigation and narrow device details. Check clipped focus rings, long translated labels, command hit targets and scrolling.
 13. Exercise nested Select/menu/dialog controls with pointer, Tab/Shift+Tab, arrows/Home/End, Enter/Space and Escape. One outside Cancel action must reach the underlying control. Closing restores the opener.
 14. Open the Quick Panel fixture and perform its [ordered checks](QUICK-PANEL-DEMO.md#ordered-interaction-checks).
 15. Verify rejected `--page setup` and `--page unlock` arguments fail before opening mygo.

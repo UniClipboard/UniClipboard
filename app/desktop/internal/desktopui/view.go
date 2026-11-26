@@ -262,9 +262,10 @@ func (d *viewState) view(c *ui.Context) {
 	scale := zoomScale(d.zoomStep)
 	k.ScaledUiRoot(c, scale, func() {
 		w, _ := c.Size()
-		// main's library collapses its sidebar below 1100 px. The Kit separately
-		// switches list/detail navigation below SinglePaneWidth.
-		compact := w/scale < 1100
+		// Collapse the sidebar into an overlay below SidebarOverlayWidth (900 DIP)
+		// so three-column browsing and inline toolbar search remain comfortable.
+		// The Kit separately switches list/detail navigation below SinglePaneWidth.
+		compact := w/scale < desktopkit.SidebarOverlayWidth
 		if compact != d.compact {
 			d.sidebarHidden, d.compact = compact, compact
 		}

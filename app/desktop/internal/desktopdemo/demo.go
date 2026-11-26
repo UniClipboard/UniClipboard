@@ -51,7 +51,7 @@ func Run(args []string) error {
 	screen := desktopui.NewPreview(fixtures.Desktop(*page, *theme))
 	mygo.App.SetName("unic UI Demo")
 	mygo.App.WhenReady(func() {
-		opts := mygo.WindowOptions{Title: "unic · " + i18n.Translate("zh-CN", "界面演示"), Width: 1100, Height: 720, MinWidth: 600, MinHeight: 480, Content: ui.View(screen.View)}
+		opts := mygo.WindowOptions{Title: "unic · " + i18n.Translate("zh-CN", "界面演示"), Width: 1100, Height: 720, UseContentSize: true, MinWidth: 600, MinHeight: 480, Content: ui.View(screen.View)}
 		if runtime.GOOS == "darwin" {
 			windowchrome.Configure(&opts, runtime.GOOS, false)
 

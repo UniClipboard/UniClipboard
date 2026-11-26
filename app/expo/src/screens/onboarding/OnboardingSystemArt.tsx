@@ -1,1 +1,1 @@
-export { OnboardingSystemArt } from './OnboardingSystemArt.ios';
+export { OnboardingSystemArt } from './OnboardingSystemArt.android';

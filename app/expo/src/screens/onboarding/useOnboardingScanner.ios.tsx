@@ -3,11 +3,7 @@ import { Alert, Linking } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { parseEngineError, unicEngineNative } from '@/engine/nativeModule';
 import { showUnavailable } from '@/shell/notice';
-
-export interface OnboardingScannerController {
-  openScanner: () => void;
-  renderScannerOverlay: () => React.ReactNode;
-}
+import type { OnboardingScannerController } from './useOnboardingScanner.types';
 
 export function useOnboardingScanner({
   isLive,

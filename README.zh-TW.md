@@ -55,7 +55,7 @@
 
 - **跨平台**：支援 Windows、macOS、Linux、iOS 與 Android 互相同步。裝置在同一個 Wi-Fi 或不同網路都能連上。
 - **不經過雲端**：裝置之間加密直連，不需要註冊帳號。剪貼簿歷史只存在你自己的裝置上。
-- **記憶體用量低**：背景同步服務閒置時約佔 14 MB 記憶體<sup>[1](#benchmarks)</sup>。在 Windows 上，主視窗約佔 34–49 MB<sup>[2](#benchmarks)</sup>。關閉主視窗後，介面程序會結束並釋放記憶體。
+- **記憶體用量低**：背景同步服務閒置時約佔 14 MB 記憶體。在 Windows 上，主視窗約佔 34–49 MB。關閉主視窗後，介面程序會結束並釋放記憶體。
 - **都能同步**：文字、圖片、檔案和整個資料夾都能同步。
 
 <a id="features"></a>
@@ -131,18 +131,6 @@ unic history list                 # 查看歷史
 ```
 
 完整指令請見 [命令列文件](app/service/README.md)。
-
-<a id="benchmarks"></a>
-
-## 實測數據
-
-| | 記憶體 | 測試條件 |
-|---|---:|---|
-| 背景同步服務 `unicd` | **14 MB** | macOS（Apple Silicon），空歷史，閒置 20 秒後讀取，口徑與「活動監視器」的「記憶體」欄相同<sup>1</sup> |
-| 主視窗 | **34 MB** / 49 MB | Windows 11 ARM64 原生版 / x64 版，60 筆文字歷史，工作管理員口徑<sup>2</sup> |
-| 主視窗（含圖片） | 119 MB / 133 MB | 同上，另加 12 張 2048×1536 圖片<sup>2</sup> |
-
-<sup>1</sup> 於提交 `e2cb68d` 以 `footprint <pid>` 量測。<sup>2</sup> 三次量測取中位數，詳見 [Windows 記憶體測試報告](docs/exec/windows-desktop-memory.md)。
 
 ## 隱私
 

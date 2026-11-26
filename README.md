@@ -55,7 +55,7 @@
 
 - **Cross-platform**: Sync between Windows, macOS, Linux, iOS, and Android, on the same Wi-Fi or across networks.
 - **No cloud**: Devices connect directly over encrypted links. No sign-up. Your history stays on your own devices.
-- **Lightweight**: The background sync service uses about 14 MB of memory when idle<sup>[1](#benchmarks)</sup>. On Windows, the main window uses about 34–49 MB<sup>[2](#benchmarks)</sup>. Close it and its process exits.
+- **Lightweight**: The background sync service uses about 14 MB of memory when idle. On Windows, the main window uses about 34–49 MB. Close it and its process exits.
 - **Everything syncs**: Text, images, files and whole folders.
 
 <a id="features"></a>
@@ -131,18 +131,6 @@ unic history list                 # browse history
 ```
 
 See the [CLI guide](app/service/README.md) for all commands.
-
-<a id="benchmarks"></a>
-
-## Measurements
-
-| | Memory | Conditions |
-|---|---:|---|
-| Sync service `unicd` | **14 MB** | macOS (Apple Silicon), empty history, read after 20 s idle; same measure as the Memory column in Activity Monitor<sup>1</sup> |
-| Main window | **34 MB** / 49 MB | Windows 11, native ARM64 / x64 build, 60 text items; Task Manager measure<sup>2</sup> |
-| Main window with images | 119 MB / 133 MB | Same, plus 12 images at 2048×1536<sup>2</sup> |
-
-<sup>1</sup> Measured at commit `e2cb68d` with `footprint <pid>`. <sup>2</sup> Median of three runs. See the [Windows memory report](docs/exec/windows-desktop-memory.md).
 
 ## Privacy
 

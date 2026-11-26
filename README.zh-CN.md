@@ -55,7 +55,7 @@
 
 - **跨平台**：支持 Windows、macOS、Linux、iOS 和 Android 互相同步。设备在同一 Wi-Fi 或不同网络里都能连上。
 - **不经过云端**：设备之间加密直连，不需要注册账号。剪贴板历史只保存在你自己的设备上。
-- **内存占用低**：后台同步服务空闲时约占 14 MB 内存<sup>[1](#benchmarks)</sup>。在 Windows 上，主界面约占 34–49 MB<sup>[2](#benchmarks)</sup>。关闭主窗口后，界面进程会退出并释放内存。
+- **内存占用低**：后台同步服务空闲时约占 14 MB 内存。在 Windows 上，主界面约占 34–49 MB。关闭主窗口后，界面进程会退出并释放内存。
 - **都能同步**：文字、图片、文件和整个文件夹都能同步。
 
 <a id="features"></a>
@@ -131,18 +131,6 @@ unic history list                 # 查看历史
 ```
 
 完整命令见 [命令行文档](app/service/README.md)。
-
-<a id="benchmarks"></a>
-
-## 实测数据
-
-| | 内存 | 测试条件 |
-|---|---:|---|
-| 后台同步服务 `unicd` | **14 MB** | macOS（Apple Silicon），空历史，空闲 20 秒后读取，统计口径与“活动监视器”的“内存”列一致<sup>1</sup> |
-| 桌面主界面 | **34 MB** / 49 MB | Windows 11 ARM64 原生版 / x64 版，60 条文字历史，Windows 任务管理器口径<sup>2</sup> |
-| 桌面主界面（含图片） | 119 MB / 133 MB | 同上，另加 12 张 2048×1536 图片<sup>2</sup> |
-
-<sup>1</sup> 在提交 `e2cb68d` 上测量，测量方法是 `footprint <pid>`。<sup>2</sup> 三次测量取中位数，详见 [Windows 内存测试报告](docs/exec/windows-desktop-memory.md)。
 
 ## 隐私
 

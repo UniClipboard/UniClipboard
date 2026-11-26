@@ -55,7 +55,7 @@
 
 - **Multiplataforma**: sincroniza entre Windows, macOS, Linux, iOS e Android, na mesma rede Wi-Fi ou em redes diferentes.
 - **Sem nuvem**: os dispositivos se conectam diretamente por canais criptografados. Sem cadastro. O histórico fica só nos seus dispositivos.
-- **Leve**: o serviço de sincronização usa cerca de 14 MB de memória em repouso<sup>[1](#benchmarks)</sup>. No Windows, a janela principal usa cerca de 34–49 MB<sup>[2](#benchmarks)</sup>. Ao fechá-la, o processo dela termina.
+- **Leve**: o serviço de sincronização usa cerca de 14 MB de memória em repouso. No Windows, a janela principal usa cerca de 34–49 MB. Ao fechá-la, o processo dela termina.
 - **Sincroniza tudo**: texto, imagens, arquivos e pastas inteiras.
 
 <a id="features"></a>
@@ -131,18 +131,6 @@ unic history list                 # ver o histórico
 ```
 
 Veja todos os comandos no [guia da CLI](app/service/README.md).
-
-<a id="benchmarks"></a>
-
-## Medições
-
-| | Memória | Condições |
-|---|---:|---|
-| Serviço `unicd` | **14 MB** | macOS (Apple Silicon), histórico vazio, lido após 20 s em repouso; mesma medida da coluna Memória do Monitor de Atividade<sup>1</sup> |
-| Janela principal | **34 MB** / 49 MB | Windows 11, build nativo ARM64 / x64, 60 itens de texto; medida do Gerenciador de Tarefas<sup>2</sup> |
-| Janela principal com imagens | 119 MB / 133 MB | Igual, mais 12 imagens de 2048×1536<sup>2</sup> |
-
-<sup>1</sup> Medido no commit `e2cb68d` com `footprint <pid>`. <sup>2</sup> Mediana de três execuções. Veja o [relatório de memória no Windows](docs/exec/windows-desktop-memory.md).
 
 ## Privacidade
 

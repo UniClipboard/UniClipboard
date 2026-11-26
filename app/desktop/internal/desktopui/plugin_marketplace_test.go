@@ -1335,7 +1335,9 @@ func TestCaptureAsyncPluginInstallRecording(t *testing.T) {
 	// Scene 3: Cancel installation directly from the toast on History page
 	moveAndClick("取消安装")
 	<-installCanceled
-	wait("canceled toast", func() bool { return d.pluginInstallTask("unic.syncclipboard") == nil && tt.HasText("已取消安装「SyncClipboard 同步」") })
+	wait("canceled toast", func() bool {
+		return d.pluginInstallTask("unic.syncclipboard") == nil && tt.HasText("已取消安装「SyncClipboard 同步」")
+	})
 	hold(26)
 
 	// Scene 4: Navigate back to Settings -> Plugins (returns directly to Marketplace),
@@ -1344,7 +1346,9 @@ func TestCaptureAsyncPluginInstallRecording(t *testing.T) {
 	wait("settings opened", func() bool { return d.page == "settings" && tt.HasText("插件") })
 	hold(6)
 	moveAndClick("插件")
-	wait("marketplace reopened", func() bool { return d.settings.Value == "plugins" && d.pluginSettings.view == "marketplace" && tt.HasText("SyncClipboard 同步") })
+	wait("marketplace reopened", func() bool {
+		return d.settings.Value == "plugins" && d.pluginSettings.view == "marketplace" && tt.HasText("SyncClipboard 同步")
+	})
 	moveAndClick("SyncClipboard 同步")
 	wait("syncclipboard selected", func() bool { return d.pluginSettings.marketSelected == "unic.syncclipboard" && tt.HasText("安装") })
 	hold(8)

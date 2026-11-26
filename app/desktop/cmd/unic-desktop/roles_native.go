@@ -489,7 +489,11 @@ func runPanel(settings *config.Manager) error {
 	mygo.App.WhenReady(func() {
 		var clipboard desktopui.PanelClipboard
 		if useDaemonClipboard {
-			clipboard = daemonClipboard{daemon: c}
+			adapter := daemonClipboard{daemon: c}
+			if runtime.GOOS == "linux" {
+				adapter.fallback = clipboardintegration.NewPanelClipboard(dir, newDesktopBoard())
+			}
+			clipboard = adapter
 		} else {
 			clipboard = clipboardintegration.NewPanelClipboard(dir, newDesktopBoard())
 		}

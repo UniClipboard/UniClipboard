@@ -15,6 +15,8 @@ paths:
   - app/desktop/internal/quickpanel
   - internal/localcontent
   - internal/clipboardintegration
+  - internal/nativeboard
+  - internal/waylandwire
   - internal/webtransfer
   - internal/tcnet/ephemeral.go
   - engine/transfer.go
@@ -40,16 +42,16 @@ Production Desktop staging copies an accepted exact CLI pair into an application
 On macOS/Linux, `uniclip` is a relative symbolic link to the sibling `unic` file; tar preserves the link.
 On Windows, `uniclip.cmd` invokes the sibling `unic.exe` and preserves arguments and its exit code without requiring symbolic-link privileges.
 The packaging manifest records the alias separately from executable hashes. Moving an extracted installation keeps the alias valid.
-Neither headless program imports the desktop application or a UI toolkit, directly or transitively. macOS Desktop packages must lock a CLI artifact containing the local desktop clipboard API described below.
+Neither headless program imports the desktop application or a UI toolkit, directly or transitively. Desktop packages must lock a CLI artifact containing the local desktop clipboard API described below.
 
 ```text
-unic ------------+-- local IPC -- unicd -- Engine / history / plugins / network
-unic-desktop --role tray -- adapter IPC --+
-      +-- clipboard observer / shortcut / notifications
-unic-desktop --role gui -------- local IPC -- unicd
+unic ------------------- local IPC -- unicd -- Engine / history / plugins / network
+                                          +-- opt-in native clipboard adapter
+unic-desktop --role tray -- local IPC --+
+      +-- shortcut / menu / notifications
+unic-desktop --role gui --- local IPC --+
 unic-desktop --quick-panel / --role quick-panel --+
-      +-- target checks / focus / paste; macOS uses unicd on-demand opt-in;
-          Windows/Linux write directly via bounded /v1/desktop/panel-apply/*
+      +-- target checks / focus / paste
 ```
 
 The service accepts explicit text, PNG and file-reference submissions without a clipboard observation epoch.
@@ -60,13 +62,13 @@ Clipboard ability does not filter headless content reception.
 An Action creates a new item and applies it only when explicitly requested.
 History restore continues to respect `sync.on_restore`.
 
-One exclusive adapter generation connects the desktop to the service.
-The desktop establishes a fresh baseline and runs the observation/application state machine through IPC.
+One exclusive adapter generation connects the active native clipboard to the service.
+After Desktop opts in, the daemon establishes a fresh baseline and runs the existing observation/application state machine.
 A missing adapter is normal. Observe and Apply are `unavailable` until an adapter declares its abilities.
 Generation expiry releases owned leases and disables clipboard command dispatch.
 The adapter session expires after ten seconds without renewal; the client sends heartbeats every two seconds.
 A local launch key suppresses duplicate startup analytics across ready retries and reconnects. It is not an adapter credential and never enters telemetry.
-A manual no-argument Desktop launch always opens or activates the GUI. In normal mode, closing it terminates only the GUI process and keeps tray integration running. In lightweight mode, closing it also retires tray and quick-panel processes; only unicd remains, without an adapter or hotkey. Explicit application Quit stops UI roles and only a tray-owned service. A borrowed standalone service survives Quit.
+A manual no-argument Desktop launch always opens or activates the GUI. In normal mode, closing it terminates only the GUI process and keeps tray integration running. In lightweight mode, closing it also retires tray and quick-panel processes; only unicd remains. An enabled native adapter continues running. Explicit application Quit stops UI roles and only a tray-owned service. A borrowed standalone service survives Quit.
 
 ### Network change and device refresh
 
@@ -151,7 +153,8 @@ credentials, databases or history. See section 12 of the
 - The CLI does not launch a GUI or silently replace system clipboard reads with history reads.
 - A CLI command stops only a temporary generation whose last lease it released. It never stops a standalone or desktop-owned service.
 - The launcher never unlinks a socket or kills a process it did not create and verify.
-- On macOS, Desktop explicitly enables the native clipboard adapter in `unicd` over the owner-only local socket. The adapter loads AppKit on demand and accesses the pasteboard only for the active console user. Tray retains the menu, shortcut and target capture. A bundled macOS service may also take over pairing notifications after Desktop opts in. It keeps its subscription through lightweight handoff. A Desktop borrowing an unbundled service sends notifications from the tray. On other platforms, the tray hosts the adapter. The service owns submission, sync and history policy on every platform.
+- Desktop explicitly enables the native clipboard adapter in `unicd` over the owner-only local socket. Platform access is limited to the active macOS console user, an interactive Windows session, or a supported local Linux display session. Windows uses clipboard notifications and skips unchanged, verified generations. Linux uses native X11 selection and INCR transfers or Wayland data control. Settings reports sessions without background support. Explicit Linux history copy can use the local Desktop board on those sessions.
+- The tray owns menus, shortcuts and target capture. A bundled macOS service may take over system pairing notifications when the tray hands off. Desktop retains OS focus and input handling.
 - Reconnect establishes a baseline and does not apply disconnected backlog.
 - A lost write result is uncertain and is never automatically retried.
 - Snapshot uploads, session leases and pending commands have fixed limits.
@@ -162,12 +165,12 @@ credentials, databases or history. See section 12 of the
 | Path | Responsibility |
 |---|---|
 | `app/service/cmd/unic` | CLI, streams and explicit export |
-| `app/service/cmd/unicd` | Service lifecycle, socket server and opt-in macOS clipboard adapter |
+| `app/service/cmd/unicd` | Service lifecycle, socket server and opt-in native clipboard adapter |
 | `app/service/internal/host` | Engine assembly, session ownership, local request handling |
 | `app/desktop/cmd/unic-desktop` | Launcher and independent tray, GUI and quick-panel roles |
 | `app/desktop/internal/desktopprocess` | Profile-scoped role locks, private activation IPC and OS peer executable verification |
-| `app/desktop/internal/board` | Desktop mygo clipboard adapter |
-| `internal/nativeboard` | macOS pasteboard access without the desktop UI runtime and shared source-application icon processing |
+| `app/desktop/internal/board` | Local Linux explicit-copy fallback and desktop fixture board |
+| `internal/nativeboard` | Native desktop clipboard access without the desktop UI toolkit |
 | `app/desktop/internal/quickpanel` | Desktop-only target sessions, adapter-write receipts, native paste and global-shortcut ownership |
 | `app/service/internal/server` | Service-owned HTTP routes and socket listener |
 | `internal/localapi` | Shared protocol DTOs and clients |

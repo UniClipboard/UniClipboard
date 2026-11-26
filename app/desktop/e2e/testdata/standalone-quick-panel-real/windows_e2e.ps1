@@ -793,7 +793,8 @@ try {
     Start-Sleep -Milliseconds 600
     if (-not (Test-Path -LiteralPath $ManagedPath)) { throw 'Managed file was deleted prematurely while held on OLE clipboard' }
 
-    # Independent external OLE clipboard replacement -> triggers WM_CLIPBOARDUPDATE -> release -> disk file reclaimed!
+    # A native write while no tray is running must be observed by unicd.
+    $BeforeExternal = @((Api-Req $MainProf 'GET' '/v1/history').items | ForEach-Object { $_.id })
     [void](Run-ClipHelper 'set-text' 'N03-WIN11-EXTERNAL-REPLACEMENT')
     Wait-Until 'managed file reclaimed after external OLE replacement' { -not (Test-Path -LiteralPath $ManagedPath) } 15
     $CacheAfter = Api-Req $MainProf 'GET' '/v1/file-cache'
@@ -804,6 +805,16 @@ try {
     }
     [void]$Manifest.checks.Add('win11-external-ole-replacement-releases-lease-and-reclaims-cache')
     Log-Step 'managed_file_reclaimed_ok' $Manifest.clipboard_readbacks['external_replacement_and_reclaim']
+
+    $ObservedExternal = Wait-Until 'unicd captures the external write while the tray is absent' {
+        (Api-Req $MainProf 'GET' '/v1/history').items |
+            Where-Object { $_.origin -eq 'local_system' -and $_.kind -eq 'text' -and $_.id -notin $BeforeExternal } |
+            Select-Object -First 1
+    } 10
+    [void]$Manifest.checks.Add('win11-unicd-observes-clipboard-without-a-tray')
+    # Restore the seeded order for the next panel selection. The unchanged
+    # clipboard must not enter history again after this explicit deletion.
+    [void](Api-Req $MainProf 'DELETE' "/v1/history/$($ObservedExternal.id)?revision=$($ObservedExternal.revision)")
 
     # 7. Tray coexistence (zero echo) + Tray exit preserves standalone unicd & quick-panel
     $TrayProc = Start-ProfileProc $DesktopExe @('--role', 'tray') $MainProf 'main-tray.log'
@@ -849,6 +860,31 @@ try {
     [void]$Manifest.checks.Add('win11-tray-exit-preserves-standalone-unicd-and-panel-copy')
     Log-Step 'post_tray_exit_copy_ok' @{ png_sha256 = $PostTrayPngSha }
 
+    [void](Start-ProfileProc $UnicdExe @() $PeerProf 'peer-unicd-restarted.log')
+    Wait-Until 'peer reconnected without the tray' {
+        $state = Api-Req $MainProf 'GET' '/v1/status'
+        return @($state.peers | Where-Object { $_.connected }).Count -gt 0
+    } 30
+    $BeforeDetachedCopy = @((Api-Req $MainProf 'GET' '/v1/history').items | ForEach-Object { $_.id })
+    $PeerBeforeDetachedCopy = @((Api-Req $PeerProf 'GET' '/v1/history').items | ForEach-Object { $_.id })
+    $DetachedPayload = 'N03-WIN11-AFTER-TRAY-EXIT'
+    [void](Run-ClipHelper 'set-text' $DetachedPayload)
+    Wait-Until 'unicd captures a new copy after tray exit' {
+        $item = (Api-Req $MainProf 'GET' '/v1/history').items |
+            Where-Object { $_.origin -eq 'local_system' -and $_.kind -eq 'text' -and $_.id -notin $BeforeDetachedCopy } |
+            Select-Object -First 1
+        return $null -ne $item
+    } 10
+    [void]$Manifest.checks.Add('win11-unicd-observation-survives-tray-exit')
+    Wait-Until 'peer receives the new copy after tray exit' {
+        $item = (Api-Req $PeerProf 'GET' '/v1/history').items |
+            Where-Object { $_.origin -eq 'remote_device' -and $_.kind -eq 'text' -and $_.total_bytes -eq $DetachedPayload.Length -and $_.id -notin $PeerBeforeDetachedCopy } |
+            Select-Object -First 1
+        return $null -ne $item
+    } 25
+    [void]$Manifest.checks.Add('win11-unicd-sync-survives-tray-exit')
+
+
     $Manifest.status = 'PASS'
     $Manifest.finished_at_utc = [DateTime]::UtcNow.ToString('o')
 } catch {
@@ -875,6 +911,8 @@ try {
     foreach ($p in (Get-TaskUnicProcs)) {
         try { Stop-Process -Id $p.pid -Force -ErrorAction SilentlyContinue } catch {}
     }
+    $PanelLog = Join-Path $MainProf 'desktop-runtime\quick-panel.log'
+    if (Test-Path -LiteralPath $PanelLog) { Copy-Item -LiteralPath $PanelLog -Destination (Join-Path $OutDir 'quick-panel.log') }
     $mPath = Join-Path $OutDir 'manifest.json'
     [IO.File]::WriteAllText($mPath, ($Manifest | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding($false)))
     $sumLines = New-Object Collections.ArrayList

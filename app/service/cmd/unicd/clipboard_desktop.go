@@ -1,3 +1,5 @@
+//go:build darwin || linux || windows
+
 package main
 
 import (
@@ -34,7 +36,16 @@ func registerDesktopClipboard(ctx context.Context, mux *http.ServeMux, socket st
 			native, err := openDesktopBoard()
 			if err != nil {
 				mu.Unlock()
-				http.Error(w, "desktop clipboard is unavailable", http.StatusServiceUnavailable)
+				if errors.Is(err, nativeboard.ErrDesktopClipboardUnsupported) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusNotImplemented)
+					_ = json.NewEncoder(w).Encode(api.ErrorBody{
+						Error:  "background clipboard is unavailable in this desktop session",
+						Reason: api.ReasonClipboardUnsupported,
+					})
+				} else {
+					http.Error(w, "desktop clipboard is unavailable", http.StatusServiceUnavailable)
+				}
 				return
 			}
 			tracked := clipboardintegration.NewTrackedBoard(native)

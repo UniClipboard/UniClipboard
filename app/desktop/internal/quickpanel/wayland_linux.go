@@ -4,6 +4,7 @@ package quickpanel
 
 import (
 	"context"
+	"github.com/uniclipboard/unic/internal/waylandwire"
 	"sync"
 	"time"
 )
@@ -29,7 +30,7 @@ type waylandPlatform struct {
 }
 
 func newWaylandPlatform() Platform {
-	if sock := waylandSocketPath(); probeWaylandVirtualKeyboard(sock) {
+	if sock := waylandwire.SocketPath(); probeWaylandVirtualKeyboard(sock) {
 		return newWaylandPlatformWithBackend(&waylandVirtualKeyboardBackend{socketPath: sock})
 	}
 	if probeWaylandRemoteDesktopPortal() {

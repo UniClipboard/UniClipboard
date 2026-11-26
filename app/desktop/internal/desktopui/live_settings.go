@@ -137,6 +137,9 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 
 	case "sync":
 		group("sync", d.tr("同步行为"), func() {
+			if l.clipboardUnavailable != nil && l.clipboardUnavailable() {
+				settingsNoteRow(c.Key("clipboard-unavailable"), k, d.tr("此桌面会话不支持后台剪贴板监听。仍可手动复制历史内容。"))
+			}
 			toggle("enabled", d.tr("启用同步"), d.tr("控制所有同步后端的发送与接收。"), &cfg.Sync.Enabled, false, false)
 			dim := !cfg.Sync.Enabled
 			toggle("automatic", d.tr("自动同步"), d.tr("复制内容后自动发送给已授权设备。"), &cfg.Sync.Automatic, dim, false)

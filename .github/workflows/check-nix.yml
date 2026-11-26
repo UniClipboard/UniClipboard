@@ -3,25 +3,29 @@ name: Nix flake check
 on:
   pull_request:
     paths:
-      - flake.nix
-      - nix/**
-      - go.mod
-      - go.sum
-      - release/products.toml
-      - packaging/linux/**
-      - app/desktop/internal/appicons/**
-      - app/desktop/boardui/assets/**
-      - .github/workflows/check-nix.yml
+      - 'flake.nix'
+      - 'nix/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'packaging/linux/**'
+      - 'app/desktop/internal/appicons/**'
+      - 'app/desktop/boardui/assets/**'
+      - '.github/workflows/check-nix.yml'
+      - '!**/README*.md'
+      - '!**/AGENTS.md'
   push:
     branches: [main]
     paths:
-      - flake.nix
-      - nix/**
-      - go.mod
-      - go.sum
-      - release/products.toml
-      - packaging/linux/**
-      - .github/workflows/check-nix.yml
+      - 'flake.nix'
+      - 'nix/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'packaging/linux/**'
+      - 'app/desktop/internal/appicons/**'
+      - 'app/desktop/boardui/assets/**'
+      - '.github/workflows/check-nix.yml'
+      - '!**/README*.md'
+      - '!**/AGENTS.md'
   workflow_dispatch:
 
 permissions:

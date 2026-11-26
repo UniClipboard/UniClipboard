@@ -1,0 +1,54 @@
+name: Repo docs check
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - 'AGENTS.md'
+      - 'README*.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - '**/README*.md'
+      - '**/AGENTS.md'
+      - '!docs-site/**'
+      - '!release/changelogs/**'
+      - 'tools/docscheck/**'
+      - '.github/workflows/repo-docs-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'AGENTS.md'
+      - 'README*.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - '**/README*.md'
+      - '**/AGENTS.md'
+      - '!docs-site/**'
+      - '!release/changelogs/**'
+      - 'tools/docscheck/**'
+      - '.github/workflows/repo-docs-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  docscheck:
+    name: Repository docs lifecycle check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Run docscheck
+        run: go run ./tools/docscheck

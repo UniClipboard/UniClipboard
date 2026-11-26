@@ -1,2 +1,2 @@
-export { OnboardingBackButton } from './OnboardingBackButton.ios';
-export type { OnboardingBackButtonProps } from './OnboardingBackButton.ios';
+export { OnboardingBackButton } from './OnboardingBackButton.android';
+export type { OnboardingBackButtonProps } from './OnboardingBackButton.types';

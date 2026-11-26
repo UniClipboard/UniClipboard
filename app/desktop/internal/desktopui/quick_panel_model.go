@@ -43,6 +43,7 @@ type quickPanelState struct {
 	language     string
 	live         *quickLive
 	richPreview  *richtext.Document
+	pasteFailure string
 
 	revealSelection      bool
 	keySequence          shortcutSequence
@@ -454,6 +455,7 @@ func (p *quickPanelState) restore(paste, plain, keep bool) {
 		if p.live.system == nil {
 			return
 		}
+		p.pasteFailure = ""
 		_ = p.live.system.Start(e.id, plain, paste, keep)
 		p.menu = ""
 		p.update()

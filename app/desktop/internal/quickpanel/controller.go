@@ -49,6 +49,15 @@ type Platform interface {
 type PastePreparer interface {
 	PreparePaste(context.Context) error
 }
+
+// ForegroundHandoff is used by platforms that must request foreground
+// activation while the panel still holds it.
+type ForegroundHandoff interface {
+	ActivateBeforeHide() bool
+}
+
+const copiedMessage = "已复制"
+
 type Options struct {
 	Context   context.Context
 	Client    *api.Client
@@ -98,7 +107,7 @@ func (c *Controller) Open() {
 	c.target = Target{}
 	c.TargetName = ""
 	c.Message = ""
-	if !previousSent && previousFailure != "已复制" {
+	if !previousSent && previousFailure != copiedMessage {
 		c.Message = previousFailure
 	}
 	c.CanPaste = false
@@ -115,6 +124,12 @@ func (c *Controller) Open() {
 		c.Message = message(err)
 	}
 	c.changed()
+}
+func (c *Controller) FailureMessage() string {
+	if c.Sent || c.Message == copiedMessage {
+		return ""
+	}
+	return c.Message
 }
 func (c *Controller) Dismiss(restore bool) {
 	c.invalidate()
@@ -195,11 +210,17 @@ func (c *Controller) Start(id string, plain, paste, keep bool) error {
 				c.finish(ErrFocus, false)
 				return
 			}
-			// Hide both panel and its satellite before restoring the external target.
-			c.visible(false)
+			handoff, ok := c.options.Platform.(ForegroundHandoff)
+			activateFirst := ok && handoff.ActivateBeforeHide()
+			if !activateFirst {
+				c.visible(false)
+			}
 			if err = c.options.Platform.Activate(c.target); err != nil {
-				c.failHidden(err)
+				c.finish(err, false)
 				return
+			}
+			if activateFirst {
+				c.visible(false)
 			}
 			c.await(generation, mark, time.Now().Add(time.Second), keep)
 		})
@@ -270,7 +291,7 @@ func (c *Controller) finish(err error, sent bool) {
 	} else if sent {
 		c.Message = "已发送粘贴指令"
 	} else {
-		c.Message = "已复制"
+		c.Message = copiedMessage
 	}
 	c.changed()
 }

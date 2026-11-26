@@ -42,19 +42,19 @@ type timelineEntry struct {
 }
 
 type manifestDoc struct {
-	Case               string         `json:"case"`
-	Status             string         `json:"status"`
-	GuestID            string         `json:"guest_id"`
-	StartedAtUTC       string         `json:"started_at_utc"`
-	FinishedAtUTC      string         `json:"finished_at_utc,omitempty"`
-	Environment        map[string]any `json:"environment"`
+	Case               string            `json:"case"`
+	Status             string            `json:"status"`
+	GuestID            string            `json:"guest_id"`
+	StartedAtUTC       string            `json:"started_at_utc"`
+	FinishedAtUTC      string            `json:"finished_at_utc,omitempty"`
+	Environment        map[string]any    `json:"environment"`
 	BinarySHA256       map[string]string `json:"binary_sha256"`
-	Checks             []string       `json:"checks"`
-	ProcessSnapshots   map[string]any `json:"process_snapshots"`
-	ClipboardReadbacks map[string]any `json:"clipboard_readbacks"`
-	PasteReceipt       map[string]any `json:"paste_receipt"`
-	Timeline           []timelineEntry `json:"timeline"`
-	Error              string         `json:"error,omitempty"`
+	Checks             []string          `json:"checks"`
+	ProcessSnapshots   map[string]any    `json:"process_snapshots"`
+	ClipboardReadbacks map[string]any    `json:"clipboard_readbacks"`
+	PasteReceipt       map[string]any    `json:"paste_receipt"`
+	Timeline           []timelineEntry   `json:"timeline"`
+	Error              string            `json:"error,omitempty"`
 }
 
 var (
@@ -101,7 +101,10 @@ const (
 	vkReturn = uint16(36)
 	vkDown   = uint16(125)
 	vkC      = uint16(8)
+	vkV      = uint16(9)
 	vkS      = uint16(1)
+	vk2      = uint16(19)
+	flagCtrl = uint64(1 << 18)
 	flagCmd  = uint64(1 << 20)
 )
 
@@ -348,7 +351,11 @@ func run() error {
 	workDirFlag := flag.String("work-dir", "", "temporary working directory")
 	guestID := flag.String("guest-id", "", "VM identifier")
 	requireAX := flag.Bool("require-accessibility", false, "fail if AXIsProcessTrusted is false")
+	hotkeyCase := flag.String("hotkey-case", "", "run only the enter or number global shortcut case")
 	flag.Parse()
+	if *hotkeyCase != "" && *hotkeyCase != "enter" && *hotkeyCase != "number" {
+		return fmt.Errorf("invalid --hotkey-case %q", *hotkeyCase)
+	}
 
 	if err := initMacNative(); err != nil {
 		return err
@@ -502,7 +509,7 @@ func run() error {
 		if err := os.WriteFile(filepath.Join(p, "desktop-setup.json"), []byte("{\"complete\":true}\n"), 0o600); err != nil {
 			return "", err
 		}
-		cfg := fmt.Sprintf("[telemetry]\nenabled = false\n[sync]\nenabled = %v\n[desktop]\nmode = 'normal'\nquick_panel_shortcut = ''\n", syncEnabled)
+		cfg := fmt.Sprintf("[telemetry]\nenabled = false\n[sync]\nenabled = %v\n[desktop]\nmode = 'normal'\nquick_panel_shortcut = 'Cmd+Ctrl+V'\n", syncEnabled)
 		if err := os.WriteFile(filepath.Join(p, "config.toml"), []byte(cfg), 0o600); err != nil {
 			return "", err
 		}
@@ -565,8 +572,8 @@ func run() error {
 		return err
 	}
 
-	if *requireAX && !trusted {
-		return fail(fmt.Errorf("AXIsProcessTrusted is false (--require-accessibility set)"))
+	if (*requireAX || *hotkeyCase != "") && !trusted {
+		return fail(fmt.Errorf("cross-app paste requires Accessibility permission in the driver session"))
 	}
 
 	// 1. Pre-populate NSPasteboard BEFORE starting standalone headless unicd
@@ -825,6 +832,140 @@ else { JSON.stringify({pid: a.processIdentifier, name: ObjC.unwrap(a.localizedNa
 	time.Sleep(500 * time.Millisecond)
 	logStep("external_editor_ready", map[string]any{"app": "TextEdit", "pid": textEditPID, "file": targetTxt})
 
+	// The panel receives keys without replacing the active external editor.
+	panelHasKeyboard := func() (bool, bool, error) {
+		status := roleCmd(mainProf, "quick-panel", "status")
+		pid, err := frontmostPID()
+		ready := status["visible"] == true && status["focused"] == true && pid == textEditPID
+		return ready, ready, err
+	}
+	runGlobalHotkeys := func(selection string, panelPID int) error {
+		if _, err := waitUntil("tray shortcut registered", 10*time.Second, func() (bool, bool, error) {
+			state := roleCmd(mainProf, "tray", "status")
+			shortcut, _ := state["shortcut"].(map[string]any)
+			ready := shortcut["effective"] == "Cmd+Ctrl+V" && shortcut["error"] == ""
+			return ready, ready, nil
+		}); err != nil {
+			return err
+		}
+		verifyHotkeyPaste := func(receiptKey, trigger, expected string, key uint16, flags uint64) error {
+			target := filepath.Join(workDir, "n04-"+receiptKey+".txt")
+			if err := os.WriteFile(target, nil, 0o600); err != nil {
+				return err
+			}
+			if out, err := exec.Command("/usr/bin/open", "-a", "TextEdit", target).CombinedOutput(); err != nil {
+				return fmt.Errorf("open hotkey target: %v: %s", err, out)
+			}
+			if _, err := waitUntil("TextEdit foreground before global hotkey", 10*time.Second, func() (bool, bool, error) {
+				pid, err := frontmostPID()
+				return pid == textEditPID, pid == textEditPID, err
+			}); err != nil {
+				return err
+			}
+			sendKey(vkV, flagCmd|flagCtrl)
+			if _, err := waitUntil("panel receives global hotkey without activating", 10*time.Second, panelHasKeyboard); err != nil {
+				return err
+			}
+			if panel := roleProbe(mainProf, "quick-panel"); panelPID != 0 && (panel == nil || panel["pid"] != float64(panelPID)) {
+				return fmt.Errorf("global hotkey replaced the standby panel")
+			}
+			time.Sleep(400 * time.Millisecond)
+			sendKey(key, flags)
+			if _, err := waitUntil("panel dismissed and TextEdit restored after "+trigger, 10*time.Second, func() (bool, bool, error) {
+				pid, err := frontmostPID()
+				ready := !panelVisible(mainProf) && pid == textEditPID
+				return ready, ready, err
+			}); err != nil {
+				return err
+			}
+			time.Sleep(900 * time.Millisecond)
+			sendKey(vkS, flagCmd)
+			pasted, err := waitUntil("TextEdit saved exact text after "+trigger, 10*time.Second, func() ([]byte, bool, error) {
+				data, err := os.ReadFile(target)
+				return data, string(data) == expected, err
+			})
+			if err != nil {
+				return err
+			}
+			if readBack, err := pbReadText(); err != nil || string(readBack) != expected {
+				return fmt.Errorf("clipboard readback after %s did not match: %v", trigger, err)
+			}
+			m.PasteReceipt[receiptKey] = map[string]any{
+				"trigger": trigger, "target_pid": textEditPID, "target_file": target, "target_foreground": true,
+				"expected_sha256": shaHex([]byte(expected)), "actual_sha256": shaHex(pasted), "single_insertion_verified": true,
+			}
+			logStep(receiptKey+"_paste_ok", m.PasteReceipt[receiptKey])
+			return nil
+		}
+		if selection != "number" {
+			if err := verifyHotkeyPaste("global_hotkey", "Enter", textPayload, vkReturn, 0); err != nil {
+				return err
+			}
+			m.Checks = append(m.Checks, "macos-global-hotkey-enter-restores-textedit-and-pastes-once")
+		}
+		if selection == "enter" {
+			return nil
+		}
+
+		// Cmd+2 must select a different row from the previous selection and from
+		// the first row. Commit the second row before the first row.
+		numberText := "macOS N04 second row"
+		var numberIDs [2]string
+		for i, payload := range []string{numberText, "macOS N04 first row"} {
+			raw, err := apiReq(mainSock, "POST", "/v1/submissions", map[string]any{
+				"request_id": fmt.Sprintf("n04-number-%d", i),
+				"snapshot": map[string]any{
+					"parts": []map[string]any{{"format": "text/plain", "data": base64.StdEncoding.EncodeToString([]byte(payload))}},
+				},
+			})
+			if err != nil {
+				return err
+			}
+			result, _ := raw.(map[string]any)
+			numberIDs[i], _ = result["history_id"].(string)
+			if numberIDs[i] == "" {
+				return fmt.Errorf("numbered fixture %d did not commit", i)
+			}
+		}
+		numberRows, err := waitUntil("numbered fixtures are the first two history rows", 8*time.Second, func() ([]any, bool, error) {
+			raw, err := apiReq(mainSock, "GET", "/v1/history", nil)
+			if err != nil {
+				return nil, false, err
+			}
+			items, _ := raw.(map[string]any)["items"].([]any)
+			if len(items) >= 2 && items[0].(map[string]any)["id"] == numberIDs[1] && items[1].(map[string]any)["id"] == numberIDs[0] {
+				return items[:2], true, nil
+			}
+			return nil, false, nil
+		})
+		if err != nil {
+			return err
+		}
+		if err := verifyHotkeyPaste("global_hotkey_number", "Cmd+2", numberText, vk2, flagCmd); err != nil {
+			return err
+		}
+		m.Checks = append(m.Checks, "macos-global-hotkey-cmd-2-restores-textedit-and-pastes-second-row-once")
+		for _, item := range numberRows {
+			row := item.(map[string]any)
+			if _, err := apiReq(mainSock, "DELETE", fmt.Sprintf("/v1/history/%v?revision=%v", row["id"], row["revision"]), nil); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if *hotkeyCase != "" {
+		m.Environment["hotkey_case"] = *hotkeyCase
+		if _, err := spawn(filepath.Join(binDir, "unic-desktop"), []string{"--role", "tray"}, envFor(mainProf), "main-tray.log"); err != nil {
+			return fail(err)
+		}
+		if err := runGlobalHotkeys(*hotkeyCase, 0); err != nil {
+			return fail(err)
+		}
+		m.Status = "PASS"
+		m.FinishedAtUTC = time.Now().UTC().Format(time.RFC3339)
+		return nil
+	}
+
 	// 4. Launch production unic-desktop --quick-panel (cold start)
 	launchCmd := exec.Command(filepath.Join(binDir, "unic-desktop"), "--quick-panel")
 	launchCmd.Env = envFor(mainProf)
@@ -839,18 +980,15 @@ else { JSON.stringify({pid: a.processIdentifier, name: ObjC.unwrap(a.localizedNa
 		return fail(err)
 	}
 	panelPID := int(panelRole["pid"].(float64))
-	if _, err := waitUntil("quick-panel frontmost", 10*time.Second, func() (bool, bool, error) {
-		fp, err := frontmostPID()
-		return fp == panelPID, fp == panelPID, err
-	}); err != nil {
+	if _, err := waitUntil("quick-panel keyboard focus", 10*time.Second, panelHasKeyboard); err != nil {
 		return fail(err)
 	}
 	m.ProcessSnapshots["macos_standalone_panel"] = unicProcesses()
 	if roleProbe(mainProf, "tray") != nil || roleProbe(mainProf, "gui") != nil {
 		return fail(fmt.Errorf("unexpected tray/gui role in standalone mode"))
 	}
-	m.Checks = append(m.Checks, "macos-standalone-quick-panel-launch-and-frontmost")
-	logStep("standalone_panel_frontmost", map[string]any{"pid": panelPID})
+	m.Checks = append(m.Checks, "macos-standalone-quick-panel-keeps-original-app-active")
+	logStep("standalone_panel_keyboard_focus", map[string]any{"pid": panelPID})
 
 	// Repeat --quick-panel keeps visible & same PID
 	launchCmd2 := exec.Command(filepath.Join(binDir, "unic-desktop"), "--quick-panel")
@@ -862,10 +1000,10 @@ else { JSON.stringify({pid: a.processIdentifier, name: ObjC.unwrap(a.localizedNa
 	if int(roleProbe(mainProf, "quick-panel")["pid"].(float64)) != panelPID {
 		return fail(fmt.Errorf("repeat --quick-panel changed PID"))
 	}
-	if fp, _ := frontmostPID(); fp != panelPID {
-		return fail(fmt.Errorf("repeat --quick-panel lost frontmost (got %d want %d)", fp, panelPID))
+	if _, err := waitUntil("repeat --quick-panel retains keyboard focus", 10*time.Second, panelHasKeyboard); err != nil {
+		return fail(err)
 	}
-	m.Checks = append(m.Checks, "macos-repeat-quick-panel-keeps-frontmost-same-pid")
+	m.Checks = append(m.Checks, "macos-repeat-quick-panel-keeps-keyboard-focus-same-pid")
 	logStep("repeat_quick_panel_ok", map[string]any{"pid": panelPID})
 
 	// Find seeded item IDs
@@ -1085,13 +1223,7 @@ else { JSON.stringify({pid: a.processIdentifier, name: ObjC.unwrap(a.localizedNa
 	if out, err := cmdOpen.CombinedOutput(); err != nil {
 		return fail(fmt.Errorf("reopen --quick-panel: %v: %s", err, string(out)))
 	}
-	if _, err := waitUntil("panel frontmost for paste", 10*time.Second, func() (bool, bool, error) {
-		if !panelVisible(mainProf) {
-			return false, false, nil
-		}
-		fp, err := frontmostPID()
-		return fp == panelPID, fp == panelPID, err
-	}); err != nil {
+	if _, err := waitUntil("panel keyboard focus for paste", 10*time.Second, panelHasKeyboard); err != nil {
 		return fail(err)
 	}
 	time.Sleep(400 * time.Millisecond)
@@ -1147,13 +1279,7 @@ else { JSON.stringify({pid: a.processIdentifier, name: ObjC.unwrap(a.localizedNa
 	cmdPng := exec.Command(filepath.Join(binDir, "unic-desktop"), "--quick-panel")
 	cmdPng.Env = envFor(mainProf)
 	_ = cmdPng.Run()
-	if _, err := waitUntil("panel frontmost for png", 10*time.Second, func() (bool, bool, error) {
-		if !panelVisible(mainProf) {
-			return false, false, nil
-		}
-		fp, err := frontmostPID()
-		return fp == panelPID, fp == panelPID, err
-	}); err != nil {
+	if _, err := waitUntil("panel keyboard focus for png", 10*time.Second, panelHasKeyboard); err != nil {
 		return fail(err)
 	}
 	time.Sleep(350 * time.Millisecond)
@@ -1179,13 +1305,7 @@ else { JSON.stringify({pid: a.processIdentifier, name: ObjC.unwrap(a.localizedNa
 	cmdFile := exec.Command(filepath.Join(binDir, "unic-desktop"), "--quick-panel")
 	cmdFile.Env = envFor(mainProf)
 	_ = cmdFile.Run()
-	if _, err := waitUntil("panel frontmost for file", 10*time.Second, func() (bool, bool, error) {
-		if !panelVisible(mainProf) {
-			return false, false, nil
-		}
-		fp, err := frontmostPID()
-		return fp == panelPID, fp == panelPID, err
-	}); err != nil {
+	if _, err := waitUntil("panel keyboard focus for file", 10*time.Second, panelHasKeyboard); err != nil {
 		return fail(err)
 	}
 	time.Sleep(350 * time.Millisecond)
@@ -1254,13 +1374,7 @@ else { JSON.stringify({pid: a.processIdentifier, name: ObjC.unwrap(a.localizedNa
 	cmdTray := exec.Command(filepath.Join(binDir, "unic-desktop"), "--quick-panel")
 	cmdTray.Env = envFor(mainProf)
 	_ = cmdTray.Run()
-	if _, err := waitUntil("panel frontmost with tray", 10*time.Second, func() (bool, bool, error) {
-		if !panelVisible(mainProf) {
-			return false, false, nil
-		}
-		fp, err := frontmostPID()
-		return fp == panelPID, fp == panelPID, err
-	}); err != nil {
+	if _, err := waitUntil("panel keyboard focus with tray", 10*time.Second, panelHasKeyboard); err != nil {
 		return fail(err)
 	}
 	time.Sleep(350 * time.Millisecond)
@@ -1276,8 +1390,15 @@ else { JSON.stringify({pid: a.processIdentifier, name: ObjC.unwrap(a.localizedNa
 	if histAfter != histBefore {
 		return fail(fmt.Errorf("tray coexistence echo: %d -> %d", histBefore, histAfter))
 	}
+	if readBack, err := pbReadText(); err != nil || string(readBack) != textPayload {
+		return fail(fmt.Errorf("tray coexistence did not copy the selected text: %v", err))
+	}
 	m.Checks = append(m.Checks, "macos-tray-coexistence-zero-echo")
 	logStep("tray_coexistence_zero_echo", map[string]any{"history_count": histAfter})
+
+	if err := runGlobalHotkeys("", panelPID); err != nil {
+		return fail(err)
+	}
 
 	_ = trayProc.Process.Signal(syscall.SIGTERM)
 	_ = trayProc.Wait()
@@ -1301,13 +1422,7 @@ else { JSON.stringify({pid: a.processIdentifier, name: ObjC.unwrap(a.localizedNa
 	cmdPost := exec.Command(filepath.Join(binDir, "unic-desktop"), "--quick-panel")
 	cmdPost.Env = envFor(mainProf)
 	_ = cmdPost.Run()
-	if _, err := waitUntil("panel frontmost after tray exit", 10*time.Second, func() (bool, bool, error) {
-		if !panelVisible(mainProf) {
-			return false, false, nil
-		}
-		fp, err := frontmostPID()
-		return fp == panelPID, fp == panelPID, err
-	}); err != nil {
+	if _, err := waitUntil("panel keyboard focus after tray exit", 10*time.Second, panelHasKeyboard); err != nil {
 		return fail(err)
 	}
 	time.Sleep(350 * time.Millisecond)

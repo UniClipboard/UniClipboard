@@ -24,7 +24,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: ae5e5bcc045614c4d217facbd9ad19b33ba578ac
+verified: 8dcbf0d45b84e0b58b7e0232b570b7df7f7b6140
 ---
 # Headless service and desktop integration
 
@@ -262,7 +262,7 @@ Directory source preparation runs in Engine outside clipboard polling. Async loc
 Without it, a regular `portable.dat` file beside the resolved executable selects its sibling `data/` directory. A marker symlink or directory is rejected.
 All bundled programs use the same portable resolver. `UNIC_SOCK` remains an explicit socket override; otherwise the socket remains inside the selected data directory and retains native Unix-socket path limits.
 Released executables default to the user configuration directory's `unic/`. Version-`dev` executables default to `unic-development/`.
-The raw Desktop development entry uses `UniClipboard Development` for single-instance identity; production staging selects `UniClipboard`.
+Production Desktop staging sets the runtime display name to `Unic`. Windows and Linux explicitly retain the `UniClipboard` mygo login registration key. macOS uses the existing bundle identifier. The raw development entry retains the separate `UniClipboard Development` runtime name and login key.
 These paths are separate from v1 data. Program replacement never imports v1 history or credentials automatically.
 
 ## Configured external sync instances

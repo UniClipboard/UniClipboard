@@ -421,7 +421,7 @@ func shortcutText(mac, other string) string {
 }
 
 func (d *viewState) trySampleCopy() {
-	sampleText := d.tr("让每一次复制更有用 — UniClipboard 示例文本")
+	sampleText := d.tr("让每一次复制更有用 — Unic 示例文本")
 	if d.live == nil {
 		id := fmt.Sprintf("sample-%d", time.Now().UnixNano())
 		tags := []string{"builtin:text"}

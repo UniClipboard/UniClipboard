@@ -28,6 +28,7 @@ spec = importlib.util.spec_from_file_location(
 cli = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cli)
 APP_ID = "app.uniclipboard.desktop"
+APP_NAME = "Unic"
 LINUX_ICONS = {
     "icon.png": "512x512/apps/uniclipboard.png",
     "icon-linux-48.png": "48x48/apps/uniclipboard.png",
@@ -414,7 +415,10 @@ def stage(args):
             )
         else:
             (payload / "uniclip").symlink_to("unic")
-        linker = f"-X github.com/uniclipboard/unic/internal/releaseinfo.Version={record['version']} -X github.com/uniclipboard/unic/internal/releaseinfo.BuildNumber={record['build_number']} -X github.com/uniclipboard/unic/internal/releaseinfo.Source={source} -X main.desktopAppName=UniClipboard -X github.com/uniclipboard/unic/internal/observability.ProductVersion={record['version']}"
+        linker = f"-X github.com/uniclipboard/unic/internal/releaseinfo.Version={record['version']} -X github.com/uniclipboard/unic/internal/releaseinfo.BuildNumber={record['build_number']} -X github.com/uniclipboard/unic/internal/releaseinfo.Source={source} -X main.desktopAppName={APP_NAME} -X github.com/uniclipboard/unic/internal/observability.ProductVersion={record['version']}"
+        if os_name != "darwin":
+            # Existing Windows Run values and Linux autostart files derive their key from mygo's previous name.
+            linker += " -X github.com/egoist/mygo.packageIdentifier=UniClipboard"
         if not args.development:
             linker += " -X github.com/egoist/mygo.production=1"
         update_key = record.get("update_public_key", "")
@@ -477,18 +481,27 @@ def stage(args):
             info = {
                 "CFBundleIconFile": "icon.icns",
                 "CFBundleIdentifier": APP_ID,
-                "CFBundleName": "UniClipboard",
+                "CFBundleName": APP_NAME,
+                "CFBundleDevelopmentRegion": "en",
+                # Finder resolves the localized name when this value matches the installed basename.
                 "CFBundleDisplayName": "UniClipboard",
                 "CFBundleExecutable": "unic-desktop",
                 "CFBundlePackageType": "APPL",
                 "CFBundleShortVersionString": record["version"],
                 "CFBundleVersion": str(record["build_number"]),
                 "LSMinimumSystemVersion": "13.0",
+                "LSHasLocalizedDisplayName": True,
                 "LSUIElement": True,
                 "NSHighResolutionCapable": True,
                 "NSPrincipalClass": "NSApplication",
             }
             (payload.parent / "Info.plist").write_bytes(plistlib.dumps(info))
+            localization = resources / "en.lproj"
+            localization.mkdir()
+            (localization / "InfoPlist.strings").write_text(
+                f'"CFBundleDisplayName" = "{APP_NAME}";\n"CFBundleName" = "{APP_NAME}";\n',
+                encoding="utf-8",
+            )
         else:
             (payload / "installation.json").write_text(
                 json.dumps(

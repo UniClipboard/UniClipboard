@@ -191,11 +191,11 @@
     "pt-BR": "Iniciar automaticamente ao iniciar sessão.",
     "ru": "Запускать автоматически после входа."
   },
-  "登录系统后自动启动 UniClipboard": {
-    "en": "Launch UniClipboard after login",
-    "ja": "ログイン後に UniClipboard を起動",
-    "pt-BR": "Iniciar o UniClipboard ao iniciar sessão",
-    "ru": "Запускать UniClipboard после входа"
+  "登录系统后自动启动 Unic": {
+    "en": "Launch Unic after login",
+    "ja": "ログイン後に Unic を起動",
+    "pt-BR": "Iniciar o Unic ao iniciar sessão",
+    "ru": "Запускать Unic после входа"
   },
   "系统登录启动已关闭": {
     "en": "Login launch is disabled",
@@ -472,12 +472,6 @@
     "ja": "UI コンポーネント",
     "pt-BR": "Componentes da interface",
     "ru": "Компоненты интерфейса"
-  },
-  "跨设备剪贴板同步": {
-    "en": "Cross-device clipboard sync",
-    "ja": "デバイス間のクリップボード同期",
-    "pt-BR": "Sincronização da área de transferência entre dispositivos",
-    "ru": "Синхронизация буфера обмена между устройствами"
   },
   "桌面": {
     "en": "Desktop",
@@ -1469,11 +1463,11 @@
     "pt-BR": "Uso do armazenamento",
     "ru": "Использование хранилища"
   },
-  "安装 UniClipboard": {
-    "en": "Install UniClipboard",
-    "ja": "UniClipboard をインストール",
-    "pt-BR": "Instale o UniClipboard",
-    "ru": "Установите UniClipboard"
+  "安装 Unic": {
+    "en": "Install Unic",
+    "ja": "Unic をインストール",
+    "pt-BR": "Instale o Unic",
+    "ru": "Установите Unic"
   },
   "完成操作时播放提示音": {
     "en": "Play a sound after actions",
@@ -3143,11 +3137,11 @@
     "pt-BR": "A sincronização e a captura da área de transferência serão interrompidas antes da migração. Os dados antigos serão preservados.",
     "ru": "Перед переносом синхронизация и захват буфера обмена будут остановлены. Старые данные сохранятся."
   },
-  "欢迎使用 UniClipboard": {
-    "en": "Welcome to UniClipboard",
-    "ja": "UniClipboard へようこそ",
-    "pt-BR": "Boas-vindas ao UniClipboard",
-    "ru": "Добро пожаловать в UniClipboard"
+  "欢迎使用 Unic": {
+    "en": "Welcome to Unic",
+    "ja": "Unic へようこそ",
+    "pt-BR": "Boas-vindas ao Unic",
+    "ru": "Добро пожаловать в Unic"
   },
   "让每一次复制更有用": {
     "en": "Make every copy more useful",
@@ -5933,11 +5927,11 @@
     "pt-BR": "Patrocinadores",
     "ru": "Спонсоры"
   },
-  "感谢以下朋友的赞助支持，让 UniClipboard 持续向前。": {
-    "en": "Thanks to these wonderful people whose sponsorship keeps UniClipboard moving forward.",
-    "ja": "スポンサーシップにより UniClipboard を支えてくださっている皆さまに感謝します。",
-    "pt-BR": "Obrigado a estas pessoas incríveis, cujo patrocínio mantém o UniClipboard avançando.",
-    "ru": "Спасибо этим замечательным людям, чья поддержка помогает UniClipboard развиваться."
+  "感谢以下朋友的赞助支持，让 Unic 持续向前。": {
+    "en": "Thanks to these wonderful people whose sponsorship keeps Unic moving forward.",
+    "ja": "スポンサーシップにより Unic を支えてくださっている皆さまに感謝します。",
+    "pt-BR": "Obrigado a estas pessoas incríveis, cujo patrocínio mantém o Unic avançando.",
+    "ru": "Спасибо этим замечательным людям, чья поддержка помогает Unic развиваться."
   },
   "金牌": {
     "en": "Gold",
@@ -6029,47 +6023,47 @@
     "pt-BR": "Atualize pelo seu gerenciador de pacotes",
     "ru": "Обновите через менеджер пакетов"
   },
-  "你当前通过 Homebrew 安装了 UniClipboard，请在终端执行以下命令升级：": {
-    "en": "UniClipboard was installed via Homebrew. Run this in a terminal to upgrade:",
-    "ja": "UniClipboard は Homebrew でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
-    "pt-BR": "O UniClipboard foi instalado via Homebrew. Execute este comando no terminal para atualizar:",
-    "ru": "UniClipboard установлен через Homebrew. Выполните в терминале следующую команду для обновления:"
+  "你当前通过 Homebrew 安装了 Unic，请在终端执行以下命令升级：": {
+    "en": "Unic was installed via Homebrew. Run this in a terminal to upgrade:",
+    "ja": "Unic は Homebrew でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O Unic foi instalado via Homebrew. Execute este comando no terminal para atualizar:",
+    "ru": "Unic установлен через Homebrew. Выполните в терминале следующую команду для обновления:"
   },
-  "你当前通过 Snap 安装了 UniClipboard，请在终端执行以下命令升级：": {
-    "en": "UniClipboard was installed via Snap. Run this in a terminal to upgrade:",
-    "ja": "UniClipboard は Snap でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
-    "pt-BR": "O UniClipboard foi instalado via Snap. Execute este comando no terminal para atualizar:",
-    "ru": "UniClipboard установлен через Snap. Выполните в терминале следующую команду для обновления:"
+  "你当前通过 Snap 安装了 Unic，请在终端执行以下命令升级：": {
+    "en": "Unic was installed via Snap. Run this in a terminal to upgrade:",
+    "ja": "Unic は Snap でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O Unic foi instalado via Snap. Execute este comando no terminal para atualizar:",
+    "ru": "Unic установлен через Snap. Выполните в терминале следующую команду для обновления:"
   },
-  "你当前通过 Flatpak 安装了 UniClipboard，请在终端执行以下命令升级：": {
-    "en": "UniClipboard was installed via Flatpak. Run this in a terminal to upgrade:",
-    "ja": "UniClipboard は Flatpak でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
-    "pt-BR": "O UniClipboard foi instalado via Flatpak. Execute este comando no terminal para atualizar:",
-    "ru": "UniClipboard установлен через Flatpak. Выполните в терминале следующую команду для обновления:"
+  "你当前通过 Flatpak 安装了 Unic，请在终端执行以下命令升级：": {
+    "en": "Unic was installed via Flatpak. Run this in a terminal to upgrade:",
+    "ja": "Unic は Flatpak でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O Unic foi instalado via Flatpak. Execute este comando no terminal para atualizar:",
+    "ru": "Unic установлен через Flatpak. Выполните в терминале следующую команду для обновления:"
   },
-  "你当前通过 Scoop 安装了 UniClipboard，请在终端执行以下命令升级：": {
-    "en": "UniClipboard was installed via Scoop. Run this in a terminal to upgrade:",
-    "ja": "UniClipboard は Scoop でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
-    "pt-BR": "O UniClipboard foi instalado via Scoop. Execute este comando no terminal para atualizar:",
-    "ru": "UniClipboard установлен через Scoop. Выполните в терминале следующую команду для обновления:"
+  "你当前通过 Scoop 安装了 Unic，请在终端执行以下命令升级：": {
+    "en": "Unic was installed via Scoop. Run this in a terminal to upgrade:",
+    "ja": "Unic は Scoop でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O Unic foi instalado via Scoop. Execute este comando no terminal para atualizar:",
+    "ru": "Unic установлен через Scoop. Выполните в терминале следующую команду для обновления:"
   },
-  "你当前通过 winget 安装了 UniClipboard，请在终端执行以下命令升级：": {
-    "en": "UniClipboard was installed via winget. Run this in a terminal to upgrade:",
-    "ja": "UniClipboard は winget でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
-    "pt-BR": "O UniClipboard foi instalado via winget. Execute este comando no terminal para atualizar:",
-    "ru": "UniClipboard установлен через winget. Выполните в терминале следующую команду для обновления:"
+  "你当前通过 winget 安装了 Unic，请在终端执行以下命令升级：": {
+    "en": "Unic was installed via winget. Run this in a terminal to upgrade:",
+    "ja": "Unic は winget でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O Unic foi instalado via winget. Execute este comando no terminal para atualizar:",
+    "ru": "Unic установлен через winget. Выполните в терминале следующую команду для обновления:"
   },
-  "你当前通过 Chocolatey 安装了 UniClipboard，请在终端执行以下命令升级：": {
-    "en": "UniClipboard was installed via Chocolatey. Run this in a terminal to upgrade:",
-    "ja": "UniClipboard は Chocolatey でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
-    "pt-BR": "O UniClipboard foi instalado via Chocolatey. Execute este comando no terminal para atualizar:",
-    "ru": "UniClipboard установлен через Chocolatey. Выполните в терминале следующую команду для обновления:"
+  "你当前通过 Chocolatey 安装了 Unic，请在终端执行以下命令升级：": {
+    "en": "Unic was installed via Chocolatey. Run this in a terminal to upgrade:",
+    "ja": "Unic は Chocolatey でインストールされています。ターミナルで次のコマンドを実行して更新してください：",
+    "pt-BR": "O Unic foi instalado via Chocolatey. Execute este comando no terminal para atualizar:",
+    "ru": "Unic установлен через Chocolatey. Выполните в терминале следующую команду для обновления:"
   },
-  "你当前通过系统包管理器安装了 UniClipboard，请使用安装时对应的包管理器进行升级。": {
-    "en": "UniClipboard was installed via your system package manager. Use that package manager to upgrade.",
-    "ja": "UniClipboard はシステムのパッケージ マネージャーでインストールされています。対応するパッケージ マネージャーを使用して更新してください。",
-    "pt-BR": "O UniClipboard foi instalado pelo gerenciador de pacotes do sistema. Use esse gerenciador para atualizar.",
-    "ru": "UniClipboard установлен через системный менеджер пакетов. Используйте его для обновления."
+  "你当前通过系统包管理器安装了 Unic，请使用安装时对应的包管理器进行升级。": {
+    "en": "Unic was installed via your system package manager. Use that package manager to upgrade.",
+    "ja": "Unic はシステムのパッケージ マネージャーでインストールされています。対応するパッケージ マネージャーを使用して更新してください。",
+    "pt-BR": "O Unic foi instalado pelo gerenciador de pacotes do sistema. Use esse gerenciador para atualizar.",
+    "ru": "Unic установлен через системный менеджер пакетов. Используйте его для обновления."
   },
   "当前版本": {
     "en": "Current version",
@@ -7031,11 +7025,11 @@
     "pt-BR": "Idioma, modo de cor, ícone da bandeja, canal de atualização, moldura da janela, modo de execução, início em segundo plano, níveis de log, telemetria, sincronização, retenção, cota e limites.",
     "ru": "Язык, цветовая схема, значок трея, канал обновлений, рамка окна, режим работы, фоновый запуск, уровни журналов, телеметрия, синхронизация, хранение истории, квота кэша и лимиты."
   },
-  "登录操作系统后自动启动 UniClipboard。": {
-    "en": "Automatically start UniClipboard when you sign in.",
-    "ja": "OSログイン時に UniClipboard を自動起動します。",
-    "pt-BR": "Inicia o UniClipboard automaticamente ao iniciar sessão no sistema.",
-    "ru": "Автоматически запускать UniClipboard при входе в систему."
+  "登录操作系统后自动启动 Unic。": {
+    "en": "Automatically start Unic when you sign in.",
+    "ja": "OSログイン時に Unic を自動起動します。",
+    "pt-BR": "Inicia o Unic automaticamente ao iniciar sessão no sistema.",
+    "ru": "Автоматически запускать Unic при входе в систему."
   },
   "立即打开快捷面板查看当前外观与键盘交互。": {
     "en": "Open Quick Panel now to inspect its current appearance and keyboard flow.",
@@ -7979,11 +7973,11 @@
     "pt-BR": "Limpar \"%s\" e manter os filtros",
     "ru": "Очистить «%s» и оставить фильтры"
   },
-  "让每一次复制更有用 — UniClipboard 示例文本": {
-    "en": "Make every copy useful — UniClipboard sample clip",
-    "ja": "すべてのコピーをもっと便利に — UniClipboard サンプル",
-    "pt-BR": "Torne cada cópia mais útil — Exemplo do UniClipboard",
-    "ru": "Делайте каждое копирование полезнее — пример UniClipboard"
+  "让每一次复制更有用 — Unic 示例文本": {
+    "en": "Make every copy useful — Unic sample clip",
+    "ja": "すべてのコピーをもっと便利に — Unic サンプル",
+    "pt-BR": "Torne cada cópia mais útil — Exemplo do Unic",
+    "ru": "Делайте каждое копирование полезнее — пример Unic"
   },
   "已捕获新剪贴板内容": {
     "en": "New clipboard item captured",
@@ -8753,11 +8747,11 @@
     "pt-BR": "Notificações do sistema",
     "ru": "Системные уведомления"
   },
-  "接收来自 UniClipboard 的系统级桌面通知。关闭后仍会在应用内保留红点提醒。": {
-    "en": "Show desktop system notifications from UniClipboard. In-app badges and indicators stay active when turned off.",
-    "ja": "UniClipboard からのシステム通知を表示します。オフにしてもアプリ内のバッジと案内は引き続き表示されます。",
-    "pt-BR": "Exibe notificações do sistema do UniClipboard. Os selos e avisos no aplicativo continuam ativos quando desativado.",
-    "ru": "Показывать системные уведомления от UniClipboard. При отключении индикаторы и подсказки внутри приложения сохраняются."
+  "接收来自 Unic 的系统级桌面通知。关闭后仍会在应用内保留红点提醒。": {
+    "en": "Show desktop system notifications from Unic. In-app badges and indicators stay active when turned off.",
+    "ja": "Unic からのシステム通知を表示します。オフにしてもアプリ内のバッジと案内は引き続き表示されます。",
+    "pt-BR": "Exibe notificações do sistema do Unic. Os selos e avisos no aplicativo continuam ativos quando desativado.",
+    "ru": "Показывать системные уведомления от Unic. При отключении индикаторы и подсказки внутри приложения сохраняются."
   },
   "新设备配对与路径请求": {
     "en": "Device Pairing & Sync Path Requests",

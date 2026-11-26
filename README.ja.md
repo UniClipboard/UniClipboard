@@ -1,11 +1,11 @@
 <div align="center">
 
-<img src="app/desktop/internal/appicons/unic-logo.svg" alt="UniClipboard" width="112" height="112" />
+<img src="app/desktop/internal/appicons/unic-logo.svg" alt="Unic" width="112" height="112" />
 
 # 一度コピーすれば、どのデバイスでも貼り付け
 
 <p>
-  <strong>UniClipboard</strong> はテキスト・画像・ファイル・フォルダをデバイス間で直接同期します。<br />
+  <strong>Unic（旧称 UniClipboard）</strong> はテキスト・画像・ファイル・フォルダをデバイス間で直接同期します。<br />
   エンドツーエンド暗号化。アカウント不要、クラウド不要。
 </p>
 
@@ -30,13 +30,13 @@
   </small>
 </p>
 
-![デスクトップ・タブレット・スマートフォンでの UniClipboard](docs/assets/product-overview.png)
+![デスクトップ・タブレット・スマートフォンでの Unic](docs/assets/product-overview.png)
 
 </div>
 
 ---
 
-## UniClipboard を選ぶ理由
+## Unic を選ぶ理由
 
 - **クロスプラットフォーム**：Windows、macOS、Linux、iOS、Android の間で同期。同じ Wi-Fi でも別のネットワークでもつながります。
 - **クラウドを経由しない**：デバイス同士が暗号化された接続で直接つながります。登録不要で、履歴は自分のデバイスにだけ保存されます。
@@ -129,7 +129,7 @@ unic history list                 # 履歴を表示
 
 ## プライバシー
 
-- デバイス間はエンドツーエンドで暗号化されます。UniClipboard はクリップボードを保存するサーバーを運営していません。
+- デバイス間はエンドツーエンドで暗号化されます。Unic はクリップボードを保存するサーバーを運営していません。
 - 新しいデバイスはすべて、フィンガープリントを確認して承認する必要があります。削除したデバイスは即座にアクセスできなくなります。
 - クリップボードの内容、ファイルパス、デバイスアドレスはログに記録されません。
 - 匿名の診断データにクリップボードの内容やデバイス識別情報は含まれません。**設定 → 診断とプライバシー** でいつでもオフにできます。

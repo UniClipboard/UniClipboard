@@ -1,11 +1,11 @@
 <div align="center">
 
-<img src="app/desktop/internal/appicons/unic-logo.svg" alt="UniClipboard" width="112" height="112" />
+<img src="app/desktop/internal/appicons/unic-logo.svg" alt="Unic" width="112" height="112" />
 
 # 複製一次，每台裝置都能貼上
 
 <p>
-  <strong>UniClipboard</strong> 在你的裝置之間直接同步文字、圖片、檔案與資料夾。<br />
+  <strong>Unic（原名 UniClipboard）</strong> 在你的裝置之間直接同步文字、圖片、檔案與資料夾。<br />
   端到端加密，無需帳號，不經雲端。
 </p>
 
@@ -30,13 +30,13 @@
   </small>
 </p>
 
-![UniClipboard 跨裝置介面展示（桌面、平板與手機）](docs/assets/product-overview.png)
+![Unic 跨裝置介面展示（桌面、平板與手機）](docs/assets/product-overview.png)
 
 </div>
 
 ---
 
-## 為什麼選擇 UniClipboard
+## 為什麼選擇 Unic
 
 - **跨平台**：支援 Windows、macOS、Linux、iOS 與 Android 互相同步。裝置在同一個 Wi-Fi 或不同網路都能連上。
 - **不經過雲端**：裝置之間加密直連，不需要註冊帳號。剪貼簿歷史只存在你自己的裝置上。
@@ -129,7 +129,7 @@ unic history list                 # 查看歷史
 
 ## 隱私
 
-- 裝置之間端對端加密傳輸，UniClipboard 不經營儲存你剪貼簿內容的伺服器。
+- 裝置之間端對端加密傳輸，Unic 不經營儲存你剪貼簿內容的伺服器。
 - 每台新裝置都必須由你核對指紋並手動核准。移除的裝置會立即失去存取權。
 - 剪貼簿內容、檔案路徑和裝置位址不會寫入日誌。
 - 匿名診斷資料不包含剪貼簿內容和裝置身分，可隨時在 **設定 → 診斷與隱私** 中關閉。

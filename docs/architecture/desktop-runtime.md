@@ -48,7 +48,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: ae5e5bcc045614c4d217facbd9ad19b33ba578ac
+verified: 8dcbf0d45b84e0b58b7e0232b570b7df7f7b6140
 ---
 # Desktop configuration and received files
 
@@ -494,6 +494,8 @@ Before writing a prepared tree, the adapter rechecks the current clipboard again
 ## Application and tray icons
 
 Desktop generates its launch artwork from the supplied Unic logo. The packaged macOS Dock uses the bundle icon through Launch Services. The unbundled macOS binary uses the matching embedded PNG. Windows and Linux windows use their platform artwork. About uses the 512-pixel PNG. See the [asset guide](../../app/desktop/internal/appicons/README.md).
+
+The tray tooltip displays `Unic` and appends a localized count when device requests await approval.
 
 Settings > General > Tray icon selects `glyph` (the v1 default, two offset rounded cards) or `cat` (the full-color white pixel-cat with dark outline and eyes). The revision-checked configuration API persists `desktop.tray_icon`. The existing Desktop file watcher applies the saved preference immediately. `unic config set desktop.tray_icon '"cat"'` and direct TOML edits use the same validation and update path. Invalid values retain the previous valid configuration. The tray applies this preference while it runs. Normal GUI close retains the tray; lightweight GUI close removes it.
 

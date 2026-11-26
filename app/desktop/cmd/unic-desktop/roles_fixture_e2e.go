@@ -21,6 +21,18 @@ import (
 	paths "github.com/uniclipboard/unic/internal/localpaths"
 )
 
+type clipboardReply struct {
+	Mark    string `json:"mark"`
+	Failure string `json:"failure"`
+}
+
+type clipboardRequest struct {
+	ID                string `json:"id"`
+	Plain             bool   `json:"plain"`
+	Mark              string `json:"mark"`
+	InterruptComplete bool   `json:"interrupt_complete,omitempty"`
+}
+
 // Only the canonical E2E build can replace native event loops. Role IPC,
 // processes, service ownership, adapter protocol and persistence stay real.
 func init() {

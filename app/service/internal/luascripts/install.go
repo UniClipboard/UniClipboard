@@ -19,6 +19,7 @@ type InstallOptions struct {
 	Repository string
 	Ref        string
 	Path       string
+	MirrorURL  string
 	Build      bool
 	Replace    bool
 }
@@ -143,6 +144,11 @@ func PrepareInstall(ctx context.Context, root string, o InstallOptions) (*Prepar
 	if err != nil {
 		return nil, err
 	}
+	mirror, err := resolveMirrorURL(o.MirrorURL)
+	if err != nil {
+		return nil, err
+	}
+	repo.mirror = mirror
 	if o.Path != "" && !localPath(o.Path) {
 		return nil, errors.New("invalid plugin repository path")
 	}

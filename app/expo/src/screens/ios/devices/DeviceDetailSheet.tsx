@@ -15,13 +15,16 @@ import {
   font,
   foregroundStyle,
   frame,
+  multilineTextAlignment,
   onSubmit,
+  padding,
   submitLabel,
 } from '@expo/ui/swift-ui/modifiers';
 import { useTranslation } from 'react-i18next';
 
 import { IosBottomSheet, IosSheetForm, IosSheetPage, SheetCircleButton } from '@/components/ui';
 import type { DeviceBinding, EngineDevice } from '@/engine/types';
+import { formatFingerprintLines } from '@/screens/pairing/pairingUtils';
 import {
   IconToggleRow,
   SettingsNavRow,
@@ -104,44 +107,41 @@ export function DeviceDetailSheet({
               >
                 <Image
                   systemName="laptopcomputer"
-                  size={32}
+                  size={30}
                   color={settingsTileColors.indigo}
                   modifiers={[frame({ width: 42, height: 42 })]}
                 />
-                <VStack alignment="leading" spacing={4}>
-                  <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
+                <VStack alignment="leading" spacing={3}>
+                  <SwiftUIText modifiers={[font({ size: 17, weight: 'semibold' })]}>
                     {deviceDisplayName(device)}
                   </SwiftUIText>
-                  <SwiftUIText modifiers={[foregroundStyle('secondary')]}>
-                    {status?.label ?? ''}
-                  </SwiftUIText>
+                  <HStack spacing={6} alignment="center">
+                    {status?.dot ? (
+                      <Image systemName="circle.fill" size={8} color={status.dot} />
+                    ) : null}
+                    <SwiftUIText modifiers={[font({ size: 13 }), foregroundStyle('secondary')]}>
+                      {status?.label ?? ''}
+                    </SwiftUIText>
+                  </HStack>
                 </VStack>
+                <Spacer />
               </HStack>
             </Section>
 
-            <Section>
-              <HStack modifiers={[frame({ maxWidth: Infinity })]}>
-                <SwiftUIText>{t('settingsSync:space.deviceDetail.identity.label')}</SwiftUIText>
-                <Spacer />
-                <SwiftUIText modifiers={[foregroundStyle('secondary')]}>
-                  {t('settingsSync:space.deviceDetail.identity.remote')}
-                </SwiftUIText>
-              </HStack>
-              <HStack modifiers={[frame({ maxWidth: Infinity })]}>
-                <SwiftUIText>
-                  {t('settingsSync:space.deviceDetail.reachability.label')}
-                </SwiftUIText>
-                <Spacer />
-                <SwiftUIText modifiers={[foregroundStyle('secondary')]}>
-                  {status?.label ?? ''}
-                </SwiftUIText>
-              </HStack>
-              <VStack alignment="leading" spacing={4}>
-                <SwiftUIText modifiers={[font({ size: 13 }), foregroundStyle('secondary')]}>
-                  {pair('fingerprint', { value: device.fingerprint })}
-                </SwiftUIText>
-              </VStack>
-            </Section>
+            {device.bindings && device.bindings.length > 0 ? (
+              <Section header={<SwiftUIText>{t('settings:category.sync')}</SwiftUIText>}>
+                {device.bindings.map((binding) => (
+                  <IconToggleRow
+                    key={binding.id}
+                    icon="arrow.triangle.2.circlepath"
+                    iconColor={settingsTileColors.green}
+                    label={pair('autoSyncToggle')}
+                    isOn={binding.sync_enabled}
+                    onIsOnChange={(enabled) => void onToggleSync(binding, enabled)}
+                  />
+                ))}
+              </Section>
+            ) : null}
 
             <Section header={<SwiftUIText>{pair('rename')}</SwiftUIText>}>
               <TextField
@@ -163,22 +163,24 @@ export function DeviceDetailSheet({
               />
             </Section>
 
-            {device.bindings && device.bindings.length > 0 ? (
-              <Section header={<SwiftUIText>{t('settings:category.sync')}</SwiftUIText>}>
-                {device.bindings.map((binding) => (
-                  <IconToggleRow
-                    key={binding.id}
-                    icon="arrow.triangle.2.circlepath"
-                    iconColor={settingsTileColors.green}
-                    label={pair(binding.sync_enabled ? 'pauseSync' : 'resumeSync')}
-                    isOn={binding.sync_enabled}
-                    onIsOnChange={(enabled) => void onToggleSync(binding, enabled)}
-                  />
-                ))}
-              </Section>
-            ) : null}
+            <Section header={<SwiftUIText>{pair('fingerprintLabel')}</SwiftUIText>}>
+              <VStack
+                alignment="center"
+                modifiers={[frame({ maxWidth: Infinity }), padding({ vertical: 4 })]}
+              >
+                <SwiftUIText
+                  modifiers={[
+                    font({ size: 15, weight: 'medium', design: 'monospaced' }),
+                    foregroundStyle('secondary'),
+                    multilineTextAlignment('center'),
+                  ]}
+                >
+                  {formatFingerprintLines(device.fingerprint)}
+                </SwiftUIText>
+              </VStack>
+            </Section>
 
-            <Section footer={<SwiftUIText>{t('settingsSync:space.devices.removeEffect')}</SwiftUIText>}>
+            <Section footer={<SwiftUIText>{pair('unpairEffect')}</SwiftUIText>}>
               <Alert
                 title={pair('unpair')}
                 isPresented={confirmUnpair}
@@ -214,9 +216,7 @@ export function DeviceDetailSheet({
                 </Alert.Actions>
                 <Alert.Message>
                   <SwiftUIText>
-                    {t('settingsSync:space.devices.removeConfirmNamed', {
-                      device: deviceDisplayName(device),
-                    })}
+                    {pair('unpairConfirmNamed', { device: deviceDisplayName(device) })}
                   </SwiftUIText>
                 </Alert.Message>
               </Alert>

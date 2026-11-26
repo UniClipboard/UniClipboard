@@ -18,7 +18,11 @@ import (
 	"time"
 )
 
-const archiveLimit = 128 << 20
+const (
+	archiveLimit = 128 << 20
+	// DefaultMirrorURL is the official static plugin marketplace mirror.
+	DefaultMirrorURL = "https://plugins.uniclipboard.app"
+)
 
 var githubPath = regexp.MustCompile(`^/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+$`)
 var errAssetMissing = errors.New("GitHub asset not found")
@@ -26,6 +30,7 @@ var errAssetMissing = errors.New("GitHub asset not found")
 type githubRepo struct {
 	location string
 	slug     string
+	mirror   *url.URL
 }
 
 func openGitHub(location string) (githubRepo, error) {
@@ -41,6 +46,37 @@ func openGitHub(location string) (githubRepo, error) {
 	return githubRepo{location: "https://github.com" + slug, slug: slug}, nil
 }
 
+func isLoopbackHost(host string) bool {
+	return host == "127.0.0.1" || host == "localhost" || host == "::1"
+}
+
+func parseMirrorURL(raw string) (*url.URL, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || strings.EqualFold(trimmed, "off") || strings.EqualFold(trimmed, "none") {
+		return nil, nil
+	}
+	if len(trimmed) > 256 || strings.ContainsAny(trimmed, " \t\r\n\x00") {
+		return nil, errors.New("invalid plugin mirror URL")
+	}
+	u, err := url.Parse(trimmed)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return nil, errors.New("invalid plugin mirror URL")
+	}
+	if u.Scheme != "https" && (u.Scheme != "http" || !isLoopbackHost(u.Hostname())) {
+		return nil, errors.New("plugin mirror URL must use https")
+	}
+	u.Path = strings.TrimRight(u.Path, "/")
+	u.RawPath = ""
+	return u, nil
+}
+
+func resolveMirrorURL(configured string) (*url.URL, error) {
+	if env, ok := os.LookupEnv("UNIC_PLUGIN_MIRROR_URL"); ok {
+		return parseMirrorURL(env)
+	}
+	return parseMirrorURL(configured)
+}
+
 var githubHTTP = &http.Client{
 	Timeout: 2 * time.Minute,
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -53,30 +89,79 @@ var githubHTTP = &http.Client{
 	},
 }
 
-func fetch(ctx context.Context, target string, limit int64) (io.ReadCloser, error) {
+func (g githubRepo) mirrorClient() *http.Client {
+	mirror := g.mirror
+	return &http.Client{
+		Timeout: 2 * time.Minute,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 || req.URL.User != nil || req.URL.Scheme != mirror.Scheme || !strings.EqualFold(req.URL.Host, mirror.Host) {
+				return errors.New("unexpected mirror redirect")
+			}
+			return nil
+		},
+	}
+}
+
+func (g githubRepo) mirrorTarget(githubURL string) (string, bool) {
+	if g.mirror == nil {
+		return "", false
+	}
+	u, err := url.Parse(githubURL)
+	if err != nil || u.Scheme != "https" {
+		return "", false
+	}
+	host := strings.ToLower(u.Host)
+	if host != "api.github.com" && host != "codeload.github.com" && host != "github.com" {
+		return "", false
+	}
+	return g.mirror.Scheme + "://" + g.mirror.Host + g.mirror.Path + "/" + host + u.EscapedPath(), true
+}
+
+func shouldFallbackFromMirror(status int) bool {
+	return status == 0 || status == http.StatusNotFound || status == http.StatusTooManyRequests || status >= 500
+}
+
+func fetchWithClient(ctx context.Context, client *http.Client, target string, limit int64, githubAccept bool) (io.ReadCloser, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {
-		return nil, errors.New("invalid GitHub request")
+		return nil, 0, errors.New("invalid GitHub request")
 	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	res, err := githubHTTP.Do(req)
+	if githubAccept {
+		req.Header.Set("Accept", "application/vnd.github+json")
+	}
+	res, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, 0, ctx.Err()
 		}
-		return nil, errors.New("GitHub request failed")
+		return nil, 0, errors.New("GitHub request failed")
 	}
 	if res.StatusCode != http.StatusOK || res.ContentLength > limit {
+		status := res.StatusCode
 		_ = res.Body.Close()
-		if res.StatusCode == http.StatusNotFound {
-			return nil, errAssetMissing
+		if status == http.StatusNotFound {
+			return nil, status, errAssetMissing
 		}
-		return nil, fmt.Errorf("GitHub response rejected (HTTP %d)", res.StatusCode)
+		return nil, status, fmt.Errorf("GitHub response rejected (HTTP %d)", status)
 	}
 	return struct {
 		io.Reader
 		io.Closer
-	}{io.LimitReader(res.Body, limit+1), res.Body}, nil
+	}{io.LimitReader(res.Body, limit+1), res.Body}, http.StatusOK, nil
+}
+
+func (g githubRepo) fetch(ctx context.Context, target string, limit int64) (io.ReadCloser, error) {
+	if mirrorURL, ok := g.mirrorTarget(target); ok {
+		body, status, err := fetchWithClient(ctx, g.mirrorClient(), mirrorURL, limit, false)
+		if err == nil {
+			return body, nil
+		}
+		if ctx.Err() != nil || !shouldFallbackFromMirror(status) {
+			return nil, err
+		}
+	}
+	body, _, err := fetchWithClient(ctx, githubHTTP, target, limit, true)
+	return body, err
 }
 
 func (g githubRepo) commit(ctx context.Context, ref string) (string, error) {
@@ -86,8 +171,11 @@ func (g githubRepo) commit(ctx context.Context, ref string) (string, error) {
 	if len(ref) > 256 || strings.ContainsAny(ref, "\x00\r\n") || ref == "." || ref == ".." {
 		return "", errors.New("invalid GitHub ref")
 	}
+	if commitPattern.MatchString(ref) {
+		return ref, nil
+	}
 	const limit = 1 << 20
-	body, err := fetch(ctx, "https://api.github.com/repos"+g.slug+"/commits/"+url.PathEscape(ref), limit)
+	body, err := g.fetch(ctx, "https://api.github.com/repos"+g.slug+"/commits/"+url.PathEscape(ref), limit)
 	if err != nil {
 		return "", fmt.Errorf("could not resolve GitHub ref: %w", err)
 	}
@@ -100,14 +188,11 @@ func (g githubRepo) commit(ctx context.Context, ref string) (string, error) {
 	if err != nil || len(raw) > limit || json.Unmarshal(raw, &commit) != nil || !commitPattern.MatchString(commit.SHA) {
 		return "", errors.New("invalid GitHub commit response")
 	}
-	if commitPattern.MatchString(ref) && commit.SHA != ref {
-		return "", errors.New("GitHub returned a different commit")
-	}
 	return commit.SHA, nil
 }
 
 func (g githubRepo) source(ctx context.Context, commit, dest string) error {
-	body, err := fetch(ctx, "https://codeload.github.com"+g.slug+"/tar.gz/"+commit, archiveLimit)
+	body, err := g.fetch(ctx, "https://codeload.github.com"+g.slug+"/tar.gz/"+commit, archiveLimit)
 	if err != nil {
 		return err
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -179,6 +180,10 @@ type Plugins struct {
 	// OnError is what a failed processor means for syncing, for every plugin
 	// that does not set its own: "continue" (default) or "block_sync".
 	OnError string `toml:"on_error" json:"on_error,omitempty"`
+	// MirrorURL is an optional HTTPS base URL for the plugin marketplace and
+	// GitHub plugin downloads (for example "https://plugins.uniclipboard.app").
+	// Changes apply immediately without restarting the service.
+	MirrorURL string `toml:"mirror_url" json:"mirror_url,omitempty"`
 }
 
 type Instance struct {
@@ -443,6 +448,9 @@ func (c Config) Validate() error {
 	if !validOnError(c.Plugins.OnError) {
 		return errors.New(`plugins.on_error: must be "continue" or "block_sync"`)
 	}
+	if !validPluginMirrorURL(c.Plugins.MirrorURL) {
+		return errors.New("plugins.mirror_url: must be an https URL without credentials, query or fragment")
+	}
 	lua := map[string]bool{}
 	for _, id := range c.ExternalPlugins() {
 		lua[id] = true
@@ -665,6 +673,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # and its script), run in this order. Saving a script applies it at once;
 # changing this list needs a restart of unicd.
 # [plugins]
+# mirror_url = "https://plugins.uniclipboard.app"  # optional mirror for marketplace & GitHub downloads; falls back to GitHub
 # lua = ["example.lua-urltag"]
 #
 # What happens to a copy when a plugin fails (error, timeout, crash):
@@ -684,6 +693,21 @@ const Template = `# unic configuration. Saving this file applies it at once.
 `
 
 func validOnError(v string) bool { return v == "" || v == "continue" || v == "block_sync" }
+
+func validPluginMirrorURL(raw string) bool {
+	if raw == "" {
+		return true
+	}
+	if len(raw) > 256 || strings.TrimSpace(raw) != raw || strings.ContainsAny(raw, " \t\r\n\x00") {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return false
+	}
+	isLoopback := u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || u.Hostname() == "::1"
+	return u.Scheme == "https" || (u.Scheme == "http" && isLoopback)
+}
 
 // WriteTemplate creates path with the template unless it already exists.
 func WriteTemplate(path string) error {

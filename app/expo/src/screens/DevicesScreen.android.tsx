@@ -1,19 +1,21 @@
 /**
- * 设备管理页(Android) — 对齐原仓库 UniClip M3 Expressive 设计（UnifiedSpaceSetup.android.tsx），
- * 接入 v2 Go Engine 设备身份、配对码/票据/扫码与指纹批准流程。
+ * Devices management screen (Android — Material 3 Expressive).
  *
- * 布局: 顶部 28dp 状态概览卡（44dp 状态徽标 + 摘要 + 主/次操作按钮）
- *      → 本机（带复制设备 ID）→ 进行中的配对 → 待批准设备 → 已配对设备 → 配对新设备 → 推荐设备。
- * 刷新动作挂在顶级「设备」页面标题栏右侧。
+ * Simplified mental model:
+ * 1. Top 28dp Status Overview Hero card with two clear actions ("Scan QR" & "Pairing code")
+ *    plus an active pairing-code strip when a code is live.
+ * 2. Pending approval devices (if any remain after auto-popup dismissal).
+ * 3. Paired devices (sorted online first; clean detail sheet with sync switch & confirmed unpair).
+ * 4. Suggested devices introduced by trusted peers (when present).
+ * 5. Compact "This device" row at the bottom (tap to copy ID).
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Alert, AppState, Image, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
+import { Alert, AppState, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   Box,
   Button,
-  CircularProgressIndicator,
   Column,
   FilledTonalButton,
   Host,
@@ -38,23 +40,30 @@ import {
   weight,
   width as widthModifier,
 } from '@expo/ui/jetpack-compose/modifiers';
+import { Laptop, ShieldCheck } from 'lucide-react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { useFloatingNavigationClearance } from '@/components/android/floatingNavigationClearance';
 import { M3IconButton } from '@/components/android/M3IconButton';
-import { AppAlertDialog, AppBottomSheet, AppButton, AppHost } from '@/components/ui';
+import { AppAlertDialog, AppBottomSheet, AppButton, AppHost, AppSwitch } from '@/components/ui';
 import { parseEngineError, unicEngineNative } from '@/engine/nativeModule';
 import { useEngineStore } from '@/engine/store';
-import type {
-  EngineCandidate,
-  EngineDevice,
-  EngineEvent,
-  EngineOperation,
-  SensitiveTicket,
-} from '@/engine/types';
+import type { EngineCandidate, EngineDevice } from '@/engine/types';
 import { useTheme } from '@/hooks/useTheme';
 import type { RootStackParamList, SpaceDeviceTarget } from '@/navigation/AppNavigator.types';
+import { PairingFlowModal } from '@/screens/pairing/PairingFlowModal';
+import { usePairingUIStore } from '@/screens/pairing/pairingStore';
+import {
+  deviceDisplayName,
+  deviceStatusKind,
+  formatFingerprintLines,
+  formatFingerprintShort,
+  formatPairingCodeDisplay,
+  needsDeviceApproval,
+  sortTrustedDevices,
+} from '@/screens/pairing/pairingUtils';
+import { usePairingFlow } from '@/screens/pairing/usePairingFlow';
 import { SettingsSectionItem, useSettingsSectionRowColors } from '@/screens/settings/SettingsSectionItem';
 import {
   SettingsLeadingIcon,
@@ -67,7 +76,7 @@ import { MATERIAL_SEED_COLOR } from '@/theme/colors';
 import { PairingScanner } from './PairingScanner';
 
 const HERO_TITLE_STYLE = { fontSize: 20, fontWeight: '500', letterSpacing: 0 } as const;
-const CODE_STYLE = { fontSize: 24, fontWeight: '700', letterSpacing: 2 } as const;
+const CODE_STYLE = { fontSize: 22, fontWeight: '700', letterSpacing: 2 } as const;
 const HERO_SHAPE = Shape.RoundedCorner({
   cornerRadii: { topStart: 28, topEnd: 28, bottomStart: 28, bottomEnd: 28 },
 });
@@ -80,27 +89,13 @@ const ICONS = {
   alert: require('../assets/icons/info.xml'),
   check: require('../assets/icons/check.xml'),
   chevron: require('../assets/icons/chevron_right.xml'),
-  close: require('../assets/icons/close.xml'),
   copy: require('../assets/icons/content_copy.xml'),
   device: require('../assets/icons/devices.xml'),
   join: require('../assets/icons/account_circle.xml'),
   phone: require('../assets/icons/smartphone.xml'),
   qr: require('../assets/icons/qr_code_scanner.xml'),
-  share: require('../assets/icons/share.xml'),
   status: require('../assets/icons/circle.xml'),
 };
-
-function deviceName(device: EngineDevice) {
-  return device.name || device.reported_name || device.id.slice(0, 8);
-}
-
-function deviceStatusKey(device: EngineDevice) {
-  const binding = device.bindings?.[0];
-  if (!binding) return 'noBinding';
-  if (binding.connection === 'connected') return binding.sync_enabled ? 'connected' : 'paused';
-  if (binding.connection === 'connecting') return 'connecting';
-  return 'offline';
-}
 
 function LocalDeviceRow({
   name,
@@ -157,13 +152,11 @@ function TrustedDeviceRow({
   const colors = useMaterialColors();
   const rowColors = useSettingsSectionRowColors();
   const { theme } = useTheme();
-  const binding = device.bindings?.[0];
-  const connected = binding?.connection === 'connected' && binding.sync_enabled;
-  const paused = binding?.connection === 'connected' && !binding.sync_enabled;
-  const connecting = binding?.connection === 'connecting';
+  const kind = deviceStatusKind(device);
+  const connected = kind === 'connected';
   const statusColor = connected
     ? (theme.colors.success as string)
-    : paused || connecting
+    : kind === 'paused' || kind === 'connecting'
       ? (theme.colors.warning as string)
       : colors.outline;
   const iconTone: SettingsLeadingIconTone = connected ? 'primary' : 'muted';
@@ -177,7 +170,7 @@ function TrustedDeviceRow({
         <SettingsLeadingIcon source={ICONS.device} tone={iconTone} />
       </ListItem.LeadingContent>
       <ListItem.HeadlineContent>
-        <ComposeText>{deviceName(device)}</ComposeText>
+        <ComposeText>{deviceDisplayName(device)}</ComposeText>
       </ListItem.HeadlineContent>
       <ListItem.SupportingContent>
         <Row verticalAlignment="center">
@@ -193,44 +186,31 @@ function TrustedDeviceRow({
   );
 }
 
-function PlaceholderRow({ id, label }: { id: string; label: string }) {
-  const colors = useMaterialColors();
-  const rowColors = useSettingsSectionRowColors();
-  return (
-    <ListItem colors={rowColors} modifiers={[testID(id)]}>
-      <ListItem.LeadingContent>
-        <SettingsLeadingIcon source={ICONS.device} tone="muted" />
-      </ListItem.LeadingContent>
-      <ListItem.HeadlineContent>
-        <ComposeText color={colors.onSurfaceVariant}>{label}</ComposeText>
-      </ListItem.HeadlineContent>
-    </ListItem>
-  );
-}
-
 function DevicesOverviewHero({
   pendingCount,
   onlineCount,
   offlineCount,
   pairingCode,
-  onCreateCode,
-  onCancelCode,
+  pairingCodeCountdown,
+  onReviewPending,
   onOpenScan,
+  onOpenCodeSheet,
 }: {
   pendingCount: number;
   onlineCount: number;
   offlineCount: number;
   pairingCode: string | null;
-  onCreateCode: () => void;
-  onCancelCode: () => void;
+  pairingCodeCountdown: string;
+  onReviewPending: () => void;
   onOpenScan: () => void;
+  onOpenCodeSheet: (tab: 'enter' | 'show') => void;
 }) {
   const { t } = useTranslation();
-  const pair = (key: string, values?: Record<string, string>) =>
+  const pair = (key: string, values?: Record<string, string | number>) =>
     t(`settingsSync:pairing.${key}`, values);
   const colors = useMaterialColors();
   const hasPending = pendingCount > 0;
-  const hasTrusted = onlineCount + offlineCount > 0;
+  const totalTrusted = onlineCount + offlineCount;
   const healthy = !hasPending && onlineCount > 0;
 
   const heroContainer = hasPending
@@ -255,19 +235,25 @@ function DevicesOverviewHero({
       : colors.onSecondaryContainer;
 
   const overviewTitle = hasPending
-    ? pair('pending')
+    ? pair('overviewPendingTitle')
     : healthy
-      ? t('settingsSync:space.overview.status.healthy')
-      : hasTrusted
-        ? t('settingsSync:space.overview.noDevicesOnline')
-        : t('settingsSync:space.overview.noOtherDevices');
+      ? pair('overviewReadyTitle')
+      : totalTrusted > 0
+        ? pair('overviewOfflineTitle')
+        : pair('overviewEmptyTitle');
 
-  const overviewBody = hasTrusted
-    ? t('settingsSync:space.overview.deviceSummary', {
-        online: onlineCount,
-        offline: offlineCount,
-      })
-    : pair('instructions');
+  const overviewBody = hasPending
+    ? pair('overviewPendingBody', { count: pendingCount })
+    : onlineCount > 0
+      ? offlineCount > 0
+        ? t('settingsSync:space.overview.deviceSummary', {
+            online: onlineCount,
+            offline: offlineCount,
+          })
+        : pair('overviewOnlineOnly', { count: onlineCount })
+      : totalTrusted > 0
+        ? pair('overviewAllOffline', { count: totalTrusted })
+        : pair('overviewEmptyBody');
 
   return (
     <Surface
@@ -301,6 +287,18 @@ function DevicesOverviewHero({
           </Column>
         </Row>
 
+        {hasPending ? (
+          <>
+            <Spacer modifiers={[heightModifier(14)]} />
+            <Button
+              modifiers={[fillMaxWidth(), testID('devices-review-now')]}
+              onClick={onReviewPending}
+            >
+              <ComposeText maxLines={1}>{pair('reviewNow')}</ComposeText>
+            </Button>
+          </>
+        ) : null}
+
         {pairingCode ? (
           <>
             <Spacer modifiers={[heightModifier(14)]} />
@@ -309,49 +307,56 @@ function DevicesOverviewHero({
               shape={Shape.RoundedCorner({
                 cornerRadii: { topStart: 16, topEnd: 16, bottomStart: 16, bottomEnd: 16 },
               })}
-              modifiers={[fillMaxWidth()]}
+              modifiers={[
+                fillMaxWidth(),
+                testID('devices-active-code-banner'),
+                clickable(() => onOpenCodeSheet('show')),
+              ]}
             >
               <Row
                 verticalAlignment="center"
                 modifiers={[fillMaxWidth(), padding(16, 12, 16, 12)]}
               >
                 <Column modifiers={[weight(1)]}>
-                  <ComposeText color={colors.primary} style={CODE_STYLE}>
-                    {pairingCode}
-                  </ComposeText>
                   <ComposeText color={colors.onSurfaceVariant}>
-                    {pair('codeInstructions')}
+                    {pairingCodeCountdown
+                      ? pair('activeCodeBanner', { time: pairingCodeCountdown })
+                      : pair('myCodeTab')}
+                  </ComposeText>
+                  <ComposeText color={colors.primary} style={CODE_STYLE}>
+                    {formatPairingCodeDisplay(pairingCode)}
                   </ComposeText>
                 </Column>
-                <FilledTonalButton
-                  modifiers={[testID('devices-cancel-code')]}
-                  onClick={onCancelCode}
-                >
-                  <ComposeText>{t('common:action.cancel')}</ComposeText>
-                </FilledTonalButton>
+                <Icon source={ICONS.chevron} size={20} tint={colors.onSurfaceVariant} />
               </Row>
             </Surface>
           </>
         ) : null}
 
         <Spacer modifiers={[heightModifier(16)]} />
-        <Button
-          modifiers={[fillMaxWidth(), testID('devices-create-code')]}
-          onClick={onCreateCode}
-        >
-          <Icon source={ICONS.add} size={18} tint={colors.onPrimary} />
-          <Spacer modifiers={[widthModifier(8)]} />
-          <ComposeText maxLines={1}>{pair('generateCode')}</ComposeText>
-        </Button>
-        <Spacer modifiers={[heightModifier(8)]} />
-        <FilledTonalButton
-          modifiers={[fillMaxWidth(), testID('devices-scan')]}
-          onClick={onOpenScan}
-        >
-          <Icon source={ICONS.qr} size={18} tint={colors.onSecondaryContainer} />
-          <Spacer modifiers={[widthModifier(8)]} />
-          <ComposeText maxLines={1}>{pair('scan')}</ComposeText>
-        </FilledTonalButton>
+        <Row verticalAlignment="center" modifiers={[fillMaxWidth()]}>
+          <Box modifiers={[weight(1)]}>
+            <Button
+              modifiers={[fillMaxWidth(), testID('devices-scan')]}
+              onClick={onOpenScan}
+            >
+              <Icon source={ICONS.qr} size={18} tint={colors.onPrimary} />
+              <Spacer modifiers={[widthModifier(6)]} />
+              <ComposeText maxLines={1}>{pair('scanShort')}</ComposeText>
+            </Button>
+          </Box>
+          <Spacer modifiers={[widthModifier(10)]} />
+          <Box modifiers={[weight(1)]}>
+            <FilledTonalButton
+              modifiers={[fillMaxWidth(), testID('devices-join')]}
+              onClick={() => onOpenCodeSheet('enter')}
+            >
+              <Icon source={ICONS.join} size={18} tint={colors.onSecondaryContainer} />
+              <Spacer modifiers={[widthModifier(6)]} />
+              <ComposeText maxLines={1}>{pair('codeShort')}</ComposeText>
+            </FilledTonalButton>
+          </Box>
+        </Row>
       </Column>
     </Surface>
   );
@@ -359,9 +364,10 @@ function DevicesOverviewHero({
 
 export function DevicesScreen(_props: SpaceDeviceTarget) {
   const { t } = useTranslation();
-  const pair = (key: string, values?: Record<string, string>) =>
+  const pair = (key: string, values?: Record<string, string | number>) =>
     t(`settingsSync:pairing.${key}`, values);
   const { theme } = useTheme();
+  const c = theme.colors;
   const insets = useSafeAreaInsets();
   const navClearance = useFloatingNavigationClearance();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -371,36 +377,21 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
   const self = useEngineStore((s) => s.snapshot?.self);
   const devices = useEngineStore((s) => s.devices);
   const candidates = useEngineStore((s) => s.candidates);
-  const pairingCode = useEngineStore((s) => s.pairingCode);
 
-  const [joinMode, setJoinMode] = useState<'manual' | 'scan' | null>(null);
-  const [joinInput, setJoinInput] = useState('');
-  const [starting, setStarting] = useState(false);
-  const startingRef = useRef(false);
-  const operationGeneration = useRef(0);
-  const [operationID, setOperationID] = useState<string | null>(null);
-  const [operation, setOperation] = useState<EngineOperation | null>(null);
-  const [operationError, setOperationError] = useState<string | null>(null);
-  const [ticket, setTicket] = useState<SensitiveTicket | null>(null);
-  const ticketGeneration = useRef(0);
-  const exporting = useRef(false);
-  const [pendingApproveDevice, setPendingApproveDevice] = useState<EngineDevice | null>(null);
+  const flow = usePairingFlow(focused);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [foreground, setForeground] = useState(AppState.currentState === 'active');
   const [selectedDeviceID, setSelectedDeviceID] = useState<string | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<EngineCandidate | null>(null);
   const [name, setName] = useState('');
-  const [foreground, setForeground] = useState(AppState.currentState === 'active');
-
-  const closeTicket = useCallback(() => {
-    ticketGeneration.current++;
-    setTicket(null);
-  }, []);
+  const [confirmUnpairDevice, setConfirmUnpairDevice] = useState<EngineDevice | null>(null);
 
   const errorText = useCallback(
     (error: unknown) => {
       const code = parseEngineError(error).code;
       return t(`errors:engine.${code}`, { defaultValue: t('errors:engine.internal') });
     },
-    [t]
+    [t],
   );
 
   const run = useCallback(
@@ -411,10 +402,9 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
         Alert.alert(pair('actionFailed'), errorText(error));
       }
     },
-    [errorText, t]
+    [errorText, t],
   );
 
-  // 刷新放在顶级「设备」目的地标题栏右侧，与原仓库 UnifiedSpaceSetup.android.tsx 一致
   useLayoutEffect(() => {
     if (mode !== 'live') {
       navigation.setOptions({ headerRight: undefined });
@@ -436,120 +426,17 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
   }, [mode, navigation, run, t, theme.colors]);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => {
+    const sub = AppState.addEventListener('change', (state) => {
       const active = state === 'active';
       setForeground(active);
-      if (!active) closeTicket();
+      if (!active) setScanOpen(false);
     });
-    return () => subscription.remove();
-  }, [closeTicket]);
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
-    if (focused && mode === 'live') return;
-    setJoinMode(null);
-    setJoinInput('');
-    closeTicket();
-  }, [focused, mode, closeTicket]);
-
-  useEffect(() => {
-    if (!ticket) return;
-    const timer = setTimeout(closeTicket, Math.max(0, ticket.expires_at_ms - Date.now()));
-    return () => clearTimeout(timer);
-  }, [ticket, closeTicket]);
-
-  useEffect(() => {
-    if (!operationID || mode !== 'live') return;
-    let request = 0;
-    let disposed = false;
-    const refresh = async () => {
-      const current = ++request;
-      try {
-        const result = await unicEngineNative.getOperation(operationID);
-        if (!disposed && current === request) {
-          setOperation(result);
-          setOperationError(null);
-        }
-      } catch (error) {
-        if (!disposed && current === request) setOperationError(parseEngineError(error).code);
-      }
-    };
-    const events = unicEngineNative.addEventListener((raw) => {
-      let event: EngineEvent;
-      try {
-        event = JSON.parse(raw) as EngineEvent;
-      } catch {
-        return;
-      }
-      if (event.kind === 'operations' && event.objects?.some(({ id }) => id === operationID)) {
-        void refresh();
-      }
-    });
-    const resync = unicEngineNative.addResyncListener(() => void refresh());
-    const active = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void refresh();
-    });
-    void refresh();
-    return () => {
-      disposed = true;
-      events.remove();
-      resync.remove();
-      active.remove();
-    };
-  }, [operationID, mode]);
-
-  const start = async (action: () => Promise<string>) => {
-    if (startingRef.current) return;
-    startingRef.current = true;
-    const generation = ++operationGeneration.current;
-    setStarting(true);
-    setOperationID(null);
-    setOperation(null);
-    setOperationError(null);
-    try {
-      const id = await action();
-      if (generation === operationGeneration.current) setOperationID(id);
-    } catch (error) {
-      if (generation === operationGeneration.current) {
-        Alert.alert(pair('actionFailed'), errorText(error));
-      }
-    } finally {
-      startingRef.current = false;
-      setStarting(false);
-    }
-  };
-
-  const submit = (input: string) => {
-    const raw = input.trim();
-    const digits = raw.replace(/\s+/g, '');
-    const store = useEngineStore.getState();
-    setJoinMode(null);
-    setJoinInput('');
-    if (/^\d{3}-?\d{3}$/.test(digits)) {
-      void start(() => store.joinByCode(digits));
-    } else if (raw.startsWith('unic-pair:')) {
-      void start(() => store.joinByTicket(raw));
-    } else {
-      Alert.alert(pair('actionFailed'), pair('invalidInput'));
-    }
-  };
-
-  const exportTicket = async () => {
-    if (exporting.current) return;
-    exporting.current = true;
-    const generation = ++ticketGeneration.current;
-    try {
-      const result = await useEngineStore.getState().exportPairingTicket();
-      if (generation === ticketGeneration.current && result.expires_at_ms > Date.now()) {
-        setTicket(result);
-      }
-    } catch (error) {
-      if (generation === ticketGeneration.current) {
-        Alert.alert(pair('actionFailed'), errorText(error));
-      }
-    } finally {
-      exporting.current = false;
-    }
-  };
+    if (!focused || mode !== 'live') setScanOpen(false);
+  }, [focused, mode]);
 
   const contentPadding = {
     start: 16,
@@ -561,7 +448,7 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
   if (mode !== 'live') {
     return (
       <SafeAreaView
-        style={[styles.container, { backgroundColor: theme.colors.background }]}
+        style={[styles.container, { backgroundColor: c.background }]}
         edges={[]}
       >
         <Host
@@ -609,44 +496,15 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
   }
 
   const store = useEngineStore.getState();
-  const pendingDevices = devices.filter((d) => d.trust === 'pending');
-  const trustedDevices = [...devices.filter((d) => d.trust === 'trusted')].sort((left, right) => {
-    const rank = (d: EngineDevice) => (d.bindings?.[0]?.connection === 'connected' ? 0 : 1);
-    return rank(left) - rank(right);
-  });
-  const onlineCount = trustedDevices.filter(
-    (d) => d.bindings?.[0]?.connection === 'connected'
-  ).length;
+  const pendingDevices = devices.filter(needsDeviceApproval);
+  const trustedDevices = sortTrustedDevices(devices.filter((d) => d.trust === 'trusted'));
+  const onlineCount = trustedDevices.filter((d) => deviceStatusKind(d) === 'connected').length;
   const offlineCount = trustedDevices.length - onlineCount;
   const trusted = trustedDevices.find((d) => d.id === selectedDeviceID);
-  const peer = devices.find((d) => d.id === operation?.pairing?.peer_id);
-  const waitingApproval = Boolean(
-    operation?.pairing &&
-      ((operation.pairing.awaiting_local_approval && peer?.trust !== 'trusted') ||
-        (operation.pairing.awaiting_remote_approval &&
-          !peer?.bindings?.some((binding) => binding.connection === 'connected')))
-  );
-  const phase = waitingApproval ? 'waitingApproval' : (operation?.phase ?? 'resolving');
-  const operationMessage = operationError || operation?.error?.code;
-  const operationStatus = operationMessage
-    ? t(`errors:engine.${operationMessage}`, { defaultValue: t('errors:engine.internal') })
-    : t(`settingsSync:pairing.phase.${phase}`, { defaultValue: pair('phase.resolving') });
-
-  const titleStyle = { color: theme.colors.textPrimary, fontSize: 18, fontWeight: '700' as const };
-  const inputStyle = {
-    borderRadius: 12,
-    padding: 12,
-    backgroundColor: theme.colors.surface,
-    color: theme.colors.textPrimary,
-  };
-  const closeJoin = () => {
-    setJoinMode(null);
-    setJoinInput('');
-  };
 
   return (
     <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      style={[styles.container, { backgroundColor: c.background }]}
       edges={[]}
     >
       <Host
@@ -663,11 +521,75 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
             pendingCount={pendingDevices.length}
             onlineCount={onlineCount}
             offlineCount={offlineCount}
-            pairingCode={pairingCode?.code ?? null}
-            onCreateCode={() => void run(store.createPairingCode)}
-            onCancelCode={() => void run(store.cancelPairingCode)}
-            onOpenScan={() => setJoinMode('scan')}
+            pairingCode={flow.pairingCode?.code ?? null}
+            pairingCodeCountdown={flow.countdown}
+            onReviewPending={() => {
+              if (pendingDevices[0]) {
+                usePairingUIStore.getState().openManualApproval(pendingDevices[0].id);
+              }
+            }}
+            onOpenScan={() => setScanOpen(true)}
+            onOpenCodeSheet={(tab) => flow.openCodeSheet(tab)}
           />
+
+          {pendingDevices.length > 0 ? (
+            <SettingsSectionItem variant="grouped" title={`${pair('pending')} · ${pendingDevices.length}`}>
+              {pendingDevices.map((device) => (
+                <SettingsListRow
+                  key={device.id}
+                  testID={`pending-${device.id}`}
+                  icon={ICONS.alert}
+                  tone="warning"
+                  title={deviceDisplayName(device)}
+                  description={formatFingerprintShort(device.fingerprint)}
+                  trailing={{ pill: pair('reviewNow') }}
+                  onPress={() => usePairingUIStore.getState().openManualApproval(device.id)}
+                />
+              ))}
+            </SettingsSectionItem>
+          ) : null}
+
+          {trustedDevices.length > 0 ? (
+            <SettingsSectionItem variant="grouped" title={`${pair('trusted')} · ${trustedDevices.length}`}>
+              {trustedDevices.map((device) => (
+                <TrustedDeviceRow
+                  key={device.id}
+                  device={device}
+                  statusText={pair(deviceStatusKind(device))}
+                  onSelect={() => {
+                    setName(device.name || device.reported_name || '');
+                    setSelectedDeviceID(device.id);
+                  }}
+                />
+              ))}
+            </SettingsSectionItem>
+          ) : null}
+
+          {candidates.length > 0 ? (
+            <SettingsSectionItem variant="grouped" title={`${pair('recommended')} · ${candidates.length}`}>
+              {candidates.map((candidate) => {
+                const introducer = candidate.introducers?.[0]?.name;
+                return (
+                  <SettingsListRow
+                    key={candidate.device_id}
+                    testID={`candidate-${candidate.device_id}`}
+                    icon={ICONS.device}
+                    iconTone="muted"
+                    title={candidate.name || candidate.device_id.slice(0, 8)}
+                    description={
+                      candidate.requested
+                        ? pair('phase.connecting')
+                        : introducer
+                          ? pair('recommendedBy', { name: introducer })
+                          : pair('recommendedHint')
+                    }
+                    trailing="chevron"
+                    onPress={() => setSelectedCandidate(candidate)}
+                  />
+                );
+              })}
+            </SettingsSectionItem>
+          ) : null}
 
           {self ? (
             <SettingsSectionItem variant="grouped" title={pair('thisDevice')}>
@@ -683,238 +605,101 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
               />
             </SettingsSectionItem>
           ) : null}
-
-          {starting || operationID ? (
-            <SettingsSectionItem variant="grouped" title={pair('progress')}>
-              <ListItem modifiers={[testID('devices-pairing-status')]}>
-                <ListItem.LeadingContent>
-                  <CircularProgressIndicator
-                    modifiers={[widthModifier(24), heightModifier(24)]}
-                  />
-                </ListItem.LeadingContent>
-                <ListItem.HeadlineContent>
-                  <ComposeText>{operationStatus}</ComposeText>
-                </ListItem.HeadlineContent>
-              </ListItem>
-              <SettingsListRow
-                key="stop-waiting"
-                testID="devices-stop-waiting"
-                icon={ICONS.close}
-                iconTone="muted"
-                title={pair('stopWaiting')}
-                description={pair('stopWaitingHelp')}
-                onPress={() => {
-                  operationGeneration.current++;
-                  setStarting(false);
-                  setOperationID(null);
-                  setOperation(null);
-                  setOperationError(null);
-                }}
-              />
-            </SettingsSectionItem>
-          ) : null}
-
-          {pendingDevices.length > 0 ? (
-            <SettingsSectionItem variant="grouped" title={pair('pending')}>
-              {pendingDevices.map((device) => (
-                <SettingsListRow
-                  key={device.id}
-                  testID={`pending-${device.id}`}
-                  icon={ICONS.alert}
-                  tone="warning"
-                  title={deviceName(device)}
-                  description={pair('fingerprint', { value: device.fingerprint })}
-                  trailing={{ pill: pair('review') }}
-                  onPress={() => setPendingApproveDevice(device)}
-                />
-              ))}
-            </SettingsSectionItem>
-          ) : null}
-
-          <SettingsSectionItem variant="grouped" title={pair('trusted')}>
-            {trustedDevices.length > 0 ? (
-              trustedDevices.map((device) => (
-                <TrustedDeviceRow
-                  key={device.id}
-                  device={device}
-                  statusText={pair(deviceStatusKey(device))}
-                  onSelect={() => {
-                    setName(device.name || device.reported_name || '');
-                    setSelectedDeviceID(device.id);
-                  }}
-                />
-              ))
-            ) : (
-              <PlaceholderRow id="device-empty" label={pair('empty')} />
-            )}
-          </SettingsSectionItem>
-
-          <SettingsSectionItem
-            variant="grouped"
-            title={pair('newDevice')}
-            footer={pairingCode ? pair('codeInstructions') : pair('instructions')}
-          >
-            <SettingsListRow
-              key="join"
-              testID="devices-join"
-              icon={ICONS.join}
-              title={pair('enterCode')}
-              trailing="chevron"
-              onPress={() => setJoinMode('manual')}
-            />
-            <SettingsListRow
-              key="export-ticket"
-              testID="devices-export-ticket"
-              icon={ICONS.share}
-              title={pair('showTicket')}
-              trailing="chevron"
-              onPress={() => void exportTicket()}
-            />
-          </SettingsSectionItem>
-
-          {candidates.length > 0 ? (
-            <SettingsSectionItem variant="grouped" title={pair('recommended')}>
-              {candidates.map((candidate) => (
-                <SettingsListRow
-                  key={candidate.device_id}
-                  testID={`candidate-${candidate.device_id}`}
-                  icon={ICONS.device}
-                  iconTone="muted"
-                  title={candidate.name || candidate.device_id.slice(0, 8)}
-                  trailing={{
-                    text: pair(candidate.requested ? 'progress' : 'review'),
-                    chevron: true,
-                  }}
-                  onPress={() => setSelectedCandidate(candidate)}
-                />
-              ))}
-            </SettingsSectionItem>
-          ) : null}
         </LazyColumn>
       </Host>
 
-      <AppAlertDialog
-        visible={pendingApproveDevice !== null}
-        standalone
-        title={pair('approveTitle')}
-        message={
-          pendingApproveDevice
-            ? pair('approveBody', {
-                name: deviceName(pendingApproveDevice),
-                value: pendingApproveDevice.fingerprint,
-              })
-            : ''
-        }
-        confirmLabel={pair('approve')}
-        onConfirm={() => {
-          const target = pendingApproveDevice;
-          setPendingApproveDevice(null);
-          if (target) void run(() => store.approveDevice(target, target.fingerprint));
+      {/* Unified Pairing Flow Sheet (Enter Code / This Device's Code / Connecting / Verify / Done) */}
+      <PairingFlowModal
+        visible={flow.open}
+        tab={flow.tab}
+        stage={flow.stage}
+        busy={flow.busy}
+        errorMessage={flow.errorMessage}
+        creatingCode={flow.creatingCode}
+        codeError={flow.codeError}
+        pairingCode={flow.pairingCode}
+        countdown={flow.countdown}
+        ticket={flow.ticket}
+        exportingTicket={flow.exportingTicket}
+        verifyDevice={flow.verifyDevice}
+        approvedPeerName={flow.approvedPeer?.name ?? ''}
+        handshakeStageIndex={flow.handshakeStageIndex}
+        onSelectTab={flow.selectTab}
+        onSubmitInput={flow.submitInput}
+        onSwitchToScan={() => {
+          flow.close();
+          setScanOpen(true);
         }}
-        dismissLabel={t('common:action.cancel')}
-        onDismiss={() => setPendingApproveDevice(null)}
-        onDismissAction={() => setPendingApproveDevice(null)}
+        onRegenerateCode={() => void flow.generateCode()}
+        onCancelCode={() => void flow.cancelCode()}
+        onCopyCode={() => void flow.copyPairingCode()}
+        onExportTicket={() => void flow.exportOfflineTicket()}
+        onCopyTicket={() => void flow.copyOfflineTicket()}
+        onApprove={() => void flow.approveVerifyDevice()}
+        onReject={() => void flow.rejectVerifyDevice()}
+        onRetryEntry={flow.retryEntry}
+        onClose={flow.close}
       />
 
-      <AppBottomSheet visible={joinMode !== null} onDismiss={closeJoin}>
-        <View style={{ padding: 16, gap: 12 }}>
-          <Text style={titleStyle}>{pair(joinMode === 'scan' ? 'scan' : 'enterCode')}</Text>
-          {joinMode === 'scan' ? (
-            focused && foreground && <PairingScanner onRead={submit} />
-          ) : (
-            <>
-              <TextInput
-                testID="devices-join-input"
-                value={joinInput}
-                onChangeText={setJoinInput}
-                placeholder={pair('inputHint')}
-                placeholderTextColor={theme.colors.textSecondary}
-                autoCapitalize="none"
-                autoCorrect={false}
-                style={inputStyle}
-              />
-              <AppHost matchContents={{ vertical: true }}>
-                <AppButton
-                  testID="devices-join-submit"
-                  title={pair('connect')}
-                  variant="filled"
-                  fullWidth
-                  disabled={starting || !joinInput.trim()}
-                  onPress={() => submit(joinInput)}
-                />
-              </AppHost>
-            </>
-          )}
+      {/* QR Scanner Sheet */}
+      <AppBottomSheet visible={scanOpen} onDismiss={() => setScanOpen(false)}>
+        <View style={styles.sheetBody}>
+          <Text style={[styles.sheetTitle, { color: c.textPrimary }]}>{pair('scanShort')}</Text>
+          {scanOpen && focused && foreground ? (
+            <PairingScanner
+              onRead={(value) => {
+                setScanOpen(false);
+                flow.submitInput(value);
+              }}
+            />
+          ) : null}
           <AppHost matchContents={{ vertical: true }}>
             <AppButton
-              title={t('common:action.cancel')}
+              title={pair('switchToCode')}
               variant="text"
               fullWidth
-              onPress={closeJoin}
+              onPress={() => {
+                setScanOpen(false);
+                flow.openCodeSheet('enter');
+              }}
             />
           </AppHost>
         </View>
       </AppBottomSheet>
 
-      <AppBottomSheet visible={ticket !== null && focused && foreground} onDismiss={closeTicket}>
-        {ticket && focused && foreground && (
-          <View style={{ padding: 16, gap: 12 }}>
-            <Text style={titleStyle}>{pair('ticketTitle')}</Text>
-            <Text style={{ color: theme.colors.textPrimary }}>{pair('ticketHelp')}</Text>
-            {ticket.qr_png ? (
-              <Image
-                testID="devices-pairing-qr"
-                accessibilityLabel={pair('ticketTitle')}
-                source={{ uri: `data:image/png;base64,${ticket.qr_png}` }}
-                style={{ width: 260, height: 260, alignSelf: 'center' }}
-              />
-            ) : null}
-            <AppHost matchContents={{ vertical: true }}>
-              <AppButton
-                title={t('common:action.copy')}
-                variant="filled"
-                fullWidth
-                onPress={() =>
-                  void run(async () => {
-                    if (ticket.expires_at_ms <= Date.now()) {
-                      closeTicket();
-                      return;
-                    }
-                    await unicEngineNative.copyPairingTicket(ticket.ticket, ticket.expires_at_ms);
-                    Alert.alert(t('errors:copy.copied'));
-                  })
-                }
-              />
-            </AppHost>
-            <AppHost matchContents={{ vertical: true }}>
-              <AppButton
-                title={t('common:action.close')}
-                variant="text"
-                fullWidth
-                onPress={closeTicket}
-              />
-            </AppHost>
-          </View>
-        )}
-      </AppBottomSheet>
-
+      {/* Suggested Device Sheet */}
       <AppBottomSheet
         visible={selectedCandidate !== null}
         onDismiss={() => setSelectedCandidate(null)}
       >
         {selectedCandidate ? (
-          <View style={{ padding: 16, gap: 12 }}>
-            <Text style={titleStyle}>
-              {selectedCandidate.name || selectedCandidate.device_id.slice(0, 8)}
-            </Text>
+          <View style={styles.sheetBody}>
+            <View style={styles.detailHeader}>
+              <View style={[styles.detailIcon, { backgroundColor: c.accentContainer }]}>
+                <Laptop size={22} color={c.onAccentContainer as string} />
+              </View>
+              <View style={styles.flex1}>
+                <Text style={[styles.sheetTitle, { color: c.textPrimary }]} numberOfLines={1}>
+                  {selectedCandidate.name || selectedCandidate.device_id.slice(0, 8)}
+                </Text>
+                <Text style={[styles.detailSub, { color: c.textSecondary }]}>
+                  {selectedCandidate.introducers?.[0]?.name
+                    ? pair('recommendedBy', { name: selectedCandidate.introducers[0].name })
+                    : pair('recommendedHint')}
+                </Text>
+              </View>
+            </View>
             <AppHost matchContents={{ vertical: true }}>
               <AppButton
                 title={pair('connect')}
+                variant="filled"
+                size="large"
                 fullWidth
-                disabled={starting || selectedCandidate.requested}
+                disabled={flow.stage === 'connecting' || selectedCandidate.requested}
                 onPress={() => {
+                  const target = selectedCandidate;
                   setSelectedCandidate(null);
-                  void start(() => store.pairCandidate(selectedCandidate));
+                  flow.pairCandidate(target);
                 }}
               />
             </AppHost>
@@ -924,8 +709,9 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
                 variant="outlined"
                 fullWidth
                 onPress={() => {
+                  const target = selectedCandidate;
                   setSelectedCandidate(null);
-                  void run(() => store.ignoreCandidate(selectedCandidate.device_id, true));
+                  void run(() => store.ignoreCandidate(target.device_id, true));
                 }}
               />
             </AppHost>
@@ -933,74 +719,192 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
         ) : null}
       </AppBottomSheet>
 
+      {/* Polished M3 Device Detail Sheet */}
       <AppBottomSheet visible={trusted !== undefined} onDismiss={() => setSelectedDeviceID(null)}>
         {trusted ? (
-          <View style={{ padding: 16, gap: 12 }}>
-            <Text style={titleStyle}>{deviceName(trusted)}</Text>
-            <Text style={{ color: theme.colors.textSecondary }}>
-              {pair('fingerprint', { value: trusted.fingerprint })}
-            </Text>
-            <TextInput
-              testID="devices-rename-input"
-              accessibilityLabel={pair('rename')}
-              value={name}
-              onChangeText={setName}
-              style={inputStyle}
-            />
-            <AppHost matchContents={{ vertical: true }}>
-              <AppButton
-                title={pair('rename')}
-                variant="filled"
-                fullWidth
-                disabled={!name.trim() || name.trim() === trusted.name}
-                onPress={() => {
-                  void run(async () => {
-                    await store.renameDevice(trusted.id, trusted.revision, name.trim());
-                    setSelectedDeviceID(null);
-                  });
-                }}
-              />
-            </AppHost>
+          <View style={styles.sheetBody}>
+            <View style={styles.detailHeader}>
+              <View style={[styles.detailIcon, { backgroundColor: c.accentContainer }]}>
+                <Laptop size={22} color={c.onAccentContainer as string} />
+              </View>
+              <View style={styles.flex1}>
+                <Text style={[styles.sheetTitle, { color: c.textPrimary }]} numberOfLines={1}>
+                  {deviceDisplayName(trusted)}
+                </Text>
+                <Text style={[styles.detailSub, { color: c.textSecondary }]}>
+                  {pair(deviceStatusKind(trusted))}
+                </Text>
+              </View>
+            </View>
+
             {trusted.bindings?.map((binding) => (
-              <AppHost key={binding.id} matchContents={{ vertical: true }}>
+              <View key={binding.id} style={[styles.detailCardRow, { backgroundColor: c.surfaceMid }]}>
+                <View style={styles.flex1}>
+                  <Text style={[styles.rowTitle, { color: c.textPrimary }]}>
+                    {pair('autoSyncToggle')}
+                  </Text>
+                  <Text style={[styles.rowSub, { color: c.textSecondary }]}>
+                    {pair(binding.sync_enabled ? 'autoSyncOnHint' : 'autoSyncOffHint')}
+                  </Text>
+                </View>
+                <AppHost matchContents>
+                  <AppSwitch
+                    value={binding.sync_enabled}
+                    onValueChange={(enabled: boolean) =>
+                      void run(() => store.setBindingSync(binding.id, binding.revision, enabled))
+                    }
+                  />
+                </AppHost>
+              </View>
+            ))}
+
+            <View style={[styles.detailCard, { backgroundColor: c.surfaceMid }]}>
+              <Text style={[styles.fieldLabel, { color: c.textSecondary }]}>{pair('rename')}</Text>
+              <TextInput
+                testID="devices-rename-input"
+                accessibilityLabel={pair('rename')}
+                value={name}
+                onChangeText={setName}
+                style={[styles.renameInput, { backgroundColor: c.surfaceLow, color: c.textPrimary }]}
+              />
+              <AppHost matchContents={{ vertical: true }}>
                 <AppButton
-                  title={pair(binding.sync_enabled ? 'pauseSync' : 'resumeSync')}
-                  variant="tonal"
+                  title={t('common:action.save')}
+                  variant="filled"
                   fullWidth
-                  onPress={() =>
-                    void run(() =>
-                      store.setBindingSync(binding.id, binding.revision, !binding.sync_enabled)
-                    )
-                  }
+                  disabled={!name.trim() || name.trim() === trusted.name}
+                  onPress={() => {
+                    void run(async () => {
+                      await store.renameDevice(trusted.id, trusted.revision, name.trim());
+                      setSelectedDeviceID(null);
+                    });
+                  }}
                 />
               </AppHost>
-            ))}
+            </View>
+
+            <View style={[styles.detailCard, { backgroundColor: c.surfaceMid }]}>
+              <View style={styles.fpLabelRow}>
+                <ShieldCheck size={14} color={c.accent as string} />
+                <Text style={[styles.fieldLabel, { color: c.textSecondary }]}>
+                  {pair('fingerprintLabel')}
+                </Text>
+              </View>
+              <Text selectable style={[styles.fpText, { color: c.textPrimary }]}>
+                {formatFingerprintLines(trusted.fingerprint)}
+              </Text>
+            </View>
+
             <AppHost matchContents={{ vertical: true }}>
               <AppButton
                 title={pair('unpair')}
-                variant="outlined"
+                variant="tonal"
                 fullWidth
+                colors={{ containerColor: c.errorContainer, contentColor: c.error }}
                 onPress={() => {
+                  const target = trusted;
                   setSelectedDeviceID(null);
-                  void run(() => store.unpairDevice(trusted.id, trusted.revision));
+                  setConfirmUnpairDevice(target);
                 }}
-              />
-            </AppHost>
-            <AppHost matchContents={{ vertical: true }}>
-              <AppButton
-                title={t('common:action.close')}
-                variant="text"
-                fullWidth
-                onPress={() => setSelectedDeviceID(null)}
               />
             </AppHost>
           </View>
         ) : null}
       </AppBottomSheet>
+
+      <AppAlertDialog
+        visible={confirmUnpairDevice !== null}
+        standalone
+        title={pair('unpair')}
+        message={
+          confirmUnpairDevice
+            ? pair('unpairConfirmNamed', { device: deviceDisplayName(confirmUnpairDevice) })
+            : ''
+        }
+        confirmLabel={pair('unpair')}
+        onConfirm={() => {
+          const target = confirmUnpairDevice;
+          setConfirmUnpairDevice(null);
+          if (target) void run(() => store.unpairDevice(target.id, target.revision));
+        }}
+        dismissLabel={t('common:action.cancel')}
+        onDismiss={() => setConfirmUnpairDevice(null)}
+        onDismissAction={() => setConfirmUnpairDevice(null)}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  flex1: { flex: 1 },
+  sheetBody: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    gap: 14,
+  },
+  sheetTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  detailIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailSub: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  detailCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    borderRadius: 18,
+    padding: 16,
+  },
+  detailCard: {
+    borderRadius: 18,
+    padding: 16,
+    gap: 10,
+  },
+  rowTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  rowSub: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  renameInput: {
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 15,
+  },
+  fpLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  fpText: {
+    fontSize: 15,
+    lineHeight: 24,
+    fontWeight: '600',
+    letterSpacing: 1.2,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
 });

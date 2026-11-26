@@ -176,7 +176,7 @@ func estimateWrappedTextHeight(width float32, text string, size float32) float32
 	return float32(max(1, lines)) * size * 1.45
 }
 
-func openQuickWindow(p *quickPanelState, closed func()) *mygo.Window {
+func openQuickWindow(p *quickPanelState, pos *mygo.Point, closed func()) *mygo.Window {
 	p.quit = mygo.App.Quit
 
 	title := "unic · 快捷面板演示"
@@ -185,12 +185,22 @@ func openQuickWindow(p *quickPanelState, closed func()) *mygo.Window {
 	}
 	windowZoom := p.windowZoom
 	scale := zoomScale(windowZoom)
-	history := mygo.NewWindow(mygo.WindowOptions{
+	opts := mygo.WindowOptions{
 		Title: title, Width: int(qpPanelWidth * scale), Height: int(qpPanelHeight * scale), UseContentSize: true,
 		Frameless: true, DisableResize: true, AlwaysOnTop: true,
 		Panel:   runtime.GOOS == "darwin" && p.live != nil,
 		Content: ui.View(p.panel),
-	})
+	}
+	if pos != nil {
+		opts.Hidden = true
+		if pos.X != 0 || pos.Y != 0 {
+			opts.X, opts.Y = pos.X, pos.Y
+		}
+	}
+	history := mygo.NewWindow(opts)
+	if pos != nil && pos.X == 0 && pos.Y == 0 {
+		history.SetPosition(0, 0)
+	}
 	var satellite *mygo.Window
 	hideSatellite := func() {
 		p.satelliteWidth, p.satelliteHeight = 0, 0

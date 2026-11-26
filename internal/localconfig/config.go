@@ -98,11 +98,21 @@ type Desktop struct {
 	Shortcuts           map[string][]string  `toml:"shortcuts,omitempty" json:"shortcuts,omitempty"`
 	QuickPanelDoubleTap string               `toml:"quick_panel_double_tap,omitempty" json:"quick_panel_double_tap,omitempty"`
 	QuickPanelShortcut  string               `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
+	QuickPanelPosition  string               `toml:"quick_panel_position,omitempty" json:"quick_panel_position,omitempty"`
 	Mode                string               `toml:"mode" json:"mode"`
 	LaunchAtLogin       bool                 `toml:"launch_at_login" json:"launch_at_login"`
 	StartInBackground   bool                 `toml:"start_in_background" json:"start_in_background"`
 	SystemWindowFrame   bool                 `toml:"system_window_frame" json:"system_window_frame"`
 	Notifications       DesktopNotifications `toml:"notifications" json:"notifications"`
+}
+
+// QuickPanelPositionOrDefault returns the configured Quick Panel placement mode,
+// defaulting to "center" when unset.
+func (d Desktop) QuickPanelPositionOrDefault() string {
+	if d.QuickPanelPosition == "" {
+		return "center"
+	}
+	return d.QuickPanelPosition
 }
 
 // DesktopNotifications configures desktop system and in-app notifications.
@@ -403,6 +413,11 @@ func (c Config) Validate() error {
 	default:
 		return errors.New("desktop.quick_panel_shortcut: unsupported shortcut")
 	}
+	switch c.Desktop.QuickPanelPosition {
+	case "", "center", "cursor", "caret":
+	default:
+		return errors.New(`desktop.quick_panel_position: must be "center", "cursor" or "caret"`)
+	}
 	if c.Desktop.TrayIcon != "glyph" && c.Desktop.TrayIcon != "cat" {
 		return errors.New(`desktop.tray_icon: must be "glyph" or "cat"`)
 	}
@@ -532,6 +547,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # quick_panel_shortcut = "Ctrl+Alt+V"
 # macOS default: "Cmd+Ctrl+V"
 # quick_panel_double_tap = ""  # off, alt, control, or meta
+# quick_panel_position = "center"  # "center", "cursor", or "caret" (Windows)
 # [desktop.shortcuts]
 # "clipboard.search" = ["mod+f"]  # [] disables the binding
 # [desktop.notifications]

@@ -155,6 +155,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 			number("limit", d.tr("单文件传输上限"), d.tr("双向限制单个文件的最大传输大小。"), &n, []int{10, 50, 100, 500}, "MB", false, false)
 			cfg.Limits.MaxFileBytes = config.Size(n) * (1 << 20)
 		})
+		d.relaySettingsGroup(c, k, &cfg, &changed)
 
 	case "storage":
 		d.storageCacheGroup(c, k, &cfg, &changed)

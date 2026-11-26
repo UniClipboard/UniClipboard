@@ -223,6 +223,66 @@ public final class UnicEngineModule: Module {
   private var lastAppliedChangeCount: Int = -1
   private var isForeground: Bool = true
   private var pasteboardObserver: NSObjectProtocol?
+  private var bgDrainTaskID: UIBackgroundTaskIdentifier = .invalid
+  private var bgDrainWorkItem: DispatchWorkItem?
+  private static let bgDrainMaxSeconds: TimeInterval = 25
+  private static let bgDrainPollSeconds: TimeInterval = 0.35
+
+  private func endBackgroundDrainTaskLocked() {
+    self.bgDrainWorkItem?.cancel()
+    self.bgDrainWorkItem = nil
+    let taskID = self.bgDrainTaskID
+    self.bgDrainTaskID = .invalid
+    if taskID != .invalid {
+      DispatchQueue.main.async {
+        UIApplication.shared.endBackgroundTask(taskID)
+      }
+    }
+  }
+
+  private func scheduleBackgroundDrainPollLocked(eng: MobileEngine, deadline: Date) {
+    let item = DispatchWorkItem { [weak self] in
+      guard let self = self else { return }
+      guard !self.isForeground else {
+        self.endBackgroundDrainTaskLocked()
+        return
+      }
+      if !eng.hasActiveSends() || Date() >= deadline {
+        try? eng.setRuntimeState("suspended")
+        self.endBackgroundDrainTaskLocked()
+        return
+      }
+      self.scheduleBackgroundDrainPollLocked(eng: eng, deadline: deadline)
+    }
+    self.bgDrainWorkItem = item
+    self.engineQueue.asyncAfter(deadline: .now() + Self.bgDrainPollSeconds, execute: item)
+  }
+
+  private func suspendOrDrainInBackgroundLocked(_ eng: MobileEngine) {
+    self.endBackgroundDrainTaskLocked()
+    guard eng.hasActiveSends() else {
+      try? eng.setRuntimeState("suspended")
+      return
+    }
+    var granted: UIBackgroundTaskIdentifier = .invalid
+    DispatchQueue.main.sync {
+      granted = UIApplication.shared.beginBackgroundTask(withName: "unic.transfer.drain") { [weak self] in
+        guard let self = self else { return }
+        self.engineQueue.async {
+          if !self.isForeground, let activeEng = self.engine {
+            try? activeEng.setRuntimeState("suspended")
+          }
+          self.endBackgroundDrainTaskLocked()
+        }
+      }
+    }
+    if granted == .invalid {
+      try? eng.setRuntimeState("suspended")
+      return
+    }
+    self.bgDrainTaskID = granted
+    self.scheduleBackgroundDrainPollLocked(eng: eng, deadline: Date().addingTimeInterval(Self.bgDrainMaxSeconds))
+  }
 
   private func updateHostCapabilities(_ eng: MobileEngine, foreground: Bool) {
     let caps: [String: Any] = [
@@ -607,6 +667,7 @@ public final class UnicEngineModule: Module {
       guard let self = self else { return }
       self.engineQueue.async {
         self.isForeground = true
+        self.endBackgroundDrainTaskLocked()
         guard let eng = self.engine else { return }
         self.updateHostCapabilities(eng, foreground: true)
         try? eng.setRuntimeState("active")
@@ -644,7 +705,7 @@ public final class UnicEngineModule: Module {
         self.keyboardSyncWorkItem = nil
         _ = try? self.keyboardBridge.publishSnapshot(engine: eng)
         self.updateHostCapabilities(eng, foreground: false)
-        try? eng.setRuntimeState("suspended")
+        self.suspendOrDrainInBackgroundLocked(eng)
       }
     }
 
@@ -656,6 +717,7 @@ public final class UnicEngineModule: Module {
       self.stopSecurityScopedSetupURL()
       self.setIdleTimerDisabled(false)
       self.engineQueue.sync {
+        self.endBackgroundDrainTaskLocked()
         self.shutdownEngineInternal()
       }
     }

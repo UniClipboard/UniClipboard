@@ -362,6 +362,7 @@ export interface DirectorySyncSettings {
 export interface RelaySyncSettings {
   enabled: boolean;
   url?: string;
+  has_access_key?: boolean;
   max_bytes?: number;
 }
 

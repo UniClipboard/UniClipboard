@@ -336,6 +336,7 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 	if perr != nil {
 		return SettingsState{}, perr
 	}
+	value.Sync.Relay.HasAccessKey = false // output-only: never affects equality or stored state
 	if reflect.DeepEqual(value, e.settings.Value) {
 		return e.settingsLocked(), nil
 	}
@@ -356,6 +357,7 @@ func (e *Engine) UpdateSettings(ctx context.Context, req UpdateSettingsRequest) 
 // settingsLocked returns a secret-free copy that shares nothing with the live settings.
 func (e *Engine) settingsLocked() SettingsState {
 	v := e.settings.Value.clone()
+	v.Sync.Relay.HasAccessKey = v.Sync.Relay.AccessKey != ""
 	v.Sync.Relay.AccessKey = ""
 	return SettingsState{Revision: e.settings.Revision, Value: v}
 }

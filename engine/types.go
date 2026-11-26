@@ -52,10 +52,11 @@ type DirectorySyncSettings struct {
 // RelaySyncSettings configures the optional zero-knowledge E2EE HTTP relay
 // fallback used when a target peer's P2P session is offline (0035).
 type RelaySyncSettings struct {
-	Enabled   bool   `json:"enabled"`
-	URL       string `json:"url,omitempty"`
-	AccessKey string `json:"-"` // secret: never serialized in State snapshots
-	MaxBytes  int64  `json:"max_bytes,omitempty"` // 0: default 25 MiB
+	Enabled      bool   `json:"enabled"`
+	URL          string `json:"url,omitempty"`
+	AccessKey    string `json:"-"`                        // secret: never serialized in State snapshots
+	HasAccessKey bool   `json:"has_access_key,omitempty"` // output-only indicator set in State snapshots
+	MaxBytes     int64  `json:"max_bytes,omitempty"`      // 0: default 25 MiB
 }
 
 type SyncSettings struct {

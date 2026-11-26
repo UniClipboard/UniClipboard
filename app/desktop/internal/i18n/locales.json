@@ -9004,5 +9004,131 @@
     "ja": "サイズ上限を超えています",
     "pt-BR": "Limite de tamanho excedido",
     "ru": "Превышен лимит размера"
+  },
+  "已开启": {
+    "en": "On",
+    "ja": "オン",
+    "pt-BR": "Ativado",
+    "ru": "Вкл."
+  },
+  "%d/%d 台设备中转就绪": {
+    "en": "%d of %d devices ready for relay",
+    "ja": "%d/%d 台のデバイスがリレー準備完了",
+    "pt-BR": "%d de %d dispositivos prontos para relay",
+    "ru": "Ретрансляция готова: %d из %d"
+  },
+  "混合中转": {
+    "en": "Hybrid Relay",
+    "ja": "ハイブリッドリレー",
+    "pt-BR": "Relay híbrido",
+    "ru": "Гибридная ретрансляция"
+  },
+  "启用混合中转": {
+    "en": "Enable Hybrid Relay",
+    "ja": "ハイブリッドリレーを有効にする",
+    "pt-BR": "Ativar relay híbrido",
+    "ru": "Включить гибридную ретрансляцию"
+  },
+  "P2P 在线直连优先；对端离线时 0 等待走零知识端到端加密临时 HTTP 中转。与 Tailcat P2P/DERP 节点相互独立。": {
+    "en": "Prefers direct P2P when online; falls back immediately to zero-knowledge end-to-end encrypted temporary HTTP relay when a device is offline. Separate from Tailcat P2P/DERP relays.",
+    "ja": "オンライン時はP2P直接接続を優先し、オフライン時は待機なしでゼロ知識エンドツーエンド暗号化の一時HTTPリレーを使用します。TailcatのP2P/DERPノードとは独立しています。",
+    "pt-BR": "Prioriza P2P direto quando online; usa imediatamente o relay HTTP temporário com criptografia de ponta a ponta de conhecimento zero quando o dispositivo está offline. Independente dos nós P2P/DERP do Tailcat.",
+    "ru": "Предпочитает прямое P2P-соединение онлайн; при офлайне устройства мгновенно использует временный HTTP-ретранслятор со сквозным шифрованием с нулевым разглашением. Независимо от узлов Tailcat P2P/DERP."
+  },
+  "中转服务地址": {
+    "en": "Relay server URL",
+    "ja": "リレーサーバー URL",
+    "pt-BR": "URL do servidor de relay",
+    "ru": "URL сервера ретрансляции"
+  },
+  "留空使用官方默认地址；填入自部署 HTTPS 地址并保存即可切换。": {
+    "en": "Leave blank to use the official default, or enter a self-hosted HTTPS URL and save.",
+    "ja": "空欄の場合は公式のデフォルトを使用します。セルフホストの HTTPS URL を入力して保存すると切り替えられます。",
+    "pt-BR": "Deixe em branco para usar o padrão oficial ou informe uma URL HTTPS auto-hospedada e salve.",
+    "ru": "Оставьте пустым для официального сервера или укажите собственный HTTPS-адрес и сохраните."
+  },
+  "请输入有效的 http(s) 中转地址": {
+    "en": "Enter a valid http(s) relay URL",
+    "ja": "有効な http(s) リレー URL を入力してください",
+    "pt-BR": "Digite uma URL http(s) válida para o relay",
+    "ru": "Введите корректный http(s) URL ретранслятора"
+  },
+  "25 MB（默认）": {
+    "en": "25 MB (Default)",
+    "ja": "25 MB（デフォルト）",
+    "pt-BR": "25 MB (Padrão)",
+    "ru": "25 МБ (по умолчанию)"
+  },
+  "单次中转大小上限": {
+    "en": "Per-transfer relay limit",
+    "ja": "リレー転送サイズ上限",
+    "pt-BR": "Limite por transferência no relay",
+    "ru": "Лимит размера через ретранслятор"
+  },
+  "超出上限的内容仅在 P2P 在线时直连传输。": {
+    "en": "Items larger than this limit transfer only over direct P2P when online.",
+    "ja": "この上限を超える項目は、オンライン時の P2P 直接接続のみで転送されます。",
+    "pt-BR": "Itens acima deste limite são transferidos apenas por P2P direto quando online.",
+    "ru": "Элементы больше этого лимита передаются только напрямую по P2P в сети."
+  },
+  "自部署接入密钥": {
+    "en": "Self-hosted access key",
+    "ja": "セルフホストアクセスキー",
+    "pt-BR": "Chave de acesso auto-hospedada",
+    "ru": "Ключ доступа для своего сервера"
+  },
+  "可选，对应服务端 X-Unic-Relay-Key。仅写入不回显，不写入日志或设置备份。": {
+    "en": "Optional server X-Unic-Relay-Key. Write-only and never shown, logged, or included in settings backups.",
+    "ja": "任意（サーバーの X-Unic-Relay-Key に対応）。書き込み専用で表示されず、ログや設定バックアップにも含まれません。",
+    "pt-BR": "Opcional, corresponde ao X-Unic-Relay-Key do servidor. Somente gravação; nunca é exibida, registrada em logs ou incluída em backups.",
+    "ru": "Необязательно (заголовок X-Unic-Relay-Key). Только для записи: не отображается, не попадает в журналы и резервные копии."
+  },
+  "已配置": {
+    "en": "Configured",
+    "ja": "設定済み",
+    "pt-BR": "Configurada",
+    "ru": "Задан"
+  },
+  "未配置": {
+    "en": "Not set",
+    "ja": "未設定",
+    "pt-BR": "Não definida",
+    "ru": "Не задан"
+  },
+  "输入新密钥（只写不回显）": {
+    "en": "Enter new key (write-only)",
+    "ja": "新しいキーを入力（非表示）",
+    "pt-BR": "Digite a nova chave (somente gravação)",
+    "ru": "Введите новый ключ (не отображается)"
+  },
+  "请输入接入密钥，或点击清除密钥": {
+    "en": "Enter an access key or choose Clear key",
+    "ja": "アクセスキーを入力するか、「キーを消去」を選択してください",
+    "pt-BR": "Digite uma chave de acesso ou escolha Limpar chave",
+    "ru": "Введите ключ доступа или нажмите «Очистить ключ»"
+  },
+  "接入密钥格式无效": {
+    "en": "Invalid access key format",
+    "ja": "アクセスキーの形式が無効です",
+    "pt-BR": "Formato de chave de acesso inválido",
+    "ru": "Недопустимый формат ключа доступа"
+  },
+  "保存密钥": {
+    "en": "Save key",
+    "ja": "キーを保存",
+    "pt-BR": "Salvar chave",
+    "ru": "Сохранить ключ"
+  },
+  "清除密钥": {
+    "en": "Clear key",
+    "ja": "キーを消去",
+    "pt-BR": "Limpar chave",
+    "ru": "Очистить ключ"
+  },
+  "部分已配对设备尚未交换中转路由，请确保两端配置了相同的中转服务地址并至少完成一次 P2P 连接。": {
+    "en": "Some paired devices haven't exchanged a relay route yet. Ensure both devices use the same relay URL and connect over P2P at least once.",
+    "ja": "一部のペアリング済みデバイスはリレールートをまだ交換していません。両方のデバイスで同じリレー URL を設定し、一度 P2P 接続してください。",
+    "pt-BR": "Alguns dispositivos pareados ainda não trocaram a rota de relay. Verifique se ambos usam a mesma URL de relay e conectaram por P2P ao menos uma vez.",
+    "ru": "Некоторые сопряжённые устройства ещё не обменялись маршрутом ретрансляции. Убедитесь, что на обоих устройствах указан один и тот же URL и установлено хотя бы одно P2P-соединение."
   }
 }

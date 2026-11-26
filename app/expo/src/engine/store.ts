@@ -116,7 +116,10 @@ interface EngineStoreState {
   clearError: () => void;
   setAutoApplyReceived: (enabled: boolean) => Promise<void>;
   setAutomaticCapture: (enabled: boolean) => Promise<void>;
-  updateSettings: (mutator: (settings: EngineSettings) => EngineSettings) => Promise<void>;
+  updateSettings: (
+    mutator: (settings: EngineSettings) => EngineSettings,
+    options?: { relayAccessKey?: string },
+  ) => Promise<void>;
   refreshSnapshot: () => Promise<void>;
   refreshFileCache: () => Promise<void>;
   clearPreviews: () => Promise<void>;
@@ -986,15 +989,19 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
     }));
   },
 
-  updateSettings: (mutator) => {
+  updateSettings: (mutator, options) => {
     const update = settingsQueue.then(async () => {
       const snapshot = get().snapshot;
       if (!snapshot) return;
       try {
-        const settings = await unicEngineNative.updateSettings({
+        const req: { expected_revision: string; value: EngineSettings; relay_access_key?: string } = {
           expected_revision: snapshot.settings.revision,
           value: mutator(snapshot.settings.value),
-        });
+        };
+        if (options?.relayAccessKey !== undefined) {
+          req.relay_access_key = options.relayAccessKey;
+        }
+        const settings = await unicEngineNative.updateSettings(req);
         set((state) => state.snapshot?.instance_id === snapshot.instance_id &&
           BigInt(state.snapshot.settings.revision) <= BigInt(settings.revision)
           ? { snapshot: { ...state.snapshot, settings } }

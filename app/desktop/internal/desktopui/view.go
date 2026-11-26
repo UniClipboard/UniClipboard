@@ -106,6 +106,7 @@ type deviceBinding struct {
 	revision         int64
 	lastActive       string
 	lastError        string
+	relayRouteReady  bool
 }
 
 // device holds unified live and preview display state backed by Engine device/binding facts.
@@ -183,6 +184,7 @@ type viewState struct {
 	backup          backupSettingsState
 	shortcuts       shortcutSettingsState
 	notifications   notificationSettingsState
+	relay           relaySettingsState
 
 	reference                                                             string
 	previewImage                                                          ui.ImageSource

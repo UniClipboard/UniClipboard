@@ -147,12 +147,13 @@ type DirectorySync struct {
 
 // RelaySync configures the optional zero-knowledge E2EE HTTP relay fallback
 // (separate from Tailcat P2P DERP relays). AccessKey is secret and omitted
-// from JSON API responses.
+// from JSON API responses; AccessKeySet is a non-secret output-only indicator.
 type RelaySync struct {
-	Enabled   bool   `toml:"enabled" json:"enabled"`
-	URL       string `toml:"url" json:"url,omitempty"`
-	AccessKey string `toml:"access_key" json:"-"`
-	MaxBytes  Size   `toml:"max_bytes" json:"max_bytes,omitempty"`
+	Enabled      bool   `toml:"enabled" json:"enabled"`
+	URL          string `toml:"url" json:"url,omitempty"`
+	AccessKey    string `toml:"access_key,omitempty" json:"-"`
+	AccessKeySet bool   `toml:"-" json:"access_key_set,omitempty"`
+	MaxBytes     Size   `toml:"max_bytes" json:"max_bytes,omitempty"`
 }
 
 type Sync struct {
@@ -314,19 +315,24 @@ func Default() Config {
 // Parse decodes and validates a config file's content. Missing keys keep
 // their defaults; unknown keys are an error.
 func Parse(data []byte) (Config, error) {
+	c, _, err := parseWithMeta(data)
+	return c, err
+}
+
+func parseWithMeta(data []byte) (Config, bool, error) {
 	c := Default()
 	md, err := toml.Decode(string(data), &c)
 	if err != nil {
-		return Config{}, err
+		return Config{}, false, err
 	}
 	if un := md.Undecoded(); len(un) > 0 {
 		keys := make([]string, len(un))
 		for i, k := range un {
 			keys[i] = k.String()
 		}
-		return Config{}, fmt.Errorf("unknown key(s): %s", strings.Join(keys, ", "))
+		return Config{}, false, fmt.Errorf("unknown key(s): %s", strings.Join(keys, ", "))
 	}
-	return c, c.Validate()
+	return c, md.IsDefined("sync", "relay", "access_key"), c.Validate()
 }
 
 // Settings is the configuration as engine settings.

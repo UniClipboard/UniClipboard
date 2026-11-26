@@ -74,6 +74,56 @@ max_bytes = "30MB"
 	if strings.Contains(string(engJSON), "super-secret-relay-key") {
 		t.Fatalf("relay access_key leaked in engine settings JSON: %s", engJSON)
 	}
+	if !Static(c).State().Config.Sync.Relay.AccessKeySet {
+		t.Fatal("expected AccessKeySet=true in Manager.State()")
+	}
+
+	// Manager.Replace must preserve existing access_key when omitted by callers
+	// round-tripping redacted GET /v1/config snapshots, and clear it when explicitly "".
+	p := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(p, []byte(`
+[sync.relay]
+enabled = true
+url = "https://relay.example.com"
+access_key = "keep-me-secret"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mgr, err := Open(p, t.Logf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := mgr.State()
+	if !st.Config.Sync.Relay.AccessKeySet || st.Config.Sync.Relay.AccessKey != "" {
+		t.Fatalf("expected redacted state with AccessKeySet=true, got %+v", st.Config.Sync.Relay)
+	}
+	// Save an unrelated edit without access_key in TOML: existing key must be preserved.
+	st, err = mgr.Replace(st.Revision, []byte(`
+device_name = "updated"
+[sync.relay]
+enabled = true
+url = "https://relay.example.com"
+`))
+	if err != nil {
+		t.Fatalf("Replace preserving key: %v", err)
+	}
+	if !st.Config.Sync.Relay.AccessKeySet || mgr.Current().Sync.Relay.AccessKey != "keep-me-secret" {
+		t.Fatalf("expected existing access_key preserved, got key=%q set=%v", mgr.Current().Sync.Relay.AccessKey, st.Config.Sync.Relay.AccessKeySet)
+	}
+	// Explicit empty access_key clears it.
+	st, err = mgr.Replace(st.Revision, []byte(`
+device_name = "updated"
+[sync.relay]
+enabled = true
+url = "https://relay.example.com"
+access_key = ""
+`))
+	if err != nil {
+		t.Fatalf("Replace clearing key: %v", err)
+	}
+	if st.Config.Sync.Relay.AccessKeySet || mgr.Current().Sync.Relay.AccessKey != "" {
+		t.Fatalf("expected access_key cleared, got key=%q set=%v", mgr.Current().Sync.Relay.AccessKey, st.Config.Sync.Relay.AccessKeySet)
+	}
 }
 
 func TestParseRejects(t *testing.T) {

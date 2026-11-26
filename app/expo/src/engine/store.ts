@@ -34,6 +34,7 @@ import type {
   SetupFlowState,
   SetupScreenViewState,
   SourceDetectionResult,
+  SubmissionResult,
   TextPreview,
 } from "./types";
 
@@ -122,9 +123,10 @@ interface EngineStoreState {
   dismissClipboardHint: () => void;
 
   readHistoryFullText: (historyID: string) => Promise<string>;
+  saveIncomingShare: (id: string) => Promise<ClipboardItem | undefined>;
   commitText: (text: string, deviceIds?: string[]) => Promise<void>;
   pickAndCommitFile: (deviceIds?: string[]) => Promise<{ cancelled: boolean }>;
-  resendHistoryItem: (historyID: string, deviceIds?: string[]) => Promise<void>;
+  resendHistoryItem: (historyID: string, deviceIds: string[]) => Promise<SubmissionResult>;
   readSystemClipboardAndCommit: () => Promise<{ skipped?: boolean; reason?: string }>;
   applyToClipboard: (historyID: string) => Promise<void>;
   applyReceivedToClipboard: (receiptID: string) => Promise<void>;
@@ -1029,6 +1031,15 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
     return res.text ?? "";
   },
 
+  saveIncomingShare: async (id) => {
+    const { history_id: historyID } = await unicEngineNative.saveIncomingShare(id);
+    if (!historyID) return;
+    void get().refreshHistory();
+    const item = await unicEngineNative.getHistoryItem(historyID);
+    const [record] = await hydrateHistoryItems([item], get().devices);
+    return record;
+  },
+
   commitText: async (text, deviceIds) => {
     await unicEngineNative.commitText(text, deviceIds);
     await get().refreshHistory();
@@ -1043,12 +1054,11 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
   },
 
   resendHistoryItem: async (historyID, deviceIds) => {
-    await unicEngineNative.resendHistoryItem({
+    return unicEngineNative.resendHistoryItem({
       request_id: `mobile-resend-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       history_id: historyID,
-      device_ids: deviceIds && deviceIds.length > 0 ? deviceIds : undefined,
+      device_ids: deviceIds,
     });
-    await get().refreshHistory();
   },
 
   readSystemClipboardAndCommit: async () => {

@@ -283,6 +283,7 @@ const (
 type SubmitRequest struct {
 	restored  bool
 	localOnly bool
+	history   HistoryID // set by SendHistory only
 	RequestID RequestID
 	LeaseID   LeaseID
 	Origin    Origin
@@ -486,6 +487,15 @@ type CommitRequest struct {
 	// LocalOnly skips network dispatch for this commit. Target selections must
 	// be nil. Local processing and history policies still apply.
 	LocalOnly bool
+}
+
+// SendHistoryRequest sends an existing record to explicitly selected devices.
+type SendHistoryRequest struct {
+	RequestID       RequestID
+	HistoryID       HistoryID
+	DeviceIDs       []DeviceID // nonempty selection of paired devices
+	BackendIDs      []PluginID
+	CancelOnContext bool
 }
 
 type PluginID string

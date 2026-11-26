@@ -47,7 +47,10 @@ and installs a separate clipboard fixture app on the selected simulator. The
 fixture writes synthetic text through UIKit. Maestro switches to the test app
 and checks that its Upload clipboard action adds the text to history. On
 Android, the runner uses SDK adb to launch the app and deliver the text through
-a targeted share intent. Maestro checks the live app UI on both platforms.
+a targeted share intent. Maestro checks that the shared send sheet opens,
+that sending is disabled without a device, and that closing the sheet leaves
+the imported content in history. Maestro checks live history search on both
+platforms.
 
 The runner writes `e2e/results/<run>/receipt.json` on success and failure. It
 records artifact/lockfile/flow hashes, the iOS fixture hash when applicable,

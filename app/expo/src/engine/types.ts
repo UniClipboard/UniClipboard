@@ -183,6 +183,7 @@ export interface EngineOperation {
     | "failed"
     | string;
   error?: EngineErrorPayload;
+  targets?: Array<{ peer_id?: string; state: "queued" | "sending" | "sent" | "failed" | "superseded" }>;
   pairing?: {
     peer_id: string;
     awaiting_local_approval: boolean;

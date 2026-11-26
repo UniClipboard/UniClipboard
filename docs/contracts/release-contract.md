@@ -28,6 +28,28 @@ accepted Desktop build for the requested version. Pin the selection for the
 workflow run. Stable promotes existing npm packages and the existing Desktop
 catalogue. Missing acceptance or conflicting evidence blocks promotion.
 
+### Package-manager publication
+
+Dispatch the independent package workflows after the joint workflow concludes
+successfully on the repository default branch. Bind each dispatch and manual
+retry to the successful release run and attempt. Resolve completed jobs and
+their promotion and npm receipts when the run reused earlier attempts.
+Require the published Desktop tag to match the catalogue source commit.
+Require GitHub's asset digest and download bytes to match the catalogue for
+each selected package. The Homebrew Formula also requires the exact CLI
+manifest and its two released macOS npm archives.
+
+Alpha dispatches prepare preview packages. COPR may publish to its separate Alpha project after rechecking the current Alpha feed.
+Stable publication requires the original native acceptance receipts and a
+current Stable feed match before mutation. Workflow results are independent of
+the CLI and Desktop release result. A successful registry submission records
+submission only. A first-party GitHub release records availability after
+verifying the release state and asset hashes.
+
+Preserve the rolling identity of the project-owned AUR source package. Its
+build uses the default branch and that source's own CLI lock. An AUR binary
+recipe generated from the numbered Desktop assets is a separate build path.
+
 ## CLI candidate and npm identity
 
 The npm destination version is `<version>-build.<build_number>`; neither channel name is encoded.

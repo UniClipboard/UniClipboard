@@ -23,6 +23,7 @@ import {
 } from "@/utils/historyFilters";
 import { useShellStore } from "@/shell/store";
 import { showUnavailable } from "@/shell/notice";
+import { useSendSheetStore } from "./sendSheetStore";
 
 function filterLiveItems(
   records: ClipboardItem[],
@@ -74,11 +75,6 @@ export function useHomeController(
   const [detailPageId, setDetailPageId] = useState<string | null>(null);
   const [wordPickerTarget, setWordPickerTarget] =
     useState<WordPickerOverlayProps | null>(null);
-  const [sendToVisible, setSendToVisible] = useState(false);
-  const [sendTargetItem, setSendTargetItem] = useState<ClipboardItem | null>(
-    null,
-  );
-  const [sendDraftText, setSendDraftText] = useState<string | null>(null);
   const [receiveResultsOpen, setReceiveResultsOpen] = useState(false);
   const listRef = useRef<AnimatedCardGridHandle>(null);
   const {
@@ -158,20 +154,11 @@ export function useHomeController(
     [],
   );
   const closeDetailPage = useCallback(() => setDetailPageId(null), []);
-  const openSendTo = useCallback((item?: ClipboardItem) => {
-    setSendDraftText(null);
-    setSendTargetItem(item ?? null);
-    setSendToVisible(true);
+  const openSendTo = useCallback((item: ClipboardItem) => {
+    useSendSheetStore.getState().open({ item });
   }, []);
-  const openSendToText = useCallback((text?: string) => {
-    setSendTargetItem(null);
-    setSendDraftText(typeof text === "string" ? text : null);
-    setSendToVisible(true);
-  }, []);
-  const closeSendTo = useCallback(() => {
-    setSendToVisible(false);
-    setSendTargetItem(null);
-    setSendDraftText(null);
+  const openSendToText = useCallback((draftText: string) => {
+    useSendSheetStore.getState().open({ draftText });
   }, []);
   const handleContextDismiss = useCallback(() => setContextTarget(null), []);
   const handleItemDelete = useCallback(
@@ -214,15 +201,20 @@ export function useHomeController(
     [],
   );
   const runHistoryAction = useCallback(
-    (action: () => Promise<unknown>) => {
+    (action: () => Promise<unknown>): Promise<void> => {
       if (engineMode !== "live") {
         showUnavailable();
-        return;
+        return Promise.resolve();
       }
-      void action().catch((error: unknown) => Alert.alert(
-        t("history:media.actionFailed"),
-        error instanceof Error ? error.message : undefined,
-      ));
+      return action().then(
+        () => undefined,
+        (error: unknown) => {
+          Alert.alert(
+            t("history:media.actionFailed"),
+            error instanceof Error ? error.message : undefined,
+          );
+        },
+      );
     },
     [engineMode, t],
   );
@@ -516,7 +508,7 @@ export function useHomeController(
     },
     handleBatchSendTo: () => {
       const first = items.find((it) => selectedIds.has(it.profileHash));
-      openSendTo(first);
+      if (first) openSendTo(first);
     },
     handleBatchDelete: () => {
       if (engineMode === "live") {
@@ -544,9 +536,8 @@ export function useHomeController(
       setShowAddMenu(false);
       runHistoryAction(() => useEngineStore.getState().readSystemClipboardAndCommit());
     },
-    handleSyncHistory: () => {
-      runHistoryAction(() => useEngineStore.getState().readSystemClipboardAndCommit());
-    },
+    handleSyncHistory: () =>
+      runHistoryAction(() => useEngineStore.getState().readSystemClipboardAndCommit()),
     receiveEntryCount: engineMode === "live" ? engineReceived.length : 0,
     receiveResultsOpen,
     setReceiveResultsOpen: (open: boolean) => {
@@ -572,11 +563,6 @@ export function useHomeController(
     detailPageItem,
     openDetailPage,
     closeDetailPage,
-    sendToVisible,
-    sendTargetItem,
-    sendDraftText,
-    openSendTo,
-    closeSendTo,
     openSendToText,
   };
 }

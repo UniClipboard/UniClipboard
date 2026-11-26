@@ -84,8 +84,7 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   openShizukuAppOrGuide?(): Promise<boolean>;
   resolveBackgroundClipboardRestriction?(): Promise<boolean>;
   listIncomingShares(): Promise<string>;
-  commitIncomingShare(id: string, targets: string): Promise<string>;
-  dismissIncomingShare(id: string): Promise<void>;
+  saveIncomingShare(id: string): Promise<string>;
   getKeyboardExtensionStatus?(): Promise<string>;
   setKeyboardPreferences?(soundEnabled: boolean, hapticEnabled: boolean): Promise<string>;
   syncKeyboardSnapshot?(): Promise<string>;
@@ -283,13 +282,10 @@ export const unicEngineNative = {
     if (!nativeMod) return { remove: () => {} };
     return nativeMod.addListener("onBackgroundSyncStateChanged", ({ reason }) => cb(reason));
   },
-  listIncomingShares: () => callJSON<Array<{ id: string; kind: "text" | "file"; label: string }>>(
-    () => requireMod().listIncomingShares(),
+  listIncomingShares: () => callJSON<string[]>(() => requireMod().listIncomingShares()),
+  saveIncomingShare: (id: string) => callJSON<SubmissionResult>(
+    () => requireMod().saveIncomingShare(id),
   ),
-  commitIncomingShare: (id: string, targets?: string[]) => callJSON<{ history_id?: string; sync_disposition?: string }>(
-    () => requireMod().commitIncomingShare(id, targets ? JSON.stringify(targets) : ""),
-  ),
-  dismissIncomingShare: (id: string) => callVoid(() => requireMod().dismissIncomingShare(id)),
   getKeyboardExtensionStatus: async (): Promise<KeyboardExtensionStatus> => {
     const mod = nativeMod;
     if (!mod?.getKeyboardExtensionStatus) {

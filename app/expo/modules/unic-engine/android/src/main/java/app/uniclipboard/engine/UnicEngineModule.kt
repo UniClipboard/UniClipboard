@@ -447,19 +447,15 @@ class UnicEngineModule : Module() {
       incomingShare.list()
     }.runOnQueue(engineScope)
 
-    AsyncFunction("commitIncomingShare") { id: String, targets: String ->
+    AsyncFunction("saveIncomingShare") { id: String ->
       try {
         val item = incomingShare.item(id) ?: throw rawCodeException("not_found", "shared item unavailable")
-        val result = requireEngine().commitSharedItem(item.path, targets)
+        val result = requireEngine().commitSharedItem(item.path, "")
         incomingShare.remove(id)
         result
       } catch (error: Throwable) {
         throw if (error is CodedException) error else moduleException(error)
       }
-    }.runOnQueue(engineScope)
-
-    AsyncFunction("dismissIncomingShare") { id: String ->
-      incomingShare.remove(id)
     }.runOnQueue(engineScope)
 
     OnCreate {

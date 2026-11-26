@@ -31,13 +31,26 @@ paths:
   - app/desktop/e2e/run.py
   - .github/workflows/sandbox-acceptance.yml
   - .github/workflows/release-cli.yml
+  - .github/workflows/dispatch-package-releases.yml
+  - .github/actions/package-release
+  - .github/workflows/release-aur.yml
+  - .github/workflows/release-chocolatey.yml
+  - .github/workflows/release-copr.yml
+  - .github/workflows/release-flatpak.yml
+  - .github/workflows/release-homebrew-cask.yml
+  - .github/workflows/release-homebrew-tap.yml
+  - .github/workflows/release-nix.yml
+  - .github/workflows/release-pacman.yml
+  - .github/workflows/release-scoop.yml
+  - .github/workflows/release-snap.yml
+  - .github/workflows/release-winget.yml
   - .github/workflows/promote.yml
   - .github/workflows/check-expo.yml
   - .github/workflows/release-android.yml
   - .github/workflows/release-ios.yml
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 28d51b0f0d4cc5ba650e45ed908b749380e78d40
+verified: 218f8b846ede763a5460d6ede8ffe9b241374c46
 ---
 # Product builds and CLI releases
 
@@ -122,6 +135,14 @@ Recovering a CLI candidate skips CLI construction and still starts Desktop
 construction. The final joint result requires successful CLI publication and
 successful Desktop channel verification.
 
+### Package-manager distribution
+
+After a successful joint release on the default branch, `dispatch-package-releases.yml` dispatches eleven independent workflows. The workflows use the completed run ID and attempt, the verified promotion and npm receipts, and the exact GitHub release asset hashes. Standalone CLI publication stays in the npm path.
+
+Alpha runs prepare definitions and build preview packages. COPR submits to its separate Alpha project. Stable runs can publish or submit after rechecking the current Stable selection and native acceptance. Each workflow can be retried independently against the same joint run. Registry review and public package availability have separate outcomes.
+
+The publication destinations are the project Homebrew Tap, Homebrew Cask, Scoop Extras, Chocolatey, WinGet, the project-owned AUR source package, the signed x86_64 pacman repository, COPR and the Snap Store. Nix and Flatpak publish versioned first-party assets through GitHub Releases. See the [delivery runbook](../exec/0018-desktop-release-runbook.md#package-manager-distribution) for credentials, retry inputs and first-party installation.
+
 `go run ./tools/package -product cli` builds `unic` and `unicd` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
 
 All runtime programs handle `--version` and `--version --json` before initialization. Release builds embed version, build number and source SHA. Development builds report `dev` unless packaging supplies metadata.
@@ -169,7 +190,7 @@ Actual v1 installer replacement and GUI behavior of a formally installed package
 
 `tools/package/channels.py` renders twelve channel definitions from exact local artifact hashes. Mixed builds, missing inputs, unsafe filenames and modified files fail.
 The self-managed Tap retains both CLI Formula and Desktop Cask roles. AUR includes a source `-git` recipe and a generated binary recipe; their provenance remains distinct.
-The renderer writes explicit pending installation/publication states. It never submits, uploads, signs a repository or advances a channel.
+The renderer records definition hashes and pending publication states. Separate channel workflows consume its output and own submission, signing and publication.
 `tools/package/pacman.py` requires an exact package lifecycle receipt, clean production provenance and an explicit signing key environment before repository signing.
 The lifecycle attachment entrypoint verifies the package digest and required observations before updating acceptance metadata.
 
@@ -203,7 +224,7 @@ The registered CLI build entry can also call `native-desktop-acceptance.yml` to 
 
 The controller uses the maintained boto3 SDK with create-only conditional R2 writes and byte-for-byte read-back. It checks all existing objects before the first write. Four workers handle independent object checks, missing object uploads and public origin read-backs. It reuses objects whose bytes passed preflight. The catalogue and successful publication receipt remain immutable objects. It checks the deployed FlareRelease contract, authenticates with Cloudflare Access service credentials and registers the six updater archives through the existing API. The Production environment pins the R2 endpoint. When dedicated S3 credentials are absent, the controller verifies the existing Cloudflare token and derives the SigV4 key in memory for the configured account’s default-jurisdiction endpoint. The read-only preflight compares the full bytes of a known v1 object with its accepted hash and checks both numbered contracts. The current 512 MiB registration limit applies to this updater set. All other formats remain downloadable immutable objects. Registration does not change a channel.
 
-Promotion consumes the immutable availability receipt, requires an explicit channel revision and verifies public numbered identity/updater hashes after the API's compare-and-swap mutation. Stable requires one native acceptance receipt for each of macOS, Linux and Windows. Each receipt binds the catalogue SHA-256 and records passing GUI and lifecycle checks against the exact hash of every artifact for that platform. Stable also verifies that all seven packages in the locked CLI manifest have matching npm integrity and that each npm `latest` tag selects the locked version. `release-desktop.yml` defines separate manual read-only preflight, publication and promotion operations. It has not been run for public delivery. `release-cli.yml` can consume an accepted canonical run without rebuilding the locked CLI bytes.
+Promotion consumes the immutable availability receipt, requires an explicit channel revision and verifies public numbered identity/updater hashes after the API's compare-and-swap mutation. Stable requires one native acceptance receipt for each of macOS, Linux and Windows. Each receipt binds the catalogue SHA-256 and records passing GUI and lifecycle checks against the exact hash of every artifact for that platform. Stable also verifies that all seven packages in the locked CLI manifest have matching npm integrity and that each npm `latest` tag selects the locked version. `release-desktop.yml` defines separate manual read-only preflight, publication and promotion operations. The joint workflow calls publication and promotion after their product gates. `release-cli.yml` can consume an accepted canonical run without rebuilding the locked CLI bytes.
 
 ### GitHub Desktop Release pages
 

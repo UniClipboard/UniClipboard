@@ -104,16 +104,7 @@ internal class IncomingShare(private val context: Context) {
     ?.sortedWith(compareBy<File> { it.lastModified() }.thenBy { it.name })
     .orEmpty()
 
-  fun list(): String {
-    val payload = JSONArray()
-    for (dir in entries()) {
-      val entry = runCatching { JSONObject(File(dir, "entry.json").readText()) }.getOrNull() ?: continue
-      payload.put(JSONObject().put("id", dir.name).put("kind", entry.getString("kind")).put(
-        "label", if (entry.getString("kind") == "text") entry.getString("text").take(160) else entry.getString("name")
-      ))
-    }
-    return payload.toString()
-  }
+  fun list(): String = JSONArray(entries().map { it.name }).toString()
 
   fun item(id: String): File? = if (isShareID(id)) File(root, id).takeIf { it.isDirectory } else null
 

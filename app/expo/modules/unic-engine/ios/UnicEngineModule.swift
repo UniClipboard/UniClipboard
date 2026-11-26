@@ -850,19 +850,15 @@ public final class UnicEngineModule: Module {
       try IncomingShare().list()
     }.runOnQueue(engineQueue)
 
-    AsyncFunction("commitIncomingShare") { (id: String, targets: String) -> String in
+    AsyncFunction("saveIncomingShare") { (id: String) -> String in
       let inbox = IncomingShare()
       guard let item = inbox.item(id) else {
         throw UnicModuleException("[unic:not_found] {\"code\":\"not_found\",\"message\":\"shared item unavailable\"}")
       }
       let engine = try self.requireEngine()
-      let result = try callGoString { engine.commitSharedItem(item.path, deviceIDsJSON: targets, error: $0) }
+      let result = try callGoString { engine.commitSharedItem(item.path, deviceIDsJSON: "", error: $0) }
       try inbox.remove(id)
       return result
-    }.runOnQueue(engineQueue)
-
-    AsyncFunction("dismissIncomingShare") { (id: String) in
-      try IncomingShare().remove(id)
     }.runOnQueue(engineQueue)
 
     // ---- iOS Keyboard Extension Bridge ----

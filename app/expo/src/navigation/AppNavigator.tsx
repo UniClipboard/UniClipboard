@@ -20,7 +20,7 @@ import {
   SafeAreaInsetsContext,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
-import { IncomingShareSheet } from "@/screens/IncomingShareSheet";
+import { SendSheetHost } from "@/screens/SendSheetHost";
 import type { RootStackParamList, SettingsSubSection } from "./AppNavigator.types";
 export type {
   RootStackParamList,
@@ -144,7 +144,7 @@ export function AppNavigator() {
           />
         </Stack.Navigator>
       </NavigationContainer>
-      {mode === "live" && <IncomingShareSheet />}
+      <SendSheetHost />
     </>
   );
 

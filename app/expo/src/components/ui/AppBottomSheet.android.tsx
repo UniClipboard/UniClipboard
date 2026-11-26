@@ -25,6 +25,7 @@ import { duration } from '@/theme/motion';
 export interface AppBottomSheetProps {
   visible: boolean;
   onDismiss: () => void;
+  onDidDismiss?: () => void;
   children: React.ReactNode;
   containerColor?: ColorValue;
 }
@@ -53,6 +54,7 @@ const EXIT_EASING = Easing.bezier(0.4, 0, 1, 1);
 export function AppBottomSheet({
   visible,
   onDismiss,
+  onDidDismiss,
   children,
   containerColor,
 }: AppBottomSheetProps) {
@@ -68,7 +70,10 @@ export function AppBottomSheet({
   // 手势下拉的位移(px,>=0),叠加在进出场位移之上
   const dragY = useSharedValue(0);
 
-  const unmount = useCallback(() => setMounted(false), []);
+  const unmount = useCallback(() => {
+    setMounted(false);
+    onDidDismiss?.();
+  }, [onDidDismiss]);
 
   useEffect(() => {
     if (visible) {

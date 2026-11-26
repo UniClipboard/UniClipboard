@@ -23,10 +23,15 @@ name: Live Engine history intake and search
     commands:
       - extendedWaitUntil:
           visible:
-            id: incoming-share-save
+            id: send-resend-item
           timeout: 25000
-      - tapOn:
+      - assertNotVisible:
           id: incoming-share-save
+      - assertVisible:
+          id: send-resend-item
+          enabled: false
+      - tapOn:
+          id: send-close
 - extendedWaitUntil:
     visible: ".*Unic Mobile E2E.*"
     timeout: 25000
@@ -49,3 +54,15 @@ name: Live Engine history intake and search
       id: "history-card-.*"
     timeout: 20000
 - takeScreenshot: live-history-search
+- tapOn:
+    id: "history-card-.*"
+- tapOn:
+    id: detail-quick-sendTo
+- assertVisible:
+    id: send-resend-item
+    enabled: false
+- takeScreenshot: live-history-send
+- tapOn:
+    id: send-close
+- assertVisible:
+    id: detail-back

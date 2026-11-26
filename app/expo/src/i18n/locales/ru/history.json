@@ -121,6 +121,10 @@
   },
   "media": {
     "clipboardChanged": "Прочитать новое содержимое буфера обмена",
+    "clipboardChangedText": "Прочитать новый текст",
+    "clipboardChangedImage": "Прочитать новое изображение",
+    "clipboardChangedSubtitle": "Нажмите, чтобы разрешить",
+    "clipboardReading": "Чтение…",
     "invalidLink": "Нужна действительная ссылка HTTP или HTTPS.",
     "textTooLong": "Текст слишком длинный для этого действия.",
     "actionFailed": "Не удалось выполнить действие",

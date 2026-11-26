@@ -273,6 +273,14 @@ created / stopped ─Close─> closed <────停止并释放完成──�
   `not_requested` without a send operation. Local processing and history
   policies apply. The request must omit both target selections. Changing
   `LocalOnly` under the same request ID returns `conflict`.
+- `SendHistory(ctx, SendHistoryRequest)` sends an existing record to a nonempty
+  selection of paired devices. It preserves the record's processor sync
+  prohibition and applies normal explicit send policies, including directory
+  snapshot preparation. It does not rerun processors or create a record.
+  The committed result carries the original `HistoryID`. `SyncDisposition` and
+  `OperationID` retain their submission meanings. Operation progress updates
+  the original record's sync summary. Request ID reuse is scoped to the same
+  history ID and normalized device and backend selections.
 - `AdmitTransfer(ctx, TransferOffer) (*TransferInbox, error)` admits content from a peer without a unic device identity. Admission precedes payload reads. Engine must be running; sync, backend policy, duplicate detection and storage admission apply. The caller writes received files beneath the private `TransferInbox.Dir`, then calls exactly one of `Complete(TransferContent)` or `Abort()`. Completion enters the received pipeline, including processors, deduplication, quota, history and the received list. Origin is `external`, PluginID is `unic.transfer`, PeerID is empty and ChannelID is `transfer`. This peer creates no device, stored channel or trust relationship. Public signatures expose neither tailcat nor internal types. The host owns the transfer protocol. See the [headless architecture](../architecture/headless.md#command-surface-and-temporary-transfer).
 
 ## 7. 资源租约与接收列表

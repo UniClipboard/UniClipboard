@@ -614,12 +614,19 @@ func (e *Engine) ListHistory(ctx context.Context, req ListHistoryRequest) (Histo
 // loadHistoryContent materializes a record as content with one reference held
 // by the caller, who turns it into a lease or releases it.
 func (e *Engine) loadHistoryContent(id HistoryID) (*contentObj, *Error) {
+	return e.loadHistoryContentFor(id, false)
+}
+
+func (e *Engine) loadHistoryContentFor(id HistoryID, send bool) (*contentObj, *Error) {
 	h := e.hist
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	it, err := e.st.GetHistory(string(id), historyNow().UnixMilli(), true)
 	if err != nil {
 		return nil, historyStoreErr(err)
+	}
+	if send && it.SyncBlocked {
+		return nil, newErr(CodeSyncDisabled, "history synchronization is prohibited")
 	}
 	c := &contentObj{source: sourceapp.Decode(it.SourceApplication), id: ContentID(e.newID()), total: it.TotalBytes, refs: 1, hist: h.blob}
 	n := 0
@@ -678,12 +685,21 @@ func (e *Engine) loadHistoryContent(id HistoryID) (*contentObj, *Error) {
 // lease on it. The content keeps its blobs alive until released, even if the
 // record is deleted meanwhile.
 func (e *Engine) RetainHistoryContent(ctx context.Context, id HistoryID) (ContentHandle, error) {
+	return e.retainHistoryContent(ctx, id, false)
+}
+
+// RetainHistoryForSend retains a record's content unless its processors prohibited sync.
+func (e *Engine) RetainHistoryForSend(ctx context.Context, id HistoryID) (ContentHandle, error) {
+	return e.retainHistoryContent(ctx, id, true)
+}
+
+func (e *Engine) retainHistoryContent(ctx context.Context, id HistoryID, send bool) (ContentHandle, error) {
 	release, gerr := e.historyGate(ctx, false, true)
 	if gerr != nil {
 		return ContentHandle{}, gerr
 	}
 	defer release()
-	c, lerr := e.loadHistoryContent(id)
+	c, lerr := e.loadHistoryContentFor(id, send)
 	if lerr != nil {
 		return ContentHandle{}, lerr
 	}

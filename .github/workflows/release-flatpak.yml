@@ -1,0 +1,112 @@
+name: Release Flatpak bundles
+run-name: Flatpak bundles from joint release ${{ inputs.release_run_id }}/${{ inputs.release_run_attempt }}
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful joint release run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Successful joint release attempt
+        required: true
+        default: '1'
+        type: string
+      publish:
+        description: Publish or submit a verified Stable build (Alpha always previews)
+        type: boolean
+        default: false
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: release-package-flatpak
+  queue: max
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/package-release
+        id: release
+        with:
+          run-id: ${{ inputs.release_run_id }}
+          run-attempt: ${{ inputs.release_run_attempt }}
+          channel: flatpak
+          publish: ${{ inputs.publish }}
+      - name: Build the first-party Flatpak bundle
+        env:
+          ARCH: ${{ matrix.arch }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak --user remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          mkdir -p dist/bundles
+          flatpak-builder --user --install-deps-from=flathub --default-branch=stable \
+            --repo=dist/flatpak-repo dist/flatpak-build dist/channel/flatpak/app.uniclipboard.desktop.json
+          flatpak build-bundle dist/flatpak-repo \
+            "dist/bundles/uniclipboard-${TAG#desktop/v}-$ARCH.flatpak" app.uniclipboard.desktop stable
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-${{ matrix.arch }}
+          path: |
+            dist/channel/release-manifest.json
+            dist/channel/channels.json
+            dist/channel/flatpak/
+            dist/bundles/
+          overwrite: true
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: flatpak-*
+          path: dist/channel-inputs
+      - name: Verify both native builds used the same catalogue
+        run: |
+          cmp dist/channel-inputs/flatpak-amd64/channel/release-manifest.json \
+            dist/channel-inputs/flatpak-arm64/channel/release-manifest.json
+          cmp dist/channel-inputs/flatpak-amd64/channel/channels.json \
+            dist/channel-inputs/flatpak-arm64/channel/channels.json
+      - name: Publish versioned package assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python tools/release/package_channel_assets.py flatpak --output dist/publication \
+            --manifest dist/channel-inputs/flatpak-amd64/channel/release-manifest.json \
+            dist/channel-inputs/flatpak-amd64/bundles/*.flatpak \
+            dist/channel-inputs/flatpak-arm64/bundles/*.flatpak
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-publication
+          path: dist/publication/
+          overwrite: true
+          if-no-files-found: error

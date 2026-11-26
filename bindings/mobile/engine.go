@@ -717,7 +717,7 @@ type resendHistoryReqDTO struct {
 	DeviceIDs       []engine.DeviceID `json:"device_ids,omitempty"`
 }
 
-// ResendHistoryItem retains a stored history item for explicit sending, commits it to the selected targets, and unconditionally releases its lease.
+// ResendHistoryItem sends the stored record to explicitly selected devices.
 func (m *Engine) ResendHistoryItem(token *CancelToken, reqJSON string) (string, error) {
 	var dto resendHistoryReqDTO
 	if err := json.Unmarshal([]byte(reqJSON), &dto); err != nil {
@@ -725,15 +725,10 @@ func (m *Engine) ResendHistoryItem(token *CancelToken, reqJSON string) (string, 
 	}
 	ctx, cancel := withToken(token)
 	defer cancel()
-	h, err := m.e.RetainHistoryForSend(ctx, dto.HistoryID)
-	if err != nil {
-		return "", wrapErr(err)
-	}
-	defer func() { _ = m.e.ReleaseContent(context.Background(), h.LeaseID) }()
-	res, err := m.e.CommitContent(ctx, engine.CommitRequest{
+	res, err := m.e.SendHistory(ctx, engine.SendHistoryRequest{
 		CancelOnContext: dto.CancelOnContext,
 		RequestID:       dto.RequestID,
-		LeaseID:         h.LeaseID,
+		HistoryID:       dto.HistoryID,
 		BackendIDs:      dto.BackendIDs,
 		DeviceIDs:       dto.DeviceIDs,
 	})

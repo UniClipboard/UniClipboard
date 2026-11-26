@@ -1245,21 +1245,25 @@ func TestM1ContractsBindingSyncReceivedResendFullTextAndPagination(t *testing.T)
 	approvedBOnA := approve(engA, snapB.Self.ID)
 	approve(engB, snapA.Self.ID)
 
-	eventuallyMobile(t, "m1 peers connected", func() bool {
-		raw, _ := engA.ListDevices()
+	connected := func(owner *Engine, peerID engine.DeviceID) bool {
+		raw, _ := owner.ListDevices()
 		var ds []engine.Device
 		_ = json.Unmarshal([]byte(raw), &ds)
 		for _, d := range ds {
-			if d.ID == string(snapB.Self.ID) {
+			if d.ID == string(peerID) {
 				for _, b := range d.Bindings {
-					if b.Connection == engine.Connected {
+					if b.SyncEnabled && b.Connection == engine.Connected {
 						return true
 					}
 				}
 			}
 		}
 		return false
-	})
+	}
+	peersConnected := func() bool {
+		return connected(engA, snapB.Self.ID) && connected(engB, snapA.Self.ID)
+	}
+	eventuallyMobile(t, "m1 peers connected", peersConnected)
 
 	// Toggle SetBindingSync false then true using "enabled".
 	binding := approvedBOnA.Bindings[0]
@@ -1291,15 +1295,38 @@ func TestM1ContractsBindingSyncReceivedResendFullTextAndPagination(t *testing.T)
 	if !resumedBinding.SyncEnabled {
 		t.Fatalf("expected SyncEnabled=true after resume, got %+v", resumedBinding)
 	}
+	eventuallyMobile(t, "m1 peers reconnected after resuming sync", peersConnected)
 
 	// 5. Resend existing history item (largeText) from A -> B, verify B receives in ListReceived, applies via BeginApply + ReadLeasedText + ReportApplyResult + ReleaseContent, and dismisses.
+	withoutTargets, _ := json.Marshal(map[string]any{
+		"request_id": "resend-without-targets",
+		"history_id": lSub.HistoryID,
+	})
+	if _, err := engA.ResendHistoryItem(nil, string(withoutTargets)); err == nil || !strings.Contains(err.Error(), `"code":"invalid_argument"`) {
+		t.Errorf("ResendHistoryItem without an explicit target: %v", err)
+	}
 	resendReq, _ := json.Marshal(map[string]any{
 		"request_id": "resend-large-1",
 		"history_id": lSub.HistoryID,
 		"device_ids": []string{string(snapB.Self.ID)},
 	})
-	if _, err := engA.ResendHistoryItem(nil, string(resendReq)); err != nil {
+	resendJSON, err := engA.ResendHistoryItem(nil, string(resendReq))
+	if err != nil {
 		t.Fatalf("ResendHistoryItem: %v", err)
+	}
+	var resend engine.SubmissionResult
+	if err := json.Unmarshal([]byte(resendJSON), &resend); err != nil || resend.HistoryID != lSub.HistoryID || resend.SyncDisposition != engine.SyncQueued || resend.OperationID == "" {
+		t.Fatalf("resend must use the original history record and queue a send: %s (%v)", resendJSON, err)
+	}
+	replayJSON, err := engA.ResendHistoryItem(nil, string(resendReq))
+	var replay engine.SubmissionResult
+	if err != nil || json.Unmarshal([]byte(replayJSON), &replay) != nil || replay.OperationID != resend.OperationID || replay.HistoryID != resend.HistoryID {
+		t.Fatalf("resend replay must return the original send: %s (%v)", replayJSON, err)
+	}
+	cntJSON, err = engA.CountHistorySearches(nil, `{"queries":[{"text_terms":["TAIL_NEEDLE_987654"]}]}`)
+	var sentCount struct{ Counts []string }
+	if err != nil || json.Unmarshal([]byte(cntJSON), &sentCount) != nil || len(sentCount.Counts) != 1 || sentCount.Counts[0] != "1" {
+		t.Fatalf("resend must leave one sender history item: %s (%v)", cntJSON, err)
 	}
 
 	var recvEntry engine.ReceivedContent

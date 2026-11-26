@@ -57,6 +57,11 @@ func (k Kit) layRadius() float32 {
 	return 12
 }
 
+// SidebarOverlayWidth is the scaled window width below which the sidebar
+// collapses by default and switches to an overlay drawer so list/detail panes
+// and the toolbar retain comfortable width.
+const SidebarOverlayWidth = 900
+
 // SinglePaneWidth is the window width below which a SplitView with DetailOpen shows the list
 // and the detail one at a time (the list, or the detail with a back button).
 const SinglePaneWidth = 760
@@ -224,6 +229,44 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 
 	curW := root.AnimateTo("sidebar", target, motion)
 
+	// M5 Layered Depth Slide state for the overlay sidebar (with exit retention).
+	overlayState := ui.Local(root, "split-overlay-presentation", func() drawerPresentation { return drawerPresentation{} })
+	overlayOpen := overlay && !hidden
+	if !overlayState.initialized {
+		initial := float32(0)
+		if overlayOpen {
+			initial = 1
+			overlayState.present = true
+		}
+		root.Jump("overlay-visibility", initial)
+		overlayState.initialized = true
+	}
+	if !overlay {
+		overlayState.present = false
+		root.Jump("overlay-visibility", 0)
+	}
+	overlayTarget := float32(0)
+	if overlayOpen {
+		overlayState.present = true
+		overlayTarget = 1
+	}
+	overlayDur := 280 * time.Millisecond
+	if !overlayOpen {
+		overlayDur = 210 * time.Millisecond
+	}
+	if c.Preferences().ReduceMotion {
+		overlayDur = 0
+		root.Jump("overlay-visibility", overlayTarget)
+	}
+	overlayProgress := root.AnimateTo("overlay-visibility", overlayTarget, ui.Animation{
+		Duration: overlayDur,
+		Ease:     ui.CubicBezier(.32, .72, 0, 1),
+	})
+	if overlayState.present && !overlayOpen && overlayProgress <= 0.001 {
+		overlayState.present = false
+		c.Invalidate()
+	}
+
 	// M5 Layered Depth Slide state for the global trailing drawer (with exit retention).
 	drawerState := ui.Local(root, "split-drawer-presentation", func() drawerPresentation { return drawerPresentation{} })
 	drawerOpen := p.Drawer != nil && p.DrawerOpen
@@ -308,12 +351,21 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 		}
 
 		if overlayPanel {
-			s.Absolute().Left(0).Bottom(0).ZIndex(3)
+			s.Absolute().Left(0).Bottom(0).ZIndex(21)
 
 			{
 				s.Top(0)
 			}
-			s.Background(k.Color("background-secondary-default"))
+			shadow := k.Color("drawer-shadow-edge")
+			s.Background(k.Color("background-secondary-default")).
+				Shadow(12, 0, 32, 0, shadow.Alpha(overlayProgress))
+			// M5 Layered Depth Slide transform: -120px slide + 0.98->1 scale + opacity fade.
+			tx := -120 * (1 - overlayProgress)
+			sc := float32(0.98) + 0.02*overlayProgress
+			s.Translate(tx, 0).Scale(sc, sc).Opacity(overlayProgress)
+			if !overlayOpen {
+				s.PassThrough().AccessHidden(true)
+			}
 		}
 		s.Children(func() {
 			// Only the outer viewport changes width. Padding belongs to this
@@ -563,10 +615,12 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 
 	panes := func() {
 		content := k.Surface(c.Key("split-content"), RegionContent).Grow(1).MinWidth(0).MinHeight(0).Clip().AlignItems(ui.Stretch)
-		// M5 depth recede: gently scale & dim the main canvas as the floating card enters.
-		if drawerProgress > 0 {
-			sc := float32(1) - 0.012*drawerProgress
-			content.Scale(sc, sc).Opacity(float32(1) - 0.16*drawerProgress)
+		// M5 depth recede: gently scale & dim the main canvas as the floating drawer
+		// or overlay sidebar enters.
+		recede := max(drawerProgress, overlayProgress)
+		if recede > 0 {
+			sc := float32(1) - 0.012*recede
+			content.Scale(sc, sc).Opacity(float32(1) - 0.16*recede)
 		}
 
 		content.Children(func() {
@@ -592,26 +646,33 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			panes()
 		})
 
-		if overlay && !hidden {
-			// Light dismiss: the scrim and Escape ask the sidebar to hide again.
-			scrim := ui.ButtonBase(c.Key("split-scrim")).Absolute().Left(0).Top(0).Right(0).Bottom(0).
-				Background(k.Color("foreground-full")).ZIndex(2).Label(p.SidebarToggleLabel).TabStop(false)
-			if scrim.Clicked() && p.SidebarHidden != nil {
-				*p.SidebarHidden = true
-				res.SidebarToggled = true
-			}
-			sidebar(sidebarW, true)
-			c.OnWindowShortcut(0, ui.KeyEscape, func() {
-				if p.SidebarHidden != nil {
+		if overlay && overlayState.present {
+			if overlayOpen {
+				// Light dismiss: transparent hit target and Escape ask the overlay sidebar to close
+				// while the main canvas uses M5 depth recede (scale + dim), matching the detail drawer.
+				scrim := ui.ButtonBase(c.Key("split-scrim")).Absolute().Left(0).Top(0).Right(0).Bottom(0).
+					Background(ui.Transparent).ZIndex(20).Label(p.SidebarToggleLabel).TabStop(false)
+				if scrim.Clicked() && p.SidebarHidden != nil {
 					*p.SidebarHidden = true
 					res.SidebarToggled = true
 				}
-			})
+				c.OnWindowShortcut(0, ui.KeyEscape, func() {
+					if p.SidebarHidden != nil {
+						*p.SidebarHidden = true
+						res.SidebarToggled = true
+					}
+				})
+			}
+			sidebar(sidebarW, true)
 		}
 		if integratedCaption && p.Sidebar != nil {
 			// Keep one toggle outside the inert/animated sidebar, as in v1's mac-split-chrome.
-			ui.Row(c.Key("split-native-toggle")).Absolute().Left(max(caption.Left+8, curW-40)).
-				Top((headerHeight - 28) / 2).Height(28).ZIndex(4).Children(toggle)
+			toggleLeft := max(caption.Left+8, curW-40)
+			if overlay && overlayProgress > 0 {
+				toggleLeft = max(caption.Left+8, sidebarW*overlayProgress-40)
+			}
+			ui.Row(c.Key("split-native-toggle")).Absolute().Left(toggleLeft).
+				Top((headerHeight - 28) / 2).Height(28).ZIndex(22).Children(toggle)
 		}
 		if p.Drawer != nil && drawerState.present {
 			dw := p.DrawerWidth
@@ -627,7 +688,7 @@ func (k Kit) SplitView(c *ui.Context, p SplitViewProps, body func()) SplitViewRe
 			}
 			inset := p.DrawerInset
 			drawer := ui.Column(c.Key("split-drawer")).Absolute().
-				Top(inset).Right(inset).Bottom(inset).Width(dw).ZIndex(5).
+				Top(inset).Right(inset).Bottom(inset).Width(dw).ZIndex(25).
 				Background(k.Color("background-primary-default")).Clip().
 				Role(ui.RoleRegion).Label(label).AlignItems(ui.Stretch)
 			if inset > 0 {

@@ -76,6 +76,11 @@ func assertToolbarNoOverlapScaled(t *testing.T, tt *ui.Tester, toolbarTitle stri
 			continue
 		}
 		b := n.Bounds
+		// On macOS with an integrated titlebar and docked sidebar, the sidebar toggle sits
+		// inside the sidebar's top band (left of the content toolbar) to align with traffic lights.
+		if n.Name == "切换侧栏" && bar.Bounds.X > 0 && b.X+b.W <= bar.Bounds.X+0.1 && b.Y >= bar.Bounds.Y+inset && b.Y+b.H <= bar.Bounds.Y+bar.Bounds.H-inset+0.1 {
+			continue
+		}
 		if b.X < bar.Bounds.X-0.1 || b.X+b.W > width+0.1 || b.Y < bar.Bounds.Y+inset || b.Y+b.H > bar.Bounds.Y+bar.Bounds.H-inset+0.1 {
 			t.Errorf("control %v(%q) out of toolbar bounds: control=%+v toolbar=%+v", n.Role, n.Name, b, bar.Bounds)
 		}
@@ -382,4 +387,194 @@ func TestNarrowTitlebarDevicesAndMacIntegrated(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSidebarOverlayBreakpoint(t *testing.T) {
+	if desktopkit.SidebarOverlayWidth != 900 {
+		t.Fatalf("SidebarOverlayWidth = %v, want 900", desktopkit.SidebarOverlayWidth)
+	}
+
+	// Widths at or above 900 DIP (including Windows outer-frame-adjusted 1084 DIP)
+	// must keep the sidebar docked with inline search and zero toolbar overlap.
+	for _, width := range []int{900, 960, 1000, 1084, 1100} {
+		wLabel := string(rune('0'+width/1000)) + string(rune('0'+(width/100)%10)) + string(rune('0'+(width/10)%10)) + string(rune('0'+width%10))
+		t.Run("docked-windows/"+wLabel, func(t *testing.T) {
+			d := newDemo("history", "dark")
+			attachWindowsControls(d)
+			tt := ui.NewTesterWith(d.view, width, 640, ui.TesterOptions{Dark: true})
+			tt.SetScale(2)
+			if d.compact || d.sidebarHidden {
+				t.Fatalf("width=%d should keep sidebar docked: compact=%v sidebarHidden=%v", width, d.compact, d.sidebarHidden)
+			}
+			pane, ok := tt.AccessByRole(ui.RoleRegion, "历史列表")
+			if !ok || pane.Bounds.X < 249.5 || pane.Bounds.X > 250.5 {
+				t.Fatalf("width=%d expected docked 250 DIP sidebar before list pane, got %+v", width, pane.Bounds)
+			}
+			detail, ok := tt.AccessByRole(ui.RoleRegion, "历史详情")
+			if !ok || detail.Bounds.W < 299.5 || detail.Bounds.X+detail.Bounds.W > float32(width)+0.5 {
+				t.Fatalf("width=%d detail pane should fit cleanly without overflow: %+v", width, detail.Bounds)
+			}
+			if _, ok := tt.AccessByRole(ui.RoleComboBox, "搜索历史"); !ok {
+				t.Fatalf("width=%d expected inline search combobox beside docked sidebar", width)
+			}
+			assertToolbarNoOverlap(t, tt, "全部", float32(width))
+			if width == 900 || width == 1000 {
+				saveOptionalCapture(t, tt, "sidebar-win-"+wLabel+"-dark")
+			}
+		})
+	}
+
+	if runtime.GOOS == "darwin" {
+		for _, theme := range []string{"light", "dark"} {
+			t.Run("docked-mac-900/"+theme, func(t *testing.T) {
+				d := newDemo("history", theme)
+				tt := ui.NewTesterWith(d.view, 900, 640, ui.TesterOptions{Dark: theme == "dark"})
+				tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 80})
+				tt.SetScale(2)
+				if d.compact || d.sidebarHidden {
+					t.Fatalf("macOS 900 DIP should keep sidebar docked: compact=%v sidebarHidden=%v", d.compact, d.sidebarHidden)
+				}
+				if _, ok := tt.AccessByRole(ui.RoleComboBox, "搜索历史"); !ok {
+					t.Fatal("macOS 900 DIP expected inline search combobox")
+				}
+				assertToolbarNoOverlap(t, tt, "全部", 900)
+				saveOptionalCapture(t, tt, "sidebar-mac-0900-"+theme)
+			})
+		}
+	}
+
+	// Below 900 DIP the sidebar collapses into overlay mode, and widening back to 900 restores it.
+	t.Run("resize-transition-and-zoom", func(t *testing.T) {
+		d := newDemo("history", "dark")
+		attachWindowsControls(d)
+		tt := ui.NewTesterWith(d.view, 900, 640, ui.TesterOptions{Dark: true})
+		tt.SetScale(2)
+		if d.compact || d.sidebarHidden {
+			t.Fatalf("initial 900 DIP should dock sidebar: compact=%v hidden=%v", d.compact, d.sidebarHidden)
+		}
+
+		tt.SetSize(899, 640)
+		tt.Advance(350 * time.Millisecond)
+		if !d.compact || !d.sidebarHidden {
+			t.Fatalf("899 DIP should collapse sidebar to overlay: compact=%v hidden=%v", d.compact, d.sidebarHidden)
+		}
+		assertToolbarNoOverlap(t, tt, "全部", 899)
+		saveOptionalCapture(t, tt, "sidebar-win-0899-overlay-collapsed-dark")
+
+		// Clicking the sidebar toggle in overlay mode opens the overlay drawer over content.
+		if err := tt.Click("切换侧栏"); err != nil {
+			t.Fatal(err)
+		}
+		tt.Advance(350 * time.Millisecond)
+		if d.sidebarHidden {
+			t.Fatal("clicking sidebar toggle at 899 DIP did not open overlay sidebar")
+		}
+		saveOptionalCapture(t, tt, "sidebar-win-0899-overlay-open-dark")
+		tt.Key(0, ui.KeyEscape)
+		tt.Advance(350 * time.Millisecond)
+		if !d.sidebarHidden {
+			t.Fatal("Escape did not dismiss overlay sidebar at 899 DIP")
+		}
+
+		tt.SetSize(900, 640)
+		tt.Advance(350 * time.Millisecond)
+		if d.compact || d.sidebarHidden {
+			t.Fatalf("widening back to 900 DIP should restore docked sidebar: compact=%v hidden=%v", d.compact, d.sidebarHidden)
+		}
+
+		// Zoom +1 (110%) at default 1100 DIP -> 1000 logical DIP >= 900 keeps sidebar docked.
+		d.zoomStep = 1
+		tt.SetSize(1100, 720)
+		tt.Advance(350 * time.Millisecond)
+		if d.compact || d.sidebarHidden {
+			t.Fatalf("1100 DIP at 110%% zoom (1000 logical DIP) should keep sidebar docked: compact=%v hidden=%v", d.compact, d.sidebarHidden)
+		}
+	})
+
+	// Overlay drawer visual checks across light/dark and macOS/Windows narrow widths.
+	t.Run("overlay-open-variants", func(t *testing.T) {
+		for _, tc := range []struct {
+			name    string
+			theme   string
+			width   int
+			height  int
+			macOS   bool
+			windows bool
+		}{
+			{name: "win-0899-light", theme: "light", width: 899, height: 640, windows: true},
+			{name: "win-0600-dark", theme: "dark", width: 600, height: 480, windows: true},
+			{name: "mac-0899-light", theme: "light", width: 899, height: 640, macOS: true},
+			{name: "mac-0899-dark", theme: "dark", width: 899, height: 640, macOS: true},
+		} {
+			if tc.macOS && runtime.GOOS != "darwin" {
+				continue
+			}
+			t.Run(tc.name, func(t *testing.T) {
+				d := newDemo("history", tc.theme)
+				if tc.windows {
+					attachWindowsControls(d)
+				}
+				tt := ui.NewTesterWith(d.view, tc.width, tc.height, ui.TesterOptions{Dark: tc.theme == "dark"})
+				if tc.macOS {
+					tt.SetTitleBar(ui.TitleBar{Height: 52, Left: 80})
+				}
+				tt.SetScale(2)
+				if !d.compact || !d.sidebarHidden {
+					t.Fatalf("%s expected collapsed overlay sidebar: compact=%v hidden=%v", tc.name, d.compact, d.sidebarHidden)
+				}
+				if err := tt.Click("切换侧栏"); err != nil {
+					t.Fatal(err)
+				}
+				tt.Advance(350 * time.Millisecond)
+				if d.sidebarHidden {
+					t.Fatalf("%s clicking toggle did not open overlay sidebar", tc.name)
+				}
+				// Verify M5 depth recede scales down the main canvas (matching the grid detail drawer).
+				bar, ok := tt.AccessByRole(ui.RoleToolbar, "全部")
+				if !ok || bar.Bounds.W >= float32(tc.width)-2 {
+					t.Fatalf("%s expected main canvas to recede/scale down behind overlay sidebar: bar=%+v width=%d", tc.name, bar.Bounds, tc.width)
+				}
+				// Verify the scrim is transparent/non-obscuring so underlying content remains visible.
+				im := tt.Image()
+				first := im.RGBAAt(280*2, 80*2)
+				distinct := 0
+				for y := 60 * 2; y < tc.height*2-40; y += 8 {
+					for x := 270 * 2; x < tc.width*2-20; x += 8 {
+						px := im.RGBAAt(x, y)
+						if px != first {
+							distinct++
+						}
+					}
+				}
+				if distinct < 50 {
+					t.Fatalf("%s overlay scrim obscured underlying content (distinct pixels=%d)", tc.name, distinct)
+				}
+				saveOptionalCapture(t, tt, "sidebar-"+tc.name+"-overlay-open")
+				tt.Key(0, ui.KeyEscape)
+				tt.Advance(350 * time.Millisecond)
+				if !d.sidebarHidden {
+					t.Fatalf("%s Escape did not close overlay sidebar", tc.name)
+				}
+				barAfter, ok := tt.AccessByRole(ui.RoleToolbar, "全部")
+				if !ok || barAfter.Bounds.W < float32(tc.width)-0.5 {
+					t.Fatalf("%s main canvas did not restore full width after overlay closed: bar=%+v width=%d", tc.name, barAfter.Bounds, tc.width)
+				}
+			})
+		}
+	})
+
+	// Settings page follows the same 900 DIP breakpoint.
+	t.Run("settings-breakpoint", func(t *testing.T) {
+		d := newDemo("settings", "dark")
+		attachWindowsControls(d)
+		tt := ui.NewTesterWith(d.view, 900, 640, ui.TesterOptions{Dark: true})
+		if d.compact || d.sidebarHidden {
+			t.Fatalf("settings 900 DIP should dock sidebar: compact=%v hidden=%v", d.compact, d.sidebarHidden)
+		}
+		tt.SetSize(860, 640)
+		tt.Advance(350 * time.Millisecond)
+		if !d.compact || !d.sidebarHidden {
+			t.Fatalf("settings 860 DIP should collapse sidebar to overlay: compact=%v hidden=%v", d.compact, d.sidebarHidden)
+		}
+	})
 }

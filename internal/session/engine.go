@@ -842,6 +842,7 @@ func (b *Backend) serve(s *session) {
 		ds := b.dialing[s.peerID]
 		ds.attempts = 0
 		ds.activeUntil = time.Now().Add(connectingGraceWindow)
+		ds.visibleConnecting = true
 		b.dialing[s.peerID] = ds
 	}
 	b.mu.Unlock()
@@ -1456,10 +1457,19 @@ func (b *Backend) reconcile() {
 			probeLive = append(probeLive, s)
 		}
 	}
+	now := time.Now()
 	for id, d := range b.dialers {
-		if p, ok := want[id]; !ok || p.Address != d.addr || (genChanged && !b.connectedLocked(id)) {
+		p, ok := want[id]
+		if !ok || p.Address != d.addr || (genChanged && !b.connectedLocked(id)) {
 			d.cancel()
 			delete(b.dialers, id)
+			if !ok || p.Address != d.addr {
+				delete(b.dialing, id)
+			} else if ds, has := b.dialing[id]; has && ds.owner == d {
+				ds.owner = nil
+				ds.inFlight = false
+				b.dialing[id] = ds
+			}
 		}
 	}
 	for id := range b.dialing {
@@ -1469,18 +1479,32 @@ func (b *Backend) reconcile() {
 		}
 	}
 	var start []rpc.StatePeer
+	var expiredNotify []string
 	for _, p := range st.Peers {
 		if p.Address != "" && b.dialers[p.ID] == nil {
 			start = append(start, p)
 			if !b.connectedLocked(p.ID) {
-				ds := b.dialing[p.ID]
-				ds.attempts = 0
-				ds.activeUntil = time.Now().Add(connectingGraceWindow)
-				b.dialing[p.ID] = ds
+				ds, existed := b.dialing[p.ID]
+				if !existed {
+					b.dialing[p.ID] = dialStatus{
+						attempts:          0,
+						activeUntil:       now.Add(connectingGraceWindow),
+						visibleConnecting: true,
+					}
+				} else if ds.visibleConnecting && !now.Before(ds.activeUntil) {
+					ds.visibleConnecting = false
+					ds.attempts = max(ds.attempts, maxConnectingAttempts)
+					ds.activeUntil = time.Time{}
+					b.dialing[p.ID] = ds
+					expiredNotify = append(expiredNotify, p.ID)
+				}
 			}
 		}
 	}
 	b.mu.Unlock()
+	for _, id := range expiredNotify {
+		b.notifyLinkChanged(id)
+	}
 	for _, rec := range abandoned {
 		if epoch != 0 && rec.epoch == epoch {
 			b.emit(syncdiag.Record{Epoch: epoch, Kind: "recovery", Result: "abandoned"})
@@ -1524,22 +1548,33 @@ func (b *Backend) keepDialing(r *runState, p rpc.StatePeer) {
 				backoff = time.Second
 				continue
 			}
-			if b.dialOnce(ctx, r, p) {
+			if b.dialOnce(ctx, r, d, p) {
 				backoff = time.Second
 				continue
 			}
+			notify := false
 			b.mu.Lock()
 			if b.dialers[p.ID] == d && !b.connectedLocked(p.ID) {
+				now := time.Now()
 				ds := b.dialing[p.ID]
-				ds.inFlight = false
+				wasVisible := ds.visibleConnecting
+				if ds.owner == d {
+					ds.owner = nil
+					ds.inFlight = false
+				}
 				ds.attempts++
-				if ds.attempts >= maxConnectingAttempts {
+				if ds.attempts >= maxConnectingAttempts || !now.Before(ds.activeUntil) {
+					ds.attempts = max(ds.attempts, maxConnectingAttempts)
 					ds.activeUntil = time.Time{}
+					ds.visibleConnecting = false
 				}
 				b.dialing[p.ID] = ds
+				notify = wasVisible && !ds.visibleConnecting
 			}
 			b.mu.Unlock()
-			b.notifyLinkChanged(p.ID)
+			if notify {
+				b.notifyLinkChanged(p.ID)
+			}
 			if !wait(ctx, d.wake, backoff) {
 				return
 			}
@@ -1558,25 +1593,25 @@ func (b *Backend) keepDialing(r *runState, p rpc.StatePeer) {
 }
 
 // dialOnce makes one attempt and reports whether a session came up.
-func (b *Backend) dialOnce(ctx context.Context, r *runState, p rpc.StatePeer) bool {
+func (b *Backend) dialOnce(ctx context.Context, r *runState, d *dialer, p rpc.StatePeer) bool {
 	if err := b.waitTransport(ctx); err != nil {
 		return false
 	}
 	b.mu.Lock()
+	if b.dialers[p.ID] != d {
+		b.mu.Unlock()
+		return false
+	}
 	ds := b.dialing[p.ID]
-	wasConnecting := ds.inFlight || (time.Now().Before(ds.activeUntil) && ds.attempts < maxConnectingAttempts)
-	if ds.attempts < maxConnectingAttempts {
-		ds.inFlight = true
-		b.dialing[p.ID] = ds
-	}
+	ds.owner = d
+	ds.inFlight = true
+	b.dialing[p.ID] = ds
 	b.mu.Unlock()
-	if !wasConnecting && ds.inFlight {
-		b.notifyLinkChanged(p.ID)
-	}
 	defer func() {
 		b.mu.Lock()
-		if cur, ok := b.dialing[p.ID]; ok && cur.inFlight {
+		if cur, ok := b.dialing[p.ID]; ok && cur.owner == d {
 			cur.inFlight = false
+			cur.owner = nil
 			b.dialing[p.ID] = cur
 		}
 		b.mu.Unlock()

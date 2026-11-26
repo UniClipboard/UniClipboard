@@ -557,7 +557,7 @@ try{
         $reopenedOwnedGUI=Show-VerifiedGUI $roundTwo 'detached-service-manual-gui'
         Assert-NewGUI $reopenedOwnedGUI $ownedGUI
         Assert-Service $S1 'standalone'
-        Tray-Menu $tray '退出整个应用' 'detached-light-native-quit'
+        Tray-Menu $tray '退出' 'detached-light-native-quit'
         Wait-RolesExit $roundTwo
         Assert-Service $S1 'standalone'
         $ScenarioStatus.lightweight_owned_detach='PASS'
@@ -576,7 +576,7 @@ try{
         Capture-Owned $freshPanelWindow $freshPanel.pid 'fresh-owned-panel'
         $freshPIDs=@(@($tray.pid,$freshGUI.pid,$freshPanel.pid,$S2.process.Id)|Select-Object -Unique)
         if($freshPIDs.Count -ne 4){throw 'Fresh owned roles share an OS process'}
-        Tray-Menu $tray '退出整个应用' 'fresh-owned-native-quit'
+        Tray-Menu $tray '退出' 'fresh-owned-native-quit'
         Wait-RolesExit $roundThree
         if(-not $S2.process.WaitForExit(15000)){throw 'Fresh owned service survived native menu Quit'}
         Event 'native-owned-cleanup' 'native menu Quit stopped fresh S2 and all UI roles' @{service_pid=$S2.process.Id;generation=$S2.instance.id}

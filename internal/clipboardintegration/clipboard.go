@@ -109,6 +109,11 @@ func (c *Clipboard) tick(ctx context.Context) {
 }
 
 func (c *Clipboard) tickLocked(ctx context.Context) {
+	if source, ok := c.board.(interface{ ClipboardGeneration() string }); ok && c.epoch != "" {
+		if generation := source.ClipboardGeneration(); generation != "" && generation == c.seenCopyID {
+			return
+		}
+	}
 	s, err := c.board.Read()
 	if err != nil {
 		return // transient: the owner changed mid-read, or the board is locked
@@ -183,6 +188,12 @@ func (c *Clipboard) Run(ctx context.Context) {
 	c.Initialize(ctx)
 	t := time.NewTicker(c.poll)
 	defer t.Stop()
+	var changes <-chan struct{}
+	if source, ok := c.board.(interface {
+		ClipboardChanges(context.Context) <-chan struct{}
+	}); ok {
+		changes = source.ClipboardChanges(ctx)
+	}
 	defer func() { c.mu.Lock(); defer c.mu.Unlock(); c.release(c.held); c.held = "" }()
 	for {
 		select {
@@ -190,6 +201,12 @@ func (c *Clipboard) Run(ctx context.Context) {
 			return
 		case <-t.C:
 			c.tryApply(ctx)
+			c.tick(ctx)
+		case _, ok := <-changes:
+			if !ok {
+				changes = nil
+				continue
+			}
 			c.tick(ctx)
 		}
 	}

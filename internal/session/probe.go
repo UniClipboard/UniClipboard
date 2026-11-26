@@ -16,16 +16,30 @@ const (
 	defaultProbeTimeout   = 4 * time.Second
 	discoProbeTimeout     = 3 * time.Second
 	recentActivityWindow  = 5 * time.Second
-	connectingGraceWindow = 15 * time.Second
+	connectingGraceWindow = 35 * time.Second
 	maxConnectingAttempts = 2
 	maxProbeConcurrency   = 8
 	maxPingIDBytes        = 64
 )
 
 type dialStatus struct {
-	inFlight    bool
-	attempts    int
-	activeUntil time.Time
+	owner             *dialer
+	inFlight          bool
+	attempts          int
+	activeUntil       time.Time
+	visibleConnecting bool
+}
+
+// dialConnectingLocked reports whether a disconnected peer should be displayed
+// as "connecting". Only initial startup, unexpected session drops, and explicit
+// manual refreshes open a visible connecting window; background retries and
+// network-change resets preserve an already-settled disconnected state.
+func (b *Backend) dialConnectingLocked(peerID string, now time.Time) bool {
+	if b.run == nil || b.connectedLocked(peerID) {
+		return false
+	}
+	ds := b.dialing[peerID]
+	return ds.visibleConnecting && ds.attempts < maxConnectingAttempts && now.Before(ds.activeUntil)
 }
 
 type peerLinkCache struct {
@@ -382,8 +396,11 @@ func (b *Backend) resetDialAndKick(peerID string, checkedMs int64) {
 	b.mu.Lock()
 	if b.run != nil {
 		ds := b.dialing[peerID]
+		ds.owner = nil
+		ds.inFlight = false
 		ds.attempts = 0
 		ds.activeUntil = time.Now().Add(connectingGraceWindow)
+		ds.visibleConnecting = true
 		b.dialing[peerID] = ds
 		if checkedMs > 0 {
 			b.lastChecked[peerID] = checkedMs
@@ -469,11 +486,8 @@ func (b *Backend) LinkSnapshots() map[string]rpc.PeerLinkStatus {
 			continue
 		}
 		state := rpc.LinkStateDisconnected
-		if r != nil {
-			ds := b.dialing[p.ID]
-			if ds.inFlight || (now.Before(ds.activeUntil) && ds.attempts < maxConnectingAttempts) {
-				state = rpc.LinkStateConnecting
-			}
+		if r != nil && b.dialConnectingLocked(p.ID, now) {
+			state = rpc.LinkStateConnecting
 		}
 		out[p.ID] = rpc.PeerLinkStatus{
 			PeerID:        p.ID,

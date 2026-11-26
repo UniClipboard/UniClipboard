@@ -4,24 +4,33 @@
 
 # 複製一次，每台裝置都能貼上
 
-<strong>UniClipboard</strong> 在你的電腦之間同步剪貼簿。<br />
-不用註冊帳號，不上傳雲端，背景只佔很少記憶體。
+<p>
+  <strong>UniClipboard</strong> 在你的裝置之間直接同步文字、圖片、檔案與資料夾。<br />
+  端到端加密，無需帳號，不經雲端。
+</p>
 
-<a href="#quick-start"><img alt="開始使用" src="https://img.shields.io/badge/%E9%96%8B%E5%A7%8B%E4%BD%BF%E7%94%A8-→-000000?style=for-the-badge" /></a>
-<a href="#features"><img alt="功能一覽" src="https://img.shields.io/badge/%E5%8A%9F%E8%83%BD%E4%B8%80%E8%A6%BD-555555?style=for-the-badge" /></a>
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="下載" src="https://img.shields.io/badge/%E4%B8%8B%E8%BC%89-2563eb?style=for-the-badge&logo=github&logoColor=white" /></a>
+  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS%20Beta-1f2937?style=for-the-badge&logo=apple&logoColor=white" /></a>
+  <a href="#quick-start"><img alt="快速開始" src="https://img.shields.io/badge/%E5%BF%AB%E9%80%9F%E9%96%8B%E5%A7%8B-4b5563?style=for-the-badge" /></a>
+</p>
 
-<table>
-  <tr>
-    <td align="center" width="170"><h2>0</h2>需要註冊的帳號</td>
-    <td align="center" width="170"><h2>0</h2>儲存你內容的雲端伺服器</td>
-    <td align="center" width="170"><h2>14 MB</h2>背景同步服務的記憶體用量<sup><a href="#benchmarks">1</a></sup></td>
-    <td align="center" width="170"><h2>6 位數</h2>配對碼，輸入後核准即可連線</td>
-  </tr>
-</table>
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Windows" src="https://img.shields.io/badge/Windows-1f2937?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iIzM4YmRmOCI+PHBhdGggZD0iTTAgMGg3LjR2Ny40SDB6bTguNiAwSDE2djcuNEg4LjZ6TTAgOC42aDcuNFYxNkgwem04LjYgMEgxNlYxNkg4LjZ6Ii8+PC9zdmc+" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="macOS" src="https://img.shields.io/badge/macOS-1f2937?style=flat-square&logo=apple&logoColor=white" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Linux" src="https://img.shields.io/badge/Linux-1f2937?style=flat-square&logo=linux&logoColor=facc15" /></a>
+  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS-Beta-2563eb?style=flat-square&logo=apple&logoColor=white&labelColor=1f2937" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Android" src="https://img.shields.io/badge/Android-1f2937?style=flat-square&logo=android&logoColor=3ddc84" /></a>
+  <a href="#cli"><img alt="CLI" src="https://img.shields.io/badge/CLI-1f2937?style=flat-square&logo=gnubash&logoColor=white" /></a>
+</p>
 
-Windows · macOS · Linux · 命令列　|　文字 · 圖片 · 檔案 · 資料夾
+<p>
+  <small>
+    <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <strong>繁體中文</strong> | <a href="README.ja.md">日本語</a> | <a href="README.pt-BR.md">Português (Brasil)</a> | <a href="README.ru.md">Русский</a>
+  </small>
+</p>
 
-<a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <strong>繁體中文</strong> | <a href="README.ja.md">日本語</a> | <a href="README.pt-BR.md">Português (Brasil)</a> | <a href="README.ru.md">Русский</a>
+![UniClipboard 跨裝置介面展示（桌面、平板與手機）](docs/assets/product-overview.png)
 
 </div>
 
@@ -29,7 +38,7 @@ Windows · macOS · Linux · 命令列　|　文字 · 圖片 · 檔案 · 資�
 
 ## 為什麼選擇 UniClipboard
 
-- **跨系統**：Windows、macOS、Linux 之間互相同步。裝置在同一個 Wi-Fi 或不同網路都能連上。
+- **跨平台**：支援 Windows、macOS、Linux、iOS 與 Android 互相同步。裝置在同一個 Wi-Fi 或不同網路都能連上。
 - **不經過雲端**：裝置之間加密直連，不需要註冊帳號。剪貼簿歷史只存在你自己的裝置上。
 - **記憶體用量低**：背景同步服務閒置時約佔 14 MB 記憶體<sup>[1](#benchmarks)</sup>。在 Windows 上，主視窗約佔 34–49 MB<sup>[2](#benchmarks)</sup>。關閉主視窗後，介面程序會結束並釋放記憶體。
 - **都能同步**：文字、圖片、檔案和整個資料夾都能同步。
@@ -38,30 +47,51 @@ Windows · macOS · Linux · 命令列　|　文字 · 圖片 · 檔案 · 資�
 
 ## 功能
 
-| | |
-|---|---|
-| ⚡ **快速面板** | 在任何應用程式中按 `⌘ ⌃ V`（Windows / Linux 上是 `Ctrl Alt V`）開啟歷史，選一筆，按 Enter 直接貼上。 |
-| 🔍 **快速搜尋** | 輸入關鍵字，或用 `#標籤`、`@裝置`、`/類型` 篩選。幾個月前複製的內容也找得回來。 |
-| 🏷️ **自動分類** | 自動為連結、電子郵件、色碼、版本號、UUID、IP 位址等內容加上標籤，也能新增自己的規則。 |
-| 📁 **檔案與資料夾** | 傳送整個資料夾時完整保留目錄結構，也可以只傳給指定裝置。 |
-| 📮 **免配對傳送** | 執行 `unic send "內容"` 會顯示傳輸連結。取件碼可用時，也會顯示 6 位數取件碼。接收方可使用任一方式接收。傳輸不會留下裝置紀錄。 |
-| 🧩 **外掛** | 在設定中一鍵安裝外掛，例如把圖片或檔案轉成分享連結。 |
-| ⌨️ **命令列** | 用 `unic` 在終端機、SSH 和指令碼中傳送、接收及篩選歷史清單。 |
-| 🌍 **多語言** | English、简体中文、日本語、Português、Русский，支援淺色與深色模式。 |
+<table>
+  <tr>
+    <td>⚡ <strong>快速面板</strong></td>
+    <td>在任何應用程式中按 <code>⌘ ⌃ V</code>（Windows / Linux 上是 <code>Ctrl Alt V</code>）開啟歷史，選一筆，按 Enter 直接貼上。</td>
+  </tr>
+  <tr>
+    <td>🔍 <strong>快速搜尋</strong></td>
+    <td>輸入關鍵字，或用 <code>#標籤</code>、<code>@裝置</code>、<code>/類型</code> 篩選。幾個月前複製的內容也找得回來。</td>
+  </tr>
+  <tr>
+    <td>🏷️ <strong>自動分類</strong></td>
+    <td>自動為連結、電子郵件、色碼、版本號、UUID、IP 位址等內容加上標籤，也能新增自己的規則。</td>
+  </tr>
+  <tr>
+    <td>📁 <strong>檔案與資料夾</strong></td>
+    <td>傳送整個資料夾時完整保留目錄結構，也可以只傳給指定裝置。</td>
+  </tr>
+  <tr>
+    <td>📮 <strong>免配對傳送</strong></td>
+    <td>執行 <code>unic send "內容"</code> 會顯示傳輸連結。取件碼可用時，也會顯示 6 位數取件碼。接收方可使用任一方式接收。傳輸不會留下裝置紀錄。</td>
+  </tr>
+  <tr>
+    <td>🧩 <strong>外掛</strong></td>
+    <td>在設定中一鍵安裝外掛，例如把圖片或檔案轉成分享連結。</td>
+  </tr>
+  <tr>
+    <td>⌨️ <strong>命令列</strong></td>
+    <td>用 <code>unic</code> 在終端機、SSH 和指令碼中傳送、接收及篩選歷史清單。</td>
+  </tr>
+  <tr>
+    <td>🌍 <strong>多語言</strong></td>
+    <td>English、简体中文、日本語、Português、Русский，支援淺色與深色模式。</td>
+  </tr>
+</table>
 
 <a id="quick-start"></a>
 
 ## 三步開始
 
-**1. 執行**
+**1. 下載並安裝**
 
-從 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) 下載適合你平台的 v2 桌面預覽版。也可以用下列指令從原始碼執行。
-
-```sh
-git clone https://github.com/UniClipboard/UniClipboard.git
-cd UniClipboard
-make run-desktop
-```
+- **桌面版**：從 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) 下載 Windows（`.exe`/`.zip`）、macOS（`.dmg`）或 Linux（`.deb`/`.rpm`/`.AppImage`）安裝檔。
+- **iOS**：透過 [TestFlight](https://testflight.apple.com/join/nyNQ8dQe) 加入公開 Beta 測試。
+- **Android**：從 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) 下載 APK 安裝（目前暫無上架 Google Play 的計畫）。
+- **僅命令列**：執行 `npm install -g @uniclipboard/cli`。
 
 **2. 連接第二台裝置**
 
@@ -70,6 +100,8 @@ make run-desktop
 **3. 複製**
 
 在一台裝置上按 `Ctrl+C`，然後在另一台裝置上按 `Ctrl+V`。
+
+<a id="cli"></a>
 
 ## 命令列
 

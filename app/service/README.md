@@ -1,6 +1,6 @@
 # Service application
 
-`unic` is the CLI. `unicd` owns the Engine and starts headless by default. Neither program imports the desktop UI toolkit. macOS Desktop may explicitly enable the native clipboard adapter in the service.
+`unic` is the CLI. `unicd` owns the Engine and starts headless by default. Neither program imports the desktop UI toolkit. Desktop may explicitly enable the native clipboard adapter in the service on supported macOS, Windows and Linux sessions.
 Packaged archives expose the `uniclip` alias for `unic`: a relative symlink on macOS/Linux or a `uniclip.cmd` launcher on Windows.
 
 ```sh
@@ -73,3 +73,25 @@ unic config set sync.directories.automatic true
 ```
 
 A selection can mix regular files and directories. Empty directories are preserved. Links and unsupported entries fail the selection. Directory transfer does not watch later filesystem changes and requires `--to`. See the [directory contract](../../docs/contracts/directory-contract.md) for resource limits, history semantics, and platform acceptance limits.
+
+### Native desktop clipboard acceptance
+
+On an isolated Windows, X11, or Wayland desktop, build `unicd` from the
+checkout and run the production-daemon test below. The test writes synthetic
+values to the session clipboard and outputs `manifest.json` and
+`SHA256SUMS`.
+
+```sh
+go build -o /tmp/unicd-clipboard ./app/service/cmd/unicd
+UNIC_NATIVE_CLIPBOARD_E2E=1 \
+UNIC_NATIVE_CLIPBOARD_DAEMON=/tmp/unicd-clipboard \
+UNIC_NATIVE_CLIPBOARD_ARTIFACTS=/tmp/unicd-clipboard-receipt \
+go test ./e2e/headless -run '^TestDaemonNativeDesktopClipboard$' -v -count=1
+```
+
+On Windows set the same environment variables and use a path to the built
+`unicd.exe`. In an X11 session, set `UNIC_NATIVE_CLIPBOARD_X11_INCR=1` and
+make `xclip` available to verify a large image in both directions. In a
+Wayland session without data control, set
+`UNIC_NATIVE_CLIPBOARD_EXPECT_UNSUPPORTED=1` to verify that the service
+stays headless and reports the unavailable capability.

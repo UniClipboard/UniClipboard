@@ -109,6 +109,10 @@
   },
   "media": {
     "clipboardChanged": "读取新剪贴板内容",
+    "clipboardChangedText": "读取新文本",
+    "clipboardChangedImage": "读取新图片",
+    "clipboardChangedSubtitle": "轻点授权并同步",
+    "clipboardReading": "正在读取…",
     "invalidLink": "需要有效的 HTTP 或 HTTPS 链接。",
     "textTooLong": "文本太长，无法完成此操作。",
     "actionFailed": "操作失败",

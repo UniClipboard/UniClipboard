@@ -1,0 +1,2161 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>unic · iOS 手动授权读取剪贴板交互原型（4 组设计方案）</title>
+<!--
+  Interactive HTML prototype workbench exploring 4 design proposals for the iOS manual
+  clipboard read prompt when automatic clipboard reading is off or awaiting user tap.
+  Follows the live iOS 26 Liquid Glass presentation language in app/expo/src/
+  (monochrome ink accent #15171C/#F4F2EE, systemGroupedBackground, 14pt grid cards,
+  top-right glass action pill, bottom floating Liquid Glass tab bar + search circle).
+  Self-contained, zero external assets. Open directly in any modern browser.
+-->
+<style>
+  /* ======================== Design Tokens ======================== */
+  :root {
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+    --font-mono: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+    /* Workbench Chrome */
+    --stage-bg: #e9ecf2;
+    --stage-dot: rgba(21, 23, 28, 0.055);
+    --bar-bg: rgba(255, 255, 255, 0.86);
+    --bar-border: rgba(15, 23, 42, 0.09);
+    --bar-text: #15171c;
+    --bar-muted: #5d6676;
+    --bar-faint: #8c95a6;
+    --bar-surface: #f1f3f7;
+    --bar-surface-hover: #e6e9f0;
+    --panel-bg: #ffffff;
+    --panel-shadow: 0 20px 50px -16px rgba(15, 23, 42, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+
+    /* iOS Semantic Tokens (from app/expo/src/theme/iosDesignTokens.ts) */
+    --ios-bg: #ffffff;
+    --ios-grouped-bg: #f2f2f7;
+    --ios-card: #ffffff;
+    --ios-card-elevated: #ffffff;
+    --ios-card-border: rgba(0, 0, 0, 0.045);
+    --ios-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.045), 0 0.5px 1px rgba(0, 0, 0, 0.04);
+
+    --ios-label: #000000;
+    --ios-secondary: rgba(60, 60, 67, 0.62);
+    --ios-tertiary: rgba(60, 60, 67, 0.36);
+    --ios-fill: rgba(120, 120, 128, 0.12);
+    --ios-fill-strong: rgba(120, 120, 128, 0.20);
+    --ios-sep: rgba(60, 60, 67, 0.14);
+
+    /* unic v2 Monochrome Ink Accent */
+    --accent: #15171c;
+    --on-accent: #ffffff;
+
+    /* Kind Tints */
+    --tint-blue: #007aff;
+    --tint-blue-soft: rgba(0, 122, 255, 0.11);
+    --tint-green: #34c759;
+    --tint-green-soft: rgba(52, 199, 89, 0.13);
+    --tint-orange: #ff9500;
+    --tint-orange-soft: rgba(255, 149, 0, 0.13);
+    --tint-purple: #af52de;
+    --tint-purple-soft: rgba(175, 82, 222, 0.12);
+    --tint-red: #ff3b30;
+
+    /* iOS 26 Liquid Glass */
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-bg-strong: rgba(255, 255, 255, 0.86);
+    --glass-border: rgba(255, 255, 255, 0.86);
+    --glass-stroke: rgba(0, 0, 0, 0.075);
+    --glass-shadow: 0 8px 24px rgba(15, 23, 42, 0.11), 0 1px 2px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    --glass-tab-active: rgba(120, 120, 128, 0.14);
+
+    /* Alert */
+    --alert-bg: rgba(248, 248, 252, 0.92);
+    --alert-btn-bg: rgba(120, 120, 128, 0.14);
+    --alert-allow-bg: rgba(0, 122, 255, 0.14);
+    --alert-allow-text: #007aff;
+  }
+
+  [data-theme="dark"] {
+    --stage-bg: #0b0c0f;
+    --stage-dot: rgba(255, 255, 255, 0.045);
+    --bar-bg: rgba(20, 22, 27, 0.88);
+    --bar-border: rgba(255, 255, 255, 0.09);
+    --bar-text: #f2f4f8;
+    --bar-muted: #98a1b2;
+    --bar-faint: #646d7e;
+    --bar-surface: #1d2027;
+    --bar-surface-hover: #282c36;
+    --panel-bg: #15171c;
+    --panel-shadow: 0 24px 60px -14px rgba(0, 0, 0, 0.7), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+
+    --ios-bg: #000000;
+    --ios-grouped-bg: #000000;
+    --ios-card: #1c1c1e;
+    --ios-card-elevated: #2c2c2e;
+    --ios-card-border: rgba(255, 255, 255, 0.07);
+    --ios-card-shadow: 0 2px 10px rgba(0, 0, 0, 0.32);
+
+    --ios-label: #ffffff;
+    --ios-secondary: rgba(235, 235, 245, 0.62);
+    --ios-tertiary: rgba(235, 235, 245, 0.34);
+    --ios-fill: rgba(120, 120, 128, 0.28);
+    --ios-fill-strong: rgba(120, 120, 128, 0.42);
+    --ios-sep: rgba(255, 255, 255, 0.12);
+
+    --accent: #f4f2ee;
+    --on-accent: #15171c;
+
+    --tint-blue: #0a84ff;
+    --tint-blue-soft: rgba(10, 132, 255, 0.20);
+    --tint-green: #30d158;
+    --tint-green-soft: rgba(48, 209, 88, 0.20);
+    --tint-orange: #ff9f0a;
+    --tint-orange-soft: rgba(255, 159, 10, 0.20);
+    --tint-purple: #bf5af2;
+    --tint-purple-soft: rgba(191, 90, 242, 0.20);
+    --tint-red: #ff453a;
+
+    --glass-bg: rgba(38, 38, 42, 0.74);
+    --glass-bg-strong: rgba(46, 46, 50, 0.88);
+    --glass-border: rgba(255, 255, 255, 0.16);
+    --glass-stroke: rgba(255, 255, 255, 0.11);
+    --glass-shadow: 0 10px 28px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    --glass-tab-active: rgba(255, 255, 255, 0.13);
+
+    --alert-bg: rgba(40, 40, 44, 0.94);
+    --alert-btn-bg: rgba(255, 255, 255, 0.11);
+    --alert-allow-bg: rgba(10, 132, 255, 0.24);
+    --alert-allow-text: #409cff;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--font-sans);
+    background-color: var(--stage-bg);
+    background-image: radial-gradient(var(--stage-dot) 1px, transparent 1px);
+    background-size: 20px 20px;
+    color: var(--bar-text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  button {
+    font-family: inherit;
+    border: none;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+  }
+  svg { display: block; flex-shrink: 0; }
+
+  /* ======================== Workbench Top Bar ======================== */
+  .topbar {
+    position: sticky; top: 0; z-index: 60;
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    background: var(--bar-bg);
+    border-bottom: 1px solid var(--bar-border);
+    padding: 10px 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--accent); color: var(--on-accent);
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 13px; letter-spacing: -0.02em;
+  }
+  .brand-title { font-size: 14px; font-weight: 650; letter-spacing: -0.01em; }
+  .brand-sub { font-size: 11.5px; color: var(--bar-muted); }
+
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .seg-group {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: var(--bar-surface);
+    padding: 3px; border-radius: 10px;
+    border: 1px solid var(--bar-border);
+  }
+  .seg-btn {
+    padding: 5px 10px; border-radius: 7px;
+    font-size: 12px; font-weight: 550; color: var(--bar-muted);
+    transition: all 0.16s ease;
+    white-space: nowrap;
+  }
+  .seg-btn:hover { color: var(--bar-text); }
+  .seg-btn.active {
+    background: var(--panel-bg);
+    color: var(--bar-text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+  .action-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 11px; border-radius: 9px;
+    font-size: 12px; font-weight: 550;
+    background: var(--bar-surface); color: var(--bar-text);
+    border: 1px solid var(--bar-border);
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .action-chip:hover { background: var(--bar-surface-hover); }
+  .action-chip.primary {
+    background: var(--accent); color: var(--on-accent); border-color: transparent;
+  }
+  .action-chip.primary:hover { opacity: 0.9; }
+  .action-chip.active-warn {
+    background: var(--tint-orange-soft);
+    color: var(--tint-orange);
+    border-color: rgba(255, 149, 0, 0.28);
+  }
+
+  /* ======================== Stage & Proposal Tabs ======================== */
+  .stage {
+    max-width: 1480px;
+    margin: 0 auto;
+    padding: 20px 20px 56px;
+  }
+
+  .proposal-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 960px) {
+    .proposal-tabs { grid-template-columns: repeat(2, 1fr); }
+  }
+  .proposal-tab {
+    text-align: left;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--panel-bg);
+    border: 1.5px solid var(--bar-border);
+    transition: all 0.18s ease;
+    position: relative;
+  }
+  .proposal-tab:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px -10px rgba(15, 23, 42, 0.16);
+  }
+  .proposal-tab.active {
+    border-color: var(--accent);
+    box-shadow: 0 12px 26px -12px rgba(15, 23, 42, 0.22);
+  }
+  .ptab-top {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    margin-bottom: 5px;
+  }
+  .ptab-code {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    padding: 2px 8px; border-radius: 99px;
+    background: var(--bar-surface); color: var(--bar-muted);
+  }
+  .proposal-tab.active .ptab-code {
+    background: var(--accent); color: var(--on-accent);
+  }
+  .ptab-tag { font-size: 11px; color: var(--bar-faint); font-weight: 500; }
+  .ptab-name { font-size: 14px; font-weight: 650; color: var(--bar-text); margin-bottom: 3px; }
+  .ptab-desc { font-size: 12px; color: var(--bar-muted); line-height: 1.45; }
+
+  /* Focus View Grid */
+  .focus-grid {
+    display: grid;
+    grid-template-columns: 416px minmax(360px, 1fr);
+    gap: 28px;
+    align-items: start;
+    justify-content: center;
+  }
+  @media (max-width: 960px) {
+    .focus-grid { grid-template-columns: 1fr; justify-items: center; }
+  }
+
+  /* Compare All View */
+  .compare-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(290px, 1fr));
+    gap: 18px;
+    align-items: start;
+  }
+  @media (max-width: 1320px) {
+    .compare-grid { grid-template-columns: repeat(2, minmax(310px, 1fr)); }
+  }
+  @media (max-width: 700px) {
+    .compare-grid { grid-template-columns: 1fr; }
+  }
+  .compare-col {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .compare-card-head {
+    width: 100%;
+    background: var(--panel-bg);
+    border: 1px solid var(--bar-border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    box-shadow: 0 6px 18px -10px rgba(15, 23, 42, 0.12);
+  }
+  .compare-card-head .row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-bottom: 4px;
+  }
+  .compare-card-head h3 { margin: 0; font-size: 14px; font-weight: 650; }
+  .compare-card-head p { margin: 0; font-size: 12px; color: var(--bar-muted); line-height: 1.45; }
+  .compare-phone-wrap {
+    width: 314px;
+    height: 656px;
+    position: relative;
+  }
+  .compare-phone-wrap .phone-shell {
+    transform: scale(0.79);
+    transform-origin: top left;
+  }
+
+  /* ======================== iPhone Hardware Frame ======================== */
+  .phone-column {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .phone-shell {
+    width: 398px;
+    height: 830px;
+    border-radius: 54px;
+    padding: 11px;
+    background: linear-gradient(155deg, #2b2e35 0%, #14161a 48%, #252830 100%);
+    box-shadow:
+      0 32px 72px -18px rgba(15, 23, 42, 0.42),
+      0 0 0 1px rgba(255, 255, 255, 0.12) inset,
+      0 0 0 1.5px rgba(0, 0, 0, 0.45);
+    position: relative;
+    user-select: none;
+  }
+  .phone-screen {
+    width: 100%;
+    height: 100%;
+    border-radius: 44px;
+    background: var(--ios-grouped-bg);
+    overflow: hidden;
+    position: relative;
+    color: var(--ios-label);
+    transition: background-color 0.25s ease;
+  }
+
+  /* Status Bar + Dynamic Island */
+  .ios-status-bar {
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 54px; z-index: 25;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 16px 26px 0 30px;
+    pointer-events: none;
+    color: var(--ios-label);
+  }
+  .ios-time {
+    font-size: 15px; font-weight: 650; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .dynamic-island {
+    position: absolute; top: 11px; left: 50%; transform: translateX(-50%);
+    width: 114px; height: 32px; border-radius: 99px;
+    background: #000000;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  }
+  .ios-status-icons {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 650;
+  }
+  .battery-pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 13px; border-radius: 4px;
+    background: var(--ios-label); color: var(--ios-bg);
+    font-size: 9px; font-weight: 750; letter-spacing: -0.03em;
+    position: relative;
+  }
+  .battery-pill::after {
+    content: ""; position: absolute; right: -2.5px; top: 4px;
+    width: 1.5px; height: 5px; border-radius: 0 2px 2px 0;
+    background: var(--ios-tertiary);
+  }
+
+  /* Top Floating Glass Action Pill (+ / ...) */
+  .ios-top-bar {
+    position: absolute; top: 54px; left: 0; right: 0;
+    height: 44px; padding: 0 16px; z-index: 22;
+    display: flex; align-items: center; justify-content: flex-end;
+    pointer-events: none;
+  }
+  .ios-top-fade {
+    position: absolute; top: 0; left: 0; right: 0; height: 104px; z-index: 18;
+    background: linear-gradient(180deg, var(--ios-grouped-bg) 52%, transparent 100%);
+    pointer-events: none;
+  }
+  .glass-pill-actions {
+    pointer-events: auto;
+    display: inline-flex; align-items: center; gap: 2px;
+    height: 42px; padding: 0 6px; border-radius: 999px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    border: 0.5px solid var(--glass-stroke);
+    box-shadow: var(--glass-shadow);
+  }
+  .glass-icon-btn {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: grid; place-items: center;
+    color: var(--ios-label);
+    transition: background 0.15s ease, transform 0.12s ease;
+  }
+  .glass-icon-btn:active { background: var(--ios-fill); transform: scale(0.92); }
+
+  /* Scroll Area */
+  .ios-scroll {
+    position: absolute; inset: 0;
+    overflow-y: auto; overflow-x: hidden;
+    padding: 96px 0 116px;
+    scrollbar-width: none;
+  }
+  .ios-scroll::-webkit-scrollbar { display: none; }
+
+  /* Large Title Row */
+  .ios-large-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px;
+    padding: 6px 20px 10px;
+    min-height: 54px;
+  }
+  .ios-large-title {
+    margin: 0;
+    font-size: 32px; line-height: 38px;
+    font-weight: 750; letter-spacing: -0.02em;
+    color: var(--ios-label);
+  }
+
+  /* ======================== Baseline (Current Screenshot) ======================== */
+  .baseline-read-btn {
+    display: flex; align-items: center;
+    min-height: 44px; padding: 0 20px;
+    margin-bottom: 4px;
+    font-size: 14px; font-weight: 450;
+    color: var(--accent);
+    text-align: left;
+    transition: opacity 0.15s ease;
+  }
+  .baseline-read-btn:active { opacity: 0.5; }
+
+  /* ======================== PROPOSAL A: Inline Action Banner ======================== */
+  .prop-a-wrap {
+    padding: 2px 16px 14px;
+    animation: slideFadeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .prop-a-card {
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 11px 11px 12px;
+    border-radius: 16px;
+    background: var(--ios-card);
+    border: 0.5px solid var(--ios-card-border);
+    box-shadow: var(--ios-card-shadow);
+    transition: transform 0.16s ease, box-shadow 0.16s ease;
+    cursor: pointer;
+    position: relative;
+  }
+  .prop-a-card:active { transform: scale(0.985); }
+  .prop-a-icon {
+    width: 36px; height: 36px; border-radius: 10px;
+    display: grid; place-items: center;
+    position: relative; flex-shrink: 0;
+  }
+  .prop-a-icon.kind-text { background: var(--tint-blue-soft); color: var(--tint-blue); }
+  .prop-a-icon.kind-image { background: var(--tint-green-soft); color: var(--tint-green); }
+  .prop-a-icon.kind-mixed { background: var(--tint-purple-soft); color: var(--tint-purple); }
+  .prop-a-dot {
+    position: absolute; top: -2px; right: -2px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--tint-blue);
+    box-shadow: 0 0 0 2px var(--ios-card);
+    animation: pulseDot 2s infinite;
+  }
+  .kind-image .prop-a-dot { background: var(--tint-green); }
+  .kind-mixed .prop-a-dot { background: var(--tint-purple); }
+  .prop-a-body { flex: 1; min-width: 0; }
+  .prop-a-title {
+    font-size: 14px; font-weight: 620; color: var(--ios-label);
+    line-height: 1.28; letter-spacing: -0.01em;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .prop-a-sub {
+    font-size: 12px; color: var(--ios-secondary);
+    line-height: 1.3; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .prop-a-actions {
+    display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+  }
+  .prop-a-cta {
+    display: inline-flex; align-items: center; gap: 5px;
+    height: 32px; padding: 0 13px; border-radius: 999px;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 13px; font-weight: 620;
+    transition: opacity 0.15s ease, transform 0.12s ease;
+  }
+  .prop-a-cta.paste-control {
+    background: var(--tint-blue); color: #ffffff;
+  }
+  .prop-a-cta:active { transform: scale(0.94); }
+  .prop-dismiss-btn {
+    width: 26px; height: 26px; border-radius: 50%;
+    display: grid; place-items: center;
+    color: var(--ios-tertiary);
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .prop-dismiss-btn:hover { background: var(--ios-fill); color: var(--ios-secondary); }
+
+  /* ======================== PROPOSAL B: Floating Liquid Glass Pill ======================== */
+  .prop-b-anchor {
+    position: absolute;
+    left: 16px; right: 16px; bottom: 92px;
+    z-index: 23;
+    display: flex; justify-content: center;
+    pointer-events: none;
+    animation: floatUpIn 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .prop-b-pill {
+    pointer-events: auto;
+    display: inline-flex; align-items: center; gap: 0;
+    height: 46px; padding: 5px 6px 5px 7px;
+    border-radius: 999px;
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(28px) saturate(200%);
+    -webkit-backdrop-filter: blur(28px) saturate(200%);
+    border: 0.5px solid var(--glass-stroke);
+    box-shadow:
+      0 12px 32px rgba(15, 23, 42, 0.16),
+      0 2px 6px rgba(0, 0, 0, 0.06),
+      inset 0 1px 0 var(--glass-border);
+    max-width: 100%;
+    transition: transform 0.16s ease;
+  }
+  .prop-b-pill:active { transform: scale(0.97); }
+  .prop-b-main {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 36px; padding: 0 10px 0 4px;
+    border-radius: 999px;
+    color: var(--ios-label);
+  }
+  .prop-b-badge {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--accent); color: var(--on-accent);
+    display: grid; place-items: center;
+    position: relative;
+  }
+  .prop-b-badge.paste-control {
+    background: var(--tint-blue); color: #ffffff;
+  }
+  .prop-b-text-wrap {
+    display: flex; flex-direction: column; align-items: flex-start;
+    line-height: 1.15;
+  }
+  .prop-b-label {
+    font-size: 13.5px; font-weight: 630; letter-spacing: -0.01em;
+    white-space: nowrap;
+  }
+  .prop-b-meta {
+    font-size: 10.5px; color: var(--ios-secondary); font-weight: 500;
+    white-space: nowrap;
+  }
+  .prop-b-divider {
+    width: 1px; height: 18px; background: var(--ios-sep);
+    margin: 0 2px;
+  }
+  .prop-b-close {
+    width: 32px; height: 32px; border-radius: 50%;
+    display: grid; place-items: center;
+    color: var(--ios-secondary);
+    transition: background 0.15s ease;
+  }
+  .prop-b-close:hover { background: var(--ios-fill); }
+
+  /* ======================== PROPOSAL C: Inline Pending Card in Grid/List ======================== */
+  .prop-c-card {
+    background: var(--ios-card);
+    border-radius: 14px;
+    border: 1.5px dashed rgba(21, 23, 28, 0.22);
+    padding: 11px 12px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    min-height: 186px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.16s ease, border-color 0.18s ease, background 0.18s ease;
+    animation: popIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  [data-theme="dark"] .prop-c-card {
+    border-color: rgba(244, 242, 238, 0.26);
+  }
+  .prop-c-card::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 80% 0%, var(--tint-blue-soft), transparent 62%);
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .prop-c-card.kind-image::before {
+    background: radial-gradient(circle at 80% 0%, var(--tint-green-soft), transparent 62%);
+  }
+  .prop-c-card.kind-mixed::before {
+    background: radial-gradient(circle at 80% 0%, var(--tint-purple-soft), transparent 62%);
+  }
+  .prop-c-card:active { transform: scale(0.97); }
+  .prop-c-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 4px;
+    position: relative; z-index: 1;
+  }
+  .prop-c-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; font-weight: 620;
+    padding: 2px 7px; border-radius: 99px;
+    background: var(--ios-fill); color: var(--ios-secondary);
+  }
+  .prop-c-tag-dot {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--tint-blue);
+  }
+  .kind-image .prop-c-tag-dot { background: var(--tint-green); }
+  .kind-mixed .prop-c-tag-dot { background: var(--tint-purple); }
+  .prop-c-center {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
+    margin: 8px 0;
+  }
+  .prop-c-icon {
+    width: 34px; height: 34px; border-radius: 10px;
+    display: grid; place-items: center;
+    background: var(--tint-blue-soft); color: var(--tint-blue);
+  }
+  .kind-image .prop-c-icon { background: var(--tint-green-soft); color: var(--tint-green); }
+  .kind-mixed .prop-c-icon { background: var(--tint-purple-soft); color: var(--tint-purple); }
+  .prop-c-title {
+    font-size: 14px; font-weight: 650; color: var(--ios-label);
+    line-height: 1.25;
+  }
+  .prop-c-sub {
+    font-size: 11.5px; color: var(--ios-secondary); line-height: 1.35;
+  }
+  .prop-c-btn {
+    position: relative; z-index: 1;
+    width: 100%; height: 34px; border-radius: 999px;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 12.5px; font-weight: 620;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  }
+  .prop-c-btn.paste-control { background: var(--tint-blue); color: #ffffff; }
+
+  /* Proposal C in List Layout */
+  .prop-c-list {
+    display: flex; align-items: center; gap: 11px;
+    padding: 12px;
+    border-radius: 14px;
+    background: var(--ios-card);
+    border: 1.5px dashed rgba(21, 23, 28, 0.22);
+    margin-bottom: 10px;
+    cursor: pointer;
+    animation: slideFadeIn 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  [data-theme="dark"] .prop-c-list {
+    border-color: rgba(244, 242, 238, 0.26);
+  }
+
+  /* ======================== PROPOSAL D: Title-Row Inline Capsule ======================== */
+  .prop-d-group {
+    display: inline-flex; align-items: center; gap: 4px;
+    animation: popIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+    max-width: 230px;
+  }
+  .prop-d-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 34px; padding: 0 12px 0 9px;
+    border-radius: 999px;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 13px; font-weight: 620; letter-spacing: -0.01em;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.16);
+    white-space: nowrap;
+    transition: transform 0.14s ease, opacity 0.15s ease;
+  }
+  .prop-d-pill.paste-control {
+    background: var(--tint-blue); color: #ffffff;
+    box-shadow: 0 4px 14px rgba(0, 122, 255, 0.28);
+  }
+  .prop-d-pill:active { transform: scale(0.94); }
+  .prop-d-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #5ac8fa;
+    animation: pulseDot 2s infinite;
+  }
+  .prop-d-pill.kind-image .prop-d-dot { background: #30d158; }
+  .prop-d-pill.kind-mixed .prop-d-dot { background: #bf5af2; }
+  .prop-d-pill.paste-control .prop-d-dot { background: #ffffff; }
+  .prop-d-close {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--ios-fill);
+    color: var(--ios-secondary);
+    display: grid; place-items: center;
+    transition: background 0.15s ease;
+  }
+  .prop-d-close:active { background: var(--ios-fill-strong); }
+
+  /* ======================== Clipboard History Grid & Cards ======================== */
+  .history-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 4px 16px 0;
+  }
+  .history-list {
+    display: flex; flex-direction: column;
+    gap: 10px;
+    padding: 4px 16px 0;
+  }
+
+  .clip-card {
+    background: var(--ios-card);
+    border-radius: 14px;
+    border: 0.5px solid var(--ios-card-border);
+    box-shadow: var(--ios-card-shadow);
+    min-height: 186px;
+    position: relative;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    padding: 11px 12px;
+    transition: transform 0.14s ease;
+  }
+  .clip-card:active { transform: scale(0.98); }
+  .clip-card.newly-added {
+    animation: cardHighlight 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .clip-card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 11.5px; color: var(--ios-secondary);
+    margin-bottom: 8px;
+    position: relative; z-index: 2;
+  }
+  .clip-card-body {
+    flex: 1;
+    font-size: 13.5px; line-height: 1.48;
+    color: var(--ios-label);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 6;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+  }
+  .clip-card-body.short-bold {
+    display: flex; align-items: center;
+    font-size: 15px; font-weight: 600; line-height: 1.4;
+  }
+  .clip-latest-dot {
+    position: absolute; right: 12px; bottom: 11px;
+    width: 6.5px; height: 6.5px; border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* Image Card Art (matching screenshot aesthetic) */
+  .clip-card.is-image {
+    padding: 0;
+    background-image:
+      linear-gradient(45deg, rgba(120,120,128,0.12) 25%, transparent 25%),
+      linear-gradient(-45deg, rgba(120,120,128,0.12) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, rgba(120,120,128,0.12) 75%),
+      linear-gradient(-45deg, transparent 75%, rgba(120,120,128,0.12) 75%);
+    background-size: 14px 14px;
+    background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+    background-color: #d8dae0;
+  }
+  [data-theme="dark"] .clip-card.is-image { background-color: #242428; }
+  .clip-card.is-image .clip-card-head {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: 10px 11px 22px; margin: 0;
+    color: rgba(255, 255, 255, 0.94);
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.52) 0%, transparent 100%);
+    font-weight: 500;
+  }
+  .img-art {
+    width: 100%; height: 100%; min-height: 186px;
+    position: relative; overflow: hidden;
+  }
+  .art-keyboard {
+    background: linear-gradient(155deg, #2d3138 0%, #5a5f68 20%, #e7e5e0 28%, #f3f2ee 56%, #d5d2ca 100%);
+    display: flex; flex-direction: column; justify-content: flex-end; padding: 12px;
+  }
+  .kb-cable {
+    position: absolute; top: 18px; left: 16px; width: 112px; height: 22px;
+    border-top: 4px solid #26282c; border-radius: 50%;
+    transform: rotate(-10deg);
+  }
+  .kb-keys {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;
+    transform: perspective(160px) rotateX(18deg) rotateZ(-4deg);
+    margin-bottom: -8px;
+  }
+  .kb-key {
+    height: 30px; border-radius: 5px;
+    background: linear-gradient(180deg, #fbfaf7, #dedbd3);
+    box-shadow: 0 3px 0 #b8b4aa, 0 4px 6px rgba(0,0,0,0.18);
+    font-size: 9px; font-weight: 600; color: #52504a;
+    padding: 3px 5px;
+  }
+  .art-photo-sunset {
+    background: linear-gradient(160deg, #1d3557 0%, #457b9d 35%, #f4a261 72%, #e76f51 100%);
+    display: flex; align-items: flex-end; justify-content: flex-start; padding: 14px;
+  }
+  .art-photo-sunset::after {
+    content: ""; position: absolute; right: 24px; top: 44px;
+    width: 34px; height: 34px; border-radius: 50%;
+    background: rgba(255, 241, 208, 0.9);
+    box-shadow: 0 0 28px rgba(255, 224, 150, 0.85);
+  }
+  .art-screenshot {
+    background: linear-gradient(180deg, #dfe4ee 0%, #c8d0de 100%);
+    padding: 34px 16px 12px;
+  }
+  .art-screenshot-inner {
+    height: 100%; border-radius: 10px; background: #ffffff;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.14);
+    padding: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  }
+  .art-swatch { border-radius: 6px; }
+
+  /* File Card (matching JPEG shared-file card) */
+  .file-doc-mock {
+    margin: 4px auto 8px;
+    width: 88px; height: 106px;
+    border-radius: 10px;
+    background: var(--ios-card-elevated);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08), 0 0 0 0.5px var(--ios-card-border);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 7px; position: relative;
+  }
+  .file-doc-mock::before {
+    content: ""; position: absolute; top: 0; right: 0;
+    width: 18px; height: 18px;
+    background: linear-gradient(225deg, var(--ios-grouped-bg) 50%, rgba(120,120,128,0.22) 50%);
+    border-bottom-left-radius: 4px;
+  }
+  .file-badge {
+    padding: 3px 10px; border-radius: 6px;
+    background: #34c759; color: #ffffff;
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.03em;
+  }
+  .file-name { font-size: 10.5px; color: var(--ios-secondary); }
+  .file-size { font-size: 11px; color: var(--ios-tertiary); margin-top: auto; }
+
+  /* List Layout Card */
+  .clip-list-row {
+    background: var(--ios-card);
+    border-radius: 14px;
+    border: 0.5px solid var(--ios-card-border);
+    box-shadow: var(--ios-card-shadow);
+    padding: 12px 13px;
+    display: flex; align-items: center; gap: 11px;
+    position: relative;
+  }
+  .clip-list-row.newly-added {
+    animation: cardHighlight 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .clip-list-thumb {
+    width: 44px; height: 44px; border-radius: 10px; flex-shrink: 0;
+    display: grid; place-items: center; overflow: hidden;
+    background: var(--ios-fill); color: var(--ios-secondary);
+  }
+  .clip-list-content { flex: 1; min-width: 0; }
+  .clip-list-title {
+    font-size: 13.5px; font-weight: 520; color: var(--ios-label);
+    line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .clip-list-meta {
+    margin-top: 3px; font-size: 11px; color: var(--ios-secondary);
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  /* ======================== Bottom iOS 26 Liquid Glass Tab Bar ======================== */
+  .ios-bottom-dock {
+    position: absolute; left: 16px; right: 16px; bottom: 22px;
+    z-index: 24;
+    display: flex; align-items: center; gap: 10px;
+    pointer-events: none;
+  }
+  .ios-tab-capsule {
+    pointer-events: auto;
+    flex: 1; height: 60px; border-radius: 999px;
+    padding: 4px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(26px) saturate(190%);
+    -webkit-backdrop-filter: blur(26px) saturate(190%);
+    border: 0.5px solid var(--glass-stroke);
+    box-shadow: var(--glass-shadow);
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px;
+  }
+  .ios-tab-item {
+    border-radius: 999px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; font-size: 10px; font-weight: 560;
+    color: var(--ios-label); opacity: 0.72;
+  }
+  .ios-tab-item.active {
+    background: var(--glass-tab-active);
+    opacity: 1; font-weight: 650;
+  }
+  .ios-search-circle {
+    pointer-events: auto;
+    width: 60px; height: 60px; border-radius: 50%;
+    background: var(--glass-bg);
+    backdrop-filter: blur(26px) saturate(190%);
+    -webkit-backdrop-filter: blur(26px) saturate(190%);
+    border: 0.5px solid var(--glass-stroke);
+    box-shadow: var(--glass-shadow);
+    display: grid; place-items: center;
+    color: var(--ios-label);
+  }
+  .ios-home-indicator {
+    position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+    width: 134px; height: 5px; border-radius: 99px;
+    background: var(--ios-label); opacity: 0.22;
+    z-index: 26; pointer-events: none;
+  }
+
+  /* ======================== Toast Feedback & iOS Paste Alert ======================== */
+  .ios-toast {
+    position: absolute; top: 62px; left: 50%; transform: translateX(-50%);
+    z-index: 35;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: 999px;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 12.5px; font-weight: 600;
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+    white-space: nowrap;
+    animation: toastIn 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .ios-alert-backdrop {
+    position: absolute; inset: 0; z-index: 40;
+    background: rgba(0, 0, 0, 0.34);
+    backdrop-filter: blur(2px);
+    display: grid; place-items: center; padding: 24px;
+    animation: fadeIn 0.16s ease;
+  }
+  .ios-alert-box {
+    width: 276px; border-radius: 26px;
+    background: var(--alert-bg);
+    backdrop-filter: blur(30px) saturate(180%);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.28), 0 0 0 0.5px rgba(255, 255, 255, 0.25) inset;
+    padding: 20px 16px 14px;
+    text-align: center;
+    animation: alertPop 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .ios-alert-title {
+    font-size: 16px; font-weight: 680; line-height: 1.3;
+    color: var(--ios-label); margin: 0 0 6px;
+  }
+  .ios-alert-msg {
+    font-size: 13px; line-height: 1.42;
+    color: var(--ios-secondary); margin: 0 0 16px;
+  }
+  .ios-alert-actions {
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .ios-alert-btn {
+    height: 44px; border-radius: 999px;
+    font-size: 15px; font-weight: 560;
+    background: var(--alert-btn-bg); color: var(--ios-label);
+    transition: opacity 0.14s ease, transform 0.12s ease;
+  }
+  .ios-alert-btn:active { transform: scale(0.97); opacity: 0.8; }
+  .ios-alert-btn.allow {
+    background: var(--alert-allow-bg); color: var(--alert-allow-text);
+    font-weight: 660;
+  }
+
+  /* Mini Sim Bar under Phone */
+  .sim-bar {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .sim-hint {
+    font-size: 11.5px; color: var(--bar-muted);
+    text-align: center;
+  }
+
+  /* ======================== Right Inspector / Spec Panel ======================== */
+  .spec-panel {
+    background: var(--panel-bg);
+    border-radius: 20px;
+    border: 1px solid var(--bar-border);
+    box-shadow: var(--panel-shadow);
+    padding: 22px 24px;
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .spec-header {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+    border-bottom: 1px solid var(--bar-border);
+    padding-bottom: 14px;
+  }
+  .spec-kicker {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    color: var(--bar-muted); text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .spec-title { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
+  .spec-lead { margin: 6px 0 0; font-size: 13.5px; color: var(--bar-muted); line-height: 1.55; }
+  .rec-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 999px;
+    background: var(--tint-green-soft); color: var(--tint-green);
+    font-size: 11.5px; font-weight: 650; white-space: nowrap;
+  }
+
+  .spec-section h4 {
+    margin: 0 0 8px; font-size: 12.5px; font-weight: 700;
+    color: var(--bar-muted); letter-spacing: 0.02em; text-transform: uppercase;
+  }
+  .spec-bullets {
+    margin: 0; padding: 0; list-style: none;
+    display: flex; flex-direction: column; gap: 7px;
+  }
+  .spec-bullets li {
+    font-size: 13px; line-height: 1.52; color: var(--bar-text);
+    padding-left: 16px; position: relative;
+  }
+  .spec-bullets li::before {
+    content: ""; position: absolute; left: 0; top: 8px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent); opacity: 0.7;
+  }
+
+  .pros-cons {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+  }
+  @media (max-width: 640px) { .pros-cons { grid-template-columns: 1fr; } }
+  .pc-box {
+    border-radius: 13px; padding: 12px 14px;
+    background: var(--bar-surface);
+    border: 1px solid var(--bar-border);
+  }
+  .pc-box h5 {
+    margin: 0 0 7px; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .pc-box.pro h5 { color: var(--tint-green); }
+  .pc-box.con h5 { color: var(--tint-orange); }
+  .pc-box ul {
+    margin: 0; padding-left: 16px;
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 12.5px; color: var(--bar-muted); line-height: 1.48;
+  }
+
+  .ios-tech-callout {
+    border-radius: 13px; padding: 12px 14px;
+    background: var(--tint-blue-soft);
+    border: 1px solid rgba(0, 122, 255, 0.22);
+    font-size: 12.5px; line-height: 1.55; color: var(--bar-text);
+  }
+  .ios-tech-callout b { color: var(--tint-blue); }
+
+  /* Comparison Matrix Table */
+  .matrix-wrap {
+    overflow-x: auto;
+    border-radius: 12px;
+    border: 1px solid var(--bar-border);
+  }
+  .matrix-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 12px;
+  }
+  .matrix-table th, .matrix-table td {
+    padding: 8px 10px; text-align: left;
+    border-bottom: 1px solid var(--bar-border);
+  }
+  .matrix-table th {
+    background: var(--bar-surface);
+    font-weight: 650; color: var(--bar-muted);
+    white-space: nowrap;
+  }
+  .matrix-table tr:last-child td { border-bottom: none; }
+  .matrix-table tr.is-active {
+    background: var(--tint-blue-soft);
+  }
+  .matrix-table td:first-child { font-weight: 650; white-space: nowrap; }
+
+  /* Loading Spinner */
+  .spin {
+    animation: spin 0.75s linear infinite;
+  }
+
+  /* Animations */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulseDot {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.22); opacity: 0.65; }
+  }
+  @keyframes slideFadeIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes floatUpIn {
+    from { opacity: 0; transform: translateY(16px) scale(0.95); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes alertPop {
+    from { opacity: 0; transform: scale(1.07); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translate(-50%, -10px) scale(0.94); }
+    to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  }
+  @keyframes cardHighlight {
+    0% { opacity: 0; transform: scale(0.92) translateY(-6px); box-shadow: 0 0 0 2px var(--tint-blue); }
+    65% { opacity: 1; transform: scale(1.01) translateY(0); box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.35); }
+    100% { opacity: 1; transform: scale(1); box-shadow: var(--ios-card-shadow); }
+  }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- ======================== Top Workbench Controls ======================== -->
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">u</div>
+    <div>
+      <div class="brand-title">iOS 手动读取剪贴板提示 · 设计原型</div>
+      <div class="brand-sub">针对 HomeView.ios.tsx「读取新剪贴板内容」的 4 组交互方案探索</div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <!-- View Mode -->
+    <div class="seg-group" role="group" aria-label="视图模式">
+      <button class="seg-btn active" data-view="focus">交互演示</button>
+      <button class="seg-btn" data-view="compare">四方案并排对比</button>
+    </div>
+
+    <!-- Layout Mode -->
+    <div class="seg-group" role="group" aria-label="列表布局">
+      <button class="seg-btn active" data-layout="grid">网格</button>
+      <button class="seg-btn" data-layout="list">列表</button>
+    </div>
+
+    <!-- Authorization Flow Simulation -->
+    <div class="seg-group" role="group" aria-label="系统授权模式">
+      <button class="seg-btn active" data-auth="alert" title="普通按钮触发，模拟弹出 iOS 允许粘贴确认框">系统弹窗授权</button>
+      <button class="seg-btn" data-auth="pasteControl" title="原生 UIPasteControl，单次点击免弹窗直读">UIPasteControl 直读</button>
+    </div>
+
+    <!-- Baseline Compare Toggle -->
+    <button class="action-chip" id="btnBaseline" title="切换查看当前截图中的原始样式">查看现状</button>
+
+    <!-- Theme Toggle -->
+    <button class="action-chip" id="btnTheme" title="切换浅色 / 深色模式">深色模式</button>
+  </div>
+</header>
+
+<main class="stage">
+  <!-- Proposal Switcher (Focus View) -->
+  <section class="proposal-tabs" id="proposalTabs"></section>
+
+  <!-- Focus Interactive View -->
+  <section class="focus-grid" id="focusView">
+    <div class="phone-column">
+      <div id="focusPhoneMount"></div>
+      <div class="sim-bar">
+        <button class="action-chip primary" data-trigger="text">模拟新文本</button>
+        <button class="action-chip" data-trigger="image">模拟新图片</button>
+        <button class="action-chip" data-trigger="mixed">模拟图文</button>
+        <button class="action-chip" id="btnReset">重置历史</button>
+      </div>
+      <div class="sim-hint" id="simStatusText">提示：可直接滚动手机内列表，测试滚动时各方案的行为；点击提示体验完整授权与入库动效。</div>
+    </div>
+
+    <aside class="spec-panel" id="specPanel"></aside>
+  </section>
+
+  <!-- Side-by-side Compare View -->
+  <section class="compare-grid hidden" id="compareView"></section>
+</main>
+
+<script>
+(() => {
+  /* ======================== Icons (Inline SVG) ======================== */
+  const ICONS = {
+    plus: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+    ellipsis: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="5.5" cy="12" r="1.75"/><circle cx="12" cy="12" r="1.75"/><circle cx="18.5" cy="12" r="1.75"/></svg>`,
+    clipboard: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg>`,
+    clipboardPaste: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H9a1 1 0 0 0-1 1v2c0 .6.4 1 1 1h6c.6 0 1-.4 1-1V3c0-.6-.4-1-1-1Z"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2M16 4h2a2 2 0 0 1 2 2v2"/><path d="M21 14H11"/><path d="m15 10-4 4 4 4"/></svg>`,
+    image: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>`,
+    layers: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg>`,
+    x: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+    check: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`,
+    spinner: `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>`,
+    search: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`,
+    tabClip: `<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="4" width="11" height="14" rx="2.5" fill="currentColor" fill-opacity="0.14"/><path d="M15 4V3a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v1"/><path d="M8 7H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2"/></svg>`,
+    tabDevices: `<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="13" height="10" rx="2"/><path d="M1 18h14"/><rect x="16.5" y="9" width="5" height="9" rx="1.2"/></svg>`,
+    tabSettings: `<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.25.4-1.51 1Z"/></svg>`,
+    file: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`,
+    textIcon: `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V5h16v2M12 5v14M9 19h6"/></svg>`,
+    lockOpen: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>`,
+  };
+
+  /* ======================== Proposal Specifications ======================== */
+  const PROPOSALS = {
+    A: {
+      code: '方案 A',
+      tag: '推荐 · 清晰稳健',
+      recommended: true,
+      name: '顶部轻量化动作横幅',
+      shortDesc: '大标题下方独立圆角卡片，带内容类型徽标、主按钮与忽略 ×',
+      lead: '将目前悬空的纯文字升级为标准 iOS 分组圆角横幅卡片。一眼明确“有新内容、为何需要点、点哪里、不想读怎么关”，与网格/列表和 iPad 大屏天然兼容。',
+      highlights: [
+        '利用 iOS 无弹窗探测信号（hasStrings / hasImages），用蓝/绿/紫轻色块直观区分新文本、新图片或图文。',
+        '右侧放单色墨胶囊「读取」按钮（也可直接替换为原生 UIPasteControl 实现免弹窗直读），并补齐现存 store 中已实现但未暴露的 dismissClipboardHint() 关闭钮。',
+        '整张横幅均可点击，符合 44pt+ 最小触控热区，随大标题自然滚动，零遮挡历史卡片。',
+      ],
+      pros: [
+        '可发现性极高，新老用户零学习成本',
+        '自带隐私忽略入口（复制密码时一键关掉）',
+        '按钮位完美兼容原生 UIPasteControl',
+        '网格 / 列表 / iPad 宽屏零改造直接复用',
+      ],
+      cons: [
+        '出现时会把卡片网格整体下推约 68pt（需加高度平滑过渡）',
+        '位于屏幕上半区，大屏 iPhone 单手大拇指够起来略远',
+      ],
+      techNote: '在 HomeView.ios.tsx 中替换第 90 行 clipboardAction 即可落地；gridHeader 高度从 +44 调整为 +74，配合 Reanimated Layout 动画消除高度跳变。',
+      scores: { discover: '★★★★★', reach: '★★★☆☆', privacy: '★★★★★', noShift: '★★★☆☆', pasteCtrl: '原生兼容', cost: '低' },
+    },
+    B: {
+      code: '方案 B',
+      tag: 'iOS 26 旗舰手感',
+      recommended: false,
+      name: '悬浮液态玻璃胶囊',
+      shortDesc: '浮于底部 Liquid Glass 标签栏正上方，大拇指直达且列表零跳动',
+      lead: '沿用 iOS 26 悬浮玻璃语言，将「读取新剪贴板」做成一个紧凑的浮动胶囊，悬停在底部标签栏上方 12pt 处——既不挤占顶部标题空间，又能随滚动常驻拇指热区。',
+      highlights: [
+        '与底部 Liquid Glass 导航胶囊、搜索圆钮材质完全同源，视觉一体感最强。',
+        '列表内容零位移（Zero Layout Shift）：检测到新剪贴板时胶囊从底部柔和弹起，读取后丝滑收回。',
+        '哪怕用户正在往下翻找旧记录，也能随时单手点一下把刚复制的内容收进历史。',
+      ],
+      pros: [
+        '单手拇指操作最顺手（大屏 iPhone 优势明显）',
+        '完全不引起卡片网格上下跳动',
+        '与 iOS 26 Liquid Glass 底部栏美学高度统一',
+        '滚动页面时依然常驻可见',
+      ],
+      cons: [
+        '叠加在底部栏上方，可能轻微遮挡最底行卡片的一角',
+        '在搜索/多选/详情沉浸态需要显式隐藏（已有 immersive 标志）',
+        '若改用原生 UIPasteControl，自定义双行副标题空间较受限',
+      ],
+      techNote: '作为 HomeCompactView 外的浮层锚定在 tabBarClearance 上方，仅在 !immersive 时渲染；借助现有 GlassContainer(shape="capsule") 即可实现原生液态玻璃质感。',
+      scores: { discover: '★★★★☆', reach: '★★★★★', privacy: '★★★★☆', noShift: '★★★★★', pasteCtrl: '需简化文案', cost: '中' },
+    },
+    C: {
+      code: '方案 C',
+      tag: '最强隐私隐喻',
+      recommended: false,
+      name: '网格首位「待解锁」卡片',
+      shortDesc: '直接占位在第一格，点击授权后原地变为真实剪贴板卡片',
+      lead: '把未授权的新剪贴板直接具象成历史流里的第 1 张「待读取虚线卡片」。它诚实地传达“我们感知到变化但尚未偷看内容，由你亲手点开”，并在授权后原地 morph 为真实卡片。',
+      highlights: [
+        '空间连续性拉满：用户点击的位置，就是新内容即将落位的位置，视觉焦点不跳变。',
+        '大标题区域保持绝对纯净，无任何额外横幅或浮层打扰。',
+        '虚线边框 + 柔和类型光晕 + 「待授权」标签，与已完成同步的实线卡片形成清晰层次对比。',
+      ],
+      pros: [
+        '空间连贯度最高，原地变成真实内容卡片',
+        '强化“未授权绝不读取”的隐私透明感',
+        '顶部大标题与底部导航都零额外视觉负担',
+        '底部胶囊按钮位天然适配 UIPasteControl',
+      ],
+      cons: [
+        '双列网格下会把原有卡片整体右移一格（视觉重排感较明显）',
+        '占位面积较大（占 1/2 屏宽 × 186pt）',
+        '需要给 Grid 和 List 分别维护一套 pending item 渲染分支',
+      ],
+      techNote: '在 useHomeBaseItems 或集合数据源头部注入一个虚拟 pendingClipboard 哨兵项（列表模式下退化为单行虚线卡片），授权成功后用真实历史项替换。',
+      scores: { discover: '★★★★★', reach: '★★★☆☆', privacy: '★★★★★', noShift: '★★☆☆☆', pasteCtrl: '原生兼容', cost: '中高' },
+    },
+    D: {
+      code: '方案 D',
+      tag: '极简零增高',
+      recommended: false,
+      name: '大标题同行右侧胶囊',
+      shortDesc: '利用「剪贴板」右侧空白区，零新增垂直高度，最克制的进化',
+      lead: '观察当前截图，「剪贴板」大标题右侧有超过一半的留白。把提示收束成一枚精悍的实色/液态胶囊放进同一行，完全不增加任何垂直高度，同时把原本难分辨的纯文字升级为明确可点的按钮。',
+      highlights: [
+        '0pt 额外垂直高度：历史卡片网格的起始位置与无提示时完全一致，首屏展示卡片数零损失。',
+        '单色墨胶囊（或系统蓝 UIPasteControl）搭配类型呼吸小圆点，与左侧 32pt 粗体大标题形成利落的左右平衡。',
+        '紧贴胶囊放一个轻柔圆形 × 按钮，随时静默忽略本次剪贴板变动。',
+      ],
+      pros: [
+        '零垂直空间占用，卡片首屏密度零折损',
+        '改动范围最小，视觉克制、无“通知横幅”压迫感',
+        '最接近系统原生 UIPasteControl 的尺寸比例',
+        '不改变 gridHeader 高度，无任何布局抖动',
+      ],
+      cons: [
+        '文案长度受限于同行右侧剩余宽度（需留意俄语/葡语多语言截断）',
+        '缺少副标题空间，无法顺带解释“未开启自动读取”原因',
+        '滚动后随大标题一起离开视口',
+      ],
+      techNote: '只需修改 HomeLargeTitle 接受右侧 accessory 插槽，无需改变 HOME_LARGE_TITLE_HEIGHT（始终保持 60pt）；多语言文案建议精简为“读取剪贴板”/“Paste”。',
+      scores: { discover: '★★★★☆', reach: '★★★☆☆', privacy: '★★★★☆', noShift: '★★★★★', pasteCtrl: '最契合', cost: '极低' },
+    },
+  };
+
+  /* ======================== Sample Data (Mirrors User Screenshot) ======================== */
+  const INITIAL_ITEMS = [
+    {
+      id: 'item-1',
+      kind: 'text',
+      time: '25 秒前',
+      text: '远端 Android x86_64 已通过全部三组原生用例。工件确认首次设置、历史写入与搜索、设备页和诊断均通过。现在只剩 iOS 原生作业。',
+      latest: true,
+    },
+    {
+      id: 'item-2',
+      kind: 'image',
+      time: '21分钟前',
+      art: 'keyboard',
+      label: '机械键盘实拍图',
+    },
+    {
+      id: 'item-3',
+      kind: 'text',
+      time: '21分钟前',
+      text: '打乙肝疫苗也是找陈医生吗？',
+      shortBold: true,
+    },
+    {
+      id: 'item-4',
+      kind: 'file',
+      time: '1小时前',
+      ext: 'JPEG',
+      name: 'shared-file',
+      size: '496.0 KB',
+    },
+    {
+      id: 'item-5',
+      kind: 'image',
+      time: '1小时前',
+      art: 'sunset',
+      label: '傍晚云霞照片',
+    },
+    {
+      id: 'item-6',
+      kind: 'image',
+      time: '1小时前',
+      art: 'screenshot',
+      label: 'iOS 历史页截图',
+    },
+  ];
+
+  const PENDING_PRESETS = {
+    text: {
+      kind: 'text',
+      sourceApp: 'Safari 浏览器',
+      shortKind: '新文本',
+      bannerTitle: '剪贴板有新文本',
+      bannerSub: '未开启自动读取 · 轻点授权并同步',
+      pillLabel: '读取新文本',
+      pillMeta: '轻点授权同步',
+      cardTitle: '检测到新文本',
+      cardSub: '尚未读取内容，点击以授权写入历史',
+      inlineLabel: '读取新文本',
+      commitItem: {
+        kind: 'text',
+        time: '刚刚',
+        text: 'https://developer.apple.com/documentation/uikit/uipastecontrol — iOS 剪贴板主动授权控件设计规范与最佳实践',
+      },
+    },
+    image: {
+      kind: 'image',
+      sourceApp: '照片',
+      shortKind: '新图片',
+      bannerTitle: '剪贴板有新图片',
+      bannerSub: '未开启自动读取 · 轻点授权并同步',
+      pillLabel: '读取新图片',
+      pillMeta: '轻点授权同步',
+      cardTitle: '检测到新图片',
+      cardSub: '尚未读取图片，点击以授权写入历史',
+      inlineLabel: '读取新图片',
+      commitItem: {
+        kind: 'image',
+        time: '刚刚',
+        art: 'sunset',
+        label: '刚复制的高清截图',
+      },
+    },
+    mixed: {
+      kind: 'mixed',
+      sourceApp: '备忘录',
+      shortKind: '新内容',
+      bannerTitle: '剪贴板有新内容',
+      bannerSub: '包含文本与图片 · 轻点授权读取',
+      pillLabel: '读取新剪贴板',
+      pillMeta: '文本与图片 · 点击授权',
+      cardTitle: '检测到图文内容',
+      cardSub: '尚未读取内容，点击以授权写入历史',
+      inlineLabel: '读取新内容',
+      commitItem: {
+        kind: 'text',
+        time: '刚刚',
+        text: '周五设计评审待确认：1) 剪贴板手动授权入口形态 2) 是否接入原生 UIPasteControl 免弹窗直读',
+      },
+    },
+  };
+
+  /* ======================== App State ======================== */
+  const state = {
+    view: 'focus', // 'focus' | 'compare'
+    proposal: 'A', // 'A' | 'B' | 'C' | 'D'
+    showBaseline: false,
+    layout: 'grid', // 'grid' | 'list'
+    authMode: 'alert', // 'alert' | 'pasteControl'
+    theme: 'light', // 'light' | 'dark'
+    pendingKind: 'text', // 'text' | 'image' | 'mixed' | null
+    readingTarget: null, // proposalKey currently loading
+    alertTarget: null, // { proposalKey, preset } when iOS system alert is open
+    toast: null, // { proposalKey, text }
+    itemsByPhone: {
+      focus: cloneInitial(),
+      A: cloneInitial(),
+      B: cloneInitial(),
+      C: cloneInitial(),
+      D: cloneInitial(),
+    },
+    pendingByPhone: {
+      focus: 'text',
+      A: 'text',
+      B: 'text',
+      C: 'text',
+      D: 'text',
+    },
+    seq: 10,
+  };
+
+  function cloneInitial() {
+    return INITIAL_ITEMS.map((item) => ({ ...item }));
+  }
+
+  /* ======================== Rendering Helpers ======================== */
+  function kindIcon(kind) {
+    if (kind === 'image') return ICONS.image;
+    if (kind === 'mixed') return ICONS.layers;
+    return ICONS.clipboard;
+  }
+
+  function renderCardArt(art) {
+    if (art === 'keyboard') {
+      return `
+        <div class="img-art art-keyboard">
+          <div class="kb-cable"></div>
+          <div class="kb-keys">
+            <div class="kb-key">Y</div><div class="kb-key">U</div><div class="kb-key">I</div><div class="kb-key">O</div>
+            <div class="kb-key">H</div><div class="kb-key">J</div><div class="kb-key">K</div><div class="kb-key">L</div>
+            <div class="kb-key">N</div><div class="kb-key">M</div><div class="kb-key">,</div><div class="kb-key">.</div>
+          </div>
+        </div>
+      `;
+    }
+    if (art === 'sunset') {
+      return `<div class="img-art art-photo-sunset"></div>`;
+    }
+    return `
+      <div class="img-art art-screenshot">
+        <div class="art-screenshot-inner">
+          <div class="art-swatch" style="background:linear-gradient(135deg,#ff3b30,#ff9500)"></div>
+          <div class="art-swatch" style="background:linear-gradient(135deg,#007aff,#34c759)"></div>
+          <div class="art-swatch" style="background:linear-gradient(135deg,#af52de,#5ac8fa)"></div>
+          <div class="art-swatch" style="background:#f2f2f7"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderGridCard(item) {
+    const newCls = item.isNew ? ' newly-added' : '';
+    if (item.kind === 'image') {
+      return `
+        <article class="clip-card is-image${newCls}">
+          <div class="clip-card-head">
+            <span>图片</span>
+            <span>${item.time}</span>
+          </div>
+          ${renderCardArt(item.art)}
+          ${item.latest ? '<span class="clip-latest-dot" style="background:#fff;box-shadow:0 1px 4px rgba(0,0,0,0.4)"></span>' : ''}
+        </article>
+      `;
+    }
+    if (item.kind === 'file') {
+      return `
+        <article class="clip-card${newCls}">
+          <div class="clip-card-head">
+            <span>文件</span>
+            <span>${item.time}</span>
+          </div>
+          <div class="file-doc-mock">
+            <span class="file-badge">${item.ext}</span>
+            <span class="file-name">${item.name}</span>
+          </div>
+          <div class="file-size">${item.size}</div>
+        </article>
+      `;
+    }
+    return `
+      <article class="clip-card${newCls}">
+        <div class="clip-card-head">
+          <span>文本</span>
+          <span>${item.time}</span>
+        </div>
+        <div class="clip-card-body${item.shortBold ? ' short-bold' : ''}">${escapeHtml(item.text)}</div>
+        ${item.latest ? '<span class="clip-latest-dot"></span>' : ''}
+      </article>
+    `;
+  }
+
+  function renderListRow(item) {
+    const newCls = item.isNew ? ' newly-added' : '';
+    let thumb = '';
+    let title = '';
+    let kindLabel = '文本';
+    if (item.kind === 'image') {
+      kindLabel = '图片';
+      title = item.label || '剪贴板图片';
+      thumb = `<div class="clip-list-thumb" style="background:var(--tint-green-soft);color:var(--tint-green)">${ICONS.image}</div>`;
+    } else if (item.kind === 'file') {
+      kindLabel = `文件 · ${item.size}`;
+      title = `${item.name}.${item.ext.toLowerCase()}`;
+      thumb = `<div class="clip-list-thumb" style="background:var(--tint-orange-soft);color:var(--tint-orange)">${ICONS.file}</div>`;
+    } else {
+      title = item.text;
+      thumb = `<div class="clip-list-thumb" style="background:var(--tint-blue-soft);color:var(--tint-blue)">${ICONS.textIcon}</div>`;
+    }
+    return `
+      <article class="clip-list-row${newCls}">
+        ${thumb}
+        <div class="clip-list-content">
+          <div class="clip-list-title">${escapeHtml(title)}</div>
+          <div class="clip-list-meta">
+            <span>${kindLabel}</span>
+            <span>·</span>
+            <span>${item.time}</span>
+            ${item.latest ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block"></span>' : ''}
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  /* ======================== Prompt Renderers per Proposal ======================== */
+  function renderPromptSlot(proposalKey, phoneId, slot) {
+    const pendingKey = state.pendingByPhone[phoneId];
+    if (!pendingKey) return '';
+    const preset = PENDING_PRESETS[pendingKey];
+    const isReading = state.readingTarget === phoneId;
+    const isPasteCtrl = state.authMode === 'pasteControl';
+
+    // Baseline (Current Screenshot)
+    if (proposalKey === 'BASELINE' && slot === 'belowTitle') {
+      return `
+        <button class="baseline-read-btn" data-action="read" data-phone="${phoneId}">
+          ${isReading ? '正在读取…' : '读取新剪贴板内容'}
+        </button>
+      `;
+    }
+
+    // Proposal A: Inline Action Banner
+    if (proposalKey === 'A' && slot === 'belowTitle') {
+      return `
+        <div class="prop-a-wrap">
+          <div class="prop-a-card" data-action="read" data-phone="${phoneId}" role="button" tabindex="0">
+            <div class="prop-a-icon kind-${preset.kind}">
+              ${kindIcon(preset.kind)}
+              <span class="prop-a-dot"></span>
+            </div>
+            <div class="prop-a-body">
+              <div class="prop-a-title">${preset.bannerTitle}</div>
+              <div class="prop-a-sub">${isPasteCtrl ? '点击右侧粘贴按钮，免弹窗直接同步' : preset.bannerSub}</div>
+            </div>
+            <div class="prop-a-actions">
+              <button class="prop-a-cta${isPasteCtrl ? ' paste-control' : ''}" data-action="read" data-phone="${phoneId}">
+                ${isReading ? ICONS.spinner : (isPasteCtrl ? ICONS.clipboardPaste : '')}
+                <span>${isReading ? '读取中' : (isPasteCtrl ? '粘贴' : '读取')}</span>
+              </button>
+              <button class="prop-dismiss-btn" data-action="dismiss" data-phone="${phoneId}" title="忽略本次变化" aria-label="忽略">
+                ${ICONS.x}
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Proposal B: Floating Liquid Glass Pill above Bottom Tab Bar
+    if (proposalKey === 'B' && slot === 'floatingBottom') {
+      return `
+        <div class="prop-b-anchor">
+          <div class="prop-b-pill">
+            <button class="prop-b-main" data-action="read" data-phone="${phoneId}">
+              <span class="prop-b-badge${isPasteCtrl ? ' paste-control' : ''}">
+                ${isReading ? ICONS.spinner : (isPasteCtrl ? ICONS.clipboardPaste : kindIcon(preset.kind))}
+              </span>
+              <span class="prop-b-text-wrap">
+                <span class="prop-b-label">${isReading ? '正在授权读取…' : (isPasteCtrl ? `粘贴${preset.shortKind}` : preset.pillLabel)}</span>
+                <span class="prop-b-meta">${isPasteCtrl ? 'UIPasteControl · 一键直读' : preset.pillMeta}</span>
+              </span>
+            </button>
+            <span class="prop-b-divider"></span>
+            <button class="prop-b-close" data-action="dismiss" data-phone="${phoneId}" title="忽略本次变化" aria-label="忽略">
+              ${ICONS.x}
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // Proposal C: Inline Pending Card (Slot #1 in Grid / List)
+    if (proposalKey === 'C' && slot === 'firstItem') {
+      if (state.layout === 'list') {
+        return `
+          <div class="prop-c-list kind-${preset.kind}" data-action="read" data-phone="${phoneId}" role="button">
+            <div class="prop-c-icon">${kindIcon(preset.kind)}</div>
+            <div class="prop-a-body">
+              <div class="prop-a-title">
+                <span>${preset.cardTitle}</span>
+                <span class="prop-c-tag"><span class="prop-c-tag-dot"></span>待授权</span>
+              </div>
+              <div class="prop-a-sub">${preset.cardSub}</div>
+            </div>
+            <div class="prop-a-actions">
+              <button class="prop-a-cta${isPasteCtrl ? ' paste-control' : ''}" data-action="read" data-phone="${phoneId}">
+                ${isReading ? ICONS.spinner : (isPasteCtrl ? ICONS.clipboardPaste : ICONS.lockOpen)}
+                <span>${isReading ? '读取中' : (isPasteCtrl ? '粘贴' : '读取')}</span>
+              </button>
+              <button class="prop-dismiss-btn" data-action="dismiss" data-phone="${phoneId}" title="忽略">${ICONS.x}</button>
+            </div>
+          </div>
+        `;
+      }
+      return `
+        <article class="prop-c-card kind-${preset.kind}" data-action="read" data-phone="${phoneId}" role="button">
+          <div class="prop-c-head">
+            <span class="prop-c-tag">
+              <span class="prop-c-tag-dot"></span>
+              待授权
+            </span>
+            <button class="prop-dismiss-btn" data-action="dismiss" data-phone="${phoneId}" title="忽略" style="width:22px;height:22px">
+              ${ICONS.x}
+            </button>
+          </div>
+          <div class="prop-c-center">
+            <div class="prop-c-icon">${kindIcon(preset.kind)}</div>
+            <div class="prop-c-title">${preset.cardTitle}</div>
+            <div class="prop-c-sub">${preset.cardSub}</div>
+          </div>
+          <button class="prop-c-btn${isPasteCtrl ? ' paste-control' : ''}" data-action="read" data-phone="${phoneId}">
+            ${isReading ? ICONS.spinner : (isPasteCtrl ? ICONS.clipboardPaste : ICONS.lockOpen)}
+            <span>${isReading ? '读取中…' : (isPasteCtrl ? '粘贴读取' : '允许读取')}</span>
+          </button>
+        </article>
+      `;
+    }
+
+    // Proposal D: Inline Capsule beside Large Title
+    if (proposalKey === 'D' && slot === 'titleRight') {
+      return `
+        <div class="prop-d-group">
+          <button class="prop-d-pill kind-${preset.kind}${isPasteCtrl ? ' paste-control' : ''}" data-action="read" data-phone="${phoneId}">
+            ${isReading ? ICONS.spinner : (isPasteCtrl ? ICONS.clipboardPaste : '<span class="prop-d-dot"></span>')}
+            <span>${isReading ? '读取中' : (isPasteCtrl ? `粘贴${preset.shortKind}` : preset.inlineLabel)}</span>
+          </button>
+          <button class="prop-d-close" data-action="dismiss" data-phone="${phoneId}" title="忽略本次变化" aria-label="忽略">
+            ${ICONS.x}
+          </button>
+        </div>
+      `;
+    }
+
+    return '';
+  }
+
+  /* ======================== Full iPhone Screen Renderer ======================== */
+  function renderPhone(proposalKey, phoneId) {
+    const items = state.itemsByPhone[phoneId];
+    const toastHtml = state.toast && state.toast.phoneId === phoneId
+      ? `<div class="ios-toast">${ICONS.check}<span>${escapeHtml(state.toast.text)}</span></div>`
+      : '';
+
+    let alertHtml = '';
+    if (state.alertTarget && state.alertTarget.phoneId === phoneId) {
+      const src = state.alertTarget.preset.sourceApp;
+      alertHtml = `
+        <div class="ios-alert-backdrop">
+          <div class="ios-alert-box" role="dialog" aria-modal="true">
+            <h3 class="ios-alert-title">“unic”想要从“${src}”粘贴</h3>
+            <p class="ios-alert-msg">是否允许“unic”粘贴来自“${src}”的内容？</p>
+            <div class="ios-alert-actions">
+              <button class="ios-alert-btn allow" data-action="alert-allow" data-phone="${phoneId}">允许粘贴</button>
+              <button class="ios-alert-btn" data-action="alert-deny" data-phone="${phoneId}">不允许粘贴</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const collectionHtml = state.layout === 'grid'
+      ? `
+        <div class="history-grid">
+          ${renderPromptSlot(proposalKey, phoneId, 'firstItem')}
+          ${items.map(renderGridCard).join('')}
+        </div>
+      `
+      : `
+        <div class="history-list">
+          ${renderPromptSlot(proposalKey, phoneId, 'firstItem')}
+          ${items.map(renderListRow).join('')}
+        </div>
+      `;
+
+    return `
+      <div class="phone-shell">
+        <div class="phone-screen">
+          <div class="ios-top-fade"></div>
+
+          <!-- Status Bar -->
+          <div class="ios-status-bar">
+            <div class="ios-time">10:05</div>
+            <div class="dynamic-island"></div>
+            <div class="ios-status-icons">
+              <svg width="16" height="11" viewBox="0 0 18 12" fill="currentColor">
+                <rect x="0" y="7" width="3" height="5" rx="1"/>
+                <rect x="4.5" y="5" width="3" height="7" rx="1"/>
+                <rect x="9" y="2.5" width="3" height="9.5" rx="1"/>
+                <rect x="13.5" y="0" width="3" height="12" rx="1"/>
+              </svg>
+              <span>5G</span>
+              <span class="battery-pill">55</span>
+            </div>
+          </div>
+
+          <!-- Top Floating Glass Pill (+ / ...) -->
+          <div class="ios-top-bar">
+            <div class="glass-pill-actions">
+              <button class="glass-icon-btn" title="添加内容" aria-label="添加">${ICONS.plus}</button>
+              <button class="glass-icon-btn" title="更多操作" aria-label="更多">${ICONS.ellipsis}</button>
+            </div>
+          </div>
+
+          ${toastHtml}
+
+          <!-- Scrollable Content -->
+          <div class="ios-scroll">
+            <div class="ios-large-title-row">
+              <h1 class="ios-large-title">剪贴板</h1>
+              ${renderPromptSlot(proposalKey, phoneId, 'titleRight')}
+            </div>
+
+            ${renderPromptSlot(proposalKey, phoneId, 'belowTitle')}
+
+            ${collectionHtml}
+          </div>
+
+          <!-- Proposal B Floating Pill -->
+          ${renderPromptSlot(proposalKey, phoneId, 'floatingBottom')}
+
+          <!-- Bottom iOS 26 Liquid Glass Tab Bar -->
+          <div class="ios-bottom-dock">
+            <nav class="ios-tab-capsule" aria-label="主导航">
+              <div class="ios-tab-item active">
+                ${ICONS.tabClip}
+                <span>剪贴板</span>
+              </div>
+              <div class="ios-tab-item">
+                ${ICONS.tabDevices}
+                <span>设备</span>
+              </div>
+              <div class="ios-tab-item">
+                ${ICONS.tabSettings}
+                <span>设置</span>
+              </div>
+            </nav>
+            <div class="ios-search-circle" aria-label="搜索">
+              ${ICONS.search}
+            </div>
+          </div>
+
+          <div class="ios-home-indicator"></div>
+
+          ${alertHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  /* ======================== Spec Panel Renderer ======================== */
+  function renderSpecPanel() {
+    const panel = document.getElementById('specPanel');
+    if (state.showBaseline) {
+      panel.innerHTML = `
+        <div class="spec-header">
+          <div>
+            <div class="spec-kicker">现状对照 · Baseline (HomeView.ios.tsx:90-99)</div>
+            <h2 class="spec-title">当前实现：大标题下方纯文字</h2>
+            <p class="spec-lead">目前仅用一个无背景、无图标、无关闭按钮的 Pressable + Text 显示「读取新剪贴板内容」，用户容易误认为静态说明文字，且复制敏感内容时无法忽略。</p>
+          </div>
+        </div>
+        <div class="spec-section">
+          <h4>当前痛点诊断</h4>
+          <ul class="spec-bullets">
+            <li><b>缺少可点击视觉暗示（Affordance）</b>：纯黑字悬浮在灰底上，与下方卡片层级割裂。</li>
+            <li><b>未利用已有的无弹窗类型探测</b>：原生层已传出 <code>hasStrings</code> / <code>hasImages</code>，但 UI 未展示内容类型。</li>
+            <li><b>缺少忽略入口</b>：store 里已有 <code>dismissClipboardHint()</code>，但界面没有关闭按钮，用户复制密码后无法消掉提示。</li>
+            <li><b>未区分授权方式</b>：点击后若弹出系统「允许粘贴」框，用户需要额外理解为何要点两次。</li>
+          </ul>
+        </div>
+        <div class="ios-tech-callout">
+          <b>点击顶部任意方案卡片（A / B / C / D）或取消「查看现状」</b>，即可交互体验 4 组完整优化方案。
+        </div>
+      `;
+      return;
+    }
+
+    const p = PROPOSALS[state.proposal];
+    const rows = ['A', 'B', 'C', 'D'].map((k) => {
+      const item = PROPOSALS[k];
+      return `
+        <tr class="${k === state.proposal ? 'is-active' : ''}" data-pick-proposal="${k}" style="cursor:pointer">
+          <td>${item.code} · ${item.name.slice(0, 6)}</td>
+          <td>${item.scores.discover}</td>
+          <td>${item.scores.reach}</td>
+          <td>${item.scores.noShift}</td>
+          <td>${item.scores.pasteCtrl}</td>
+          <td>${item.scores.cost}</td>
+        </tr>
+      `;
+    }).join('');
+
+    panel.innerHTML = `
+      <div class="spec-header">
+        <div>
+          <div class="spec-kicker">${p.code} · ${p.tag}</div>
+          <h2 class="spec-title">${p.name}</h2>
+          <p class="spec-lead">${p.lead}</p>
+        </div>
+        ${p.recommended ? '<span class="rec-badge">综合推荐</span>' : ''}
+      </div>
+
+      <div class="spec-section">
+        <h4>核心设计要点</h4>
+        <ul class="spec-bullets">
+          ${p.highlights.map((h) => `<li>${h}</li>`).join('')}
+        </ul>
+      </div>
+
+      <div class="pros-cons">
+        <div class="pc-box pro">
+          <h5>优势</h5>
+          <ul>${p.pros.map((x) => `<li>${x}</li>`).join('')}</ul>
+        </div>
+        <div class="pc-box con">
+          <h5>权衡点</h5>
+          <ul>${p.cons.map((x) => `<li>${x}</li>`).join('')}</ul>
+        </div>
+      </div>
+
+      <div class="ios-tech-callout">
+        <b>iOS 授权实现补充（顶部可切换体验）：</b>
+        当使用普通按钮调用 <code>readSystemClipboardAndCommit()</code> 时，若用户未在系统设置允许粘贴，会弹出系统确认框；
+        若将主操作按钮替换为系统原生 <code>UIPasteControl</code> / SwiftUI <code>PasteButton</code>，用户<b>单次点击即完成系统授权、零弹窗直读</b>。
+        <div style="margin-top:6px;opacity:0.88">${p.techNote}</div>
+      </div>
+
+      <div class="spec-section">
+        <h4>四方案横向对比（点击行快速切换）</h4>
+        <div class="matrix-wrap">
+          <table class="matrix-table">
+            <thead>
+              <tr>
+                <th>方案</th>
+                <th>可发现性</th>
+                <th>单手可达</th>
+                <th>列表零抖动</th>
+                <th>UIPasteControl</th>
+                <th>改动成本</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  /* ======================== Render All ======================== */
+  function render() {
+    document.documentElement.setAttribute('data-theme', state.theme);
+
+    // Update topbar buttons
+    document.querySelectorAll('[data-view]').forEach((el) =>
+      el.classList.toggle('active', el.dataset.view === state.view)
+    );
+    document.querySelectorAll('[data-layout]').forEach((el) =>
+      el.classList.toggle('active', el.dataset.layout === state.layout)
+    );
+    document.querySelectorAll('[data-auth]').forEach((el) =>
+      el.classList.toggle('active', el.dataset.auth === state.authMode)
+    );
+    const btnBaseline = document.getElementById('btnBaseline');
+    btnBaseline.classList.toggle('active-warn', state.showBaseline);
+    btnBaseline.textContent = state.showBaseline ? '退出当前现状' : '查看现状';
+
+    const btnTheme = document.getElementById('btnTheme');
+    btnTheme.textContent = state.theme === 'dark' ? '浅色模式' : '深色模式';
+
+    // Proposal Tabs
+    const tabsEl = document.getElementById('proposalTabs');
+    tabsEl.classList.toggle('hidden', state.view !== 'focus');
+    tabsEl.innerHTML = ['A', 'B', 'C', 'D'].map((key) => {
+      const p = PROPOSALS[key];
+      const active = !state.showBaseline && state.proposal === key;
+      return `
+        <button class="proposal-tab${active ? ' active' : ''}" data-pick-proposal="${key}">
+          <div class="ptab-top">
+            <span class="ptab-code">${p.code}</span>
+            <span class="ptab-tag">${p.tag}</span>
+          </div>
+          <div class="ptab-name">${p.name}</div>
+          <div class="ptab-desc">${p.shortDesc}</div>
+        </button>
+      `;
+    }).join('');
+
+    // Views
+    const focusView = document.getElementById('focusView');
+    const compareView = document.getElementById('compareView');
+
+    if (state.view === 'focus') {
+      focusView.classList.remove('hidden');
+      compareView.classList.add('hidden');
+      const activeKey = state.showBaseline ? 'BASELINE' : state.proposal;
+      document.getElementById('focusPhoneMount').innerHTML = renderPhone(activeKey, 'focus');
+      renderSpecPanel();
+    } else {
+      focusView.classList.add('hidden');
+      compareView.classList.remove('hidden');
+      compareView.innerHTML = ['A', 'B', 'C', 'D'].map((key) => {
+        const p = PROPOSALS[key];
+        return `
+          <div class="compare-col">
+            <div class="compare-card-head">
+              <div class="row">
+                <h3>${p.code} · ${p.name}</h3>
+                <button class="action-chip" data-focus-proposal="${key}" style="padding:3px 9px;font-size:11px">放大演示</button>
+              </div>
+              <p>${p.shortDesc}</p>
+            </div>
+            <div class="compare-phone-wrap">
+              ${renderPhone(key, key)}
+            </div>
+            <div class="sim-bar">
+              <button class="action-chip" data-trigger-phone="${key}" data-kind="text" style="font-size:11px;padding:4px 9px">触发文本</button>
+              <button class="action-chip" data-trigger-phone="${key}" data-kind="image" style="font-size:11px;padding:4px 9px">触发图片</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  /* ======================== Interactive Actions ======================== */
+  function startReadFlow(phoneId) {
+    const pendingKey = state.pendingByPhone[phoneId];
+    if (!pendingKey || state.readingTarget === phoneId) return;
+    const preset = PENDING_PRESETS[pendingKey];
+
+    if (state.authMode === 'alert') {
+      state.alertTarget = { phoneId, preset };
+      render();
+      return;
+    }
+    completeRead(phoneId, preset);
+  }
+
+  function completeRead(phoneId, preset) {
+    state.alertTarget = null;
+    state.readingTarget = phoneId;
+    render();
+
+    setTimeout(() => {
+      state.readingTarget = null;
+      state.pendingByPhone[phoneId] = null;
+      const list = state.itemsByPhone[phoneId].map((x) => ({ ...x, latest: false, isNew: false }));
+      state.seq += 1;
+      list.unshift({
+        id: `item-${state.seq}`,
+        ...preset.commitItem,
+        latest: true,
+        isNew: true,
+      });
+      state.itemsByPhone[phoneId] = list;
+      showToast(phoneId, `已读取${preset.shortKind}并同步`);
+      render();
+    }, 340);
+  }
+
+  function dismissPrompt(phoneId) {
+    state.alertTarget = null;
+    state.pendingByPhone[phoneId] = null;
+    showToast(phoneId, '已忽略本次剪贴板变动');
+    render();
+  }
+
+  let toastTimer = null;
+  function showToast(phoneId, text) {
+    clearTimeout(toastTimer);
+    state.toast = { phoneId, text };
+    toastTimer = setTimeout(() => {
+      if (state.toast && state.toast.phoneId === phoneId) {
+        state.toast = null;
+        render();
+      }
+    }, 2000);
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  /* ======================== Event Delegation ======================== */
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button, [data-action], [data-pick-proposal]');
+    if (!btn) return;
+
+    // View mode
+    if (btn.dataset.view) {
+      state.view = btn.dataset.view;
+      render();
+      return;
+    }
+
+    // Layout mode
+    if (btn.dataset.layout) {
+      state.layout = btn.dataset.layout;
+      render();
+      return;
+    }
+
+    // Auth mode
+    if (btn.dataset.auth) {
+      state.authMode = btn.dataset.auth;
+      state.alertTarget = null;
+      render();
+      return;
+    }
+
+    // Pick proposal
+    if (btn.dataset.pickProposal) {
+      state.proposal = btn.dataset.pickProposal;
+      state.showBaseline = false;
+      render();
+      return;
+    }
+
+    // Focus from compare view
+    if (btn.dataset.focusProposal) {
+      state.proposal = btn.dataset.focusProposal;
+      state.showBaseline = false;
+      state.view = 'focus';
+      render();
+      return;
+    }
+
+    // Baseline toggle
+    if (btn.id === 'btnBaseline') {
+      state.showBaseline = !state.showBaseline;
+      if (state.showBaseline) state.view = 'focus';
+      render();
+      return;
+    }
+
+    // Theme toggle
+    if (btn.id === 'btnTheme') {
+      state.theme = state.theme === 'light' ? 'dark' : 'light';
+      render();
+      return;
+    }
+
+    // Trigger preset in focus phone (and all compare phones)
+    if (btn.dataset.trigger) {
+      const k = btn.dataset.trigger;
+      state.pendingByPhone.focus = k;
+      state.alertTarget = null;
+      render();
+      return;
+    }
+
+    // Trigger preset for a specific phone in compare view
+    if (btn.dataset.triggerPhone) {
+      state.pendingByPhone[btn.dataset.triggerPhone] = btn.dataset.kind;
+      state.alertTarget = null;
+      render();
+      return;
+    }
+
+    // Reset history
+    if (btn.id === 'btnReset') {
+      state.itemsByPhone.focus = cloneInitial();
+      state.pendingByPhone.focus = 'text';
+      state.alertTarget = null;
+      state.readingTarget = null;
+      state.toast = null;
+      render();
+      return;
+    }
+
+    // Phone inner actions
+    const action = btn.dataset.action;
+    const phoneId = btn.dataset.phone;
+    if (!action || !phoneId) return;
+
+    if (action === 'dismiss') {
+      e.stopPropagation();
+      dismissPrompt(phoneId);
+    } else if (action === 'read') {
+      e.stopPropagation();
+      startReadFlow(phoneId);
+    } else if (action === 'alert-allow') {
+      e.stopPropagation();
+      if (state.alertTarget) {
+        completeRead(phoneId, state.alertTarget.preset);
+      }
+    } else if (action === 'alert-deny') {
+      e.stopPropagation();
+      state.alertTarget = null;
+      showToast(phoneId, '未授权粘贴，内容未读取');
+      render();
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

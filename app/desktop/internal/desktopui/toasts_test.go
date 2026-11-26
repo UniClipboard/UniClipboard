@@ -170,8 +170,8 @@ func TestToastClearOfPluginsSettingsControls(t *testing.T) {
 		return a.X < b.X+b.W && a.X+a.W > b.X && a.Y < b.Y+b.H && a.Y+a.H > b.Y
 	}
 
-	// 1. Plugins list view at Linux CI geometry (1100x720 and compact 1000x640).
-	for _, size := range [][2]int{{1100, 720}, {1000, 640}} {
+	// 1. Plugins list view at Linux CI geometry (1100x720, 1000x640 docked, and compact 860x640 overlay).
+	for _, size := range [][2]int{{1100, 720}, {1000, 640}, {860, 640}} {
 		tt := ui.NewTesterWith(screen.View, size[0], size[1], ui.TesterOptions{Preferences: ui.Preferences{ReduceMotion: true}})
 		toastRegion, ok := tt.AccessByRole(ui.RoleRegion, "通知")
 		if !ok {

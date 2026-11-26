@@ -22,14 +22,32 @@ var (
 // TrackedBoard records successful writes by the real IPC adapter. It does not
 // own content retention and never writes outside the adapter protocol.
 type TrackedBoard struct {
-	board  Board
-	mu     sync.Mutex
-	serial uint64
-	mark   string
+	board       Board
+	mu          sync.Mutex
+	serial      uint64
+	mark        string
+	generation  string
+	fingerprint string
 }
 
 func NewTrackedBoard(b Board) *TrackedBoard          { return &TrackedBoard{board: b} }
 func (b *TrackedBoard) Read() (clip.Snapshot, error) { return b.board.Read() }
+func (b *TrackedBoard) ClipboardGeneration() string {
+	if source, ok := b.board.(interface{ ClipboardGeneration() string }); ok {
+		return source.ClipboardGeneration()
+	}
+	return ""
+}
+
+func (b *TrackedBoard) ClipboardChanges(ctx context.Context) <-chan struct{} {
+	if source, ok := b.board.(interface {
+		ClipboardChanges(context.Context) <-chan struct{}
+	}); ok {
+		return source.ClipboardChanges(ctx)
+	}
+	return nil
+}
+
 func (b *TrackedBoard) ReadFileImage(copyID string) []byte {
 	if source, ok := b.board.(interface{ ReadFileImage(string) []byte }); ok {
 		return source.ReadFileImage(copyID)
@@ -42,7 +60,12 @@ func (b *TrackedBoard) Write(s clip.Snapshot) error {
 	}
 	b.mu.Lock()
 	b.serial++
-	b.mark = clipboardMark(s)
+	b.generation = b.ClipboardGeneration()
+	b.fingerprint = clipboardMark(s)
+	b.mark = ""
+	if b.fingerprint != "" {
+		b.mark = fmt.Sprintf("%d:%s", b.serial, b.fingerprint)
+	}
 	b.mu.Unlock()
 	return nil
 }
@@ -90,8 +113,22 @@ func (b *TrackedBoard) Matches(mark string) bool {
 	if mark == "" {
 		return false
 	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.mark != mark {
+		return false
+	}
+	if b.generation != "" {
+		if b.ClipboardGeneration() != b.generation {
+			return false
+		}
+		if probe, ok := b.board.(interface{ ClipboardAvailable() bool }); ok && !probe.ClipboardAvailable() {
+			return false
+		}
+		return b.ClipboardGeneration() == b.generation
+	}
 	s, err := b.Read()
-	return err == nil && clipboardMark(s) == mark
+	return err == nil && clipboardMark(s) == b.fingerprint
 }
 
 // Clipboard ownership also includes file paths. clip.Hash intentionally excludes

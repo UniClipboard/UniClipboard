@@ -169,12 +169,12 @@ func (d *viewState) copyHistoryID(id string, onApplied func()) {
 	if l.busy {
 		return
 	}
-	client := l.client
 	request := "desktop-" + newRequestID()
+	copy := l.copyHistory(id, request)
 	l.startBusy("")
 	l.message = ""
 	if !l.enqueue(func(ctx context.Context) func() {
-		_, err := client.RestoreHistory(ctx, id, request)
+		err := copy(ctx)
 		return func() {
 			l.stopBusy()
 			l.nextRefresh = time.Time{}

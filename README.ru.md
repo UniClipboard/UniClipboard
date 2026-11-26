@@ -4,24 +4,33 @@
 
 # Копируйте один раз. Вставляйте на любом устройстве.
 
-<strong>UniClipboard</strong> синхронизирует буфер обмена между вашими компьютерами.<br />
-Без аккаунта. Без облака. Почти без расхода памяти.
+<p>
+  <strong>UniClipboard</strong> напрямую синхронизирует текст, изображения, файлы и папки между вашими устройствами.<br />
+  Сквозное шифрование. Без аккаунта. Без облака.
+</p>
 
-<a href="#quick-start"><img alt="Начать" src="https://img.shields.io/badge/%D0%9D%D0%B0%D1%87%D0%B0%D1%82%D1%8C-→-000000?style=for-the-badge" /></a>
-<a href="#features"><img alt="Возможности" src="https://img.shields.io/badge/%D0%92%D0%BE%D0%B7%D0%BC%D0%BE%D0%B6%D0%BD%D0%BE%D1%81%D1%82%D0%B8-555555?style=for-the-badge" /></a>
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Скачать" src="https://img.shields.io/badge/%D0%A1%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C-2563eb?style=for-the-badge&logo=github&logoColor=white" /></a>
+  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS%20Beta-1f2937?style=for-the-badge&logo=apple&logoColor=white" /></a>
+  <a href="#quick-start"><img alt="Начать" src="https://img.shields.io/badge/%D0%9D%D0%B0%D1%87%D0%B0%D1%82%D1%8C-4b5563?style=for-the-badge" /></a>
+</p>
 
-<table>
-  <tr>
-    <td align="center" width="170"><h2>0</h2>аккаунтов нужно создать</td>
-    <td align="center" width="170"><h2>0</h2>облачных серверов хранят ваши данные</td>
-    <td align="center" width="170"><h2>14 MB</h2>памяти занимает фоновая служба синхронизации<sup><a href="#benchmarks">1</a></sup></td>
-    <td align="center" width="170"><h2>6 цифр</h2>кода для подключения устройства</td>
-  </tr>
-</table>
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Windows" src="https://img.shields.io/badge/Windows-1f2937?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iIzM4YmRmOCI+PHBhdGggZD0iTTAgMGg3LjR2Ny40SDB6bTguNiAwSDE2djcuNEg4LjZ6TTAgOC42aDcuNFYxNkgwem04LjYgMEgxNlYxNkg4LjZ6Ii8+PC9zdmc+" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="macOS" src="https://img.shields.io/badge/macOS-1f2937?style=flat-square&logo=apple&logoColor=white" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Linux" src="https://img.shields.io/badge/Linux-1f2937?style=flat-square&logo=linux&logoColor=facc15" /></a>
+  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS-Beta-2563eb?style=flat-square&logo=apple&logoColor=white&labelColor=1f2937" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Android" src="https://img.shields.io/badge/Android-1f2937?style=flat-square&logo=android&logoColor=3ddc84" /></a>
+  <a href="#cli"><img alt="CLI" src="https://img.shields.io/badge/CLI-1f2937?style=flat-square&logo=gnubash&logoColor=white" /></a>
+</p>
 
-Windows · macOS · Linux · CLI　|　Текст · Изображения · Файлы · Папки
+<p>
+  <small>
+    <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.zh-TW.md">繁體中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.pt-BR.md">Português (Brasil)</a> | <strong>Русский</strong>
+  </small>
+</p>
 
-<a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.zh-TW.md">繁體中文</a> | <a href="README.ja.md">日本語</a> | <a href="README.pt-BR.md">Português (Brasil)</a> | <strong>Русский</strong>
+![UniClipboard на компьютере, планшете и смартфоне](docs/assets/product-overview.png)
 
 </div>
 
@@ -29,7 +38,7 @@ Windows · macOS · Linux · CLI　|　Текст · Изображения · �
 
 ## Почему UniClipboard
 
-- **Кроссплатформенность**: синхронизация между Windows, macOS и Linux — в одной сети Wi-Fi или в разных сетях.
+- **Кроссплатформенность**: синхронизация между Windows, macOS, Linux, iOS и Android — в одной сети Wi-Fi или в разных сетях.
 - **Без облака**: устройства соединяются напрямую по зашифрованному каналу. Регистрация не нужна. История хранится только на ваших устройствах.
 - **Лёгкость**: фоновая служба синхронизации занимает около 14 МБ памяти в простое<sup>[1](#benchmarks)</sup>. В Windows главное окно занимает около 34–49 МБ<sup>[2](#benchmarks)</sup>. После закрытия окна его процесс завершается.
 - **Синхронизируется всё**: текст, изображения, файлы и целые папки.
@@ -38,30 +47,51 @@ Windows · macOS · Linux · CLI　|　Текст · Изображения · �
 
 ## Возможности
 
-| | |
-|---|---|
-| ⚡ **Быстрая панель** | Нажмите `⌘ ⌃ V` (`Ctrl Alt V` в Windows / Linux) в любом приложении, выберите запись и нажмите Enter, чтобы вставить. |
-| 🔍 **Быстрый поиск** | Введите слово или отфильтруйте по `#метке`, `@устройству` или `/типу`. Найдите то, что копировали месяцы назад. |
-| 🏷️ **Автоматические метки** | Ссылки, адреса e-mail, цвета, номера версий, UUID и IP-адреса получают метки автоматически. Можно добавить свои правила. |
-| 📁 **Файлы и папки** | Отправляйте папку целиком с сохранением структуры — на все устройства или на одно. |
-| 📮 **Отправка без сопряжения** | `unic send "текст"` выводит ссылку для передачи и, если доступен, 6-значный код. Получатель может использовать любой из них. Запись об устройстве не сохраняется. |
-| 🧩 **Плагины** | Устанавливайте плагины в один клик из настроек, например чтобы превратить изображение или файл в ссылку. |
-| ⌨️ **Командная строка** | `unic` позволяет отправлять и принимать данные и фильтровать список истории из терминала, по SSH или в скриптах. |
-| 🌍 **Языки** | English, 简体中文, 日本語, Português, Русский. Светлая и тёмная темы. |
+<table>
+  <tr>
+    <td>⚡ <strong>Быстрая панель</strong></td>
+    <td>Нажмите <code>⌘ ⌃ V</code> (<code>Ctrl Alt V</code> в Windows / Linux) в любом приложении, выберите запись и нажмите Enter, чтобы вставить.</td>
+  </tr>
+  <tr>
+    <td>🔍 <strong>Быстрый поиск</strong></td>
+    <td>Введите слово или отфильтруйте по <code>#метке</code>, <code>@устройству</code> или <code>/типу</code>. Найдите то, что копировали месяцы назад.</td>
+  </tr>
+  <tr>
+    <td>🏷️ <strong>Автоматические метки</strong></td>
+    <td>Ссылки, адреса e-mail, цвета, номера версий, UUID и IP-адреса получают метки автоматически. Можно добавить свои правила.</td>
+  </tr>
+  <tr>
+    <td>📁 <strong>Файлы и папки</strong></td>
+    <td>Отправляйте папку целиком с сохранением структуры — на все устройства или на одно.</td>
+  </tr>
+  <tr>
+    <td>📮 <strong>Отправка без сопряжения</strong></td>
+    <td><code>unic send "текст"</code> выводит ссылку для передачи и, если доступен, 6-значный код. Получатель может использовать любой из них. Запись об устройстве не сохраняется.</td>
+  </tr>
+  <tr>
+    <td>🧩 <strong>Плагины</strong></td>
+    <td>Устанавливайте плагины в один клик из настроек, например чтобы превратить изображение или файл в ссылку.</td>
+  </tr>
+  <tr>
+    <td>⌨️ <strong>Командная строка</strong></td>
+    <td><code>unic</code> позволяет отправлять и принимать данные и фильтровать список истории из терминала, по SSH или в скриптах.</td>
+  </tr>
+  <tr>
+    <td>🌍 <strong>Языки</strong></td>
+    <td>English, 简体中文, 日本語, Português, Русский. Светлая и тёмная темы.</td>
+  </tr>
+</table>
 
 <a id="quick-start"></a>
 
 ## Начните за 3 шага
 
-**1. Запустите**
+**1. Скачайте и установите**
 
-Скачайте предварительную версию Desktop v2 для своей платформы на странице [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases). Для запуска из исходного кода используйте команды ниже.
-
-```sh
-git clone https://github.com/UniClipboard/UniClipboard.git
-cd UniClipboard
-make run-desktop
-```
+- **Десктоп**: скачайте установщик для Windows (`.exe`/`.zip`), macOS (`.dmg`) или Linux (`.deb`/`.rpm`/`.AppImage`) на странице [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases).
+- **iOS**: присоединитесь к публичному бета-тестированию через [TestFlight](https://testflight.apple.com/join/nyNQ8dQe).
+- **Android**: скачайте и установите APK со страницы [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) (публикация в Google Play пока не планируется).
+- **Только CLI**: выполните `npm install -g @uniclipboard/cli`.
 
 **2. Подключите второе устройство**
 
@@ -70,6 +100,8 @@ make run-desktop
 **3. Копируйте**
 
 Нажмите `Ctrl+C` на одном устройстве и `Ctrl+V` на другом.
+
+<a id="cli"></a>
 
 ## Командная строка
 

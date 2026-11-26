@@ -288,3 +288,222 @@ func TestDisconnectedPeerSettlesFromConnectingToDisconnected(t *testing.T) {
 	st := b.LinkSnapshots()["peer-1"]
 	t.Fatalf("peer did not settle to disconnected after %d attempts: %+v", attempts.Load(), st)
 }
+
+func TestOfflinePeerDoesNotFlickerOrSpamOnNetworkChangeAndRetries(t *testing.T) {
+	var attempts atomic.Int32
+	tr := &probeTransport{
+		dialFn: func(context.Context, string) (net.Conn, error) {
+			attempts.Add(1)
+			return nil, errors.New("offline")
+		},
+	}
+	b, _ := newRunningBackend(t, tr, 200*time.Millisecond)
+
+	var notifyCount atomic.Int32
+	b.SetLinkStatusChanged(func(string) {
+		notifyCount.Add(1)
+	})
+
+	// Wait for the offline peer to settle into disconnected.
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		if attempts.Load() >= maxConnectingAttempts && b.LinkSnapshots()["peer-1"].State == rpc.LinkStateDisconnected {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if st := b.LinkSnapshots()["peer-1"]; st.State != rpc.LinkStateDisconnected {
+		t.Fatalf("peer did not settle to disconnected: %+v", st)
+	}
+
+	settledNotify := notifyCount.Load()
+	settledAttempts := attempts.Load()
+
+	// Repeated background NetworkGeneration bumps (e.g. Windows netmon churn) must
+	// retry dialing in the background without flipping an already-offline peer back
+	// to connecting or emitting link-change notifications.
+	for rev := uint64(2); rev <= 4; rev++ {
+		st := rpc.SyncState{
+			BackendID: "builtin.tailcat", BindingID: "b1", Revision: rpc.U64(rev), Runtime: "active",
+			DeviceName: "self", SyncEnabled: true, NetworkGeneration: rpc.U64(rev),
+			Peers:    []rpc.StatePeer{{ID: "peer-1", Name: "Peer 1", Address: "addr-1", TrustRevision: 1}},
+			Rejected: []rpc.StateRejected{},
+		}
+		if err := b.ApplyState(context.Background(), st); err != nil {
+			t.Fatalf("ApplyState rev %d: %v", rev, err)
+		}
+		if snap := b.LinkSnapshots()["peer-1"]; snap.State != rpc.LinkStateDisconnected {
+			t.Fatalf("rev %d flipped settled offline peer to %q, want disconnected", rev, snap.State)
+		}
+		time.Sleep(80 * time.Millisecond)
+	}
+
+	if attempts.Load() <= settledAttempts {
+		t.Fatalf("expected background dial retries after NetworkGeneration bumps, attempts stayed at %d", attempts.Load())
+	}
+	if got := notifyCount.Load(); got != settledNotify {
+		t.Fatalf("received %d redundant link-change notifications after settling offline (before=%d, after=%d)", got-settledNotify, settledNotify, got)
+	}
+
+	// Explicit manual refresh MUST transition back to connecting and notify.
+	res, err := b.ProbePeers(context.Background(), []string{"peer-1"})
+	if err != nil {
+		t.Fatalf("ProbePeers: %v", err)
+	}
+	if len(res) != 1 || res[0].State != rpc.LinkStateConnecting {
+		t.Fatalf("manual refresh state = %+v, want connecting", res)
+	}
+	if notifyCount.Load() <= settledNotify {
+		t.Fatalf("manual refresh did not emit link-change notification")
+	}
+}
+
+func TestConnectingStateDoesNotDipBetweenAttempts(t *testing.T) {
+	firstStarted := make(chan struct{}, 1)
+	releaseFirst := make(chan struct{})
+	secondStarted := make(chan struct{}, 1)
+	var attemptNum atomic.Int32
+
+	tr := &probeTransport{
+		dialFn: func(ctx context.Context, _ string) (net.Conn, error) {
+			n := attemptNum.Add(1)
+			if n == 1 {
+				select {
+				case firstStarted <- struct{}{}:
+				default:
+				}
+				select {
+				case <-releaseFirst:
+				case <-ctx.Done():
+				}
+				return nil, errors.New("offline")
+			}
+			if n == 2 {
+				select {
+				case secondStarted <- struct{}{}:
+				default:
+				}
+				// Hold second attempt briefly so we can inspect state while running.
+				select {
+				case <-time.After(150 * time.Millisecond):
+				case <-ctx.Done():
+				}
+				return nil, errors.New("offline")
+			}
+			return nil, errors.New("offline")
+		},
+	}
+	b, _ := newRunningBackend(t, tr, 200*time.Millisecond)
+
+	var states []string
+	var mu sync.Mutex
+	b.SetLinkStatusChanged(func(id string) {
+		st := b.LinkSnapshots()[id].State
+		mu.Lock()
+		states = append(states, st)
+		mu.Unlock()
+	})
+
+	select {
+	case <-firstStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first dial did not start")
+	}
+
+	// Simulate attempt 1 taking longer than the old 15s grace window by expiring
+	// activeUntil while attempt 1 is still in flight, then letting attempt 1 fail
+	// before attempt 2 starts.
+	b.mu.Lock()
+	ds := b.dialing["peer-1"]
+	ds.activeUntil = time.Now().Add(-time.Second)
+	b.dialing["peer-1"] = ds
+	b.mu.Unlock()
+
+	close(releaseFirst)
+
+	// Wait for attempt 2 to actually run so any dip between attempt 1 and attempt 2 is observed.
+	select {
+	case <-secondStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("second dial did not start")
+	}
+
+	// Wait until peer settles to disconnected after attempt 2 finishes.
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) {
+		if b.LinkSnapshots()["peer-1"].State == rpc.LinkStateDisconnected {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+
+	mu.Lock()
+	got := append([]string(nil), states...)
+	mu.Unlock()
+
+	// Must never bounce disconnected -> connecting -> disconnected.
+	seenDisconnected := false
+	for _, st := range got {
+		if st == rpc.LinkStateDisconnected {
+			seenDisconnected = true
+		} else if st == rpc.LinkStateConnecting && seenDisconnected {
+			t.Fatalf("connecting state flickered back after disconnected: %v", got)
+		}
+	}
+}
+
+func TestStaleCancelledDialDoesNotClobberNewDialer(t *testing.T) {
+	firstInDial := make(chan struct{}, 1)
+	releaseFirst := make(chan struct{})
+	secondInDial := make(chan struct{}, 1)
+	releaseSecond := make(chan struct{})
+	var n atomic.Int32
+
+	tr := &probeTransport{
+		dialFn: func(_ context.Context, _ string) (net.Conn, error) {
+			switch n.Add(1) {
+			case 1:
+				firstInDial <- struct{}{}
+				<-releaseFirst
+				return nil, context.Canceled
+			case 2:
+				secondInDial <- struct{}{}
+				<-releaseSecond
+				return nil, errors.New("offline")
+			default:
+				return nil, errors.New("offline")
+			}
+		},
+	}
+	b, _ := newRunningBackend(t, tr, 200*time.Millisecond)
+	defer close(releaseSecond)
+
+	select {
+	case <-firstInDial:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first dial did not start")
+	}
+
+	// Manual refresh replaces dialer 1 with dialer 2 while dialer 1 is still blocked in Dial.
+	_, err := b.ProbePeers(context.Background(), []string{"peer-1"})
+	if err != nil {
+		t.Fatalf("ProbePeers: %v", err)
+	}
+
+	select {
+	case <-secondInDial:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second dial did not start")
+	}
+
+	// Now let stale dialer 1 finish unwinding. It must NOT clear dialer 2's inFlight.
+	close(releaseFirst)
+	time.Sleep(50 * time.Millisecond)
+
+	b.mu.Lock()
+	ds := b.dialing["peer-1"]
+	b.mu.Unlock()
+	if !ds.inFlight {
+		t.Fatalf("stale dialer clobbered active dialer's inFlight flag: %+v", ds)
+	}
+}

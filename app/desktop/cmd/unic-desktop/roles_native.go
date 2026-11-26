@@ -406,7 +406,9 @@ func runPanel(settings *config.Manager) error {
 		switch command {
 		case "status":
 			result := make(chan roleStatus, 1)
-			mygo.RunOnMain(func() { result <- roleStatus{Ready: panel != nil, Visible: panel != nil && panel.Visible()} })
+			mygo.RunOnMain(func() {
+				result <- roleStatus{Ready: panel != nil, Visible: panel != nil && panel.Visible(), Focused: panel != nil && panel.Focused()}
+			})
 			select {
 			case state := <-result:
 				return state, nil
@@ -487,7 +489,11 @@ func runPanel(settings *config.Manager) error {
 	mygo.App.WhenReady(func() {
 		var clipboard desktopui.PanelClipboard
 		if useDaemonClipboard {
-			clipboard = daemonClipboard{daemon: c}
+			adapter := daemonClipboard{daemon: c}
+			if runtime.GOOS == "linux" {
+				adapter.fallback = clipboardintegration.NewPanelClipboard(dir, newDesktopBoard())
+			}
+			clipboard = adapter
 		} else {
 			clipboard = clipboardintegration.NewPanelClipboard(dir, newDesktopBoard())
 		}

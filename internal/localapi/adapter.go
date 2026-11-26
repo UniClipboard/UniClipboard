@@ -75,6 +75,8 @@ type ClipboardApplicationRequest struct {
 	Plain bool   `json:"plain"`
 }
 
+const ReasonClipboardUnsupported = "clipboard_unsupported"
+
 func (c *Client) EnableDesktopClipboard(ctx context.Context) error {
 	return c.do(ctx, http.MethodPost, "/v1/desktop/clipboard/enable", nil, nil)
 }

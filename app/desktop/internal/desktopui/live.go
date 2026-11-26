@@ -61,6 +61,9 @@ func (d *viewState) trailingToolbar(c *ui.Context) func() {
 func (s *Desktop) Close() {
 	if s.d.live != nil {
 		s.d.live.cancel()
+		if closeClipboard := s.d.live.closeClipboardFallback; closeClipboard != nil {
+			closeClipboard()
+		}
 	}
 }
 
@@ -69,6 +72,14 @@ func (s *Desktop) Close() {
 func (s *Desktop) SetLoginStatus(read func() (bool, string), retry func()) {
 	s.d.live.loginStatus = read
 	s.d.live.retryLogin = retry
+}
+
+// SetClipboardFallback connects the explicit desktop copy path on sessions
+// that cannot enable a background clipboard adapter.
+func (s *Desktop) SetClipboardFallback(unavailable func() bool, copy func(context.Context, string) error, close func()) {
+	s.d.live.clipboardUnavailable = unavailable
+	s.d.live.copyFallback = copy
+	s.d.live.closeClipboardFallback = close
 }
 
 // SetMigrationOpener delegates exclusive runtime ownership to the Desktop host.
@@ -81,6 +92,10 @@ func (s *Desktop) SetRestarter(restart func(restartService bool, done func(error
 }
 
 type liveState struct {
+	clipboardUnavailable   func() bool
+	copyFallback           func(context.Context, string) error
+	closeClipboardFallback func()
+
 	wakeMu       sync.Mutex
 	wakeServices ui.Services
 	wakeTimer    *time.Timer
@@ -1155,9 +1170,18 @@ func (d *viewState) useEntry() {
 	}
 	id := d.selected
 	request := "desktop-" + newRequestID()
-	client := d.live.client
-	d.mutate(func(ctx context.Context) error { _, err := client.RestoreHistory(ctx, id, request); return err }, "已复制")
+	d.mutate(d.live.copyHistory(id, request), "已复制")
 }
+func (l *liveState) copyHistory(id, request string) func(context.Context) error {
+	if l.clipboardUnavailable != nil && l.clipboardUnavailable() {
+		return func(ctx context.Context) error { return l.copyFallback(ctx, id) }
+	}
+	return func(ctx context.Context) error {
+		_, err := l.client.RestoreHistory(ctx, id, request)
+		return err
+	}
+}
+
 func (d *viewState) setEntryTags(id string, tags []string) {
 	if d.live == nil {
 		for i := range d.entries {

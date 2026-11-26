@@ -4055,12 +4055,6 @@
     "pt-BR": "Plugins externos",
     "ru": "Внешние плагины"
   },
-  "退出整个应用": {
-    "en": "Quit",
-    "ja": "アプリケーションを終了",
-    "pt-BR": "Sair do aplicativo",
-    "ru": "Выйти из приложения"
-  },
   "下次启动时生效。轻量模式保留托盘和同步服务。": {
     "en": "Applies on next launch. Lightweight mode keeps the tray and sync service.",
     "ja": "次回の起動時に適用します。軽量モードでもトレイと同期サービスは動作します。",
@@ -8872,6 +8866,12 @@
     "ja": "テスト通知を送信しました。",
     "pt-BR": "Notificação de teste enviada.",
     "ru": "Тестовое уведомление отправлено."
+  },
+  "此桌面会话不支持后台剪贴板监听。仍可手动复制历史内容。": {
+    "en": "Background clipboard monitoring is unavailable in this desktop session. You can still copy from history.",
+    "ja": "このデスクトップセッションではクリップボードをバックグラウンドで監視できません。履歴からのコピーは引き続き利用できます。",
+    "pt-BR": "O monitoramento da área de transferência em segundo plano não está disponível nesta sessão. Você ainda pode copiar itens do histórico.",
+    "ru": "В этом сеансе фоновое отслеживание буфера обмена недоступно. Копирование из истории по-прежнему работает."
   },
   "传输进度": {
     "en": "Transfer progress",

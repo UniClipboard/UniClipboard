@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory=$true)][string]$BinDir,
     [Parameter(Mandatory=$true)][string]$OutDir,
     [Parameter(Mandatory=$true)][string]$WorkDir,
-    [string]$GuestId = ''
+    [string]$GuestId = '',
+    [ValidateSet('', 'enter', 'number')][string]$HotkeyCase = ''
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
@@ -47,6 +48,10 @@ public static class UnicN03Win32 {
     }
 
     public static void SendKey(ushort vk, bool ctrl, bool shift) {
+        SendKey(vk, ctrl, shift, false);
+    }
+
+    public static void SendKey(ushort vk, bool ctrl, bool shift, bool alt) {
         var list = new System.Collections.Generic.List<INPUT>();
         Action<ushort, uint> add = (k, flags) => {
             INPUT inp = new INPUT();
@@ -57,8 +62,10 @@ public static class UnicN03Win32 {
         };
         if (ctrl) add(0x11, 0);
         if (shift) add(0x10, 0);
+        if (alt) add(0x12, 0);
         add(vk, 0);
         add(vk, 2);
+        if (alt) add(0x12, 2);
         if (shift) add(0x10, 2);
         if (ctrl) add(0x11, 2);
         INPUT[] arr = list.ToArray();
@@ -262,7 +269,7 @@ function Init-Profile([string]$ShortName, [bool]$SyncEnabled) {
     [void][IO.Directory]::CreateDirectory($p)
     [IO.File]::WriteAllText((Join-Path $p 'desktop-setup.json'), "{`"complete`":true}`n", (New-Object Text.UTF8Encoding($false)))
     $syncStr = if ($SyncEnabled) { 'true' } else { 'false' }
-    $cfg = "[telemetry]`nenabled = false`n[sync]`nenabled = $syncStr`n[desktop]`nmode = 'normal'`nquick_panel_shortcut = ''`n"
+    $cfg = "[telemetry]`nenabled = false`n[sync]`nenabled = $syncStr`n[desktop]`nmode = 'normal'`nquick_panel_shortcut = 'Ctrl+Alt+V'`n"
     [IO.File]::WriteAllText((Join-Path $p 'config.toml'), $cfg, (New-Object Text.UTF8Encoding($false)))
     $res = Invoke-ProfileCmd $UnicExe @('migrate', '--initialize-empty', '--json') $p 25000
     Log-Step "init_profile:$ShortName" ($res | ConvertFrom-Json)
@@ -542,6 +549,93 @@ try {
     if (-not [UnicN03Win32]::IsZoomed($TargetHwnd)) { throw 'Expected external target to start maximized' }
     Log-Step 'external_target_ready' $TState
 
+    function Invoke-GlobalHotkeyCases([string]$Selection, [int]$ExpectedPanelPid) {
+        # Exercise the tray's registered shortcut while an external target has focus.
+        Wait-Until 'tray registered Ctrl+Alt+V' {
+            $shortcut = (Role-Cmd $MainProf 'tray' 'status').shortcut
+            return ($shortcut.effective -eq 'Ctrl+Alt+V') -and (-not $shortcut.error)
+        } 10
+        function Assert-GlobalHotkeyPaste([string]$Case, [string]$Trigger, [UInt16]$Key, [bool]$Ctrl, [string]$ExpectedText) {
+            [IO.File]::WriteAllText($TargetCmd, 'clear', (New-Object Text.UTF8Encoding($false)))
+            Wait-Until 'external target cleared for hotkey paste' { (Read-TargetState).text -eq '' } 8
+            [void][UnicN03Win32]::SetForegroundWindow($TargetHwnd)
+            Wait-Until 'exact target foreground before hotkey' { [UnicN03Win32]::GetForegroundWindow() -eq $TargetHwnd } 8
+            [UnicN03Win32]::SendKey(0x56, $true, $false, $true) # Ctrl+Alt+V
+            Wait-Until 'panel foreground via global hotkey' {
+                $panel = Role-Probe $MainProf 'quick-panel'
+                return ($null -ne $panel) -and ($ExpectedPanelPid -eq 0 -or $panel.pid -eq $ExpectedPanelPid) -and
+                    ([UnicN03Win32]::Owner([UnicN03Win32]::GetForegroundWindow()) -eq $panel.pid)
+            } 10
+            Start-Sleep -Milliseconds 350
+            [UnicN03Win32]::SendKey($Key, $Ctrl, $false)
+            Wait-Until "panel dismissed after $Trigger" { -not (Role-Cmd $MainProf 'quick-panel' 'status').visible } 10
+            Log-Step "${Case}_dismissed" @{
+                trigger = $Trigger
+                target_foreground = ([UnicN03Win32]::GetForegroundWindow() -eq $TargetHwnd)
+            }
+            try {
+                Wait-Until "exact target restored and received paste after $Trigger" {
+                    ([UnicN03Win32]::GetForegroundWindow() -eq $TargetHwnd) -and ((Read-TargetState).text -ceq $ExpectedText)
+                } 8
+            } finally {
+                $ClipboardMatches = (Run-ClipHelper 'read-text') -ceq $ExpectedText
+                Log-Step "${Case}_clipboard" @{ trigger = $Trigger; clipboard_match = $ClipboardMatches }
+            }
+            Start-Sleep -Milliseconds 700
+            $Actual = [string](Read-TargetState).text
+            if (($Actual -cne $ExpectedText) -or ([UnicN03Win32]::GetForegroundWindow() -ne $TargetHwnd) -or (-not $ClipboardMatches)) {
+                throw "$Trigger did not paste the expected text exactly once into the original window"
+            }
+            $Manifest.paste_receipts[$Case] = [ordered]@{
+                trigger = $Trigger
+                target_hwnd = $TState.hwnd
+                target_foreground = $true
+                expected_sha256 = Get-Sha256Hex ([Text.Encoding]::UTF8.GetBytes($ExpectedText))
+                actual_sha256 = Get-Sha256Hex ([Text.Encoding]::UTF8.GetBytes($Actual))
+                single_insertion_verified = $true
+            }
+        }
+        if ($Selection -ne 'number') {
+            Assert-GlobalHotkeyPaste 'global_hotkey' 'Enter' 0x0D $false $TextPayload
+            [void]$Manifest.checks.Add('win11-global-hotkey-enter-restores-exact-window-and-pastes-once')
+        }
+        if ($Selection -eq 'enter') { return }
+
+        # Add two distinct entries so Ctrl+2 must select a different row from the
+        # previous selection and from the first row.
+        $NumberText = 'Windows N03 second row'
+        $NumberIDs = @()
+        foreach ($Payload in @($NumberText, 'Windows N03 first row')) {
+            $Result = Api-Req $MainProf 'POST' '/v1/submissions' @{
+                request_id = "n03-number-$($NumberIDs.Count)"
+                snapshot = @{
+                    parts = (As-JsonArray @(@{ format = 'text/plain'; data = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Payload)) }))
+                }
+            }
+            $NumberIDs += [string]$Result.history_id
+        }
+        $NumberRows = Wait-Until 'numbered fixtures are the first two history rows' {
+            $rows = (Api-Req $MainProf 'GET' '/v1/history').items
+            if ($rows.Count -ge 2 -and $rows[0].id -eq $NumberIDs[1] -and $rows[1].id -eq $NumberIDs[0]) {
+                return $rows[0..1]
+            }
+            return $null
+        } 8
+        Assert-GlobalHotkeyPaste 'global_hotkey_number' 'Ctrl+2' 0x32 $true $NumberText
+        [void]$Manifest.checks.Add('win11-global-hotkey-ctrl-2-restores-exact-window-and-pastes-second-row-once')
+        foreach ($Row in $NumberRows) {
+            [void](Api-Req $MainProf 'DELETE' "/v1/history/$($Row.id)?revision=$($Row.revision)")
+        }
+    }
+    if ($HotkeyCase) {
+        $Manifest.environment.hotkey_case = $HotkeyCase
+        [void](Start-ProfileProc $DesktopExe @('--role', 'tray') $MainProf 'main-tray.log')
+        Invoke-GlobalHotkeyCases $HotkeyCase 0
+        $Manifest.status = 'PASS'
+        $Manifest.finished_at_utc = [DateTime]::UtcNow.ToString('o')
+        return
+    }
+
     # 3. Cold-start production unic-desktop.exe --quick-panel -> verify AllowForeground + standalone processes
     [void](Invoke-ProfileCmd $DesktopExe @('--quick-panel') $MainProf 20000)
     $PanelRole = Wait-Until 'quick-panel role ready' { Role-Probe $MainProf 'quick-panel' } 15
@@ -699,7 +793,8 @@ try {
     Start-Sleep -Milliseconds 600
     if (-not (Test-Path -LiteralPath $ManagedPath)) { throw 'Managed file was deleted prematurely while held on OLE clipboard' }
 
-    # Independent external OLE clipboard replacement -> triggers WM_CLIPBOARDUPDATE -> release -> disk file reclaimed!
+    # A native write while no tray is running must be observed by unicd.
+    $BeforeExternal = @((Api-Req $MainProf 'GET' '/v1/history').items | ForEach-Object { $_.id })
     [void](Run-ClipHelper 'set-text' 'N03-WIN11-EXTERNAL-REPLACEMENT')
     Wait-Until 'managed file reclaimed after external OLE replacement' { -not (Test-Path -LiteralPath $ManagedPath) } 15
     $CacheAfter = Api-Req $MainProf 'GET' '/v1/file-cache'
@@ -710,6 +805,16 @@ try {
     }
     [void]$Manifest.checks.Add('win11-external-ole-replacement-releases-lease-and-reclaims-cache')
     Log-Step 'managed_file_reclaimed_ok' $Manifest.clipboard_readbacks['external_replacement_and_reclaim']
+
+    $ObservedExternal = Wait-Until 'unicd captures the external write while the tray is absent' {
+        (Api-Req $MainProf 'GET' '/v1/history').items |
+            Where-Object { $_.origin -eq 'local_system' -and $_.kind -eq 'text' -and $_.id -notin $BeforeExternal } |
+            Select-Object -First 1
+    } 10
+    [void]$Manifest.checks.Add('win11-unicd-observes-clipboard-without-a-tray')
+    # Restore the seeded order for the next panel selection. The unchanged
+    # clipboard must not enter history again after this explicit deletion.
+    [void](Api-Req $MainProf 'DELETE' "/v1/history/$($ObservedExternal.id)?revision=$($ObservedExternal.revision)")
 
     # 7. Tray coexistence (zero echo) + Tray exit preserves standalone unicd & quick-panel
     $TrayProc = Start-ProfileProc $DesktopExe @('--role', 'tray') $MainProf 'main-tray.log'
@@ -725,8 +830,11 @@ try {
     Start-Sleep -Milliseconds 1500
     $HistAfter = (Api-Req $MainProf 'GET' '/v1/history').items.Count
     if ($HistAfter -ne $HistBefore) { throw "Tray coexistence caused clipboard echo: $HistBefore -> $HistAfter" }
+    if ((Run-ClipHelper 'read-text') -cne $TextPayload) { throw 'Tray coexistence did not copy the selected text' }
     [void]$Manifest.checks.Add('win11-tray-coexistence-zero-echo')
     Log-Step 'tray_coexistence_zero_echo' @{ history_count = $HistAfter }
+
+    Invoke-GlobalHotkeyCases '' $PanelPid
 
     # Standalone tray process exit (distinct from full-app `quit` command) preserves standalone unicd & quick-panel
     try { $TrayProc.proc.Kill() } catch {}
@@ -751,6 +859,31 @@ try {
     if ($PostTrayPngSha -ne $PngSha) { throw 'Post-tray PNG OLE copy mismatch' }
     [void]$Manifest.checks.Add('win11-tray-exit-preserves-standalone-unicd-and-panel-copy')
     Log-Step 'post_tray_exit_copy_ok' @{ png_sha256 = $PostTrayPngSha }
+
+    [void](Start-ProfileProc $UnicdExe @() $PeerProf 'peer-unicd-restarted.log')
+    Wait-Until 'peer reconnected without the tray' {
+        $state = Api-Req $MainProf 'GET' '/v1/status'
+        return @($state.peers | Where-Object { $_.connected }).Count -gt 0
+    } 30
+    $BeforeDetachedCopy = @((Api-Req $MainProf 'GET' '/v1/history').items | ForEach-Object { $_.id })
+    $PeerBeforeDetachedCopy = @((Api-Req $PeerProf 'GET' '/v1/history').items | ForEach-Object { $_.id })
+    $DetachedPayload = 'N03-WIN11-AFTER-TRAY-EXIT'
+    [void](Run-ClipHelper 'set-text' $DetachedPayload)
+    Wait-Until 'unicd captures a new copy after tray exit' {
+        $item = (Api-Req $MainProf 'GET' '/v1/history').items |
+            Where-Object { $_.origin -eq 'local_system' -and $_.kind -eq 'text' -and $_.id -notin $BeforeDetachedCopy } |
+            Select-Object -First 1
+        return $null -ne $item
+    } 10
+    [void]$Manifest.checks.Add('win11-unicd-observation-survives-tray-exit')
+    Wait-Until 'peer receives the new copy after tray exit' {
+        $item = (Api-Req $PeerProf 'GET' '/v1/history').items |
+            Where-Object { $_.origin -eq 'remote_device' -and $_.kind -eq 'text' -and $_.total_bytes -eq $DetachedPayload.Length -and $_.id -notin $PeerBeforeDetachedCopy } |
+            Select-Object -First 1
+        return $null -ne $item
+    } 25
+    [void]$Manifest.checks.Add('win11-unicd-sync-survives-tray-exit')
+
 
     $Manifest.status = 'PASS'
     $Manifest.finished_at_utc = [DateTime]::UtcNow.ToString('o')
@@ -778,6 +911,8 @@ try {
     foreach ($p in (Get-TaskUnicProcs)) {
         try { Stop-Process -Id $p.pid -Force -ErrorAction SilentlyContinue } catch {}
     }
+    $PanelLog = Join-Path $MainProf 'desktop-runtime\quick-panel.log'
+    if (Test-Path -LiteralPath $PanelLog) { Copy-Item -LiteralPath $PanelLog -Destination (Join-Path $OutDir 'quick-panel.log') }
     $mPath = Join-Path $OutDir 'manifest.json'
     [IO.File]::WriteAllText($mPath, ($Manifest | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding($false)))
     $sumLines = New-Object Collections.ArrayList

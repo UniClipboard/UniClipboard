@@ -12,14 +12,15 @@ import (
 )
 
 type macPlatform struct {
-	trusted  func() bool
-	secure   func() bool
-	flags    func(int32) uint64
-	keyDown  func(int32, uint16) bool
-	create   func(uintptr, uint16, bool) uintptr
-	setFlags func(uintptr, uint64)
-	post     func(int32, uintptr)
-	release  func(uintptr)
+	focusChecker func() bool
+	trusted      func() bool
+	secure       func() bool
+	flags        func(int32) uint64
+	keyDown      func(int32, uint16) bool
+	create       func(uintptr, uint16, bool) uintptr
+	setFlags     func(uintptr, uint64)
+	post         func(int32, uintptr)
+	release      func(uintptr)
 }
 
 // NewNative creates the host adapter without requesting permissions or showing UI.
@@ -108,31 +109,36 @@ func (p *macPlatform) Check(t Target) error {
 	if !p.trusted() {
 		return ErrPermission
 	}
+	if p.OwnsForeground() {
+		if pid, born := macIdentity(macFront()); pid != t.PID || born != t.Born {
+			return ErrFocus
+		}
+	}
 	return nil
 }
 func (p *macPlatform) Activate(t Target) error {
+	// The nonactivating panel leaves the original application active. Hiding
+	// the window relinquishes keyboard focus. Ready verifies the handoff.
 	if !p.valid(t) {
 		return ErrTarget
 	}
-	if !objc.Send[bool](macApp(t.PID), objc.RegisterName("activateWithOptions:"), uint64(1<<1)) {
-		return ErrFocus
-	}
 	return nil
 }
+func (p *macPlatform) SetFocusChecker(check func() bool) { p.focusChecker = check }
+
 func (p *macPlatform) OwnsForeground() bool {
-	pid, _ := macIdentity(macFront())
-	return pid == os.Getpid()
+	return p.focusChecker != nil && p.focusChecker()
 }
 func (p *macPlatform) Ready(t Target) (bool, error) {
 	if err := p.Check(t); err != nil {
 		return false, err
 	}
 	pid, born := macIdentity(macFront())
-	if pid != t.PID || born != t.Born {
-		if pid != os.Getpid() {
-			return false, ErrFocus
-		}
+	if pid == 0 || p.OwnsForeground() {
 		return false, nil
+	}
+	if pid != t.PID || born != t.Born {
+		return false, ErrFocus
 	}
 	// Never synthesize a chord while modifiers or the triggering keys remain held.
 	if p.flags(1)&((1<<17)|(1<<18)|(1<<19)|(1<<20)|(1<<23)) != 0 {

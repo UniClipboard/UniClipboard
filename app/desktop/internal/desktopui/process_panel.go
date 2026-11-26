@@ -35,6 +35,7 @@ type ProcessPanel struct {
 
 type panelResume struct {
 	query, kind, selected string
+	pasteFailure          string
 	chips                 []qpFilter
 	windowZoom, textZoom  int
 }
@@ -45,6 +46,10 @@ type capturedPlatform struct {
 }
 
 func (p *capturedPlatform) Capture() (quickpanel.Target, error) { return p.target, p.captureError }
+func (p *capturedPlatform) ActivateBeforeHide() bool {
+	handoff, ok := p.Platform.(quickpanel.ForegroundHandoff)
+	return ok && handoff.ActivateBeforeHide()
+}
 func (p *capturedPlatform) PreparePaste(ctx context.Context) error {
 	if prep, ok := p.Platform.(quickpanel.PastePreparer); ok {
 		return prep.PreparePaste(ctx)
@@ -67,6 +72,9 @@ func (p *ProcessPanel) SetProfileDir(dir string) {
 }
 func (p *ProcessPanel) Visible() bool {
 	return p.state != nil && p.state.visible && p.window != nil && p.window.IsVisible()
+}
+func (p *ProcessPanel) Focused() bool {
+	return p.Visible() && p.window.IsFocused()
 }
 func (p *ProcessPanel) Focus() {
 	if p.Visible() && p.window != nil {
@@ -97,6 +105,7 @@ func (p *ProcessPanel) Open(target quickpanel.Target, captureError string, favor
 	q.live.d.devices = []device{{id: "local"}}
 	q.query, q.kind, q.chips = p.resume.query, p.resume.kind, p.resume.chips
 	q.windowZoom, q.textZoom = p.resume.windowZoom, p.resume.textZoom
+	q.pasteFailure = p.resume.pasteFailure
 	if !favorites {
 		q.live.resumeSelection = p.resume.selected
 	}
@@ -173,6 +182,9 @@ func (p *ProcessPanel) release(q *quickPanelState, destroy bool) {
 		return
 	}
 	p.resume = panelResume{query: q.query, kind: q.kind, chips: slices.Clone(q.chips), windowZoom: q.windowZoom, textZoom: q.textZoom}
+	if !q.visible {
+		p.resume.pasteFailure = q.live.system.FailureMessage()
+	}
 	if active := q.active(); active != nil {
 		p.resume.selected = active.id
 	} else {

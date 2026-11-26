@@ -11,6 +11,8 @@ Checked-in end-to-end verification drivers for Decision `0033` (Standalone Quick
 | **N03** | `windows_e2e.ps1` | Windows 11 interactive desktop (`powershell.exe -NoProfile -STA`) | Cold-start & standby hot re-entry `AllowForeground`, standalone processes, `SendInput` `Enter` cross-app single-paste into a maximized external WinForms `TextBox` without unmaximizing (`IsZoomed` preserved), minimized target `SW_RESTORE` + paste, windowless OLE clipboard readback for text / PNG / `FileDropList` managed file, F13 delete-while-held + external OLE replacement releasing file cache lease, Tray coexistence (zero echo) & Tray quit preservation. |
 | **N04** | `macos_e2e.go` | macOS VM interactive desktop (host clipboard sharing OFF; zero Xcode/Python dependency) | Standalone headless `unicd` does NOT capture pre-existing `NSPasteboard` on startup; first on-demand activation enables `nativeboard` without broadcasting pre-existing pasteboard; real `NSPasteboard` readback for text / `public.png` / `public.file-url` managed file; F13 delete-while-held + external `pbcopy` replacement releasing file cache lease; Tray coexistence (zero echo) & Tray exit preservation; cross-app `CGEvent` auto-paste into external AppKit `NSTextView` when VM Accessibility (`AXIsProcessTrusted`) is granted. |
 
+N03 and the full N04 run also open Quick Panel through the tray's registered global shortcut while the external editor is foreground. Enter must dismiss the panel, restore the original target, and insert the expected text exactly once. A second case uses Ctrl+2 on Windows and Cmd+2 on macOS. It gives the first two rows different text and checks that the second row reaches the original editor and the system clipboard. The `global_hotkey` and `global_hotkey_number` receipts record the trigger, target, and inserted text hash. Use the release executables to verify a release. The macOS driver checks that the panel has keyboard focus while the original editor remains frontmost.
+
 ## Invocation Examples
 
 ### N01 (Linux Wayland, inside Linux VM)
@@ -49,7 +51,9 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File windows_e2e.ps1 `
 ```bash
 # Build darwin/arm64 binaries + macos-e2e on host, copy to VM, then run inside VM:
 GOOS=darwin GOARCH=arm64 go build -o macos-e2e ./app/desktop/e2e/testdata/standalone-quick-panel-real/macos_e2e.go
-./macos-e2e --bin-dir /tmp/unic-0032/bin --out-dir /tmp/unic-0032/out --work-dir /tmp/unic-0032/w
+./macos-e2e --require-accessibility --bin-dir /tmp/unic-0032/bin --out-dir /tmp/unic-0032/out --work-dir /tmp/unic-0032/w
 ```
+
+For a single global shortcut case, append `-HotkeyCase enter` or `-HotkeyCase number` to the Windows command. Append `--hotkey-case enter` or `--hotkey-case number` to the macOS command. Each selection uses its own run and receipt. It skips the standalone paste assertions so an Enter failure cannot block the numbered case.
 
 > **macOS Accessibility note**: On macOS 15/26, TCC hard-denies `kTCCServiceAccessibility` for remote SSH sessions (`responsible=/usr/libexec/sshd-keygen-wrapper`, `Auth Right: Denied (System Set)`). Without `--require-accessibility`, `macos-e2e` verifies real `NSPasteboard` on-demand activation, text/PNG/file readback, F13 lease release, and tray coexistence directly over SSH. To also run physical `CGEvent` cross-app `Cmd+V` auto-paste into `TextEdit.app` (`--require-accessibility`) without re-authorizing ad-hoc rebuilds, grant Accessibility once to Apple-signed `/System/Applications/Utilities/Terminal.app` inside the VM and launch the runner via `open -a Terminal <script.command>`.

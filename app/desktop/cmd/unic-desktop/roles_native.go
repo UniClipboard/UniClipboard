@@ -406,7 +406,9 @@ func runPanel(settings *config.Manager) error {
 		switch command {
 		case "status":
 			result := make(chan roleStatus, 1)
-			mygo.RunOnMain(func() { result <- roleStatus{Ready: panel != nil, Visible: panel != nil && panel.Visible()} })
+			mygo.RunOnMain(func() {
+				result <- roleStatus{Ready: panel != nil, Visible: panel != nil && panel.Visible(), Focused: panel != nil && panel.Focused()}
+			})
 			select {
 			case state := <-result:
 				return state, nil

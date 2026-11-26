@@ -59,16 +59,28 @@ func (p windowsPlatform) Activate(t Target) error {
 	if err := p.Check(t); err != nil {
 		return err
 	}
+	foreground, _, _ := getForeground.Call()
+	if foreground == t.ID {
+		return nil
+	}
+	pid, _ := winIdentity(foreground)
+	if pid != os.Getpid() {
+		return ErrFocus
+	}
 	// SW_RESTORE also unmaximizes a window. Use it only to recover a minimized target.
 	if minimized, _, _ := isIconic.Call(t.ID); minimized != 0 {
 		_, _, _ = showWindow.Call(t.ID, windows.SW_RESTORE)
 	}
 	ok, _, _ := setForeground.Call(t.ID)
 	if ok == 0 {
-		return ErrFocus
+		if current, _, _ := getForeground.Call(); current != t.ID {
+			return ErrFocus
+		}
 	}
 	return nil
 }
+func (windowsPlatform) ActivateBeforeHide() bool { return true }
+
 func (windowsPlatform) OwnsForeground() bool {
 	h, _, _ := getForeground.Call()
 	pid, _ := winIdentity(h)
@@ -79,6 +91,9 @@ func (p windowsPlatform) Ready(t Target) (bool, error) {
 		return false, err
 	}
 	h, _, _ := getForeground.Call()
+	if h == 0 {
+		return false, nil
+	}
 	if h != t.ID {
 		pid, _ := winIdentity(h)
 		if pid != os.Getpid() {

@@ -2,6 +2,7 @@ package desktopui
 
 import (
 	"math"
+	"runtime"
 	"strings"
 	"time"
 	"unicode"
@@ -187,6 +188,7 @@ func openQuickWindow(p *quickPanelState, closed func()) *mygo.Window {
 	history := mygo.NewWindow(mygo.WindowOptions{
 		Title: title, Width: int(qpPanelWidth * scale), Height: int(qpPanelHeight * scale), UseContentSize: true,
 		Frameless: true, DisableResize: true, AlwaysOnTop: true,
+		Panel:   runtime.GOOS == "darwin" && p.live != nil,
 		Content: ui.View(p.panel),
 	})
 	var satellite *mygo.Window

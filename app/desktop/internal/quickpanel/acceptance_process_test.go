@@ -422,6 +422,38 @@ func scenarioQuickPanelProcess(t *testing.T) {
 	}
 	checks = append(checks, "delayed activation is polled without blocking event dispatch")
 
+	// Windows can refuse activation as soon as hiding gives foreground away.
+	// Also verify that denied activation leaves Copy available and sends no input.
+	native.activateBeforeHide = true
+	native.onActivate = func() {
+		if !visible {
+			t.Error("foreground was surrendered before target activation")
+		}
+	}
+	open()
+	before = native.pastes
+	if err := controller.Start(id, false, true, false); err != nil {
+		t.Fatal(err)
+	}
+	wait("activate while panel owns foreground", func() bool { return !controller.Busy })
+	if !controller.Sent || visible || native.pastes != before+1 {
+		t.Fatalf("foreground handoff failed: %s", controller.Message)
+	}
+	native.activateErr = quickpanel.ErrFocus
+	open()
+	before = native.pastes
+	if err := controller.Start(id, false, true, false); err != nil {
+		t.Fatal(err)
+	}
+	wait("foreground activation denied", func() bool { return !controller.Busy })
+	if controller.Sent || !visible || native.pastes != before || controller.Message == "" {
+		t.Fatal("denied foreground handoff injected input or hid the failure")
+	}
+	native.activateErr = nil
+	native.activateBeforeHide = false
+	native.onActivate = nil
+	checks = append(checks, "Windows-style focus handoff activates before hiding and rejects denial without sending input")
+
 	registered := map[string]func(){}
 	conflict := "Ctrl+Alt+V"
 	shortcuts := quickpanel.NewShortcut(func(k string, f func()) error {
@@ -583,6 +615,8 @@ type fixturePlatform struct {
 	events                                   []string
 	pastes, activations                      int
 	onActivate                               func()
+	activateBeforeHide                       bool
+	activateErr                              error
 }
 
 func (f *fixturePlatform) Capture() (quickpanel.Target, error) {
@@ -596,8 +630,9 @@ func (f *fixturePlatform) Activate(quickpanel.Target) error {
 	if f.onActivate != nil {
 		f.onActivate()
 	}
-	return nil
+	return f.activateErr
 }
+func (f *fixturePlatform) ActivateBeforeHide() bool { return f.activateBeforeHide }
 func (f *fixturePlatform) Ready(quickpanel.Target) (bool, error) {
 	if f.delay > 0 {
 		f.delay--

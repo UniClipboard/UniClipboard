@@ -149,7 +149,7 @@ func (s *Source) importShortcuts(target string, report *Report) error {
 	if err := cfg.Validate(); err != nil {
 		// Keep all explicit user bindings. Unbind only overlapping new defaults.
 		for _, id := range []string{desktopkeys.All, desktopkeys.Favorites, desktopkeys.Devices, desktopkeys.Layout, desktopkeys.Tags,
-			desktopkeys.Actions, desktopkeys.Send, desktopkeys.PanelFavorite, desktopkeys.PanelActions, desktopkeys.PanelClear} {
+			desktopkeys.Actions, desktopkeys.Send, desktopkeys.PanelFavorite, desktopkeys.PanelFavoritesFilter, desktopkeys.PanelActions, desktopkeys.PanelClear} {
 			if _, ok := next[id]; ok {
 				continue
 			}

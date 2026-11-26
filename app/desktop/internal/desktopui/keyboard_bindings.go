@@ -254,6 +254,7 @@ func (d *viewState) bindKeyboardCommands(c *ui.Context) {
 func (d *viewState) openHistoryLibrary(id string) {
 	d.page, d.nav.Value = "history", id
 	d.tag, d.source, d.notice = "", "", ""
+	d.search.favorite = false
 	if d.compact {
 		d.sidebarHidden = true
 	}

@@ -116,6 +116,9 @@ type liveState struct {
 	detailReads                                map[string]*detailRead
 	loadGeneration                             uint64
 	catalogueKey, countKey, sidebarCountKey    string
+	catalogueBaseSerial                        uint64
+	catalogueBase                              map[string][]engine.HistorySearchCandidate
+	catalogueComplete                          map[string]bool
 	catalogue                                  map[string][]engine.HistorySearchCandidate
 	counts                                     map[string]uint64
 	sidebarCounts                              map[string]uint64

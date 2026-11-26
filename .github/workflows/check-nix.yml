@@ -53,6 +53,9 @@ jobs:
         run: |
           nix build --print-build-logs .#uniclipboard -o result-desktop
           ./result-desktop/bin/uniclipboard --version --json
+          ./result-desktop/lib/uniclipboard/unic-desktop --version --json
+          readelf -d ./result-desktop/lib/uniclipboard/unic-desktop | grep -E 'RUNPATH|RPATH' | grep -q 'gtk+3'
+          readelf -d ./result-desktop/lib/uniclipboard/unic-desktop | grep -E 'RUNPATH|RPATH' | grep -q 'libxkbcommon'
           test -x ./result-desktop/lib/uniclipboard/unic-desktop
           test -x ./result-desktop/lib/uniclipboard/unic
           test -x ./result-desktop/lib/uniclipboard/unicd

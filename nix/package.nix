@@ -18,8 +18,10 @@
 
 let
   # Linux Desktop uses purego (dlopen) for GTK3, AppIndicator and Wayland
-  # virtual-keyboard keymap loading, so runtime libraries must be exposed via
-  # LD_LIBRARY_PATH rather than ELF DT_NEEDED entries.
+  # virtual-keyboard keymap loading. Embed DT_RUNPATH via Go's internal linker
+  # (-r) so both the wrapped launcher and login-autostart launches of the
+  # private unic-desktop binary resolve these libraries, and disable patchelf
+  # shrink-rpath so the dlopen-only entries are preserved.
   runtimeLibs = [
     gtk3
     libayatana-appindicator
@@ -28,6 +30,7 @@ let
     gdk-pixbuf
     libxkbcommon
   ];
+  runtimeLibPath = lib.makeLibraryPath runtimeLibs;
 in
 buildGoModule {
   pname = "uniclipboard";
@@ -45,6 +48,7 @@ buildGoModule {
   ldflags = [
     "-s"
     "-w"
+    "-r ${runtimeLibPath}"
     "-X github.com/uniclipboard/unic/internal/releaseinfo.Version=${version}"
     "-X github.com/uniclipboard/unic/internal/releaseinfo.BuildNumber=${buildNumber}"
     "-X github.com/uniclipboard/unic/internal/releaseinfo.Source=${sourceRev}"
@@ -63,7 +67,9 @@ buildGoModule {
 
   buildInputs = runtimeLibs;
 
-  # wrapGAppsHook3 skips symlinks in $out/bin; wrap $out/bin/uniclipboard explicitly in postFixup.
+  # Preserve Go's link-time -r RUNPATH entries (patchelf --shrink-rpath drops
+  # dlopen-only paths) and wrap the $out/bin/uniclipboard symlink explicitly.
+  dontPatchELF = true;
   dontWrapGApps = true;
 
   postInstall = ''
@@ -102,7 +108,7 @@ buildGoModule {
 
   postFixup = ''
     wrapGApp $out/bin/uniclipboard \
-      --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath runtimeLibs}"
+      --prefix LD_LIBRARY_PATH : "${runtimeLibPath}"
   '';
 
   passthru.updateScript = nix-update-script { };

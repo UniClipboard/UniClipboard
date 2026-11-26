@@ -54,9 +54,20 @@ Add Unic as a flake input and import `nixosModules.default`:
 
 ## Home Manager configuration
 
-Import `homeManagerModules.default`:
+Pass the `uniclipboard` flake input through `extraSpecialArgs` (for example in `home-manager.lib.homeManagerConfiguration`):
 
 ```nix
+home-manager.lib.homeManagerConfiguration {
+  pkgs = nixpkgs.legacyPackages.x86_64-linux;
+  modules = [ ./home.nix ];
+  extraSpecialArgs = { inherit uniclipboard; };
+}
+```
+
+Then import `homeManagerModules.default` in `home.nix`:
+
+```nix
+{ uniclipboard, ... }:
 {
   imports = [ uniclipboard.homeManagerModules.default ];
 
@@ -66,7 +77,8 @@ Import `homeManagerModules.default`:
     autostart = true;
   };
 
-  # Or standalone headless CLI + systemd user service
+  # Or standalone headless CLI + systemd user service (systemd service is Linux-only;
+  # on macOS this installs `unic`/`unicd`, and you can run `unicd` directly or let `unic` manage it on demand)
   # services.unicd.enable = true;
 }
 ```

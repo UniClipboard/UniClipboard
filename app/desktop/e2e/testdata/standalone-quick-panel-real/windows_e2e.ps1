@@ -555,7 +555,7 @@ try {
             $shortcut = (Role-Cmd $MainProf 'tray' 'status').shortcut
             return ($shortcut.effective -eq 'Ctrl+Alt+V') -and (-not $shortcut.error)
         } 10
-        function Assert-GlobalHotkeyPaste([string]$Case, [string]$Trigger, [ushort]$Key, [bool]$Ctrl, [string]$ExpectedText) {
+        function Assert-GlobalHotkeyPaste([string]$Case, [string]$Trigger, [UInt16]$Key, [bool]$Ctrl, [string]$ExpectedText) {
             [IO.File]::WriteAllText($TargetCmd, 'clear', (New-Object Text.UTF8Encoding($false)))
             Wait-Until 'external target cleared for hotkey paste' { (Read-TargetState).text -eq '' } 8
             [void][UnicN03Win32]::SetForegroundWindow($TargetHwnd)

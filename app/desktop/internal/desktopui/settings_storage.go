@@ -193,7 +193,7 @@ func (d *viewState) storageCacheGroup(c *ui.Context, k desktopkit.Kit, cfg *conf
 				opts = append(opts, desktopkit.SelectItem{Value: strconv.Itoa(n), Label: label})
 			}
 			v := strconv.Itoa(quotaMB)
-			if k.Select(c, desktopkit.SelectProps{Label: d.tr("单设备缓存配额"), Value: &v, Items: opts, Disabled: l.busy}).Changed {
+			if k.Select(c, desktopkit.SelectProps{Label: d.tr("单设备缓存配额"), Value: &v, Items: opts, Disabled: l.showBusy()}).Changed && !l.busy {
 				if parsed, err := strconv.Atoi(v); err == nil {
 					cfg.FileCache.MaxBytes = config.Size(parsed) * (1 << 20)
 					*changed = true
@@ -243,8 +243,8 @@ func (d *viewState) storageLocalDataGroup(c *ui.Context, k desktopkit.Kit) {
 			}, nil, func() {
 				if k.Button(c.Key("open-migration"), d.tr("从 v1 迁移"), desktopkit.ButtonProps{
 					Size:     desktopkit.SizeSmall,
-					Disabled: l.busy,
-				}).Clicked() {
+					Disabled: l.showBusy(),
+				}).Clicked() && !l.busy {
 					l.openMigration()
 				}
 			})

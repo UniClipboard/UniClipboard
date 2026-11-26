@@ -175,7 +175,7 @@ func (d *viewState) notificationSettingsContent(c *ui.Context, k desktopkit.Kit,
 			Description: d.tr("接收来自 Unic 的系统级桌面通知。关闭后仍会在应用内保留红点提醒。"),
 		}, nil, func() {
 			val := masterOn
-			if k.Switch(c, &val, desktopkit.SwitchProps{Label: d.tr("系统通知"), Disabled: l.busy}).Changed() {
+			if k.Switch(c, &val, desktopkit.SwitchProps{Label: d.tr("系统通知"), Disabled: l.showBusy()}).Changed() && !l.busy {
 				v := val
 				cfg.Desktop.Notifications.Enabled = &v
 				*changed = true
@@ -187,7 +187,7 @@ func (d *viewState) notificationSettingsContent(c *ui.Context, k desktopkit.Kit,
 			Dim:         !masterOn,
 		}, nil, func() {
 			val := pairingOn
-			if k.Switch(c, &val, desktopkit.SwitchProps{Label: d.tr("新设备配对与路径请求"), Disabled: l.busy || !masterOn}).Changed() {
+			if k.Switch(c, &val, desktopkit.SwitchProps{Label: d.tr("新设备配对与路径请求"), Disabled: l.showBusy() || !masterOn}).Changed() && !l.busy {
 				v := val
 				cfg.Desktop.Notifications.DevicePairing = &v
 				*changed = true

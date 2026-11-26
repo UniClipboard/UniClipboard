@@ -16,9 +16,11 @@
 
 - Follow the [Desktop E2E runtime rules](e2e/README.md#runtime-budget) when adding or changing cases or CI shard assignments. Measure affected cases in hosted PR CI and review any case that reaches the review threshold.
 
-## UI 稳定性约定
+## UI 稳定性约定（适用于全部桌面页面：历史、设备管理、设置、插件及弹窗）
 
-- **分离防重入与视觉忙碌态**：写操作并发互斥立即检查 `l.busy`，但控件视觉 `Disabled` 与「正在处理…」等瞬态提示须经过延迟阈值（如 `l.showBusy()`、`showForegroundLoading()`，`120ms`）再显示，避免本地毫秒级 RPC 引起 1 帧闪灰或状态胶囊抖宽。
+- **局部变更不得引起整页刷新或无关组件闪灰**：用户触发单次局部写操作（如切换设备同步策略/路径开关、切换设置项、收藏/打标签/复制等）时，不得让同页无关按钮、开关或工具栏出现视觉重绘/闪灰。
+- **分离防重入与视觉忙碌态**：写操作并发互斥必须在动作入口立即检查 `l.busy`（`mutate` 内部已拦截），但**严禁**将控件的视觉 `Disabled`、`Opacity` 或「正在处理…」瞬态提示直接绑定到瞬时 `l.busy`；视觉禁用与忙碌提示必须经过延迟阈值（`l.showBusy()`、`showForegroundLoading()`，`120ms`）再生效，避免本地毫秒级 RPC 引起 1 帧整页闪灰或状态胶囊抖宽。
+- **写操作结果就地回写，禁止丢弃返回值等待整页重拉**：本地写接口（如 `SetBindingSync`、`UpdateChannel`、`RenamePeer`、`SaveConfig` 等）返回最新状态时，必须在 `mutate` 清除 `l.busy` 前就地回写到本地视图状态（开关与策略类切换应支持即时更新与失败回滚），再由后台刷新对账；严禁丢弃写接口返回值而依赖全量 `loadHistory`/`Status` 刷新，避免出现「忙碌态已结束但界面仍显示旧值」的空窗帧或 Switch 滑块来回弹跳。
 - **禁止在 `busy` / `loading` 期间卸载控件**：工具栏按钮、标签移除按钮、卡片快捷操作等在忙碌期间必须保持占位，仅通过 `Disabled` 或回调拦截禁交互，严禁用 `if !busy` 跳过渲染，避免即时模式 Flex/居中布局横向跳动。
 - **内容缓存按内容变化失效，不按元数据 `Revision` 失效**：仅当条目的 `Kind`、`TotalBytes`、`Parts` 变化或旧缓存处于错误态时才调用 `dropDetail` 清理 `l.details`；收藏、标签、同步状态等元数据变更不得清空已加载预览或重复拉取 `/content`。
-- **回归验证**：新增或修改历史页交互写操作、工具栏控件时，需在单元测试中用 `ui.Tester` 校验忙碌态控件 `Bounds` 零位移、快路径无瞬态提示闪变，以及元数据变更不触发多余内容请求（参考 `internal/desktopui/copy_stability_test.go`）。
+- **回归验证**：在任何桌面页面新增或修改交互写操作、开关、策略切换或工具栏控件时，需在单元测试中用 `ui.Tester` 逐帧校验：快路径（`< 120ms`）无关控件像素与 `Disabled` 零闪烁、控件 `Bounds` 零位移、写完成后无旧值空窗帧、并发点击仍被 `l.busy` 拦截，以及元数据变更不触发多余内容请求（参考 `internal/desktopui/copy_stability_test.go` 与 `internal/desktopui/devices_stability_test.go`）。

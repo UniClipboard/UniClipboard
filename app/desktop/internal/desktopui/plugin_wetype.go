@@ -59,15 +59,16 @@ func (d *viewState) weTypePairingContent(c *ui.Context, k desktopkit.Kit, item a
 		ui.Column(c.Key("pair-form")).Padding(14, 16).Gap(10).Children(func() {
 			k.Text(c.Key("instructions"), d.tr("在微信输入法的跨设备设置中获取配对码。如有提示，请在微信输入法中确认配对。"), secondary)
 			field := k.CodeField(c.Key("code"), desktopkit.CodeFieldProps{
-				Label: d.tr("6 位配对码"), Length: 6, Value: &p.code, Disabled: l.busy,
+				Label: d.tr("6 位配对码"), Length: 6, Value: &p.code, Disabled: p.busy || l.showBusy(),
 			})
 			label := "加入共享空间"
 			if p.busy {
 				label = "正在连接…"
 			}
-			ready := !l.busy && len(p.code) == 6
+			readyVisual := !p.busy && !l.showBusy() && len(p.code) == 6
+			ready := !p.busy && !l.busy && len(p.code) == 6
 			button := k.Button(c.Key("join"), d.tr(label), desktopkit.ButtonProps{
-				Variant: desktopkit.Primary, Disabled: !ready, Busy: p.busy,
+				Variant: desktopkit.Primary, Disabled: !readyVisual, Busy: p.busy,
 			})
 			if ready && (button.Clicked() || field.Submitted) {
 				d.pairWeType(item.ID, false)
@@ -81,7 +82,7 @@ func (d *viewState) weTypeConnectionOptions(c *ui.Context, k desktopkit.Kit, ite
 	p := &d.pluginSettings.channelPair
 	k.Disclosure(c, d.tr("连接选项"), &p.optionsOpen, func() {
 		if canPair && d.channelForPlugin(item.ID) == nil {
-			if k.Button(c.Key("resume"), d.tr("恢复已有连接"), desktopkit.ButtonProps{Disabled: l.busy}).Clicked() {
+			if k.Button(c.Key("resume"), d.tr("恢复已有连接"), desktopkit.ButtonProps{Disabled: p.busy || l.showBusy()}).Clicked() && !l.busy && !p.busy {
 				d.pairWeType(item.ID, true)
 			}
 		}
@@ -92,17 +93,21 @@ func (d *viewState) weTypeConnectionOptions(c *ui.Context, k desktopkit.Kit, ite
 func (d *viewState) pairWeType(id string, resume bool) {
 	l := d.live
 	p := &d.pluginSettings.channelPair
+	if l.busy || p.busy {
+		return
+	}
 	req := api.ChannelPairRequest{BackendID: id, Resume: resume}
 	if !resume {
 		req.Code = p.code
 	}
 	p.code, p.message = "", ""
 	d.toastDismiss(toastIDWeTypePair)
-	p.busy, l.busy = true, true
+	p.busy = true
+	l.startBusy("")
 	if !l.enqueueWithin(func(ctx context.Context) func() {
 		_, err := l.client.PairChannel(ctx, req)
 		return func() {
-			l.busy = false
+			l.stopBusy()
 			l.nextRefresh = time.Time{}
 			if d.pluginSettings.id != id {
 				return
@@ -125,6 +130,7 @@ func (d *viewState) pairWeType(id string, resume bool) {
 			}
 		}
 	}, 95*time.Second) {
-		p.busy, l.busy = false, false
+		p.busy = false
+		l.stopBusy()
 	}
 }

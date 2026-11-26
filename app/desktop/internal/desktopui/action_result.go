@@ -258,7 +258,7 @@ func (d *viewState) actionResultDialog(c *ui.Context, k desktopkit.Kit) {
 				if k.Button(c.Key("copy-result"), copyLabel, desktopkit.ButtonProps{
 					Icon:     desktopkit.IconCopy,
 					Variant:  copyVariant,
-					Disabled: d.live != nil && d.live.busy,
+					Disabled: d.live != nil && d.live.showBusy(),
 				}).Clicked() {
 					targetID := d.actionResult.historyID
 					d.copyHistoryID(targetID, func() {

@@ -194,7 +194,7 @@ func (d *viewState) tagMenu(ids []string) []desktopkit.MenuEntry {
 	if single != nil && !single.builtin {
 		out = append(out, desktopkit.MenuSeparator("colors"))
 		for _, v := range [][2]string{{"orange", "橙色"}, {"blue", "蓝色"}, {"green", "绿色"}, {"purple", "紫色"}, {"gray", "灰色"}} {
-			out = append(out, desktopkit.MenuEntry{ID: "color:" + v[0], Label: d.tr(v[1]), Swatch: desktopkit.TagColor(v[0]), Checked: single.color == desktopkit.TagColor(v[0]), Disabled: d.live != nil && d.live.busy})
+			out = append(out, desktopkit.MenuEntry{ID: "color:" + v[0], Label: d.tr(v[1]), Swatch: desktopkit.TagColor(v[0]), Checked: single.color == desktopkit.TagColor(v[0]), Disabled: d.live != nil && d.live.showBusy()})
 		}
 	}
 	if len(own) > 0 && d.live == nil {
@@ -563,8 +563,8 @@ func (d *viewState) tagSheet(c *ui.Context, k desktopkit.Kit) {
 						k.Text(c.Key("count"), fmt.Sprintf(d.tr("%d 项"), count), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary}).Shrink(0)
 						if tag := d.tagByID(id); tag != nil {
 							visible := tag.sidebar
-							k.Switch(c.Key("sb"), &visible, desktopkit.SwitchProps{Label: d.tr("在侧边栏显示 #") + d.tagLabel(tag.id), Disabled: d.live != nil && d.live.busy})
-							if visible != tag.sidebar {
+							k.Switch(c.Key("sb"), &visible, desktopkit.SwitchProps{Label: d.tr("在侧边栏显示 #") + d.tagLabel(tag.id), Disabled: d.live != nil && d.live.showBusy()})
+							if visible != tag.sidebar && (d.live == nil || !d.live.busy) {
 								d.setTagSidebar(id, visible)
 							}
 						}

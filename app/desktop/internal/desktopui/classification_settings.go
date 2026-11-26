@@ -26,7 +26,8 @@ func (d *viewState) classificationRules(c *ui.Context, k desktopkit.Kit, cfg con
 	if !slices.Equal(form.saved, instance.Rules) {
 		*form = classificationSettings{saved: instance.Rules}
 	}
-	busy := d.live.busy
+	busy := d.live.showBusy()
+	logicBusy := d.live.busy
 	defaults := c.Key("default-classification-rules")
 	k.SettingsGroup(defaults, desktopkit.SettingsGroupProps{
 		Title:  d.tr("默认正则规则"),
@@ -37,7 +38,7 @@ func (d *viewState) classificationRules(c *ui.Context, k desktopkit.Kit, cfg con
 			enabled := !slices.Contains(instance.DisabledDefaultTags, tag)
 			row := defaults.Key(tag)
 			k.SettingsRow(row, desktopkit.SettingsRowProps{Label: label}, nil, func() {
-				if !k.Switch(row, &enabled, desktopkit.SwitchProps{Label: label, Disabled: busy}).Changed() {
+				if !k.Switch(row, &enabled, desktopkit.SwitchProps{Label: label, Disabled: busy}).Changed() || logicBusy {
 					return
 				}
 				disabled := slices.Clone(instance.DisabledDefaultTags)
@@ -49,7 +50,8 @@ func (d *viewState) classificationRules(c *ui.Context, k desktopkit.Kit, cfg con
 				instance.DisabledDefaultTags = disabled
 				cfg.Plugins.Instances[builtinclassify.ID] = instance
 				d.saveLiveConfig(cfg)
-				busy = d.live.busy
+				busy = d.live.showBusy()
+				logicBusy = d.live.busy
 			})
 		}
 	})
@@ -71,11 +73,11 @@ func (d *viewState) classificationRules(c *ui.Context, k desktopkit.Kit, cfg con
 			k.SettingsRow(row, desktopkit.SettingsRowProps{Label: label, Description: rule.Pattern}, nil, func() {
 				ui.Row(row).Gap(6).Children(func() {
 					edit := fmt.Sprintf(d.tr("编辑规则 %s"), label)
-					if k.Button(row.Key("edit"), "", desktopkit.ButtonProps{Label: edit, Icon: desktopkit.IconEdit, Variant: desktopkit.Subtle, Disabled: busy || form.open}).Clicked() {
+					if k.Button(row.Key("edit"), "", desktopkit.ButtonProps{Label: edit, Icon: desktopkit.IconEdit, Variant: desktopkit.Subtle, Disabled: busy || form.open}).Clicked() && !logicBusy {
 						form.open, form.index, form.draft = true, i, rule
 					}
 					remove := fmt.Sprintf(d.tr("删除规则 %s"), label)
-					if k.Button(row.Key("delete"), "", desktopkit.ButtonProps{Label: remove, Icon: desktopkit.IconDelete, Variant: desktopkit.Subtle, Disabled: busy || form.open}).Clicked() {
+					if k.Button(row.Key("delete"), "", desktopkit.ButtonProps{Label: remove, Icon: desktopkit.IconDelete, Variant: desktopkit.Subtle, Disabled: busy || form.open}).Clicked() && !logicBusy {
 						save(slices.Delete(slices.Clone(instance.Rules), i, i+1))
 					}
 				})
@@ -83,7 +85,7 @@ func (d *viewState) classificationRules(c *ui.Context, k desktopkit.Kit, cfg con
 		}
 		if !form.open {
 			k.SettingsRow(group.Key("add-row"), desktopkit.SettingsRowProps{}, nil, func() {
-				if k.Button(group.Key("add"), d.tr("添加规则"), desktopkit.ButtonProps{Icon: desktopkit.IconAdd, Variant: desktopkit.Subtle, Disabled: busy || len(instance.Rules) >= builtinclassify.MaxRules}).Clicked() {
+				if k.Button(group.Key("add"), d.tr("添加规则"), desktopkit.ButtonProps{Icon: desktopkit.IconAdd, Variant: desktopkit.Subtle, Disabled: busy || len(instance.Rules) >= builtinclassify.MaxRules}).Clicked() && !logicBusy {
 					form.open, form.index = true, len(instance.Rules)
 				}
 			})
@@ -94,10 +96,10 @@ func (d *viewState) classificationRules(c *ui.Context, k desktopkit.Kit, cfg con
 			k.TextField(editor.Key("pattern"), desktopkit.TextFieldProps{Label: d.tr("正则表达式"), Value: &form.draft.Pattern, Placeholder: `\bUNI-[0-9]+\b`, Disabled: busy})
 			k.TextField(editor.Key("tag"), desktopkit.TextFieldProps{Label: d.tr("目标标签"), Value: &form.draft.Tag, Disabled: busy})
 			ui.Row(editor.Key("actions")).Gap(8).Children(func() {
-				if k.Button(editor.Key("cancel"), d.tr("取消"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: busy}).Clicked() {
+				if k.Button(editor.Key("cancel"), d.tr("取消"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: busy}).Clicked() && !logicBusy {
 					*form = classificationSettings{saved: instance.Rules}
 				}
-				if k.Button(editor.Key("save"), d.tr("保存规则"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: busy}).Clicked() {
+				if k.Button(editor.Key("save"), d.tr("保存规则"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: busy}).Clicked() && !logicBusy {
 					rule := form.draft
 					rule.Tag = strings.TrimSpace(rule.Tag)
 					rules := slices.Clone(instance.Rules)

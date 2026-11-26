@@ -395,7 +395,7 @@ func (d *viewState) backupDisplayValue(key, value string) string {
 func (d *viewState) backupSettingsContent(c *ui.Context, k desktopkit.Kit) {
 	s := &d.backup
 	l := d.live
-	disabled := s.busy || l.busy || !l.loaded || l.config.Error != ""
+	disabled := s.busy || l.showBusy() || !l.loaded || l.config.Error != ""
 	k.SettingsGroup(c.Key("configuration-backup"), desktopkit.SettingsGroupProps{
 		Title: d.tr("配置备份"),
 		Trailing: func() {
@@ -495,15 +495,15 @@ func (d *viewState) backupSettingsContent(c *ui.Context, k desktopkit.Kit) {
 			settingsFooterBar(c.Key("footer"), k, d.tr("预览阶段尚未写入任何配置。确认后仅替换上方列出的可移动设置。"), false, func() {
 				if k.Button(c.Key("cancel-settings-preview"), d.tr("取消导入"), desktopkit.ButtonProps{
 					Size:     desktopkit.SizeSmall,
-					Disabled: s.busy || l.busy,
-				}).Clicked() {
+					Disabled: s.busy || l.showBusy(),
+				}).Clicked() && !l.busy {
 					d.cancelBackupImport()
 				}
 				if k.Button(c.Key("confirm-settings-preview"), d.tr("应用导入"), desktopkit.ButtonProps{
 					Variant:  desktopkit.Primary,
 					Size:     desktopkit.SizeSmall,
 					Disabled: disabled || len(s.preview.changes) == 0,
-				}).Clicked() {
+				}).Clicked() && !l.busy {
 					s.confirmOpen = true
 				}
 			})

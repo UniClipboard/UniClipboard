@@ -28,6 +28,9 @@ on:
       stage:
         type: boolean
         required: true
+      source_sha:
+        type: string
+        default: ''
     outputs:
       expected_revision:
         value: ${{ jobs.stage.outputs.expected_revision }}
@@ -43,6 +46,7 @@ jobs:
         run: exit 1
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - uses: actions/checkout@v6
         with:
@@ -99,6 +103,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - uses: actions/checkout@v6
         with:
@@ -142,6 +147,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:

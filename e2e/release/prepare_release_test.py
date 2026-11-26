@@ -17,6 +17,9 @@ import prepare_release  # noqa: E402
 
 PREPARE_WORKFLOW = ROOT / ".github/workflows/prepare-release.yml"
 MERGE_WORKFLOW = ROOT / ".github/workflows/release-on-merge.yml"
+RELEASE_CLI_WORKFLOW = ROOT / ".github/workflows/release-cli.yml"
+RELEASE_DESKTOP_WORKFLOW = ROOT / ".github/workflows/release-desktop.yml"
+LEGACY_ALPHA_WORKFLOW = ROOT / ".github/workflows/prepare-legacy-desktop-alpha.yml"
 PROMPT_TEMPLATE = ROOT / ".github/prompts/prepare-release-changelog.codex.md"
 
 
@@ -740,6 +743,300 @@ printf '%s\\n' "$*" >> {json.dumps(str(log_file))}
             )
             actual = log_file.read_text(encoding="utf-8").strip().splitlines()
             self.assertEqual(actual, expected_calls)
+
+
+class ReleaseSourceResolutionTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="unic-release-source-test-"))
+        self.release_cli_wf = load_yaml(RELEASE_CLI_WORKFLOW)
+        self.release_desktop_wf = load_yaml(RELEASE_DESKTOP_WORKFLOW)
+        self.legacy_alpha_wf = load_yaml(LEGACY_ALPHA_WORKFLOW)
+        self.resolve_script = workflow_step(
+            self.release_cli_wf, "plan", "Resolve and verify release source"
+        )["run"]
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def make_fake_gh(self, body_json, exit_code=0):
+        fake_bin = self.tmp / f"gh-bin-{abs(hash((body_json, exit_code)))}"
+        fake_bin.mkdir(exist_ok=True)
+        log_file = fake_bin / "gh.log"
+        gh_path = fake_bin / "gh"
+        gh_path.write_text(
+            f"""#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> {json.dumps(str(log_file))}
+if [ {exit_code} -ne 0 ]; then
+  printf '%s\\n' {json.dumps(body_json)} >&2
+  exit {exit_code}
+fi
+printf '%s\\n' {json.dumps(body_json)}
+""",
+            encoding="utf-8",
+        )
+        gh_path.chmod(0o755)
+        return fake_bin, log_file
+
+    def run_resolve(self, head_sha, expected_source, fake_bin):
+        out_file = self.tmp / "github-output"
+        if out_file.exists():
+            out_file.unlink()
+        full_env = {
+            **os.environ,
+            "GITHUB_REPOSITORY": "UniClipboard/UniClipboard",
+            "GITHUB_SHA": head_sha,
+            "EXPECTED_SOURCE": expected_source,
+            "GITHUB_OUTPUT": str(out_file),
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        }
+        full_env.pop("BASH_ENV", None)
+        full_env.pop("ENV", None)
+        proc = subprocess.run(
+            ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", self.resolve_script],
+            cwd=ROOT,
+            env=full_env,
+            text=True,
+            capture_output=True,
+        )
+        outputs = {}
+        if out_file.exists():
+            for line in out_file.read_text(encoding="utf-8").splitlines():
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    outputs[k] = v
+        return proc, outputs
+
+    def test_empty_and_identical_expected_source_skip_compare_api(self):
+        head = "0eac2a06e234f8f54b89055dacd26f9787adb0b4"
+        fake_bin, log_file = self.make_fake_gh('{"status":"diverged","behind_by":1}')
+        for expected in ("", head):
+            proc, outputs = self.run_resolve(head, expected, fake_bin)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(outputs["source_sha"], head)
+            self.assertFalse(log_file.exists())
+
+    def test_ancestor_expected_source_succeeds_after_concurrent_merge(self):
+        merge_sha = "2012ae20bbf2c75eb9ef177f7634e4aeead5992a"
+        head_sha = "0eac2a06e234f8f54b89055dacd26f9787adb0b4"
+        fake_bin, log_file = self.make_fake_gh(
+            json.dumps({"status": "ahead", "ahead_by": 1, "behind_by": 0})
+        )
+        proc, outputs = self.run_resolve(head_sha, merge_sha, fake_bin)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(outputs["source_sha"], merge_sha)
+        self.assertEqual(
+            log_file.read_text(encoding="utf-8").strip(),
+            f"api repos/UniClipboard/UniClipboard/compare/{merge_sha}...{head_sha}",
+        )
+
+    def test_non_ancestor_and_malformed_expected_source_rejected(self):
+        merge_sha = "2012ae20bbf2c75eb9ef177f7634e4aeead5992a"
+        head_sha = "0eac2a06e234f8f54b89055dacd26f9787adb0b4"
+
+        for bad_sha in ("not-a-sha", "2012ae20b", "../main", "2012AE20BBF2C75EB9EF177F7634E4AEEAD5992A"):
+            fake_bin, log_file = self.make_fake_gh("{}")
+            proc, _ = self.run_resolve(head_sha, bad_sha, fake_bin)
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("40-character lowercase hex SHA", proc.stderr)
+            self.assertFalse(log_file.exists())
+
+        for payload in (
+            {"status": "diverged", "ahead_by": 1, "behind_by": 1},
+            {"status": "behind", "ahead_by": 0, "behind_by": 2},
+        ):
+            fake_bin, _ = self.make_fake_gh(json.dumps(payload))
+            proc, _ = self.run_resolve(head_sha, merge_sha, fake_bin)
+            self.assertNotEqual(proc.returncode, 0)
+            self.assertIn("not an ancestor", proc.stderr)
+
+    def test_release_workflows_propagate_resolved_source_sha(self):
+        jobs = self.release_cli_wf["jobs"]
+        self.assertEqual(
+            jobs["plan"]["outputs"]["source_sha"], "${{ steps.source.outputs.source_sha }}"
+        )
+        for job_name in ("build", "desktop_build", "desktop_publish", "legacy_alpha", "desktop_promote"):
+            self.assertEqual(
+                jobs[job_name]["with"]["source_sha"], "${{ needs.plan.outputs.source_sha }}"
+            )
+            self.assertIn("plan", jobs[job_name]["needs"])
+        desktop_on = workflow_on(self.release_desktop_wf)
+        legacy_on = workflow_on(self.legacy_alpha_wf)
+        self.assertIn("source_sha", desktop_on["workflow_call"]["inputs"])
+        self.assertIn("source_sha", legacy_on["workflow_call"]["inputs"])
+
+    def test_desktop_release_acquire_accepts_ancestor_and_rejects_diverged(self):
+        import hashlib
+        import desktop_release  # noqa: E402
+
+        merge_sha = "2012ae20bbf2c75eb9ef177f7634e4aeead5992a"
+        head_sha = "0eac2a06e234f8f54b89055dacd26f9787adb0b4"
+
+        def make_artifacts_tree(root_dir, recorded_sha):
+            for target in desktop_release.TARGETS:
+                os_name = target.split("-")[0]
+                tdir = root_dir / f"desktop-{target}"
+                tdir.mkdir(parents=True, exist_ok=True)
+                items = []
+                for fmt in desktop_release.FORMATS[os_name]:
+                    fname = f"pkg-{target}.{fmt}"
+                    data = f"{target}:{fmt}".encode()
+                    (tdir / fname).write_bytes(data)
+                    items.append(
+                        {
+                            "format": fmt,
+                            "file": fname,
+                            "sha256": hashlib.sha256(data).hexdigest(),
+                        }
+                    )
+                (tdir / "artifacts.json").write_text(
+                    json.dumps(
+                        {
+                            "schema": 1,
+                            "product": "desktop",
+                            "target": target,
+                            "source_sha": recorded_sha,
+                            "source_clean": True,
+                            "development": False,
+                            "artifacts": items,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+
+        def make_acquire_gh(compare_payload):
+            fake_bin = self.tmp / f"acq-gh-{abs(hash(json.dumps(compare_payload, sort_keys=True)))}"
+            fake_bin.mkdir(exist_ok=True)
+            gh_path = fake_bin / "gh"
+            gh_path.write_text(
+                f"""#!/usr/bin/env python3
+import json, sys
+args = sys.argv[1:]
+endpoint = args[1]
+if endpoint.endswith('/actions/runs/45829686375'):
+    print(json.dumps({{"id": 45829686375, "workflow_id": 77, "head_sha": {head_sha!r}, "created_at": "2026-11-26T13:29:49Z", "repository": {{"full_name": "UniClipboard/UniClipboard"}}}}))
+elif endpoint.endswith('/actions/workflows/release-cli.yml'):
+    print(json.dumps({{"id": 77}}))
+elif endpoint.endswith('/actions/workflows/build-desktop.yml'):
+    print(json.dumps({{"id": 88}}))
+elif '/compare/' in endpoint:
+    print(json.dumps({compare_payload!r}))
+else:
+    sys.exit(f"unexpected gh call: {{args}}")
+""",
+                encoding="utf-8",
+            )
+            gh_path.chmod(0o755)
+            return fake_bin
+
+        # Ancestor source SHA succeeds and records merge_sha in acquisition.json.
+        in_dir = self.tmp / "in-ok"
+        out_dir = self.tmp / "out-ok"
+        make_artifacts_tree(in_dir, merge_sha)
+        fake_bin = make_acquire_gh({"status": "ahead", "ahead_by": 1, "behind_by": 0})
+        env = {
+            **os.environ,
+            "GITHUB_RUN_ID": "45829686375",
+            "GITHUB_SHA": head_sha,
+            "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
+        }
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "tools/release/desktop_release.py"),
+                "acquire",
+                "--run-id",
+                "45829686375",
+                "--current-artifacts",
+                str(in_dir),
+                "--source-sha",
+                merge_sha,
+                "--output",
+                str(out_dir),
+            ],
+            cwd=ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        acq = json.loads((out_dir / "acquisition.json").read_text(encoding="utf-8"))
+        self.assertEqual(acq["source_sha"], merge_sha)
+
+        # Diverged source SHA is rejected.
+        in_bad = self.tmp / "in-diverged"
+        out_bad = self.tmp / "out-diverged"
+        make_artifacts_tree(in_bad, merge_sha)
+        fake_bad = make_acquire_gh({"status": "diverged", "ahead_by": 1, "behind_by": 1})
+        env_bad = {**env, "PATH": f"{fake_bad}{os.pathsep}{os.environ['PATH']}"}
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "tools/release/desktop_release.py"),
+                "acquire",
+                "--run-id",
+                "45829686375",
+                "--current-artifacts",
+                str(in_bad),
+                "--source-sha",
+                merge_sha,
+                "--output",
+                str(out_bad),
+            ],
+            cwd=ROOT,
+            env=env_bad,
+            text=True,
+            capture_output=True,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("not an ancestor", proc.stderr)
+
+        # Artifact recorded with wrong source SHA (e.g. head_sha instead of merge_sha) is rejected.
+        in_mismatch = self.tmp / "in-mismatch"
+        out_mismatch = self.tmp / "out-mismatch"
+        make_artifacts_tree(in_mismatch, head_sha)
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "tools/release/desktop_release.py"),
+                "acquire",
+                "--run-id",
+                "45829686375",
+                "--current-artifacts",
+                str(in_mismatch),
+                "--source-sha",
+                merge_sha,
+                "--output",
+                str(out_mismatch),
+            ],
+            cwd=ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("candidate source disagrees", proc.stderr)
+
+        # --source-sha without --current-artifacts is rejected.
+        proc = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "tools/release/desktop_release.py"),
+                "acquire",
+                "--run-id",
+                "45829686375",
+                "--source-sha",
+                merge_sha,
+                "--output",
+                str(self.tmp / "out-no-current"),
+            ],
+            cwd=ROOT,
+            env=env,
+            text=True,
+            capture_output=True,
+        )
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("--source-sha is supported only with --current-artifacts", proc.stderr)
 
 
 if __name__ == "__main__":

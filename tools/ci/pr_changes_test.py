@@ -353,6 +353,45 @@ class ReleaseMetadataValidationTests(unittest.TestCase):
     def test_current_repo_release_metadata_is_valid(self):
         validate_release.validate_repo(ROOT)
 
+    def test_release_branch_validation_invokes_repo_root(self):
+        import shutil
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="unic-validate-release-") as tmp:
+            repo = Path(tmp)
+            (repo / "release/changelogs/desktop").mkdir(parents=True)
+            shutil.copy2(ROOT / "release/products.toml", repo / "release/products.toml")
+            shutil.copy2(ROOT / "release/desktop-notes.json", repo / "release/desktop-notes.json")
+            import tomllib
+
+            meta = tomllib.loads((repo / "release/products.toml").read_text(encoding="utf-8"))
+            ver = meta["products"]["desktop"]["version"]
+            build = meta["products"]["desktop"]["build_number"]
+            (repo / f"release/changelogs/desktop/v{ver}-build.{build}.md").write_text(
+                f"## v{ver}-build.{build} (desktop) - 2026-11-26\n\n### Features\n\n- Test change (#1)\n",
+                encoding="utf-8",
+            )
+            (repo / f"release/changelogs/desktop/v{ver}-build.{build}.zh.md").write_text(
+                f"## v{ver}-build.{build} (desktop) - 2026-11-26\n\n### Features\n\n- 测试变更 (#1)\n",
+                encoding="utf-8",
+            )
+            validate_release.validate_repo(
+                repo, head_ref=f"release/desktop-alpha-v{ver}-build.{build}"
+            )
+
+    def test_rejects_boolean_cli_build_number(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="unic-validate-bool-") as tmp:
+            meta = Path(tmp) / "products.toml"
+            text = (ROOT / "release/products.toml").read_text(encoding="utf-8")
+            meta.write_text(
+                re.sub(r"cli_build_number\s*=\s*\d+", "cli_build_number = true", text),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                validate_release.validate_products_toml(meta)
+
 
 if __name__ == "__main__":
     unittest.main()

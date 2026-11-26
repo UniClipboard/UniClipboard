@@ -5,9 +5,11 @@ on:
     paths:
       - 'release/**'
       - 'tools/release/prepare_release.py'
+      - 'tools/release/release.py'
       - 'tools/release/mobile.py'
       - 'tools/release/android_release.py'
       - 'tools/release/ios_profiles.py'
+      - 'tools/release/requirements.txt'
       - 'tools/ci/validate_release.py'
       - 'e2e/release/prepare_release_test.py'
       - 'e2e/release/mobile_delivery_test.py'
@@ -23,9 +25,11 @@ on:
     paths:
       - 'release/**'
       - 'tools/release/prepare_release.py'
+      - 'tools/release/release.py'
       - 'tools/release/mobile.py'
       - 'tools/release/android_release.py'
       - 'tools/release/ios_profiles.py'
+      - 'tools/release/requirements.txt'
       - 'tools/ci/validate_release.py'
       - 'e2e/release/prepare_release_test.py'
       - 'e2e/release/mobile_delivery_test.py'

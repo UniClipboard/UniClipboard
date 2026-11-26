@@ -29,7 +29,7 @@ def validate_products_toml(path: Path) -> None:
         raise ValueError("desktop targets must not be empty")
     if not desktop.get("cli_version"):
         raise ValueError("desktop.cli_version is required")
-    if not isinstance(desktop.get("cli_build_number"), int) or desktop["cli_build_number"] <= 0:
+    if type(desktop.get("cli_build_number")) is not int or desktop["cli_build_number"] <= 0:
         raise ValueError("desktop.cli_build_number must be a positive integer")
     cli_sha = desktop.get("cli_manifest_sha256", "")
     if len(cli_sha) != 64 or any(c not in "0123456789abcdef" for c in cli_sha):
@@ -68,7 +68,7 @@ def validate_repo(root: Path, head_ref: str = "") -> None:
                 "--branch",
                 head_ref,
                 "--validate-repo",
-                "--root",
+                "--repo-root",
                 str(root),
             ],
             check=True,

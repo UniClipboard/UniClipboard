@@ -116,7 +116,7 @@ def classify_paths(paths: list[str]) -> dict[str, bool]:
         "desktop_e2e": False,
     }
     for raw in paths:
-        path = raw.strip()
+        path = raw
         while path.startswith("./"):
             path = path[2:]
         if not path or is_ignored_doc(path):
@@ -152,10 +152,10 @@ def classify_paths(paths: list[str]) -> dict[str, bool]:
 
 def git_changed_files(base: str, head: str) -> list[str]:
     out = subprocess.check_output(
-        ["git", "diff", "--name-only", base, head],
+        ["git", "diff", "--name-only", "--no-renames", "-z", base, head],
         text=True,
     )
-    return [line.strip() for line in out.splitlines() if line.strip()]
+    return [entry for entry in out.split("\0") if entry]
 
 
 def main() -> int:

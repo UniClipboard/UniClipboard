@@ -24,6 +24,7 @@ paths:
   - .github/workflows/build-desktop-test.yml
   - .github/workflows/package-acceptance.yml
   - .github/workflows/pr-checks.yml
+  - .github/workflows/check-nix.yml
   - .github/workflows/release-desktop.yml
   - .github/workflows/record-desktop-acceptance.yml
   - .github/workflows/prepare-legacy-desktop-alpha.yml
@@ -53,7 +54,7 @@ paths:
   - .github/prompts/prepare-release-changelog.codex.md
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: cfcb67e9f6de223543116787f47e1cb1749a9449
+verified: 489ed8813ca372d999d2508ff420cf7688f9ecd3
 ---
 # Product builds and CLI releases
 
@@ -113,6 +114,14 @@ When a release PR from the repository is merged into the default branch, **Relea
 - `mobile` -> `release-android.yml` (`publish=true`, `track=internal` for `alpha` or `production` for `stable`) and `release-ios.yml` (`publish=true`)
 - `android` -> `release-android.yml` (`publish=true`, `track=internal|production`)
 - `ios` -> `release-ios.yml` (`publish=true`)
+
+### Pull request checks
+
+**PR checks** reads the diff between GitHub's test merge commit and its first parent. The changed-path job selects shared Go and Desktop checks, CLI construction, mobile acceptance, Nix, and package acceptance. Repository Markdown goes through the documentation lifecycle checker. The docs site has its own **Docs Check** workflow. [Check routing](../../tools/release/pr_checks.py)
+
+For release branches in this repository, the changed-path job compares `release/products.toml` with the output that **Prepare Release** would generate from the base manifest. If the other changes are limited to that release's notes and documentation, the job validates the product identity and finalized notes without starting builds. Source changes or additional release configuration changes select the applicable build and acceptance jobs.
+
+Main pushes, merge queue checks, scheduled checks, and manual dispatches continue to use their event-specific configuration. GitHub Code Quality is configured independently in repository settings.
 
 ### Joint CLI and Desktop delivery
 
@@ -324,7 +333,7 @@ The packaged-process E2E uses a temporary home, pseudoterminals and fixed encryp
 
 Git attributes require LF checkout bytes for release TOML metadata on every platform. Metadata digests cover the original file bytes. The real Git checkout regression enables `core.autocrlf=true` and verifies that checkout preserves the canonical metadata bytes before building candidates.
 
-`build-cli.yml` runs for PRs, main/v2 pushes, manual requests and reusable calls. PR candidates use the actual PR head rather than a synthetic merge SHA. Explicit distribution builds import the existing Apple certificate into a temporary keychain, sign CLI executables before hashing and remove the keychain after construction. Its callers provide an exact source SHA. It checks the metadata digest, source identity, required target set and native executable receipts before `npm pack`. CI builds do not publish.
+`build-cli.yml` runs on main pushes, manual requests and reusable calls. **PR checks** calls it with the exact PR head SHA when the PR changes CLI build inputs. Explicit distribution builds import the existing Apple certificate into a temporary keychain, sign CLI executables before hashing and remove the keychain after construction. Its callers provide an exact source SHA. It checks the metadata digest, source identity, required target set and native executable receipts before `npm pack`. CI builds do not publish.
 
 `release-cli.yml` supports alpha and direct stable publication. When `candidate_run_id` is supplied, the publish job acquires the canonical candidate directly. Otherwise the workflow checks for a durable record for the selected version/build and restores its exact package files when it exists. It awaits the reusable build when no record exists. It stages the manifest and packages in a draft GitHub release before publishing to npm. The product tag is `cli/v<version>-build.<number>` and must reference the accepted source SHA. Existing assets are compared and never overwritten. Incomplete staging fails before npm publication, and recovery requires the original candidate artifacts.
 

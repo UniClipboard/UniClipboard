@@ -39,6 +39,13 @@ def load_yaml(path):
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def workflow_on(workflow):
+    for key in ("on", True, "true"):
+        if key in workflow:
+            return workflow[key]
+    raise KeyError("workflow is missing 'on' trigger block")
+
+
 def workflow_step(workflow, job, step_name):
     for step in workflow["jobs"][job]["steps"]:
         if step.get("name") == step_name:
@@ -67,6 +74,41 @@ def run_git(cwd, *args):
     ).strip()
 
 
+FIXTURE_PRODUCTS_TOML = """schema = 1
+
+[products.cli]
+version = "2.0.0"
+build_number = 7
+targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64", "windows-amd64", "windows-arm64"]
+
+[products.desktop]
+version = "2.0.0"
+build_number = 8
+targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64", "windows-amd64", "windows-arm64"]
+cli_version = "2.0.0"
+cli_build_number = 3
+cli_manifest_sha256 = "e09cf4ed4ca6c357c585d11660ca64583d565901af64e15c5a6a8ca8e46fbdc4"
+
+cli_artifact_run_id = 45138690798
+# Configure the durable raw Ed25519 public key before enabling in-app updates.
+update_public_key = "4/pGKRfV8KGneAnMEci+DnpdrnoFLM5uVhDq0Kp/pvk="
+
+[products.android]
+version = "3.0.0"
+build_number = 205
+targets = ["android-apk-arm64", "android-aab"]
+application_id = "app.uniclipboard.android"
+legacy_build_floor = 204
+
+[products.ios]
+version = "3.0.0"
+build_number = 205
+targets = ["ios-arm64"]
+application_id = "app.uniclipboard.UniClipboard"
+legacy_build_floor = 204
+"""
+
+
 class PrepareReleaseScriptTests(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="unic-prepare-release-test-"))
@@ -76,7 +118,9 @@ class PrepareReleaseScriptTests(unittest.TestCase):
         run_git(self.repo, "config", "user.name", "Release Test")
         run_git(self.repo, "config", "user.email", "release@example.test")
         (self.repo / "release").mkdir(parents=True)
-        shutil.copy2(ROOT / "release/products.toml", self.repo / "release/products.toml")
+        (self.repo / "release/products.toml").write_text(
+            FIXTURE_PRODUCTS_TOML, encoding="utf-8", newline="\n"
+        )
         shutil.copy2(
             ROOT / "release/desktop-notes.json", self.repo / "release/desktop-notes.json"
         )
@@ -290,6 +334,15 @@ class PrepareReleaseScriptTests(unittest.TestCase):
 
     def test_bump_preserves_lf_comments_and_unrelated_sections(self):
         meta_path = self.repo / "release/products.toml"
+        shutil.copy2(ROOT / "release/products.toml", meta_path)
+        before = tomllib.loads(meta_path.read_text(encoding="utf-8"))
+        next_mobile_build = (
+            max(
+                before["products"]["android"]["build_number"],
+                before["products"]["ios"]["build_number"],
+            )
+            + 1
+        )
         self.run_cli(
             "bump",
             "--platform",
@@ -299,7 +352,7 @@ class PrepareReleaseScriptTests(unittest.TestCase):
             "--version",
             "2.6.0",
             "--build-number",
-            "206",
+            str(next_mobile_build),
             "--metadata",
             str(meta_path),
         )
@@ -308,12 +361,12 @@ class PrepareReleaseScriptTests(unittest.TestCase):
         self.assertIn(b"# Configure the durable raw Ed25519 public key", raw)
         parsed = tomllib.loads(raw.decode("utf-8"))
         self.assertEqual(parsed["products"]["android"]["version"], "2.6.0")
-        self.assertEqual(parsed["products"]["android"]["build_number"], 206)
+        self.assertEqual(parsed["products"]["android"]["build_number"], next_mobile_build)
         self.assertEqual(parsed["products"]["ios"]["version"], "2.6.0")
-        self.assertEqual(parsed["products"]["ios"]["build_number"], 206)
+        self.assertEqual(parsed["products"]["ios"]["build_number"], next_mobile_build)
         # Unrelated sections untouched.
-        self.assertEqual(parsed["products"]["desktop"]["build_number"], 8)
-        self.assertEqual(parsed["products"]["cli"]["build_number"], 7)
+        self.assertEqual(parsed["products"]["desktop"], before["products"]["desktop"])
+        self.assertEqual(parsed["products"]["cli"], before["products"]["cli"])
 
     def test_changelog_init_render_validate_and_parse_branch(self):
         self.run_cli(
@@ -496,8 +549,8 @@ class WorkflowExecutionTests(unittest.TestCase):
         return origin, repo, base_sha
 
     def test_workflows_declare_expected_triggers_and_codex_reuse(self):
-        # PyYAML parses bare `on` as boolean True.
-        on_cfg = self.prepare_wf.get("on", self.prepare_wf.get(True))
+        # PyYAML parses bare `on` as boolean True; Ruby Psych + JSON stringifies it as "true".
+        on_cfg = workflow_on(self.prepare_wf)
         inputs = on_cfg["workflow_dispatch"]["inputs"]
         self.assertEqual(set(inputs.keys()), {"platform", "channel", "version", "base_branch"})
         self.assertEqual(inputs["platform"]["options"], ["desktop", "cli", "mobile", "android", "ios"])
@@ -508,7 +561,7 @@ class WorkflowExecutionTests(unittest.TestCase):
         self.assertIn("CODEX_API_ENDPOINT", codex_step["with"]["responses-api-endpoint"])
         self.assertIn("CODEX_API_KEY", codex_step["with"]["openai-api-key"])
 
-        merge_on = self.merge_wf.get("on", self.merge_wf.get(True))
+        merge_on = workflow_on(self.merge_wf)
         self.assertEqual(merge_on["pull_request"]["types"], ["closed"])
         self.assertEqual(merge_on["pull_request"]["branches"], ["main"])
 

@@ -81,12 +81,19 @@ def matches_github_paths(patterns: list[str] | None, files: list[str]) -> bool:
     return False
 
 
+def workflow_on(data: dict) -> dict | None:
+    for key in ("on", True, "true"):
+        if key in data:
+            return data[key]
+    return None
+
+
 def pr_trigger_workflows(files: list[str]) -> set[str]:
     """Return workflow filenames that would trigger on an opened/synchronize PR."""
     triggered = set()
     for wf_path in sorted(WORKFLOWS_DIR.glob("*.yml")):
         data = load_yaml(wf_path)
-        on_block = data.get("on") if "on" in data else data.get(True)
+        on_block = workflow_on(data)
         if not isinstance(on_block, dict) or "pull_request" not in on_block:
             continue
         pr_cfg = on_block["pull_request"] or {}
@@ -197,7 +204,7 @@ class WorkflowTriggerMatrixTests(unittest.TestCase):
         for wf_path in sorted(WORKFLOWS_DIR.glob("*.yml")):
             data = load_yaml(wf_path)
             self.assertIsInstance(data, dict, wf_path.name)
-            on_block = data.get("on") if "on" in data else data.get(True)
+            on_block = workflow_on(data)
             if isinstance(on_block, dict) and "pull_request" in on_block:
                 pr_cfg = on_block["pull_request"] or {}
                 types = pr_cfg.get("types")

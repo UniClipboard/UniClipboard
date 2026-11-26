@@ -1,27 +1,6 @@
 name: Package process acceptance
 on:
-  pull_request:
-    paths:
-      - 'tools/package/**'
-      - 'tools/release/**'
-      - 'packaging/**'
-      - 'e2e/packaging/**'
-      - 'internal/localpaths/**'
-      - 'internal/releaseinfo/**'
-      - 'release/**'
-      - 'app/desktop/cmd/unic-desktop/**'
-      - 'app/desktop/internal/appupdates/**'
-      - 'internal/desktopupdate/**'
-      - 'app/service/cmd/unicd/update*.go'
-      - 'app/desktop/e2e/updateprobe/**'
-      - '.github/workflows/package-acceptance.yml'
-      - '.github/workflows/build-cli.yml'
-      - '.github/workflows/build-desktop.yml'
-      - '.github/workflows/build-desktop-test.yml'
-      - '.github/workflows/prepare-legacy-desktop-alpha.yml'
-      - '.github/workflows/release-cli.yml'
-      - '.github/workflows/release-desktop.yml'
-      - '.github/release-notes/**'
+  workflow_call:
   workflow_dispatch:
 permissions:
   contents: read

@@ -1,17 +1,7 @@
 name: Nix flake check
 
 on:
-  pull_request:
-    paths:
-      - flake.nix
-      - nix/**
-      - go.mod
-      - go.sum
-      - release/products.toml
-      - packaging/linux/**
-      - app/desktop/internal/appicons/**
-      - app/desktop/boardui/assets/**
-      - .github/workflows/check-nix.yml
+  workflow_call:
   push:
     branches: [main]
     paths:
@@ -28,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: nix-flake-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

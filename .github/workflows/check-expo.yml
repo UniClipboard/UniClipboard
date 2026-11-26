@@ -1,17 +1,7 @@
 name: Mobile build and acceptance
 
 on:
-  pull_request:
-    paths:
-      - app/expo/**
-      - bindings/**
-      - engine/**
-      - internal/**
-      - go.mod
-      - go.sum
-      - release/products.toml
-      - tools/release/mobile.py
-      - .github/workflows/check-expo.yml
+  workflow_call:
   push:
     branches: [main]
     paths:

@@ -53,7 +53,7 @@ paths:
   - .github/prompts/prepare-release-changelog.codex.md
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 614156f1f533b121c25825f70281dfc6bad910ad
+verified: cfcb67e9f6de223543116787f47e1cb1749a9449
 ---
 # Product builds and CLI releases
 

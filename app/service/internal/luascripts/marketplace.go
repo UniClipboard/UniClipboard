@@ -103,11 +103,18 @@ func BundledMarketplace() api.PluginMarketplace {
 	}
 }
 
-func marketplaceRegistryURL() string {
+func marketplaceRegistryURLs(mirrorURL string) ([]string, bool) {
 	if raw, ok := os.LookupEnv("UNIC_PLUGIN_REGISTRY_URL"); ok {
-		return strings.TrimSpace(raw)
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" || strings.EqualFold(trimmed, "off") || strings.EqualFold(trimmed, "none") {
+			return nil, true
+		}
+		return []string{trimmed}, false
 	}
-	return DefaultMarketplaceURL
+	if mirror, err := resolveMirrorURL(mirrorURL); err == nil && mirror != nil {
+		return []string{mirror.String() + "/registry.json", DefaultMarketplaceURL}, false
+	}
+	return []string{DefaultMarketplaceURL}, false
 }
 
 func marketplaceCachePath(root string) string {
@@ -121,9 +128,16 @@ func marketplaceCachePath(root string) string {
 // fallback. Network or validation failures never fail the UI; they fall back to
 // cache or bundled official plugins and attach a human-readable warning.
 func FetchMarketplace(ctx context.Context, root string, refresh bool) api.PluginMarketplace {
+	return FetchMarketplaceWithMirror(ctx, root, refresh, "")
+}
+
+// FetchMarketplaceWithMirror loads the online plugin registry, preferring an
+// optional configured mirror (or UNIC_PLUGIN_MIRROR_URL) before falling back
+// to GitHub, disk cache, and finally the bundled official catalog.
+func FetchMarketplaceWithMirror(ctx context.Context, root string, refresh bool, mirrorURL string) api.PluginMarketplace {
 	bundled := BundledMarketplace()
-	regURL := marketplaceRegistryURL()
-	if regURL == "" || strings.EqualFold(regURL, "off") || strings.EqualFold(regURL, "none") {
+	regURLs, offline := marketplaceRegistryURLs(mirrorURL)
+	if offline {
 		return bundled
 	}
 
@@ -141,7 +155,17 @@ func FetchMarketplace(ctx context.Context, root string, refresh bool) api.Plugin
 		}
 	}
 
-	remote, err := fetchRemoteMarketplace(ctx, regURL)
+	var remote api.PluginMarketplace
+	var err error
+	for _, regURL := range regURLs {
+		remote, err = fetchRemoteMarketplace(ctx, regURL)
+		if err == nil {
+			break
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
 	if err == nil {
 		remote.Source = "remote"
 		remote.Warning = ""
@@ -164,11 +188,10 @@ func FetchMarketplace(ctx context.Context, root string, refresh bool) api.Plugin
 
 func fetchRemoteMarketplace(ctx context.Context, rawURL string) (api.PluginMarketplace, error) {
 	u, err := url.Parse(rawURL)
-	if err != nil || u.Host == "" {
+	if err != nil || u.Host == "" || u.User != nil {
 		return api.PluginMarketplace{}, errors.New("invalid marketplace registry URL")
 	}
-	isLoopback := u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || u.Hostname() == "::1"
-	if u.Scheme != "https" && (u.Scheme != "http" || !isLoopback) {
+	if u.Scheme != "https" && (u.Scheme != "http" || !isLoopbackHost(u.Hostname())) {
 		return api.PluginMarketplace{}, errors.New("marketplace registry URL must use https")
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
@@ -179,7 +202,19 @@ func fetchRemoteMarketplace(ctx context.Context, rawURL string) (api.PluginMarke
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "unic-desktop/plugin-marketplace")
-	resp, err := (&http.Client{Timeout: 8 * time.Second}).Do(req)
+	client := &http.Client{
+		Timeout: 8 * time.Second,
+		CheckRedirect: func(next *http.Request, via []*http.Request) error {
+			if len(via) >= 5 || next.URL.User != nil {
+				return errors.New("unexpected marketplace redirect")
+			}
+			if next.URL.Scheme != "https" && (next.URL.Scheme != "http" || !isLoopbackHost(next.URL.Hostname())) {
+				return errors.New("marketplace redirect must use https")
+			}
+			return nil
+		},
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return api.PluginMarketplace{}, err
 	}

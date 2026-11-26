@@ -113,7 +113,7 @@ func (n *Node) pluginsLocked() []api.PluginInfo {
 }
 
 func (n *Node) PluginMarketplace(ctx context.Context, refresh bool) (api.PluginMarketplace, error) {
-	return luascripts.FetchMarketplace(ctx, n.luaDir, refresh), nil
+	return luascripts.FetchMarketplaceWithMirror(ctx, n.luaDir, refresh, n.cfg.Current().Plugins.MirrorURL), nil
 }
 
 func (n *Node) InstallPlugin(ctx context.Context, in api.PluginInstallRequest) (api.PluginInfo, error) {
@@ -130,6 +130,7 @@ func (n *Node) InstallPlugin(ctx context.Context, in api.PluginInstallRequest) (
 		Repository: repo,
 		Ref:        strings.TrimSpace(in.Ref),
 		Path:       strings.TrimSpace(in.Path),
+		MirrorURL:  n.cfg.Current().Plugins.MirrorURL,
 		Build:      in.Build,
 		Replace:    in.Replace,
 	})

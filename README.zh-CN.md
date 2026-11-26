@@ -16,6 +16,21 @@
 </p>
 
 <p>
+  <a href="https://uniclipboard.app"><img alt="官网" src="https://img.shields.io/badge/Website-0891B2?style=for-the-badge" /></a>
+  <a href="https://docs.uniclipboard.app/zh"><img alt="文档" src="https://img.shields.io/badge/Docs-4F46E5?style=for-the-badge&logo=readthedocs&logoColor=white" /></a>
+  <a href="#community"><img alt="微信群" src="https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white" /></a>
+  <a href="#community"><img alt="QQ 群" src="https://img.shields.io/badge/QQ-1688D8?style=for-the-badge&logo=qq&logoColor=white" /></a>
+  <a href="https://t.me/uniclipboard"><img alt="Telegram 群组" src="https://img.shields.io/badge/Telegram-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" /></a>
+</p>
+
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/UniClipboard/UniClipboard?style=flat-square&color=E5B650&logo=github&label=Stars" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="下载量" src="https://img.shields.io/github/downloads/UniClipboard/UniClipboard/total?style=flat-square&color=0EA5E9&label=Downloads" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="最新版本" src="https://img.shields.io/github/v/release/UniClipboard/UniClipboard?style=flat-square&include_prereleases&color=0891b2&label=Release" /></a>
+  <a href="LICENSE"><img alt="AGPL-3.0 许可证" src="https://img.shields.io/badge/License-AGPL--3.0-22c55e?style=flat-square" /></a>
+</p>
+
+<p>
   <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Windows" src="https://img.shields.io/badge/Windows-1f2937?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iIzM4YmRmOCI+PHBhdGggZD0iTTAgMGg3LjR2Ny40SDB6bTguNiAwSDE2djcuNEg4LjZ6TTAgOC42aDcuNFYxNkgwem04LjYgMEgxNlYxNkg4LjZ6Ii8+PC9zdmc+" /></a>
   <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="macOS" src="https://img.shields.io/badge/macOS-1f2937?style=flat-square&logo=apple&logoColor=white" /></a>
   <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Linux" src="https://img.shields.io/badge/Linux-1f2937?style=flat-square&logo=linux&logoColor=facc15" /></a>
@@ -40,7 +55,7 @@
 
 - **跨平台**：支持 Windows、macOS、Linux、iOS 和 Android 互相同步。设备在同一 Wi-Fi 或不同网络里都能连上。
 - **不经过云端**：设备之间加密直连，不需要注册账号。剪贴板历史只保存在你自己的设备上。
-- **内存占用低**：后台同步服务空闲时约占 14 MB 内存<sup>[1](#benchmarks)</sup>。在 Windows 上，主界面约占 34–49 MB<sup>[2](#benchmarks)</sup>。关闭主窗口后，界面进程会退出并释放内存。
+- **内存占用低**：后台同步服务空闲时约占 14 MB 内存。在 Windows 上，主界面约占 34–49 MB。关闭主窗口后，界面进程会退出并释放内存。
 - **都能同步**：文字、图片、文件和整个文件夹都能同步。
 
 <a id="features"></a>
@@ -117,18 +132,6 @@ unic history list                 # 查看历史
 
 完整命令见 [命令行文档](app/service/README.md)。
 
-<a id="benchmarks"></a>
-
-## 实测数据
-
-| | 内存 | 测试条件 |
-|---|---:|---|
-| 后台同步服务 `unicd` | **14 MB** | macOS（Apple Silicon），空历史，空闲 20 秒后读取，统计口径与“活动监视器”的“内存”列一致<sup>1</sup> |
-| 桌面主界面 | **34 MB** / 49 MB | Windows 11 ARM64 原生版 / x64 版，60 条文字历史，Windows 任务管理器口径<sup>2</sup> |
-| 桌面主界面（含图片） | 119 MB / 133 MB | 同上，另加 12 张 2048×1536 图片<sup>2</sup> |
-
-<sup>1</sup> 在提交 `e2cb68d` 上测量，测量方法是 `footprint <pid>`。<sup>2</sup> 三次测量取中位数，详见 [Windows 内存测试报告](docs/exec/windows-desktop-memory.md)。
-
 ## 隐私
 
 - 设备之间端到端加密传输，Unic 不运营存储你剪贴板内容的服务器。
@@ -143,6 +146,29 @@ unic history list                 # 查看历史
 v2 可以导入 v1 的全部历史记录，包括文字、图片、文件和标签。首次打开 v2 时，按照引导操作即可。也可以稍后在 **设置 › 存储 › 从 v1 迁移** 中导入。
 
 v2 设备不能和 v1 设备同步，所以请把所有设备都升级到 v2，然后重新配对。v1 的代码保留在 [`v1` 分支](https://github.com/UniClipboard/UniClipboard/tree/v1)。
+
+<a id="community"></a>
+
+## 社区交流
+
+欢迎加入 Unic 社区，与其他用户和开发者交流使用心得、提出建议或反馈问题：
+
+- <img src="docs/assets/community/qq.svg" alt="" width="18" /> QQ 群：`1080860954`
+- <img src="docs/assets/community/wechat.svg" alt="" width="18" /> 微信群：扫描下方二维码添加好友，拉你进交流群
+- <img src="docs/assets/community/telegram.svg" alt="" width="18" /> [Telegram 群组 (@uniclipboard)](https://t.me/uniclipboard)
+
+<table>
+  <tr>
+    <td align="center"><strong><img src="docs/assets/community/qq.svg" alt="" width="18" /> QQ 群</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/wechat.svg" alt="" width="18" /> 微信群</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/telegram.svg" alt="" width="18" /> Telegram 群组</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/assets/community/qq-qr.png" alt="Unic QQ 群二维码" width="240" /></td>
+    <td align="center"><img src="docs/assets/community/wechat-qr.png" alt="Unic 微信二维码" width="240" /></td>
+    <td align="center"><a href="https://t.me/uniclipboard"><img src="docs/assets/community/telegram-qr.jpg" alt="Unic Telegram 群组二维码" width="240" /></a></td>
+  </tr>
+</table>
 
 ## 参与开发
 

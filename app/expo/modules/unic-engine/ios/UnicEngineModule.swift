@@ -406,6 +406,65 @@ public final class UnicEngineModule: Module {
     return ""
   }
 
+  private func legacyMobileConfigJSON() -> String {
+    let fm = FileManager.default
+    var databaseCandidates: [String] = []
+    var attachmentRoots: [String] = []
+
+    if let rawDB = launchOverride("UNIC_MOBILE_LEGACY_DB") {
+      databaseCandidates.append(URL(fileURLWithPath: rawDB).resolvingSymlinksInPath().path)
+    }
+    if let rawAttachments = launchOverride("UNIC_MOBILE_LEGACY_ATTACHMENTS") {
+      for segment in rawAttachments.split(separator: ":") {
+        let trimmed = segment.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+          attachmentRoots.append(URL(fileURLWithPath: trimmed, isDirectory: true).resolvingSymlinksInPath().path)
+        }
+      }
+    }
+
+    var groupIDs: [String] = []
+    if let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty {
+      groupIDs.append("group.\(bundleID)")
+      if bundleID == "app.uniclipboard.UniClipboard" {
+        groupIDs.append("group.app.uniclipboard.ios")
+      }
+    }
+    for groupID in groupIDs {
+      if let container = fm.containerURL(forSecurityApplicationGroupIdentifier: groupID) {
+        let dbURL = container
+          .appendingPathComponent("Databases", isDirectory: true)
+          .appendingPathComponent("uniclipboard.db")
+        databaseCandidates.append(dbURL.resolvingSymlinksInPath().path)
+        let payloadsURL = container.appendingPathComponent("payloads", isDirectory: true)
+        attachmentRoots.append(payloadsURL.resolvingSymlinksInPath().path)
+      }
+    }
+
+    if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+      let sandboxDB = docs
+        .appendingPathComponent("SQLite", isDirectory: true)
+        .appendingPathComponent("uniclipboard.db")
+      databaseCandidates.append(sandboxDB.resolvingSymlinksInPath().path)
+      let clipboardsDir = docs.appendingPathComponent("clipboards", isDirectory: true)
+      attachmentRoots.append(clipboardsDir.resolvingSymlinksInPath().path)
+    }
+    if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first {
+      let tempFilesDir = caches.appendingPathComponent("temp_files", isDirectory: true)
+      attachmentRoots.append(tempFilesDir.resolvingSymlinksInPath().path)
+    }
+
+    let payload: [String: Any] = [
+      "database_candidates": databaseCandidates,
+      "attachment_roots": attachmentRoots,
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: payload),
+          let text = String(data: data, encoding: .utf8) else {
+      return "{}"
+    }
+    return text
+  }
+
   private func dataDirectoryPath() throws -> String {
     return try resolveDirectory(overrideEnv: "UNIC_MOBILE_DATA_DIR", fallbackSubdir: "unic-v2", searchPath: .applicationSupportDirectory)
   }
@@ -427,6 +486,7 @@ public final class UnicEngineModule: Module {
       }
       throw UnicModuleException("[unic:internal] {\"code\":\"internal\",\"message\":\"open setup flow failed\"}")
     }
+    try created.configureLegacyMobile(legacyMobileConfigJSON())
     setupSession = created
     return created
   }
@@ -699,9 +759,16 @@ public final class UnicEngineModule: Module {
             }
             var payload: [String: Any] = ["cancelled": false]
             if let data = resultJSON.data(using: .utf8),
-               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let src = parsed["source"] as? String {
-              payload["source"] = src
+               let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+              if let src = parsed["source"] as? String {
+                payload["source"] = src
+              }
+              if let kind = parsed["source_kind"] as? String {
+                payload["source_kind"] = kind
+              }
+              if let reqUnlock = parsed["requires_unlock"] as? Bool {
+                payload["requires_unlock"] = reqUnlock
+              }
             }
             let outData = try JSONSerialization.data(withJSONObject: payload)
             promise.resolve(String(data: outData, encoding: .utf8) ?? "{\"cancelled\":false}")

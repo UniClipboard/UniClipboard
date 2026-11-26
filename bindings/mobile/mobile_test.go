@@ -1432,3 +1432,153 @@ func TestM1ContractsBindingSyncReceivedResendFullTextAndPagination(t *testing.T)
 		t.Fatalf("expected >=3 pages and >=126 unique items, got pages=%d items=%d", pages, len(seenIDs))
 	}
 }
+
+func TestSetupFlowLegacyMobileExpoSQLiteAutoDetectAndMigration(t *testing.T) {
+	base := tempDirReal(t)
+	target := filepath.Join(base, "unic-v2")
+	missingV1 := filepath.Join(base, "no-v1-vault")
+
+	// Empty legacy DB should be skipped during auto-detection.
+	emptyDB := filepath.Join(base, "empty-group", "Databases", "uniclipboard.db")
+	if err := os.MkdirAll(filepath.Dir(emptyDB), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	edb, err := sql.Open("sqlite", emptyDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = edb.Exec(`CREATE TABLE clipboard_history (
+		profileHash TEXT PRIMARY KEY COLLATE NOCASE,
+		type TEXT NOT NULL,
+		text TEXT NOT NULL DEFAULT '',
+		dataName TEXT,
+		size INTEGER,
+		fileUri TEXT,
+		timestamp INTEGER NOT NULL DEFAULT 0,
+		lastAccessed INTEGER NOT NULL DEFAULT 0,
+		lastModified INTEGER NOT NULL DEFAULT 0,
+		starred INTEGER NOT NULL DEFAULT 0,
+		pinned INTEGER NOT NULL DEFAULT 0,
+		isDeleted INTEGER NOT NULL DEFAULT 0
+	)`)
+	_ = edb.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Populated legacy mobile DB (iOS App Group layout: Databases/uniclipboard.db + payloads/).
+	groupDir := filepath.Join(base, "legacy-group")
+	legacyDB := filepath.Join(groupDir, "Databases", "uniclipboard.db")
+	payloadsDir := filepath.Join(groupDir, "payloads")
+	if err := os.MkdirAll(filepath.Dir(legacyDB), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(payloadsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	wantPixel, err := os.ReadFile(filepath.Join("..", "..", "internal", "v1migration", "testdata", "pixel.png"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(payloadsDir, "Image-mob-img-1"), wantPixel, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Now().UnixMilli()
+	ldb, err := sql.Open("sqlite", legacyDB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = ldb.Exec(`CREATE TABLE clipboard_history (
+		profileHash TEXT PRIMARY KEY COLLATE NOCASE,
+		type TEXT NOT NULL,
+		text TEXT NOT NULL DEFAULT '',
+		dataName TEXT,
+		size INTEGER,
+		fileUri TEXT,
+		timestamp INTEGER NOT NULL DEFAULT 0,
+		lastAccessed INTEGER NOT NULL DEFAULT 0,
+		lastModified INTEGER NOT NULL DEFAULT 0,
+		starred INTEGER NOT NULL DEFAULT 0,
+		pinned INTEGER NOT NULL DEFAULT 0,
+		isDeleted INTEGER NOT NULL DEFAULT 0
+	);
+	INSERT INTO clipboard_history (profileHash, type, text, timestamp, lastAccessed, lastModified, starred, pinned, isDeleted)
+	VALUES ('mob-txt-1', 'Text', 'legacy mobile text', ?, ?, ?, 1, 1, 0);
+	INSERT INTO clipboard_history (profileHash, type, text, dataName, size, timestamp, lastAccessed, lastModified, starred, pinned, isDeleted)
+	VALUES ('mob-img-1', 'Image', '', 'pixel.png', ?, ?, ?, ?, 0, 0, 0);`,
+		now-2000, now-2000, now-2000, len(wantPixel), now-1000, now-1000, now-1000)
+	_ = ldb.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sess, err := OpenSetupFlow(target, missingV1)
+	if err != nil {
+		t.Fatalf("OpenSetupFlow: %v", err)
+	}
+	cfgJSON, _ := json.Marshal(map[string]any{
+		"database_candidates": []string{emptyDB, legacyDB},
+		"attachment_roots":    []string{payloadsDir},
+	})
+	if err := sess.ConfigureLegacyMobile(string(cfgJSON)); err != nil {
+		t.Fatalf("ConfigureLegacyMobile: %v", err)
+	}
+
+	detJSON, err := sess.DetectSource("")
+	if err != nil {
+		t.Fatalf("DetectSource: %v", err)
+	}
+	var det struct {
+		Status         string `json:"status"`
+		Source         string `json:"source"`
+		SourceKind     string `json:"source_kind"`
+		RequiresUnlock bool   `json:"requires_unlock"`
+	}
+	if err := json.Unmarshal([]byte(detJSON), &det); err != nil {
+		t.Fatalf("unmarshal detect: %v (%s)", err, detJSON)
+	}
+	if det.Status != "found" || det.SourceKind != sourceKindMobileSQLite || det.RequiresUnlock {
+		t.Fatalf("unexpected detection: %+v", det)
+	}
+
+	// Run WITHOUT passphrase and WITHOUT secret provider.
+	prog := &progressCollector{}
+	resJSON, err := sess.Run(nil, nil, nil, prog)
+	if err != nil {
+		t.Fatalf("Run legacy mobile migration: %v", err)
+	}
+	var runRes migrationRunResult
+	if err := json.Unmarshal([]byte(resJSON), &runRes); err != nil {
+		t.Fatalf("unmarshal run result: %v (%s)", err, resJSON)
+	}
+	if runRes.Status != "complete" || runRes.Imported != 2 || runRes.Verified != 2 || runRes.Failed != 0 {
+		t.Fatalf("unexpected run result: %+v", runRes)
+	}
+
+	if err := sess.MarkComplete(); err != nil {
+		t.Fatalf("MarkComplete: %v", err)
+	}
+
+	// Open real mobile Engine on target and verify records and tags.
+	engCfg, _ := json.Marshal(map[string]any{"data_dir": target})
+	eng, err := NewEngine(string(engCfg))
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+	defer func() { _ = eng.Close(nil) }()
+	if err := eng.Start(nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	pageJSON, err := eng.ListHistory(`{"limit":20}`)
+	if err != nil {
+		t.Fatalf("ListHistory: %v", err)
+	}
+	var page engine.HistoryPage
+	if err := json.Unmarshal([]byte(pageJSON), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("expected 2 migrated items, got %d", len(page.Items))
+	}
+}

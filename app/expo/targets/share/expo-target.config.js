@@ -6,6 +6,8 @@ module.exports = (config) => ({
   deploymentTarget: "17.0",
   exportJs: false,
   entitlements: {
-    "com.apple.security.application-groups": config.ios.entitlements["com.apple.security.application-groups"],
+    "com.apple.security.application-groups": (
+      config.ios.entitlements["com.apple.security.application-groups"] ?? []
+    ).filter((group) => group.endsWith(".incoming-share")),
   },
 });

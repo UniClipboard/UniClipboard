@@ -34,11 +34,11 @@ type ProcessPanel struct {
 }
 
 type panelResume struct {
-	query, kind, selected string
-	pasteFailure          string
-	favoriteOnly          bool
-	chips                 []qpFilter
-	windowZoom, textZoom  int
+	query, kind          string
+	pasteFailure         string
+	favoriteOnly         bool
+	chips                []qpFilter
+	windowZoom, textZoom int
 }
 type capturedPlatform struct {
 	quickpanel.Platform
@@ -84,6 +84,22 @@ func (p *ProcessPanel) Focus() {
 		p.window.Invalidate()
 	}
 }
+func (p *ProcessPanel) newOpenState(favorites bool) *quickPanelState {
+	q := newLiveQuick(p.ctx, p.client, "system", p.root)
+	q.live.d.live.config.Config = p.settings()
+	q.live.d.language = q.live.d.live.config.Config.Desktop.Language
+	q.live.d.devices = []device{{id: "local"}}
+	q.query, q.kind, q.chips = p.resume.query, p.resume.kind, p.resume.chips
+	q.favoriteOnly = p.resume.favoriteOnly
+	q.windowZoom, q.textZoom = p.resume.windowZoom, p.resume.textZoom
+	q.pasteFailure = p.resume.pasteFailure
+	p.resume = panelResume{}
+	if favorites {
+		q.setFavoriteFilter(true)
+	}
+	q.normalizeFilters()
+	return q
+}
 func (p *ProcessPanel) Open(target quickpanel.Target, captureError string, favorites bool) {
 	if p.Visible() {
 		if favorites {
@@ -100,22 +116,7 @@ func (p *ProcessPanel) Open(target quickpanel.Target, captureError string, favor
 	if captureError != "" {
 		p.native.captureError = quickpanel.FailureFromCode(captureError)
 	}
-	q := newLiveQuick(p.ctx, p.client, "system", p.root)
-	q.live.d.live.config.Config = p.settings()
-	q.live.d.language = q.live.d.live.config.Config.Desktop.Language
-	q.live.d.devices = []device{{id: "local"}}
-	q.query, q.kind, q.chips = p.resume.query, p.resume.kind, p.resume.chips
-	q.favoriteOnly = p.resume.favoriteOnly
-	q.windowZoom, q.textZoom = p.resume.windowZoom, p.resume.textZoom
-	q.pasteFailure = p.resume.pasteFailure
-	if !favorites {
-		q.live.resumeSelection = p.resume.selected
-	}
-	p.resume = panelResume{}
-	if favorites {
-		q.setFavoriteFilter(true)
-	}
-	q.normalizeFilters()
+	q := p.newOpenState(favorites)
 	p.state = q
 	show := func(visible bool) {
 		if p.state != q {
@@ -186,18 +187,17 @@ func (p *ProcessPanel) release(q *quickPanelState, destroy bool) {
 		return
 	}
 	p.resume = panelResume{query: q.query, kind: q.kind, favoriteOnly: q.favoriteOnly, chips: slices.Clone(q.chips), windowZoom: q.windowZoom, textZoom: q.textZoom}
-	if !q.visible {
+	if !q.visible && q.live != nil && q.live.system != nil {
 		p.resume.pasteFailure = q.live.system.FailureMessage()
-	}
-	if active := q.active(); active != nil {
-		p.resume.selected = active.id
-	} else {
-		p.resume.selected = q.live.resumeSelection
 	}
 	w := p.window
 	p.state, p.window = nil, nil
-	q.live.system.Dismiss(false)
-	q.live.d.live.cancel()
+	if q.live != nil {
+		if q.live.system != nil {
+			q.live.system.Dismiss(false)
+		}
+		q.live.d.live.cancel()
+	}
 	p.native.target = quickpanel.Target{}
 	p.native.captureError = nil
 	if destroy && w != nil {

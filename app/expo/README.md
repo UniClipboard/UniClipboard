@@ -53,14 +53,7 @@ mobile app.
 
 For Store builds set `UNIC_MOBILE_VARIANT=production` and set
 `UNIC_MOBILE_RELEASE_PLATFORM` to `ios` or `android` for both binding
-generation and Expo prebuild. The production variant uses the existing
-UniClipboard application identifiers and the selected platform's independent
-version and build number from `release/products.toml`. Expo resolves that
-metadata with Python 3.11 or later. The iOS application and its share
-extension use `group.app.uniclipboard.UniClipboard.incoming-share`. The
-Android production prebuild emits an unsigned Release configuration for
-the Store signing workflow. The default development prebuild keeps its
-existing debug signing and isolated identifiers.
+generation and Expo prebuild. The production variant uses the existing UniClipboard application identifiers and the selected platform's independent version and build number from `release/products.toml`. Expo resolves that metadata with Python 3.11 or later. The production iOS application includes both `group.app.uniclipboard.UniClipboard.incoming-share` (shared with its `.Share` and `.Keyboard` extensions) and `group.app.uniclipboard.UniClipboard` (read-only discovery and automatic offline import of legacy mobile Expo SQLite `Databases/uniclipboard.db` and `payloads/`). The Android production prebuild emits an unsigned Release configuration for the Store signing workflow. The default development prebuild keeps its existing debug signing and isolated identifiers.
 
 The source's pinned `react-native-screens` search-tab and animation patches remain
 mandatory. `npm ci` applies them and fails on a dependency mismatch. The two

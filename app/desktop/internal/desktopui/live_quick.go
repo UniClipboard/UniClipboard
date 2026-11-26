@@ -18,7 +18,6 @@ type quickLive struct {
 	system            *quickpanel.Controller
 	d                 *viewState
 	seen, contentSeen uint64
-	resumeSelection   string
 	root              func(string)
 }
 
@@ -103,11 +102,6 @@ func (q *quickLive) poll(p *quickPanelState) {
 		old := ""
 		if a := p.active(); a != nil {
 			old = a.id
-		} else if resultsChanged {
-			old = q.resumeSelection
-		}
-		if resultsChanged {
-			q.resumeSelection = ""
 		}
 		p.entries = nil
 		for _, v := range d.entries {

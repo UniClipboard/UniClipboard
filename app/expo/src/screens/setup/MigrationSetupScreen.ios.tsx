@@ -95,8 +95,45 @@ export function MigrationSetupScreen() {
           </>
         );
 
-      case "w-detected":
       case "w-custom":
+        return (
+          <>
+            <GlassContainer shape="card" style={styles.card}>
+              <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
+                {t("migration.chooseTitle")}
+              </Text>
+              <Text style={[styles.cardBody, { color: c.textSecondary }]}>
+                {t("migration.chooseBody")}
+              </Text>
+            </GlassContainer>
+            <View style={styles.actions}>
+              <AppHost matchContents={{ vertical: true }}>
+                <AppButton
+                  testID="setup-choose-custom-folder"
+                  title={t("migration.choose")}
+                  variant="filled"
+                  size="large"
+                  fullWidth
+                  disabled={ctrl.busy}
+                  onPress={() => void ctrl.handleSelectCustomFolder()}
+                />
+              </AppHost>
+              <AppHost matchContents={{ vertical: true }}>
+                <AppButton
+                  testID="setup-skip-migration"
+                  title={ctrl.setupEntryMode === "later" ? t("migration.skipReturn") : t("migration.skip")}
+                  variant="outlined"
+                  size="large"
+                  fullWidth
+                  disabled={ctrl.busy}
+                  onPress={() => void ctrl.handleEnterHistory()}
+                />
+              </AppHost>
+            </View>
+          </>
+        );
+
+      case "w-detected":
         return (
           <>
             <GlassContainer shape="card" style={styles.card}>
@@ -106,12 +143,16 @@ export function MigrationSetupScreen() {
                 </Text>
               </View>
               <Text style={[styles.cardTitle, { color: c.textPrimary }]}>
-                {t("migration.detectedTitle")}
+                {ctrl.isMobileSQLiteSource
+                  ? t("migration.mobileDetectedTitle")
+                  : t("migration.detectedTitle")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                {t("migration.detectedBody")}
+                {ctrl.isMobileSQLiteSource
+                  ? t("migration.mobileDetectedBody")
+                  : t("migration.detectedBody")}
               </Text>
-              {ctrl.detectedSourcePath ? (
+              {ctrl.detectedSourcePath && !ctrl.isMobileSQLiteSource ? (
                 <View style={[styles.pathChip, { backgroundColor: c.surfaceHigh }]}>
                   <Text style={[styles.pathText, { color: c.textSecondary }]} numberOfLines={2}>
                     {ctrl.detectedSourcePath}
@@ -289,7 +330,9 @@ export function MigrationSetupScreen() {
                   ? t("migration.stoppingBody")
                   : isVerifying
                     ? t("migration.verifyingBody")
-                    : t("migration.importingBody")}
+                    : ctrl.isMobileSQLiteSource
+                      ? t("migration.mobileImportingBody")
+                      : t("migration.importingBody")}
               </Text>
               <View style={styles.progressWrap}>
                 <AppHost matchContents={{ vertical: true }}>
@@ -337,7 +380,7 @@ export function MigrationSetupScreen() {
                 {t("migration.done")}
               </Text>
               <Text style={[styles.cardBody, { color: c.textSecondary }]}>
-                {t("migration.doneBody")}
+                {ctrl.isMobileSQLiteSource ? t("migration.mobileDoneBody") : t("migration.doneBody")}
               </Text>
               {report ? (
                 <View style={styles.metricsGrid}>

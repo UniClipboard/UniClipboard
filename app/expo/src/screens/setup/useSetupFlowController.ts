@@ -23,9 +23,13 @@ export function useSetupFlowController() {
 
   const [passphrase, setPassphrase] = useState("");
   const [confirmSkipVisible, setConfirmSkipVisible] = useState(false);
+  const [confirmStopVisible, setConfirmStopVisible] = useState(false);
 
   const detectedSourcePath =
     setupState?.source || sourceDetection?.source || setupState?.default_source || "";
+  const detectedSourceKind =
+    sourceDetection?.source_kind || setupState?.source_kind || "";
+  const isMobileSQLiteSource = detectedSourceKind === "mobile_sqlite";
 
   const progressRatio =
     migrationProgress.total > 0
@@ -43,6 +47,19 @@ export function useSetupFlowController() {
 
   const dismissSkip = () => {
     setConfirmSkipVisible(false);
+  };
+
+  const requestStop = () => {
+    setConfirmStopVisible(true);
+  };
+
+  const confirmStop = async () => {
+    setConfirmStopVisible(false);
+    await cancelMigration();
+  };
+
+  const dismissStop = () => {
+    setConfirmStopVisible(false);
   };
 
   const handleStartAutoMigration = async () => {
@@ -79,6 +96,8 @@ export function useSetupFlowController() {
     setupEntryMode,
     setupViewState,
     detectedSourcePath,
+    detectedSourceKind,
+    isMobileSQLiteSource,
     migrationProgress,
     progressRatio,
     migrationReport,
@@ -92,6 +111,10 @@ export function useSetupFlowController() {
     requestSkip,
     confirmSkip,
     dismissSkip,
+    confirmStopVisible,
+    requestStop,
+    confirmStop,
+    dismissStop,
     setSetupViewState,
     handleStartAutoMigration,
     handleSubmitPassphrase,

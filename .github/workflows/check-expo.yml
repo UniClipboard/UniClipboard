@@ -53,6 +53,7 @@ jobs:
           go test -race ./...
           go run ./e2e/local-commit
           go run ./e2e/mobile-diagnostics
+          go run ./e2e/legacy-mobile-migration
 
   native-bundles:
     runs-on: ubuntu-latest
@@ -185,6 +186,7 @@ jobs:
             } > e2e/results/ios-history-check.log 2>&1
             exit 1
           fi
+          node e2e/run.mjs --suite migration --platform ios --device "$device" --app "$app"
       - name: Build Android emulator APK
         if: matrix.platform == 'android'
         working-directory: app/expo/android
@@ -220,6 +222,8 @@ jobs:
 
           run_live() {
             node e2e/run.mjs --suite live --platform android --device emulator-5554 \
+              --app android/app/build/outputs/apk/release/app-release.apk && \
+            node e2e/run.mjs --suite migration --platform android --device emulator-5554 \
               --app android/app/build/outputs/apk/release/app-release.apk
           }
 

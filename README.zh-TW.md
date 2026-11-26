@@ -93,6 +93,8 @@
 - **Android**：從 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) 下載 APK 安裝（目前暫無上架 Google Play 的計畫）。
 - **僅命令列**：執行 `npm install -g @uniclipboard/cli`。
 
+[![Packaging status](https://repology.org/badge/vertical-allrepos/uniclipboard.svg)](https://repology.org/project/uniclipboard/versions)
+
 **2. 連接第二台裝置**
 
 在第一台裝置上開啟 **裝置 → 新增裝置**，記下 6 位數配對碼，然後在第二台裝置上輸入。兩台裝置顯示的指紋一致後，在兩邊分別點擊 **接受**。

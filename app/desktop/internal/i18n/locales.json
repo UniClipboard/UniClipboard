@@ -8998,5 +8998,53 @@
     "ja": "サイズ上限を超えています",
     "pt-BR": "Limite de tamanho excedido",
     "ru": "Превышен лимит размера"
+  },
+  "配对二维码": {
+    "en": "Pairing QR code",
+    "ja": "ペアリング用 QR コード",
+    "pt-BR": "Código QR de pareamento",
+    "ru": "QR-код для сопряжения"
+  },
+  "正在生成…": {
+    "en": "Generating…",
+    "ja": "生成中…",
+    "pt-BR": "Gerando…",
+    "ru": "Создание…"
+  },
+  "暂无二维码": {
+    "en": "QR code unavailable",
+    "ja": "QR コードは利用できません",
+    "pt-BR": "Código QR indisponível",
+    "ru": "QR-код недоступен"
+  },
+  "在另一台设备的 UniClipboard 中扫码或输入下方一次性配对码，随后核对指纹即可完成关联。": {
+    "en": "Scan the QR code or enter this one-time code on the other device, then verify fingerprints to finish pairing.",
+    "ja": "別のデバイスの UniClipboard で QR コードをスキャンするかワンタイムコードを入力し、フィンガープリントを確認して関連付けます。",
+    "pt-BR": "Escaneie o código QR ou digite este código único no outro dispositivo e confirme as impressões digitais para concluir.",
+    "ru": "Отсканируйте QR-код или введите этот одноразовый код на другом устройстве и сверьте отпечатки для завершения."
+  },
+  "使用手机端扫描下方二维码，或复制完整票据到另一台设备，随后核对指纹即可完成关联。": {
+    "en": "Scan this QR code on your phone or copy the full ticket to another device, then verify fingerprints to finish pairing.",
+    "ja": "スマートフォンで下の QR コードをスキャンするか、完全チケットを別のデバイスにコピーしてフィンガープリントを確認してください。",
+    "pt-BR": "Escaneie este código QR no celular ou copie o bilhete completo para outro dispositivo e confirme as impressões digitais para concluir.",
+    "ru": "Отсканируйте этот QR-код на телефоне или скопируйте полный билет на другое устройство и сверьте отпечатки для завершения."
+  },
+  "在「%s」上扫码或输入下方配对码或票据，核对指纹后将为其新增此同步路径。": {
+    "en": "Scan the QR code or enter the code or ticket below on \"%s\" and verify fingerprints to add this sync path.",
+    "ja": "「%s」で QR コードをスキャンするか下のコードまたはチケットを入力し、フィンガープリントを確認すると同期パスが追加されます。",
+    "pt-BR": "Escaneie o código QR ou digite o código ou bilhete abaixo em \"%s\" e confirme a impressão digital para adicionar o caminho.",
+    "ru": "Отсканируйте QR-код или введите код либо билет ниже на «%s» и сверьте отпечаток, чтобы добавить путь."
+  },
+  "使用手机端扫码，或手动输入配对码": {
+    "en": "Scan on your phone or enter the code manually",
+    "ja": "スマートフォンでスキャンするか手動で入力",
+    "pt-BR": "Escaneie no celular ou digite o código",
+    "ru": "Отсканируйте телефоном или введите вручную"
+  },
+  "使用手机端扫码配对，或复制下方完整票据": {
+    "en": "Scan on your phone to pair, or copy the full ticket below",
+    "ja": "スマートフォンでスキャンするか、下の完全チケットをコピー",
+    "pt-BR": "Escaneie no celular para parear ou copie o bilhete completo abaixo",
+    "ru": "Отсканируйте телефоном для сопряжения или скопируйте полный билет ниже"
   }
 }

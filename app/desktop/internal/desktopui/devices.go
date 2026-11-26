@@ -551,6 +551,9 @@ func (d *viewState) openPairingSheet(forDeviceID, preferredChannel string) {
 }
 
 func (d *viewState) setDeviceTask(task string) {
+	if task != "invite" {
+		d.clearPairingQR()
+	}
 	if d.live != nil {
 		if d.deviceTask == "invite" && task != "invite" {
 			d.cancelLiveInvitation()
@@ -2415,24 +2418,50 @@ func (d *viewState) pairCodeBoxes(c *ui.Context, k desktopkit.Kit, code string) 
 	for len(digits) < 6 {
 		digits += "·"
 	}
-	box := ui.Row(c.Key("code-boxes")).Padding(16, 10).Radius(14).Gap(6).
-		Justify(ui.Center).AlignItems(ui.Center).
-		Background(deviceInsetBg(k, false)).
-		Border(1, deviceCardBorder(k))
-	box.Children(func() {
+	ui.Row(c.Key("code-boxes")).Gap(4).AlignItems(ui.Center).Children(func() {
 		for i := 0; i < 6; i++ {
 			if i == 3 {
-				k.Text(c.Key("dash"), "-", desktopkit.TextProps{Tone: desktopkit.ToneTertiary, Emphasized: true}).Padding(0, 2)
+				k.Text(c.Key("dash"), "-", desktopkit.TextProps{Tone: desktopkit.ToneTertiary, Emphasized: true}).Padding(0, 1)
 			}
-			tile := ui.Row(c.Key(i)).Size(44, 54).Radius(10).Justify(ui.Center).AlignItems(ui.Center).
+			tile := ui.Row(c.Key(i)).Size(29, 38).Radius(8).Justify(ui.Center).AlignItems(ui.Center).
 				Background(deviceCardBg(k)).
 				Border(1, deviceCardBorderHover(k))
 			if !k.Dark {
 				tile.Shadow(0, 1, 2, 0, ui.RGBA(0, 0, 0, .05))
 			}
 			tile.Children(func() {
-				k.Text(c, string(digits[i]), desktopkit.TextProps{Large: true, Monospace: true, Emphasized: true})
+				ui.Text(c, string(digits[i])).Font("monospace").FontSize(17).FontWeight(600).TextColor(k.Color("text-primary"))
 			})
+		}
+	})
+}
+
+func (d *viewState) pairingQRFrame(c *ui.Context, k desktopkit.Kit, raw string, qrSize, pad float32, showLoading, busy bool) {
+	if bm := d.pairingQRBitmap(raw); bm != nil {
+		ui.Box(c.Key("qr-frame")).Padding(pad).Radius(10).
+			Background(ui.RGB(255, 255, 255)).
+			Border(1, deviceCardBorder(k)).Shrink(0).Children(func() {
+			ui.Image(c.Key("qr-image"), bm).Size(qrSize, qrSize).Fit(ui.Contain).
+				Role(ui.RoleImage).Label(d.tr("配对二维码"))
+		})
+		return
+	}
+	outer := qrSize + pad*2
+	ui.Column(c.Key("qr-placeholder")).Size(outer, outer).Padding(10).Radius(10).Gap(6).
+		Justify(ui.Center).AlignItems(ui.Center).
+		Background(deviceCardBg(k)).
+		Border(1, deviceCardBorder(k)).Shrink(0).Children(func() {
+		k.Icon(c.Key("ic"), desktopkit.IconPhone, 18).TextColor(k.Color("text-tertiary"))
+		if showLoading {
+			k.Text(c.Key("lbl"), d.tr("正在生成…"), desktopkit.TextProps{
+				Role: desktopkit.RoleCaption,
+				Tone: desktopkit.ToneTertiary,
+			}).TextAlign(ui.Center)
+		} else if !busy {
+			k.Text(c.Key("lbl"), d.tr("暂无二维码"), desktopkit.TextProps{
+				Role: desktopkit.RoleCaption,
+				Tone: desktopkit.ToneTertiary,
+			}).TextAlign(ui.Center)
 		}
 	})
 }
@@ -2507,6 +2536,7 @@ func (d *viewState) pairingSheetBody(c *ui.Context, k desktopkit.Kit) {
 
 	// Case 1: Precise inline approval (Live)
 	if inline := d.matchingInlinePending(); inline != nil {
+		d.clearPairingQR()
 		d.approvalTask(c, k, *inline)
 		return
 	}
@@ -2564,14 +2594,34 @@ func (d *viewState) pairingSheetBody(c *ui.Context, k desktopkit.Kit) {
 		switch d.deviceTask {
 		case "invite":
 			ticket := d.inviteMode == "ticket"
-			intro := d.tr("在另一台设备的 UniClipboard 中输入下方一次性配对码，随后核对指纹即可完成关联。")
+			intro := d.tr("在另一台设备的 UniClipboard 中扫码或输入下方一次性配对码，随后核对指纹即可完成关联。")
+			if ticket {
+				intro = d.tr("使用手机端扫描下方二维码，或复制完整票据到另一台设备，随后核对指纹即可完成关联。")
+			}
 			if targetDev != nil {
-				intro = fmt.Sprintf(d.tr("在「%s」上输入下方配对码或票据，核对指纹后将为其新增此同步路径。"), targetDev.displayName())
+				intro = fmt.Sprintf(d.tr("在「%s」上扫码或输入下方配对码或票据，核对指纹后将为其新增此同步路径。"), targetDev.displayName())
 			}
 			k.Text(c, intro, secondary)
 
+			showLoading := d.live != nil && d.live.showBusy()
 			if !ticket {
-				d.pairCodeBoxes(c, k, d.inviteCode)
+				ui.Row(c.Key("code-card")).Padding(14).Radius(14).Gap(14).AlignItems(ui.Center).
+					Background(deviceInsetBg(k, false)).
+					Border(1, deviceCardBorder(k)).Children(func() {
+					d.pairingQRFrame(c.Key("code-qr"), k, d.inviteCode, pairingCodeQRSize, pairingCodeQRPadding, showLoading, busy)
+					ui.Column(c.Key("code-info")).Gap(8).Grow(1).MinWidth(0).Children(func() {
+						k.Text(c.Key("code-lbl"), d.tr("6 位配对码"), desktopkit.TextProps{
+							Role:       desktopkit.RoleCaption,
+							Tone:       desktopkit.ToneSecondary,
+							Emphasized: true,
+						})
+						d.pairCodeBoxes(c, k, d.inviteCode)
+						k.Text(c.Key("scan-hint"), d.tr("使用手机端扫码，或手动输入配对码"), desktopkit.TextProps{
+							Role: desktopkit.RoleCaption,
+							Tone: desktopkit.ToneTertiary,
+						})
+					})
+				})
 				ui.Row(c.Key("meta")).AlignItems(ui.Center).Gap(6).Children(func() {
 					ui.Box(c.Key("dot")).Size(7, 7).Radius(3.5).Background(k.Color("accent-500")).Shrink(0)
 					if d.live != nil {
@@ -2596,14 +2646,24 @@ func (d *viewState) pairingSheetBody(c *ui.Context, k desktopkit.Kit) {
 				if d.live != nil {
 					ticketText = d.live.ticket
 				}
-				ui.Column(c.Key("ticket-box")).Padding(12, 14).Radius(12).Gap(10).
+				ui.Column(c.Key("ticket-box")).Padding(12, 14).Radius(14).Gap(10).
 					Background(deviceInsetBg(k, false)).
 					Border(1, deviceCardBorder(k)).Children(func() {
-					if ticketText != "" {
-						k.Text(c, ticketText, desktopkit.TextProps{Monospace: true, Truncate: true})
-					}
-					ui.Row(c.Key("ticket-act")).Justify(ui.End).Children(func() {
-						if k.Button(c.Key("copy-ticket"), d.tr("复制票据"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Icon: desktopkit.IconCopy, Disabled: ticketText == ""}).Clicked() {
+					ui.Column(c.Key("ticket-qr-wrap")).Gap(6).AlignItems(ui.Center).Children(func() {
+						d.pairingQRFrame(c.Key("ticket-qr"), k, ticketText, pairingTicketQRSize, pairingTicketQRPad, showLoading, busy)
+						k.Text(c.Key("ticket-qr-hint"), d.tr("使用手机端扫码配对，或复制下方完整票据"), desktopkit.TextProps{
+							Role: desktopkit.RoleCaption,
+							Tone: desktopkit.ToneSecondary,
+						}).TextAlign(ui.Center)
+					})
+					ui.Row(c.Key("ticket-act")).Padding(6, 8).Radius(10).Gap(8).AlignItems(ui.Center).
+						Background(deviceCardBg(k)).Border(1, deviceCardBorder(k)).Children(func() {
+						if ticketText != "" {
+							k.Text(c, ticketText, desktopkit.TextProps{Monospace: true, Truncate: true}).Grow(1).MinWidth(0)
+						} else {
+							ui.Spacer(c)
+						}
+						if k.Button(c.Key("copy-ticket"), d.tr("复制票据"), desktopkit.ButtonProps{Size: desktopkit.SizeSmall, Icon: desktopkit.IconCopy, Disabled: ticketText == ""}).Shrink(0).Clicked() {
 							d.copyDeviceText(ticketText, "已复制完整票据")
 						}
 					})

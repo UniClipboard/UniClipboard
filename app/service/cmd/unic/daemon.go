@@ -159,18 +159,22 @@ func runDaemonForeground(ctx context.Context, dir, socket string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	var waitErr error
+	done := make(chan struct{})
+	go func() {
+		waitErr = cmd.Wait()
+		close(done)
+	}()
 	select {
-	case err := <-done:
-		return err
+	case <-done:
+		return waitErr
 	case <-ctx.Done():
 		_ = cmd.Process.Signal(syscall.SIGTERM)
 		select {
-		case _ = <-done:
+		case <-done:
 		case <-time.After(gracefulBudget):
 			_ = cmd.Process.Kill()
-			_ = <-done
+			<-done
 		}
 		return nil
 	}
@@ -273,15 +277,19 @@ func spawnStandalone(ctx context.Context, raw *api.Client, dir, socket string) (
 		if err != nil {
 			return servicelifecycle.Instance{}, err
 		}
-		done := make(chan error, 1)
-		go func() { done <- cmd.Wait() }()
+		var childWaitErr error
+		done := make(chan struct{})
+		go func() {
+			childWaitErr = cmd.Wait()
+			close(done)
+		}()
 
 		var inst servicelifecycle.Instance
 		waitErr := servicelaunch.Wait(startCtx, func() (bool, error) {
 			select {
-			case exitErr := <-done:
-				if exitErr != nil {
-					return false, exitErr
+			case <-done:
+				if childWaitErr != nil {
+					return false, childWaitErr
 				}
 				return false, errors.New("unicd exited before readiness; see daemon.log")
 			default:
@@ -315,7 +323,7 @@ func spawnStandalone(ctx context.Context, raw *api.Client, dir, socket string) (
 		// Readiness timed out or cancelled: stop the child we just started.
 		_ = cmd.Process.Signal(syscall.SIGTERM)
 		select {
-		case _ = <-done:
+		case <-done:
 		case <-time.After(3 * time.Second):
 			_ = cmd.Process.Kill()
 		}

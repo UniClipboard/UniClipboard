@@ -57,6 +57,41 @@ type PeerRelayBridge interface {
 	WakePeer(peerID string)
 }
 
+// RelayHandoffOffer proposes settling an in-flight chunked relay transfer over
+// a recovered P2P session (0035 Phase 2).
+type RelayHandoffOffer struct {
+	TransferID          string
+	EnvelopeJSON        []byte
+	RelayUploadedBitmap string
+}
+
+// RelayHandoffAck reports the receiver's verified chunk bitmap and the chunks
+// it wants pushed over P2P.
+type RelayHandoffAck struct {
+	TransferID    string
+	Accept        bool
+	Reason        string
+	HaveBitmap    string
+	WantP2PBitmap string
+}
+
+// PeerRelayHandoffBridge is an optional in-process hook allowing built-in
+// peer_sessions backends to carry Level 3 chunked handoff control/data frames
+// and clip_ack coordination for Engine's hybrid relay coordinator (0035 Phase 2).
+type PeerRelayHandoffBridge interface {
+	SetRelayHandoffCallbacks(
+		onOffer func(peerID string, offer RelayHandoffOffer) RelayHandoffAck,
+		onChunk func(peerID, transferID string, index int, ciphertext []byte),
+		onPeerConnected func(peerID string, handoffCap, clipAckCap bool),
+		onPeerDisconnected func(peerID string),
+	)
+	PeerHandoffCaps(peerID string) (connected, handoffCap, clipAckCap bool)
+	RegisterRelayClipAckWaiter(peerID, transferID string) (ackCh <-chan string, sessDone <-chan struct{}, cleanup func(), ok bool)
+	SendRelayHandoffOffer(ctx context.Context, peerID string, offer RelayHandoffOffer) (RelayHandoffAck, error)
+	SendRelayChunk(ctx context.Context, peerID, transferID string, index int, ciphertext []byte) error
+	SendRelayClipAck(peerID, transferID, status string) bool
+}
+
 type peerState struct {
 	bound bool
 	bind  rpc.Bind

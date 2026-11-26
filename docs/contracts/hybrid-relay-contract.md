@@ -1,6 +1,6 @@
 # 混合中转同步与分块接力契约 v1
 
-- 状态：Phase 0 与 Phase 1 已实现（`internal/relaycrypto`、确定性向量 `vectors/hybrid-relay-v1.json`、`internal/relayserver`、`cmd/unic-relay`、`internal/relayclient`、`wire.RelayProfile`、`engine` 混合路由/接收/撤销、配置与桌面/移动端适配）；Phase 2（§6 P2P 分块接力续传）待实施
+- 状态：Phase 0、Phase 1 与 Phase 2 已实现并经 `-race` 端到端验证（`internal/relaycrypto`、确定性向量 `vectors/hybrid-relay-v1.json`、`internal/relayserver`、`cmd/unic-relay`、`internal/relayclient`、`wire.RelayProfile`、`wire.RelayHandoffOffer`/`Ack`/`RelayChunkData`、`engine` 混合路由/共享 `TransferAssembly`/Level 3 P2P 中途位图结算与断线反向回落/接收放弃/吊销、配置与桌面/移动端适配）；Phase 3（官方托管上线与移动端后台真机实测）待实施
 - 日期：2026-11-26
 - 依据：[身份与信任](../architecture/identity-and-trust.md)、[流水线与本机历史](../architecture/pipeline.md)、[统一身份协议](identity-protocol.md)、[设备契约](device-contract.md)、[流水线提交契约](pipeline-contract.md)、[同步后端业务契约](sync-backend-contract.md)、[Engine 公共契约](engine-contract.md)、[0034 同步发送进度与接收回执](../decisions/proposed/0034-sync-transfer-progress-and-receipt-ack.md)
 

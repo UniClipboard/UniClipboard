@@ -33,11 +33,17 @@ const (
 	relayChunkWaitPoll        = 400 * time.Millisecond
 	relayReconnectMinBackoff  = 500 * time.Millisecond
 	relayReconnectMaxBackoff  = 30 * time.Second
+	handoffMinRemainingBytes  = 2 << 20 // 2 MiB (contract §5.1)
+	handoffMinRemainingChunks = 2
+	maxHandoffSwitches        = 3
+	handoffClipAckTimeout     = 30 * time.Second
+	maxCompletedAssemblies    = 256
 )
 
 // relayCoordinator manages E2EE HTTP relay client lifecycle, per-peer delivery
-// token registration, SSE mailbox subscription, inbound chunked assembly and
-// outbound zero-wait relay uploads (decision 0035).
+// token registration, SSE mailbox subscription, inbound chunked assembly
+// (shared across HTTP and Phase 2 P2P handoff), and outbound zero-wait relay
+// uploads with Level 3 P2P handoff settlement and reverse fallback (0035).
 type relayCoordinator struct {
 	e *Engine
 
@@ -53,22 +59,52 @@ type relayCoordinator struct {
 	wg         sync.WaitGroup
 	registered map[string]bool // origin + ":" + tokenHash
 	assemblies map[string]*relayAssembly
+	completed  map[string]int64 // asmKey -> unix ms committed
+	peerUpWake map[string]map[chan struct{}]struct{}
 }
 
 type relayAssembly struct {
+	r          *relayCoordinator
 	transferID string
 	senderID   string
-	cancel     context.CancelFunc
-	mu         sync.Mutex
-	available  []byte
-	chunkWake  chan struct{}
+	backendID  PluginID
+	ve         relaycrypto.VerifiedEnvelope
+	cc         *relaycrypto.ChunkCipher
+
+	opID      OperationID
+	cancel    context.CancelFunc
+	discarded atomic.Bool
+
+	mu           sync.Mutex
+	stageFile    *os.File // nil when TotalChunks == 1
+	stagePath    string
+	memSingle    []byte // used when TotalChunks == 1
+	have         []byte // verified & written chunks
+	haveCount    int
+	plainBytes   int64
+	available    []byte // chunks known available on HTTP relay
+	p2pWanted    []byte // chunks currently requested over P2P
+	httpInflight map[int]bool
+	p2pUsed      bool
+	closed       bool
+	chunkWake    chan struct{}
 }
+
+type relaySendResult struct {
+	state        TargetState
+	receiptStage ReceiptStage
+	route        TransportRoute
+}
+
+func asmKey(senderID, transferID string) string { return senderID + ":" + transferID }
 
 func newRelayCoordinator(e *Engine) *relayCoordinator {
 	return &relayCoordinator{
 		e:          e,
 		registered: map[string]bool{},
 		assemblies: map[string]*relayAssembly{},
+		completed:  map[string]int64{},
+		peerUpWake: map[string]map[chan struct{}]struct{}{},
 	}
 }
 
@@ -477,7 +513,13 @@ func (r *relayCoordinator) handleSSEEvent(ctx context.Context, cli *relayclient.
 			return
 		}
 		r.mu.Lock()
-		asm := r.assemblies[ev.TransferID]
+		var asm *relayAssembly
+		for _, a := range r.assemblies {
+			if a.transferID == ev.TransferID {
+				asm = a
+				break
+			}
+		}
 		r.mu.Unlock()
 		if asm == nil {
 			// Announced before we connected; poll to pick up envelope.
@@ -489,123 +531,433 @@ func (r *relayCoordinator) handleSSEEvent(ctx context.Context, cli *relayclient.
 			relaycrypto.SetBit(asm.available, *ev.ChunkIndex)
 		}
 		asm.mu.Unlock()
-		select {
-		case asm.chunkWake <- struct{}{}:
-		default:
-		}
+		asm.wake()
 	}
 }
 
+func (a *relayAssembly) wake() {
+	select {
+	case a.chunkWake <- struct{}{}:
+	default:
+	}
+}
+
+func (r *relayCoordinator) handoffBridge(backendID PluginID) plugin.PeerRelayHandoffBridge {
+	r.e.mu.Lock()
+	procs := append([]*peerProcBackend(nil), r.e.peerProcs...)
+	r.e.mu.Unlock()
+	for _, pp := range procs {
+		if backendID != "" && pp.id != backendID {
+			continue
+		}
+		if hb, ok := pp.pb.(plugin.PeerRelayHandoffBridge); ok {
+			return hb
+		}
+	}
+	return nil
+}
+
+func (r *relayCoordinator) sendClipAck(backendID PluginID, peerID, transferID, status string) {
+	if hb := r.handoffBridge(backendID); hb != nil {
+		hb.SendRelayClipAck(peerID, transferID, status)
+	}
+}
+
+func (r *relayCoordinator) watchPeerUp(peerID string) (<-chan struct{}, func()) {
+	ch := make(chan struct{}, 1)
+	r.mu.Lock()
+	set := r.peerUpWake[peerID]
+	if set == nil {
+		set = map[chan struct{}]struct{}{}
+		r.peerUpWake[peerID] = set
+	}
+	set[ch] = struct{}{}
+	r.mu.Unlock()
+	return ch, func() {
+		r.mu.Lock()
+		if s := r.peerUpWake[peerID]; s != nil {
+			delete(s, ch)
+			if len(s) == 0 {
+				delete(r.peerUpWake, peerID)
+			}
+		}
+		r.mu.Unlock()
+	}
+}
+
+func (r *relayCoordinator) onPeerConnected(peerID string, handoffCap, _ bool) {
+	if !handoffCap || peerID == "" {
+		return
+	}
+	r.mu.Lock()
+	for ch := range r.peerUpWake[peerID] {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+	r.mu.Unlock()
+}
+
+func (r *relayCoordinator) onPeerDisconnected(peerID string) {
+	if peerID == "" {
+		return
+	}
+	r.mu.Lock()
+	var matching []*relayAssembly
+	for _, asm := range r.assemblies {
+		if asm.senderID == peerID {
+			matching = append(matching, asm)
+		}
+	}
+	r.mu.Unlock()
+	for _, asm := range matching {
+		asm.mu.Lock()
+		for i := range asm.p2pWanted {
+			asm.p2pWanted[i] = 0
+		}
+		asm.mu.Unlock()
+		asm.wake()
+	}
+}
+
+func (r *relayCoordinator) isCompleted(senderID, transferID string) bool {
+	key := asmKey(senderID, transferID)
+	r.mu.Lock()
+	_, ok := r.completed[key]
+	r.mu.Unlock()
+	return ok
+}
+
+func (r *relayCoordinator) markCompleted(senderID, transferID string) {
+	key := asmKey(senderID, transferID)
+	now := time.Now().UnixMilli()
+	r.mu.Lock()
+	r.completed[key] = now
+	if len(r.completed) > maxCompletedAssemblies {
+		var oldestKey string
+		var oldestTs int64
+		for k, ts := range r.completed {
+			if oldestKey == "" || ts < oldestTs {
+				oldestKey, oldestTs = k, ts
+			}
+		}
+		if oldestKey != "" {
+			delete(r.completed, oldestKey)
+		}
+	}
+	r.mu.Unlock()
+}
+
+// onHandoffOffer handles a Level 3 relay_handoff_offer received over an
+// authenticated P2P session (contract §5.2).
+func (r *relayCoordinator) onHandoffOffer(peerID string, offer plugin.RelayHandoffOffer) plugin.RelayHandoffAck {
+	reject := func(reason string) plugin.RelayHandoffAck {
+		return plugin.RelayHandoffAck{TransferID: offer.TransferID, Accept: false, Reason: reason}
+	}
+	cli, mailboxID, _, ok := r.snapshotClient()
+	if !ok {
+		return reject("unavailable")
+	}
+	var env relaycrypto.Envelope
+	if err := json.Unmarshal(offer.EnvelopeJSON, &env); err != nil {
+		return reject("invalid_argument")
+	}
+	if env.TransferID != offer.TransferID || env.SenderID != peerID {
+		return reject("invalid_argument")
+	}
+	if r.isCompleted(peerID, env.TransferID) {
+		allOnes, _ := relaycrypto.NewBitmap(env.TotalChunks)
+		allZeros, _ := relaycrypto.NewBitmap(env.TotalChunks)
+		for i := 0; i < env.TotalChunks; i++ {
+			relaycrypto.SetBit(allOnes, i)
+		}
+		if bid, allowed := r.e.authorizedPeerBackend(peerID); allowed {
+			r.sendClipAck(bid, peerID, env.TransferID, wire.ClipAckReceived)
+		}
+		return plugin.RelayHandoffAck{
+			TransferID:    env.TransferID,
+			Accept:        true,
+			HaveBitmap:    relaycrypto.EncodeBitmap(allOnes),
+			WantP2PBitmap: relaycrypto.EncodeBitmap(allZeros),
+		}
+	}
+	relayUploadedBM, err := relaycrypto.DecodeBitmap(offer.RelayUploadedBitmap, env.TotalChunks)
+	if err != nil {
+		relayUploadedBM, _ = relaycrypto.NewBitmap(env.TotalChunks)
+	}
+	r.e.mu.Lock()
+	baseCtx := r.e.runCtx
+	r.e.mu.Unlock()
+	if baseCtx == nil {
+		return reject("unavailable")
+	}
+	asm, alreadyDone, rejReason := r.admitOrGetAssembly(baseCtx, cli, mailboxID, cli.Origin(), env, relayUploadedBM, true)
+	if alreadyDone {
+		allOnes, _ := relaycrypto.NewBitmap(env.TotalChunks)
+		allZeros, _ := relaycrypto.NewBitmap(env.TotalChunks)
+		for i := 0; i < env.TotalChunks; i++ {
+			relaycrypto.SetBit(allOnes, i)
+		}
+		if bid, allowed := r.e.authorizedPeerBackend(peerID); allowed {
+			r.sendClipAck(bid, peerID, env.TransferID, wire.ClipAckReceived)
+		}
+		return plugin.RelayHandoffAck{
+			TransferID:    env.TransferID,
+			Accept:        true,
+			HaveBitmap:    relaycrypto.EncodeBitmap(allOnes),
+			WantP2PBitmap: relaycrypto.EncodeBitmap(allZeros),
+		}
+	}
+	if asm == nil {
+		if rejReason == "" {
+			rejReason = "policy"
+		}
+		return reject(rejReason)
+	}
+
+	asm.mu.Lock()
+	if asm.discarded.Load() {
+		asm.mu.Unlock()
+		return reject("discarded")
+	}
+	asm.p2pUsed = true
+	for i := 0; i < env.TotalChunks; i++ {
+		if relaycrypto.HasBit(relayUploadedBM, i) {
+			relaycrypto.SetBit(asm.available, i)
+		}
+	}
+	haveCopy := append([]byte(nil), asm.have...)
+	wantBM, _ := relaycrypto.NewBitmap(env.TotalChunks)
+	for i := 0; i < env.TotalChunks; i++ {
+		if relaycrypto.HasBit(asm.have, i) {
+			continue
+		}
+		// Any chunk not yet on relay MUST be requested via P2P; chunks already on
+		// relay that aren't currently mid-HTTP-download also shift to fast P2P.
+		if !relaycrypto.HasBit(relayUploadedBM, i) || !asm.httpInflight[i] {
+			relaycrypto.SetBit(wantBM, i)
+		}
+	}
+	asm.p2pWanted = append([]byte(nil), wantBM...)
+	asm.mu.Unlock()
+	asm.wake()
+
+	return plugin.RelayHandoffAck{
+		TransferID:    env.TransferID,
+		Accept:        true,
+		HaveBitmap:    relaycrypto.EncodeBitmap(haveCopy),
+		WantP2PBitmap: relaycrypto.EncodeBitmap(wantBM),
+	}
+}
+
+// onHandoffChunk ingests one encrypted chunk pushed over P2P into the shared
+// TransferAssembly (idempotent with HTTP downloads).
+func (r *relayCoordinator) onHandoffChunk(peerID, transferID string, index int, ciphertext []byte) {
+	r.mu.Lock()
+	asm := r.assemblies[asmKey(peerID, transferID)]
+	r.mu.Unlock()
+	if asm == nil {
+		return
+	}
+	_, _, _ = asm.writeChunk(index, ciphertext)
+}
+
+func (a *relayAssembly) writeChunk(idx int, ct []byte) (accepted bool, allDone bool, err error) {
+	if a.discarded.Load() {
+		return false, false, errReceiveDiscarded
+	}
+	env := a.ve.Envelope
+	if idx < 0 || idx >= env.TotalChunks {
+		return false, false, newErr(CodeInvalidArgument, "chunk index out of range")
+	}
+	a.mu.Lock()
+	if a.closed || relaycrypto.HasBit(a.have, idx) {
+		done := a.haveCount == env.TotalChunks
+		a.mu.Unlock()
+		return false, done, nil
+	}
+	a.mu.Unlock()
+
+	pt, oerr := a.cc.OpenChunk(idx, ct, a.ve.ChunkHashes[idx])
+	if oerr != nil {
+		return false, false, oerr
+	}
+	if idx < env.TotalChunks-1 && len(pt) != env.ChunkSize {
+		return false, false, newErr(CodeInvalidArgument, "unexpected intermediate chunk plaintext size")
+	}
+	if idx == env.TotalChunks-1 && (len(pt) == 0 || len(pt) > env.ChunkSize) {
+		return false, false, newErr(CodeInvalidArgument, "unexpected final chunk plaintext size")
+	}
+
+	a.mu.Lock()
+	if a.closed || a.discarded.Load() || relaycrypto.HasBit(a.have, idx) {
+		done := a.haveCount == env.TotalChunks
+		a.mu.Unlock()
+		return false, done, nil
+	}
+	if a.stageFile != nil {
+		off := int64(idx) * int64(env.ChunkSize)
+		if _, werr := a.stageFile.WriteAt(pt, off); werr != nil {
+			a.mu.Unlock()
+			return false, false, werr
+		}
+	} else {
+		a.memSingle = append([]byte(nil), pt...)
+	}
+	relaycrypto.SetBit(a.have, idx)
+	relaycrypto.ClearBit(a.p2pWanted, idx)
+	a.haveCount++
+	a.plainBytes += int64(len(pt))
+	plainBytes := a.plainBytes
+	done := a.haveCount == env.TotalChunks
+	a.mu.Unlock()
+
+	a.r.e.updateReceiveProgress(a.opID, plainBytes, idx)
+	a.wake()
+	return true, done, nil
+}
+
 func (r *relayCoordinator) admitAssembly(parentCtx context.Context, cli *relayclient.Client, mailboxID, origin string, env relaycrypto.Envelope, initialBM []byte) {
+	_, alreadyDone, _ := r.admitOrGetAssembly(parentCtx, cli, mailboxID, origin, env, initialBM, false)
+	if alreadyDone {
+		r.bestEffortAck(cli, mailboxID, env.TransferID)
+	}
+}
+
+func (r *relayCoordinator) admitOrGetAssembly(
+	parentCtx context.Context,
+	cli *relayclient.Client,
+	mailboxID, origin string,
+	env relaycrypto.Envelope,
+	initialBM []byte,
+	fromP2P bool,
+) (asm *relayAssembly, alreadyDone bool, rejectReason string) {
+	if r.isCompleted(env.SenderID, env.TransferID) {
+		return nil, true, ""
+	}
 	// Step 1: Validate sender trust and authorization before any decryption or disk I/O.
 	d, err := r.e.st.Device(env.SenderID)
 	if err != nil || d.Trust != store.TrustTrusted {
-		return
+		return nil, false, "permission_denied"
 	}
 	backendID, allowed := r.e.authorizedPeerBackend(env.SenderID)
 	if !allowed {
-		return
+		return nil, false, "policy"
 	}
 	ve, err := relaycrypto.VerifyEnvelope(origin, env, r.e.ident.DeviceID(), d.PublicKey, time.Now())
 	if err != nil {
-		return
+		return nil, false, "invalid_argument"
 	}
 	r.e.mu.Lock()
 	lim := r.e.settings.Value.Limits
 	syncOn := r.e.settings.Value.Sync.Enabled
 	r.e.mu.Unlock()
 	if !syncOn {
-		return
+		return nil, false, "policy"
 	}
 	// Ciphertext includes GCM tag per chunk; reject oversized envelopes up front.
 	maxAllowedCT := lim.MaxTotalBytes + int64(wire.MaxControl) + int64(env.TotalChunks)*relaycrypto.GCMTagSize
 	if env.TotalCiphertextBytes > maxAllowedCT {
-		delCtx, cancel := context.WithTimeout(context.Background(), relayCleanupTimeout)
-		_ = cli.DeleteTransferAsOwner(delCtx, r.e.ident, mailboxID, env.TransferID)
-		cancel()
-		return
+		r.bestEffortDeleteOwner(cli, mailboxID, env.TransferID)
+		return nil, false, "limit_exceeded"
 	}
 	cek, err := relaycrypto.OpenCEK(r.e.ident, origin, ve)
 	if err != nil {
-		return
+		return nil, false, "invalid_argument"
+	}
+	cc, err := relaycrypto.NewChunkCipher(cek, env.TransferID, env.SenderID, env.RecipientID, env.TotalChunks)
+	if err != nil {
+		return nil, false, "invalid_argument"
 	}
 
+	key := asmKey(env.SenderID, env.TransferID)
 	r.mu.Lock()
 	if !r.active {
 		r.mu.Unlock()
-		return
+		return nil, false, "unavailable"
 	}
-	if existing := r.assemblies[env.TransferID]; existing != nil {
+	if _, done := r.completed[key]; done {
+		r.mu.Unlock()
+		return nil, true, ""
+	}
+	if existing := r.assemblies[key]; existing != nil {
 		existing.mu.Lock()
 		for i := 0; i < env.TotalChunks; i++ {
 			if relaycrypto.HasBit(initialBM, i) {
 				relaycrypto.SetBit(existing.available, i)
 			}
 		}
-		existing.mu.Unlock()
-		select {
-		case existing.chunkWake <- struct{}{}:
-		default:
+		if fromP2P {
+			existing.p2pUsed = true
 		}
+		existing.mu.Unlock()
+		existing.wake()
 		r.mu.Unlock()
-		return
+		return existing, false, ""
 	}
 	if len(r.assemblies) >= maxActiveRelayAssemblies {
 		r.mu.Unlock()
-		return
+		return nil, false, "resource_exhausted"
 	}
+
+	var stageFile *os.File
+	var stagePath string
+	if env.TotalChunks > 1 {
+		if err := os.MkdirAll(r.e.recvDir(), 0o700); err != nil {
+			r.mu.Unlock()
+			return nil, false, "unavailable"
+		}
+		f, ferr := os.CreateTemp(r.e.recvDir(), "relay-*")
+		if ferr != nil {
+			r.mu.Unlock()
+			return nil, false, "unavailable"
+		}
+		stageFile = f
+		stagePath = f.Name()
+	}
+
+	haveBM, _ := relaycrypto.NewBitmap(env.TotalChunks)
+	wantBM, _ := relaycrypto.NewBitmap(env.TotalChunks)
+	availBM := append([]byte(nil), initialBM...)
+	if len(availBM) < len(haveBM) {
+		availBM, _ = relaycrypto.NewBitmap(env.TotalChunks)
+	}
+
 	asmCtx, asmCancel := context.WithCancel(parentCtx)
-	asm := &relayAssembly{
-		transferID: env.TransferID,
-		senderID:   env.SenderID,
-		cancel:     asmCancel,
-		available:  append([]byte(nil), initialBM...),
-		chunkWake:  make(chan struct{}, 1),
+	if exp := time.UnixMilli(env.ExpiresMs); !exp.IsZero() {
+		var dlCancel context.CancelFunc
+		asmCtx, dlCancel = context.WithDeadline(asmCtx, exp)
+		origCancel := asmCancel
+		asmCancel = func() {
+			dlCancel()
+			origCancel()
+		}
 	}
-	r.assemblies[env.TransferID] = asm
+
+	asm = &relayAssembly{
+		r:            r,
+		transferID:   env.TransferID,
+		senderID:     env.SenderID,
+		backendID:    backendID,
+		ve:           ve,
+		cc:           cc,
+		cancel:       asmCancel,
+		stageFile:    stageFile,
+		stagePath:    stagePath,
+		have:         haveBM,
+		available:    availBM,
+		p2pWanted:    wantBM,
+		httpInflight: map[int]bool{},
+		p2pUsed:      fromP2P,
+		chunkWake:    make(chan struct{}, 1),
+	}
+	r.assemblies[key] = asm
 	r.wg.Add(1)
 	r.mu.Unlock()
 
-	go func() {
-		defer r.wg.Done()
-		defer func() {
-			asmCancel()
-			r.mu.Lock()
-			if r.assemblies[env.TransferID] == asm {
-				delete(r.assemblies, env.TransferID)
-			}
-			r.mu.Unlock()
-		}()
-		r.downloadAndCommit(asmCtx, asm, cli, mailboxID, backendID, ve, cek)
-	}()
-}
-
-func (r *relayCoordinator) downloadAndCommit(
-	ctx context.Context,
-	asm *relayAssembly,
-	cli *relayclient.Client,
-	mailboxID string,
-	backendID PluginID,
-	ve relaycrypto.VerifiedEnvelope,
-	cek []byte,
-) {
-	env := ve.Envelope
-	cc, err := relaycrypto.NewChunkCipher(cek, env.TransferID, env.SenderID, env.RecipientID, env.TotalChunks)
-	if err != nil {
-		return
-	}
-
-	var discarded atomic.Bool
-	dlCtx, dlCancel := context.WithCancel(ctx)
-	defer dlCancel()
-	if exp := time.UnixMilli(env.ExpiresMs); !exp.IsZero() {
-		var tCancel context.CancelFunc
-		dlCtx, tCancel = context.WithDeadline(dlCtx, exp)
-		defer tCancel()
-	}
-
 	estPlain := max(env.TotalCiphertextBytes-int64(env.TotalChunks)*relaycrypto.GCMTagSize, 0)
-	opID := r.e.startReceiveOp(ReceiveOperation{
+	asm.opID = r.e.startReceiveOp(ReceiveOperation{
 		BackendID:   backendID,
 		PeerID:      DeviceID(env.SenderID),
 		State:       ReceiveReceiving,
@@ -615,81 +967,176 @@ func (r *relayCoordinator) downloadAndCommit(
 			PartCount:  env.TotalChunks,
 		},
 	}, func() {
-		discarded.Store(true)
-		dlCancel()
+		asm.discarded.Store(true)
+		asm.mu.Lock()
+		usedP2P := asm.p2pUsed
+		asm.mu.Unlock()
+		if usedP2P {
+			r.sendClipAck(backendID, env.SenderID, env.TransferID, wire.ClipAckDiscarded)
+		}
+		asmCancel()
 	})
 
-	// Stage decrypted plaintext stream in memory (single small chunk) or temp file under InboxDir/unic-recv.
-	var memBuf bytes.Buffer
-	var stageFile *os.File
-	var stagePath string
-	if env.TotalChunks > 1 {
-		if err := os.MkdirAll(r.e.recvDir(), 0o700); err != nil {
-			r.e.finishReceiveOp(opID, ReceiveFailed, err)
-			return
-		}
-		f, ferr := os.CreateTemp(r.e.recvDir(), "relay-*")
-		if ferr != nil {
-			r.e.finishReceiveOp(opID, ReceiveFailed, ferr)
-			return
-		}
-		stageFile = f
-		stagePath = f.Name()
+	go func() {
+		defer r.wg.Done()
 		defer func() {
-			_ = stageFile.Close()
-			_ = os.Remove(stagePath)
+			asmCancel()
+			asm.mu.Lock()
+			asm.closed = true
+			sf := asm.stageFile
+			sp := asm.stagePath
+			asm.stageFile = nil
+			asm.mu.Unlock()
+			if sf != nil {
+				_ = sf.Close()
+			}
+			if sp != "" {
+				_ = os.Remove(sp)
+			}
+			r.mu.Lock()
+			if r.assemblies[key] == asm {
+				delete(r.assemblies, key)
+			}
+			r.mu.Unlock()
 		}()
-	}
+		r.runAssembly(asmCtx, asm, cli, mailboxID)
+	}()
+	return asm, false, ""
+}
 
+func (r *relayCoordinator) runAssembly(
+	ctx context.Context,
+	asm *relayAssembly,
+	cli *relayclient.Client,
+	mailboxID string,
+) {
+	env := asm.ve.Envelope
 	maxChunkCT := int64(env.ChunkSize) + relaycrypto.GCMTagSize
-	var totalPlain int64
-	for i := 0; i < env.TotalChunks; i++ {
-		if err := r.waitChunkAvailable(dlCtx, asm, cli, mailboxID, env.TransferID, env.TotalChunks, i); err != nil {
-			r.handleAssemblyAbort(opID, discarded.Load(), cli, mailboxID, env.TransferID, err)
+
+	for {
+		if asm.discarded.Load() {
+			r.handleAssemblyAbort(asm, cli, mailboxID, errReceiveDiscarded)
 			return
 		}
-		ct, derr := cli.DownloadChunk(dlCtx, r.e.ident, mailboxID, env.TransferID, i, maxChunkCT)
-		if derr != nil {
-			r.handleAssemblyAbort(opID, discarded.Load(), cli, mailboxID, env.TransferID, derr)
-			return
+		asm.mu.Lock()
+		allDone := asm.haveCount == env.TotalChunks
+		nextHTTP := -1
+		if !allDone {
+			for i := 0; i < env.TotalChunks; i++ {
+				if !relaycrypto.HasBit(asm.have, i) &&
+					relaycrypto.HasBit(asm.available, i) &&
+					!relaycrypto.HasBit(asm.p2pWanted, i) &&
+					!asm.httpInflight[i] {
+					nextHTTP = i
+					asm.httpInflight[i] = true
+					break
+				}
+			}
 		}
-		pt, oerr := cc.OpenChunk(i, ct, ve.ChunkHashes[i])
-		if oerr != nil {
-			r.handleAssemblyAbort(opID, discarded.Load(), cli, mailboxID, env.TransferID, oerr)
-			return
+		p2pActive := asm.p2pUsed
+		asm.mu.Unlock()
+
+		if allDone {
+			break
 		}
-		if stageFile != nil {
-			if _, werr := stageFile.Write(pt); werr != nil {
-				r.handleAssemblyAbort(opID, discarded.Load(), cli, mailboxID, env.TransferID, werr)
+		if nextHTTP >= 0 {
+			ct, derr := cli.DownloadChunk(ctx, r.e.ident, mailboxID, env.TransferID, nextHTTP, maxChunkCT)
+			asm.mu.Lock()
+			delete(asm.httpInflight, nextHTTP)
+			usedP2PNow := asm.p2pUsed
+			alreadyHave := relaycrypto.HasBit(asm.have, nextHTTP)
+			asm.mu.Unlock()
+			if derr != nil {
+				if asm.discarded.Load() || ctx.Err() != nil {
+					r.handleAssemblyAbort(asm, cli, mailboxID, derr)
+					return
+				}
+				// If P2P handoff delivered it concurrently or is active, continue loop.
+				if alreadyHave || usedP2PNow {
+					continue
+				}
+				r.handleAssemblyAbort(asm, cli, mailboxID, derr)
 				return
 			}
-		} else {
-			memBuf.Write(pt)
+			if _, _, werr := asm.writeChunk(nextHTTP, ct); werr != nil {
+				r.handleAssemblyAbort(asm, cli, mailboxID, werr)
+				return
+			}
+			continue
 		}
-		totalPlain += int64(len(pt))
-		r.e.updateReceiveProgress(opID, totalPlain, i)
+
+		// Wait for either an SSE chunk_ready, a P2P relay_chunk_data, or poll tick.
+		t := time.NewTimer(relayChunkWaitPoll)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			r.handleAssemblyAbort(asm, cli, mailboxID, ctx.Err())
+			return
+		case <-asm.chunkWake:
+			t.Stop()
+		case <-t.C:
+			listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			sums, err := cli.ListTransfers(listCtx, r.e.ident, mailboxID)
+			cancel()
+			if err == nil {
+				found := false
+				for _, sum := range sums {
+					if sum.TransferID != env.TransferID {
+						continue
+					}
+					found = true
+					if bm, berr := relaycrypto.DecodeBitmap(sum.AvailableBitmap, env.TotalChunks); berr == nil {
+						asm.mu.Lock()
+						for j := 0; j < env.TotalChunks; j++ {
+							if relaycrypto.HasBit(bm, j) {
+								relaycrypto.SetBit(asm.available, j)
+							}
+						}
+						asm.mu.Unlock()
+					}
+				}
+				if !found && !p2pActive {
+					r.handleAssemblyAbort(asm, cli, mailboxID, newErr(CodeNotFound, "relay transfer no longer available"))
+					return
+				}
+			}
+		}
 	}
 
-	if discarded.Load() {
-		r.handleAssemblyAbort(opID, true, cli, mailboxID, env.TransferID, errReceiveDiscarded)
+	if asm.discarded.Load() {
+		r.handleAssemblyAbort(asm, cli, mailboxID, errReceiveDiscarded)
 		return
 	}
 
+	asm.mu.Lock()
+	asm.closed = true
+	p2pUsed := asm.p2pUsed
+	plainTotal := asm.plainBytes
+	sf := asm.stageFile
+	single := asm.memSingle
+	asm.mu.Unlock()
+
 	var plainReader io.Reader
-	if stageFile != nil {
-		if _, serr := stageFile.Seek(0, io.SeekStart); serr != nil {
-			r.e.finishReceiveOp(opID, ReceiveFailed, serr)
+	if sf != nil {
+		if _, serr := sf.Seek(0, io.SeekStart); serr != nil {
+			r.e.finishReceiveOp(asm.opID, ReceiveFailed, serr)
+			if p2pUsed {
+				r.sendClipAck(asm.backendID, env.SenderID, env.TransferID, wire.ClipAckFailed)
+			}
 			return
 		}
-		plainReader = stageFile
+		plainReader = io.LimitReader(sf, plainTotal)
 	} else {
-		plainReader = bytes.NewReader(memBuf.Bytes())
+		plainReader = bytes.NewReader(single)
 	}
 
 	clipMsg, herr := relaycrypto.ReadPlaintextHeader(plainReader)
 	if herr != nil || clipMsg.ID != env.TransferID || clipMsg.Origin != env.SenderID {
-		r.e.finishReceiveOp(opID, ReceiveFailed, newErr(CodeInvalidArgument, "malformed relay clip header"))
+		r.e.finishReceiveOp(asm.opID, ReceiveFailed, newErr(CodeInvalidArgument, "malformed relay clip header"))
 		r.bestEffortDeleteOwner(cli, mailboxID, env.TransferID)
+		if p2pUsed {
+			r.sendClipAck(asm.backendID, env.SenderID, env.TransferID, wire.ClipAckFailed)
+		}
 		return
 	}
 
@@ -709,19 +1156,25 @@ func (r *relayCoordinator) downloadAndCommit(
 		recvParts[i] = receivePart{file: p.Kind == "file", mime: cp.MIME, size: p.Size}
 	}
 	if err := checkClipLimits(rpcParts, r.e); err != nil {
-		r.e.finishReceiveOp(opID, ReceiveDiscarded, nil)
+		r.e.finishReceiveOp(asm.opID, ReceiveDiscarded, nil)
 		r.bestEffortAck(cli, mailboxID, env.TransferID)
+		if p2pUsed {
+			r.sendClipAck(asm.backendID, env.SenderID, env.TransferID, wire.ClipAckDiscarded)
+		}
 		return
 	}
 	// Re-check peer authorization immediately before admission.
 	if _, ok := r.e.authorizedPeerBackend(env.SenderID); !ok {
-		r.e.finishReceiveOp(opID, ReceiveDiscarded, nil)
+		r.e.finishReceiveOp(asm.opID, ReceiveDiscarded, nil)
 		r.bestEffortDeleteOwner(cli, mailboxID, env.TransferID)
+		if p2pUsed {
+			r.sendClipAck(asm.backendID, env.SenderID, env.TransferID, wire.ClipAckDiscarded)
+		}
 		return
 	}
 	adm, accepted := r.e.admitReceive(receiveRequest{
 		sourceApplication: clipMsg.SourceApplication,
-		backend:           backendID,
+		backend:           asm.backendID,
 		source:            DeviceID(env.SenderID),
 		origin:            clipMsg.Origin,
 		transfer:          clipMsg.ID,
@@ -730,19 +1183,25 @@ func (r *relayCoordinator) downloadAndCommit(
 		parts:             recvParts,
 	})
 	if !accepted {
-		r.e.finishReceiveOp(opID, ReceiveDiscarded, nil)
+		r.e.finishReceiveOp(asm.opID, ReceiveDiscarded, nil)
 		r.bestEffortAck(cli, mailboxID, env.TransferID)
+		if p2pUsed {
+			r.sendClipAck(asm.backendID, env.SenderID, env.TransferID, wire.ClipAckDiscarded)
+		}
 		return
 	}
 
-	snap, dir, rerr := extractRelaySnapshot(plainReader, clipMsg, r.e.recvDir(), &discarded)
-	if discarded.Load() || errors.Is(rerr, errReceiveDiscarded) {
+	snap, dir, rerr := extractRelaySnapshot(plainReader, clipMsg, r.e.recvDir(), &asm.discarded)
+	if asm.discarded.Load() || errors.Is(rerr, errReceiveDiscarded) {
 		adm.Fail(errReceiveDiscarded)
 		if dir != "" {
 			_ = os.RemoveAll(dir)
 		}
-		r.e.finishReceiveOp(opID, ReceiveDiscarded, nil)
+		r.e.finishReceiveOp(asm.opID, ReceiveDiscarded, nil)
 		r.bestEffortDeleteOwner(cli, mailboxID, env.TransferID)
+		if p2pUsed {
+			r.sendClipAck(asm.backendID, env.SenderID, env.TransferID, wire.ClipAckDiscarded)
+		}
 		return
 	}
 	if rerr == nil && snap.Hash() != clipMsg.Hash {
@@ -753,68 +1212,39 @@ func (r *relayCoordinator) downloadAndCommit(
 		if dir != "" {
 			_ = os.RemoveAll(dir)
 		}
-		r.e.finishReceiveOp(opID, ReceiveFailed, rerr)
+		r.e.finishReceiveOp(asm.opID, ReceiveFailed, rerr)
 		r.bestEffortDeleteOwner(cli, mailboxID, env.TransferID)
+		if p2pUsed {
+			r.sendClipAck(asm.backendID, env.SenderID, env.TransferID, wire.ClipAckFailed)
+		}
 		return
 	}
 
 	adm.Done(snap, dir, true)
-	r.e.finishReceiveOp(opID, ReceiveCommitted, nil)
+	r.markCompleted(env.SenderID, env.TransferID)
+	r.e.finishReceiveOp(asm.opID, ReceiveCommitted, nil)
 	r.bestEffortAck(cli, mailboxID, env.TransferID)
-}
-
-func (r *relayCoordinator) waitChunkAvailable(ctx context.Context, asm *relayAssembly, cli *relayclient.Client, mailboxID, transferID string, totalChunks, idx int) error {
-	for {
-		asm.mu.Lock()
-		ready := relaycrypto.HasBit(asm.available, idx)
-		asm.mu.Unlock()
-		if ready {
-			return nil
-		}
-		t := time.NewTimer(relayChunkWaitPoll)
-		select {
-		case <-ctx.Done():
-			t.Stop()
-			return ctx.Err()
-		case <-asm.chunkWake:
-			t.Stop()
-		case <-t.C:
-			// Poll relay in case an SSE chunk_ready event was missed.
-			listCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			sums, err := cli.ListTransfers(listCtx, r.e.ident, mailboxID)
-			cancel()
-			if err == nil {
-				found := false
-				for _, sum := range sums {
-					if sum.TransferID != transferID {
-						continue
-					}
-					found = true
-					if bm, berr := relaycrypto.DecodeBitmap(sum.AvailableBitmap, totalChunks); berr == nil {
-						asm.mu.Lock()
-						for j := 0; j < totalChunks; j++ {
-							if relaycrypto.HasBit(bm, j) {
-								relaycrypto.SetBit(asm.available, j)
-							}
-						}
-						asm.mu.Unlock()
-					}
-				}
-				if !found {
-					return newErr(CodeNotFound, "relay transfer no longer available")
-				}
-			}
-		}
+	if p2pUsed {
+		r.sendClipAck(asm.backendID, env.SenderID, env.TransferID, wire.ClipAckReceived)
 	}
 }
 
-func (r *relayCoordinator) handleAssemblyAbort(opID OperationID, isDiscarded bool, cli *relayclient.Client, mailboxID, transferID string, err error) {
-	if isDiscarded {
-		r.e.finishReceiveOp(opID, ReceiveDiscarded, nil)
-		r.bestEffortDeleteOwner(cli, mailboxID, transferID)
+func (r *relayCoordinator) handleAssemblyAbort(asm *relayAssembly, cli *relayclient.Client, mailboxID string, err error) {
+	asm.mu.Lock()
+	usedP2P := asm.p2pUsed
+	asm.mu.Unlock()
+	if asm.discarded.Load() {
+		r.e.finishReceiveOp(asm.opID, ReceiveDiscarded, nil)
+		r.bestEffortDeleteOwner(cli, mailboxID, asm.transferID)
+		if usedP2P {
+			r.sendClipAck(asm.backendID, asm.senderID, asm.transferID, wire.ClipAckDiscarded)
+		}
 		return
 	}
-	r.e.finishReceiveOp(opID, ReceiveFailed, err)
+	r.e.finishReceiveOp(asm.opID, ReceiveFailed, err)
+	if usedP2P {
+		r.sendClipAck(asm.backendID, asm.senderID, asm.transferID, wire.ClipAckFailed)
+	}
 }
 
 func (r *relayCoordinator) bestEffortAck(cli *relayclient.Client, mailboxID, transferID string) {
@@ -1014,32 +1444,32 @@ func (b *peerProcBackend) wakePeer(peerID string) {
 	}
 }
 
-func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h backendHost) error {
+func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h backendHost) (relaySendResult, error) {
 	e := b.e
 	cli, _, _, ok := e.relay.snapshotClient()
 	if !ok {
-		return newErr(CodeUnavailable, "relay is unavailable")
+		return relaySendResult{}, newErr(CodeUnavailable, "relay is unavailable")
 	}
 	if err := ctx.Err(); err != nil {
-		return ctxErr(err)
+		return relaySendResult{}, ctxErr(err)
 	}
 	// Re-verify authorization, sync switches and limits before opening parts.
 	allowed, err := e.allowedPeerOn(string(b.id), plan.peerID)
 	if err != nil || !allowed || !b.syncEnabled(plan.peerID) {
-		return newErr(CodePermissionDenied, "peer is no longer authorized")
+		return relaySendResult{}, newErr(CodePermissionDenied, "peer is no longer authorized")
 	}
 	e.mu.Lock()
 	rerr := e.needRunningLocked()
 	enabled, relayEnabled, lim := e.settings.Value.Sync.Enabled, e.settings.Value.Sync.Relay.Enabled, e.settings.Value.Limits
 	e.mu.Unlock()
 	if rerr != nil {
-		return rerr
+		return relaySendResult{}, rerr
 	}
 	if !enabled || !relayEnabled {
-		return newErr(CodeSyncDisabled, "sync is paused")
+		return relaySendResult{}, newErr(CodeSyncDisabled, "sync is paused")
 	}
 	if lerr := checkLimits(plan.view.set, lim); lerr != nil {
-		return lerr
+		return relaySendResult{}, lerr
 	}
 
 	// Open all parts upfront so source_changed is detected before upload starts.
@@ -1061,28 +1491,28 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 		rc, oerr := e.openPart(octx, p)
 		cancel()
 		if oerr != nil {
-			return oerr
+			return relaySendResult{}, oerr
 		}
 		hs[i] = rc
 	}
 
 	hdrBytes, err := relaycrypto.EncodePlaintextHeader(plan.clip)
 	if err != nil {
-		return err
+		return relaySendResult{}, err
 	}
 	plainTotal := int64(len(hdrBytes)) + plan.view.set.total
 	chunkSize, totalChunks, err := relaycrypto.ChunkParams(plainTotal)
 	if err != nil {
-		return newErr(CodeLimitExceeded, "content too large for relay chunking")
+		return relaySendResult{}, newErr(CodeLimitExceeded, "content too large for relay chunking")
 	}
 
 	cek := make([]byte, relaycrypto.CEKSize)
 	if _, err := rand.Read(cek); err != nil {
-		return newErr(CodeInternal, "random key generation failed")
+		return relaySendResult{}, newErr(CodeInternal, "random key generation failed")
 	}
 	cc, err := relaycrypto.NewChunkCipher(cek, plan.clip.ID, e.ident.DeviceID(), plan.peerID, totalChunks)
 	if err != nil {
-		return err
+		return relaySendResult{}, err
 	}
 
 	// Build unified sequential plaintext reader: header || part[0] || ...
@@ -1094,33 +1524,31 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 	seq := io.MultiReader(readers...)
 
 	// Encrypt chunks sequentially to compute exact chunk_hashes for the signed envelope.
-	// Single-chunk transfers stay in memory (<= 2 MiB); multi-chunk transfers are
-	// bounded by effectiveMax (default 25 MiB).
 	cts := make([][]byte, totalChunks)
 	hashes := make([][32]byte, totalChunks)
 	var totalCT int64
 	buf := make([]byte, chunkSize)
 	for i := 0; i < totalChunks; i++ {
 		if err := ctx.Err(); err != nil {
-			return ctxErr(err)
+			return relaySendResult{}, ctxErr(err)
 		}
 		want := chunkSize
 		if rem := plainTotal - int64(i)*int64(chunkSize); rem < int64(want) {
 			want = int(rem)
 		}
 		if _, err := io.ReadFull(seq, buf[:want]); err != nil {
-			return err
+			return relaySendResult{}, err
 		}
 		ct, hsum, err := cc.SealChunk(i, buf[:want])
 		if err != nil {
-			return err
+			return relaySendResult{}, err
 		}
 		cts[i] = ct
 		hashes[i] = hsum
 		totalCT += int64(len(ct))
 	}
 	if totalCT > plan.effectiveMax+int64(wire.MaxControl)+int64(totalChunks)*relaycrypto.GCMTagSize {
-		return newErr(CodeLimitExceeded, "encrypted payload exceeds relay limit")
+		return relaySendResult{}, newErr(CodeLimitExceeded, "encrypted payload exceeds relay limit")
 	}
 
 	now := time.Now()
@@ -1137,77 +1565,355 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 		CEK:                  cek,
 	})
 	if err != nil {
-		return err
+		return relaySendResult{}, err
 	}
 
 	// Fast path: 1-RTT single-chunk upload.
 	if totalChunks == 1 {
 		if err := cli.UploadSingle(ctx, plan.route.MailboxID, plan.route.DeliveryToken, env, cts[0]); err != nil {
-			return err
+			return relaySendResult{}, err
 		}
 		h.ReportProgress(plan.key, "", TransferProgress{BytesSent: plan.view.set.total, TotalBytes: plan.view.set.total, PartCount: len(plan.view.set.parts)})
-		return nil
+		return relaySendResult{state: TargetSent, receiptStage: ReceiptStageRelayStored, route: RouteRelay}, nil
 	}
 
-	// Multi-chunk path: announce envelope then upload chunks with bounded concurrency.
+	// Multi-chunk path: announce envelope then upload chunks with bounded concurrency,
+	// seamlessly settling onto P2P mid-transfer if P2P recovers (Level 3, contract §5).
 	if _, err := cli.CreateTransfer(ctx, plan.route.MailboxID, plan.route.DeliveryToken, env); err != nil {
-		return err
+		return relaySendResult{}, err
 	}
-	upCtx, upCancel := context.WithCancel(ctx)
-	defer upCancel()
 
-	type chunkTask struct {
-		idx int
-		ct  []byte
-	}
-	tasks := make(chan chunkTask, totalChunks)
-	for i := 0; i < totalChunks; i++ {
-		tasks <- chunkTask{idx: i, ct: cts[i]}
-	}
-	close(tasks)
-
-	var (
-		wg       sync.WaitGroup
-		errMu    sync.Mutex
-		firstErr error
-		sentCT   atomic.Int64
-	)
-	workers := min(relayUploadConcurrency, totalChunks)
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for t := range tasks {
-				if upCtx.Err() != nil {
-					return
-				}
-				if err := cli.UploadChunk(upCtx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID, t.idx, t.ct); err != nil {
-					errMu.Lock()
-					if firstErr == nil {
-						firstErr = err
-					}
-					errMu.Unlock()
-					upCancel()
-					return
-				}
-				doneCT := sentCT.Add(int64(len(t.ct)))
-				approxPlain := min((doneCT*plan.view.set.total)/max(totalCT, 1), plan.view.set.total)
-				h.ReportProgress(plan.key, "", TransferProgress{
-					BytesSent:  approxPlain,
-					TotalBytes: plan.view.set.total,
-					PartCount:  len(plan.view.set.parts),
-				})
-			}
-		}()
-	}
-	wg.Wait()
-	if firstErr != nil {
+	deleteOnAbort := func() {
 		delCtx, cancel := context.WithTimeout(context.Background(), relayCleanupTimeout)
 		_ = cli.DeleteTransferAsSender(delCtx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID)
 		cancel()
-		return firstErr
 	}
-	return nil
+
+	httpUploaded, _ := relaycrypto.NewBitmap(totalChunks)
+	remoteHave, _ := relaycrypto.NewBitmap(totalChunks)
+	var (
+		stateMu          sync.Mutex
+		maxReportedPlain int64
+		usedHybrid       bool
+		switches         int
+	)
+	routeOf := func() TransportRoute {
+		if usedHybrid {
+			return RouteHybrid
+		}
+		return RouteRelay
+	}
+	remainingLocked := func() ([]int, int64) {
+		var idx []int
+		var remBytes int64
+		for i := 0; i < totalChunks; i++ {
+			if !relaycrypto.HasBit(httpUploaded, i) && !relaycrypto.HasBit(remoteHave, i) {
+				idx = append(idx, i)
+				remBytes += int64(len(cts[i]))
+			}
+		}
+		return idx, remBytes
+	}
+	reportProgress := func(p2pSent []byte) {
+		stateMu.Lock()
+		var doneCT int64
+		for i := 0; i < totalChunks; i++ {
+			if relaycrypto.HasBit(httpUploaded, i) || relaycrypto.HasBit(remoteHave, i) || relaycrypto.HasBit(p2pSent, i) {
+				doneCT += int64(len(cts[i]))
+			}
+		}
+		approxPlain := min((doneCT*plan.view.set.total)/max(totalCT, 1), plan.view.set.total)
+		if approxPlain < maxReportedPlain {
+			approxPlain = maxReportedPlain
+		} else {
+			maxReportedPlain = approxPlain
+		}
+		val := maxReportedPlain
+		stateMu.Unlock()
+		h.ReportProgress(plan.key, "", TransferProgress{
+			BytesSent:  val,
+			TotalBytes: plan.view.set.total,
+			PartCount:  len(plan.view.set.parts),
+		})
+	}
+
+	hb, _ := b.pb.(plugin.PeerRelayHandoffBridge)
+	canHandoff := func(remCount int, remBytes int64) bool {
+		if hb == nil || switches >= maxHandoffSwitches {
+			return false
+		}
+		if remCount < handoffMinRemainingChunks || remBytes < handoffMinRemainingBytes {
+			return false
+		}
+		connected, handoffCap, _ := hb.PeerHandoffCaps(plan.peerID)
+		return connected && handoffCap
+	}
+
+	wakeCh, unwake := e.relay.watchPeerUp(plan.peerID)
+	defer unwake()
+
+	envJSON, err := json.Marshal(env)
+	if err != nil {
+		deleteOnAbort()
+		return relaySendResult{}, err
+	}
+
+	for {
+		if err := ctx.Err(); err != nil {
+			deleteOnAbort()
+			return relaySendResult{}, ctxErr(err)
+		}
+		stateMu.Lock()
+		remIdx, remBytes := remainingLocked()
+		uploadedCopy := append([]byte(nil), httpUploaded...)
+		stateMu.Unlock()
+
+		if len(remIdx) == 0 {
+			return relaySendResult{state: TargetSent, receiptStage: ReceiptStageRelayStored, route: routeOf()}, nil
+		}
+
+		// Branch A: Attempt Level 3 P2P handoff settlement if peer is connected with CapRelayHandoff.
+		if canHandoff(len(remIdx), remBytes) {
+			ackCh, sessDone, cleanupAck, hasAck := hb.RegisterRelayClipAckWaiter(plan.peerID, plan.clip.ID)
+			offerAck, oerr := hb.SendRelayHandoffOffer(ctx, plan.peerID, plugin.RelayHandoffOffer{
+				TransferID:          plan.clip.ID,
+				EnvelopeJSON:        envJSON,
+				RelayUploadedBitmap: relaycrypto.EncodeBitmap(uploadedCopy),
+			})
+			if oerr != nil {
+				cleanupAck()
+				if ctx.Err() != nil {
+					deleteOnAbort()
+					return relaySendResult{}, ctxErr(ctx.Err())
+				}
+				// P2P flapped during offer; fall through to HTTP batch below.
+			} else if !offerAck.Accept {
+				cleanupAck()
+				switch offerAck.Reason {
+				case "discarded", "policy", "limit_exceeded", "permission_denied":
+					deleteOnAbort()
+					return relaySendResult{state: TargetDiscarded, receiptStage: ReceiptStageRemoteDiscarded, route: RouteHybrid}, nil
+				}
+				// Transient receiver rejection (e.g. unavailable/resource_exhausted): fall through to HTTP.
+			} else {
+				switches++
+				usedHybrid = true
+				h.ReportRoute(plan.key, RouteHybrid)
+
+				if offerAck.HaveBitmap != "" {
+					if haveBM, derr := relaycrypto.DecodeBitmap(offerAck.HaveBitmap, totalChunks); derr == nil {
+						stateMu.Lock()
+						for i := 0; i < totalChunks; i++ {
+							if relaycrypto.HasBit(haveBM, i) {
+								relaycrypto.SetBit(remoteHave, i)
+							}
+						}
+						stateMu.Unlock()
+					}
+				}
+				p2pSent, _ := relaycrypto.NewBitmap(totalChunks)
+				reportProgress(p2pSent)
+
+				var wantList []int
+				if offerAck.WantP2PBitmap != "" {
+					if wantBM, derr := relaycrypto.DecodeBitmap(offerAck.WantP2PBitmap, totalChunks); derr == nil {
+						for i := 0; i < totalChunks; i++ {
+							if relaycrypto.HasBit(wantBM, i) {
+								wantList = append(wantList, i)
+							}
+						}
+					}
+				}
+
+				checkEarlyAck := func() (done bool, res relaySendResult, rerr error) {
+					if !hasAck {
+						return false, relaySendResult{}, nil
+					}
+					select {
+					case status := <-ackCh:
+						switch status {
+						case wire.ClipAckReceived:
+							return true, relaySendResult{state: TargetSent, receiptStage: ReceiptStageRemoteReceived, route: RouteHybrid}, nil
+						case wire.ClipAckDiscarded:
+							deleteOnAbort()
+							return true, relaySendResult{state: TargetDiscarded, receiptStage: ReceiptStageRemoteDiscarded, route: RouteHybrid}, nil
+						default:
+							deleteOnAbort()
+							return true, relaySendResult{}, newErr(CodeUnavailable, "peer failed to receive handoff transfer")
+						}
+					default:
+						return false, relaySendResult{}, nil
+					}
+				}
+
+				p2pBroken := false
+				for _, idx := range wantList {
+					if done, res, rerr := checkEarlyAck(); done {
+						cleanupAck()
+						return res, rerr
+					}
+					if cerr := hb.SendRelayChunk(ctx, plan.peerID, plan.clip.ID, idx, cts[idx]); cerr != nil {
+						if done, res, rerr := checkEarlyAck(); done {
+							cleanupAck()
+							return res, rerr
+						}
+						cleanupAck()
+						if ctx.Err() != nil {
+							deleteOnAbort()
+							return relaySendResult{}, ctxErr(ctx.Err())
+						}
+						// Reverse fallback: P2P dropped mid-handoff; resume HTTP for all chunks not in (httpUploaded ∪ remoteHave).
+						p2pBroken = true
+						break
+					}
+					relaycrypto.SetBit(p2pSent, idx)
+					reportProgress(p2pSent)
+				}
+				if p2pBroken {
+					continue
+				}
+
+				// Defensive check: upload any chunk not covered by httpUploaded ∪ remoteHave ∪ p2pSent.
+				var uncovered []int
+				stateMu.Lock()
+				for i := 0; i < totalChunks; i++ {
+					if !relaycrypto.HasBit(httpUploaded, i) && !relaycrypto.HasBit(remoteHave, i) && !relaycrypto.HasBit(p2pSent, i) {
+						uncovered = append(uncovered, i)
+					}
+				}
+				stateMu.Unlock()
+				for _, idx := range uncovered {
+					if uerr := cli.UploadChunk(ctx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID, idx, cts[idx]); uerr != nil {
+						cleanupAck()
+						deleteOnAbort()
+						return relaySendResult{}, uerr
+					}
+					stateMu.Lock()
+					relaycrypto.SetBit(httpUploaded, idx)
+					stateMu.Unlock()
+					reportProgress(p2pSent)
+				}
+
+				if !hasAck {
+					cleanupAck()
+					return relaySendResult{state: TargetSent, receiptStage: ReceiptStageLocalWritten, route: RouteHybrid}, nil
+				}
+
+				h.ReportProgress(plan.key, ReceiptStageLocalWritten, TransferProgress{
+					BytesSent:  plan.view.set.total,
+					TotalBytes: plan.view.set.total,
+					PartCount:  len(plan.view.set.parts),
+				})
+				ackTimer := time.NewTimer(handoffClipAckTimeout)
+				select {
+				case status := <-ackCh:
+					ackTimer.Stop()
+					cleanupAck()
+					switch status {
+					case wire.ClipAckReceived:
+						return relaySendResult{state: TargetSent, receiptStage: ReceiptStageRemoteReceived, route: RouteHybrid}, nil
+					case wire.ClipAckDiscarded:
+						deleteOnAbort()
+						return relaySendResult{state: TargetDiscarded, receiptStage: ReceiptStageRemoteDiscarded, route: RouteHybrid}, nil
+					default:
+						deleteOnAbort()
+						return relaySendResult{}, newErr(CodeUnavailable, "peer failed to commit handoff transfer")
+					}
+				case <-sessDone:
+					// P2P dropped before clip_ack arrived; fall back to HTTP for unconfirmed chunks so zero bytes are lost.
+					ackTimer.Stop()
+					cleanupAck()
+					continue
+				case <-ctx.Done():
+					ackTimer.Stop()
+					cleanupAck()
+					deleteOnAbort()
+					return relaySendResult{}, ctxErr(ctx.Err())
+				case <-ackTimer.C:
+					cleanupAck()
+					return relaySendResult{}, newErr(CodeTimeout, "timed out waiting for peer handoff confirmation")
+				}
+			}
+		}
+
+		// Branch B: Concurrent HTTP chunk upload batch, preemptible by P2P recovery.
+		httpCtx, httpCancel := context.WithCancel(ctx)
+		var handoffRequested atomic.Bool
+		var monWG sync.WaitGroup
+		if hb != nil && switches < maxHandoffSwitches {
+			monWG.Add(1)
+			go func() {
+				defer monWG.Done()
+				for {
+					select {
+					case <-httpCtx.Done():
+						return
+					case <-wakeCh:
+						stateMu.Lock()
+						rIdx, rBytes := remainingLocked()
+						stateMu.Unlock()
+						if canHandoff(len(rIdx), rBytes) {
+							handoffRequested.Store(true)
+							httpCancel()
+							return
+						}
+					}
+				}
+			}()
+		}
+
+		tasks := make(chan int, len(remIdx))
+		for _, idx := range remIdx {
+			tasks <- idx
+		}
+		close(tasks)
+
+		var (
+			wg       sync.WaitGroup
+			errMu    sync.Mutex
+			firstErr error
+		)
+		workers := min(relayUploadConcurrency, len(remIdx))
+		for w := 0; w < workers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for idx := range tasks {
+					if httpCtx.Err() != nil {
+						return
+					}
+					if uerr := cli.UploadChunk(httpCtx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID, idx, cts[idx]); uerr != nil {
+						if handoffRequested.Load() && ctx.Err() == nil {
+							return
+						}
+						errMu.Lock()
+						if firstErr == nil {
+							firstErr = uerr
+						}
+						errMu.Unlock()
+						httpCancel()
+						return
+					}
+					stateMu.Lock()
+					relaycrypto.SetBit(httpUploaded, idx)
+					stateMu.Unlock()
+					reportProgress(nil)
+				}
+			}()
+		}
+		wg.Wait()
+		httpCancel()
+		monWG.Wait()
+
+		if firstErr != nil {
+			deleteOnAbort()
+			return relaySendResult{}, firstErr
+		}
+		if handoffRequested.Load() {
+			continue
+		}
+		// Re-loop to verify all chunks are covered and return cleanly.
+	}
 }
 
 // encodeJSONForTest keeps json import used cleanly if needed in future extensions.

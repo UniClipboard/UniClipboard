@@ -104,9 +104,13 @@ type Backend struct {
 	dialing      map[string]dialStatus
 	lastChecked   map[string]int64
 	onLinkChange  func(string)
-	relayProvide  func(peerID string) (plugin.RelayProfile, bool)
-	onRelayPeer   func(peerID string, p plugin.RelayProfile)
-	gen           uint64
+	relayProvide      func(peerID string) (plugin.RelayProfile, bool)
+	onRelayPeer       func(peerID string, p plugin.RelayProfile)
+	onHandoffOffer    func(peerID string, offer plugin.RelayHandoffOffer) plugin.RelayHandoffAck
+	onHandoffChunk    func(peerID, transferID string, index int, ciphertext []byte)
+	onHandoffPeerUp   func(peerID string, handoffCap, clipAckCap bool)
+	onHandoffPeerDown func(peerID string)
+	gen               uint64
 }
 
 // runState is one up period of the network.
@@ -167,6 +171,138 @@ func (b *Backend) WakePeer(peerID string) {
 	if peerID != "" {
 		b.kick(peerID)
 	}
+}
+
+func (b *Backend) SetRelayHandoffCallbacks(
+	onOffer func(peerID string, offer plugin.RelayHandoffOffer) plugin.RelayHandoffAck,
+	onChunk func(peerID, transferID string, index int, ciphertext []byte),
+	onPeerConnected func(peerID string, handoffCap, clipAckCap bool),
+	onPeerDisconnected func(peerID string),
+) {
+	b.mu.Lock()
+	b.onHandoffOffer = onOffer
+	b.onHandoffChunk = onChunk
+	b.onHandoffPeerUp = onPeerConnected
+	b.onHandoffPeerDown = onPeerDisconnected
+	b.mu.Unlock()
+}
+
+func (b *Backend) PeerHandoffCaps(peerID string) (connected, handoffCap, clipAckCap bool) {
+	b.mu.Lock()
+	s := b.sessions[peerID]
+	b.mu.Unlock()
+	if s == nil || s.isDone() {
+		return false, false, false
+	}
+	return true, s.relayHandoffCap, s.clipAckCap
+}
+
+func (b *Backend) RegisterRelayClipAckWaiter(peerID, transferID string) (<-chan string, <-chan struct{}, func(), bool) {
+	b.mu.Lock()
+	s := b.sessions[peerID]
+	b.mu.Unlock()
+	if s == nil || s.isDone() || !s.clipAckCap {
+		return nil, nil, func() {}, false
+	}
+	ch, cleanup := s.registerAckWaiter(transferID)
+	return ch, s.done, cleanup, true
+}
+
+func (b *Backend) SendRelayHandoffOffer(ctx context.Context, peerID string, offer plugin.RelayHandoffOffer) (plugin.RelayHandoffAck, error) {
+	b.mu.Lock()
+	s := b.sessions[peerID]
+	b.mu.Unlock()
+	if s == nil || s.isDone() || !s.relayHandoffCap {
+		return plugin.RelayHandoffAck{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	ch, cleanup := s.registerHandoffWaiter(offer.TransferID)
+	defer cleanup()
+
+	writeCtx, writeCancel := context.WithTimeout(ctx, eventTimeout)
+	defer writeCancel()
+	if !s.acquireWrite(writeCtx) {
+		if ctx.Err() != nil {
+			return plugin.RelayHandoffAck{}, rpc.NewError(rpc.CodeCancelled)
+		}
+		return plugin.RelayHandoffAck{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	_ = s.conn.SetWriteDeadline(time.Now().Add(eventTimeout))
+	err := s.w.WriteJSON(wire.RelayHandoffOffer{
+		T:                   "relay_handoff_offer",
+		V:                   1,
+		TransferID:          offer.TransferID,
+		Envelope:            json.RawMessage(offer.EnvelopeJSON),
+		RelayUploadedBitmap: offer.RelayUploadedBitmap,
+	})
+	_ = s.conn.SetWriteDeadline(time.Time{})
+	s.releaseWrite()
+	if err != nil {
+		s.closeWith(reason(err))
+		return plugin.RelayHandoffAck{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	s.markTx()
+
+	timer := time.NewTimer(eventTimeout)
+	defer timer.Stop()
+	select {
+	case ack := <-ch:
+		return ack, nil
+	case <-s.done:
+		return plugin.RelayHandoffAck{}, rpc.NewError(rpc.CodeUnavailable)
+	case <-ctx.Done():
+		return plugin.RelayHandoffAck{}, rpc.NewError(rpc.CodeCancelled)
+	case <-timer.C:
+		return plugin.RelayHandoffAck{}, rpc.NewError(rpc.CodeTimeout)
+	}
+}
+
+func (b *Backend) SendRelayChunk(ctx context.Context, peerID, transferID string, index int, ciphertext []byte) error {
+	b.mu.Lock()
+	s := b.sessions[peerID]
+	b.mu.Unlock()
+	if s == nil || s.isDone() || !s.relayHandoffCap {
+		return rpc.NewError(rpc.CodeUnavailable)
+	}
+	if !s.acquireWrite(ctx) {
+		if ctx.Err() != nil {
+			return rpc.NewError(rpc.CodeCancelled)
+		}
+		return rpc.NewError(rpc.CodeUnavailable)
+	}
+	s.bodyActive.Store(true)
+	if s.bodyConn != nil {
+		s.bodyConn.writingBody = true
+	}
+	stop := context.AfterFunc(ctx, func() { s.closeWith("cancellation") })
+	err := s.w.SendRelayChunk(transferID, index, ciphertext)
+	stop()
+	if s.bodyConn != nil {
+		s.bodyConn.writingBody = false
+		_ = s.conn.SetWriteDeadline(time.Time{})
+	}
+	s.bodyActive.Store(false)
+	s.releaseWrite()
+	if err != nil {
+		if ctx.Err() != nil {
+			s.closeWith("cancellation")
+			return rpc.NewError(rpc.CodeCancelled)
+		}
+		s.closeWith(reason(err))
+		return rpc.NewError(rpc.CodeUnavailable)
+	}
+	s.markTx()
+	return nil
+}
+
+func (b *Backend) SendRelayClipAck(peerID, transferID, status string) bool {
+	b.mu.Lock()
+	s := b.sessions[peerID]
+	b.mu.Unlock()
+	if s == nil || s.isDone() || !s.clipAckCap || transferID == "" {
+		return false
+	}
+	s.enqueueAck(wire.ClipAck{T: "clip_ack", ID: transferID, Status: status})
+	return true
 }
 
 func (b *Backend) authority() plugin.PeerAuthority { b.mu.Lock(); defer b.mu.Unlock(); return b.auth }
@@ -578,9 +714,13 @@ func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, 
 	}
 	b.mu.Lock()
 	hasRelay := b.relayProvide != nil || b.onRelayPeer != nil
+	hasHandoff := b.onHandoffOffer != nil || b.onHandoffChunk != nil
 	b.mu.Unlock()
 	if hasRelay {
 		localCaps = append(localCaps, wire.CapRelayProfile)
+	}
+	if hasHandoff {
+		localCaps = append(localCaps, wire.CapRelayHandoff)
 	}
 	werr := make(chan error, 1)
 	go func() {
@@ -648,11 +788,13 @@ func (b *Backend) handshake(parent context.Context, r *runState, conn net.Conn, 
 	if local && dec.SessionToken != nil {
 		clipAckCap := !b.cfg.DisableClipAck && slices.Contains(h.Caps, wire.CapClipAck)
 		relayProfileCap := hasRelay && slices.Contains(h.Caps, wire.CapRelayProfile)
+		relayHandoffCap := hasHandoff && slices.Contains(h.Caps, wire.CapRelayHandoff)
 		s = &session{
 			b: b, r: r, conn: conn, w: w, bodyConn: bodyConn, connID: connID, token: *dec.SessionToken, peerID: dec.PeerID, outgoing: outgoing,
 			trustRev: uint64(dec.TrustRevision), wlock: make(chan struct{}, 1), pongSem: make(chan struct{}, 1),
 			clipAckCap: clipAckCap, ackQueue: make(chan wire.ClipAck, 32),
 			relayProfileCap: relayProfileCap, relayWake: make(chan struct{}, 1),
+			relayHandoffCap: relayHandoffCap, handoffAckQueue: make(chan wire.RelayHandoffAck, 32),
 			done: make(chan struct{}), exited: make(chan struct{}),
 		}
 		bodyConn.lastRxNs = &s.lastRxUnixNs
@@ -767,6 +909,11 @@ type session struct {
 	ackQueue        chan wire.ClipAck
 	relayProfileCap bool
 	relayWake       chan struct{}
+	relayHandoffCap bool
+	handoffMu       sync.Mutex
+	handoffWaiters  map[string]chan plugin.RelayHandoffAck
+	handoffAckQueue chan wire.RelayHandoffAck
+	handoffWG       sync.WaitGroup
 	link            peerLinkCache // guarded by b.mu
 	done         chan struct{}
 	exited       chan struct{} // closed when serving ended and the Engine was told
@@ -866,6 +1013,12 @@ func (b *Backend) establish(r *runState, s *session) bool {
 	if s.relayProfileCap {
 		s.wakeRelayProfile()
 	}
+	b.mu.Lock()
+	peerUp := b.onHandoffPeerUp
+	b.mu.Unlock()
+	if peerUp != nil {
+		go peerUp(s.peerID, s.relayHandoffCap, s.clipAckCap)
+	}
 	go func() { defer r.wg.Done(); b.serve(s) }()
 	return true
 }
@@ -881,9 +1034,12 @@ func (b *Backend) serve(s *session) {
 	<-introDone
 	<-ackDone
 	s.pongWG.Wait()
+	s.handoffWG.Wait()
 	b.endObservation(s)
 	b.mu.Lock()
-	if b.run == s.r && b.sessions[s.peerID] == nil {
+	noSession := b.sessions[s.peerID] == nil
+	peerDown := b.onHandoffPeerDown
+	if b.run == s.r && noSession {
 		ds := b.dialing[s.peerID]
 		ds.attempts = 0
 		ds.activeUntil = time.Now().Add(connectingGraceWindow)
@@ -891,6 +1047,9 @@ func (b *Backend) serve(s *session) {
 		b.dialing[s.peerID] = ds
 	}
 	b.mu.Unlock()
+	if noSession && peerDown != nil {
+		go peerDown(s.peerID)
+	}
 	_ = s.event("disconnected")
 	close(s.exited)
 	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) { // recvLoop always returns an error
@@ -1112,8 +1271,130 @@ func (s *session) handleRelayProfile(raw []byte) {
 	}
 }
 
+func (s *session) registerHandoffWaiter(id string) (chan plugin.RelayHandoffAck, func()) {
+	ch := make(chan plugin.RelayHandoffAck, 1)
+	s.handoffMu.Lock()
+	if s.handoffWaiters == nil {
+		s.handoffWaiters = map[string]chan plugin.RelayHandoffAck{}
+	}
+	s.handoffWaiters[id] = ch
+	s.handoffMu.Unlock()
+	return ch, func() {
+		s.handoffMu.Lock()
+		if s.handoffWaiters[id] == ch {
+			delete(s.handoffWaiters, id)
+		}
+		s.handoffMu.Unlock()
+	}
+}
+
+func (s *session) enqueueHandoffAck(ack wire.RelayHandoffAck) {
+	if !s.relayHandoffCap || s.handoffAckQueue == nil || ack.TransferID == "" {
+		return
+	}
+	select {
+	case s.handoffAckQueue <- ack:
+	case <-s.done:
+	default:
+	}
+}
+
+func (s *session) handleRelayHandoffOffer(raw []byte) {
+	if !s.relayHandoffCap {
+		return
+	}
+	var msg wire.RelayHandoffOffer
+	if err := json.Unmarshal(raw, &msg); err != nil || msg.V != 1 || len(msg.TransferID) != 32 || len(msg.Envelope) == 0 {
+		return
+	}
+	s.b.mu.Lock()
+	cb := s.b.onHandoffOffer
+	s.b.mu.Unlock()
+	if cb == nil {
+		s.enqueueHandoffAck(wire.RelayHandoffAck{T: "relay_handoff_ack", V: 1, TransferID: msg.TransferID, Accept: false, Reason: "unsupported"})
+		return
+	}
+	s.handoffWG.Add(1)
+	go func() {
+		defer s.handoffWG.Done()
+		ack := cb(s.peerID, plugin.RelayHandoffOffer{
+			TransferID:          msg.TransferID,
+			EnvelopeJSON:        append([]byte(nil), msg.Envelope...),
+			RelayUploadedBitmap: msg.RelayUploadedBitmap,
+		})
+		s.enqueueHandoffAck(wire.RelayHandoffAck{
+			T:             "relay_handoff_ack",
+			V:             1,
+			TransferID:    msg.TransferID,
+			Accept:        ack.Accept,
+			Reason:        ack.Reason,
+			HaveBitmap:    ack.HaveBitmap,
+			WantP2PBitmap: ack.WantP2PBitmap,
+		})
+	}()
+}
+
+func (s *session) handleRelayHandoffAck(raw []byte) {
+	if !s.relayHandoffCap {
+		return
+	}
+	var msg wire.RelayHandoffAck
+	if err := json.Unmarshal(raw, &msg); err != nil || msg.V != 1 || len(msg.TransferID) != 32 {
+		return
+	}
+	s.handoffMu.Lock()
+	ch := s.handoffWaiters[msg.TransferID]
+	if ch != nil {
+		delete(s.handoffWaiters, msg.TransferID)
+	}
+	s.handoffMu.Unlock()
+	if ch != nil {
+		select {
+		case ch <- plugin.RelayHandoffAck{
+			TransferID:    msg.TransferID,
+			Accept:        msg.Accept,
+			Reason:        msg.Reason,
+			HaveBitmap:    msg.HaveBitmap,
+			WantP2PBitmap: msg.WantP2PBitmap,
+		}:
+		default:
+		}
+	}
+}
+
+func (s *session) handleRelayChunkData(raw []byte) error {
+	var msg wire.RelayChunkData
+	if err := json.Unmarshal(raw, &msg); err != nil {
+		return err
+	}
+	if msg.V != 1 || len(msg.TransferID) != 32 || msg.Index < 0 || msg.Index >= wire.MaxParts || msg.Size <= 0 || msg.Size > wire.MaxRelayChunkBytes {
+		return rpc.NewError(rpc.CodeInvalidArgument)
+	}
+	s.bodyActive.Store(true)
+	defer s.bodyActive.Store(false)
+	if s.bodyConn != nil {
+		s.bodyConn.body = true
+		defer func() { s.bodyConn.body = false; _ = s.conn.SetReadDeadline(time.Time{}) }()
+	}
+	buf := make([]byte, msg.Size)
+	if _, err := io.ReadFull(s.w.Body(msg.Size), buf); err != nil {
+		return err
+	}
+	s.markRx()
+	if !s.relayHandoffCap {
+		return nil
+	}
+	s.b.mu.Lock()
+	cb := s.b.onHandoffChunk
+	s.b.mu.Unlock()
+	if cb != nil {
+		cb(s.peerID, msg.TransferID, msg.Index, buf)
+	}
+	return nil
+}
+
 func (s *session) ackLoop() {
-	if s.ackQueue == nil && s.relayWake == nil {
+	if s.ackQueue == nil && s.relayWake == nil && s.handoffAckQueue == nil {
 		return
 	}
 	for {
@@ -1131,6 +1412,25 @@ func (s *session) ackLoop() {
 			}
 			_ = s.conn.SetWriteDeadline(time.Now().Add(eventTimeout))
 			err := s.w.WriteJSON(ack)
+			_ = s.conn.SetWriteDeadline(time.Time{})
+			s.releaseWrite()
+			cancel()
+			if err != nil {
+				s.closeWith(reason(err))
+				return
+			}
+			s.markTx()
+		case hack := <-s.handoffAckQueue:
+			ctx, cancel := context.WithTimeout(s.r.ctx, eventTimeout)
+			if !s.acquireWrite(ctx) {
+				cancel()
+				if s.isDone() {
+					return
+				}
+				continue
+			}
+			_ = s.conn.SetWriteDeadline(time.Now().Add(eventTimeout))
+			err := s.w.WriteJSON(hack)
 			_ = s.conn.SetWriteDeadline(time.Time{})
 			s.releaseWrite()
 			cancel()
@@ -1322,6 +1622,20 @@ func (b *Backend) recvLoop(s *session) error {
 		}
 		if typ == "relay_profile" {
 			s.handleRelayProfile(raw)
+			continue
+		}
+		if typ == "relay_handoff_offer" {
+			s.handleRelayHandoffOffer(raw)
+			continue
+		}
+		if typ == "relay_handoff_ack" {
+			s.handleRelayHandoffAck(raw)
+			continue
+		}
+		if typ == "relay_chunk_data" {
+			if err := s.handleRelayChunkData(raw); err != nil {
+				return err
+			}
 			continue
 		}
 		if typ == "introduce" {

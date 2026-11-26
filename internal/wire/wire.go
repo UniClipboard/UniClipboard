@@ -26,8 +26,9 @@ const (
 	MaxControl   = 1 << 20  // largest JSON control message
 	MaxPartBytes = 64 << 20 // in-memory format (text, HTML, PNG), same cap as mygo
 	MaxFileBytes = 2 << 30  // one file
-	MaxTotal     = 4 << 30  // whole clipboard message
-	MaxParts     = 4096
+	MaxTotal           = 4 << 30 // whole clipboard message
+	MaxParts           = 4096
+	MaxRelayChunkBytes = (4 << 20) + 64 // max chunk size (4 MiB) + AEAD tag headroom
 
 	CapClipAck      = "clip_ack"
 	CapRelayProfile = "relay_profile"
@@ -99,6 +100,38 @@ type RelayProfile struct {
 	DeliveryToken string `json:"delivery_token"`
 	MaxBytes      int64  `json:"max_bytes,omitempty"`
 	Epoch         uint64 `json:"epoch"`
+}
+
+// RelayHandoffOffer proposes settling an in-flight multi-chunk relay transfer
+// onto an authenticated P2P session where both peers negotiated CapRelayHandoff (0035).
+type RelayHandoffOffer struct {
+	T                   string          `json:"t"` // "relay_handoff_offer"
+	V                   int             `json:"v"` // 1
+	TransferID          string          `json:"transfer_id"`
+	Envelope            json.RawMessage `json:"envelope"`
+	RelayUploadedBitmap string          `json:"relay_uploaded_bitmap"`
+}
+
+// RelayHandoffAck answers a RelayHandoffOffer with the chunks the receiver
+// already verified/stored and the chunks it wants pushed over P2P.
+type RelayHandoffAck struct {
+	T             string `json:"t"` // "relay_handoff_ack"
+	V             int    `json:"v"` // 1
+	TransferID    string `json:"transfer_id"`
+	Accept        bool   `json:"accept"`
+	Reason        string `json:"reason,omitempty"`
+	HaveBitmap    string `json:"have_bitmap,omitempty"`
+	WantP2PBitmap string `json:"want_p2p_bitmap,omitempty"`
+}
+
+// RelayChunkData announces one encrypted relay chunk pushed over P2P; it is
+// immediately followed on the stream by exactly Size ciphertext bytes.
+type RelayChunkData struct {
+	T          string `json:"t"` // "relay_chunk_data"
+	V          int    `json:"v"` // 1
+	TransferID string `json:"transfer_id"`
+	Index      int    `json:"index"`
+	Size       int64  `json:"size"`
 }
 
 // PartMeta announces one blob that follows a Clip message.
@@ -219,6 +252,25 @@ func (c *Conn) SendApplicationStream(id, origin string, ts int64, hash string, p
 		}
 	}
 	return nil
+}
+
+// SendRelayChunk writes a RelayChunkData control frame immediately followed by
+// the raw ciphertext bytes of chunk index.
+func (c *Conn) SendRelayChunk(transferID string, index int, ct []byte) error {
+	if transferID == "" || index < 0 || index >= MaxParts || len(ct) == 0 || len(ct) > MaxRelayChunkBytes {
+		return errors.New("wire: invalid relay chunk frame")
+	}
+	if err := c.WriteJSON(RelayChunkData{
+		T:          "relay_chunk_data",
+		V:          1,
+		TransferID: transferID,
+		Index:      index,
+		Size:       int64(len(ct)),
+	}); err != nil {
+		return err
+	}
+	_, err := c.w.Write(ct)
+	return err
 }
 
 // Validate checks a Clip message against the size limits before any blob is read.

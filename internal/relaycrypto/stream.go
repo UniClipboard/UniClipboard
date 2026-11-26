@@ -66,6 +66,14 @@ func SetBit(bm []byte, index int) {
 	bm[index/8] |= 1 << uint(index%8)
 }
 
+// ClearBit clears chunk index in bm.
+func ClearBit(bm []byte, index int) {
+	if index < 0 || index/8 >= len(bm) {
+		return
+	}
+	bm[index/8] &^= 1 << uint(index%8)
+}
+
 // HasBit reports whether chunk index is set in bm.
 func HasBit(bm []byte, index int) bool {
 	if index < 0 || index/8 >= len(bm) {

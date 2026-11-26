@@ -209,6 +209,14 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 				if rb, ok := in.Plugin.(plugin.PeerRelayBridge); ok && e.relay != nil {
 					rb.SetRelayCallbacks(e.relay.provideRelayProfile, e.relay.onPeerRelayProfile)
 				}
+				if hb, ok := in.Plugin.(plugin.PeerRelayHandoffBridge); ok && e.relay != nil {
+					hb.SetRelayHandoffCallbacks(
+						e.relay.onHandoffOffer,
+						e.relay.onHandoffChunk,
+						e.relay.onPeerConnected,
+						e.relay.onPeerDisconnected,
+					)
+				}
 				if berr := peerAware.Bind(ctx, pp.bindMsg()); berr != nil {
 					return invalidPlugin(spec.ID, "Bind failed")
 				}

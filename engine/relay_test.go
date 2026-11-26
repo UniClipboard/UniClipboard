@@ -26,11 +26,33 @@ import (
 // being completely blocked/offline (e.g. mobile cold start or NAT outage) while
 // HTTPS relay remains reachable.
 type toggleTransport struct {
-	mu      sync.Mutex
-	ln      net.Listener
-	addr    string
-	blocked atomic.Bool
-	conns   map[net.Conn]struct{}
+	mu          sync.Mutex
+	ln          net.Listener
+	addr        string
+	blocked     atomic.Bool
+	conns       map[net.Conn]struct{}
+	onWriteHook func(n int)
+}
+
+type hookConn struct {
+	net.Conn
+	t *toggleTransport
+}
+
+func (c *hookConn) Write(p []byte) (int, error) {
+	c.t.mu.Lock()
+	hook := c.t.onWriteHook
+	c.t.mu.Unlock()
+	if hook != nil {
+		hook(len(p))
+	}
+	return c.Conn.Write(p)
+}
+
+func (t *toggleTransport) SetWriteHook(fn func(n int)) {
+	t.mu.Lock()
+	t.onWriteHook = fn
+	t.mu.Unlock()
 }
 
 func newToggleTransport() *toggleTransport {
@@ -93,7 +115,7 @@ func (l *toggleListener) Accept() (net.Conn, error) {
 			continue
 		}
 		l.parent.track(c)
-		return c, nil
+		return &hookConn{Conn: c, t: l.parent}, nil
 	}
 }
 
@@ -113,7 +135,7 @@ func (t *toggleTransport) Dial(ctx context.Context, addr string) (net.Conn, erro
 		return nil, err
 	}
 	t.track(c)
-	return c, nil
+	return &hookConn{Conn: c, t: t}, nil
 }
 
 func (t *toggleTransport) Addr() string {
@@ -690,6 +712,477 @@ func TestHybridRelayRejectsMismatchedPeerOrigin(t *testing.T) {
 	for _, d := range ds {
 		if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].RelayRouteReady {
 			t.Fatalf("expected peer with mismatched relay origin to be rejected, but RelayRouteReady=true")
+		}
+	}
+}
+
+func TestHybridRelayLevel3MidTransferP2PHandoff(t *testing.T) {
+	ctx := context.Background()
+	srv := relayserver.New(relayserver.Config{MaxTransferBytes: 20 << 20})
+
+	var httpPutChunks atomic.Int32
+	chunk2Gate := make(chan struct{})
+	chunk2Reached := make(chan struct{})
+	var gateOnce sync.Once
+	var releaseOnce sync.Once
+	releaseGate := func() { releaseOnce.Do(func() { close(chunk2Gate) }) }
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/chunks/") {
+			n := httpPutChunks.Add(1)
+			if n >= 3 {
+				gateOnce.Do(func() { close(chunk2Reached) })
+				// Hold HTTP uploads beyond first 2 chunks so P2P recovery triggers Level 3 handoff.
+				select {
+				case <-chunk2Gate:
+				case <-r.Context().Done():
+					return
+				}
+			}
+		}
+		srv.ServeHTTP(w, r)
+	})
+	ts := httptest.NewServer(handler)
+	defer func() {
+		releaseGate()
+		srv.Close()
+		ts.Close()
+	}()
+
+	trA, trB := newToggleTransport(), newToggleTransport()
+	a := startRelayTestEngine(t, "PhoneHandoff", ts.URL, true, 20<<20, trA)
+	b := startRelayTestEngine(t, "MacHandoff", ts.URL, true, 20<<20, trB)
+	aID, bID := pairAndConnect(t, a, b)
+
+	waitUntil(t, 5*time.Second, "relay route ready", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].RelayRouteReady {
+				return true
+			}
+		}
+		return false
+	})
+
+	// Block P2P so transfer starts immediately via HTTP relay.
+	trA.SetBlocked(true)
+	trB.SetBlocked(true)
+	waitUntil(t, 5*time.Second, "p2p offline", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].Connection != engine.Connected {
+				return true
+			}
+		}
+		return false
+	})
+
+	// 8 MiB file -> 8 chunks of 1 MiB.
+	payload := bytes.Repeat([]byte("level3-handoff-chunked-transfer-01234567"), (8<<20)/40)
+	wantHash := sha256.Sum256(payload)
+	tmpFile := filepath.Join(t.TempDir(), "handoff8m.bin")
+	if err := os.WriteFile(tmpFile, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := a.ImportContent(ctx, engine.ContentInput{
+		Files: []engine.FileInput{{Name: "handoff8m.bin", Size: int64(len(payload)), Source: &memFileSource{path: tmpFile, size: int64(len(payload))}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := a.CommitContent(ctx, engine.CommitRequest{
+		RequestID: "req-level3-handoff",
+		LeaseID:   lease.LeaseID,
+		DeviceIDs: []engine.DeviceID{engine.DeviceID(bID)},
+	})
+	if err != nil || res.SyncDisposition != engine.SyncQueued {
+		t.Fatalf("CommitContent: res=%+v err=%v", res, err)
+	}
+
+	// Wait until initial chunks are uploaded to HTTP and upload pauses on chunk 3+.
+	select {
+	case <-chunk2Reached:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for HTTP relay upload to start")
+	}
+
+	// Restore P2P mid-transfer: sender settles via relay_handoff_offer/ack and finishes over P2P.
+	trA.SetBlocked(false)
+	trB.SetBlocked(false)
+	// Trigger immediate reconnect without waiting for backoff.
+	_ = a.NotifyNetworkChanged(ctx)
+	_ = b.NotifyNetworkChanged(ctx)
+
+	waitUntil(t, 15*time.Second, "hybrid handoff op completes with remote_received", func() bool {
+		op, err := a.GetOperation(ctx, res.OperationID)
+		if err != nil || !op.Done() || len(op.Targets) != 1 {
+			return false
+		}
+		tg := op.Targets[0]
+		return tg.State == engine.TargetSent &&
+			tg.TransportRoute == engine.RouteHybrid &&
+			tg.ReceiptStage == engine.ReceiptStageRemoteReceived
+	})
+	releaseGate()
+
+	// Verify HTTP did NOT upload all 8 chunks (remaining chunks went via P2P).
+	if puts := httpPutChunks.Load(); puts >= 8 {
+		t.Fatalf("expected P2P handoff to avoid uploading all 8 chunks over HTTP, got %d HTTP PUTs", puts)
+	}
+
+	// Verify Mac committed the 8 MiB file EXACTLY ONCE with identical SHA-256.
+	waitUntil(t, 5*time.Second, "Mac committed handoff file", func() bool {
+		page, err := b.ListHistory(ctx, engine.ListHistoryRequest{Limit: 10})
+		if err != nil {
+			return false
+		}
+		matches := 0
+		for _, it := range page.Items {
+			if it.Kind == engine.HistoryFiles && it.Origin.DeviceID == engine.DeviceID(aID) {
+				matches++
+				ret, rerr := b.RetainHistoryContent(ctx, it.ID)
+				if rerr != nil || len(ret.Content.Parts) == 0 {
+					continue
+				}
+				rc, oerr := b.ReadContent(ctx, ret.LeaseID, ret.Content.Parts[0].ID)
+				if oerr != nil {
+					_ = b.ReleaseContent(ctx, ret.LeaseID)
+					continue
+				}
+				got, _ := io.ReadAll(rc)
+				_ = rc.Close()
+				_ = b.ReleaseContent(ctx, ret.LeaseID)
+				if sha256.Sum256(got) != wantHash {
+					t.Fatalf("handoff file SHA-256 mismatch")
+				}
+			}
+		}
+		if matches > 1 {
+			t.Fatalf("duplicate history items committed: %d", matches)
+		}
+		return matches == 1
+	})
+
+	waitUntil(t, 5*time.Second, "relay server cleaned handoff transfer", func() bool {
+		return srv.ActiveTransferCount() == 0
+	})
+}
+
+func TestHybridRelayP2PDropMidHandoffReverseFallbackToHTTP(t *testing.T) {
+	ctx := context.Background()
+	srv := relayserver.New(relayserver.Config{MaxTransferBytes: 20 << 20})
+
+	var httpPutChunks atomic.Int32
+	gate := make(chan struct{})
+	gateReached := make(chan struct{})
+	var gateOnce, releaseOnce sync.Once
+	releaseGate := func() { releaseOnce.Do(func() { close(gate) }) }
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/chunks/") {
+			if httpPutChunks.Add(1) >= 3 {
+				gateOnce.Do(func() { close(gateReached) })
+				select {
+				case <-gate:
+				case <-r.Context().Done():
+					return
+				}
+			}
+		}
+		srv.ServeHTTP(w, r)
+	})
+	ts := httptest.NewServer(handler)
+	defer func() {
+		releaseGate()
+		srv.Close()
+		ts.Close()
+	}()
+
+	trA, trB := newToggleTransport(), newToggleTransport()
+	a := startRelayTestEngine(t, "PhoneFallback", ts.URL, true, 20<<20, trA)
+	b := startRelayTestEngine(t, "MacFallback", ts.URL, true, 20<<20, trB)
+	aID, bID := pairAndConnect(t, a, b)
+
+	waitUntil(t, 5*time.Second, "relay route ready", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].RelayRouteReady {
+				return true
+			}
+		}
+		return false
+	})
+
+	trA.SetBlocked(true)
+	trB.SetBlocked(true)
+	waitUntil(t, 5*time.Second, "p2p offline", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].Connection != engine.Connected {
+				return true
+			}
+		}
+		return false
+	})
+
+	// 8 MiB file -> 8 chunks.
+	payload := bytes.Repeat([]byte("reverse-fallback-after-p2p-cut-012345678"), (8<<20)/40)
+	wantHash := sha256.Sum256(payload)
+	tmpFile := filepath.Join(t.TempDir(), "fallback8m.bin")
+	if err := os.WriteFile(tmpFile, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := a.ImportContent(ctx, engine.ContentInput{
+		Files: []engine.FileInput{{Name: "fallback8m.bin", Size: int64(len(payload)), Source: &memFileSource{path: tmpFile, size: int64(len(payload))}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := a.CommitContent(ctx, engine.CommitRequest{
+		RequestID: "req-reverse-fallback",
+		LeaseID:   lease.LeaseID,
+		DeviceIDs: []engine.DeviceID{engine.DeviceID(bID)},
+	})
+	if err != nil || res.SyncDisposition != engine.SyncQueued {
+		t.Fatalf("CommitContent: res=%+v err=%v", res, err)
+	}
+
+	select {
+	case <-gateReached:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for initial HTTP chunks")
+	}
+
+	// Cut P2P automatically once Phone has written ~2.5 MiB over the recovered P2P session!
+	var p2pWritten atomic.Int64
+	var cutOnce sync.Once
+	p2pCut := make(chan struct{})
+	trA.SetWriteHook(func(n int) {
+		if p2pWritten.Add(int64(n)) >= 2500*1024 {
+			cutOnce.Do(func() {
+				// Release HTTP gate so reverse fallback completes immediately over HTTP.
+				releaseGate()
+				trA.SetBlocked(true)
+				trB.SetBlocked(true)
+				close(p2pCut)
+			})
+		}
+	})
+
+	// Unblock P2P to trigger handoff; once ~2.5 MiB flows over P2P, hook cuts P2P.
+	trA.SetBlocked(false)
+	trB.SetBlocked(false)
+	_ = a.NotifyNetworkChanged(ctx)
+	_ = b.NotifyNetworkChanged(ctx)
+
+	select {
+	case <-p2pCut:
+	case <-time.After(15 * time.Second):
+		t.Fatal("timed out waiting for mid-handoff P2P cut")
+	}
+
+	// Sender must reverse-fallback cleanly to HTTP and finish with RouteHybrid + ReceiptStageRelayStored.
+	waitUntil(t, 15*time.Second, "reverse-fallback op finishes cleanly", func() bool {
+		op, err := a.GetOperation(ctx, res.OperationID)
+		if err != nil || !op.Done() || len(op.Targets) != 1 {
+			return false
+		}
+		tg := op.Targets[0]
+		return tg.State == engine.TargetSent &&
+			tg.TransportRoute == engine.RouteHybrid &&
+			tg.ReceiptStage == engine.ReceiptStageRelayStored
+	})
+
+	// Receiver must assemble chunks across HTTP + P2P + reverse-fallback HTTP with identical SHA-256 and 0 duplicates.
+	waitUntil(t, 15*time.Second, "Mac assembled file after reverse fallback", func() bool {
+		page, err := b.ListHistory(ctx, engine.ListHistoryRequest{Limit: 10})
+		if err != nil {
+			return false
+		}
+		matches := 0
+		for _, it := range page.Items {
+			if it.Kind == engine.HistoryFiles && it.Origin.DeviceID == engine.DeviceID(aID) {
+				matches++
+				ret, rerr := b.RetainHistoryContent(ctx, it.ID)
+				if rerr != nil || len(ret.Content.Parts) == 0 {
+					continue
+				}
+				rc, oerr := b.ReadContent(ctx, ret.LeaseID, ret.Content.Parts[0].ID)
+				if oerr != nil {
+					_ = b.ReleaseContent(ctx, ret.LeaseID)
+					continue
+				}
+				got, _ := io.ReadAll(rc)
+				_ = rc.Close()
+				_ = b.ReleaseContent(ctx, ret.LeaseID)
+				if sha256.Sum256(got) != wantHash {
+					t.Fatalf("reverse-fallback file SHA-256 mismatch")
+				}
+			}
+		}
+		if matches > 1 {
+			t.Fatalf("duplicate history items committed after reverse fallback: %d", matches)
+		}
+		return matches == 1
+	})
+
+	waitUntil(t, 5*time.Second, "relay server cleaned transfer after reverse fallback", func() bool {
+		return srv.ActiveTransferCount() == 0
+	})
+}
+
+func TestHybridRelayMidHandoffDiscardStopsSender(t *testing.T) {
+	ctx := context.Background()
+	srv := relayserver.New(relayserver.Config{MaxTransferBytes: 20 << 20})
+
+	var httpPutChunks atomic.Int32
+	gate := make(chan struct{})
+	gateReached := make(chan struct{})
+	var gateOnce, releaseOnce sync.Once
+	releaseGate := func() { releaseOnce.Do(func() { close(gate) }) }
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/chunks/") {
+			if httpPutChunks.Add(1) >= 3 {
+				gateOnce.Do(func() { close(gateReached) })
+				select {
+				case <-gate:
+				case <-r.Context().Done():
+					return
+				}
+			}
+		}
+		srv.ServeHTTP(w, r)
+	})
+	ts := httptest.NewServer(handler)
+	defer func() {
+		releaseGate()
+		srv.Close()
+		ts.Close()
+	}()
+
+	trA, trB := newToggleTransport(), newToggleTransport()
+	a := startRelayTestEngine(t, "PhoneHandoffDiscard", ts.URL, true, 20<<20, trA)
+	b := startRelayTestEngine(t, "MacHandoffDiscard", ts.URL, true, 20<<20, trB)
+	aID, bID := pairAndConnect(t, a, b)
+
+	waitUntil(t, 5*time.Second, "relay route ready", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].RelayRouteReady {
+				return true
+			}
+		}
+		return false
+	})
+
+	trA.SetBlocked(true)
+	trB.SetBlocked(true)
+	waitUntil(t, 5*time.Second, "p2p offline", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].Connection != engine.Connected {
+				return true
+			}
+		}
+		return false
+	})
+
+	payload := bytes.Repeat([]byte("discard-during-p2p-handoff-0123456789abc"), (8<<20)/40)
+	tmpFile := filepath.Join(t.TempDir(), "discardhandoff8m.bin")
+	if err := os.WriteFile(tmpFile, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := a.ImportContent(ctx, engine.ContentInput{
+		Files: []engine.FileInput{{Name: "discardhandoff8m.bin", Size: int64(len(payload)), Source: &memFileSource{path: tmpFile, size: int64(len(payload))}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := a.CommitContent(ctx, engine.CommitRequest{
+		RequestID: "req-handoff-discard",
+		LeaseID:   lease.LeaseID,
+		DeviceIDs: []engine.DeviceID{engine.DeviceID(bID)},
+	})
+	if err != nil || res.SyncDisposition != engine.SyncQueued {
+		t.Fatalf("CommitContent: res=%+v err=%v", res, err)
+	}
+
+	select {
+	case <-gateReached:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for initial HTTP chunks")
+	}
+
+	// Hold P2P chunk writes after ~1.5 MiB until we call DiscardReceive on Mac!
+	var p2pWritten atomic.Int64
+	p2pPaused := make(chan struct{})
+	p2pResume := make(chan struct{})
+	var pauseOnce, resumeOnce sync.Once
+	resumeP2P := func() { resumeOnce.Do(func() { close(p2pResume) }) }
+	defer resumeP2P()
+
+	trA.SetWriteHook(func(n int) {
+		if p2pWritten.Add(int64(n)) >= 1500*1024 {
+			pauseOnce.Do(func() { close(p2pPaused) })
+			<-p2pResume
+		}
+	})
+
+	trA.SetBlocked(false)
+	trB.SetBlocked(false)
+	_ = a.NotifyNetworkChanged(ctx)
+	_ = b.NotifyNetworkChanged(ctx)
+
+	select {
+	case <-p2pPaused:
+	case <-time.After(15 * time.Second):
+		t.Fatal("timed out waiting for P2P handoff chunk stream")
+	}
+
+	// Find active receive operation on Mac and discard it mid-handoff.
+	var recvOpID engine.OperationID
+	waitUntil(t, 5*time.Second, "active receive op on Mac", func() bool {
+		ops, err := b.ListOperations(ctx)
+		if err != nil {
+			return false
+		}
+		for _, op := range ops {
+			if op.Kind == engine.OperationReceive && op.Receive != nil && op.Receive.PeerID == engine.DeviceID(aID) && op.Receive.State == engine.ReceiveReceiving {
+				recvOpID = op.ID
+				return true
+			}
+		}
+		return false
+	})
+	if err := b.DiscardReceive(ctx, recvOpID); err != nil {
+		t.Fatalf("DiscardReceive: %v", err)
+	}
+	resumeP2P()
+	releaseGate()
+
+	// Phone must stop and transition to TargetDiscarded + ReceiptStageRemoteDiscarded + RouteHybrid.
+	waitUntil(t, 10*time.Second, "sender observes remote_discarded during handoff", func() bool {
+		op, err := a.GetOperation(ctx, res.OperationID)
+		if err != nil || !op.Done() || len(op.Targets) != 1 {
+			return false
+		}
+		tg := op.Targets[0]
+		return tg.State == engine.TargetDiscarded &&
+			tg.ReceiptStage == engine.ReceiptStageRemoteDiscarded &&
+			tg.TransportRoute == engine.RouteHybrid
+	})
+
+	waitUntil(t, 5*time.Second, "relay server deleted discarded handoff transfer", func() bool {
+		return srv.ActiveTransferCount() == 0
+	})
+	page, err := b.ListHistory(ctx, engine.ListHistoryRequest{Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range page.Items {
+		if it.Kind == engine.HistoryFiles && it.Origin.DeviceID == engine.DeviceID(aID) {
+			t.Fatalf("discarded handoff file unexpectedly committed to history: %+v", it)
 		}
 	}
 }

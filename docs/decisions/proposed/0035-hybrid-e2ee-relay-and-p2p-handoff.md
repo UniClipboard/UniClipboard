@@ -1,6 +1,6 @@
 # 0035 · 混合同步传输：P2P 优先、E2EE 临时 HTTP 中转与分块接力续传
 
-- 状态：进行中（Phase 0 与 Phase 1 已实现并验证；Phase 2 大载荷 P2P 中途接力续传与 Phase 3 托管上线/移动端后台演进待实施）
+- 状态：进行中（Phase 0、Phase 1 与 Phase 2 大载荷 P2P 中途接力续传均已实现并验证；Phase 3 官方托管上线与移动端后台真机实测待实施）
 - 日期：2026-11-26
 - 关联：[0007 多同步后端与分层策略](0007-multiple-sync-backends.md)、[0014 客户端可观测性](0014-client-observability-otlp.md)、[0020 Tailcat 同步可观测性](0020-tailcat-sync-observability.md)、[0029 可扩展同步后端集成](0029-extensible-sync-backend-integration.md)、[0031 移动端集成 Engine](0031-mobile-engine-integration.md)、[0034 同步发送进度上报与对端接收完成回执](0034-sync-transfer-progress-and-receipt-ack.md)
 - 落地目标：[流水线与本机历史](../../architecture/pipeline.md)、[设备身份、信任与配对](../../architecture/identity-and-trust.md)、[混合中转同步契约](../../contracts/hybrid-relay-contract.md)、[同步后端业务契约](../../contracts/sync-backend-contract.md)、[Engine 公共契约](../../contracts/engine-contract.md)

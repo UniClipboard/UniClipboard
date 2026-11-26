@@ -346,7 +346,7 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 				h.Report(k, TargetSending, nil)
 				h.ReportProgress(k, "", TransferProgress{BytesSent: 0, TotalBytes: plan.view.set.total, PartCount: len(plan.view.set.parts)})
 				started := time.Now()
-				err := b.sendViaRelay(ctx, plan, h)
+				res, err := b.sendViaRelay(ctx, plan, h)
 				var outcome DiagnosticResult
 				var code Code
 				switch {
@@ -365,7 +365,18 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 					e.logPipelineFailure(ctx, "send", outcome, backend, kind, code)
 				}
 				if err == nil {
-					h.ReportReceipt(k, TargetSent, ReceiptStageRelayStored, nil)
+					if res.route != "" {
+						h.ReportRoute(k, res.route)
+					}
+					state := res.state
+					if state == "" {
+						state = TargetSent
+					}
+					stage := res.receiptStage
+					if stage == "" {
+						stage = ReceiptStageRelayStored
+					}
+					h.ReportReceipt(k, state, stage, nil)
 					return
 				}
 				h.Report(k, TargetFailed, err)

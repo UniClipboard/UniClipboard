@@ -1,0 +1,444 @@
+name: Prepare Release
+run-name: prepare-release-${{ inputs.platform }}-${{ inputs.channel }}-${{ inputs.version || 'next' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Target platform (desktop triggers joint CLI + Desktop release; mobile triggers Android + iOS)'
+        required: true
+        type: choice
+        options:
+          - desktop
+          - cli
+          - mobile
+          - android
+          - ios
+        default: desktop
+      channel:
+        description: 'Release channel'
+        required: true
+        type: choice
+        options:
+          - alpha
+          - stable
+        default: alpha
+      version:
+        description: 'Target canonical semver version (e.g. 2.0.0 or 2.5.0, optional leading "v"). Leave empty to keep current version and advance the build number.'
+        required: false
+        type: string
+        default: ''
+      base_branch:
+        description: 'Base branch for the release PR (default: main)'
+        required: false
+        type: string
+        default: 'main'
+
+concurrency:
+  group: prepare-release-${{ inputs.platform }}-${{ inputs.base_branch || 'main' }}
+  cancel-in-progress: false
+
+env:
+  BASE_BRANCH: ${{ inputs.base_branch || 'main' }}
+
+jobs:
+  prepare:
+    name: Prepare release plan and metadata
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      platform: ${{ steps.plan.outputs.platform }}
+      channel: ${{ steps.plan.outputs.channel }}
+      version: ${{ steps.plan.outputs.version }}
+      build_number: ${{ steps.plan.outputs.build_number }}
+      identity: ${{ steps.plan.outputs.identity }}
+      branch: ${{ steps.plan.outputs.branch }}
+      base_sha: ${{ steps.base.outputs.sha }}
+      release_date: ${{ steps.base.outputs.date }}
+      previous_tag: ${{ steps.plan.outputs.previous_tag }}
+      previous_version: ${{ steps.plan.outputs.previous_version }}
+      range_expression: ${{ steps.plan.outputs.range_expression }}
+      changelog_en: ${{ steps.plan.outputs.changelog_en }}
+      changelog_zh: ${{ steps.plan.outputs.changelog_zh }}
+      desktop_notes: ${{ steps.plan.outputs.desktop_notes }}
+      needs_acceptance: ${{ steps.plan.outputs.needs_acceptance }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.base_branch || 'main' }}
+          token: ${{ secrets.REPO_BOT_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Pin release base
+        id: base
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve release version, build number, and changelog range
+        id: plan
+        env:
+          GH_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}
+          PLATFORM: ${{ inputs.platform }}
+          CHANNEL: ${{ inputs.channel }}
+          EXACT_VERSION: ${{ inputs.version }}
+        run: |
+          python3 tools/release/prepare_release.py plan \
+            --platform "$PLATFORM" \
+            --channel "$CHANNEL" \
+            --version "$EXACT_VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Check release branch does not exist
+        env:
+          BRANCH: ${{ steps.plan.outputs.branch }}
+        run: |
+          if git ls-remote --heads origin "refs/heads/$BRANCH" | grep -q "refs/heads/$BRANCH"; then
+            echo "Error: Branch $BRANCH already exists on remote" >&2
+            exit 1
+          fi
+
+      - name: Create release branch
+        env:
+          BRANCH: ${{ steps.plan.outputs.branch }}
+        run: git checkout -b "$BRANCH"
+
+      - name: Update product metadata
+        env:
+          PLATFORM: ${{ steps.plan.outputs.platform }}
+          CHANNEL: ${{ steps.plan.outputs.channel }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          BUILD_NUMBER: ${{ steps.plan.outputs.build_number }}
+        run: |
+          python3 tools/release/prepare_release.py bump \
+            --platform "$PLATFORM" \
+            --channel "$CHANNEL" \
+            --version "$VERSION" \
+            --build-number "$BUILD_NUMBER"
+
+      - name: Generate changelog skeleton
+        env:
+          PLATFORM: ${{ steps.plan.outputs.platform }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          BUILD_NUMBER: ${{ steps.plan.outputs.build_number }}
+          RELEASE_DATE: ${{ steps.base.outputs.date }}
+        run: |
+          python3 tools/release/prepare_release.py init-changelog \
+            --platform "$PLATFORM" \
+            --version "$VERSION" \
+            --build-number "$BUILD_NUMBER" \
+            --date "$RELEASE_DATE"
+
+      - name: Commit release metadata
+        env:
+          PLATFORM: ${{ steps.plan.outputs.platform }}
+          CHANNEL: ${{ steps.plan.outputs.channel }}
+          IDENTITY: ${{ steps.plan.outputs.identity }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add release/products.toml release/changelogs/
+          if [ "$PLATFORM" = "desktop" ]; then
+            git add release/desktop-notes.json
+          fi
+          git commit -m "chore(release): prepare ${PLATFORM} ${CHANNEL} ${IDENTITY}"
+
+      - name: Save release checkpoint
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: git bundle create "$RUNNER_TEMP/release.bundle" HEAD "^$BASE_SHA"
+
+      - name: Upload release checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepare-release-version
+          path: ${{ runner.temp }}/release.bundle
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+
+  changelog:
+    name: Generate changelog with Codex
+    needs: prepare
+    # Ubuntu 24.04 is required for codex-action drop-sudo socket ACL compatibility.
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      PLATFORM: ${{ needs.prepare.outputs.platform }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+      IDENTITY: ${{ needs.prepare.outputs.identity }}
+      BRANCH: ${{ needs.prepare.outputs.branch }}
+      BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
+      RELEASE_DATE: ${{ needs.prepare.outputs.release_date }}
+      CODEX_API_KEY: ${{ secrets.CODEX_API_KEY }}
+    steps:
+      - name: Checkout pinned base
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          token: ${{ secrets.REPO_BOT_TOKEN }}
+          fetch-depth: 0
+
+      - name: Download release checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: prepare-release-version
+          path: ${{ runner.temp }}/release-checkpoint
+
+      - name: Restore release branch
+        run: |
+          git fetch "$RUNNER_TEMP/release-checkpoint/release.bundle" HEAD
+          git checkout -B "$BRANCH" FETCH_HEAD
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Render Codex changelog prompt
+        if: env.CODEX_API_KEY != ''
+        id: render-prompt
+        env:
+          PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
+          PREVIOUS_VERSION: ${{ needs.prepare.outputs.previous_version }}
+          RANGE_EXPRESSION: ${{ needs.prepare.outputs.range_expression }}
+        run: |
+          python3 tools/release/prepare_release.py render-prompt \
+            --platform "$PLATFORM" \
+            --channel "$CHANNEL" \
+            --version "$VERSION" \
+            --build-number "$BUILD_NUMBER" \
+            --previous-tag "$PREVIOUS_TAG" \
+            --previous-version "$PREVIOUS_VERSION" \
+            --range-expression "$RANGE_EXPRESSION" \
+            --date "$RELEASE_DATE" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Codex generate changelog
+        if: env.CODEX_API_KEY != ''
+        uses: openai/codex-action@v1
+        with:
+          safety-strategy: drop-sudo
+          responses-api-endpoint: ${{ secrets.CODEX_API_ENDPOINT || 'https://api.openai.com/v1/responses' }}
+          openai-api-key: ${{ env.CODEX_API_KEY }}
+          prompt: ${{ steps.render-prompt.outputs.prompt }}
+
+      - name: Validate changelog output
+        env:
+          CHANGELOG_EN: ${{ needs.prepare.outputs.changelog_en }}
+          CHANGELOG_ZH: ${{ needs.prepare.outputs.changelog_zh }}
+        run: |
+          if [ -z "${CODEX_API_KEY}" ]; then
+            echo "CODEX_API_KEY is required to generate finalized changelog files." >&2
+            exit 1
+          fi
+
+          # Ensure Codex only modified the expected changelog files.
+          allowed=("$CHANGELOG_EN" "$CHANGELOG_ZH")
+          if [ "$PLATFORM" = "desktop" ]; then
+            allowed+=("release/desktop-notes.json")
+          fi
+          while IFS= read -r changed; do
+            [ -z "$changed" ] && continue
+            ok=false
+            for path in "${allowed[@]}"; do
+              if [ "$changed" = "$path" ]; then
+                ok=true
+                break
+              fi
+            done
+            if [ "$ok" != true ]; then
+              echo "Unexpected file modified by Codex: $changed" >&2
+              exit 1
+            fi
+          done < <(
+            {
+              git diff --name-only HEAD
+              git ls-files --others --exclude-standard
+            } | sort -u
+          )
+
+          python3 tools/release/prepare_release.py validate-changelog \
+            --platform "$PLATFORM" \
+            --version "$VERSION" \
+            --build-number "$BUILD_NUMBER"
+
+      - name: Commit changelog changes
+        if: env.CODEX_API_KEY != ''
+        run: |
+          git add release/changelogs/
+          if [ "$PLATFORM" = "desktop" ]; then
+            git add release/desktop-notes.json
+          fi
+          git diff --cached --quiet || git commit -m "docs(release): finalize changelog for ${PLATFORM} ${IDENTITY}"
+
+      - name: Save release checkpoint
+        run: git bundle create "$RUNNER_TEMP/release.bundle" HEAD "^$BASE_SHA"
+
+      - name: Upload release checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepare-release-finalized
+          path: ${{ runner.temp }}/release.bundle
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+
+  publish:
+    name: Create release PR
+    needs: [prepare, changelog]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      PLATFORM: ${{ needs.prepare.outputs.platform }}
+      CHANNEL: ${{ needs.prepare.outputs.channel }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      BUILD_NUMBER: ${{ needs.prepare.outputs.build_number }}
+      IDENTITY: ${{ needs.prepare.outputs.identity }}
+      BRANCH: ${{ needs.prepare.outputs.branch }}
+      CHANGELOG_EN: ${{ needs.prepare.outputs.changelog_en }}
+      CHANGELOG_ZH: ${{ needs.prepare.outputs.changelog_zh }}
+      DESKTOP_NOTES: ${{ needs.prepare.outputs.desktop_notes }}
+      PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
+      NEEDS_ACCEPTANCE: ${{ needs.prepare.outputs.needs_acceptance }}
+    steps:
+      - name: Checkout pinned base
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
+          token: ${{ secrets.REPO_BOT_TOKEN }}
+          fetch-depth: 0
+
+      - name: Download release checkpoint
+        uses: actions/download-artifact@v4
+        with:
+          name: prepare-release-finalized
+          path: ${{ runner.temp }}/release-checkpoint
+
+      - name: Restore release branch
+        run: |
+          git fetch "$RUNNER_TEMP/release-checkpoint/release.bundle" HEAD
+          git checkout -B "$BRANCH" FETCH_HEAD
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Push release branch
+        run: |
+          REMOTE_SHA=$(git ls-remote --heads origin "refs/heads/$BRANCH" | cut -f1)
+          if [ -n "$REMOTE_SHA" ] && [ "$REMOTE_SHA" != "$(git rev-parse HEAD)" ]; then
+            echo "Remote branch $BRANCH differs from the finalized checkpoint; refusing to overwrite it." >&2
+            exit 1
+          fi
+          git push origin "HEAD:refs/heads/$BRANCH"
+
+      - name: Create pull request
+        env:
+          GITHUB_TOKEN: ${{ secrets.REPO_BOT_TOKEN }}
+        run: |
+          PR_URL=$(gh pr list --state open --base "$BASE_BRANCH" --head "$BRANCH" --json url --jq '.[0].url // empty')
+          if [ -n "$PR_URL" ]; then
+            echo "PR_URL=$PR_URL" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          case "$PLATFORM" in
+            desktop)
+              TRIGGER_DESC="Dispatches **Release CLI and Desktop** (\`release-cli.yml\`) with \`channel=${CHANNEL}\`, \`version=${VERSION}\`, and \`expected_source=<merge_commit_sha>\`."
+              ;;
+            cli)
+              TRIGGER_DESC="Dispatches **Release CLI and Desktop** (\`release-cli.yml\`) in standalone CLI mode with \`channel=${CHANNEL}\` and \`expected_source=<merge_commit_sha>\`."
+              ;;
+            mobile)
+              TRACK=$([ "$CHANNEL" = "stable" ] && echo "production" || echo "internal")
+              TRIGGER_DESC="Dispatches **Android Store candidate** (\`release-android.yml\`, \`publish=true\`, \`track=${TRACK}\`) and **iOS Store candidate** (\`release-ios.yml\`, \`publish=true\`)."
+              ;;
+            android)
+              TRACK=$([ "$CHANNEL" = "stable" ] && echo "production" || echo "internal")
+              TRIGGER_DESC="Dispatches **Android Store candidate** (\`release-android.yml\`, \`publish=true\`, \`track=${TRACK}\`)."
+              ;;
+            ios)
+              TRIGGER_DESC="Dispatches **iOS Store candidate** (\`release-ios.yml\`, \`publish=true\`)."
+              ;;
+          esac
+
+          ACCEPTANCE_NOTE=""
+          if [ "$NEEDS_ACCEPTANCE" = "true" ]; then
+            ACCEPTANCE_NOTE=$'\n> [!WARNING]\n> No accepted Alpha build record (`joint-release/accepted/v'"${VERSION}"'-build.*`) was found yet. Run **Record Desktop native acceptance** before merging this PR so Stable promotion succeeds.\n'
+          fi
+
+          DESKTOP_NOTES_LINE=""
+          if [ -n "$DESKTOP_NOTES" ]; then
+            DESKTOP_NOTES_LINE="- Updated bilingual updater and release notes in \`${DESKTOP_NOTES}\`"
+          fi
+
+          {
+            cat <<EOF
+          ## Release ${PLATFORM} ${IDENTITY} (${CHANNEL})
+
+          This PR prepares the **${PLATFORM}** **${CHANNEL}** release \`${IDENTITY}\` (base: \`${BASE_BRANCH}\`, compared against \`${PREVIOUS_TAG}\`).
+          ${ACCEPTANCE_NOTE}
+          ### Changes
+          - Updated \`release/products.toml\` for \`${PLATFORM}\` (\`${IDENTITY}\`)
+          - Generated changelog at \`${CHANGELOG_EN}\` and \`${CHANGELOG_ZH}\`
+          ${DESKTOP_NOTES_LINE}
+
+          ### Changelog Preview (English)
+
+          EOF
+            cat "$CHANGELOG_EN"
+            cat <<EOF
+
+          ### Changelog Preview (中文)
+
+          EOF
+            cat "$CHANGELOG_ZH"
+            cat <<EOF
+
+          ### What happens when this PR is merged
+          1. **Release on PR Merge** (\`release-on-merge.yml\`) validates \`release/products.toml\` and finalized changelog files on the merge commit.
+          2. ${TRIGGER_DESC}
+          3. The release branch \`${BRANCH}\` is deleted automatically.
+
+          > Do not manually dispatch the release workflow before merging this PR.
+          EOF
+          } > "$RUNNER_TEMP/release-pr-body.md"
+
+          PR_URL=$(gh pr create \
+            --title "release(${PLATFORM}): ${IDENTITY} (${CHANNEL})" \
+            --body-file "$RUNNER_TEMP/release-pr-body.md" \
+            --base "$BASE_BRANCH" \
+            --head "$BRANCH")
+
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "PR_URL=$PR_URL" >> "$GITHUB_ENV"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Release Preparation Complete"
+            echo ""
+            echo "- **Platform:** ${PLATFORM}"
+            echo "- **Channel:** ${CHANNEL}"
+            echo "- **Identity:** ${IDENTITY}"
+            echo "- **Branch:** \`${BRANCH}\`"
+            echo "- **PR:** ${PR_URL}"
+            echo ""
+            echo "### Next Steps"
+            echo "1. Review the PR diff and generated bilingual changelog"
+            echo "2. Merge the PR to automatically trigger the build and release workflow"
+          } >> "$GITHUB_STEP_SUMMARY"

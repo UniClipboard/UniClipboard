@@ -1,0 +1,180 @@
+{
+    "dpi":  192,
+    "scale":  2,
+    "screen":  {
+                   "width":  3360,
+                   "height":  1624
+               },
+    "work_area":  {
+                      "left":  0,
+                      "top":  0,
+                      "right":  3360,
+                      "bottom":  1528,
+                      "width":  3360,
+                      "height":  1528
+                  },
+    "all_passed":  true,
+    "passed_count":  7,
+    "total_count":  7,
+    "results":  [
+                    {
+                        "id":  "01_center_default",
+                        "label":  "1/7 · 屏幕中央（默认模式 · 无视左上角鼠标）",
+                        "panel":  {
+                                      "left":  1300,
+                                      "top":  398,
+                                      "right":  2060,
+                                      "bottom":  1130,
+                                      "width":  760,
+                                      "height":  732
+                                  },
+                        "cursor":  {
+                                       "x":  320,
+                                       "y":  260
+                                   },
+                        "work_center":  {
+                                            "x":  1680,
+                                            "y":  764
+                                        },
+                        "delta_px":  {
+                                         "dx":  0,
+                                         "dy":  0
+                                     },
+                        "pass":  true
+                    },
+                    {
+                        "id":  "02_cursor_normal",
+                        "label":  "2/7 · 跟随鼠标（cursor · 左上区域）",
+                        "panel":  {
+                                      "left":  536,
+                                      "top":  440,
+                                      "right":  1296,
+                                      "bottom":  1172,
+                                      "width":  760,
+                                      "height":  732
+                                  },
+                        "cursor":  {
+                                       "x":  520,
+                                       "y":  420
+                                   },
+                        "offset_px":  {
+                                          "dx":  16,
+                                          "dy":  20
+                                      },
+                        "pass":  true
+                    },
+                    {
+                        "id":  "03_cursor_edge_flip",
+                        "label":  "3/7 · 跟随鼠标（cursor · 右下角自动向左上翻转避开任务栏）",
+                        "panel":  {
+                                      "left":  2444,
+                                      "top":  686,
+                                      "right":  3204,
+                                      "bottom":  1418,
+                                      "width":  760,
+                                      "height":  732
+                                  },
+                        "cursor":  {
+                                       "x":  3220,
+                                       "y":  1438
+                                   },
+                        "pass":  true
+                    },
+                    {
+                        "id":  "04_caret_win32",
+                        "label":  "4/7 · 跟随输入框（caret · Win32 光标正下方，鼠标在右侧远离）",
+                        "panel":  {
+                                      "left":  932,
+                                      "top":  488,
+                                      "right":  1692,
+                                      "bottom":  1220,
+                                      "width":  760,
+                                      "height":  732
+                                  },
+                        "cursor":  {
+                                       "x":  2940,
+                                       "y":  380
+                                   },
+                        "caret":  {
+                                      "left":  933,
+                                      "top":  429,
+                                      "right":  934,
+                                      "bottom":  476,
+                                      "width":  1,
+                                      "height":  47
+                                  },
+                        "pass":  true
+                    },
+                    {
+                        "id":  "05_caret_flip_above",
+                        "label":  "5/7 · 跟随输入框（caret · 底部光标自动翻至光标正上方）",
+                        "panel":  {
+                                      "left":  1146,
+                                      "top":  584,
+                                      "right":  1906,
+                                      "bottom":  1316,
+                                      "width":  760,
+                                      "height":  732
+                                  },
+                        "cursor":  {
+                                       "x":  2940,
+                                       "y":  380
+                                   },
+                        "caret":  {
+                                      "left":  1147,
+                                      "top":  1329,
+                                      "right":  1148,
+                                      "bottom":  1376,
+                                      "width":  1,
+                                      "height":  47
+                                  },
+                        "pass":  true
+                    },
+                    {
+                        "id":  "06_caret_win11_notepad",
+                        "label":  "6/7 · 跟随输入框（caret · Win11 记事本 UIA，鼠标在右下远离）",
+                        "panel":  {
+                                      "left":  584,
+                                      "top":  412,
+                                      "right":  1344,
+                                      "bottom":  1144,
+                                      "width":  760,
+                                      "height":  732
+                                  },
+                        "cursor":  {
+                                       "x":  3000,
+                                       "y":  1168
+                                   },
+                        "notepad_window":  {
+                                               "left":  220,
+                                               "top":  180,
+                                               "right":  1420,
+                                               "bottom":  860,
+                                               "width":  1200,
+                                               "height":  680
+                                           },
+                        "pass":  true
+                    },
+                    {
+                        "id":  "07_caret_fallback_cursor",
+                        "label":  "7/7 · 跟随输入框（无输入框自动回退至鼠标位置）",
+                        "panel":  {
+                                      "left":  2166,
+                                      "top":  540,
+                                      "right":  2926,
+                                      "bottom":  1272,
+                                      "width":  760,
+                                      "height":  732
+                                  },
+                        "cursor":  {
+                                       "x":  2150,
+                                       "y":  520
+                                   },
+                        "offset_px":  {
+                                          "dx":  16,
+                                          "dy":  20
+                                      },
+                        "pass":  true
+                    }
+                ]
+}

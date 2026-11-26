@@ -112,6 +112,10 @@
   },
   "media": {
     "clipboardChanged": "Read new clipboard content",
+    "clipboardChangedText": "Read new text",
+    "clipboardChangedImage": "Read new image",
+    "clipboardChangedSubtitle": "Tap to allow and sync",
+    "clipboardReading": "Reading…",
     "invalidLink": "Enter a valid HTTP or HTTPS link.",
     "textTooLong": "The text is too long for this action.",
     "actionFailed": "Could not complete the action",

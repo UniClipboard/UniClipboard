@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { KeyboardAvoidingView, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { KeyboardAvoidingView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import Animated, { FadeIn, FadeOutDown } from 'react-native-reanimated';
 import { DefaultTopBar, SelectModeTopBar } from '@/components/HomeTopBar';
 import type { AnimatedCardGridHandle } from '@/components/AnimatedCardGrid';
@@ -10,6 +10,7 @@ import { getLayoutMode } from '@/hooks/useLayoutMode';
 import { HomeCompactView } from './HomeCompactView';
 import { HomeExpandedView } from './HomeExpandedView';
 import { HomeOverlays } from './HomeOverlays';
+import { HomeClipboardPrompt } from './ios/HomeClipboardPrompt';
 import { HomeSearchDock } from './ios/HomeSearchDock';
 import { HomeLargeTitle, HOME_LARGE_TITLE_HEIGHT } from './ios/HomeLargeTitle';
 import { getHomeHistoryCollection } from './ios/homeHistoryCollection';
@@ -22,6 +23,9 @@ import type { HomeViewProps } from './HomeView.types';
 /** 顶栏按钮行高度(玻璃胶囊 44pt) */
 const TOP_BAR_ROW_HEIGHT = 44;
 
+/** 悬浮剪贴板读取胶囊高度(48pt) + 上方余量(12pt),用于列表底部可滚动留白 */
+const CLIPBOARD_PROMPT_CLEARANCE = 60;
+
 /** 搜索层进场淡入;退场时带着最后一帧淡出下移,露出下面的首页 */
 const SEARCH_LAYER_ENTERING = FadeIn.duration(160);
 const SEARCH_LAYER_EXITING = FadeOutDown.duration(240);
@@ -32,6 +36,11 @@ const SEARCH_LAYER_EXITING = FadeOutDown.duration(240);
  */
 function tabBarClearance(safeBottom: number): number {
   return Math.max(12, safeBottom - 6) + 62 + 16;
+}
+
+/** 悬浮剪贴板胶囊相对屏幕底部的偏移:位于 iOS 26 悬浮标签栏正上方 12pt */
+function clipboardPromptBottomOffset(safeBottom: number): number {
+  return Math.max(12, safeBottom - 6) + 62 + 12;
 }
 
 /**
@@ -49,6 +58,12 @@ function tabBarClearance(safeBottom: number): number {
  */
 export function HomeView({ onOpenSettings, onImmersiveModeChange, searchRequestId = 0 }: HomeViewProps) {
   const clipboardHint = useEngineStore((state) => state.pendingClipboardHint);
+  const dismissClipboardHint = useEngineStore((state) => state.dismissClipboardHint);
+  const [readingClipboard, setReadingClipboard] = useState(false);
+  const mountedRef = useRef(true);
+  useEffect(() => () => {
+    mountedRef.current = false;
+  }, []);
   const { width: screenWidth } = useWindowDimensions();
   const mode = getLayoutMode(screenWidth);
   // iPhone 的筛选只在搜索视图里;iPad 的筛选在常驻侧栏,退出搜索不清空
@@ -87,16 +102,37 @@ export function HomeView({ onOpenSettings, onImmersiveModeChange, searchRequestI
     [c.handleTakePhoto, c.handleUploadImage, c.handleUploadFile, c.handleUpload, c.handleSyncHistory]
   );
 
-  const clipboardAction = clipboardHint && !immersive ? (
-    <Pressable
-      testID="home-read-detected-clipboard"
-      accessibilityRole="button"
-      onPress={c.handleSyncHistory}
-      style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 20 }}
-    >
-      <Text style={{ color: c.theme.colors.accent }}>{c.t('history:media.clipboardChanged')}</Text>
-    </Pressable>
-  ) : null;
+  const handleReadDetectedClipboard = useCallback(() => {
+    if (readingClipboard) return;
+    setReadingClipboard(true);
+    void c.handleSyncHistory().finally(() => {
+      if (mountedRef.current) setReadingClipboard(false);
+    });
+  }, [c.handleSyncHistory, readingClipboard]);
+
+  const showClipboardPrompt = clipboardHint != null && !immersive;
+  const clipboardPromptLabel = readingClipboard
+    ? c.t('history:media.clipboardReading')
+    : clipboardHint?.hasStrings && !clipboardHint?.hasImages
+      ? c.t('history:media.clipboardChangedText')
+      : clipboardHint?.hasImages && !clipboardHint?.hasStrings
+        ? c.t('history:media.clipboardChangedImage')
+        : c.t('history:media.clipboardChanged');
+
+  const renderClipboardPrompt = (bottomOffset: number) =>
+    showClipboardPrompt ? (
+      <HomeClipboardPrompt
+        hint={clipboardHint}
+        bottomOffset={bottomOffset}
+        reading={readingClipboard}
+        label={clipboardPromptLabel}
+        subtitle={c.t('history:media.clipboardChangedSubtitle')}
+        dismissLabel={c.t('history:receiveQueue.dismiss')}
+        theme={c.theme}
+        onRead={handleReadDetectedClipboard}
+        onDismiss={dismissClipboardHint}
+      />
+    ) : null;
 
   if (mode === 'compact') {
     const topBarStyle = [
@@ -125,16 +161,15 @@ export function HomeView({ onOpenSettings, onImmersiveModeChange, searchRequestI
           screenWidth={screenWidth}
           refreshTintColor={undefined}
           overlayTopBarHeight={c.insets.top + TOP_BAR_ROW_HEIGHT}
-          gridBottomPadding={tabBarClearance(c.insets.bottom)}
+          gridBottomPadding={
+            tabBarClearance(c.insets.bottom) + (showClipboardPrompt ? CLIPBOARD_PROMPT_CLEARANCE : 0)
+          }
           showAddActionsFab={false}
           renderOverlays={false}
           search={{
             gridHeader: {
-              height: HOME_LARGE_TITLE_HEIGHT + (clipboardAction ? 44 : 0),
-              node: <>
-                <HomeLargeTitle title={c.t('nav.clipboard')} horizontalInset={headerInset} />
-                {clipboardAction}
-              </>,
+              height: HOME_LARGE_TITLE_HEIGHT,
+              node: <HomeLargeTitle title={c.t('nav.clipboard')} horizontalInset={headerInset} />,
             },
           }}
           renderCollection={getHomeHistoryCollection(home)}
@@ -179,6 +214,7 @@ export function HomeView({ onOpenSettings, onImmersiveModeChange, searchRequestI
         >
           {frozenHome.current}
         </View>
+        {renderClipboardPrompt(clipboardPromptBottomOffset(c.insets.bottom))}
         {c.isSearching ? (
           <Animated.View
             style={StyleSheet.absoluteFill}
@@ -222,12 +258,12 @@ export function HomeView({ onOpenSettings, onImmersiveModeChange, searchRequestI
     <KeyboardAvoidingView style={styles.fill} behavior="padding">
       <HomeExpandedView
         c={c}
-        search={clipboardAction ? { gridHeader: { height: 44, node: clipboardAction } } : undefined}
         screenWidth={screenWidth}
         refreshTintColor={undefined}
         gutterColor={iosColors?.systemGroupedBackground ?? (c.theme.colors.background as string)}
         paneColor={iosColors?.secondarySystemGroupedBackground ?? c.theme.colors.surfaceLow}
       />
+      {renderClipboardPrompt(Math.max(16, c.insets.bottom + 12))}
     </KeyboardAvoidingView>
   );
 }

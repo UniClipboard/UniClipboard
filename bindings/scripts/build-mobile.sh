@@ -79,12 +79,18 @@ if [[ $PLATFORM != ios ]]; then
   fi
   export ANDROID_NDK_HOME
 
-  echo "==> Building Android AAR ($ANDROID_OUT) using NDK $ANDROID_NDK_HOME"
+  ANDROID_ABI_TARGETS="${UNIC_ANDROID_ABI_TARGETS:-android/arm64,android/amd64}"
+  case "$ANDROID_ABI_TARGETS" in
+    android/arm64|android/amd64|android/arm64,android/amd64) ;;
+    *) echo "error: invalid UNIC_ANDROID_ABI_TARGETS: $ANDROID_ABI_TARGETS" >&2; exit 1 ;;
+  esac
+
+  echo "==> Building Android AAR ($ANDROID_OUT) using NDK $ANDROID_NDK_HOME ($ANDROID_ABI_TARGETS)"
   rm -f "$ANDROID_OUT"
   (
     cd "$BINDINGS_DIR"
     "$BIN_DIR/gomobile" bind \
-      -target=android/arm64,android/amd64 \
+      -target="$ANDROID_ABI_TARGETS" \
       -androidapi=24 -tags=sqlite_fts5 \
       -trimpath -ldflags="$LDFLAGS" \
       -o "$ANDROID_OUT" \

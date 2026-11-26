@@ -53,7 +53,7 @@ paths:
   - .github/prompts/prepare-release-changelog.codex.md
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 8dcbf0d45b84e0b58b7e0232b570b7df7f7b6140
+verified: 614156f1f533b121c25825f70281dfc6bad910ad
 ---
 # Product builds and CLI releases
 
@@ -69,19 +69,29 @@ Use the [product manifest](../../release/products.toml) for the build numbers co
 checks, transitively native Release builds, and the live Engine Maestro suite.
 It saves native receipts separately from the Expo bundle verification.
 
-The **Android Store candidate** workflow generates a production AAB, signs
-it with the Play upload key, validates application metadata with bundletool,
-and retains the SHA-256 receipt. A manual upload selects the internal or
-production track. A successful production upload enables the separate GitHub
-checksum-receipt job. The **iOS Store candidate** workflow validates the app
-and Share Extension App Store profiles, archives and exports the IPA, and
-retains both artifact hashes and dSYMs. Its optional upload transfers the
-candidate to App Store Connect. TestFlight availability, submission for
-review and Store publication have their own acceptance states.
+The **Android release** workflow builds a signed `arm64-v8a` production APK
+(zipaligned and signed with `apksigner` using the Play/release upload key,
+validated with `aapt2` and `apksigner verify`) and optionally builds a
+dual-ABI (`arm64-v8a,x86_64`) Google Play AAB validated with `bundletool`. When
+`publish` is enabled, a separate `Production` delivery job stages an immutable
+GitHub Release (`android/v<version>-build.<build>`, prerelease for `alpha`),
+uploads the APK and `candidate.json` to R2 with create-only conditional writes
+under `artifacts/android/<version>/build.<build>/`, registers the numbered
+build in FlareRelease, optionally promotes `android/alpha` or `android/stable`
+with public `/v1/android/<channel>.json` read-back, and publishes the GitHub
+Release. An optional `publish_play` flag uploads the signed AAB to Google Play
+(`internal`, `alpha`, or `production`). The **iOS Store candidate** workflow
+runs on `macos-26` (Xcode 26.6), fetches and validates the active App Store
+provisioning profiles for the main app, `.Share`, and `.Keyboard` targets via
+App Store Connect API (or optional static profile secrets), checks build-number
+availability on App Store Connect before archiving when `publish` is enabled,
+exports the signed IPA and dSYMs, and optionally uploads the IPA to App Store
+Connect for TestFlight testing. TestFlight availability, submission for review,
+and Store publication have their own acceptance states.
 
 The production variant retains `app.uniclipboard.android` and
 `app.uniclipboard.UniClipboard` from the preceding mobile product. The
-initial candidate is `2.5.0 (205)`. `internal/mobilemigration` and
+v3 alpha candidate starts at `3.0.0 (205)` above the legacy floor `204`. `internal/mobilemigration` and
 `bindings/mobile` implement read-only discovery and automatic offline import of
 the preceding mobile Expo SQLite history (`uniclipboard.db` plus iOS App Group
 `payloads/` and Android `clipboards/` attachments), and the production iOS app

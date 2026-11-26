@@ -1,0 +1,76 @@
+name: Release AUR
+run-name: AUR from joint release ${{ inputs.release_run_id }}/${{ inputs.release_run_attempt }}
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful joint release run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Successful joint release attempt
+        required: true
+        default: '1'
+        type: string
+      publish:
+        description: Publish or submit a verified Stable build (Alpha always previews)
+        type: boolean
+        default: false
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: release-package-aur
+  queue: max
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/package-release
+        id: release
+        with:
+          run-id: ${{ inputs.release_run_id }}
+          run-attempt: ${{ inputs.release_run_attempt }}
+          channel: aur
+          publish: ${{ inputs.publish }}
+      - name: Build the rolling source package and generate its AUR metadata
+        run: |
+          source_recipe="$PWD/dist/aur-build"
+          mkdir "$source_recipe"
+          cp dist/channel/aur/uniclipboard-git/PKGBUILD "$source_recipe/"
+          docker run --rm -v "$source_recipe:/work" archlinux:base-devel bash -ec '
+            pacman -Syu --noconfirm git go python
+            useradd -m builder
+            uid=$(stat -c %u /work/PKGBUILD)
+            gid=$(stat -c %g /work/PKGBUILD)
+            chown -R builder:builder /work
+            cd /work
+            runuser -u builder -- makepkg --nodeps --noconfirm
+            runuser -u builder -- makepkg --printsrcinfo > .SRCINFO
+            chown -R "$uid:$gid" /work
+          '
+      - name: Publish the project-owned rolling source recipe
+        if: steps.release.outputs.publish == 'true'
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          AUR_HOST_FINGERPRINTS: ${{ vars.AUR_HOST_FINGERPRINTS }}
+          RELEASE_IDENTITY: ${{ steps.release.outputs.version }}-build.${{ steps.release.outputs.build }}
+        run: bash tools/release/package-aur.sh
+      - if: ${{ !cancelled() && steps.release.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: aur-definitions
+          path: |
+            dist/channel/release-manifest.json
+            dist/channel/channels.json
+            dist/channel/aur/PKGBUILD
+            dist/channel/aur/uniclipboard-git/PKGBUILD
+            dist/aur-build/PKGBUILD
+            dist/aur-build/.SRCINFO
+            dist/aur-build/*.pkg.tar.zst
+          overwrite: true
+          if-no-files-found: error

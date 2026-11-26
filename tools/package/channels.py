@@ -108,14 +108,13 @@ def render(args):
                         "Tap Formula requires the exact locked CLI manifest"
                     )
                 manifest = cli.validate_manifest(args.cli_manifest)
-                formula = f'class Uniclipboard < Formula\n  desc "Cross-device clipboard CLI"\n  homepage "https://uniclipboard.app"\n  version "{manifest["version"]}-build.{manifest["build_number"]}"\n  license "AGPL-3.0-only"\n'
-
                 cli_base = (
                     "https://github.com/UniClipboard/UniClipboard/releases/download/"
                     + quote("cli/v" + manifest["npm_version"], safe="")
                     + "/"
                 )
-                for arch, block in [("arm64", "on_arm"), ("amd64", "on_intel")]:
+                binaries = {}
+                for arch in ("arm64", "amd64"):
                     package = next(
                         p
                         for p in manifest["packages"]
@@ -126,26 +125,81 @@ def render(args):
                         package["file"],
                         package["sha256"],
                     )
-                    formula += f'  {block} do\n    url "{cli_base + package["file"]}"\n    sha256 "{package["sha256"]}"\n  end\n'
-                formula += '  def install\n    libexec.install "bin"\n    bin.install_symlink libexec/"bin/unic"\n    bin.install_symlink libexec/"bin/unicd"\n    bin.install_symlink libexec/"bin/unic" => "uniclip"\n  end\nend\n'
-                put("homebrew-tap/Formula/uniclipboard.rb", formula)
+                    binaries[arch] = package
+                put(
+                    "homebrew-tap/Formula/uniclipboard.rb",
+                    f'''class Uniclipboard < Formula
+  desc "Cross-device clipboard CLI"
+  homepage "https://uniclipboard.app/"
+  version "{manifest["npm_version"]}"
+  if Hardware::CPU.arm?
+    url "{cli_base + binaries["arm64"]["file"]}"
+    sha256 "{binaries["arm64"]["sha256"]}"
+  else
+    url "{cli_base + binaries["amd64"]["file"]}"
+    sha256 "{binaries["amd64"]["sha256"]}"
+  end
+  license "AGPL-3.0-only"
+
+  depends_on :macos
+
+  def install
+    libexec.install "bin"
+    bin.install_symlink libexec/"bin/unic"
+    bin.install_symlink libexec/"bin/unicd"
+    bin.install_symlink libexec/"bin/unic" => "uniclip"
+  end
+
+  test do
+    system bin/"unic", "--version"
+    system bin/"unicd", "--version"
+    system bin/"uniclip", "--version"
+  end
+end
+''',
+                )
             put(
                 channel + "/uniclipboard.rb",
                 f'''cask "uniclipboard" do
   version "{version},{build}"
+
   on_arm do
-    url "{arm["url"]}"
     sha256 "{arm["sha256"]}"
+
+    url "{arm["url"]}", verified: "github.com/UniClipboard/UniClipboard/"
   end
   on_intel do
-    url "{intel["url"]}"
     sha256 "{intel["sha256"]}"
+
+    url "{intel["url"]}", verified: "github.com/UniClipboard/UniClipboard/"
   end
+
   name "UniClipboard"
   desc "Cross-device clipboard synchronization"
-  homepage "https://uniclipboard.app"
+  homepage "https://uniclipboard.app/"
+
+  livecheck do
+    url "https://github.com/UniClipboard/UniClipboard"
+    regex(%r{{^desktop/v(\\d+(?:\\.\\d+)+)-build\\.(\\d+)$}}i)
+    strategy :github_latest do |json, regex|
+      match = json["tag_name"]&.match(regex)
+      "#{{match[1]}},#{{match[2]}}" if match
+    end
+  end
+
   depends_on macos: ">= :ventura"
+
   app "UniClipboard.app"
+
+  zap trash: [
+    "~/Library/Application Support/app.uniclipboard.desktop",
+    "~/Library/Application Support/app.uniclipboard.desktop-upgrade-backups",
+    "~/Library/Caches/app.uniclipboard.desktop",
+    "~/Library/Logs/app.uniclipboard.desktop",
+    "~/Library/Preferences/app.uniclipboard.desktop.plist",
+    "~/Library/WebKit/app.uniclipboard.desktop",
+    "~/Library/WebKit/app.uniclipboard.desktop.ui",
+  ]
 end
 ''',
             )
@@ -164,6 +218,25 @@ end
                     "architecture": architecture,
                     "shortcuts": [["unic-desktop.exe", "UniClipboard"]],
                     "persist": "data",
+                    "checkver": {
+                        "url": "https://api.github.com/repos/UniClipboard/UniClipboard/releases/latest",
+                        "jsonpath": "$.tag_name",
+                        "regex": r"desktop/v(?<product>\d+\.\d+\.\d+)-build\.(?<build>\d+)",
+                        "replace": "${product}.${build}",
+                    },
+                    "autoupdate": {
+                        "architecture": {
+                            name: {
+                                "url": (
+                                    "https://github.com/UniClipboard/UniClipboard/releases/download/"
+                                    "desktop%2Fv$matchProduct-build.$matchBuild/"
+                                    f"uniclipboard-$matchProduct-build.$matchBuild-windows-{arch}-portable.zip"
+                                )
+                            }
+                            for arch, name in [("amd64", "64bit"), ("arm64", "arm64")]
+                        },
+                        "hash": {"url": "$baseurl/SHA256SUMS.txt"},
+                    },
                     "notes": "Portable v2 data stays in the persisted data directory. Standalone CLI commands are not replaced.",
                 },
             )
@@ -287,19 +360,26 @@ stdenv.mkDerivation {{
         elif channel == "copr":
             amd = asset("linux-amd64", "rpm")
             arm = asset("linux-arm64", "rpm")
+            rpm_version = (
+                f"{version}~alpha.{build}"
+                if getattr(args, "release_channel", None) == "alpha"
+                else version
+            )
             put(
                 "copr/uniclipboard.spec",
                 f"""Name: uniclipboard
-Version: {version}
+Version: {rpm_version}
 Release: {build}%{{?dist}}
 Summary: Cross-device clipboard synchronization
 License: AGPL-3.0-only
 URL: https://uniclipboard.app
-%ifarch x86_64
 Source0: {amd["url"]}
+Source1: {arm["url"]}
+%ifarch x86_64
+%global payload %{{SOURCE0}}
 %global payload_sha256 {amd["sha256"]}
 %else
-Source0: {arm["url"]}
+%global payload %{{SOURCE1}}
 %global payload_sha256 {arm["sha256"]}
 %endif
 ExclusiveArch: x86_64 aarch64
@@ -312,12 +392,12 @@ Requires: libappindicator-gtk3
 %description
 Cross-device clipboard synchronization.
 %prep
-echo "%{{payload_sha256}}  %{{SOURCE0}}" | sha256sum -c -
+echo "%{{payload_sha256}}  %{{payload}}" | sha256sum -c -
 %build
 %install
 mkdir -p %{{buildroot}}
 cd %{{buildroot}}
-rpm2cpio %{{SOURCE0}} | cpio -idm
+rpm2cpio %{{payload}} | cpio -idm
 %files
 /usr/lib/uniclipboard
 /usr/bin/uniclipboard
@@ -368,8 +448,10 @@ source_x86_64=('uniclipboard.deb::{items["amd64"]["url"]}')
 sha256sums_x86_64=('{items["amd64"]["sha256"]}')
 source_aarch64=('uniclipboard.deb::{items["arm64"]["url"]}')
 sha256sums_aarch64=('{items["arm64"]["sha256"]}')
+noextract=('uniclipboard.deb')
 package() {{
   cd "$srcdir"
+  bsdtar -xf uniclipboard.deb
   bsdtar -xf data.tar.* -C "$pkgdir"
 }}
 """,
@@ -395,6 +477,7 @@ package() {{
                     "runtime-version": "50",
                     "sdk": "org.gnome.Sdk",
                     "command": "uniclipboard",
+                    "rename-icon": "uniclipboard",
                     "finish-args": [
                         "--share=network",
                         "--share=ipc",
@@ -429,7 +512,7 @@ package() {{
             put(
                 "flatpak/" + APP_ID + ".metainfo.xml",
                 f'''<?xml version="1.0" encoding="UTF-8"?>
-<component type="desktop-application"><id>{APP_ID}</id><name>UniClipboard</name><summary>Cross-device clipboard synchronization</summary><metadata_license>CC0-1.0</metadata_license><project_license>AGPL-3.0-only</project_license><description><p>Synchronize clipboard history between paired devices.</p></description><launchable type="desktop-id">{APP_ID}.desktop</launchable><url type="homepage">https://uniclipboard.app</url><releases><release version="{version}.{build}" date="{date.today().isoformat()}"/></releases></component>
+<component type="desktop-application"><id>{APP_ID}</id><name>UniClipboard</name><summary>Cross-device clipboard synchronization</summary><metadata_license>CC0-1.0</metadata_license><project_license>AGPL-3.0-only</project_license><description><p>Synchronize clipboard history between paired devices.</p></description><launchable type="desktop-id">{APP_ID}.desktop</launchable><url type="homepage">https://uniclipboard.app</url><releases><release version="{version}.{build}" date="{getattr(args, "release_date", None) or date.today().isoformat()}"/></releases></component>
 ''',
             )
         elif channel == "snap":
@@ -445,7 +528,9 @@ package() {{
                         "version": f"{version}-build.{build}",
                         "summary": "Cross-device clipboard synchronization",
                         "description": "Synchronize clipboard history between paired devices.",
-                        "grade": "devel",
+                        "grade": "stable"
+                        if getattr(args, "stable", False)
+                        else "devel",
                         "confinement": "strict",
                         "platforms": {arch: None},
                         "apps": {

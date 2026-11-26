@@ -1,0 +1,110 @@
+name: Release Nix flake
+run-name: Nix flake from joint release ${{ inputs.release_run_id }}/${{ inputs.release_run_attempt }}
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful joint release run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Successful joint release attempt
+        required: true
+        default: '1'
+        type: string
+      publish:
+        description: Publish or submit a verified Stable build (Alpha always previews)
+        type: boolean
+        default: false
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: release-package-nix
+  queue: max
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/package-release
+        id: release
+        with:
+          run-id: ${{ inputs.release_run_id }}
+          run-attempt: ${{ inputs.release_run_attempt }}
+          channel: nix
+          publish: ${{ inputs.publish }}
+      - uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31
+      - name: Build the locked flake using its public release inputs
+        run: |
+          cp packaging/nix/flake.nix packaging/nix/flake.lock dist/channel/nix/
+          nix build --no-write-lock-file --out-link "$RUNNER_TEMP/unic-nix" "path:$PWD/dist/channel/nix"
+          "$RUNNER_TEMP/unic-nix/bin/uniclipboard" --version --json
+          mkdir -p dist/bundles
+          tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+            -czf dist/bundles/uniclipboard-nix.tar.gz -C dist/channel nix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nix-${{ matrix.arch }}
+          path: |
+            dist/channel/release-manifest.json
+            dist/channel/channels.json
+            dist/channel/nix/
+            dist/bundles/
+          overwrite: true
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nix-*
+          path: dist/channel-inputs
+      - name: Verify both native builds used the same catalogue
+        run: |
+          cmp dist/channel-inputs/nix-amd64/channel/release-manifest.json \
+            dist/channel-inputs/nix-arm64/channel/release-manifest.json
+          cmp dist/channel-inputs/nix-amd64/channel/channels.json \
+            dist/channel-inputs/nix-arm64/channel/channels.json
+      - name: Verify both flake archives are identical
+        run: |
+          cmp dist/channel-inputs/nix-amd64/bundles/uniclipboard-nix.tar.gz \
+            dist/channel-inputs/nix-arm64/bundles/uniclipboard-nix.tar.gz
+      - name: Publish versioned package assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python tools/release/package_channel_assets.py nix --output dist/publication \
+            --manifest dist/channel-inputs/nix-amd64/channel/release-manifest.json \
+            dist/channel-inputs/nix-amd64/bundles/uniclipboard-nix.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nix-publication
+          path: dist/publication/
+          overwrite: true
+          if-no-files-found: error

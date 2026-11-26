@@ -1,0 +1,56 @@
+name: Release Scoop Extras
+run-name: Scoop Extras from joint release ${{ inputs.release_run_id }}/${{ inputs.release_run_attempt }}
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful joint release run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Successful joint release attempt
+        required: true
+        default: '1'
+        type: string
+      publish:
+        description: Publish or submit a verified Stable build (Alpha always previews)
+        type: boolean
+        default: false
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: release-package-scoop
+  queue: max
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/package-release
+        id: release
+        with:
+          run-id: ${{ inputs.release_run_id }}
+          run-attempt: ${{ inputs.release_run_attempt }}
+          channel: scoop
+          publish: ${{ inputs.publish }}
+      - name: Submit the Scoop Extras manifest
+        if: steps.release.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.SCOOP_TOKEN }}
+          PACKAGE_FORK: ${{ vars.SCOOP_FORK }}
+          PRODUCT_VERSION: ${{ steps.release.outputs.version }}
+          PRODUCT_BUILD: ${{ steps.release.outputs.build }}
+        run: |
+          bash tools/release/package-github.sh pr ScoopInstaller/Extras "uniclipboard@${PRODUCT_VERSION}.${PRODUCT_BUILD}: Track numbered Desktop releases" \
+            dist/channel/scoop/uniclipboard.json=bucket/uniclipboard.json
+      - if: ${{ !cancelled() && steps.release.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: scoop-definitions
+          path: dist/channel/
+          overwrite: true
+          if-no-files-found: error

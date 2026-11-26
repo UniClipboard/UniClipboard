@@ -1,0 +1,109 @@
+name: Release Snap Store
+run-name: Snap Store from joint release ${{ inputs.release_run_id }}/${{ inputs.release_run_attempt }}
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Successful joint release run ID
+        required: true
+        type: string
+      release_run_attempt:
+        description: Successful joint release attempt
+        required: true
+        default: '1'
+        type: string
+      publish:
+        description: Publish or submit a verified Stable build (Alpha always previews)
+        type: boolean
+        default: false
+permissions:
+  actions: read
+  contents: read
+concurrency:
+  group: release-package-snap
+  queue: max
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/package-release
+        id: release
+        with:
+          run-id: ${{ inputs.release_run_id }}
+          run-attempt: ${{ inputs.release_run_attempt }}
+          channel: snap
+          publish: ${{ inputs.publish }}
+      - name: Build and verify the native Snap archive
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools
+          sudo snap install snapcraft --classic --channel=8.x/stable
+          mkdir -p "$RUNNER_TEMP/snap-build/snap"
+          cp "dist/channel/snap/$ARCH/snapcraft.yaml" "$RUNNER_TEMP/snap-build/snap/"
+          mkdir -p dist/bundles
+          output="$PWD/dist/bundles/uniclipboard-$ARCH.snap"
+          cd "$RUNNER_TEMP/snap-build"
+          sudo snapcraft pack --destructive-mode --output "$output"
+          sudo chown "$(id -u):$(id -g)" "$output"
+          unsquashfs -cat "$output" meta/snap.yaml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snap-${{ matrix.arch }}
+          path: |
+            dist/channel/release-manifest.json
+            dist/channel/channels.json
+            dist/channel/snap/
+            dist/bundles/
+          overwrite: true
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: snap-*
+          path: dist/channel-inputs
+      - name: Verify both native builds used the same catalogue
+        run: |
+          cmp dist/channel-inputs/snap-amd64/channel/release-manifest.json \
+            dist/channel-inputs/snap-arm64/channel/release-manifest.json
+          cmp dist/channel-inputs/snap-amd64/channel/channels.json \
+            dist/channel-inputs/snap-arm64/channel/channels.json
+      - name: Install the Snapcraft publisher
+        run: sudo snap install snapcraft --classic --channel=8.x/stable
+      - name: Advance the stable Snap channel
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          test -n "$SNAPCRAFT_STORE_CREDENTIALS"
+          for arch in amd64 arm64; do
+            python tools/release/package_channel.py check-current \
+              --manifest dist/channel-inputs/snap-amd64/channel/release-manifest.json
+            snapcraft upload "dist/channel-inputs/snap-$arch/bundles/uniclipboard-$arch.snap" --release stable
+          done

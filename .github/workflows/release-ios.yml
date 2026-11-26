@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Upload the IPA to App Store Connect
+        description: Upload the IPA to App Store Connect (TestFlight)
         type: boolean
         default: false
 
@@ -17,11 +17,11 @@ concurrency:
 
 jobs:
   build:
-    runs-on: xcode-27
+    runs-on: macos-26
     environment: mobile-ios
-    timeout-minutes: 45
+    timeout-minutes: 50
     env:
-      DEVELOPER_DIR: /Applications/Xcode_27.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       EXPO_NO_TELEMETRY: '1'
       UNIC_MOBILE_VARIANT: production
       UNIC_MOBILE_RELEASE_PLATFORM: ios
@@ -41,6 +41,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Verify Xcode toolchain and ASC build slot
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        shell: bash
+        run: |
+          xcodebuild -version
+          if [[ "$PUBLISH" == true ]]; then
+            : "${ASC_KEY_ID:?}" "${ASC_ISSUER_ID:?}" "${ASC_PRIVATE_KEY:?}"
+            umask 077
+            key="$RUNNER_TEMP/preflight-asc.p8"
+            trap 'rm -f "$key"' EXIT
+            python3 -B tools/release/ios_profiles.py decode-key --env ASC_PRIVATE_KEY --output "$key"
+            python3 -B tools/release/ios_profiles.py check-build \
+              --key-id "$ASC_KEY_ID" --issuer-id "$ASC_ISSUER_ID" --key-path "$key"
+          fi
       - name: Build iOS bindings
         env:
           UNIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
@@ -55,28 +73,42 @@ jobs:
         env:
           IOS_DISTRIBUTION_P12: ${{ secrets.IOS_DISTRIBUTION_P12 }}
           IOS_DISTRIBUTION_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_PASSWORD }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
           IOS_APP_PROFILE: ${{ secrets.IOS_APP_PROFILE }}
           IOS_SHARE_PROFILE: ${{ secrets.IOS_SHARE_PROFILE }}
           IOS_KEYBOARD_PROFILE: ${{ secrets.IOS_KEYBOARD_PROFILE }}
         shell: bash
         run: |
-          : "${IOS_DISTRIBUTION_P12:?}" "${IOS_DISTRIBUTION_PASSWORD:?}" "${IOS_APP_PROFILE:?}" "${IOS_SHARE_PROFILE:?}" "${IOS_KEYBOARD_PROFILE:?}"
+          : "${IOS_DISTRIBUTION_P12:?}" "${IOS_DISTRIBUTION_PASSWORD:?}"
           umask 077
           signing=$(mktemp -d)
           keychain="$signing/unic.keychain-db"
           password=$(openssl rand -hex 24)
-          trap 'security delete-keychain "$keychain" || true; unlink "$signing/distribution.p12"; unlink "$signing/app.mobileprovision"; unlink "$signing/share.mobileprovision"; unlink "$signing/keyboard.mobileprovision"' EXIT
+          trap 'security delete-keychain "$keychain" || true; rm -rf "$signing"' EXIT
           printf '%s' "$IOS_DISTRIBUTION_P12" | base64 -D > "$signing/distribution.p12"
-          printf '%s' "$IOS_APP_PROFILE" | base64 -D > "$signing/app.mobileprovision"
-          printf '%s' "$IOS_SHARE_PROFILE" | base64 -D > "$signing/share.mobileprovision"
-          printf '%s' "$IOS_KEYBOARD_PROFILE" | base64 -D > "$signing/keyboard.mobileprovision"
           security create-keychain -p "$password" "$keychain"
           security set-keychain-settings -lut 3600 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
           security import "$signing/distribution.p12" -k "$keychain" -P "$IOS_DISTRIBUTION_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain"
-          python3 -B tools/release/ios_profiles.py "$signing/app.mobileprovision" "$signing/share.mobileprovision" "$signing/keyboard.mobileprovision" > "$signing/profiles.json"
+          if [[ -n "$IOS_APP_PROFILE" || -n "$IOS_SHARE_PROFILE" || -n "$IOS_KEYBOARD_PROFILE" ]]; then
+            : "${IOS_APP_PROFILE:?}" "${IOS_SHARE_PROFILE:?}" "${IOS_KEYBOARD_PROFILE:?}"
+            printf '%s' "$IOS_APP_PROFILE" | base64 -D > "$signing/app.mobileprovision"
+            printf '%s' "$IOS_SHARE_PROFILE" | base64 -D > "$signing/share.mobileprovision"
+            printf '%s' "$IOS_KEYBOARD_PROFILE" | base64 -D > "$signing/keyboard.mobileprovision"
+            python3 -B tools/release/ios_profiles.py validate \
+              "$signing/app.mobileprovision" "$signing/share.mobileprovision" "$signing/keyboard.mobileprovision" \
+              > "$signing/profiles.json"
+          else
+            : "${ASC_KEY_ID:?}" "${ASC_ISSUER_ID:?}" "${ASC_PRIVATE_KEY:?}"
+            python3 -B tools/release/ios_profiles.py decode-key --env ASC_PRIVATE_KEY --output "$signing/asc.p8"
+            python3 -B tools/release/ios_profiles.py fetch \
+              --key-id "$ASC_KEY_ID" --issuer-id "$ASC_ISSUER_ID" --key-path "$signing/asc.p8" \
+              > "$signing/profiles.json"
+          fi
           gem install xcodeproj -v 1.27.0 --no-document
           ruby -rjson -rxcodeproj - "$signing/profiles.json" "$signing/export.plist" <<'RUBY'
           data = JSON.parse(File.read(ARGV[0]))
@@ -99,13 +131,16 @@ jobs:
           Xcodeproj::Plist.write_to_path({
             'method' => 'app-store-connect', 'signingStyle' => 'manual',
             'teamID' => data.fetch('team'), 'provisioningProfiles' => data.fetch('profiles'),
+            'uploadSymbols' => true,
             'manageAppVersionAndBuildNumber' => false
           }, ARGV[1])
           RUBY
           archive="$RUNNER_TEMP/UniClipboard.xcarchive"
           xcodebuild -workspace app/expo/ios/UniClipboard.xcworkspace -scheme UniClipboard \
             -configuration Release -destination 'generic/platform=iOS' -archivePath "$archive" archive
-          xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$signing/export.plist" -exportPath "$signing/export"
+          # PATH prefix avoids Homebrew rsync shadowing system rsync during IPA export.
+          env PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" xcodebuild -exportArchive \
+            -archivePath "$archive" -exportOptionsPlist "$signing/export.plist" -exportPath "$signing/export"
           mkdir -p dist/mobile-ios
           cp "$signing/export/UniClipboard.ipa" dist/mobile-ios/UniClipboard.ipa
           ditto -c -k --keepParent "$archive/dSYMs" dist/mobile-ios/dSYMs.zip
@@ -116,7 +151,7 @@ jobs:
           name: mobile-ios-candidate
           path: dist/mobile-ios/
           if-no-files-found: error
-      - name: Upload to App Store Connect
+      - name: Upload to App Store Connect (TestFlight)
         if: inputs.publish
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -129,6 +164,6 @@ jobs:
           export API_PRIVATE_KEYS_DIR="$RUNNER_TEMP/unic-app-store-connect"
           mkdir -p "$API_PRIVATE_KEYS_DIR"
           key="$API_PRIVATE_KEYS_DIR/AuthKey_$ASC_KEY_ID.p8"
-          trap 'unlink "$key"' EXIT
-          printf '%s' "$ASC_PRIVATE_KEY" > "$key"
+          trap 'rm -f "$key"' EXIT
+          python3 -B tools/release/ios_profiles.py decode-key --env ASC_PRIVATE_KEY --output "$key"
           xcrun altool --upload-app -f dist/mobile-ios/UniClipboard.ipa --type ios --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"

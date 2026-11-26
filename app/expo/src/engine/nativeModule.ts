@@ -147,6 +147,7 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   ): Promise<string>;
   cancelAndroidUpdateDownload?(): Promise<void>;
   cleanAndroidUpdateCache?(keepVersionKey: string | null): Promise<void>;
+  hideAndroidSplashScreen?(): void;
 }
 
 const nativeMod = requireOptionalNativeModule<NativeUnicEngineModule>("UnicEngine");
@@ -569,4 +570,11 @@ export const unicEngineNative = {
         await mod.cleanAndroidUpdateCache(keepVersionKey ?? null);
       }
     }),
+  hideAndroidSplashScreen: () => {
+    try {
+      nativeMod?.hideAndroidSplashScreen?.();
+    } catch {
+      // ignore if native splash already dismissed or unavailable
+    }
+  },
 };

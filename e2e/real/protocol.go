@@ -120,6 +120,41 @@ type observeAutoResult struct {
 	ElapsedMS   float64            `json:"elapsed_ms"`
 }
 
+type sendProgressRequest struct {
+	Fixture        string `json:"fixture"`
+	Key            string `json:"key"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
+}
+
+type progressSample struct {
+	State        engine.TargetState  `json:"state"`
+	ReceiptStage engine.ReceiptStage `json:"receipt_stage,omitempty"`
+	BytesSent    int64               `json:"bytes_sent"`
+	TotalBytes   int64               `json:"total_bytes"`
+	PartIndex    int                 `json:"part_index,omitempty"`
+	PartCount    int                 `json:"part_count,omitempty"`
+}
+
+type sendProgressResult struct {
+	HistoryID           engine.HistoryID    `json:"history_id,omitempty"`
+	OperationID         engine.OperationID  `json:"operation_id,omitempty"`
+	OperationHistoryID  engine.HistoryID    `json:"operation_history_id,omitempty"`
+	FoundByHistoryQuery bool                `json:"found_by_history_query"`
+	FoundByActiveQuery  bool                `json:"found_by_active_query"`
+	OperationEvents     int                 `json:"operation_events"`
+	Monotonic           bool                `json:"monotonic"`
+	SawIntermediate     bool                `json:"saw_intermediate"`
+	SawAwaitingReceipt  bool                `json:"saw_awaiting_receipt"`
+	Samples             []progressSample    `json:"samples,omitempty"`
+	Outcome             engine.Outcome      `json:"outcome,omitempty"`
+	FinalState          engine.TargetState  `json:"final_state,omitempty"`
+	FinalReceiptStage   engine.ReceiptStage `json:"final_receipt_stage,omitempty"`
+	FinalBytesSent      int64               `json:"final_bytes_sent"`
+	FinalTotalBytes     int64               `json:"final_total_bytes"`
+	FinalErrorCode      engine.Code         `json:"final_error_code,omitempty"`
+	ElapsedMS           float64             `json:"elapsed_ms"`
+}
+
 type channelPolicyRequest struct {
 	Text   bool `json:"text"`
 	Images bool `json:"images"`

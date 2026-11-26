@@ -91,15 +91,15 @@ type failingSendPeer struct {
 	sendErr error
 }
 
-func (f *failingSendPeer) Send(ctx context.Context, s rpc.Send, src plugin.SendSource) error {
+func (f *failingSendPeer) Send(ctx context.Context, s rpc.Send, src plugin.SendSource) (rpc.SendResult, error) {
 	f.sends.Add(1)
 	if _, err := src.Authorize(ctx, rpc.Authorize{
 		DispatchID: s.DispatchID, ContentHandle: s.ContentHandle,
 		ConnectionID: s.ConnectionID, SessionToken: s.SessionToken,
 	}); err != nil {
-		return err
+		return rpc.SendResult{}, err
 	}
-	return f.sendErr
+	return rpc.SendResult{}, f.sendErr
 }
 
 func TestReceiveFailureDiagnosticsAndStructuredLogs(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/uniclipboard/unic/engine"
 	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
@@ -60,6 +61,27 @@ func headlessRoutes(mux *http.ServeMux, b api.Backend) {
 		}
 		reply(w, 200, v)
 	})
+	mux.HandleFunc("GET /v1/operations", func(w http.ResponseWriter, r *http.Request) {
+		lister, ok := h.(api.OperationsLister)
+		if !ok {
+			reply(w, 200, []engine.Operation{})
+			return
+		}
+		q := r.URL.Query()
+		active := q.Get("active") == "true" || q.Get("active") == "1"
+		v, e := lister.Operations(r.Context(), api.OperationsFilter{
+			Active:    active,
+			HistoryID: q.Get("history_id"),
+		})
+		if e != nil {
+			fail(w, 500, e)
+			return
+		}
+		if v == nil {
+			v = []engine.Operation{}
+		}
+		reply(w, 200, v)
+	})
 	mux.HandleFunc("GET /v1/operations/{id}", func(w http.ResponseWriter, r *http.Request) {
 		v, e := h.Operation(r.Context(), r.PathValue("id"))
 		if e != nil {
@@ -67,6 +89,18 @@ func headlessRoutes(mux *http.ServeMux, b api.Backend) {
 			return
 		}
 		reply(w, 200, v)
+	})
+	mux.HandleFunc("POST /v1/operations/{id}/discard", func(w http.ResponseWriter, r *http.Request) {
+		discarder, ok := h.(api.ReceiveDiscarder)
+		if !ok {
+			fail(w, 400, &api.Error{Reason: "unsupported", Message: "receive discard unavailable"})
+			return
+		}
+		if e := discarder.DiscardReceive(r.Context(), r.PathValue("id")); e != nil {
+			fail(w, 500, e)
+			return
+		}
+		reply(w, 200, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("GET /v1/received", func(w http.ResponseWriter, r *http.Request) {
 		v, e := h.Received(r.Context())

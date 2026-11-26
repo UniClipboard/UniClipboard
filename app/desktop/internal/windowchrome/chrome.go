@@ -43,7 +43,7 @@ func NativeView(c *ui.Context, body func()) {
 	k.UiRoot(c, func() {
 		ui.Column(c).Fill().Gap(0).AlignItems(ui.Stretch).Children(func() {
 			ui.Row(c.Key("native-caption")).Height(height).Padding(0, right, 0, left).AlignItems(ui.Center).Justify(alignment).DragWindow().Children(func() {
-				k.Text(c, "unic", desktopkit.TextProps{})
+				k.Text(c, "Unic", desktopkit.TextProps{})
 			})
 			ui.Column(c.Key("window-body")).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(body)
 		})

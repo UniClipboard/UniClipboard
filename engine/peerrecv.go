@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/uniclipboard/unic/internal/directory"
@@ -21,13 +22,19 @@ import (
 	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
+var errReceiveDiscarded = newErr(CodeCancelled, "receive discarded by user")
+
 // pendingRecv is an admitted clip waiting for its body. Admission reserved
 // storage, so an unclaimed grant must give it back when it expires.
 type pendingRecv struct {
-	adm   peerbackend.Admission
-	parts []rpc.ClipPart
-	hash  string
-	timer *time.Timer
+	adm       peerbackend.Admission
+	peer      DeviceID
+	parts     []rpc.ClipPart
+	total     int64
+	kind      string
+	fileCount int
+	hash      string
+	timer     *time.Timer
 }
 
 // rxState holds the grants of one backend; it has its own lock.
@@ -60,18 +67,22 @@ func (b *peerProcBackend) OpenReceive(_ context.Context, o rpc.ReceiveOpen) (rpc
 		return discard, nil
 	}
 	var total int64
+	var fileCount int
 	parts := make([]receivePart, len(o.Clip.Parts))
 	for i, p := range o.Clip.Parts {
 		total += int64(p.Size)
+		if p.Kind == "file" {
+			fileCount++
+		}
 		parts[i] = receivePart{file: p.Kind == "file", mime: p.MIME, size: int64(p.Size)}
 	}
+	kind := receivePartsKind(parts)
 	if err := checkClipLimits(o.Clip.Parts, b.e); err != nil {
 		outcome, code := receiveFailureOutcome(err)
 		if outcome == "failed" {
 			outcome = "rejected"
 		}
 		backend := diagnosticBackend(b.id)
-		kind := receivePartsKind(parts)
 		b.e.diagnostic(context.Background(), DiagnosticRecord{Stage: "receive", Result: outcome, Code: code, Backend: backend, ContentKind: kind})
 		b.e.logPipelineFailure(context.Background(), "receive", outcome, backend, kind, code)
 		return discard, nil
@@ -89,7 +100,15 @@ func (b *peerProcBackend) OpenReceive(_ context.Context, o rpc.ReceiveOpen) (rpc
 		return discard, rpcErr(rpc.CodeInternal)
 	}
 	id := hex.EncodeToString(raw[:])
-	pr := &pendingRecv{adm: adm, parts: o.Clip.Parts, hash: o.Clip.Hash}
+	pr := &pendingRecv{
+		adm:       adm,
+		peer:      DeviceID(peer),
+		parts:     o.Clip.Parts,
+		total:     total,
+		kind:      string(kind),
+		fileCount: fileCount,
+		hash:      o.Clip.Hash,
+	}
 	pr.timer = time.AfterFunc(rpc.ReceiveOpenTTLMs*time.Millisecond, func() {
 		if b.takeRecv(id) != nil {
 			adm.Fail(newErr(CodeTimeout, "receive grant expired"))
@@ -119,7 +138,40 @@ func (b *peerProcBackend) Receive(ctx context.Context, receiveID string, parts p
 		return "", rpcErr(rpc.CodeNotFound)
 	}
 	pr.timer.Stop()
-	snap, dir, err := b.readClip(ctx, pr, parts)
+	var discarded atomic.Bool
+	readCtx, cancelRead := context.WithCancel(ctx)
+	defer cancelRead()
+	opID := b.e.startReceiveOp(ReceiveOperation{
+		BackendID:   b.id,
+		PeerID:      pr.peer,
+		State:       ReceiveReceiving,
+		ContentKind: pr.kind,
+		FileCount:   pr.fileCount,
+		Progress: ReceiveProgress{
+			TotalBytes: pr.total,
+			PartCount:  len(pr.parts),
+		},
+	}, func() {
+		discarded.Store(true)
+		cancelRead()
+	})
+	var received int64
+	onRead := func(delta int64, partIdx int) {
+		if delta <= 0 {
+			return
+		}
+		received += delta
+		b.e.updateReceiveProgress(opID, received, partIdx)
+	}
+	snap, dir, err := b.readClip(readCtx, pr, parts, &discarded, onRead)
+	if discarded.Load() || errors.Is(err, errReceiveDiscarded) {
+		pr.adm.Fail(errReceiveDiscarded)
+		if dir != "" {
+			_ = os.RemoveAll(dir)
+		}
+		b.e.finishReceiveOp(opID, ReceiveDiscarded, nil)
+		return rpc.OutcomeDiscard, nil
+	}
 	if err == nil && snap.Hash() != pr.hash {
 		err = rpcErr(rpc.CodeInvalidState) // the content is not what its header promised
 	}
@@ -128,13 +180,44 @@ func (b *peerProcBackend) Receive(ctx context.Context, receiveID string, parts p
 		if dir != "" {
 			_ = os.RemoveAll(dir)
 		}
+		b.e.finishReceiveOp(opID, ReceiveFailed, err)
 		return "", err
 	}
+	if discarded.Load() {
+		pr.adm.Fail(errReceiveDiscarded)
+		if dir != "" {
+			_ = os.RemoveAll(dir)
+		}
+		b.e.finishReceiveOp(opID, ReceiveDiscarded, nil)
+		return rpc.OutcomeDiscard, nil
+	}
 	pr.adm.Done(snap, dir, true)
+	b.e.finishReceiveOp(opID, ReceiveCommitted, nil)
 	return rpc.OutcomeCommit, nil
 }
 
-func (b *peerProcBackend) readClip(ctx context.Context, pr *pendingRecv, parts plugin.ReceiveParts) (snap clip.Snapshot, dir string, err error) {
+type receiveBodyReader struct {
+	r         io.Reader
+	discarded *atomic.Bool
+	partIdx   int
+	onRead    func(delta int64, partIdx int)
+}
+
+func (r *receiveBodyReader) Read(p []byte) (int, error) {
+	if r.discarded != nil && r.discarded.Load() {
+		return 0, errReceiveDiscarded
+	}
+	n, err := r.r.Read(p)
+	if r.discarded != nil && r.discarded.Load() {
+		return 0, errReceiveDiscarded
+	}
+	if n > 0 && r.onRead != nil {
+		r.onRead(int64(n), r.partIdx)
+	}
+	return n, err
+}
+
+func (b *peerProcBackend) readClip(ctx context.Context, pr *pendingRecv, parts plugin.ReceiveParts, discarded *atomic.Bool, onRead func(int64, int)) (snap clip.Snapshot, dir string, err error) {
 	defer func() {
 		if err != nil && dir != "" {
 			_ = os.RemoveAll(dir)
@@ -142,8 +225,14 @@ func (b *peerProcBackend) readClip(ctx context.Context, pr *pendingRecv, parts p
 		}
 	}()
 	for want := 0; want < len(pr.parts); want++ {
+		if discarded != nil && discarded.Load() {
+			return snap, dir, errReceiveDiscarded
+		}
 		idx, body, nerr := parts.Next(ctx)
 		if nerr != nil {
+			if discarded != nil && discarded.Load() {
+				return snap, dir, errReceiveDiscarded
+			}
 			if errors.Is(nerr, io.EOF) {
 				nerr = rpcErr(rpc.CodeInvalidState)
 			}
@@ -153,6 +242,7 @@ func (b *peerProcBackend) readClip(ctx context.Context, pr *pendingRecv, parts p
 			_ = body.Close()
 			return snap, dir, rpcErr(rpc.CodeInvalidState)
 		}
+		tracked := &receiveBodyReader{r: body, discarded: discarded, partIdx: idx, onRead: onRead}
 		p := pr.parts[idx]
 		if p.Kind == "file" {
 			if dir == "" {
@@ -166,7 +256,7 @@ func (b *peerProcBackend) readClip(ctx context.Context, pr *pendingRecv, parts p
 				var sub string
 				if sub, err = os.MkdirTemp(dir, "f-"); err == nil {
 					path = filepath.Join(sub, name)
-					err = writeBody(path, body, int64(p.Size))
+					err = writeBody(path, tracked, int64(p.Size))
 				}
 			}
 			_ = body.Close()
@@ -176,7 +266,7 @@ func (b *peerProcBackend) readClip(ctx context.Context, pr *pendingRecv, parts p
 			snap.Files = append(snap.Files, clip.File{Name: name, Path: path, Size: int64(p.Size)})
 			continue
 		}
-		data, rerr := io.ReadAll(io.LimitReader(body, int64(p.Size)+1))
+		data, rerr := io.ReadAll(io.LimitReader(tracked, int64(p.Size)+1))
 		_ = body.Close()
 		if rerr != nil {
 			return snap, dir, rerr
@@ -197,7 +287,13 @@ func (b *peerProcBackend) readClip(ctx context.Context, pr *pendingRecv, parts p
 		}
 		snap.Parts = append(snap.Parts, clip.Part{Format: p.MIME, Data: data})
 	}
+	if discarded != nil && discarded.Load() {
+		return snap, dir, errReceiveDiscarded
+	}
 	if _, _, nerr := parts.Next(ctx); !errors.Is(nerr, io.EOF) {
+		if discarded != nil && discarded.Load() {
+			return snap, dir, errReceiveDiscarded
+		}
 		return snap, dir, rpcErr(rpc.CodeInvalidState)
 	}
 	return snap, dir, nil

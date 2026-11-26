@@ -106,7 +106,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 					changed = true
 				}
 			})
-			toggle("startup", d.tr("登录时启动"), d.tr("登录操作系统后自动启动 UniClipboard。"), &cfg.Desktop.LaunchAtLogin, false, false)
+			toggle("startup", d.tr("登录时启动"), d.tr("登录操作系统后自动启动 Unic。"), &cfg.Desktop.LaunchAtLogin, false, false)
 			lightweight := cfg.Desktop.Mode == "lightweight"
 			toggle("background", d.tr("后台启动"), d.tr("仅控制常规模式的登录启动；手动点击应用图标始终打开主窗口。"), &cfg.Desktop.StartInBackground, lightweight, lightweight)
 			if hasLoginStatus && (loginEnabled != cfg.Desktop.LaunchAtLogin || loginMsg != "") {

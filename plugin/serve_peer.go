@@ -126,10 +126,10 @@ func (s *server) applyState(ctx context.Context, c *rpc.Call) (any, error) {
 
 // PeerSender is implemented by peer_sessions backends that send clips. Send
 // writes one clip to one connected peer. It must call h.Authorize before the
-// first wire byte, then pull each part with h.OpenPart; returning nil means
-// the whole clip was written locally, not that the peer applied it.
+// first wire byte, then pull each part with h.OpenPart. Returning a zero
+// SendResult defaults to state="sent" and receipt_stage="local_written".
 type PeerSender interface {
-	Send(ctx context.Context, s rpc.Send, h SendHost) error
+	Send(ctx context.Context, s rpc.Send, h SendHost) (rpc.SendResult, error)
 }
 
 // SendHost is the backend's view of one backend.send call. It dies with it.
@@ -138,6 +138,8 @@ type SendHost interface {
 	// OpenPart returns the bytes of part index under the grant; the caller
 	// closes it. Each part opens once.
 	OpenPart(ctx context.Context, grantID string, index int) (io.ReadCloser, error)
+	// ReportProgress optionally reports throttled byte/stage progress under the grant.
+	ReportProgress(ctx context.Context, p rpc.SendProgress) error
 }
 
 type remoteSendHost struct {
@@ -181,6 +183,14 @@ func (h remoteSendHost) OpenPart(ctx context.Context, grantID string, index int)
 	return h.conn.Expect(ctx, h.root, d, uint64(h.in.Clip.Parts[index].Size))
 }
 
+func (h remoteSendHost) ReportProgress(ctx context.Context, p rpc.SendProgress) error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	_, err := h.conn.Call(ctx, rpc.CallOptions{Method: rpc.MethodSendProgress, Parent: h.root, Timeout: 5 * time.Second, Params: p}, nil)
+	return err
+}
+
 func (s *server) send(ctx context.Context, c *rpc.Call) (any, error) {
 	ps, ok := s.p.(PeerSender)
 	if !ok {
@@ -199,24 +209,36 @@ func (s *server) send(ctx context.Context, c *rpc.Call) (any, error) {
 	if !ok {
 		return nil, rpc.NewError(rpc.CodeInvalidState)
 	}
-	if err := safely(func() error { return ps.Send(ctx, in, remoteSendHost{conn: c.Conn, root: c.ID, in: in}) }); err != nil {
+	var res rpc.SendResult
+	if err := safely(func() (err error) {
+		res, err = ps.Send(ctx, in, remoteSendHost{conn: c.Conn, root: c.ID, in: in})
+		return err
+	}); err != nil {
 		return nil, err
 	}
-	return rpc.SendResult{State: rpc.SendSent}, nil
+	if res.State == "" {
+		res.State = rpc.SendSent
+	}
+	if err := res.Validate(); err != nil {
+		return nil, rpc.NewError(rpc.CodeInternal)
+	}
+	return res, nil
 }
 
-// SendSource is the Engine side of one send: it authorizes the transfer and
-// supplies part bytes. The host Send validates every request against the
-// backend.send it belongs to before calling it.
+// SendSource is the Engine side of one send: it authorizes the transfer,
+// supplies part bytes, and accepts optional throttled progress updates. The
+// host Send validates every request against the backend.send it belongs to
+// before calling it.
 type SendSource interface {
 	Authorize(ctx context.Context, a rpc.Authorize) (rpc.SendGrant, error)
 	OpenPart(ctx context.Context, grantID string, index int) (io.ReadCloser, error)
+	ReportProgress(ctx context.Context, p rpc.SendProgress) error
 }
 
 // PeerDispatcher is the Engine-facing form of PeerSender: it starts one
-// backend.send and serves the backend's authorize/open requests from src.
+// backend.send and serves the backend's authorize/open/progress requests from src.
 type PeerDispatcher interface {
-	Send(ctx context.Context, s rpc.Send, src SendSource) error
+	Send(ctx context.Context, s rpc.Send, src SendSource) (rpc.SendResult, error)
 }
 
 // ReceiveBody is one part's network body; Size is the declared length.

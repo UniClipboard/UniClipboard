@@ -1,11 +1,11 @@
 <div align="center">
 
-<img src="app/desktop/internal/appicons/unic-logo.svg" alt="UniClipboard" width="112" height="112" />
+<img src="app/desktop/internal/appicons/unic-logo.svg" alt="Unic" width="112" height="112" />
 
 # Copy once. Paste on every device.
 
 <p>
-  <strong>UniClipboard</strong> syncs text, images, files, and folders directly across your devices.<br />
+  <strong>Unic (formerly UniClipboard)</strong> syncs text, images, files, and folders directly across your devices.<br />
   End-to-end encrypted. No account. No cloud.
 </p>
 
@@ -30,13 +30,13 @@
   </small>
 </p>
 
-![UniClipboard across desktop, tablet, and phone](docs/assets/product-overview.png)
+![Unic across desktop, tablet, and phone](docs/assets/product-overview.png)
 
 </div>
 
 ---
 
-## Why UniClipboard
+## Why Unic
 
 - **Cross-platform**: Sync between Windows, macOS, Linux, iOS, and Android, on the same Wi-Fi or across networks.
 - **No cloud**: Devices connect directly over encrypted links. No sign-up. Your history stays on your own devices.
@@ -129,7 +129,7 @@ See the [CLI guide](app/service/README.md) for all commands.
 
 ## Privacy
 
-- Content is end-to-end encrypted between devices. UniClipboard runs no server that stores your clipboard.
+- Content is end-to-end encrypted between devices. Unic runs no server that stores your clipboard.
 - You verify a fingerprint and approve every new device. A removed device loses access immediately.
 - Clipboard content, file paths and device addresses never go into logs.
 - Anonymous diagnostics contain no clipboard content or device identity. Turn them off anytime in **Settings → Diagnostics & Privacy**.

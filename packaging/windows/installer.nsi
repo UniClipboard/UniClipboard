@@ -9,14 +9,14 @@ Var LegacyUpdate
 Var LegacyRestart
 !insertmacro VersionCompare
 
-Name "UniClipboard"
+Name "Unic"
 OutFile "@OUTPUT@"
 InstallDir "$LOCALAPPDATA\UniClipboard"
 InstallDirRegKey HKCU "Software\UniClipboard" "InstallDir"
 RequestExecutionLevel user
 VIProductVersion "@VERSION@.@BUILD@"
-VIAddVersionKey "ProductName" "UniClipboard"
-VIAddVersionKey "FileDescription" "UniClipboard installer"
+VIAddVersionKey "ProductName" "Unic"
+VIAddVersionKey "FileDescription" "Unic installer"
 VIAddVersionKey "FileVersion" "@VERSION@.@BUILD@"
 VIAddVersionKey "LegalCopyright" "UniClipboard Contributors"
 
@@ -43,29 +43,29 @@ VIAddVersionKey "LegalCopyright" "UniClipboard Contributors"
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "TradChinese"
 
-LangString MsgNewerInstalled ${LANG_ENGLISH} "A newer version of UniClipboard is already installed."
-LangString MsgNewerInstalled ${LANG_SIMPCHINESE} "已安装更新版本的 UniClipboard。"
-LangString MsgNewerInstalled ${LANG_TRADCHINESE} "已安裝較新版本的 UniClipboard。"
+LangString MsgNewerInstalled ${LANG_ENGLISH} "A newer version of Unic is already installed."
+LangString MsgNewerInstalled ${LANG_SIMPCHINESE} "已安装更新版本的 Unic。"
+LangString MsgNewerInstalled ${LANG_TRADCHINESE} "已安裝較新版本的 Unic。"
 
-LangString MsgRunningInstall ${LANG_ENGLISH} "UniClipboard or its background service is currently running.$\r$\n$\r$\nDo you want to stop it and continue installing?"
-LangString MsgRunningInstall ${LANG_SIMPCHINESE} "UniClipboard 或其后台服务正在运行。$\r$\n$\r$\n是否停止并继续安装？"
-LangString MsgRunningInstall ${LANG_TRADCHINESE} "UniClipboard 或其背景服務正在執行。$\r$\n$\r$\n是否停止並繼續安裝？"
+LangString MsgRunningInstall ${LANG_ENGLISH} "Unic or its background service is currently running.$\r$\n$\r$\nDo you want to stop it and continue installing?"
+LangString MsgRunningInstall ${LANG_SIMPCHINESE} "Unic 或其后台服务正在运行。$\r$\n$\r$\n是否停止并继续安装？"
+LangString MsgRunningInstall ${LANG_TRADCHINESE} "Unic 或其背景服務正在執行。$\r$\n$\r$\n是否停止並繼續安裝？"
 
-LangString MsgRunningUninstall ${LANG_ENGLISH} "UniClipboard or its background service is currently running.$\r$\n$\r$\nDo you want to stop it and continue uninstalling?"
-LangString MsgRunningUninstall ${LANG_SIMPCHINESE} "UniClipboard 或其后台服务正在运行。$\r$\n$\r$\n是否停止并继续卸载？"
-LangString MsgRunningUninstall ${LANG_TRADCHINESE} "UniClipboard 或其背景服務正在執行。$\r$\n$\r$\n是否停止並繼續解除安裝？"
+LangString MsgRunningUninstall ${LANG_ENGLISH} "Unic or its background service is currently running.$\r$\n$\r$\nDo you want to stop it and continue uninstalling?"
+LangString MsgRunningUninstall ${LANG_SIMPCHINESE} "Unic 或其后台服务正在运行。$\r$\n$\r$\n是否停止并继续卸载？"
+LangString MsgRunningUninstall ${LANG_TRADCHINESE} "Unic 或其背景服務正在執行。$\r$\n$\r$\n是否停止並繼續解除安裝？"
 
-LangString MsgStillRunning ${LANG_ENGLISH} "UniClipboard or its background service is still running and could not be stopped automatically.$\r$\n$\r$\nPlease quit UniClipboard manually, then click Retry."
-LangString MsgStillRunning ${LANG_SIMPCHINESE} "UniClipboard 或其后台服务仍在运行，无法自动停止。$\r$\n$\r$\n请手动退出 UniClipboard，然后点击“重试”。"
-LangString MsgStillRunning ${LANG_TRADCHINESE} "UniClipboard 或其背景服務仍在執行，無法自動停止。$\r$\n$\r$\n請手動結束 UniClipboard，然後按一下「重試」。"
+LangString MsgStillRunning ${LANG_ENGLISH} "Unic or its background service is still running and could not be stopped automatically.$\r$\n$\r$\nPlease quit Unic manually, then click Retry."
+LangString MsgStillRunning ${LANG_SIMPCHINESE} "Unic 或其后台服务仍在运行，无法自动停止。$\r$\n$\r$\n请手动退出 Unic，然后点击“重试”。"
+LangString MsgStillRunning ${LANG_TRADCHINESE} "Unic 或其背景服務仍在執行，無法自動停止。$\r$\n$\r$\n請手動結束 Unic，然後按一下「重試」。"
 
-LangString MsgQuitBeforeChange ${LANG_ENGLISH} "Quit UniClipboard and stop its service before changing this installation."
-LangString MsgQuitBeforeChange ${LANG_SIMPCHINESE} "更改此安装前，请先退出 UniClipboard 并停止其后台服务。"
-LangString MsgQuitBeforeChange ${LANG_TRADCHINESE} "變更此安裝前，請先結束 UniClipboard 並停止其背景服務。"
+LangString MsgQuitBeforeChange ${LANG_ENGLISH} "Quit Unic and stop its service before changing this installation."
+LangString MsgQuitBeforeChange ${LANG_SIMPCHINESE} "更改此安装前，请先退出 Unic 并停止其后台服务。"
+LangString MsgQuitBeforeChange ${LANG_TRADCHINESE} "變更此安裝前，請先結束 Unic 並停止其背景服務。"
 
-LangString LaunchAppText ${LANG_ENGLISH} "&Launch UniClipboard"
-LangString LaunchAppText ${LANG_SIMPCHINESE} "启动 UniClipboard(&L)"
-LangString LaunchAppText ${LANG_TRADCHINESE} "啟動 UniClipboard(&L)"
+LangString LaunchAppText ${LANG_ENGLISH} "&Launch Unic"
+LangString LaunchAppText ${LANG_SIMPCHINESE} "启动 Unic(&L)"
+LangString LaunchAppText ${LANG_TRADCHINESE} "啟動 Unic(&L)"
 
 !macro InitUILanguage
   System::Call 'kernel32::GetUserDefaultUILanguage() i.r0'
@@ -379,14 +379,18 @@ Section
   Delete "$INSTDIR\uniclipd.exe"
   Delete "$INSTDIR\uniclip-quick-panel.exe"
   WriteUninstaller "$INSTDIR\uninstall.exe"
-  CreateShortcut "$SMPROGRAMS\UniClipboard.lnk" "$INSTDIR\unic-desktop.exe"
+  ClearErrors
+  CreateShortcut "$SMPROGRAMS\Unic.lnk" "$INSTDIR\unic-desktop.exe"
+  ${IfNot} ${Errors}
+    Delete "$SMPROGRAMS\UniClipboard.lnk"
+  ${EndIf}
   ${If} $LegacyUpdate == 1
   ${AndIf} ${FileExists} "$DESKTOP\UniClipboard.lnk"
     CreateShortcut "$DESKTOP\UniClipboard.lnk" "$INSTDIR\unic-desktop.exe"
   ${EndIf}
   WriteRegStr HKCU "Software\UniClipboard" "InstallDir" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard" "DisplayName" "UniClipboard"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard" "DisplayName" "Unic"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard" "DisplayVersion" "@VERSION@.@BUILD@"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard" "UninstallString" '$\"$INSTDIR\uninstall.exe$\"'
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard" "QuietUninstallString" '$\"$INSTDIR\uninstall.exe$\" /S'
@@ -422,6 +426,7 @@ Section "Uninstall"
   Delete "$INSTDIR\.mygo-files"
   Delete "$INSTDIR\update-owner"
   Delete "$INSTDIR\uninstall.exe"
+  Delete "$SMPROGRAMS\Unic.lnk"
   Delete "$SMPROGRAMS\UniClipboard.lnk"
   Delete "$DESKTOP\UniClipboard.lnk"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\UniClipboard"

@@ -702,6 +702,7 @@ func listRowExcerpt(v entry, title string) string {
 }
 
 func (d *viewState) historyCommands(c *ui.Context, k desktopkit.Kit, tm desktopkit.ToolbarMetrics) {
+	d.toolbarTransferStatus(c, k)
 	v := d.current()
 	var actions []desktopkit.MenuEntry
 	if d.live != nil && v != nil {
@@ -1295,32 +1296,7 @@ func (d *viewState) detail(c *ui.Context, k desktopkit.Kit) {
 					}
 				}
 				d.detailTags(c.Key("detail-tags"), k, v)
-				ui.Column(c).Gap(6).Children(func() {
-					if d.live != nil {
-						k.Text(c, d.tr("同步状态：")+d.tr(syncStateLabel(v.syncState)), secondary)
-						for _, backend := range v.backendSync {
-							text := backend.BackendID + " · " + d.tr(syncStateLabel(backend.State)) + " · " + d.tr(backend.Disposition)
-							if backend.ErrorCode != "" {
-								text += " · " + backend.ErrorCode
-							}
-							k.Text(c, text, secondary)
-						}
-						return
-					}
-					rows := []desktopkit.InsetListRow{}
-					for _, peer := range d.devices {
-						if peer.id == "local" {
-							continue
-						}
-						rows = append(rows, desktopkit.InsetListRow{ID: peer.id, Title: peer.name, Status: func() { k.Icon(c, desktopkit.IconInfo, 16).TextColor(k.Color("text-secondary")) }})
-					}
-					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						k.Text(c, d.tr("送达"), desktopkit.TextProps{Emphasized: true})
-						k.Text(c, fmt.Sprintf(d.tr("0/%d 台设备"), len(rows)), desktopkit.TextProps{Role: desktopkit.RoleCallout, Tone: desktopkit.ToneSecondary})
-					})
-					k.InsetList(c, desktopkit.InsetListProps{Label: d.tr("送达情况"), Rows: rows})
-					k.Text(c, d.tr("本地加密存储 · 设备之间端到端加密"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneTertiary})
-				})
+				d.renderDeliverySection(c.Key("detail-delivery"), k, v, true)
 			})
 		})
 	})
@@ -1602,25 +1578,7 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 				}
 
 				// Delivery status section.
-				ui.Column(c.Key("delivery")).Gap(6).Children(func() {
-					if d.live != nil {
-						k.Text(c, d.tr("同步状态：")+d.tr(syncStateLabel(item.syncState)), secondary)
-						return
-					}
-					rows := []desktopkit.InsetListRow{}
-					for _, peer := range d.devices {
-						if peer.id == "local" {
-							continue
-						}
-						rows = append(rows, desktopkit.InsetListRow{ID: peer.id, Title: peer.name, Status: func() { k.Icon(c, desktopkit.IconInfo, 16).TextColor(k.Color("text-secondary")) }})
-					}
-					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-						k.Text(c, d.tr("送达"), desktopkit.TextProps{Emphasized: true})
-						k.Text(c, fmt.Sprintf(d.tr("0/%d 台设备"), len(rows)), desktopkit.TextProps{Role: desktopkit.RoleCallout, Tone: desktopkit.ToneSecondary})
-					})
-					k.InsetList(c, desktopkit.InsetListProps{Label: d.tr("送达情况"), Rows: rows})
-					k.Text(c, d.tr("本地加密存储 · 设备之间端到端加密"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneTertiary})
-				})
+				d.renderDeliverySection(c.Key("delivery"), k, item, false)
 			})
 		})
 		return layer

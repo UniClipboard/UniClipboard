@@ -4,6 +4,7 @@
 - Date: 2026-11-13.
 - Execution plan: [v2 package channel parity](../../exec/0018-v2-package-channel-plan.md).
 - Requirements: [release contract](../../contracts/release-contract.md#desktop-installation-identity-and-update-ownership).
+- Display-name amendment: Desktop uses `Unic` as its display name. This supersedes the display name in the original decision. Installation and channel identifiers retain their existing values.
 
 ## Context
 

@@ -1089,7 +1089,7 @@ Forbidden: Personal data or credentials, system clipboard access, implicit compl
 
 ```text
 start-setup complete
-ui-wait text '欢迎使用 UniClipboard'
+ui-wait text '欢迎使用 Unic'
 ui-click button '开始使用'
 ui-wait button '暂不迁移'
 ui-click button '暂不迁移'
@@ -1148,7 +1148,7 @@ Forbidden: Personal profiles, system credential access, actual clipboard access,
 
 ```text
 start-setup complete
-ui-wait text '欢迎使用 UniClipboard'
+ui-wait text '欢迎使用 Unic'
 ui-wait text '让每一次复制更有用'
 observe 2
 screenshot welcome
@@ -1212,7 +1212,7 @@ Forbidden: Complete-success title for partial import, personal credentials, syst
 
 ```text
 start-setup partial
-ui-wait text '欢迎使用 UniClipboard'
+ui-wait text '欢迎使用 Unic'
 observe 2
 screenshot welcome
 ui-click button '开始使用'
@@ -2220,7 +2220,7 @@ Forbidden: Personal profiles, real credential access, clipboard changes, an extr
 
 ```text
 start-setup complete
-ui-wait text '欢迎使用 UniClipboard'
+ui-wait text '欢迎使用 Unic'
 service-absent
 screenshot setup-welcome
 [windows] windows-frame setup-welcome-os custom

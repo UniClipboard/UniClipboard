@@ -6,7 +6,7 @@
 # Forbidden: Personal profiles, real credential access, clipboard changes, an extra normal-page caption row, or native-frame claims from content captures.
 
 start-setup complete
-ui-wait text '欢迎使用 UniClipboard'
+ui-wait text '欢迎使用 Unic'
 service-absent
 screenshot setup-welcome
 [windows] windows-frame setup-welcome-os custom

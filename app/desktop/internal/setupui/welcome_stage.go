@@ -443,13 +443,13 @@ func renderWelcomeAction(c *ui.Context, k desktopkit.Kit, p setupColors, m Model
 			brandLogo(c.Key("logo"), k, logoSize, logoRadius, true)
 			ui.Row(c.Key("ver-pill")).Height(22).PaddingX(8).Radius(11).AlignItems(ui.Center).
 				Background(p.cardSubtle).Border(1, p.cardBorder).Children(func() {
-				k.Text(c.Key("eyebrow"), "UniClipboard v2", desktopkit.TextProps{Role: desktopkit.RoleCaption, Emphasized: true}).
+				k.Text(c.Key("eyebrow"), "Unic v2", desktopkit.TextProps{Role: desktopkit.RoleCaption, Emphasized: true}).
 					FontSize(11).TextColor(p.textSub).NoWrap()
 			})
 		})
 
 		// Exact 0026 product heading and slogan.
-		heading := k.Text(c.Key("heading"), tr("欢迎使用 UniClipboard"), desktopkit.TextProps{Role: desktopkit.RoleTitle, Emphasized: true}).
+		heading := k.Text(c.Key("heading"), tr("欢迎使用 Unic"), desktopkit.TextProps{Role: desktopkit.RoleTitle, Emphasized: true}).
 			FontSize(24).LetterSpacing(-0.3)
 		slogan := k.Text(c.Key("slogan"), tr("让每一次复制更有用"), desktopkit.TextProps{}).
 			FontSize(14.5).TextColor(p.textSub).Margin(6, 0, 22)

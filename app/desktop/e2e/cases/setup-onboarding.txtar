@@ -6,7 +6,7 @@
 # Forbidden: Personal profiles, system credential access, actual clipboard access, fixture data linked into release binaries, fabricated progress, or missing video frames after resizing.
 
 start-setup complete
-ui-wait text '欢迎使用 UniClipboard'
+ui-wait text '欢迎使用 Unic'
 ui-wait text '让每一次复制更有用'
 observe 2
 screenshot welcome

@@ -223,6 +223,9 @@ func (p *Proxy) handleBackend(ctx context.Context, c *rpc.Call) (res any, err er
 	case rpc.MethodOpenSendPart:
 		res, err = p.openSendPart(ctx, c)
 		return res, err, true
+	case rpc.MethodSendProgress:
+		res, err = p.sendProgress(ctx, c)
+		return res, err, true
 	}
 	return nil, nil, false
 }

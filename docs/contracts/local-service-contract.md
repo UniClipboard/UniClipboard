@@ -231,7 +231,9 @@ Cleanup uses its own context even when the command context is cancelled.
 
 ### Operation observation
 
-`GET /v1/operations/{id}` returns the Engine `Operation` for an operation created by this generation. Operations are in memory and do not survive restart.
+`GET /v1/operations` returns the Engine `Operation[]` retained by this generation (newest first) and supports optional filters `active=true` (in-flight send/receive operations and recently completed sends) and `history_id=<id>`.
+`GET /v1/operations/{id}` returns the Engine `Operation` for an operation created by this generation. Operations are in memory and do not survive restart. Send operations include optional `history_id` and per-target `receipt_stage` and `progress` snapshots; receive operations include `receive` progress snapshots (both without filenames or paths). Throttled `EventOperations` updates emit content-free `operations` events on `GET /v1/events`.
+`POST /v1/operations/{id}/discard` requests user-initiated discard of an in-flight receive operation (`engine.DiscardReceive`). It returns `{"ok":true}` (idempotent if already discarded), `404` (`not_found`) for unknown IDs, `400` (`invalid_argument`) for non-receive operations, and `409` (`conflict`) if the receive already committed.
 A command that initiates a send waits only for the operation it created. `SubmissionResult.SyncDisposition=queued` is not completion.
 The client polls every 200 ms until the operation is done, 60 s pass, or the command is cancelled. It never resubmits.
 Reported result values are `success`, `partial`, `failed`, `superseded`, `timeout`, `interrupted` and `none` (no operation: disabled, no backend, no target). An operation-query error produces an internal `unknown` result, but the handlers return the error before emitting the send report; the CLI exits 1. The local commit may already exist.

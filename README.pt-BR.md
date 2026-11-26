@@ -16,6 +16,21 @@
 </p>
 
 <p>
+  <a href="https://uniclipboard.app"><img alt="Site oficial" src="https://img.shields.io/badge/Website-0891B2?style=for-the-badge" /></a>
+  <a href="https://docs.uniclipboard.app"><img alt="Documentação" src="https://img.shields.io/badge/Docs-4F46E5?style=for-the-badge&logo=readthedocs&logoColor=white" /></a>
+  <a href="#community"><img alt="Grupo do WeChat" src="https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white" /></a>
+  <a href="#community"><img alt="Grupo do QQ" src="https://img.shields.io/badge/QQ-1688D8?style=for-the-badge&logo=qq&logoColor=white" /></a>
+  <a href="https://t.me/uniclipboard"><img alt="Grupo do Telegram" src="https://img.shields.io/badge/Telegram-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" /></a>
+</p>
+
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/stargazers"><img alt="Estrelas no GitHub" src="https://img.shields.io/github/stars/UniClipboard/UniClipboard?style=flat-square&color=E5B650&logo=github&label=Stars" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/UniClipboard/UniClipboard/total?style=flat-square&color=0EA5E9&label=Downloads" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Última versão" src="https://img.shields.io/github/v/release/UniClipboard/UniClipboard?style=flat-square&include_prereleases&color=0891b2&label=Release" /></a>
+  <a href="LICENSE"><img alt="Licença AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-22c55e?style=flat-square" /></a>
+</p>
+
+<p>
   <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Windows" src="https://img.shields.io/badge/Windows-1f2937?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iIzM4YmRmOCI+PHBhdGggZD0iTTAgMGg3LjR2Ny40SDB6bTguNiAwSDE2djcuNEg4LjZ6TTAgOC42aDcuNFYxNkgwem04LjYgMEgxNlYxNkg4LjZ6Ii8+PC9zdmc+" /></a>
   <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="macOS" src="https://img.shields.io/badge/macOS-1f2937?style=flat-square&logo=apple&logoColor=white" /></a>
   <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Linux" src="https://img.shields.io/badge/Linux-1f2937?style=flat-square&logo=linux&logoColor=facc15" /></a>
@@ -143,6 +158,29 @@ Relate problemas de segurança de forma privada, conforme o [SECURITY.md](SECURI
 O v2 importa todo o seu histórico do v1: texto, imagens, arquivos e etiquetas. Siga o assistente ao abrir o v2 pela primeira vez ou importe depois em **Configurações › Armazenamento › Migrar da v1**.
 
 Dispositivos v2 não sincronizam com dispositivos v1. Atualize todos para o v2 e pareie novamente. O código do v1 está no [branch `v1`](https://github.com/UniClipboard/UniClipboard/tree/v1).
+
+<a id="community"></a>
+
+## Comunidade
+
+Participe da comunidade do Unic para trocar ideias, tirar dúvidas, enviar sugestões e conversar com outros usuários e desenvolvedores:
+
+- <img src="docs/assets/community/qq.svg" alt="" width="18" /> Grupo do QQ: `1080860954`
+- <img src="docs/assets/community/wechat.svg" alt="" width="18" /> WeChat: escaneie o QR code abaixo para adicionar o mantenedor e entrar no grupo
+- <img src="docs/assets/community/telegram.svg" alt="" width="18" /> [Grupo do Telegram (@uniclipboard)](https://t.me/uniclipboard)
+
+<table>
+  <tr>
+    <td align="center"><strong><img src="docs/assets/community/qq.svg" alt="" width="18" /> Grupo do QQ</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/wechat.svg" alt="" width="18" /> Grupo do WeChat</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/telegram.svg" alt="" width="18" /> Telegram</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/assets/community/qq-qr.png" alt="QR code do grupo do QQ do Unic" width="240" /></td>
+    <td align="center"><img src="docs/assets/community/wechat-qr.png" alt="QR code do WeChat do Unic" width="240" /></td>
+    <td align="center"><a href="https://t.me/uniclipboard"><img src="docs/assets/community/telegram-qr.jpg" alt="QR code do grupo do Telegram do Unic" width="240" /></a></td>
+  </tr>
+</table>
 
 ## Contribuindo
 

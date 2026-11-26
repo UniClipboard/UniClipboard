@@ -23,20 +23,20 @@ var (
 	getMonitorInfoW     = user32.NewProc("GetMonitorInfoW")
 	monitorFromRect     = user32.NewProc("MonitorFromRect")
 
-	oleacc                    = windows.NewLazySystemDLL("oleacc.dll")
-	accessibleObjectFromWnd   = oleacc.NewProc("AccessibleObjectFromWindow")
-	ole32                     = windows.NewLazySystemDLL("ole32.dll")
-	coInitializeEx            = ole32.NewProc("CoInitializeEx")
-	coCreateInstance          = ole32.NewProc("CoCreateInstance")
-	coUninitialize            = ole32.NewProc("CoUninitialize")
-	oleaut32                  = windows.NewLazySystemDLL("oleaut32.dll")
-	safeArrayGetLBound        = oleaut32.NewProc("SafeArrayGetLBound")
-	safeArrayGetUBound        = oleaut32.NewProc("SafeArrayGetUBound")
-	safeArrayAccessData       = oleaut32.NewProc("SafeArrayAccessData")
-	safeArrayUnaccessData     = oleaut32.NewProc("SafeArrayUnaccessData")
-	safeArrayDestroy          = oleaut32.NewProc("SafeArrayDestroy")
-	shcore                    = windows.NewLazySystemDLL("shcore.dll")
-	getDpiForMonitor          = shcore.NewProc("GetDpiForMonitor")
+	oleacc                  = windows.NewLazySystemDLL("oleacc.dll")
+	accessibleObjectFromWnd = oleacc.NewProc("AccessibleObjectFromWindow")
+	ole32                   = windows.NewLazySystemDLL("ole32.dll")
+	coInitializeEx          = ole32.NewProc("CoInitializeEx")
+	coCreateInstance        = ole32.NewProc("CoCreateInstance")
+	coUninitialize          = ole32.NewProc("CoUninitialize")
+	oleaut32                = windows.NewLazySystemDLL("oleaut32.dll")
+	safeArrayGetLBound      = oleaut32.NewProc("SafeArrayGetLBound")
+	safeArrayGetUBound      = oleaut32.NewProc("SafeArrayGetUBound")
+	safeArrayAccessData     = oleaut32.NewProc("SafeArrayAccessData")
+	safeArrayUnaccessData   = oleaut32.NewProc("SafeArrayUnaccessData")
+	safeArrayDestroy        = oleaut32.NewProc("SafeArrayDestroy")
+	shcore                  = windows.NewLazySystemDLL("shcore.dll")
+	getDpiForMonitor        = shcore.NewProc("GetDpiForMonitor")
 )
 
 const (
@@ -55,22 +55,22 @@ const (
 	uiaTextUnitCharacter     = 0
 
 	// COM vtable indices verified against Microsoft Windows SDK / windows-rs metadata.
-	vtblRelease                        = 2
-	vtblQueryInterface                 = 0
-	vtblIAccessibleAccLocation         = 22 // IDispatch(7) + 15
-	vtblUIAGetFocusedElement           = 8  // IUnknown(3) + 5
-	vtblUIA2PutConnectionTimeout       = 61 // IUIAutomation(58) + 3
-	vtblUIA2PutTransactionTimeout      = 63 // IUIAutomation(58) + 5
-	vtblUIAElemGetCurrentPatternAs     = 14 // IUnknown(3) + 11
-	vtblUIAElemGetCurrentControlType   = 21 // IUnknown(3) + 18
-	vtblUIAElemGetCurrentBoundingRect  = 43 // IUnknown(3) + 40
-	vtblUIATextPatternGetSelection     = 5  // IUnknown(3) + 2
-	vtblUIATextPattern2GetCaretRange   = 10 // IUIAutomationTextPattern(9) + 1
-	vtblUIATextRangeArrayGetLength     = 3  // IUnknown(3) + 0
-	vtblUIATextRangeArrayGetElement    = 4  // IUnknown(3) + 1
-	vtblUIATextRangeExpandToEnclosing  = 6  // IUnknown(3) + 3
-	vtblUIATextRangeGetBoundingRects   = 10 // IUnknown(3) + 7
-	vtblUIATextRangeMove               = 13 // IUnknown(3) + 10
+	vtblRelease                       = 2
+	vtblQueryInterface                = 0
+	vtblIAccessibleAccLocation        = 22 // IDispatch(7) + 15
+	vtblUIAGetFocusedElement          = 8  // IUnknown(3) + 5
+	vtblUIA2PutConnectionTimeout      = 61 // IUIAutomation(58) + 3
+	vtblUIA2PutTransactionTimeout     = 63 // IUIAutomation(58) + 5
+	vtblUIAElemGetCurrentPatternAs    = 14 // IUnknown(3) + 11
+	vtblUIAElemGetCurrentControlType  = 21 // IUnknown(3) + 18
+	vtblUIAElemGetCurrentBoundingRect = 43 // IUnknown(3) + 40
+	vtblUIATextPatternGetSelection    = 5  // IUnknown(3) + 2
+	vtblUIATextPattern2GetCaretRange  = 10 // IUIAutomationTextPattern(9) + 1
+	vtblUIATextRangeArrayGetLength    = 3  // IUnknown(3) + 0
+	vtblUIATextRangeArrayGetElement   = 4  // IUnknown(3) + 1
+	vtblUIATextRangeExpandToEnclosing = 6  // IUnknown(3) + 3
+	vtblUIATextRangeGetBoundingRects  = 10 // IUnknown(3) + 7
+	vtblUIATextRangeMove              = 13 // IUnknown(3) + 10
 
 	uiaProbeBudget = 60 * time.Millisecond
 	uiaCOMTimeout  = 50 // milliseconds

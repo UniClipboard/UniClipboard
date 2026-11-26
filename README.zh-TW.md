@@ -10,17 +10,18 @@
 </p>
 
 <p>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><strong>下載</strong></a>
-  &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="#quick-start"><strong>快速開始</strong></a>
-  &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="#features">功能一覽</a>
-  &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="#cli">命令列</a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="下載" src="https://img.shields.io/badge/%E4%B8%8B%E8%BC%89-2563eb?style=for-the-badge&logo=github&logoColor=white" /></a>
+  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS%20Beta-1f2937?style=for-the-badge&logo=apple&logoColor=white" /></a>
+  <a href="#quick-start"><img alt="快速開始" src="https://img.shields.io/badge/%E5%BF%AB%E9%80%9F%E9%96%8B%E5%A7%8B-4b5563?style=for-the-badge" /></a>
 </p>
 
 <p>
-  <code>Windows</code> &nbsp;<code>macOS</code> &nbsp;<code>Linux</code> &nbsp;<code>命令列</code>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Windows" src="https://img.shields.io/badge/Windows-1f2937?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0iIzM4YmRmOCI+PHBhdGggZD0iTTAgMGg3LjR2Ny40SDB6bTguNiAwSDE2djcuNEg4LjZ6TTAgOC42aDcuNFYxNkgwem04LjYgMEgxNlYxNkg4LjZ6Ii8+PC9zdmc+" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="macOS" src="https://img.shields.io/badge/macOS-1f2937?style=flat-square&logo=apple&logoColor=white" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Linux" src="https://img.shields.io/badge/Linux-1f2937?style=flat-square&logo=linux&logoColor=facc15" /></a>
+  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS-Beta-2563eb?style=flat-square&logo=apple&logoColor=white&labelColor=1f2937" /></a>
+  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Android" src="https://img.shields.io/badge/Android-1f2937?style=flat-square&logo=android&logoColor=3ddc84" /></a>
+  <a href="#cli"><img alt="CLI" src="https://img.shields.io/badge/CLI-1f2937?style=flat-square&logo=gnubash&logoColor=white" /></a>
 </p>
 
 <p>
@@ -37,7 +38,7 @@
 
 ## 為什麼選擇 UniClipboard
 
-- **跨系統**：Windows、macOS、Linux 之間互相同步。裝置在同一個 Wi-Fi 或不同網路都能連上。
+- **跨平台**：支援 Windows、macOS、Linux、iOS 與 Android 互相同步。裝置在同一個 Wi-Fi 或不同網路都能連上。
 - **不經過雲端**：裝置之間加密直連，不需要註冊帳號。剪貼簿歷史只存在你自己的裝置上。
 - **記憶體用量低**：背景同步服務閒置時約佔 14 MB 記憶體<sup>[1](#benchmarks)</sup>。在 Windows 上，主視窗約佔 34–49 MB<sup>[2](#benchmarks)</sup>。關閉主視窗後，介面程序會結束並釋放記憶體。
 - **都能同步**：文字、圖片、檔案和整個資料夾都能同步。
@@ -87,7 +88,10 @@
 
 **1. 下載並安裝**
 
-從 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) 下載對應平台的安裝檔（macOS `.dmg`、Windows `.exe`/`.zip` 或 Linux `.deb`/`.rpm`/`.AppImage`），安裝後開啟 **UniClipboard**。如果只需要命令列版本，可執行 `npm install -g @uniclipboard/cli`。
+- **桌面版**：從 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) 下載 Windows（`.exe`/`.zip`）、macOS（`.dmg`）或 Linux（`.deb`/`.rpm`/`.AppImage`）安裝檔。
+- **iOS**：透過 [TestFlight](https://testflight.apple.com/join/nyNQ8dQe) 加入公開 Beta 測試。
+- **Android**：從 [GitHub Releases](https://github.com/UniClipboard/UniClipboard/releases) 下載 APK 安裝（目前暫無上架 Google Play 的計畫）。
+- **僅命令列**：執行 `npm install -g @uniclipboard/cli`。
 
 **2. 連接第二台裝置**
 

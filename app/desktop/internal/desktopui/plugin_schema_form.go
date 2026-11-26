@@ -289,13 +289,14 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 	}
 
 	if item.HasPrevious || item.Source != "local" {
+		updating := d.pluginInstallTask(item.ID) != nil
 		k.SettingsGroup(c.Key("external-plugin-manage"), desktopkit.SettingsGroupProps{Title: d.tr("管理")}, func() {
 			if item.HasPrevious {
 				k.SettingsRow(c.Key("rollback-row"), desktopkit.SettingsRowProps{
 					Label:       d.tr("回滚至上一版本"),
 					Description: "v" + item.PreviousVersion,
 				}, nil, func() {
-					if k.Button(c.Key("rollback-btn"), d.tr("回滚"), desktopkit.ButtonProps{Disabled: l.showBusy()}).Clicked() && !l.busy {
+					if k.Button(c.Key("rollback-btn"), d.tr("回滚"), desktopkit.ButtonProps{Disabled: l.showBusy() || updating}).Clicked() && !l.busy && !updating {
 						p.rollbackOpen = true
 						p.rollbackID = item.ID
 						p.rollbackName = title
@@ -308,7 +309,7 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 					Label:       d.tr("卸载插件"),
 					Description: d.tr("重启时移除程序文件，保留剪贴板历史与本地配置。"),
 				}, nil, func() {
-					if k.Button(c.Key("uninstall-btn"), d.tr("卸载"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Icon: desktopkit.IconDelete, Disabled: l.showBusy()}).Clicked() && !l.busy {
+					if k.Button(c.Key("uninstall-btn"), d.tr("卸载"), desktopkit.ButtonProps{Variant: desktopkit.Destructive, Icon: desktopkit.IconDelete, Disabled: l.showBusy() || updating}).Clicked() && !l.busy && !updating {
 						p.uninstallOpen = true
 						p.uninstallID = item.ID
 						p.uninstallName = title

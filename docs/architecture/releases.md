@@ -58,7 +58,7 @@ paths:
   - tools/ci
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 89cc0fa79bc387107148c1780dc7684217cacfe7
+verified: 5d74b64f79bf9bba6e9e7ba16812bedefea4bcb1
 ---
 # Product builds and CLI releases
 
@@ -139,6 +139,10 @@ independently re-verifies ancestry against the workflow run HEAD). This keeps
 `workflow_run.head_branch` on the default branch for npm OIDC and package
 channel dispatch while preventing concurrent merges to `main` from breaking or
 altering an in-flight release.
+
+The Desktop publication and promotion calls grant `actions: write` so GitHub
+can validate the reusable workflow's standalone mirror job. Joint calls skip
+that job and use the separate package dispatch workflow for mirroring.
 
 Alpha records the source SHA, selected CLI and Desktop build number in a
 create-only Git tag under `joint-release/alpha/`. The planner allocates new

@@ -56,7 +56,7 @@ func TestRelaySettingsGroupRenderAndInteractions(t *testing.T) {
 	tester.Frame()
 
 	texts := strings.Join(tester.Texts(), " | ")
-	for _, want := range []string{"混合中转", "1/2 台设备中转就绪", "启用混合中转", "中转服务地址", "单次中转大小上限", "中转 API Key / 接入密钥", "已配置", "清除密钥", "恢复默认"} {
+	for _, want := range []string{"混合中转", "1/2 台已就绪", "启用混合中转", "服务地址", "单次大小上限", "接入密钥", "已配置", "清除", "恢复默认"} {
 		if !strings.Contains(texts, want) {
 			t.Fatalf("expected %q in relay settings UI, got: %s", want, texts)
 		}
@@ -145,7 +145,7 @@ func TestCloudAccountLoginPersistsSessionAndProvisionsRelay(t *testing.T) {
 	}, 900, 700)
 	tester.Frame()
 
-	if err := tester.Click("登录 UniClipboard Cloud"); err != nil {
+	if err := tester.Click("登录"); err != nil {
 		t.Fatalf("click cloud login: %v", err)
 	}
 	tester.Frame()

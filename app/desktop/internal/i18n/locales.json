@@ -62,8 +62,8 @@
   "设置": {
     "en": "Settings",
     "ja": "設定",
-    "pt-BR": "Configurações",
-    "ru": "Настройки"
+    "pt-BR": "Configurar",
+    "ru": "Настроить"
   },
   "设置…": {
     "en": "Settings…",
@@ -6510,10 +6510,10 @@
     "ru": "Применить импорт"
   },
   "开启": {
-    "en": "On",
-    "ja": "オン",
-    "pt-BR": "Ativado",
-    "ru": "Включено"
+    "en": "Enable",
+    "ja": "有効にする",
+    "pt-BR": "Ativar",
+    "ru": "Включить"
   },
   "当前配置无效。请先修复配置。": {
     "en": "The current configuration is invalid. Repair it first.",
@@ -9940,5 +9940,233 @@
     "ja": "リセット",
     "pt-BR": "Redefinir",
     "ru": "Сбросить"
+  },
+  "云服务": {
+    "en": "Cloud Services",
+    "ja": "クラウドサービス",
+    "pt-BR": "Serviços em nuvem",
+    "ru": "Облачные сервисы"
+  },
+  "账号": {
+    "en": "Account",
+    "ja": "アカウント",
+    "pt-BR": "Conta",
+    "ru": "Аккаунт"
+  },
+  "登录账号": {
+    "en": "Sign in",
+    "ja": "ログイン",
+    "pt-BR": "Entrar",
+    "ru": "Вход в аккаунт"
+  },
+  "登录后可使用官方中转等云功能。": {
+    "en": "Sign in to use official relay and other cloud features.",
+    "ja": "ログインすると公式リレーなどのクラウド機能を利用できます。",
+    "pt-BR": "Entre para usar o relay oficial e outros recursos na nuvem.",
+    "ru": "Войдите, чтобы использовать официальный ретранслятор и облачные функции."
+  },
+  "已连接，可使用云服务功能。": {
+    "en": "Connected. Cloud features are available.",
+    "ja": "接続済み。クラウド機能を利用できます。",
+    "pt-BR": "Conectado. Os recursos na nuvem estão disponíveis.",
+    "ru": "Подключено. Облачные функции доступны."
+  },
+  "登录": {
+    "en": "Sign in",
+    "ja": "ログイン",
+    "pt-BR": "Entrar",
+    "ru": "Войти"
+  },
+  "退出登录": {
+    "en": "Sign out",
+    "ja": "ログアウト",
+    "pt-BR": "Sair",
+    "ru": "Выйти"
+  },
+  "已登录": {
+    "en": "Signed in",
+    "ja": "ログイン済み",
+    "pt-BR": "Conectado",
+    "ru": "Выполнен вход"
+  },
+  "未登录": {
+    "en": "Signed out",
+    "ja": "未ログイン",
+    "pt-BR": "Desconectado",
+    "ru": "Не выполнен вход"
+  },
+  "可用服务": {
+    "en": "Services",
+    "ja": "利用可能なサービス",
+    "pt-BR": "Serviços",
+    "ru": "Сервисы"
+  },
+  "当前使用自建服务，可在同步设置中调整。": {
+    "en": "Using a self-hosted server. Adjust in Sync settings.",
+    "ja": "セルフホストサーバーを使用中。同期設定で変更できます。",
+    "pt-BR": "Usando servidor próprio. Ajuste nas configurações de sincronização.",
+    "ru": "Используется собственный сервер. Настройте в разделе «Синхронизация»."
+  },
+  "前往同步": {
+    "en": "Open Sync",
+    "ja": "同期を開く",
+    "pt-BR": "Ir para Sincronização",
+    "ru": "К синхронизации"
+  },
+  "设备离线时加密暂存，上线后自动接收。": {
+    "en": "Encrypts and stages while offline; delivers once online.",
+    "ja": "オフライン時に暗号化して一時保存し、オンライン復帰後に自動受信します。",
+    "pt-BR": "Criptografa e aguarda offline; entrega assim que ficar online.",
+    "ru": "Шифрует и хранит при офлайне, доставляет при подключении."
+  },
+  "设备离线时加密暂存，登录后即可开启。": {
+    "en": "Encrypts and stages while offline. Sign in to enable.",
+    "ja": "オフライン時に暗号化して一時保存します。ログインして有効化できます。",
+    "pt-BR": "Criptografa e aguarda offline. Entre para ativar.",
+    "ru": "Шифрует и хранит при офлайне. Войдите, чтобы включить."
+  },
+  "需登录": {
+    "en": "Sign-in required",
+    "ja": "ログインが必要",
+    "pt-BR": "Requer login",
+    "ru": "Нужен вход"
+  },
+  "等待浏览器登录…": {
+    "en": "Waiting for browser…",
+    "ja": "ブラウザでログイン待機中…",
+    "pt-BR": "Aguardando navegador…",
+    "ru": "Ожидание браузера…"
+  },
+  "登录失败：%v": {
+    "en": "Sign-in failed: %v",
+    "ja": "ログインに失敗しました: %v",
+    "pt-BR": "Falha no login: %v",
+    "ru": "Ошибка входа: %v"
+  },
+  "正在配置中转…": {
+    "en": "Enabling relay…",
+    "ja": "リレーを設定中…",
+    "pt-BR": "Configurando relay…",
+    "ru": "Настройка ретранслятора…"
+  },
+  "配置中转失败：%v": {
+    "en": "Failed to enable relay: %v",
+    "ja": "リレーの設定に失敗しました: %v",
+    "pt-BR": "Falha ao configurar relay: %v",
+    "ru": "Ошибка настройки ретранслятора: %v"
+  },
+  "正在退出…": {
+    "en": "Signing out…",
+    "ja": "ログアウト中…",
+    "pt-BR": "Saindo…",
+    "ru": "Выход…"
+  },
+  "%d/%d 台已就绪": {
+    "en": "%d/%d ready",
+    "ja": "%d/%d 台準備完了",
+    "pt-BR": "%d/%d prontos",
+    "ru": "Готово: %d/%d"
+  },
+  "设备在线时优先直连，离线时自动加密暂存转发。": {
+    "en": "Prefers direct connection when online; relays encrypted when offline.",
+    "ja": "オンライン時は直接接続を優先し、オフライン時は暗号化して自動中継します。",
+    "pt-BR": "Prioriza conexão direta online e retransmite criptografado offline.",
+    "ru": "Онлайн использует прямое соединение, офлайн — зашифрованную ретрансляцию."
+  },
+  "服务地址": {
+    "en": "Server URL",
+    "ja": "サーバーURL",
+    "pt-BR": "Endereço do servidor",
+    "ru": "Адрес сервера"
+  },
+  "留空使用官方服务，也可填写自建地址。": {
+    "en": "Leave blank for official service, or enter a self-hosted URL.",
+    "ja": "空欄で公式サービスを使用、またはセルフホストURLを入力。",
+    "pt-BR": "Deixe em branco para o serviço oficial ou informe seu servidor.",
+    "ru": "Оставьте пустым для официального сервиса или укажите свой адрес."
+  },
+  "请输入有效的 http(s) 地址": {
+    "en": "Enter a valid http(s) URL",
+    "ja": "有効な http(s) URL を入力してください",
+    "pt-BR": "Digite um endereço http(s) válido",
+    "ru": "Введите корректный http(s) адрес"
+  },
+  "单次大小上限": {
+    "en": "Size limit",
+    "ja": "1回の上限サイズ",
+    "pt-BR": "Limite por envio",
+    "ru": "Лимит размера"
+  },
+  "超出后仅在设备在线时直连发送。": {
+    "en": "Larger items send directly only when devices are online.",
+    "ja": "上限を超える場合はオンライン時の直接接続のみで送信されます。",
+    "pt-BR": "Itens maiores são enviados apenas via conexão direta online.",
+    "ru": "Более крупные данные передаются только напрямую онлайн."
+  },
+  "云服务账号": {
+    "en": "Cloud account",
+    "ja": "クラウドアカウント",
+    "pt-BR": "Conta na nuvem",
+    "ru": "Аккаунт облака"
+  },
+  "已登录 %s": {
+    "en": "Signed in as %s",
+    "ja": "%s としてログイン中",
+    "pt-BR": "Conectado como %s",
+    "ru": "Выполнен вход: %s"
+  },
+  "重新获取密钥": {
+    "en": "Refresh key",
+    "ja": "キーを再取得",
+    "pt-BR": "Atualizar chave",
+    "ru": "Обновить ключ"
+  },
+  "一键开启": {
+    "en": "Enable",
+    "ja": "有効にする",
+    "pt-BR": "Ativar",
+    "ru": "Включить"
+  },
+  "官方服务需登录账号后使用。": {
+    "en": "Sign in to use the official relay service.",
+    "ja": "公式サービスの利用にはログインが必要です。",
+    "pt-BR": "Entre na conta para usar o serviço oficial.",
+    "ru": "Для официального сервиса требуется вход."
+  },
+  "接入密钥": {
+    "en": "Access key",
+    "ja": "アクセスキー",
+    "pt-BR": "Chave de acesso",
+    "ru": "Ключ доступа"
+  },
+  "登录账号后自动填入，自建服务请手动输入。": {
+    "en": "Filled automatically after sign-in; enter manually for self-hosted.",
+    "ja": "ログイン後に自動入力されます。セルフホスト時は手動で入力してください。",
+    "pt-BR": "Preenchida ao entrar; insira manualmente para servidor próprio.",
+    "ru": "Заполняется после входа; для своего сервера введите вручную."
+  },
+  "输入接入密钥": {
+    "en": "Enter access key",
+    "ja": "アクセスキーを入力",
+    "pt-BR": "Digite a chave",
+    "ru": "Введите ключ"
+  },
+  "请输入密钥，或点击清除": {
+    "en": "Enter a key or click Clear",
+    "ja": "キーを入力するかクリアしてください",
+    "pt-BR": "Digite uma chave ou clique em Limpar",
+    "ru": "Введите ключ или нажмите «Очистить»"
+  },
+  "密钥格式无效": {
+    "en": "Invalid key format",
+    "ja": "キーの形式が無効です",
+    "pt-BR": "Formato de chave inválido",
+    "ru": "Неверный формат ключа"
+  },
+  "部分设备尚未同步配置，双方在线连接一次后自动生效。": {
+    "en": "Some devices have not synced relay settings yet. Connect online once to activate.",
+    "ja": "一部のデバイスは未同期です。一度オンライン接続すると自動で有効になります。",
+    "pt-BR": "Alguns dispositivos ainda não sincronizaram. Conecte online uma vez para ativar.",
+    "ru": "Некоторые устройства ещё не получили настройки. Подключите их онлайн один раз."
   }
 }

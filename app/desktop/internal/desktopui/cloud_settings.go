@@ -54,6 +54,11 @@ func (d *viewState) ensureCloudSessionLoaded() {
 	}
 }
 
+func (d *viewState) cloudSettingsContent(c *ui.Context, k desktopkit.Kit, cfg *config.Config) {
+	d.cloudAccountGroup(c, k, cfg)
+	d.cloudServicesGroup(c, k, cfg)
+}
+
 func (d *viewState) cloudAccountGroup(c *ui.Context, k desktopkit.Kit, cfg *config.Config) {
 	d.ensureCloudSessionLoaded()
 	l := d.live
@@ -69,69 +74,110 @@ func (d *viewState) cloudAccountGroup(c *ui.Context, k desktopkit.Kit, cfg *conf
 	}
 
 	k.SettingsGroup(c.Key("cloud-account"), desktopkit.SettingsGroupProps{
-		Title:    d.tr("UniClipboard Cloud"),
+		Title:    d.tr("账号"),
 		Trailing: trailing,
 	}, func() {
 		if d.cloud.signedIn {
 			k.SettingsRow(c.Key("cloud-user"), desktopkit.SettingsRowProps{
 				Label:       d.cloud.session.User.DisplayLabel(),
-				Description: d.tr("已登录 UniClipboard Cloud，可直接使用官方混合中转及后续云服务。"),
+				Description: d.tr("已连接，可使用云服务功能。"),
 			}, nil, func() {
-				ui.Row(c.Key("cloud-user-actions")).Gap(8).AlignItems(ui.Center).Children(func() {
-					if cfg.Sync.Relay.URL == "" {
-						btnLabel := d.tr("刷新中转授权")
-						if !cfg.Sync.Relay.AccessKeySet {
-							btnLabel = d.tr("启用官方混合中转")
-						}
-						if k.Button(c.Key("cloud-provision-relay"), btnLabel, desktopkit.ButtonProps{
-							Size:     desktopkit.SizeSmall,
-							Disabled: l.busy || d.cloud.busy,
-						}).Clicked() {
-							d.provisionCloudRelay(*cfg)
-						}
-					}
-					if k.Button(c.Key("cloud-logout"), d.tr("退出登录"), desktopkit.ButtonProps{
-						Size:     desktopkit.SizeSmall,
-						Variant:  desktopkit.Destructive,
-						Disabled: l.busy || d.cloud.busy,
-					}).Clicked() {
-						d.startCloudLogout(*cfg)
-					}
-				})
+				if k.Button(c.Key("cloud-logout"), d.tr("退出登录"), desktopkit.ButtonProps{
+					Size:     desktopkit.SizeSmall,
+					Variant:  desktopkit.Destructive,
+					Disabled: l.busy || d.cloud.busy,
+				}).Clicked() {
+					d.startCloudLogout(*cfg)
+				}
 			})
 		} else {
 			k.SettingsRow(c.Key("cloud-signin"), desktopkit.SettingsRowProps{
-				Label:       d.tr("UniClipboard Cloud 账号"),
-				Description: d.tr("登录账号以解锁官方混合中转及后续云服务；本地 P2P 同步与自部署无需登录。"),
+				Label:       d.tr("登录账号"),
+				Description: d.tr("登录后可使用官方中转等云功能。"),
 			}, nil, func() {
-				ui.Row(c.Key("cloud-signin-actions")).Gap(8).AlignItems(ui.Center).Children(func() {
-					if d.cloud.busy {
-						if k.Button(c.Key("cloud-cancel"), d.tr("取消"), desktopkit.ButtonProps{
-							Size: desktopkit.SizeSmall,
-						}).Clicked() {
-							if d.cloud.cancel != nil {
-								d.cloud.cancel()
-								d.cloud.cancel = nil
-							}
-							d.cloud.busy = false
-							d.cloud.busyLabel = ""
-							d.cloud.err = ""
+				if d.cloud.busy {
+					if k.Button(c.Key("cloud-cancel"), d.tr("取消"), desktopkit.ButtonProps{
+						Size: desktopkit.SizeSmall,
+					}).Clicked() {
+						if d.cloud.cancel != nil {
+							d.cloud.cancel()
+							d.cloud.cancel = nil
 						}
-					} else {
-						if k.Button(c.Key("cloud-login-btn"), d.tr("登录 UniClipboard Cloud"), desktopkit.ButtonProps{
-							Size:     desktopkit.SizeSmall,
-							Variant:  desktopkit.Primary,
-							Disabled: l.busy,
-						}).Clicked() {
-							d.startCloudLogin(*cfg, true)
-						}
+						d.cloud.busy = false
+						d.cloud.busyLabel = ""
+						d.cloud.err = ""
 					}
-				})
+				} else if k.Button(c.Key("cloud-login-btn"), d.tr("登录"), desktopkit.ButtonProps{
+					Size:     desktopkit.SizeSmall,
+					Variant:  desktopkit.Primary,
+					Disabled: l.busy,
+				}).Clicked() {
+					d.startCloudLogin(*cfg, true)
+				}
 			})
 		}
 
 		if d.cloud.err != "" {
 			settingsNoteRow(c.Key("cloud-err"), k, d.cloud.err)
+		}
+	})
+}
+
+func (d *viewState) cloudServicesGroup(c *ui.Context, k desktopkit.Kit, cfg *config.Config) {
+	l := d.live
+	customRelay := strings.TrimSpace(cfg.Sync.Relay.URL) != ""
+	officialReady := !customRelay && cfg.Sync.Relay.Enabled && cfg.Sync.Relay.AccessKeySet
+
+	k.SettingsGroup(c.Key("cloud-services"), desktopkit.SettingsGroupProps{
+		Title: d.tr("可用服务"),
+	}, func() {
+		switch {
+		case customRelay:
+			k.SettingsRow(c.Key("cloud-svc-relay"), desktopkit.SettingsRowProps{
+				Label:       d.tr("混合中转"),
+				Description: d.tr("当前使用自建服务，可在同步设置中调整。"),
+			}, nil, func() {
+				if k.Button(c.Key("cloud-svc-relay-open"), d.tr("前往同步"), desktopkit.ButtonProps{
+					Size: desktopkit.SizeSmall,
+				}).Clicked() {
+					d.settings.Value = "sync"
+				}
+			})
+		case d.cloud.signedIn && officialReady:
+			k.SettingsRow(c.Key("cloud-svc-relay"), desktopkit.SettingsRowProps{
+				Label:       d.tr("混合中转"),
+				Description: d.tr("设备离线时加密暂存，上线后自动接收。"),
+			}, nil, func() {
+				ui.Row(c.Key("cloud-svc-relay-actions")).Gap(8).AlignItems(ui.Center).Children(func() {
+					settingsPill(c.Key("cloud-svc-relay-pill"), k, d.tr("已开启"), desktopkit.StatusPositive, true, false)
+					if k.Button(c.Key("cloud-svc-relay-open"), d.tr("设置"), desktopkit.ButtonProps{
+						Size: desktopkit.SizeSmall,
+					}).Clicked() {
+						d.settings.Value = "sync"
+					}
+				})
+			})
+		case d.cloud.signedIn:
+			k.SettingsRow(c.Key("cloud-svc-relay"), desktopkit.SettingsRowProps{
+				Label:       d.tr("混合中转"),
+				Description: d.tr("设备离线时加密暂存，上线后自动接收。"),
+			}, nil, func() {
+				if k.Button(c.Key("cloud-svc-relay-enable"), d.tr("开启"), desktopkit.ButtonProps{
+					Size:     desktopkit.SizeSmall,
+					Variant:  desktopkit.Primary,
+					Disabled: l.busy || d.cloud.busy,
+				}).Clicked() {
+					d.provisionCloudRelay(*cfg)
+				}
+			})
+		default:
+			k.SettingsRow(c.Key("cloud-svc-relay"), desktopkit.SettingsRowProps{
+				Label:       d.tr("混合中转"),
+				Description: d.tr("设备离线时加密暂存，登录后即可开启。"),
+				Dim:         true,
+			}, nil, func() {
+				settingsPill(c.Key("cloud-svc-relay-pill"), k, d.tr("需登录"), desktopkit.StatusNeutral, false, false)
+			})
 		}
 	})
 }
@@ -196,7 +242,7 @@ func (d *viewState) startCloudLogin(curCfg config.Config, autoEnableRelay bool) 
 				if ctx.Err() == context.Canceled {
 					return
 				}
-				d.cloud.err = fmt.Sprintf(d.tr("Cloud 登录失败：%v"), err)
+				d.cloud.err = fmt.Sprintf(d.tr("登录失败：%v"), err)
 				return
 			}
 			d.cloud.err = ""
@@ -222,7 +268,7 @@ func (d *viewState) provisionCloudRelay(curCfg config.Config) {
 	}
 	ctx, cancel := context.WithTimeout(baseCtx, 30*time.Second)
 	d.cloud.busy = true
-	d.cloud.busyLabel = d.tr("正在配置混合中转…")
+	d.cloud.busyLabel = d.tr("正在配置中转…")
 	d.cloud.err = ""
 	d.cloud.cancel = cancel
 
@@ -247,7 +293,7 @@ func (d *viewState) provisionCloudRelay(curCfg config.Config) {
 			d.cloud.busyLabel = ""
 			d.cloud.cancel = nil
 			if err != nil {
-				d.cloud.err = fmt.Sprintf(d.tr("配置官方混合中转失败：%v"), err)
+				d.cloud.err = fmt.Sprintf(d.tr("配置中转失败：%v"), err)
 				return
 			}
 			d.cloud.session = updated

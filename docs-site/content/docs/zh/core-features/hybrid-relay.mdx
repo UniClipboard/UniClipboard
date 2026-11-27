@@ -47,8 +47,8 @@ flowchart LR
 
 ### 一键登录 UniClipboard Cloud（推荐）
 
-- **桌面端**：打开「设置 → 通用 → UniClipboard Cloud」，点击 **「登录 UniClipboard Cloud」**。浏览器完成登录后自动同步账号状态，并自动签发填入 Relay API Key、开启混合中转；也可在「设置 → 同步 → 混合中转」中随时刷新或清除密钥。
-- **移动端（iOS / Android）**：打开「设置」顶部的 **「UniClipboard Cloud」**，点击 **「登录 UniClipboard Cloud」**，浏览器授权后自动跳回 App 并完成中转开通；也可在「设置 → 网络 → 混合中转」内管理。
+- **桌面端**：打开「设置 → 云服务」，点击 **「登录」**。浏览器完成登录后自动连接账号并开启官方混合中转；也可在「设置 → 同步 → 混合中转」中调整地址、上限或密钥。
+- **移动端（iOS / Android）**：打开「设置」顶部的 **「云服务」**，点击 **「登录账号」**，浏览器授权后自动跳回 App 并开启中转；也可在「设置 → 网络 → 混合中转」内管理。
 - **命令行（CLI）**：使用 `unic cloud` 管理账号登录、查看状态与退出（无桌面环境可加 `--no-browser` 手动复制链接；若只想登录账号暂不开启中转，可加 `--no-relay`；也可前往 `https://cloud.uniclipboard.app/account/api-keys` 手动管理 API Key）：
 
 ```bash

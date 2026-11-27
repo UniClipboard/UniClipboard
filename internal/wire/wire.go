@@ -22,11 +22,11 @@ import (
 )
 
 const (
-	Version      = 1
-	MaxControl   = 1 << 20  // largest JSON control message
-	MaxPartBytes = 64 << 20 // in-memory format (text, HTML, PNG), same cap as mygo
-	MaxFileBytes = 2 << 30  // one file
-	MaxTotal           = 4 << 30 // whole clipboard message
+	Version            = 1
+	MaxControl         = 1 << 20  // largest JSON control message
+	MaxPartBytes       = 64 << 20 // in-memory format (text, HTML, PNG), same cap as mygo
+	MaxFileBytes       = 2 << 30  // one file
+	MaxTotal           = 4 << 30  // whole clipboard message
 	MaxParts           = 4096
 	MaxRelayChunkBytes = (4 << 20) + 64 // max chunk size (4 MiB) + AEAD tag headroom
 

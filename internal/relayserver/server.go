@@ -1173,7 +1173,7 @@ func validMailboxID(id string) bool {
 	}
 	for i := 0; i < len(id); i++ {
 		c := id[i]
-		if !((c >= 'a' && c <= 'z') || (c >= '2' && c <= '7')) {
+		if (c < 'a' || c > 'z') && (c < '2' || c > '7') {
 			return false
 		}
 	}
@@ -1186,7 +1186,7 @@ func validHex64(s string) bool {
 	}
 	for i := 0; i < len(s); i++ {
 		c := s[i]
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}

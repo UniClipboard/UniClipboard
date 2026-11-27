@@ -149,7 +149,7 @@ func TestRelayClientServerDirectToS3RoundTripAuthAndRefresh(t *testing.T) {
 
 	// Expect transfer_announced followed by chunk_ready for index 0.
 	var sawAnnounced, sawReady bool
-	for !(sawAnnounced && sawReady) {
+	for !sawAnnounced || !sawReady {
 		select {
 		case ev := <-evtCh:
 			if ev.TransferID != tid1 {

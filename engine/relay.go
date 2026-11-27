@@ -133,13 +133,6 @@ func (r *relayCoordinator) effectiveConfig() (enabled bool, urlStr, accessKey st
 	return true, u, s.Sync.Relay.AccessKey, mb
 }
 
-// isEnabled reports whether relay fallback is configured and active right now.
-func (r *relayCoordinator) isEnabled() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.active && r.client != nil
-}
-
 func (r *relayCoordinator) snapshotClient() (*relayclient.Client, string, int64, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1334,13 +1327,13 @@ func (e *Engine) authorizedPeerBackend(senderID string) (PluginID, bool) {
 // ---- outbound zero-wait relay fallback ----
 
 type relayPlan struct {
-	peerID        string
-	peerPK        []byte
-	route         store.RelayRoute
-	effectiveMax  int64
-	key           targetKey
-	view          backendView
-	clip          wire.Clip
+	peerID       string
+	peerPK       []byte
+	route        store.RelayRoute
+	effectiveMax int64
+	key          targetKey
+	view         backendView
+	clip         wire.Clip
 }
 
 // planRelayFallbacks finds authorized, sync-enabled offline peers of backend b
@@ -1635,9 +1628,7 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 			}
 		}
 		approxPlain := min((doneCT*plan.view.set.total)/max(totalCT, 1), plan.view.set.total)
-		if approxPlain < maxReportedPlain {
-			approxPlain = maxReportedPlain
-		} else {
+		if approxPlain > maxReportedPlain {
 			maxReportedPlain = approxPlain
 		}
 		val := maxReportedPlain

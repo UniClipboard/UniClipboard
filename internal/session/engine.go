@@ -89,21 +89,21 @@ type Backend struct {
 	// Keep session election/registration atomic with respect to send lookup.
 	publication sync.RWMutex
 
-	mu           sync.Mutex
-	bound        bool
-	self         string
-	st           rpc.SyncState
-	trTried      bool          // Transport.Start was ever called; Close must release it
-	trUsed       bool          // Transport.Start succeeded or is currently in flight
-	trReady      bool          // Transport.Start succeeded
-	trDone       chan struct{} // closed when the latest Transport.Start call returned
-	run          *runState     // non-nil while the network is up
-	recoveries   map[string]recoveryObservation
-	sessions     map[string]*session
-	dialers      map[string]*dialer
-	dialing      map[string]dialStatus
-	lastChecked   map[string]int64
-	onLinkChange  func(string)
+	mu                sync.Mutex
+	bound             bool
+	self              string
+	st                rpc.SyncState
+	trTried           bool          // Transport.Start was ever called; Close must release it
+	trUsed            bool          // Transport.Start succeeded or is currently in flight
+	trReady           bool          // Transport.Start succeeded
+	trDone            chan struct{} // closed when the latest Transport.Start call returned
+	run               *runState     // non-nil while the network is up
+	recoveries        map[string]recoveryObservation
+	sessions          map[string]*session
+	dialers           map[string]*dialer
+	dialing           map[string]dialStatus
+	lastChecked       map[string]int64
+	onLinkChange      func(string)
 	relayProvide      func(peerID string) (plugin.RelayProfile, bool)
 	onRelayPeer       func(peerID string, p plugin.RelayProfile)
 	onHandoffOffer    func(peerID string, offer plugin.RelayHandoffOffer) plugin.RelayHandoffAck
@@ -895,14 +895,14 @@ type session struct {
 	trustRev    uint64
 	introWake   chan struct{}
 
-	wlock        chan struct{} // buffered(1), serializes wire writes with cancellation support
-	bodyActive   atomic.Bool
-	lastRxUnixNs atomic.Int64
-	lastTxUnixNs atomic.Int64
-	probeMu      sync.Mutex
-	probes       map[string]chan struct{}
-	pongSem      chan struct{}
-	pongWG       sync.WaitGroup
+	wlock           chan struct{} // buffered(1), serializes wire writes with cancellation support
+	bodyActive      atomic.Bool
+	lastRxUnixNs    atomic.Int64
+	lastTxUnixNs    atomic.Int64
+	probeMu         sync.Mutex
+	probes          map[string]chan struct{}
+	pongSem         chan struct{}
+	pongWG          sync.WaitGroup
 	clipAckCap      bool
 	ackMu           sync.Mutex
 	ackWaiters      map[string]chan string
@@ -915,10 +915,10 @@ type session struct {
 	handoffAckQueue chan wire.RelayHandoffAck
 	handoffWG       sync.WaitGroup
 	link            peerLinkCache // guarded by b.mu
-	done         chan struct{}
-	exited       chan struct{} // closed when serving ended and the Engine was told
-	once         sync.Once
-	seq          uint64 // last event sequence sent
+	done            chan struct{}
+	exited          chan struct{} // closed when serving ended and the Engine was told
+	once            sync.Once
+	seq             uint64 // last event sequence sent
 }
 
 func (s *session) isDone() bool {

@@ -358,9 +358,9 @@ func parseWithMeta(data []byte) (Config, bool, error) {
 func (c Config) Settings() engine.Settings {
 	return engine.Settings{
 		DeviceName: c.DeviceName, RendezvousURL: c.RendezvousURL,
-		History:         engine.HistoryCleanupSettings{AutoCleanup: c.History.AutoCleanup, RetentionDays: c.History.RetentionDays, MaxItems: c.History.MaxItems, ExcludedTags: append([]string{}, c.History.ExcludedTags...)},
-		FileCache:       engine.FileCacheSettings{MaxBytes: int64(c.FileCache.MaxBytes)},
-		Limits:          engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
+		History:   engine.HistoryCleanupSettings{AutoCleanup: c.History.AutoCleanup, RetentionDays: c.History.RetentionDays, MaxItems: c.History.MaxItems, ExcludedTags: append([]string{}, c.History.ExcludedTags...)},
+		FileCache: engine.FileCacheSettings{MaxBytes: int64(c.FileCache.MaxBytes)},
+		Limits:    engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
 		Sync: engine.SyncSettings{
 			Directories: engine.DirectorySyncSettings{Automatic: c.Sync.Directories.Automatic},
 			Relay: engine.RelaySyncSettings{

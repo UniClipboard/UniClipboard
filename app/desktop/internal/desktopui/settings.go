@@ -92,6 +92,11 @@ func (d *viewState) openPluginSettings(instanceID string) {
 	if d.deviceTask != "" {
 		d.setDeviceTask("")
 	}
+	d.quickLook = false
+	d.tagsOpen = false
+	d.tagEditor = tagEditorState{}
+	d.actionResult = actionResultState{}
+	d.confirm = ""
 	d.page = "settings"
 	d.settings.Value = "plugins"
 	d.renaming = false

@@ -10,9 +10,14 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
+	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
 	"github.com/uniclipboard/unic/internal/desktopkeys"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 )
+
+// showQuickPanelPositionSetting gates the Quick Panel placement selector to
+// platforms that implement native window placement (currently Windows).
+var showQuickPanelPositionSetting = runtime.GOOS == "windows"
 
 func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 	l := d.live
@@ -301,6 +306,29 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 				}
 			})
 		})
+		if showQuickPanelPositionSetting {
+			group("quick-panel-position", d.tr("显示位置"), func() {
+				posValue := cfg.Desktop.QuickPanelPositionOrDefault()
+				k.SettingsRow(c.Key("quick-panel-position"), desktopkit.SettingsRowProps{
+					Label:       d.tr("弹出位置"),
+					Description: d.tr("选择快捷面板打开时的位置。选“跟随输入框”时，无法获取光标则锚定输入框下方或跟随鼠标。"),
+				}, nil, func() {
+					if k.Select(c, desktopkit.SelectProps{
+						Label:    d.tr("弹出位置"),
+						Value:    &posValue,
+						Disabled: l.showBusy(),
+						Items: []desktopkit.SelectItem{
+							{Value: quickpanel.PositionCenter, Label: d.tr("屏幕中央")},
+							{Value: quickpanel.PositionCursor, Label: d.tr("跟随鼠标")},
+							{Value: quickpanel.PositionCaret, Label: d.tr("跟随输入框")},
+						},
+					}).Changed && !l.busy {
+						cfg.Desktop.QuickPanelPosition = posValue
+						changed = true
+					}
+				})
+			})
+		}
 		d.shortcutPermissionSettings(c, k)
 
 	case "notifications":

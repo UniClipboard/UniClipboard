@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,6 +59,24 @@ type engineConfigDTO struct {
 	RelayAccessKey   string                   `json:"relay_access_key,omitempty"`
 	RelayMaxBytes    int64                    `json:"relay_max_bytes,omitempty"`
 	HostCapabilities *engine.HostCapabilities `json:"host_capabilities,omitempty"`
+	ExtensionMode    bool                     `json:"extension_mode,omitempty"`
+}
+
+// ConfigureRuntimeMemory tunes the Go GC target and soft memory limit for
+// memory-constrained host processes such as the iOS Keyboard Extension.
+// Non-positive values leave the corresponding runtime setting unchanged.
+func ConfigureRuntimeMemory(gcPercent int, memLimitMB int) {
+	if gcPercent > 0 {
+		debug.SetGCPercent(gcPercent)
+	}
+	if memLimitMB > 0 {
+		debug.SetMemoryLimit(int64(memLimitMB) * 1024 * 1024)
+	}
+}
+
+// FreeOSMemory forces a garbage collection and returns unused memory to the OS.
+func FreeOSMemory() {
+	debug.FreeOSMemory()
 }
 
 func resolveDirPath(path string) (string, error) {
@@ -89,6 +108,8 @@ func resolveDirPath(path string) (string, error) {
 		cur = parent
 	}
 }
+
+const mobileSettingsFilename = "mobile-settings.json"
 
 func loadSettingsOrDefault(path string, cfg engineConfigDTO) (engine.Settings, error) {
 	def := engine.DefaultSettings()
@@ -273,7 +294,7 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		}
 	}
 
-	settingsPath := filepath.Join(dataDir, "mobile-settings.json")
+	settingsPath := filepath.Join(dataDir, mobileSettingsFilename)
 	relaySecretPath := filepath.Join(dataDir, "mobile-relay-secret")
 	settings, err := loadSettingsOrDefault(settingsPath, cfg)
 	if err != nil {
@@ -299,9 +320,17 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 	if err != nil {
 		return nil, wrapErr(err)
 	}
-	previewer, err := builtinpreview.New(builtinpreview.Settings{})
-	if err != nil {
-		return nil, wrapErr(err)
+	plugins := []engine.PluginInstance{
+		{Plugin: peer, Builtin: true},
+		{Plugin: classifier},
+		{Plugin: builtintext.New()},
+	}
+	if !cfg.ExtensionMode {
+		previewer, err := builtinpreview.New(builtinpreview.Settings{})
+		if err != nil {
+			return nil, wrapErr(err)
+		}
+		plugins = append(plugins, engine.PluginInstance{Plugin: previewer, Builtin: true})
 	}
 
 	diagnostics := newMobileDiagnostics(dataDir)
@@ -315,12 +344,7 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		Diagnostics:      diagnostics.controller.Record,
 		ProductEvents:    diagnostics.controller.ProductEvent,
 		Tracer:           diagnostics.controller,
-		Plugins: []engine.PluginInstance{
-			{Plugin: peer, Builtin: true},
-			{Plugin: classifier},
-			{Plugin: builtintext.New()},
-			{Plugin: previewer, Builtin: true},
-		},
+		Plugins:          plugins,
 	}
 
 	eng, err := engine.New(context.Background(), opts)

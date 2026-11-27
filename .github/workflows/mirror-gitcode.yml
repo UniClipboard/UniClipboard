@@ -1,0 +1,246 @@
+# Copies the Desktop updater archives or Android APK registered with FlareRelease
+# to a GitCode Release and registers each verified copy with FlareRelease, which
+# then redirects users in mainland China to it. GitHub and R2 stay the
+# authoritative sources: this workflow only adds an optional mirror and never
+# rebuilds, re-signs or repackages any artifact.
+#
+# Where the transfer runs: GitCode's upload endpoint is in mainland China and a
+# GitHub runner reaches it at a few KiB/s. The published
+# mkdir700/gitcode-release-mirror Action (pinned to a full commit SHA) logs in
+# to the Shanghai host over SSH with strict host-key checking. The forced
+# command on that host downloads each artifact from R2, checks it against the
+# SHA-256 recorded in the published GitHub Release metadata, uploads it to
+# GitCode and reads it back anonymously. The Action never overwrites or deletes:
+# an identical existing asset is `reused`, a different one with the same name is
+# a `conflict` failure. The host stores no credential.
+#
+# Registering with FlareRelease (PUT /api/mirrors) runs on the GitHub runner via
+# tools/release/gitcode_mirror.py driven by the Action's receipt, so FlareRelease
+# Access credentials never leave GitHub.
+#
+# Tag mapping: mkdir700/gitcode-release-mirror forbids `/` in GitCode tags, so
+# GitHub tags `desktop/v<ver>-build.<n>` and `android/v<ver>-build.<n>` map to
+# `desktop-v<ver>-build.<n>` and `android-v<ver>-build.<n>` on GitCode.
+#
+# Triggers (always executed on a trusted default-branch ref for `environment: mirror`):
+# - Joint Desktop releases: dispatched from dispatch-package-releases.yml on main.
+# - Standalone Desktop / Android releases: dispatched from release-desktop.yml /
+#   release-android.yml on the default branch after GitHub Release publication.
+# - Human-published GitHub Releases: `release: types: [published]` runs
+#   `redispatch-from-release` (without environment) to dispatch on the default branch.
+# - Manual retry / backfill: `workflow_dispatch` on main with `tag_name`.
+#
+# Configuration (nothing is created by this workflow):
+#   environment mirror (only the main branch may use it):
+#     secret   GITCODE_MIRROR_ACTION_SSH_KEY
+#     variable GITCODE_MIRROR_ACTION_SSH_USER
+#   repository variables:
+#     MIRROR_SSH_HOST, MIRROR_SSH_KNOWN_HOSTS, MIRROR_SSH_PORT (optional, default 22)
+#     GITCODE_OWNER, GITCODE_REPO
+#     GITCODE_ANDROID_OWNER, GITCODE_ANDROID_REPO (optional overrides for Android)
+#     UPDATE_SERVER_URL (optional, default https://release.uniclipboard.app)
+#     FLARE_RELEASE_ADMIN_URL (optional, default https://release-admin.uniclipboard.app)
+#   organization / repository secrets:
+#     GITCODE_RELEASE_TOKEN
+#     FLARE_RELEASE_ACCESS_CLIENT_ID, FLARE_RELEASE_ACCESS_CLIENT_SECRET
+
+name: Mirror release to GitCode
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      tag_name:
+        description: 'Published GitHub release tag (desktop/v<ver>-build.<n> or android/v<ver>-build.<n>)'
+        required: true
+        type: string
+      non_blocking:
+        description: 'Report problems as warnings instead of failing the run'
+        required: false
+        default: false
+        type: boolean
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Published GitHub release tag (desktop/v<ver>-build.<n> or android/v<ver>-build.<n>)'
+        required: true
+        type: string
+      non_blocking:
+        description: 'Report problems as warnings instead of failing the run'
+        required: false
+        default: false
+        type: boolean
+  release:
+    types: [published]
+
+concurrency:
+  group: gitcode-mirror-${{ inputs.tag_name || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  redispatch-from-release:
+    name: Redispatch mirror from a trusted default-branch ref
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch from default branch for mirrorable tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG_NAME" =~ ^(desktop|android)/v[0-9]+\.[0-9]+\.[0-9]+-build\.[1-9][0-9]{0,8}$ ]]; then
+            echo "Skipping GitCode mirror for non-mirrorable release tag: $TAG_NAME" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/actions/workflows/mirror-gitcode.yml/dispatches" \
+            -f "ref=$DEFAULT_BRANCH" \
+            -f "inputs[tag_name]=$TAG_NAME"
+
+          echo "Dispatched mirror-gitcode.yml for $TAG_NAME from $DEFAULT_BRANCH; this only confirms the dispatch request was accepted, not that the mirror itself will succeed." >> "$GITHUB_STEP_SUMMARY"
+
+  mirror:
+    name: Mirror release artifacts to GitCode
+    if: github.event_name != 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    # Main-only environment secret; only a run dispatched with ref=main
+    # ever reaches this job.
+    environment: mirror
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      # Not gated by `non_blocking`: a caller/tag error, not flaky infra.
+      - name: Validate release and prepare mirror sources
+        id: prepare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO_NAME: ${{ github.repository }}
+          TAG_NAME: ${{ inputs.tag_name }}
+          PUBLIC_URL: ${{ vars.UPDATE_SERVER_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p gitcode-mirror
+          python3 -B tools/release/gitcode_mirror.py prepare \
+            --repo "$REPO_NAME" \
+            --tag-name "$TAG_NAME" \
+            --public "${PUBLIC_URL:-https://release.uniclipboard.app}" \
+            --output gitcode-mirror/plan.json \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Check the mirror configuration
+        id: config
+        env:
+          NON_BLOCKING: ${{ inputs.non_blocking == true && 'true' || 'false' }}
+          PRODUCT: ${{ steps.prepare.outputs.product }}
+          MIRROR_SSH_KEY: ${{ secrets.GITCODE_MIRROR_ACTION_SSH_KEY }}
+          MIRROR_SSH_USER: ${{ vars.GITCODE_MIRROR_ACTION_SSH_USER }}
+          MIRROR_SSH_HOST: ${{ vars.MIRROR_SSH_HOST }}
+          MIRROR_SSH_KNOWN_HOSTS: ${{ vars.MIRROR_SSH_KNOWN_HOSTS }}
+          GITCODE_TOKEN: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          GITCODE_OWNER: ${{ vars.GITCODE_OWNER }}
+          GITCODE_REPO: ${{ vars.GITCODE_REPO }}
+          GITCODE_ANDROID_OWNER: ${{ vars.GITCODE_ANDROID_OWNER }}
+          GITCODE_ANDROID_REPO: ${{ vars.GITCODE_ANDROID_REPO }}
+          FLARE_RELEASE_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          FLARE_RELEASE_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          TARGET_OWNER="$GITCODE_OWNER"
+          TARGET_REPO="$GITCODE_REPO"
+          if [ "$PRODUCT" = "android" ]; then
+            TARGET_OWNER="${GITCODE_ANDROID_OWNER:-$GITCODE_OWNER}"
+            TARGET_REPO="${GITCODE_ANDROID_REPO:-$GITCODE_REPO}"
+          fi
+          missing=()
+          for name in MIRROR_SSH_KEY MIRROR_SSH_USER MIRROR_SSH_HOST MIRROR_SSH_KNOWN_HOSTS GITCODE_TOKEN TARGET_OWNER TARGET_REPO FLARE_RELEASE_ACCESS_CLIENT_ID FLARE_RELEASE_ACCESS_CLIENT_SECRET; do
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            reason="GitCode mirroring is not configured; missing ${missing[*]}"
+            if [ "$NON_BLOCKING" = "true" ]; then
+              echo "::warning title=GitCode mirror skipped::$reason"
+              echo "configured=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::$reason"
+            exit 1
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "repository=${TARGET_OWNER}/${TARGET_REPO}" >> "$GITHUB_OUTPUT"
+
+      - name: Mirror artifacts over the Shanghai host
+        id: mirror
+        if: ${{ steps.config.outputs.configured == 'true' }}
+        continue-on-error: ${{ inputs.non_blocking == true }}
+        # Shorter than the job timeout: a job timeout would fail the run even
+        # when non_blocking is true. The Action stops itself earlier still.
+        timeout-minutes: 40
+        uses: mkdir700/gitcode-release-mirror@5055ef17b7302e27ca53cbe5f6e44722f7e55f6b # v1.0.0
+        with:
+          transport: ssh
+          repository: ${{ steps.config.outputs.repository }}
+          tag: ${{ steps.prepare.outputs.gitcode_tag }}
+          token: ${{ secrets.GITCODE_RELEASE_TOKEN }}
+          prerelease: ${{ steps.prepare.outputs.prerelease }}
+          ssh-host: ${{ vars.MIRROR_SSH_HOST }}
+          ssh-user: ${{ vars.GITCODE_MIRROR_ACTION_SSH_USER }}
+          ssh-port: ${{ vars.MIRROR_SSH_PORT || '22' }}
+          ssh-key: ${{ secrets.GITCODE_MIRROR_ACTION_SSH_KEY }}
+          ssh-known-hosts: ${{ vars.MIRROR_SSH_KNOWN_HOSTS }}
+          sources: ${{ steps.prepare.outputs.sources }}
+          deadline: '2300'
+
+      # Runs even when some files failed: the Action's receipt says exactly which
+      # ones are on GitCode, and only those are registered.
+      - name: Register the verified mirrors with FlareRelease
+        id: register
+        if: ${{ always() && steps.mirror.outputs.receipt != '' }}
+        continue-on-error: ${{ inputs.non_blocking == true }}
+        env:
+          RECEIPT: ${{ steps.mirror.outputs.receipt }}
+          FLARE_RELEASE_ADMIN_URL: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
+          FLARE_RELEASE_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          FLARE_RELEASE_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          mkdir -p gitcode-mirror
+          printf '%s\n' "$RECEIPT" > gitcode-mirror/receipt.json
+          python3 -B tools/release/gitcode_mirror.py register \
+            --receipt gitcode-mirror/receipt.json \
+            --plan gitcode-mirror/plan.json \
+            --source "github-actions:${{ github.repository }}:${{ github.run_id }}" \
+            --provenance gitcode-mirror/registration-result.json
+
+      - name: Keep the mirror receipt
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitcode-mirror-receipt-${{ steps.prepare.outputs.gitcode_tag || 'failed' }}
+          path: gitcode-mirror/
+          if-no-files-found: ignore
+
+      - name: Warn that the mirror is incomplete
+        if: ${{ always() && (steps.prepare.outcome == 'failure' || steps.mirror.outcome == 'failure' || steps.register.outcome == 'failure') }}
+        env:
+          RELEASE_TAG: ${{ inputs.tag_name }}
+        run: |
+          echo "::warning title=GitCode mirror not available::The release is published from GitHub and R2. Users in mainland China are not redirected until the mirror succeeds. Run Mirror release to GitCode (mirror-gitcode.yml) on main with tag_name=$RELEASE_TAG to retry."

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android launch splash icon (dark mode): Unic pixel cat centered inside the
+     160dp safe circle of Android 12+ 288dp splash canvas, derived from assets/unic-logo.svg. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="288"
+    android:viewportHeight="288">
+    <group
+        android:translateX="61.302"
+        android:translateY="63.084"
+        android:scaleX="0.132"
+        android:scaleY="0.132">
+        <path
+            android:fillColor="#FFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M313,274H425V336H482V397H537V460H717V397H772V336H829V274H941V590H1006V663H941V725H1067V785H941V843H1006V909H941V874H878V952H376V874H313V909H247V843H313V785H186V725H313V663H247V590H313ZM392,460H457V523H392ZM797,460H862V523H797ZM454,634H521V742H454ZM733,634H801V742H733ZM565,779H689V829H653V875H601V829H565Z" />
+    </group>
+</vector>

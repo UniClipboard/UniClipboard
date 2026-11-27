@@ -43,7 +43,7 @@ const (
 // relayCoordinator manages E2EE HTTP relay client lifecycle, per-peer delivery
 // token registration, SSE mailbox subscription, inbound chunked assembly
 // (shared across HTTP and Phase 2 P2P handoff), and outbound zero-wait relay
-// uploads with Level 3 P2P handoff settlement and reverse fallback (0035).
+// uploads with Level 3 P2P handoff settlement and reverse fallback (0036).
 type relayCoordinator struct {
 	e *Engine
 

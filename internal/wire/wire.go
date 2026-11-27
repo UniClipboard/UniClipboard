@@ -90,7 +90,7 @@ type ClipAck struct {
 
 // RelayProfile advertises this device's E2EE HTTP relay mailbox and a
 // peer-specific revocable delivery token on an authenticated session where
-// both peers negotiated CapRelayProfile (0035). MailboxID and DeliveryToken
+// both peers negotiated CapRelayProfile (0036). MailboxID and DeliveryToken
 // are secrets and must never be logged.
 type RelayProfile struct {
 	T             string `json:"t"` // "relay_profile"
@@ -103,7 +103,7 @@ type RelayProfile struct {
 }
 
 // RelayHandoffOffer proposes settling an in-flight multi-chunk relay transfer
-// onto an authenticated P2P session where both peers negotiated CapRelayHandoff (0035).
+// onto an authenticated P2P session where both peers negotiated CapRelayHandoff (0036).
 type RelayHandoffOffer struct {
 	T                   string          `json:"t"` // "relay_handoff_offer"
 	V                   int             `json:"v"` // 1

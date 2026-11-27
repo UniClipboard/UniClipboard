@@ -14,13 +14,15 @@ import (
 	"github.com/BurntSushi/toml"
 
 	config "github.com/uniclipboard/unic/internal/localconfig"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 type preferences struct {
-	theme     string
-	name      string
-	analytics *bool
-	sidebar   map[string]bool
+	theme            string
+	name             string
+	analytics        *bool
+	sidebar          map[string]bool
+	protectFavorites *bool
 }
 
 func (s *Source) preferences(report *Report) preferences {
@@ -43,9 +45,18 @@ func (s *Source) preferences(report *Report) preferences {
 			Theme      string `json:"theme"`
 			Analytics  *bool  `json:"usage_analytics_enabled"`
 		} `json:"general"`
+		RetentionPolicy struct {
+			SkipPinned *bool `json:"skip_pinned"`
+		} `json:"retention_policy"`
 	}
 	if read("settings.json", &legacy) {
 		result = preferences{theme: legacy.General.Theme, name: strings.TrimSpace(legacy.General.DeviceName), analytics: legacy.General.Analytics}
+	}
+	if s.favoriteColumn {
+		// v1 defaults to protecting favorites when the field is absent.
+		skipPinned := legacy.RetentionPolicy.SkipPinned
+		protectFavorites := skipPinned == nil || *skipPinned
+		result.protectFavorites = &protectFavorites
 	}
 	var desktop struct {
 		Version int `json:"version"`
@@ -82,7 +93,7 @@ func (s *Source) preferences(report *Report) preferences {
 // importPreferences fills absent fields in the saved TOML. Encoding the effective
 // config would turn defaults into explicit settings, preventing later recovery.
 func importPreferences(ctx context.Context, target string, colors map[string]string, prefs preferences, report *Report) {
-	hasPrefs := prefs.theme != "" || prefs.name != "" || prefs.analytics != nil || len(prefs.sidebar) > 0
+	hasPrefs := prefs.theme != "" || prefs.name != "" || prefs.analytics != nil || len(prefs.sidebar) > 0 || prefs.protectFavorites != nil
 	if !hasPrefs && len(colors) == 0 {
 		return
 	}
@@ -158,6 +169,13 @@ func importPreferences(ctx context.Context, target string, colors map[string]str
 	if prefs.analytics != nil {
 		add(*prefs.analytics, "telemetry", "analytics", "enabled")
 	}
+	if prefs.protectFavorites != nil {
+		excludedTags := []string{}
+		if *prefs.protectFavorites {
+			excludedTags = append(excludedTags, plugin.TagFavorite)
+		}
+		add(excludedTags, "history", "excluded_tags")
+	}
 	for id, visible := range prefs.sidebar {
 		add(visible, "desktop", "tag_sidebar", migrationColorKey(id))
 	}
@@ -191,5 +209,5 @@ func importPreferences(ctx context.Context, target string, colors map[string]str
 			report.ColorsVerified++
 		}
 	}
-	report.PreferencesImported = imported
+	report.PreferencesImported += imported
 }

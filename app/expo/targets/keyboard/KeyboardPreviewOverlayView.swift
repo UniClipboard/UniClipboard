@@ -129,6 +129,15 @@ final class KeyboardPreviewOverlayView: UIView {
     textView.translatesAutoresizingMaskIntoConstraints = false
     textView.isEditable = false
     textView.isSelectable = true
+    textView.contentInsetAdjustmentBehavior = .never
+    #if compiler(>=6.2)
+    if #available(iOS 26.0, *) {
+      textView.topEdgeEffect.isHidden = true
+      textView.bottomEdgeEffect.isHidden = true
+      textView.leftEdgeEffect.isHidden = true
+      textView.rightEdgeEffect.isHidden = true
+    }
+    #endif
     textView.backgroundColor = KeyboardTheme.fill
     textView.layer.cornerRadius = 12
     textView.layer.cornerCurve = .continuous

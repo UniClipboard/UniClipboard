@@ -1,0 +1,2879 @@
+<!doctype html>
+<html lang="zh-CN" data-platform="ios" data-theme="light" data-seed="baseline">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>unic · 移动端首次使用引导原型（iOS & Android）</title>
+<!--
+  Interactive dual-platform mobile onboarding prototype for UniClipboard v2.
+  - iOS: iOS 26 Liquid Glass, monochrome ink accent (#15171C / #F4F2EE), systemGroupedBackground,
+    20pt inset grouped cards, 28pt SettingsIconTile, 50pt capsule buttons, native alerts & sheets.
+  - Android: Material 3 Expressive, baseline + Material You dynamic seeds (baseline / ocean / sage),
+    20dp/4dp segmented lists with 2dp gaps, 40dp tonal circular icons, 56dp M3 pill buttons,
+    M3 AlertDialog & BottomSheet, system back gesture bar.
+  Open directly in any browser. No external dependencies.
+-->
+<style>
+  /* =====================================================================
+     1. WORKBENCH & PLATFORM SEMANTIC TOKENS
+     ===================================================================== */
+  :root{
+    --stage-bg:#e8eaef;
+    --stage-dot:rgba(21,23,28,.055);
+    --bar-bg:rgba(255,255,255,.88);
+    --bar-border:#dce0e8;
+    --bar-text:#1b1d22;
+    --bar-muted:#636c7c;
+    --bar-faint:#949ca8;
+    --bar-surface:#f2f4f8;
+    --bar-accent:#15171c;
+    --bar-on-accent:#ffffff;
+    --spec-bg:#ffffff;
+    --spec-shadow:0 18px 44px -14px rgba(15,23,42,.16),0 0 0 .5px rgba(0,0,0,.08);
+
+    /* ---------- iOS Light (colors.ios.ts + iosDesignTokens.ts) ---------- */
+    --ios-bg:#ffffff;
+    --ios-grouped-bg:#f2f2f7;
+    --ios-card:#ffffff;
+    --ios-card-elevated:#ffffff;
+    --ios-fill-primary:rgba(120,120,128,.20);
+    --ios-fill-secondary:rgba(120,120,128,.16);
+    --ios-fill-tertiary:rgba(118,118,128,.12);
+    --ios-fill-quaternary:rgba(116,116,128,.08);
+    --ios-label:#000000;
+    --ios-secondary-label:rgba(60,60,67,.62);
+    --ios-tertiary-label:rgba(60,60,67,.34);
+    --ios-separator:rgba(60,60,67,.20);
+    --ios-accent:#15171c;
+    --ios-on-accent:#ffffff;
+    --ios-blue:#007aff;
+    --ios-teal:#32ade6;
+    --ios-green:#34c759;
+    --ios-status-green:#248a3d;
+    --ios-green-bg:#e6f4ea;
+    --ios-green-text:#1b5e20;
+    --ios-orange:#ff9500;
+    --ios-orange-bg:#fff4e5;
+    --ios-orange-text:#8c5400;
+    --ios-red:#ff3b30;
+    --ios-red-bg:#f9dedc;
+    --ios-red-text:#8c1d18;
+    --ios-purple:#af52de;
+    --ios-glass-bg:rgba(255,255,255,.76);
+    --ios-glass-border:rgba(0,0,0,.07);
+    --ios-glass-shadow:0 8px 24px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.88);
+    --ios-alert-bg:rgba(248,248,250,.94);
+    --ios-sheet-bg:#f2f2f7;
+    --ios-backdrop:rgba(0,0,0,.40);
+
+    /* ---------- Android M3 Expressive Light (colors.android.ts) ---------- */
+    --m3-primary:#6750a4;
+    --m3-on-primary:#ffffff;
+    --m3-primary-container:#eaddff;
+    --m3-on-primary-container:#21005d;
+    --m3-bg:#fef7ff;
+    --m3-surface-lowest:#ffffff;
+    --m3-surface-low:#f7f2fa;
+    --m3-surface-mid:#f3edf7;
+    --m3-surface-high:#ece6f0;
+    --m3-surface-highest:#e6e0e9;
+    --m3-on-surface:#1d1b20;
+    --m3-on-surface-variant:#49454f;
+    --m3-outline:#79747e;
+    --m3-outline-variant:#cac4d0;
+    --m3-ripple:rgba(29,27,32,.09);
+    --m3-scrim:rgba(0,0,0,.38);
+    --m3-error:#b3261e;
+    --m3-error-container:#f9dedc;
+    --m3-on-error-container:#410e0b;
+    --m3-warning:#8b5000;
+    --m3-warning-container:#ffdcbe;
+    --m3-on-warning-container:#2c1600;
+    --m3-success:#146c2e;
+    --m3-success-container:#c4efc6;
+    --m3-on-success-container:#002107;
+    --m3-info:#0b57d0;
+    --m3-info-container:#d3e3fd;
+    --m3-on-info-container:#041e49;
+  }
+
+  /* Android Workbench tint */
+  [data-platform=android]{
+    --stage-bg:#eceaf2;
+    --bar-bg:rgba(254,247,255,.88);
+    --bar-border:#ddd6e6;
+    --bar-accent:var(--m3-primary);
+    --bar-on-accent:var(--m3-on-primary);
+  }
+
+  /* Material You Light Seeds */
+  [data-seed=ocean]{
+    --m3-primary:#1c5fa8; --m3-on-primary:#ffffff;
+    --m3-primary-container:#d4e3ff; --m3-on-primary-container:#001c3a;
+    --m3-bg:#f8f9ff; --m3-surface-low:#f2f4fa; --m3-surface-mid:#eceef5;
+    --m3-surface-high:#e6e8ef; --m3-surface-highest:#e0e3ea;
+    --m3-on-surface:#191c20; --m3-on-surface-variant:#43474e;
+    --m3-outline:#74777f; --m3-outline-variant:#c3c6cf;
+  }
+  [data-seed=sage]{
+    --m3-primary:#35693e; --m3-on-primary:#ffffff;
+    --m3-primary-container:#b7f1ba; --m3-on-primary-container:#002109;
+    --m3-bg:#f7fbf2; --m3-surface-low:#f1f5ec; --m3-surface-mid:#ebefe6;
+    --m3-surface-high:#e5eae1; --m3-surface-highest:#e0e4db;
+    --m3-on-surface:#181d17; --m3-on-surface-variant:#424940;
+    --m3-outline:#72796f; --m3-outline-variant:#c2c9bd;
+  }
+
+  /* ---------- Dark Theme ---------- */
+  [data-theme=dark]{
+    --stage-bg:#0d0e11;
+    --stage-dot:rgba(255,255,255,.04);
+    --bar-bg:rgba(24,25,29,.90);
+    --bar-border:#2b2e36;
+    --bar-text:#eceef2;
+    --bar-muted:#9aa1ad;
+    --bar-faint:#68707d;
+    --bar-surface:#23262d;
+    --bar-accent:#f4f2ee;
+    --bar-on-accent:#15171c;
+    --spec-bg:#191b20;
+    --spec-shadow:0 20px 50px -12px rgba(0,0,0,.68),0 0 0 .5px rgba(255,255,255,.08);
+
+    --ios-bg:#000000;
+    --ios-grouped-bg:#000000;
+    --ios-card:#1c1c1e;
+    --ios-card-elevated:#2c2c2e;
+    --ios-fill-primary:rgba(120,120,128,.36);
+    --ios-fill-secondary:rgba(120,120,128,.30);
+    --ios-fill-tertiary:rgba(118,118,128,.24);
+    --ios-fill-quaternary:rgba(116,116,128,.18);
+    --ios-label:#ffffff;
+    --ios-secondary-label:rgba(235,235,245,.62);
+    --ios-tertiary-label:rgba(235,235,245,.34);
+    --ios-separator:rgba(84,84,88,.65);
+    --ios-accent:#f4f2ee;
+    --ios-on-accent:#15171c;
+    --ios-blue:#0a84ff;
+    --ios-teal:#64d2ff;
+    --ios-green:#30d158;
+    --ios-status-green:#30d158;
+    --ios-green-bg:#14331d;
+    --ios-green-text:#a5d6a7;
+    --ios-orange:#ff9f0a;
+    --ios-orange-bg:#3b2a0f;
+    --ios-orange-text:#ffd58a;
+    --ios-red:#ff453a;
+    --ios-red-bg:#4a1513;
+    --ios-red-text:#f9dedc;
+    --ios-purple:#bf5af2;
+    --ios-glass-bg:rgba(44,44,46,.76);
+    --ios-glass-border:rgba(255,255,255,.12);
+    --ios-glass-shadow:0 10px 28px rgba(0,0,0,.48), inset 0 1px 0 rgba(255,255,255,.12);
+    --ios-alert-bg:rgba(44,44,46,.94);
+    --ios-sheet-bg:#1c1c1e;
+    --ios-backdrop:rgba(0,0,0,.64);
+
+    --m3-primary:#d0bcff;
+    --m3-on-primary:#381e72;
+    --m3-primary-container:#4f378b;
+    --m3-on-primary-container:#eaddff;
+    --m3-bg:#141218;
+    --m3-surface-lowest:#0f0d13;
+    --m3-surface-low:#1d1b20;
+    --m3-surface-mid:#211f26;
+    --m3-surface-high:#2b2930;
+    --m3-surface-highest:#36343b;
+    --m3-on-surface:#e6e0e9;
+    --m3-on-surface-variant:#cac4d0;
+    --m3-outline:#938f99;
+    --m3-outline-variant:#49454f;
+    --m3-ripple:rgba(230,224,233,.12);
+    --m3-scrim:rgba(0,0,0,.60);
+    --m3-error:#f2b8b5;
+    --m3-error-container:#8c1d18;
+    --m3-on-error-container:#f9dedc;
+    --m3-warning:#ffb870;
+    --m3-warning-container:#693c00;
+    --m3-on-warning-container:#ffdcbe;
+    --m3-success:#88d98e;
+    --m3-success-container:#00531d;
+    --m3-on-success-container:#c4efc6;
+    --m3-info:#a8c7fa;
+    --m3-info-container:#0842a0;
+    --m3-on-info-container:#d3e3fd;
+  }
+  [data-theme=dark][data-platform=android]{
+    --stage-bg:#0d0c10;
+    --bar-bg:rgba(24,22,29,.90);
+    --bar-border:#2d2a34;
+    --bar-accent:var(--m3-primary);
+    --bar-on-accent:var(--m3-on-primary);
+  }
+  [data-theme=dark][data-seed=ocean]{
+    --m3-primary:#a5c8ff; --m3-on-primary:#00315f;
+    --m3-primary-container:#004786; --m3-on-primary-container:#d4e3ff;
+    --m3-bg:#111318; --m3-surface-low:#191c20; --m3-surface-mid:#1d2024;
+    --m3-surface-high:#282a2f; --m3-surface-highest:#33353a;
+    --m3-on-surface:#e2e2e9; --m3-on-surface-variant:#c3c6cf;
+    --m3-outline:#8d9199; --m3-outline-variant:#43474e;
+  }
+  [data-theme=dark][data-seed=sage]{
+    --m3-primary:#9cd49f; --m3-on-primary:#003914;
+    --m3-primary-container:#1c5128; --m3-on-primary-container:#b7f1ba;
+    --m3-bg:#101510; --m3-surface-low:#181d17; --m3-surface-mid:#1c211b;
+    --m3-surface-high:#262b25; --m3-surface-highest:#313630;
+    --m3-on-surface:#e0e4db; --m3-on-surface-variant:#c2c9bd;
+    --m3-outline:#8c9388; --m3-outline-variant:#424940;
+  }
+
+  /* =====================================================================
+     2. ACTIVE PLATFORM ALIASES (maps unified component CSS to iOS or M3)
+     ===================================================================== */
+  [data-platform=ios]{
+    --p-bg:var(--ios-grouped-bg);
+    --p-bg-plain:var(--ios-bg);
+    --p-card:var(--ios-card);
+    --p-card-soft:var(--ios-fill-quaternary);
+    --p-text:var(--ios-label);
+    --p-sub:var(--ios-secondary-label);
+    --p-faint:var(--ios-tertiary-label);
+    --p-sep:var(--ios-separator);
+    --p-accent:var(--ios-accent);
+    --p-on-accent:var(--ios-on-accent);
+    --p-accent-soft:var(--ios-fill-tertiary);
+    --p-on-accent-soft:var(--ios-label);
+    --p-green:var(--ios-status-green);
+    --p-green-bg:var(--ios-green-bg);
+    --p-green-text:var(--ios-green-text);
+    --p-orange:var(--ios-orange);
+    --p-orange-bg:var(--ios-orange-bg);
+    --p-orange-text:var(--ios-orange-text);
+    --p-red:var(--ios-red);
+    --p-red-bg:var(--ios-red-bg);
+    --p-red-text:var(--ios-red-text);
+    --p-blue:var(--ios-blue);
+    --p-font:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
+    --p-mono:"SF Mono",ui-monospace,Menlo,Monaco,monospace;
+    --p-btn-h:50px;
+    --p-btn-fs:17px;
+    --p-btn-fw:600;
+  }
+  [data-platform=android]{
+    --p-bg:var(--m3-bg);
+    --p-bg-plain:var(--m3-bg);
+    --p-card:var(--m3-surface-mid);
+    --p-card-soft:var(--m3-surface-low);
+    --p-text:var(--m3-on-surface);
+    --p-sub:var(--m3-on-surface-variant);
+    --p-faint:var(--m3-outline);
+    --p-sep:var(--m3-outline-variant);
+    --p-accent:var(--m3-primary);
+    --p-on-accent:var(--m3-on-primary);
+    --p-accent-soft:var(--m3-primary-container);
+    --p-on-accent-soft:var(--m3-on-primary-container);
+    --p-green:var(--m3-success);
+    --p-green-bg:var(--m3-success-container);
+    --p-green-text:var(--m3-on-success-container);
+    --p-orange:var(--m3-warning);
+    --p-orange-bg:var(--m3-warning-container);
+    --m3-warning-tx:var(--m3-on-warning-container);
+    --p-orange-text:var(--m3-on-warning-container);
+    --p-red:var(--m3-error);
+    --p-red-bg:var(--m3-error-container);
+    --p-red-text:var(--m3-on-error-container);
+    --p-blue:var(--m3-info);
+    --p-font:"Roboto","Noto Sans SC","PingFang SC",system-ui,-apple-system,sans-serif;
+    --p-mono:"Roboto Mono",ui-monospace,Menlo,monospace;
+    --p-btn-h:56px;
+    --p-btn-fs:16px;
+    --p-btn-fw:500;
+  }
+
+  /* =====================================================================
+     3. GLOBAL & WORKBENCH SHELL
+     ===================================================================== */
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;min-height:100vh;
+    background:var(--stage-bg);
+    background-image:radial-gradient(var(--stage-dot) 1px,transparent 1px);
+    background-size:18px 18px;
+    color:var(--bar-text);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Roboto",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    transition:background-color .22s,color .22s;
+  }
+  button{font:inherit;color:inherit;cursor:pointer}
+  svg{display:block}
+  a{color:inherit;text-decoration:none}
+
+  .toolbar{
+    position:sticky;top:0;z-index:40;display:flex;flex-direction:column;gap:8px;
+    padding:10px 24px;background:var(--bar-bg);
+    backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+    border-bottom:1px solid var(--bar-border);
+  }
+  .toolbar .line{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .toolbar b{font-size:14px;letter-spacing:-.01em}
+  .brand-pill{
+    display:inline-flex;align-items:center;gap:6px;padding:3px 10px 3px 6px;border-radius:999px;
+    background:var(--bar-accent);color:var(--bar-on-accent);font-size:11.5px;font-weight:600;
+  }
+  .brand-pill svg{width:16px;height:16px;border-radius:4px}
+  .grp{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+  .lbl{color:var(--bar-muted);font-size:12px;margin-right:3px}
+  .seg-ctrl{
+    display:inline-flex;padding:2px;border-radius:999px;
+    background:var(--bar-surface);border:1px solid var(--bar-border);gap:2px;
+  }
+  .seg-btn{
+    border:0;background:transparent;color:var(--bar-muted);
+    padding:3px 11px;border-radius:999px;font-size:11.5px;font-weight:500;transition:all .15s;
+  }
+  .seg-btn.on{background:var(--bar-accent);color:var(--bar-on-accent);font-weight:600}
+  .chip{
+    border:1px solid var(--bar-border);background:var(--spec-bg);color:var(--bar-text);
+    padding:3px 10px;border-radius:999px;font-size:11.5px;transition:all .14s;
+  }
+  .chip:hover{background:var(--bar-surface)}
+  .chip.on{background:var(--bar-accent);border-color:var(--bar-accent);color:var(--bar-on-accent);font-weight:500}
+  .sel{
+    border:1px solid var(--bar-border);background:var(--spec-bg);color:var(--bar-text);
+    border-radius:8px;padding:3px 8px;font:inherit;font-size:12px;
+  }
+  .seed-grp{display:none}
+  [data-platform=android] .seed-grp{display:flex}
+
+  .stage{
+    display:flex;gap:34px;justify-content:center;align-items:flex-start;
+    padding:26px 24px 64px;flex-wrap:wrap;
+  }
+
+  /* =====================================================================
+     4. PHONE DEVICE BEZEL & CHROME (iOS iPhone 16 Pro / Android Pixel 9)
+     ===================================================================== */
+  .bezel{
+    padding:12px;flex:none;position:relative;
+    background:linear-gradient(155deg,#2a2c31 0%,#141518 55%,#22242a 100%);
+    box-shadow:0 34px 76px -18px rgba(0,0,0,.44),0 0 0 1px rgba(255,255,255,.14) inset,0 0 0 1px rgba(0,0,0,.35);
+    transition:width .25s,border-radius .25s;
+  }
+  [data-platform=ios] .bezel{width:417px;border-radius:56px}
+  [data-platform=android] .bezel{width:424px;border-radius:46px}
+
+  .phone{
+    overflow:hidden;position:relative;display:flex;flex-direction:column;
+    background:var(--p-bg);color:var(--p-text);font-family:var(--p-font);
+    transition:background .22s,color .22s,width .25s,height .25s,border-radius .25s;
+  }
+  [data-platform=ios] .phone{width:393px;height:820px;border-radius:45px}
+  [data-platform=android] .phone{width:400px;height:836px;border-radius:35px}
+  .phone.plain-bg{background:var(--p-bg-plain)}
+
+  /* Status Bars */
+  .status-ios{
+    height:54px;padding:16px 28px 0;display:flex;align-items:center;justify-content:space-between;
+    flex:none;position:relative;z-index:6;user-select:none;
+  }
+  [data-platform=android] .status-ios{display:none}
+  .ios-time{font-size:15px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .island{
+    position:absolute;left:50%;top:11px;transform:translateX(-50%);
+    width:120px;height:34px;border-radius:20px;background:#000;
+    display:flex;align-items:center;justify-content:flex-end;padding-right:10px;
+  }
+  .island .cam{width:10px;height:10px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#273c68,#0c101d 65%)}
+  .status-ind{display:flex;align-items:center;gap:6px}
+  .status-ind svg{height:12px;width:auto}
+
+  .status-and{
+    height:40px;padding:8px 22px 0;display:none;align-items:center;justify-content:space-between;
+    flex:none;position:relative;z-index:6;user-select:none;font-size:13px;font-weight:500;
+  }
+  [data-platform=android] .status-and{display:flex}
+  .punch{
+    position:absolute;left:50%;top:12px;transform:translateX(-50%);
+    width:18px;height:18px;border-radius:50%;background:#09090b;
+    box-shadow:inset 0 0 0 2px #1c1d22;
+  }
+
+  /* Home / Gesture Indicator */
+  .bottom-ind{
+    height:24px;flex:none;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;
+    position:relative;z-index:5;
+  }
+  .bottom-ind i{
+    display:block;border-radius:999px;background:var(--p-text);transition:width .2s,opacity .2s;
+  }
+  [data-platform=ios] .bottom-ind i{width:136px;height:5px;opacity:.85}
+  [data-platform=android] .bottom-ind{height:22px;padding-bottom:7px;cursor:pointer}
+  [data-platform=android] .bottom-ind i{width:108px;height:4px;opacity:.38}
+  [data-platform=android] .bottom-ind:hover i{opacity:.65}
+
+  /* Screen & Scroll Area */
+  .screen{flex:1;display:flex;flex-direction:column;min-height:0;position:relative}
+  .scroll{
+    flex:1;overflow-y:auto;padding:4px 18px 20px;scrollbar-width:none;
+  }
+  .scroll::-webkit-scrollbar{display:none}
+  .footer{
+    flex:none;padding:12px 20px 6px;display:flex;flex-direction:column;gap:10px;
+    background:linear-gradient(to top,var(--p-bg) 78%,transparent);
+  }
+  .phone.plain-bg .footer{
+    background:linear-gradient(to top,var(--p-bg-plain) 78%,transparent);
+  }
+
+  /* =====================================================================
+     5. TOP NAV BAR (iOS Liquid Glass vs Android M3 Top App Bar)
+     ===================================================================== */
+  .nav-bar{
+    min-height:50px;padding:2px 16px;display:flex;align-items:center;justify-content:space-between;
+    flex:none;position:relative;z-index:4;gap:8px;
+  }
+  [data-platform=android] .nav-bar{min-height:56px;padding:4px 12px}
+  .nav-left,.nav-right{display:flex;align-items:center;gap:6px;z-index:1}
+  .nav-center{
+    position:absolute;left:50%;transform:translateX(-50%);
+    font-size:14px;font-weight:600;color:var(--p-sub);white-space:nowrap;
+  }
+  .step-pill{
+    display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;
+    background:var(--p-card-soft);color:var(--p-sub);font-size:12px;font-weight:600;
+    font-variant-numeric:tabular-nums;
+  }
+  [data-platform=android] .step-pill{background:var(--m3-surface-high)}
+  .step-pill .dot-active{
+    width:6px;height:6px;border-radius:50%;background:var(--p-accent);
+  }
+
+  /* Back / Icon Circle Button */
+  .icon-btn{
+    width:38px;height:38px;border-radius:50%;display:grid;place-items:center;
+    color:var(--p-text);padding:0;transition:transform .12s,background .15s,opacity .15s;
+  }
+  [data-platform=ios] .icon-btn{
+    border:1px solid var(--ios-glass-border);
+    background:var(--ios-glass-bg);
+    backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    box-shadow:var(--ios-glass-shadow);
+  }
+  [data-platform=android] .icon-btn{
+    width:44px;height:44px;border:0;background:transparent;
+  }
+  [data-platform=android] .icon-btn:hover{background:var(--m3-ripple)}
+  .icon-btn:active{transform:scale(.92)}
+  .icon-btn svg{width:19px;height:19px}
+
+  .nav-skip{
+    border:0;background:transparent;color:var(--p-sub);
+    font-size:15px;font-weight:500;padding:7px 10px;border-radius:999px;
+    transition:background .15s,color .15s;
+  }
+  .nav-skip:hover{color:var(--p-text);background:var(--p-card-soft)}
+  [data-platform=android] .nav-skip{color:var(--m3-primary);font-size:14px;font-weight:600}
+
+  /* =====================================================================
+     6. PLATFORM BUTTONS (50pt iOS Capsule / 56dp M3 Pill)
+     ===================================================================== */
+  .btn{
+    width:100%;min-height:var(--p-btn-h);border-radius:999px;border:0;padding:0 22px;
+    font-size:var(--p-btn-fs);font-weight:var(--p-btn-fw);letter-spacing:-.2px;
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    transition:transform .12s,opacity .15s,background .15s,filter .15s;
+  }
+  .btn:active:not(:disabled){transform:scale(.98)}
+  .btn:disabled{opacity:.38;cursor:default}
+  .btn.primary{background:var(--p-accent);color:var(--p-on-accent)}
+  [data-platform=android] .btn.primary:hover:not(:disabled){filter:brightness(1.06)}
+  .btn.secondary{background:var(--p-accent-soft);color:var(--p-on-accent-soft)}
+  .btn.outline{background:transparent;color:var(--p-text);border:1px solid var(--p-sep)}
+  [data-platform=android] .btn.outline{color:var(--m3-primary);border-color:var(--m3-outline)}
+  .btn.plain{background:transparent;color:var(--p-sub);min-height:42px;font-size:15px;font-weight:500}
+  [data-platform=android] .btn.plain{color:var(--m3-primary);font-size:14px;font-weight:600}
+  .btn.danger{background:var(--p-red-bg);color:var(--p-red)}
+  .btn.sm{min-height:36px;padding:0 14px;font-size:13.5px;width:auto}
+  .btn svg{width:18px;height:18px;flex:none}
+  .btn-row{display:flex;gap:10px}
+  .btn-row .btn{flex:1}
+  .foot-hint{
+    font-size:12px;line-height:17px;color:var(--p-sub);text-align:center;padding:0 8px 2px;
+  }
+
+  /* Spinner */
+  .spin{
+    width:17px;height:17px;border:2.2px solid color-mix(in srgb,currentColor 26%,transparent);
+    border-top-color:currentColor;border-radius:50%;animation:sp .75s linear infinite;flex:none;
+  }
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* =====================================================================
+     7. STAGE 1: INTRO CAROUSEL (3 Swipeable Slides + Rich Custom Artwork)
+     ===================================================================== */
+  .carousel-wrap{
+    flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;position:relative;
+    user-select:none;
+  }
+  .carousel-track{
+    flex:1;display:flex;width:300%;
+    transition:transform .42s cubic-bezier(.22,1,.36,1);
+    will-change:transform;
+  }
+  .carousel-track.dragging{transition:none}
+  .slide{
+    width:33.3333%;flex:none;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;padding:6px 26px 14px;text-align:center;
+  }
+  .art-stage{
+    width:100%;max-width:324px;height:264px;position:relative;
+    display:flex;align-items:center;justify-content:center;margin-bottom:20px;
+  }
+
+  /* Slide 1 Artwork: Brand + Floating Live Clipboard Cards */
+  .hero-orb{
+    position:absolute;width:236px;height:236px;border-radius:50%;
+    background:radial-gradient(circle,color-mix(in srgb,var(--p-accent) 13%,transparent) 0%,transparent 72%);
+    pointer-events:none;
+  }
+  .hero-emblem{
+    width:82px;height:82px;border-radius:22px;background:#000;overflow:hidden;
+    box-shadow:0 18px 36px -10px rgba(0,0,0,.32),0 0 0 1px rgba(0,0,0,.08);
+    position:relative;z-index:3;
+  }
+  [data-theme=dark] .hero-emblem{
+    box-shadow:0 18px 38px -10px rgba(0,0,0,.78),0 0 0 1px rgba(255,255,255,.18);
+  }
+  [data-platform=android] .hero-emblem{border-radius:26px}
+  .hero-emblem svg{width:100%;height:100%}
+
+  .float-card{
+    position:absolute;display:flex;align-items:center;gap:8px;
+    padding:8px 11px;border-radius:14px;
+    background:var(--p-card);color:var(--p-text);
+    box-shadow:0 10px 26px -8px rgba(0,0,0,.14),0 0 0 .5px color-mix(in srgb,var(--p-sep) 80%,transparent);
+    font-size:11.5px;line-height:1.25;text-align:left;z-index:2;
+    animation:floatY 4.6s ease-in-out infinite;
+  }
+  [data-platform=ios] .float-card{
+    background:var(--ios-glass-bg);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid var(--ios-glass-border);
+  }
+  .float-card .fc-ic{
+    width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;
+  }
+  .float-card .fc-ic svg{width:14px;height:14px}
+  .float-card b{display:block;font-size:11.5px;font-weight:600;white-space:nowrap}
+  .float-card span{display:block;font-size:10px;color:var(--p-sub);white-space:nowrap}
+  .fc-1{top:14px;left:4px;animation-delay:0s}
+  .fc-2{top:26px;right:2px;animation-delay:-1.4s}
+  .fc-3{bottom:20px;left:10px;animation-delay:-2.6s}
+  .fc-4{bottom:12px;right:8px;animation-delay:-3.7s}
+  @keyframes floatY{
+    0%,100%{transform:translateY(0px)}
+    50%{transform:translateY(-6px)}
+  }
+
+  /* Slide 2 Artwork: Cross-Device E2EE Flow */
+  .sync-scene{
+    width:100%;height:230px;position:relative;display:flex;align-items:center;justify-content:space-between;
+    padding:0 10px;
+  }
+  .dev-mock{
+    background:var(--p-card);border:1px solid color-mix(in srgb,var(--p-sep) 70%,transparent);
+    box-shadow:0 14px 30px -10px rgba(0,0,0,.14);position:relative;z-index:2;
+  }
+  .dev-mac{width:142px;height:102px;border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:6px}
+  .dev-mac::after{
+    content:"";position:absolute;bottom:-10px;left:-12px;right:-12px;height:7px;
+    border-radius:0 0 8px 8px;background:color-mix(in srgb,var(--p-text) 20%,var(--p-card));
+  }
+  .mac-dots{display:flex;gap:4px}
+  .mac-dots i{width:5px;height:5px;border-radius:50%;background:var(--p-sep);display:block}
+  .mac-line{height:7px;border-radius:4px;background:var(--p-card-soft)}
+  .mac-clip{
+    margin-top:auto;padding:6px 8px;border-radius:8px;
+    background:color-mix(in srgb,var(--p-accent) 11%,transparent);
+    font-size:10px;font-weight:600;color:var(--p-text);display:flex;align-items:center;gap:5px;
+    font-family:var(--p-mono);
+  }
+  .dev-phone{
+    width:96px;height:164px;border-radius:20px;padding:10px 8px;
+    display:flex;flex-direction:column;gap:7px;
+  }
+  .dev-phone-notch{width:32px;height:6px;border-radius:99px;background:var(--p-sep);margin:0 auto 2px}
+  .phone-toast{
+    padding:6px 7px;border-radius:10px;background:var(--p-green-bg);color:var(--p-green-text);
+    font-size:9.5px;font-weight:600;text-align:left;line-height:1.3;
+  }
+  .phone-row-skel{height:24px;border-radius:8px;background:var(--p-card-soft)}
+  .sync-bridge{
+    flex:1;position:relative;height:64px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;margin:0 -6px;
+  }
+  .sync-line{
+    width:100%;height:2px;
+    background:repeating-linear-gradient(90deg,var(--p-accent) 0 6px,transparent 6px 12px);
+    opacity:.42;
+  }
+  .sync-packet{
+    position:absolute;top:50%;left:0;transform:translateY(-50%);
+    width:10px;height:10px;border-radius:50%;background:var(--p-accent);
+    box-shadow:0 0 0 4px color-mix(in srgb,var(--p-accent) 20%,transparent);
+    animation:packetMove 2.4s ease-in-out infinite;
+  }
+  @keyframes packetMove{
+    0%{left:6%;opacity:0}
+    15%{opacity:1}
+    85%{opacity:1}
+    100%{left:88%;opacity:0}
+  }
+  .e2ee-badge{
+    position:absolute;top:-4px;display:inline-flex;align-items:center;gap:4px;
+    padding:3px 8px;border-radius:999px;
+    background:var(--p-card);border:1px solid color-mix(in srgb,var(--p-sep) 80%,transparent);
+    font-size:10px;font-weight:600;color:var(--p-green);box-shadow:0 4px 12px rgba(0,0,0,.08);
+  }
+  .e2ee-badge svg{width:11px;height:11px}
+
+  /* Slide 3 Artwork: Platform-Native Integration Preview */
+  .sys-preview{
+    width:296px;border-radius:22px;padding:14px;
+    background:var(--p-card);border:1px solid color-mix(in srgb,var(--p-sep) 70%,transparent);
+    box-shadow:0 16px 36px -12px rgba(0,0,0,.14);text-align:left;
+  }
+  .sys-preview-head{
+    display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;
+    font-size:11px;font-weight:600;color:var(--p-sub);
+  }
+  .sys-pill{
+    padding:2px 8px;border-radius:999px;font-size:10px;font-weight:600;
+    background:var(--p-green-bg);color:var(--p-green-text);
+  }
+  .mini-kb{
+    display:flex;gap:8px;padding:10px;border-radius:16px;background:var(--p-card-soft);
+  }
+  .mini-kb-rail{
+    width:28px;display:flex;flex-direction:column;gap:5px;align-items:center;justify-content:center;
+    padding:4px 0;border-radius:10px;background:var(--p-card);
+  }
+  .mini-kb-rail i{width:12px;height:12px;border-radius:4px;background:var(--p-sep);display:block}
+  .mini-kb-rail i.on{background:var(--p-accent)}
+  .mini-kb-cards{flex:1;display:flex;flex-direction:column;gap:6px}
+  .mini-kb-card{
+    padding:7px 9px;border-radius:10px;background:var(--p-card);
+    border:1px solid color-mix(in srgb,var(--p-sep) 60%,transparent);
+    font-size:11px;display:flex;align-items:center;justify-content:space-between;gap:6px;
+  }
+  .mini-kb-card .otp{font-family:var(--p-mono);font-weight:700;letter-spacing:.08em;color:#9333ea}
+  .mini-kb-card .src{font-size:9.5px;color:var(--p-sub)}
+  .mini-share-strip{
+    margin-top:10px;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:12px;
+    background:var(--p-card-soft);font-size:11px;color:var(--p-text);
+  }
+  .mini-share-ic{
+    width:26px;height:26px;border-radius:7px;background:#000;overflow:hidden;flex:none;
+  }
+  .mini-share-ic svg{width:100%;height:100%}
+
+  /* Slide Copy */
+  .slide-eyebrow{
+    display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;
+    background:var(--p-card-soft);color:var(--p-sub);font-size:11.5px;font-weight:600;
+    margin-bottom:12px;
+  }
+  .slide h1{
+    margin:0;font-size:27px;line-height:34px;font-weight:700;letter-spacing:-.01em;color:var(--p-text);
+  }
+  .slide .slogan-accent{
+    margin:6px 0 0;font-size:16px;font-weight:600;color:var(--p-accent);
+  }
+  .slide p{
+    margin:10px 0 0;font-size:15px;line-height:22px;color:var(--p-sub);max-width:316px;
+  }
+  .trust-strip{
+    margin-top:16px;display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;
+    font-size:11.5px;color:var(--p-sub);
+  }
+  .trust-strip span{display:inline-flex;align-items:center;gap:4px}
+  .trust-strip svg{width:13px;height:13px;color:var(--p-green)}
+
+  /* Carousel Dots */
+  .dots{
+    display:flex;align-items:center;justify-content:center;gap:7px;padding:8px 0 4px;flex:none;
+  }
+  .dot{
+    width:7px;height:7px;border-radius:999px;border:0;padding:0;
+    background:var(--p-sep);transition:width .24s cubic-bezier(.22,1,.36,1),background .2s;
+  }
+  .dot.on{width:22px;background:var(--p-accent)}
+
+  /* =====================================================================
+     8. GROUPED CARDS & ROWS (Adapts cleanly between iOS Inset & M3 Segmented)
+     ===================================================================== */
+  .page-head{padding:6px 2px 20px}
+  .page-head h2{
+    margin:0;font-size:26px;line-height:33px;font-weight:700;letter-spacing:-.01em;color:var(--p-text);
+  }
+  .page-head p{margin:6px 0 0;font-size:14.5px;line-height:21px;color:var(--p-sub)}
+
+  .sec-label{
+    font-size:12.5px;font-weight:600;color:var(--p-sub);padding:0 12px;margin:16px 0 7px;
+  }
+  .sec-label:first-child{margin-top:2px}
+  [data-platform=android] .sec-label{color:var(--m3-primary);padding:0 4px;font-size:13.5px}
+
+  .card-group{display:flex;flex-direction:column}
+  [data-platform=ios] .card-group{
+    background:var(--ios-card);border-radius:20px;overflow:hidden;
+    box-shadow:0 1px 2px rgba(0,0,0,.04);
+  }
+  [data-platform=android] .card-group{gap:2px}
+
+  .list-row{
+    display:flex;align-items:center;gap:12px;padding:13px 15px;min-height:56px;
+    width:100%;border:0;text-align:left;position:relative;
+    background:transparent;color:var(--p-text);transition:background .12s;
+  }
+  [data-platform=ios] .list-row + .list-row::before{
+    content:"";position:absolute;top:0;left:56px;right:0;height:.5px;background:var(--ios-separator);
+  }
+  [data-platform=ios] .list-row.tap:active{background:var(--ios-fill-tertiary)}
+
+  [data-platform=android] .list-row{
+    background:var(--m3-surface-mid);border-radius:4px;min-height:66px;padding:14px 16px;
+  }
+  [data-platform=android] .list-row:first-child{border-top-left-radius:20px;border-top-right-radius:20px}
+  [data-platform=android] .list-row:last-child{border-bottom-left-radius:20px;border-bottom-right-radius:20px}
+  [data-platform=android] .list-row.tap:hover{background:var(--m3-surface-high)}
+
+  .row-icon{
+    flex:none;display:grid;place-items:center;
+  }
+  [data-platform=ios] .row-icon{width:32px;height:32px;border-radius:8px;color:#fff}
+  [data-platform=android] .row-icon{
+    width:40px;height:40px;border-radius:50%;
+    background:var(--m3-primary-container) !important;color:var(--m3-on-primary-container) !important;
+  }
+  .row-icon svg{width:18px;height:18px}
+  .row-body{flex:1;min-width:0}
+  .row-title{
+    font-size:15.5px;line-height:21px;font-weight:600;color:var(--p-text);
+    display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  }
+  .row-sub{font-size:12.5px;line-height:17px;color:var(--p-sub);margin-top:2px}
+  .row-chev{color:var(--p-faint);flex:none}
+  .row-chev svg{width:16px;height:16px}
+
+  .tag-pill{
+    display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:999px;
+    font-size:11px;font-weight:600;white-space:nowrap;
+    background:var(--p-card-soft);color:var(--p-sub);
+  }
+  .tag-pill.ok{background:var(--p-green-bg);color:var(--p-green-text)}
+  .tag-pill.rec{background:var(--p-accent-soft);color:var(--p-on-accent-soft)}
+  .tag-pill.warn{background:var(--p-orange-bg);color:var(--p-orange-text)}
+  .tag-pill.err{background:var(--p-red-bg);color:var(--p-red-text)}
+
+  /* Callout Banner */
+  .banner{
+    display:flex;gap:10px;align-items:flex-start;padding:12px 14px;border-radius:16px;
+    margin-top:12px;font-size:12.5px;line-height:18px;
+    background:var(--p-card-soft);color:var(--p-sub);
+  }
+  [data-platform=android] .banner{background:var(--m3-surface-low)}
+  .banner.warn{background:var(--p-orange-bg);color:var(--p-orange-text)}
+  .banner.err{background:var(--p-red-bg);color:var(--p-red-text)}
+  .banner.ok{background:var(--p-green-bg);color:var(--p-green-text)}
+  .banner svg{width:17px;height:17px;flex:none;margin-top:1px}
+  .banner b{display:block;font-weight:600;margin-bottom:2px}
+
+  /* =====================================================================
+     9. STAGE 2: PAIRING FLOW (Hero Card, 6-Digit Code, Scanner, Fingerprint)
+     ===================================================================== */
+  .pair-hero-card{
+    border-radius:22px;padding:18px;margin-bottom:14px;
+    background:var(--p-card);display:flex;flex-direction:column;gap:14px;
+    border:1px solid color-mix(in srgb,var(--p-sep) 55%,transparent);
+  }
+  [data-platform=android] .pair-hero-card{border:0;background:var(--m3-surface-mid)}
+  .pair-hero-top{display:flex;align-items:center;gap:14px}
+  .pair-qr-badge{
+    width:52px;height:52px;border-radius:16px;display:grid;place-items:center;flex:none;
+    background:var(--p-accent);color:var(--p-on-accent);
+  }
+  .pair-qr-badge svg{width:26px;height:26px}
+  .pair-hero-top h3{margin:0;font-size:17px;font-weight:700;color:var(--p-text)}
+  .pair-hero-top p{margin:3px 0 0;font-size:13px;line-height:18px;color:var(--p-sub)}
+
+  /* 6-Digit Code Input */
+  .code-panel{
+    border-radius:20px;padding:18px 16px;background:var(--p-card);
+    border:1px solid color-mix(in srgb,var(--p-sep) 55%,transparent);
+  }
+  [data-platform=android] .code-panel{border:0;background:var(--m3-surface-mid)}
+  .otp-grid{
+    display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:14px 0 12px;
+  }
+  .otp-box{
+    height:54px;border-radius:14px;border:1.5px solid var(--p-sep);
+    background:var(--p-bg-plain);color:var(--p-text);
+    text-align:center;font-size:23px;font-weight:700;font-family:var(--p-mono);
+    outline:none;transition:border-color .15s,box-shadow .15s;width:100%;
+  }
+  [data-platform=android] .otp-box{background:var(--m3-surface-highest);border-color:transparent}
+  .otp-box:focus{
+    border-color:var(--p-accent);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--p-accent) 18%,transparent);
+  }
+  .code-helper{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--p-sub);
+  }
+  .link-btn{
+    border:0;background:transparent;padding:2px 0;color:var(--p-blue);
+    font-size:12.5px;font-weight:600;
+  }
+  [data-platform=android] .link-btn{color:var(--m3-primary)}
+
+  /* Generated Own Code Card */
+  .my-code-box{
+    margin-top:12px;padding:16px;border-radius:18px;background:var(--p-card-soft);text-align:center;
+  }
+  .my-code-digits{
+    font-size:32px;font-weight:800;letter-spacing:.18em;font-family:var(--p-mono);
+    color:var(--p-text);margin:6px 0 4px;padding-left:.18em;
+  }
+  .my-code-meta{font-size:12px;color:var(--p-sub);display:flex;align-items:center;justify-content:center;gap:10px}
+
+  /* Camera Scanner Overlay */
+  .scanner-view{
+    flex:1;background:#0c0d10;color:#fff;display:flex;flex-direction:column;
+    position:relative;overflow:hidden;
+  }
+  .scanner-top{
+    padding:12px 16px;display:flex;align-items:center;justify-content:space-between;z-index:2;
+  }
+  .scanner-circle{
+    width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.22);
+    background:rgba(255,255,255,.14);backdrop-filter:blur(12px);
+    color:#fff;display:grid;place-items:center;
+  }
+  .scanner-circle.on{background:#fff;color:#000}
+  .scanner-circle svg{width:18px;height:18px}
+  .scanner-mid{
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:20px;
+  }
+  .reticle{
+    width:228px;height:228px;border-radius:28px;position:relative;
+    box-shadow:0 0 0 999px rgba(0,0,0,.48);
+    display:grid;place-items:center;overflow:hidden;
+  }
+  .reticle::before{
+    content:"";position:absolute;inset:0;border-radius:28px;
+    border:2.5px solid rgba(255,255,255,.78);
+  }
+  .scan-beam{
+    position:absolute;left:14px;right:14px;height:2px;
+    background:linear-gradient(90deg,transparent,#34c759,transparent);
+    box-shadow:0 0 12px #34c759;
+    animation:scanMove 2s ease-in-out infinite;
+  }
+  @keyframes scanMove{
+    0%,100%{top:22px}
+    50%{top:202px}
+  }
+  .demo-qr-ghost{
+    width:96px;height:96px;border-radius:14px;background:rgba(255,255,255,.08);
+    border:1px dashed rgba(255,255,255,.28);display:grid;place-items:center;color:rgba(255,255,255,.5);
+  }
+  .scanner-hint{font-size:14px;color:rgba(255,255,255,.85);text-align:center;z-index:2}
+  .scanner-bottom{
+    padding:14px 20px 18px;display:flex;flex-direction:column;gap:8px;z-index:2;
+    background:linear-gradient(to top,rgba(0,0,0,.85),transparent);
+  }
+
+  /* Fingerprint Approval Card */
+  .fp-card{
+    border-radius:22px;padding:18px;background:var(--p-card);text-align:center;
+    border:1px solid color-mix(in srgb,var(--p-sep) 60%,transparent);
+  }
+  [data-platform=android] .fp-card{border:0;background:var(--m3-surface-mid)}
+  .fp-peer{
+    display:flex;align-items:center;gap:12px;text-align:left;
+    padding-bottom:14px;margin-bottom:14px;border-bottom:.5px solid var(--p-sep);
+  }
+  .fp-peer-ic{
+    width:44px;height:44px;border-radius:13px;background:var(--p-orange-bg);color:var(--p-orange);
+    display:grid;place-items:center;flex:none;
+  }
+  .fp-peer-ic svg{width:22px;height:22px}
+  .fp-peer b{display:block;font-size:16px;color:var(--p-text)}
+  .fp-peer span{font-size:12px;font-family:var(--p-mono);color:var(--p-sub)}
+  .fp-label{font-size:12px;font-weight:600;color:var(--p-sub);margin-bottom:8px}
+  .fp-value{
+    font-family:var(--p-mono);font-size:17px;line-height:27px;font-weight:700;
+    letter-spacing:.08em;color:var(--p-text);padding:12px 10px;border-radius:14px;
+    background:var(--p-card-soft);user-select:all;
+  }
+  .fp-warn{
+    margin-top:12px;font-size:12.5px;line-height:18px;color:var(--p-sub);
+  }
+
+  /* Handshake Progress Steps */
+  .hs-box{
+    border-radius:22px;padding:24px 18px;background:var(--p-card);
+    display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center;
+  }
+  .hs-steps{width:100%;display:flex;flex-direction:column;gap:10px;text-align:left;margin-top:6px}
+  .hs-step{
+    display:flex;align-items:center;gap:10px;font-size:13.5px;color:var(--p-sub);
+  }
+  .hs-step.done{color:var(--p-green)}
+  .hs-step.active{color:var(--p-text);font-weight:600}
+  .hs-step-ic{width:20px;height:20px;display:grid;place-items:center;flex:none}
+
+  /* =====================================================================
+     10. STAGE 3: CAPABILITIES & READY SUMMARY (Clean single-row cards)
+     ===================================================================== */
+  .cap-row{
+    display:flex;align-items:center;gap:12px;padding:15px 15px;min-height:70px;
+    width:100%;position:relative;background:transparent;color:var(--p-text);
+  }
+  [data-platform=ios] .cap-row + .cap-row::before{
+    content:"";position:absolute;top:0;left:59px;right:0;height:.5px;background:var(--ios-separator);
+  }
+  [data-platform=android] .cap-row{
+    background:var(--m3-surface-mid);border-radius:4px;min-height:76px;padding:15px 16px;
+  }
+  [data-platform=android] .cap-row:first-child{border-top-left-radius:20px;border-top-right-radius:20px}
+  [data-platform=android] .cap-row:last-child{border-bottom-left-radius:20px;border-bottom-right-radius:20px}
+  .cap-meta{flex:1;min-width:0}
+  .cap-title{font-size:15.5px;line-height:21px;font-weight:600;color:var(--p-text)}
+  .cap-desc{font-size:12.5px;line-height:17px;color:var(--p-sub);margin-top:2px}
+  .cap-act{flex:none}
+  .cap-pill-btn{
+    border:0;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600;
+    background:var(--p-accent);color:var(--p-on-accent);white-space:nowrap;
+    transition:transform .12s,opacity .15s;
+  }
+  .cap-pill-btn:active{transform:scale(.95)}
+  .cap-pill-btn.soft{background:var(--p-accent-soft);color:var(--p-on-accent-soft)}
+  .cap-pill-btn.ok{background:var(--p-green-bg);color:var(--p-green-text)}
+  .cap-pill-btn.warn{background:var(--p-orange-bg);color:var(--p-orange-text)}
+
+  /* Ready Screen */
+  .ready-hero{
+    display:flex;flex-direction:column;align-items:center;text-align:center;
+    padding:28px 8px 24px;
+  }
+  .ready-check{
+    width:68px;height:68px;border-radius:50%;background:var(--p-green-bg);color:var(--p-green);
+    display:grid;place-items:center;margin-bottom:16px;
+    box-shadow:0 12px 28px -8px color-mix(in srgb,var(--p-green) 35%,transparent);
+  }
+  .ready-check svg{width:34px;height:34px}
+  .ready-hero h2{margin:0;font-size:26px;font-weight:700;color:var(--p-text)}
+  .ready-hero p{margin:6px 0 0;font-size:14.5px;color:var(--p-sub);max-width:300px}
+
+  /* =====================================================================
+     11. STAGE 4: LIVE HISTORY LANDING SCREEN (iOS & Android Native Shell)
+     ===================================================================== */
+  .home-header{
+    padding:4px 18px 10px;display:flex;align-items:center;justify-content:space-between;flex:none;
+  }
+  .home-header h1{margin:0;font-size:32px;line-height:38px;font-weight:700;color:var(--p-text)}
+  [data-platform=android] .home-header h1{font-size:26px;font-weight:600}
+  .peer-status-pill{
+    display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;
+    font-size:11.5px;font-weight:600;background:var(--p-green-bg);color:var(--p-green-text);
+  }
+  .peer-status-pill.local{background:var(--p-card-soft);color:var(--p-sub)}
+  .peer-dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+  .hist-card{
+    border-radius:18px;padding:13px 14px;background:var(--p-card);margin-bottom:9px;
+    display:flex;gap:12px;align-items:flex-start;
+    border:1px solid color-mix(in srgb,var(--p-sep) 45%,transparent);
+  }
+  [data-platform=android] .hist-card{border:0;background:var(--m3-surface-mid)}
+  .hist-ic{
+    width:34px;height:34px;border-radius:10px;display:grid;place-items:center;flex:none;
+  }
+  .hist-ic svg{width:17px;height:17px}
+  .hist-body{flex:1;min-width:0}
+  .hist-text{
+    font-size:14px;line-height:19px;color:var(--p-text);font-weight:500;
+    overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  }
+  .hist-meta{
+    margin-top:5px;font-size:11.5px;color:var(--p-sub);display:flex;align-items:center;gap:7px;
+  }
+  .demo-bar{
+    margin-top:14px;padding:10px 13px;border-radius:14px;background:var(--p-card-soft);
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    font-size:12px;color:var(--p-sub);
+  }
+  .demo-bar button{
+    border:0;border-radius:999px;padding:5px 12px;background:var(--p-accent);
+    color:var(--p-on-accent);font-size:11.5px;font-weight:600;
+  }
+
+  /* Bottom Tab Chrome for History Preview */
+  .bottom-chrome{
+    flex:none;padding:8px 16px 4px;display:flex;align-items:center;gap:10px;
+  }
+  .tab-pill{
+    flex:1;height:52px;border-radius:999px;display:flex;align-items:center;justify-content:space-around;
+    padding:0 8px;
+  }
+  [data-platform=ios] .tab-pill{
+    background:var(--ios-glass-bg);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    border:1px solid var(--ios-glass-border);box-shadow:var(--ios-glass-shadow);
+  }
+  [data-platform=android] .tab-pill{
+    background:var(--m3-surface-high);box-shadow:0 6px 18px rgba(0,0,0,.14);
+  }
+  .tab-it{
+    display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;font-weight:600;
+    color:var(--p-sub);padding:4px 12px;border-radius:999px;
+  }
+  .tab-it.on{color:var(--p-accent)}
+  [data-platform=android] .tab-it.on{background:var(--m3-primary-container);color:var(--m3-on-primary-container)}
+  .tab-it svg{width:19px;height:19px}
+  .fab-btn{
+    width:52px;height:52px;border-radius:50%;border:0;background:var(--p-accent);color:var(--p-on-accent);
+    display:grid;place-items:center;box-shadow:0 8px 20px -4px rgba(0,0,0,.28);flex:none;
+  }
+  [data-platform=android] .fab-btn{border-radius:16px;background:var(--m3-primary-container);color:var(--m3-on-primary-container)}
+  .fab-btn svg{width:22px;height:22px}
+
+  /* =====================================================================
+     12. NATIVE SYSTEM OVERLAYS (iOS Alert / Sheet & Android M3 Dialog / Sheet)
+     ===================================================================== */
+  .overlay{
+    position:absolute;inset:0;z-index:25;display:flex;align-items:center;justify-content:center;
+    background:rgba(0,0,0,.42);backdrop-filter:blur(2px);padding:24px;
+    animation:fadeIn .18s ease-out;
+  }
+  .overlay.bottom{align-items:flex-end;padding:0}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+  /* iOS System Alert */
+  .ios-alert{
+    width:274px;border-radius:16px;overflow:hidden;text-align:center;
+    background:var(--ios-alert-bg);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+    box-shadow:0 18px 44px rgba(0,0,0,.28);color:var(--ios-label);
+  }
+  .ios-alert-body{padding:18px 16px 15px}
+  .ios-alert-body h4{margin:0 0 6px;font-size:16px;font-weight:600;line-height:21px}
+  .ios-alert-body p{margin:0;font-size:13px;line-height:17.5px;color:var(--ios-secondary-label)}
+  .ios-alert-acts{border-top:.5px solid var(--ios-separator);display:flex;flex-direction:column}
+  .ios-alert-acts button{
+    border:0;background:transparent;padding:12px 14px;font-size:16px;color:var(--ios-blue);
+    border-top:.5px solid var(--ios-separator);
+  }
+  .ios-alert-acts button:first-child{border-top:0}
+  .ios-alert-acts button.strong{font-weight:600}
+  .ios-alert-acts button:active{background:var(--ios-fill-tertiary)}
+
+  /* Android M3 System Dialog */
+  .m3-dialog{
+    width:316px;border-radius:28px;padding:24px;
+    background:var(--m3-surface-high);color:var(--m3-on-surface);
+    box-shadow:0 20px 48px rgba(0,0,0,.32);
+  }
+  .m3-dialog-ic{
+    width:32px;height:32px;margin:0 auto 12px;color:var(--m3-primary);display:grid;place-items:center;
+  }
+  .m3-dialog h4{margin:0 0 10px;font-size:20px;line-height:26px;font-weight:500;text-align:center}
+  .m3-dialog p{margin:0 0 20px;font-size:14px;line-height:20px;color:var(--m3-on-surface-variant)}
+  .m3-dialog-acts{display:flex;flex-direction:column;gap:8px}
+  .m3-dialog-acts.row{flex-direction:row;justify-content:flex-end}
+  .m3-dlg-btn{
+    border:0;border-radius:999px;padding:11px 18px;font-size:14px;font-weight:600;
+    background:var(--m3-primary-container);color:var(--m3-on-primary-container);
+  }
+  .m3-dlg-btn.ghost{background:transparent;color:var(--m3-primary)}
+
+  /* Bottom Sheet (iOS / M3) */
+  .sheet{
+    width:100%;max-height:84%;overflow-y:auto;padding:8px 18px 24px;
+    background:var(--p-bg);color:var(--p-text);
+    border-radius:28px 28px 0 0;box-shadow:0 -14px 40px rgba(0,0,0,.22);
+    animation:slideUp .24s cubic-bezier(.22,1,.36,1);
+  }
+  @keyframes slideUp{from{transform:translateY(36px);opacity:0}to{transform:translateY(0);opacity:1}}
+  .sheet-grabber{
+    width:38px;height:4.5px;border-radius:999px;background:var(--p-sep);margin:2px auto 12px;
+  }
+  .sheet-head{
+    display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;
+  }
+  .sheet-head h3{margin:0;font-size:18px;font-weight:700}
+
+  .guide-step{
+    display:flex;gap:12px;padding:12px 14px;border-radius:16px;background:var(--p-card);
+    margin-bottom:8px;align-items:flex-start;
+  }
+  .guide-num{
+    width:24px;height:24px;border-radius:50%;background:var(--p-accent);color:var(--p-on-accent);
+    font-size:12px;font-weight:700;display:grid;place-items:center;flex:none;margin-top:1px;
+  }
+  .guide-step b{display:block;font-size:14px;color:var(--p-text)}
+  .guide-step p{margin:2px 0 0;font-size:12.5px;line-height:17.5px;color:var(--p-sub)}
+  .guide-path{
+    display:inline-block;margin-top:5px;padding:2px 8px;border-radius:7px;
+    background:var(--p-card-soft);font-size:11.5px;font-weight:600;color:var(--p-text);
+  }
+
+  /* =====================================================================
+     13. RIGHT-HAND DESIGN SPEC & REVIEW PANEL
+     ===================================================================== */
+  .spec{
+    width:356px;max-width:100%;border-radius:20px;padding:20px;
+    background:var(--spec-bg);box-shadow:var(--spec-shadow);
+    position:sticky;top:112px;
+  }
+  .spec-top{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+  .spec-top h3{margin:0;font-size:15.5px;font-weight:700;color:var(--bar-text)}
+  .spec-key{
+    font:11px var(--p-mono);padding:2px 8px;border-radius:6px;
+    background:var(--bar-surface);color:var(--bar-muted);
+  }
+  .spec ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:7px;color:var(--bar-muted);font-size:12.5px;line-height:1.55}
+  .spec li b{color:var(--bar-text)}
+  .spec code{
+    font:11px var(--p-mono);background:var(--bar-surface);padding:1px 5px;border-radius:4px;color:var(--bar-text);
+  }
+  .spec-block{
+    margin-top:14px;padding-top:12px;border-top:1px solid var(--bar-border);
+    font-size:12px;line-height:1.6;color:var(--bar-muted);
+  }
+  .spec-block h4{margin:0 0 6px;font-size:12px;font-weight:700;color:var(--bar-text)}
+  .spec-state-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .spec-state-pill{
+    padding:3px 9px;border-radius:999px;font-size:11px;font-weight:500;
+    background:var(--bar-surface);color:var(--bar-muted);
+  }
+  .spec-state-pill.on{background:var(--p-green-bg);color:var(--p-green-text);font-weight:600}
+  .spec-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .spec-link{
+    font-size:11.5px;padding:4px 10px;border-radius:8px;
+    border:1px solid var(--bar-border);color:var(--bar-text);background:var(--bar-surface);
+  }
+  .spec-link:hover{filter:brightness(.96)}
+
+  /* Toast inside Phone */
+  .phone-toast-msg{
+    position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:30;
+    padding:8px 15px;border-radius:999px;background:var(--p-text);color:var(--p-bg-plain);
+    font-size:12.5px;font-weight:600;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.26);
+    animation:fadeIn .15s ease-out;pointer-events:none;
+  }
+
+  /* Legacy Migration Upgrade Screens */
+  .mig-visual{
+    display:flex;align-items:center;justify-content:center;gap:16px;padding:24px 0 22px;
+  }
+  .mig-legacy-box{
+    width:54px;height:54px;border-radius:15px;background:var(--p-card-soft);color:var(--p-sub);
+    display:grid;place-items:center;
+  }
+  .mig-legacy-box svg{width:24px;height:24px}
+  .mig-emblem{width:54px;height:54px;border-radius:15px;background:#000;overflow:hidden}
+  .mig-emblem svg{width:100%;height:100%}
+  .mig-head-center{text-align:center;padding:0 10px 22px}
+  .mig-head-center h2{margin:0;font-size:26px;line-height:33px;font-weight:700;color:var(--p-text)}
+  .mig-head-center p{margin:6px 0 0;font-size:14.5px;line-height:21px;color:var(--p-sub)}
+  .mig-bar-track{
+    width:100%;height:6px;border-radius:999px;background:var(--p-card-soft);overflow:hidden;
+  }
+  .mig-bar-fill{
+    height:100%;border-radius:999px;background:var(--p-accent);transition:width .12s linear;
+  }
+  .mig-bar-fill.verify{background:var(--p-green)}
+  .mig-counter-row{
+    width:100%;display:flex;align-items:center;justify-content:space-between;
+    font-size:12.5px;color:var(--p-sub);margin-top:6px;font-variant-numeric:tabular-nums;
+  }
+  .mig-metrics{
+    display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%;
+  }
+  .mig-metric{
+    border-radius:18px;padding:14px 16px;background:var(--p-card);
+  }
+  [data-platform=android] .mig-metric{background:var(--m3-surface-mid)}
+  .mig-metric b{display:block;font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--p-text)}
+  .mig-metric span{display:block;font-size:12.5px;color:var(--p-sub);margin-top:3px}
+</style>
+</head>
+<body>
+
+<!-- ==================== WORKBENCH TOOLBAR ==================== -->
+<div class="toolbar">
+  <div class="line">
+    <span class="brand-pill">
+      <svg viewBox="0 0 1254 1254"><rect width="1254" height="1254" fill="#000"/><path fill="#fff" fill-rule="evenodd" d="M313 274H425V336H482V397H537V460H717V397H772V336H829V274H941V590H1006V663H941V725H1067V785H941V843H1006V909H941V874H878V952H376V874H313V909H247V843H313V785H186V725H313V663H247V590H313ZM392 460H457V523H392ZM797 460H862V523H797ZM454 634H521V742H454ZM733 634H801V742H733ZM565 779H689V829H653V875H601V829H565Z"/></svg>
+      UniClipboard
+    </span>
+    <b>移动端首次使用引导原型</b>
+
+    <div class="grp">
+      <span class="lbl">场景</span>
+      <div class="seg-ctrl">
+        <button class="seg-btn on" data-entry-btn="fresh">全新安装</button>
+        <button class="seg-btn" data-entry-btn="upgrade">旧版升级</button>
+      </div>
+    </div>
+
+    <div class="grp">
+      <span class="lbl">平台</span>
+      <div class="seg-ctrl">
+        <button class="seg-btn on" data-platform-btn="ios">iOS · Liquid Glass</button>
+        <button class="seg-btn" data-platform-btn="android">Android · M3 Expressive</button>
+      </div>
+    </div>
+
+    <div class="grp">
+      <span class="lbl">外观</span>
+      <div class="seg-ctrl">
+        <button class="seg-btn on" data-theme-btn="light">浅色</button>
+        <button class="seg-btn" data-theme-btn="dark">深色</button>
+      </div>
+    </div>
+
+    <div class="grp seed-grp">
+      <span class="lbl">Material You</span>
+      <button class="chip on" data-seed-btn="baseline">品牌紫</button>
+      <button class="chip" data-seed-btn="ocean">海湾蓝</button>
+      <button class="chip" data-seed-btn="sage">青苔绿</button>
+    </div>
+
+    <div class="grp">
+      <span class="lbl">配对模拟</span>
+      <select class="sel" id="simPair">
+        <option value="ok">正常配对（MacBook Pro）</option>
+        <option value="expired">配对码已过期</option>
+        <option value="offline">对方设备离线</option>
+        <option value="no-cam">相机权限被拒</option>
+      </select>
+    </div>
+
+    <button class="chip" id="restartBtn">从头演示</button>
+  </div>
+
+  <div class="line">
+    <div class="grp" id="jumps"><span class="lbl">步骤跳转</span></div>
+  </div>
+</div>
+
+<!-- ==================== STAGE ==================== -->
+<div class="stage">
+  <div class="bezel">
+    <div class="phone" id="phone">
+      <!-- iOS Status Bar -->
+      <div class="status-ios">
+        <span class="ios-time">9:41</span>
+        <div class="island"><span class="cam"></span></div>
+        <div class="status-ind" aria-hidden="true">
+          <svg viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 4.2a9.5 9.5 0 0 1 13 0M4.2 7a5.8 5.8 0 0 1 7.6 0"/><circle cx="8" cy="10.2" r="1.2" fill="currentColor" stroke="none"/></svg>
+          <svg viewBox="0 0 26 12" fill="none"><rect x=".75" y=".75" width="21.5" height="10.5" rx="3" stroke="currentColor" stroke-opacity=".4" stroke-width="1.2"/><rect x="2.4" y="2.4" width="17" height="7.2" rx="1.6" fill="currentColor"/><path d="M23.5 4.2v3.6a1.4 1.4 0 0 0 0-3.6z" fill="currentColor" fill-opacity=".45"/></svg>
+        </div>
+      </div>
+
+      <!-- Android Status Bar -->
+      <div class="status-and">
+        <span>9:41</span>
+        <div class="punch" aria-hidden="true"></div>
+        <div class="status-ind" aria-hidden="true" style="font-size:11.5px;font-weight:600">
+          <span>5G</span>
+          <svg viewBox="0 0 16 12" fill="currentColor"><path d="M1 11h14V1z" fill-opacity=".28"/><path d="M1 11h10V3.8z"/></svg>
+          <svg viewBox="0 0 14 12" fill="currentColor"><path d="M4.5 1h5v1H11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h1.5z"/></svg>
+        </div>
+      </div>
+
+      <!-- Dynamic Screen Content -->
+      <div class="screen" id="screen"></div>
+
+      <!-- Home / Gesture Indicator -->
+      <div class="bottom-ind" id="sysBack" title="Android 模式下点击可模拟系统返回手势"><i></i></div>
+    </div>
+  </div>
+
+  <!-- Right Spec Panel -->
+  <aside class="spec" id="spec"></aside>
+</div>
+
+<script>
+/* =====================================================================
+   ICONS
+   ===================================================================== */
+const I = {
+  brand:'<svg viewBox="0 0 1254 1254" aria-label="UniClipboard"><rect width="1254" height="1254" fill="#000"/><path fill="#fff" fill-rule="evenodd" d="M313 274H425V336H482V397H537V460H717V397H772V336H829V274H941V590H1006V663H941V725H1067V785H941V843H1006V909H941V874H878V952H376V874H313V909H247V843H313V785H186V725H313V663H247V590H313ZM392 460H457V523H392ZM797 460H862V523H797ZM454 634H521V742H454ZM733 634H801V742H733ZM565 779H689V829H653V875H601V829H565Z"/></svg>',
+  chevL:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
+  arrowL:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
+  chevR:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
+  x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v6c0 4.8 3.2 7.8 7.5 9 4.3-1.2 7.5-4.2 7.5-9V6z"/><path d="m9 12 2 2 4-4"/></svg>',
+  lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2.2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+  qr:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.2"/><rect x="14" y="3" width="7" height="7" rx="1.2"/><rect x="3" y="14" width="7" height="7" rx="1.2"/><path d="M14 14h3v3h-3zM20 14v3M14 20h6M20 20h.01"/></svg>',
+  keypad:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="4" height="4" rx="1"/><rect x="10" y="4" width="4" height="4" rx="1"/><rect x="16" y="4" width="4" height="4" rx="1"/><rect x="4" y="10" width="4" height="4" rx="1"/><rect x="10" y="10" width="4" height="4" rx="1"/><rect x="16" y="10" width="4" height="4" rx="1"/><rect x="10" y="16" width="4" height="4" rx="1"/></svg>',
+  laptop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20"/></svg>',
+  devices:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="14" height="10" rx="1.5"/><path d="M6 18h6"/><rect x="17" y="8" width="5" height="11" rx="1.2"/></svg>',
+  paste:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2.5" width="8" height="4" rx="1.2"/><path d="M16 4.5h2a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2h2"/><path d="m9 13.5 2 2 4-4.2"/></svg>',
+  keyboard:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M6 9h.01M10 9h.01M14 9h.01M18 9h.01M6 12.5h.01M10 12.5h.01M14 12.5h.01M18 12.5h.01M8 16h8"/></svg>',
+  share:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 1 1 12 0c0 5 2 6.5 2 6.5H4s2-1.5 2-6.5"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>',
+  battery:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="18" height="10" rx="2"/><path d="M22 10.5v3M11.5 9.5 9.5 12.5h3l-2 3"/></svg>',
+  flash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>',
+  warn:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 19.5h19z"/><path d="M12 10v4M12 17h.01"/></svg>',
+  info:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  type:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></svg>',
+  link:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.1 0l2.8-2.8a5 5 0 0 0-7.1-7.1L11.2 4.7M14 11a5 5 0 0 0-7.1 0l-2.8 2.8a5 5 0 0 0 7.1 7.1l1.6-1.6"/></svg>',
+  image:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.5"/><path d="m21 16-5-5L6 20"/></svg>',
+  file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  db:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg>',
+  folder:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4.2l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+  arrowR:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+};
+
+/* =====================================================================
+   APPLICATION STATE
+   ===================================================================== */
+const S = {
+  platform: 'ios',      // 'ios' | 'android'
+  entry: 'fresh',       // 'fresh' | 'upgrade'
+  step: 'intro',        // intro | pair | ... | mig-detected | mig-progress | mig-done
+  slide: 0,             // 0 | 1 | 2
+  torch: false,
+  code: ['', '', '', '', '', ''],
+  showMyCode: false,
+  hsStage: 0,           // 0 resolving | 1 connecting | 2 handshaking
+  pairErr: '',
+  pairedDevice: null,   // { name, id, fingerprint }
+  migPhase: 'import',   // 'import' | 'verify'
+  migCount: 0,
+  migTotal: 328,
+  migratedCount: 0,
+  // Platform capabilities state
+  caps: {
+    iosPaste: 'unset',      // 'unset' | 'allowed' | 'denied'
+    iosKeyboard: 'unset',   // 'unset' | 'ready'
+    andNotify: 'unset',     // 'unset' | 'allowed' | 'denied'
+    andBattery: 'unset',    // 'unset' | 'allowed' | 'denied'
+  },
+  modal: null,          // null | 'ios-paste-alert' | 'ios-paste-guide' | 'ios-kb-sheet' | 'ios-share-sheet' | 'and-notify-dlg' | 'and-battery-dlg' | 'and-bg-sheet' | 'cam-denied'
+  toast: '',
+  timer: null,
+  toastTimer: null,
+};
+
+const PEER_DEMO = {
+  name: 'MacBook Pro · 工作室',
+  id: 'dev_9a4f38c2…e81b',
+  fingerprint: 'A4F2 81C0 3D9B 7E14\n6C2A 0F88 5B31 E94D',
+};
+
+const $ = sel => document.querySelector(sel);
+const isIOS = () => S.platform === 'ios';
+const simPair = () => $('#simPair').value;
+
+function clearTimers() {
+  if (S.timer) { clearTimeout(S.timer); clearInterval(S.timer); S.timer = null; }
+}
+
+function showToast(msg) {
+  S.toast = msg;
+  if (S.toastTimer) clearTimeout(S.toastTimer);
+  render();
+  S.toastTimer = setTimeout(() => { S.toast = ''; render(); }, 2000);
+}
+
+function clearToast() {
+  if (S.toastTimer) { clearTimeout(S.toastTimer); S.toastTimer = null; }
+  S.toast = '';
+}
+
+function go(step, opts = {}) {
+  clearTimers();
+  clearToast();
+  S.step = step;
+  S.modal = null;
+  if (opts.slide !== undefined) S.slide = opts.slide;
+  if (step !== 'pair-code') S.pairErr = '';
+  render();
+  onEnter(step);
+}
+
+function onEnter(step) {
+  if (step === 'pair-scan') {
+    if (simPair() === 'no-cam') {
+      S.modal = 'cam-denied';
+      render();
+      return;
+    }
+    S.timer = setTimeout(() => {
+      startHandshake();
+    }, 1700);
+  }
+  if (step === 'pair-handshake') {
+    S.hsStage = 0;
+    render();
+    S.timer = setTimeout(() => {
+      S.hsStage = 1;
+      render();
+      S.timer = setTimeout(() => {
+        const mode = simPair();
+        if (mode === 'expired') {
+          S.pairErr = '该配对码已过期，请在另一台设备重新生成 6 位配对码。';
+          return go('pair-code');
+        }
+        if (mode === 'offline') {
+          S.pairErr = '暂时无法联系到对方设备。请确认另一台设备已打开 UniClipboard 且网络正常。';
+          return go('pair-code');
+        }
+        S.hsStage = 2;
+        render();
+        S.timer = setTimeout(() => go('pair-approve'), 750);
+      }, 800);
+    }, 650);
+  }
+  if (step === 'mig-progress') {
+    S.migPhase = 'import';
+    S.migCount = 0;
+    render();
+    S.timer = setInterval(() => {
+      S.migCount = Math.min(S.migTotal, S.migCount + 22);
+      const fill = $('#migFill');
+      const cnt = $('#migCnt');
+      if (fill) fill.style.width = `${Math.round((S.migCount / S.migTotal) * 100)}%`;
+      if (cnt) cnt.textContent = `${S.migCount} / ${S.migTotal}`;
+      if (S.migCount >= S.migTotal) {
+        if (S.migPhase === 'import') {
+          S.migPhase = 'verify';
+          S.migCount = 0;
+          render();
+        } else {
+          S.migratedCount = S.migTotal;
+          go('mig-done');
+        }
+      }
+    }, 85);
+  }
+}
+
+function startHandshake() {
+  S.pairErr = '';
+  go('pair-handshake');
+}
+
+/* =====================================================================
+   SHARED CHROME HELPERS
+   ===================================================================== */
+function backIcon() { return isIOS() ? I.chevL : I.arrowL; }
+
+function navBar({ backAct = null, center = '', rightLabel = '', rightAct = null }) {
+  return `<div class="nav-bar">
+    <div class="nav-left">
+      ${backAct ? `<button class="icon-btn" data-act="${backAct}" aria-label="返回">${backIcon()}</button>` : ''}
+    </div>
+    ${center ? `<div class="nav-center">${center}</div>` : ''}
+    <div class="nav-right">
+      ${rightLabel ? `<button class="nav-skip" data-act="${rightAct}">${rightLabel}</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function stepPill(n, total, label) {
+  return `<span class="step-pill"><i class="dot-active"></i>${n} / ${total} · ${label}</span>`;
+}
+
+/* =====================================================================
+   SCREEN 1: INTRO CAROUSEL (3 SLIDES)
+   ===================================================================== */
+function introSlide3Art() {
+  if (isIOS()) {
+    return `<div class="sys-preview">
+      <div class="sys-preview-head">
+        <span>Unic 键盘扩展 · iOS</span>
+        <span class="sys-pill">点一下即粘贴</span>
+      </div>
+      <div class="mini-kb">
+        <div class="mini-kb-rail"><i class="on"></i><i></i><i></i><i></i></div>
+        <div class="mini-kb-cards">
+          <div class="mini-kb-card">
+            <div><div class="otp">482 917</div><div class="src">验证码 · 来自 MacBook Pro</div></div>
+            <span class="tag-pill rec">填入</span>
+          </div>
+          <div class="mini-kb-card">
+            <div><div style="font-weight:600">uniclipboard.app/docs</div><div class="src">链接 · 1 分钟前</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="mini-share-strip">
+        <div class="mini-share-ic">${I.brand}</div>
+        <div style="flex:1"><b>系统分享菜单</b><div style="font-size:10px;color:var(--p-sub)">从相册或浏览器一键发回电脑</div></div>
+        <span style="color:var(--p-faint);width:14px">${I.chevR}</span>
+      </div>
+    </div>`;
+  }
+  return `<div class="sys-preview">
+    <div class="sys-preview-head">
+      <span>Android 系统衔接</span>
+      <span class="sys-pill">开箱即用</span>
+    </div>
+    <div class="mini-kb-cards" style="margin-bottom:10px">
+      <div class="mini-kb-card" style="padding:9px 11px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:24px;height:24px;border-radius:50%;background:var(--m3-primary-container);color:var(--m3-on-primary-container);display:grid;place-items:center">${I.bell}</span>
+          <div><div style="font-weight:600">后台同步运行中</div><div class="src">已连接 MacBook Pro · 刚收到 1 条内容</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="mini-share-strip" style="margin-top:0">
+      <div class="mini-share-ic">${I.brand}</div>
+      <div style="flex:1"><b>选中文字 / 系统分享</b><div style="font-size:10px;color:var(--p-sub)">在任意 App 菜单选择「发送到 Unic」</div></div>
+      <span class="tag-pill ok">无需权限</span>
+    </div>
+  </div>`;
+}
+
+function renderIntro() {
+  const s3Title = isIOS() ? '随手粘贴与分享' : '分享与后台衔接';
+  const s3Body = isIOS()
+    ? '切到 Unic 键盘一键粘贴，或点「分享」发回电脑。'
+    : '选中文字或系统分享即刻发送，后台自动接收。';
+
+  const isLast = S.slide === 2;
+  return `
+    ${navBar({
+      rightLabel: '跳过',
+      rightAct: 'skip-all',
+    })}
+    <div class="carousel-wrap" id="carousel">
+      <div class="carousel-track" id="track" style="transform:translateX(-${S.slide * 33.3333}%)">
+        <!-- Slide 1 -->
+        <div class="slide">
+          <div class="art-stage">
+            <div class="hero-orb"></div>
+            <div class="hero-emblem">${I.brand}</div>
+            <div class="float-card fc-1">
+              <div class="fc-ic" style="background:rgba(0,122,255,.14);color:#007aff">${I.type}</div>
+              <div><b>会议要点</b><span>文本</span></div>
+            </div>
+            <div class="float-card fc-2">
+              <div class="fc-ic" style="background:rgba(50,173,230,.15);color:#0284c7">${I.link}</div>
+              <div><b>github.com/unic</b><span>链接</span></div>
+            </div>
+            <div class="float-card fc-3">
+              <div class="fc-ic" style="background:rgba(52,199,89,.15);color:#248a3d">${I.image}</div>
+              <div><b>截图.png</b><span>图片</span></div>
+            </div>
+            <div class="float-card fc-4">
+              <div class="fc-ic" style="background:rgba(255,149,0,.15);color:#d97706">${I.file}</div>
+              <div><b>清单.pdf</b><span>文件</span></div>
+            </div>
+          </div>
+          <h1>欢迎使用 UniClipboard</h1>
+          <div class="slogan-accent">让每一次复制更有用</div>
+          <div class="trust-strip" style="margin-top:20px">
+            <span>${I.shield} 无需账号</span>
+            <span>${I.lock} 端到端加密</span>
+          </div>
+        </div>
+
+        <!-- Slide 2 -->
+        <div class="slide">
+          <div class="art-stage">
+            <div class="sync-scene">
+              <div class="dev-mock dev-mac">
+                <div class="mac-dots"><i></i><i></i><i></i></div>
+                <div class="mac-line" style="width:76%"></div>
+                <div class="mac-line" style="width:52%"></div>
+                <div class="mac-clip">⌘C · git push</div>
+              </div>
+              <div class="sync-bridge">
+                <div class="e2ee-badge">${I.lock} E2EE</div>
+                <div class="sync-line"></div>
+                <div class="sync-packet"></div>
+              </div>
+              <div class="dev-mock dev-phone">
+                <div class="dev-phone-notch"></div>
+                <div class="phone-toast">✓ 来自 Mac</div>
+                <div class="phone-row-skel"></div>
+                <div class="phone-row-skel" style="opacity:.6"></div>
+              </div>
+            </div>
+          </div>
+          <h1>设备间自由流动</h1>
+          <p>电脑复制，手机即用；点对点加密直传，不经云端。</p>
+        </div>
+
+        <!-- Slide 3 -->
+        <div class="slide">
+          <div class="art-stage">
+            ${introSlide3Art()}
+          </div>
+          <h1>${s3Title}</h1>
+          <p>${s3Body}</p>
+        </div>
+      </div>
+
+      <div class="dots" role="tablist" aria-label="引导进度">
+        ${[0, 1, 2].map(idx => `<button class="dot ${S.slide === idx ? 'on' : ''}" data-slide="${idx}" aria-label="第 ${idx + 1} 页"></button>`).join('')}
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn primary" id="intro-primary" data-act="${isLast ? 'go-pair' : 'next-slide'}">${isLast ? '开始配置' : '下一步'}</button>
+      <div class="intro-secondary-slot" id="intro-secondary" style="height:44px;display:flex;align-items:center;transition:opacity .26s cubic-bezier(.2,.8,.2,1),transform .26s cubic-bezier(.2,.8,.2,1);opacity:${isLast ? '1' : '0'};transform:translateY(${isLast ? '0' : '6px'});pointer-events:${isLast ? 'auto' : 'none'}">
+        <button class="btn plain" data-act="skip-all" ${isLast ? '' : 'tabindex="-1"'}>先进入历史</button>
+      </div>
+    </div>`;
+}
+
+/* =====================================================================
+   SCREEN 2: DEVICE PAIRING (ENTRY / SCANNER / CODE / HANDSHAKE / APPROVE / SUCCESS)
+   ===================================================================== */
+function renderPairEntry() {
+  return `
+    ${navBar({
+      backAct: 'back-intro',
+      center: stepPill(1, 2, '连接设备'),
+      rightLabel: '跳过',
+      rightAct: 'go-caps',
+    })}
+    <div class="scroll">
+      <div class="page-head">
+        <h2>连接另一台设备</h2>
+        <p>在电脑或另一台手机打开「添加设备」即可配对。</p>
+      </div>
+
+      <div class="pair-hero-card">
+        <div class="pair-hero-top">
+          <div class="pair-qr-badge">${I.qr}</div>
+          <div>
+            <h3>扫描配对二维码</h3>
+            <p>扫码后核对指纹即可同步</p>
+          </div>
+        </div>
+        <button class="btn primary" data-act="open-scan">${I.qr} 扫码配对</button>
+      </div>
+
+      <div class="card-group">
+        <button class="list-row tap" data-act="open-code">
+          <div class="row-icon" style="background:#007aff">${I.keypad}</div>
+          <div class="row-body">
+            <div class="row-title">输入 6 位配对码</div>
+            <div class="row-sub">也支持粘贴一次性票据</div>
+          </div>
+          <span class="row-chev">${I.chevR}</span>
+        </button>
+
+        <button class="list-row tap" data-act="toggle-my-code">
+          <div class="row-icon" style="background:#34c759">${I.devices}</div>
+          <div class="row-body">
+            <div class="row-title">本机生成配对码</div>
+            <div class="row-sub">${S.showMyCode ? '收起配对码' : '在电脑上输入这台手机的配对码'}</div>
+          </div>
+          <span class="row-chev">${I.chevR}</span>
+        </button>
+      </div>
+
+      ${S.showMyCode ? `
+        <div class="my-code-box">
+          <div class="my-code-digits">739 406</div>
+          <div class="my-code-meta">
+            <span>04:58</span>
+            <button class="link-btn" data-act="copy-my-code">复制</button>
+            <button class="link-btn" data-act="sim-peer-joined">模拟对方输入 →</button>
+          </div>
+        </div>` : ''}
+    </div>
+
+    <div class="footer">
+      <button class="btn secondary" data-act="go-caps">暂不配对</button>
+    </div>`;
+}
+
+function renderPairScan() {
+  return `<div class="scanner-view">
+    <div class="scanner-top">
+      <button class="scanner-circle" data-act="go-pair" aria-label="关闭扫描">${I.x}</button>
+      <span style="font-size:16px;font-weight:600">扫码配对</span>
+      <button class="scanner-circle ${S.torch ? 'on' : ''}" data-act="toggle-torch" aria-label="手电筒">${I.flash}</button>
+    </div>
+    <div class="scanner-mid">
+      <div class="reticle">
+        <div class="scan-beam"></div>
+        <div class="demo-qr-ghost">${I.qr}</div>
+      </div>
+      <div class="scanner-hint">
+        对准另一台设备的配对二维码<br>
+        <span style="font-size:12px;opacity:.65">演示：自动识别 MacBook Pro…</span>
+      </div>
+    </div>
+    <div class="scanner-bottom">
+      <button class="btn secondary" style="background:rgba(255,255,255,.16);color:#fff" data-act="open-code">改为输入配对码</button>
+    </div>
+  </div>`;
+}
+
+function renderPairCode() {
+  const filled = S.code.every(ch => /^\d$/.test(ch));
+  return `
+    ${navBar({
+      backAct: 'go-pair',
+      rightLabel: '跳过',
+      rightAct: 'go-caps',
+    })}
+    <div class="scroll">
+      <div class="page-head">
+        <h2>输入 6 位配对码</h2>
+        <p>在另一台设备的「添加设备」中查看。</p>
+      </div>
+
+      <div class="code-panel">
+        <div class="otp-grid" style="margin-top:4px">
+          ${S.code.map((val, idx) => `
+            <input class="otp-box" type="tel" inputmode="numeric" maxlength="1"
+              data-otp="${idx}" value="${val}" aria-label="第 ${idx + 1} 位数字">`).join('')}
+        </div>
+        <div class="code-helper">
+          <span>支持粘贴配对票据</span>
+          <button class="link-btn" data-act="fill-demo-code">填入 482 917</button>
+        </div>
+      </div>
+
+      ${S.pairErr ? `
+        <div class="banner err">
+          ${I.warn}
+          <div>${S.pairErr}</div>
+        </div>` : ''}
+    </div>
+
+    <div class="footer">
+      <button class="btn primary" id="connectBtn" data-act="submit-code" ${filled ? '' : 'disabled'}>连接</button>
+      <button class="btn plain" data-act="open-scan">改为扫码</button>
+    </div>`;
+}
+
+function renderPairHandshake() {
+  const labels = ['查找设备', '建立加密连接', '验证设备身份'];
+  return `
+    ${navBar({
+      backAct: 'go-pair',
+      center: stepPill(1, 2, '连接中'),
+    })}
+    <div class="scroll" style="display:flex;flex-direction:column;justify-content:center">
+      <div class="hs-box">
+        <div class="spin" style="width:32px;height:32px;border-width:3px;color:var(--p-accent)"></div>
+        <h3 style="margin:0;font-size:19px;font-weight:700">正在连接…</h3>
+        <div class="hs-steps">
+          ${labels.map((lb, i) => {
+            const st = i < S.hsStage ? 'done' : i === S.hsStage ? 'active' : '';
+            return `<div class="hs-step ${st}">
+              <span class="hs-step-ic">${st === 'done' ? I.check : st === 'active' ? '<span class="spin" style="width:14px;height:14px"></span>' : '•'}</span>
+              <span>${lb}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="footer">
+      <button class="btn secondary" data-act="go-pair">取消</button>
+    </div>`;
+}
+
+function renderPairApprove() {
+  return `
+    ${navBar({
+      backAct: 'go-pair',
+      center: stepPill(1, 2, '核对指纹'),
+    })}
+    <div class="scroll">
+      <div class="page-head">
+        <h2>核对配对指纹</h2>
+        <p>确认另一台设备显示相同指纹后再批准。</p>
+      </div>
+
+      <div class="fp-card">
+        <div class="fp-peer">
+          <div class="fp-peer-ic">${I.laptop}</div>
+          <div>
+            <b>${PEER_DEMO.name}</b>
+            <span>${PEER_DEMO.id}</span>
+          </div>
+        </div>
+        <div class="fp-label">配对指纹</div>
+        <div class="fp-value">${PEER_DEMO.fingerprint.replace('\n', '<br>')}</div>
+        <div class="fp-warn">仅在双方屏幕完全一致时批准</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn primary" data-act="approve-pair">批准并同步</button>
+      <button class="btn danger" data-act="reject-pair">拒绝</button>
+    </div>`;
+}
+
+function renderPairSuccess() {
+  return `
+    ${navBar({
+      center: stepPill(1, 2, '已连接'),
+    })}
+    <div class="scroll" style="display:flex;flex-direction:column;justify-content:center">
+      <div class="ready-hero">
+        <div class="ready-check">${I.check}</div>
+        <h2>已连接 ${PEER_DEMO.name}</h2>
+        <p>端到端加密同步已就绪。</p>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn primary" data-act="go-caps">下一步</button>
+      <button class="btn plain" data-act="go-ready">直接完成</button>
+    </div>`;
+}
+
+/* =====================================================================
+   SCREEN 3: PLATFORM CAPABILITIES (iOS vs Android - Single-Glance Rows)
+   ===================================================================== */
+function renderCapabilities() {
+  if (isIOS()) {
+    const pasteDone = S.caps.iosPaste === 'allowed';
+    const pasteDenied = S.caps.iosPaste === 'denied';
+    const kbDone = S.caps.iosKeyboard === 'ready';
+
+    return `
+      ${navBar({
+        backAct: S.pairedDevice ? 'go-pair-success' : 'go-pair',
+        center: stepPill(2, 2, '系统能力'),
+        rightLabel: '跳过',
+        rightAct: 'go-ready',
+      })}
+      <div class="scroll">
+        <div class="page-head">
+          <h2>让 Unic 更顺手</h2>
+          <p>按需开启，随时可在「设置」中调整。</p>
+        </div>
+
+        <div class="card-group">
+          <div class="cap-row">
+            <div class="row-icon" style="background:#007aff">${I.paste}</div>
+            <div class="cap-meta">
+              <div class="cap-title">粘贴时不再询问</div>
+              <div class="cap-desc">切回 Unic 自动读取，不再弹窗</div>
+            </div>
+            <div class="cap-act">
+              ${pasteDone
+                ? `<button class="cap-pill-btn ok" data-act="open-ios-paste-guide">已允许</button>`
+                : pasteDenied
+                  ? `<button class="cap-pill-btn warn" data-act="open-ios-paste-guide">去设置</button>`
+                  : `<button class="cap-pill-btn" data-act="trigger-ios-paste">开启</button>`}
+            </div>
+          </div>
+
+          <div class="cap-row">
+            <div class="row-icon" style="background:#af52de">${I.keyboard}</div>
+            <div class="cap-meta">
+              <div class="cap-title">Unic 键盘</div>
+              <div class="cap-desc">任意 App 一键粘贴同步内容</div>
+            </div>
+            <div class="cap-act">
+              <button class="cap-pill-btn ${kbDone ? 'ok' : 'soft'}" data-act="open-ios-kb">${kbDone ? '已就绪' : '设置'}</button>
+            </div>
+          </div>
+
+          <div class="cap-row">
+            <div class="row-icon" style="background:#34c759">${I.share}</div>
+            <div class="cap-meta">
+              <div class="cap-title">系统分享</div>
+              <div class="cap-desc">点「分享」选 Unic 发回电脑</div>
+            </div>
+            <div class="cap-act">
+              <button class="cap-pill-btn ok" data-act="open-ios-share">已可用</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <button class="btn primary" data-act="go-ready">完成</button>
+      </div>`;
+  }
+
+  // Android M3 Expressive Capabilities
+  const notifyDone = S.caps.andNotify === 'allowed';
+  const notifyDenied = S.caps.andNotify === 'denied';
+  const batDone = S.caps.andBattery === 'allowed';
+  const batDenied = S.caps.andBattery === 'denied';
+
+  return `
+    ${navBar({
+      backAct: S.pairedDevice ? 'go-pair-success' : 'go-pair',
+      center: stepPill(2, 2, '后台保障'),
+      rightLabel: '跳过',
+      rightAct: 'go-ready',
+    })}
+    <div class="scroll">
+      <div class="page-head">
+        <h2>保持后台稳定</h2>
+        <p>开启后切走应用也能稳定接收同步内容。</p>
+      </div>
+
+      <div class="card-group">
+        <div class="cap-row">
+          <div class="row-icon">${I.bell}</div>
+          <div class="cap-meta">
+            <div class="cap-title">允许通知</div>
+            <div class="cap-desc">显示同步状态，防止服务被清理</div>
+          </div>
+          <div class="cap-act">
+            <button class="cap-pill-btn ${notifyDone ? 'ok' : notifyDenied ? 'warn' : ''}" data-act="trigger-and-notify">${notifyDone ? '已允许' : '允许'}</button>
+          </div>
+        </div>
+
+        <div class="cap-row">
+          <div class="row-icon">${I.battery}</div>
+          <div class="cap-meta">
+            <div class="cap-title">忽略电池优化</div>
+            <div class="cap-desc">防止省电策略中断跨设备连接</div>
+          </div>
+          <div class="cap-act">
+            <button class="cap-pill-btn ${batDone ? 'ok' : batDenied ? 'warn' : 'soft'}" data-act="trigger-and-battery">${batDone ? '已开启' : '设置'}</button>
+          </div>
+        </div>
+
+        <div class="cap-row">
+          <div class="row-icon">${I.share}</div>
+          <div class="cap-meta">
+            <div class="cap-title">分享与划词发送</div>
+            <div class="cap-desc">开箱即用，无需额外权限</div>
+          </div>
+          <div class="cap-act">
+            <button class="cap-pill-btn soft" data-act="open-and-bg">说明</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn primary" data-act="go-ready">完成</button>
+    </div>`;
+}
+
+/* =====================================================================
+   SCREEN 4: READY SUMMARY
+   ===================================================================== */
+function renderReady() {
+  const rows = [];
+  if (S.pairedDevice) {
+    rows.push({ ic: I.laptop, bg: '#34c759', title: S.pairedDevice.name, pill: '已连接', cls: 'ok' });
+  } else {
+    rows.push({ ic: I.devices, bg: '#8e8e93', title: '设备同步', pill: '稍后配对', cls: '' });
+  }
+
+  if (isIOS()) {
+    rows.push({
+      ic: I.paste, bg: '#007aff', title: '剪贴板访问',
+      pill: S.caps.iosPaste === 'allowed' ? '已允许' : '未开启',
+      cls: S.caps.iosPaste === 'allowed' ? 'ok' : ''
+    });
+    rows.push({
+      ic: I.keyboard, bg: '#af52de', title: 'Unic 键盘',
+      pill: S.caps.iosKeyboard === 'ready' ? '已就绪' : '未开启',
+      cls: S.caps.iosKeyboard === 'ready' ? 'ok' : ''
+    });
+  } else {
+    rows.push({
+      ic: I.bell, bg: '#6750a4', title: '后台通知',
+      pill: S.caps.andNotify === 'allowed' ? '已允许' : '未开启',
+      cls: S.caps.andNotify === 'allowed' ? 'ok' : ''
+    });
+    rows.push({
+      ic: I.battery, bg: '#146c2e', title: '电池优化豁免',
+      pill: S.caps.andBattery === 'allowed' ? '已开启' : '未开启',
+      cls: S.caps.andBattery === 'allowed' ? 'ok' : ''
+    });
+  }
+
+  return `
+    ${navBar({ backAct: 'go-caps' })}
+    <div class="scroll">
+      <div class="ready-hero">
+        <div class="ready-check">${I.check}</div>
+        <h2>准备就绪</h2>
+        <p>之后打开将直接进入剪贴板历史。</p>
+      </div>
+
+      <div class="card-group">
+        ${rows.map(r => `
+          <div class="list-row">
+            <div class="row-icon" style="background:${r.bg}">${r.ic}</div>
+            <div class="row-body">
+              <div class="row-title">${r.title}</div>
+            </div>
+            <span class="tag-pill ${r.cls}">${r.pill}</span>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn primary" data-act="enter-home">开始使用</button>
+    </div>`;
+}
+
+/* =====================================================================
+   LEGACY UPGRADE MIGRATION SCREENS (UNIFIED MINIMAL STYLE)
+   ===================================================================== */
+function renderMigDetected() {
+  return `
+    ${navBar({
+      center: `<span class="step-pill"><i class="dot-active"></i>数据迁移</span>`,
+      rightLabel: '暂不迁移',
+      rightAct: 'mig-ask-skip',
+    })}
+    <div class="scroll">
+      <div class="mig-visual">
+        <div class="mig-legacy-box">${I.db}</div>
+        <span style="color:var(--p-faint);width:18px">${I.arrowR}</span>
+        <div class="mig-emblem">${I.brand}</div>
+      </div>
+
+      <div class="mig-head-center">
+        <h2>发现旧版历史</h2>
+        <p>可将本机旧版历史与标签离线导入，原数据会保留。</p>
+      </div>
+
+      <div class="card-group">
+        <button class="list-row tap" data-act="mig-change-src">
+          <div class="row-icon" style="background:#007aff">${I.folder}</div>
+          <div class="row-body">
+            <div class="row-title">本机旧版历史</div>
+            <div class="row-sub">已检测到旧版数据</div>
+          </div>
+          <span style="font-size:13px;color:var(--p-sub);margin-right:2px">更换</span>
+          <span class="row-chev">${I.chevR}</span>
+        </button>
+
+        <div class="list-row">
+          <div class="row-icon" style="background:#34c759">${I.shield}</div>
+          <div class="row-body">
+            <div class="row-title">导入文字、图片、文件与标签</div>
+            <div class="row-sub">原有设备需在新版中重新配对</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn primary" data-act="mig-start">开始迁移</button>
+      <button class="btn secondary" data-act="mig-ask-skip">暂不迁移</button>
+    </div>`;
+}
+
+function renderMigProgress() {
+  const isVerify = S.migPhase === 'verify';
+  const pct = Math.round((S.migCount / S.migTotal) * 100);
+  return `
+    ${navBar({
+      center: `<span class="step-pill"><i class="dot-active"></i>${isVerify ? '校验中' : '导入中'}</span>`,
+    })}
+    <div class="scroll" style="display:flex;flex-direction:column;justify-content:center">
+      <div class="hs-box">
+        <div class="spin" style="width:32px;height:32px;border-width:3px;color:${isVerify ? 'var(--p-green)' : 'var(--p-accent)'}"></div>
+        <h3 style="margin:0;font-size:19px;font-weight:700">${isVerify ? '正在校验导入结果' : '正在导入历史记录'}</h3>
+
+        <div class="hs-steps">
+          <div class="hs-step ${isVerify ? 'done' : 'active'}">
+            <span class="hs-step-ic">${isVerify ? I.check : '<span class="spin" style="width:14px;height:14px"></span>'}</span>
+            <span>导入历史记录</span>
+          </div>
+          <div class="hs-step ${isVerify ? 'active' : ''}">
+            <span class="hs-step-ic">${isVerify ? '<span class="spin" style="width:14px;height:14px"></span>' : '•'}</span>
+            <span>校验导入结果</span>
+          </div>
+        </div>
+
+        <div style="width:100%;margin-top:4px">
+          <div class="mig-bar-track"><div class="mig-bar-fill ${isVerify ? 'verify' : ''}" id="migFill" style="width:${pct}%"></div></div>
+          <div class="mig-counter-row">
+            <span>请保持应用在前台</span>
+            <b id="migCnt" style="color:var(--p-text)">${S.migCount} / ${S.migTotal}</b>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn secondary" data-act="mig-stop">停止迁移</button>
+    </div>`;
+}
+
+function renderMigDone() {
+  return `
+    ${navBar({
+      center: `<span class="step-pill"><i class="dot-active"></i>已完整校验</span>`,
+    })}
+    <div class="scroll">
+      <div class="ready-hero">
+        <div class="ready-check">${I.check}</div>
+        <h2>迁移完成</h2>
+        <p>旧版剪贴板历史已导入本机并完成校验。原有设备需在新版中重新配对。</p>
+      </div>
+
+      <div class="mig-metrics">
+        <div class="mig-metric"><b style="color:var(--p-accent)">${S.migTotal}</b><span>本次新增导入</span></div>
+        <div class="mig-metric"><b style="color:var(--p-green)">${S.migTotal}</b><span>校验通过</span></div>
+        <div class="mig-metric"><b>14</b><span>标签保留</span></div>
+        <div class="mig-metric"><b>0</b><span>失败条目</span></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn primary" data-act="enter-home">进入剪贴板历史</button>
+    </div>`;
+}
+
+/* =====================================================================
+   SCREEN 5: LIVE HISTORY HOME (POST-ONBOARDING LANDING)
+   ===================================================================== */
+function renderHistory() {
+  const paired = !!S.pairedDevice;
+  const items = paired ? [
+    { ic: I.type, color: '#007aff', text: 'git rebase -i origin/main --autosquash', meta: `${S.pairedDevice.name} · 刚刚同步` },
+    { ic: I.link, color: '#0284c7', text: 'https://uniclipboard.app/docs/mobile-guide', meta: `${S.pairedDevice.name} · 2 分钟前` },
+    { ic: I.image, color: '#248a3d', text: '桌面截图-2026-11-26.png · 1.2 MB', meta: `${S.pairedDevice.name} · 5 分钟前` },
+  ] : [];
+
+  return `
+    <div class="home-header">
+      <h1>历史</h1>
+      <span class="peer-status-pill ${paired ? '' : 'local'}">
+        <i class="peer-dot"></i>
+        ${paired ? '已连接 1 台设备' : '仅本机'}
+      </span>
+    </div>
+
+    <div class="scroll" style="padding-bottom:10px">
+      ${paired ? `
+        <div class="sec-label" style="margin-top:2px">今天</div>
+        ${items.map(it => `
+          <div class="hist-card">
+            <div class="hist-ic" style="background:${it.color}1d;color:${it.color}">${it.ic}</div>
+            <div class="hist-body">
+              <div class="hist-text">${it.text}</div>
+              <div class="hist-meta"><span>${it.meta}</span></div>
+            </div>
+          </div>`).join('')}
+      ` : `
+        <div style="text-align:center;padding:56px 20px 24px">
+          <div style="width:60px;height:60px;border-radius:18px;margin:0 auto 14px;background:var(--p-card);display:grid;place-items:center;color:var(--p-sub)">${I.paste}</div>
+          <h3 style="margin:0 0 6px;font-size:18px">还没有剪贴板记录</h3>
+          <p style="margin:0;font-size:13.5px;line-height:20px;color:var(--p-sub)">在其他 App 复制文字、链接或图片后回到这里，或点右下角 + 手动添加。也可以前往「设备」连接电脑。</p>
+          <div style="margin-top:18px;display:flex;justify-content:center">
+            <button class="btn secondary sm" data-act="go-pair">现在配对设备</button>
+          </div>
+        </div>
+      `}
+
+      <div class="demo-bar">
+        <span>原型：引导已完成并持久化</span>
+        <button data-act="reset">重新演示</button>
+      </div>
+    </div>
+
+    <div class="bottom-chrome">
+      <div class="tab-pill">
+        <div class="tab-it on">${I.clock}<span>历史</span></div>
+        <div class="tab-it" data-act="go-pair" style="cursor:pointer">${I.devices}<span>设备</span></div>
+        <div class="tab-it" data-act="go-caps" style="cursor:pointer">${I.settings}<span>设置</span></div>
+      </div>
+      <button class="fab-btn" data-act="toast-add" aria-label="新增内容">${I.plus}</button>
+    </div>`;
+}
+
+/* =====================================================================
+   NATIVE SYSTEM MODALS & SHEETS
+   ===================================================================== */
+function renderModal() {
+  switch (S.modal) {
+    case 'ios-paste-alert':
+      return `<div class="overlay">
+        <div class="ios-alert">
+          <div class="ios-alert-body">
+            <h4>“Unic”想要从“备忘录”粘贴</h4>
+            <p>是否允许？</p>
+          </div>
+          <div class="ios-alert-acts">
+            <button class="strong" data-act="ios-paste-allow">允许粘贴</button>
+            <button data-act="ios-paste-deny">不允许粘贴</button>
+          </div>
+        </div>
+      </div>`;
+
+    case 'ios-paste-guide':
+      return `<div class="overlay bottom" data-act="close-modal">
+        <div class="sheet" onclick="event.stopPropagation()">
+          <div class="sheet-grabber"></div>
+          <div class="sheet-head">
+            <h3>在设置中允许粘贴</h3>
+            <button class="nav-skip" data-act="close-modal">完成</button>
+          </div>
+          <div class="guide-step">
+            <div class="guide-num">1</div>
+            <div><b>打开 Unic 设置</b><span class="guide-path">设置 › App › Unic</span></div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-num">2</div>
+            <div><b>点按「从其他 App 粘贴」</b><p>将「询问」改为「允许」即可生效。</p></div>
+          </div>
+          <div style="margin-top:14px">
+            <button class="btn primary" data-act="ios-paste-allow">模拟已设为「允许」</button>
+          </div>
+        </div>
+      </div>`;
+
+    case 'ios-kb-sheet':
+      return `<div class="overlay bottom" data-act="close-modal">
+        <div class="sheet" onclick="event.stopPropagation()">
+          <div class="sheet-grabber"></div>
+          <div class="sheet-head">
+            <h3>开启 Unic 键盘</h3>
+            <button class="nav-skip" data-act="close-modal">关闭</button>
+          </div>
+          <div class="guide-step">
+            <div class="guide-num">1</div>
+            <div><b>添加 Unic 键盘</b><span class="guide-path">设置 › App › Unic › 键盘</span></div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-num">2</div>
+            <div><b>开启「允许完全访问」</b><p>仅用于读取已同步的剪贴板内容。</p></div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-num">3</div>
+            <div><b>长按地球键切换</b><p>在任意 App 点一下即可粘贴。</p></div>
+          </div>
+          <div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+            <button class="btn primary" data-act="ios-kb-done">打开系统设置（模拟完成）</button>
+            <button class="btn plain" data-act="close-modal">暂不开启</button>
+          </div>
+        </div>
+      </div>`;
+
+    case 'ios-share-sheet':
+      return `<div class="overlay bottom" data-act="close-modal">
+        <div class="sheet" onclick="event.stopPropagation()">
+          <div class="sheet-grabber"></div>
+          <div class="sheet-head">
+            <h3>置顶到分享面板</h3>
+            <button class="nav-skip" data-act="close-modal">完成</button>
+          </div>
+          <div class="guide-step"><div class="guide-num">1</div><div><b>打开分享面板</b><p>向左滑动 App 一行并点「更多」。</p></div></div>
+          <div class="guide-step"><div class="guide-num">2</div><div><b>加入个人收藏</b><p>点「编辑」将 Unic 拖到最前即可。</p></div></div>
+        </div>
+      </div>`;
+
+    case 'and-notify-dlg':
+      return `<div class="overlay">
+        <div class="m3-dialog">
+          <div class="m3-dialog-ic">${I.bell}</div>
+          <h4>允许 UniClipboard 发送通知？</h4>
+          <p>用于保持后台同步稳定运行。</p>
+          <div class="m3-dialog-acts">
+            <button class="m3-dlg-btn" data-act="and-notify-allow">允许</button>
+            <button class="m3-dlg-btn ghost" data-act="and-notify-deny">不允许</button>
+          </div>
+        </div>
+      </div>`;
+
+    case 'and-battery-dlg':
+      return `<div class="overlay">
+        <div class="m3-dialog">
+          <div class="m3-dialog-ic">${I.battery}</div>
+          <h4>停止优化电池用量？</h4>
+          <p>允许后台维持跨设备同步连接。</p>
+          <div class="m3-dialog-acts row">
+            <button class="m3-dlg-btn ghost" data-act="and-battery-deny">拒绝</button>
+            <button class="m3-dlg-btn" data-act="and-battery-allow">允许</button>
+          </div>
+        </div>
+      </div>`;
+
+    case 'and-bg-sheet':
+      return `<div class="overlay bottom" data-act="close-modal">
+        <div class="sheet" onclick="event.stopPropagation()">
+          <div class="sheet-grabber"></div>
+          <div class="sheet-head">
+            <h3>发送与后台读取</h3>
+            <button class="nav-skip" data-act="close-modal">知道了</button>
+          </div>
+          <div class="guide-step"><div class="guide-num">1</div><div><b>划词与系统分享</b><p>默认可用，无需额外权限。</p></div></div>
+          <div class="guide-step"><div class="guide-num">2</div><div><b>后台自动上传（可选）</b><p>Android 10+ 限制后台读取，如需自动上传可在「设置 › 后台同步」配置 Shizuku 或 ADB。</p></div></div>
+        </div>
+      </div>`;
+
+    case 'cam-denied':
+      return isIOS() ? `<div class="overlay">
+        <div class="ios-alert">
+          <div class="ios-alert-body">
+            <h4>需要相机权限</h4>
+            <p>UniClipboard 需要使用相机扫描另一台设备的配对二维码。你也可以改用 6 位配对码。</p>
+          </div>
+          <div class="ios-alert-acts">
+            <button class="strong" data-act="open-code">改用 6 位配对码</button>
+            <button data-act="go-pair">返回</button>
+          </div>
+        </div>
+      </div>` : `<div class="overlay">
+        <div class="m3-dialog">
+          <h4>需要相机权限</h4>
+          <p>请允许相机权限以扫描配对二维码，或直接输入另一台设备上的 6 位配对码。</p>
+          <div class="m3-dialog-acts row">
+            <button class="m3-dlg-btn ghost" data-act="go-pair">返回</button>
+            <button class="m3-dlg-btn" data-act="open-code">输入配对码</button>
+          </div>
+        </div>
+      </div>`;
+
+    case 'mig-skip-confirm':
+      return isIOS() ? `<div class="overlay">
+        <div class="ios-alert">
+          <div class="ios-alert-body">
+            <h4>暂不迁移旧版数据？</h4>
+            <p>旧版数据会保留，稍后可在「设置 › 存储」中继续迁移。</p>
+          </div>
+          <div class="ios-alert-acts">
+            <button class="strong" data-act="enter-home">暂不迁移，直接进入</button>
+            <button data-act="close-modal">取消</button>
+          </div>
+        </div>
+      </div>` : `<div class="overlay">
+        <div class="m3-dialog">
+          <h4>暂不迁移旧版数据？</h4>
+          <p>旧版数据会保留，稍后可在「设置 › 存储」中继续迁移。</p>
+          <div class="m3-dialog-acts row">
+            <button class="m3-dlg-btn ghost" data-act="close-modal">取消</button>
+            <button class="m3-dlg-btn" data-act="enter-home">直接进入</button>
+          </div>
+        </div>
+      </div>`;
+
+    default: return '';
+  }
+}
+
+/* =====================================================================
+   RIGHT SPEC PANEL CONTENT
+   ===================================================================== */
+const SPECS = {
+  'intro-0': ['1 · 品牌欢迎与本地价值', [
+    '首屏使用统一品牌文案：<b>「欢迎使用 UniClipboard」</b> + <b>「让每一次复制更有用」</b>。',
+    '强调“本地历史即刻可用、无需账号注册、端到端加密”，避免将产品窄化为纯同步工具。',
+    '<b>隐私约束</b>：引导期间不读取系统剪贴板、不触发系统粘贴授权弹窗、不后台自动连接。',
+    '支持手指左右滑动或点按圆点切换；右上角「跳过」直达主页，零门槛逃生口。',
+  ]],
+  'intro-1': ['1 · 跨设备点对点同步', [
+    '用微动效直观呈现 Mac ↔ 手机的 E2EE 点对点流转，传达“无云端留存”。',
+    '保持极简 3 页节奏，单页控制在一句话标题 + 两行说明内，避免冗长说教。',
+  ]],
+  'intro-2': ['1 · 平台融入预览', [
+    '<b>平台差异化插画</b>：切换顶部 iOS / Android 可见完全不同的微界面预览（iOS 展示 Unic 键盘扩展 + 系统分享；Android 展示后台同步通知 + 选中文字菜单）。',
+    '末页提供双出口：主按钮<b>「开始配置」</b>进入设备配对；次按钮<b>「暂不配置，直接进入历史」</b>直接落盘完成标记。',
+  ]],
+  'pair': ['2 · 连接你的第一台设备（可选）', [
+    '顶部步骤胶囊明确告知剩余仅 2 步可选配置，右上角始终提供<b>「暂不配对」</b>。',
+    '优先推荐<b>扫码配对</b>，次级并列<b>输入 6 位配对码 / 票据</b>与<b>本机生成配对码</b>（适配手机主动或电脑主动两种方向）。',
+    '与 <code>DevicesScreen</code> / <code>PairingSheets</code> 保持同一套配对语义，不在引导里发明第二套“创建空间/密码”旧概念。',
+  ]],
+  'pair-scan': ['2a · 扫码相机视口', [
+    '沉浸式暗色取景框 + 手电筒切换 + 底部随时切回 6 位配对码输入。',
+    '可在顶部「配对模拟」切换<b>“相机权限被拒”</b>，查看优雅降级到配对码输入的系统弹窗。',
+  ]],
+  'pair-code': ['2b · 输入 6 位配对码', [
+    '6 格等宽分段输入框，支持键盘连续输入、退格、粘贴，并附带<b>「填入示例码 482 917」</b>方便评审演示。',
+    '可在顶部切换<b>“配对码已过期”</b>或<b>“对方设备离线”</b>，验证错误提示不含地址/票据等敏感信息。',
+  ]],
+  'pair-handshake': ['2c · 加密握手阶段', [
+    '真实映射 Engine 配对阶段：<code>resolving</code> → <code>connecting</code> → <code>handshaking</code>，提供随时取消按钮。',
+  ]],
+  'pair-approve': ['2d · 强制指纹核对与批准', [
+    '<b>安全铁律</b>：通过配对码或二维码进来的设备<b>永远需要用户手动核对 8 组指纹并批准</b>，绝不为引导顺滑而绕过。',
+    '对齐 <code>PairingApproveSheet</code> 布局：设备名 + ID + 2×4 等宽指纹块 + 明确提示语。',
+  ]],
+  'pair-success': ['2e · 配对成功', [
+    '给予清晰的连接反馈，同时顺畅衔接下一步系统能力设置或直接结束引导。',
+  ]],
+  'capabilities': ['3 · 轻量平台能力引导（可跳过）', [
+    '<b>iOS 专属</b>：粘贴访问权限（体验真实 iOS 弹窗 + 拒绝后的 3 步图文兜底）、Unic 键盘扩展 3 步说明、系统分享置顶说明。',
+    '<b>Android 专属</b>：通知权限（M3 Dialog）、忽略电池优化（M3 Dialog）、开箱即用的选中文字/分享说明。',
+    '<b>契约边界</b>：绝不把 Shizuku / ADB / 悬浮窗 / 无障碍作为引导前置门槛，仅以轻量说明告知高级选项位于「设置」。',
+  ]],
+  'ready': ['4 · 准备就绪摘要', [
+    '汇总本次引导实际完成的配对与能力状态（动态联动你刚才的操作），告知“后续启动将直接进入历史”。',
+    '点击主按钮持久化完成标记并进入主界面，<b>不会自动向系统剪贴板写入演示内容</b>。',
+  ]],
+  'history': ['5 · 进入主界面（历史）', [
+    '若刚才完成了配对，展示已连接状态与来自 MacBook Pro 的首屏同步记录；若跳过了配对，展示干净的本地空态与快捷配对入口。',
+    '底部导航壳按平台还原：iOS 26 Liquid Glass 悬浮标签栏 + 圆钮；Android M3 Floating Navigation Bar + 圆角方形 FAB。',
+  ]],
+  'mig-detected': ['旧版升级 · 检测到旧数据', [
+    '<b>先询问再迁移</b>：覆盖升级检测到旧版移动端历史或 v1 备份时，先呈现本页征求用户确认，<b>绝不自动开始迁移</b>。',
+    '沿用同一套精简视觉语言：顶部状态胶囊 + 紧凑迁移图示 + 2 行原生分组卡片（来源支持更换、简明说明范围与重新配对）。',
+    '提供「开始迁移」主操作与「暂不迁移」次操作（带二次确认，原数据保留，稍后可在设置 › 存储中导入）。',
+  ]],
+  'mig-progress': ['旧版升级 · 导入与校验', [
+    '分两阶段清晰展示：先导入历史记录，再逐条校验完整性；仅展示真实计数 <code>已处理 / 总数</code>，不虚构剩余时间。',
+    '支持随时安全停止，已提交记录保留并在续跑时跳过。',
+  ]],
+  'mig-done': ['旧版升级 · 迁移完成', [
+    '对齐「准备就绪」页视觉节奏：居中绿勾徽标 + 简洁统计卡 + 单一主按钮「进入剪贴板历史」。',
+  ]],
+};
+
+function renderSpec() {
+  const key = S.step === 'intro' ? `intro-${S.slide}` : S.step;
+  const [title, bullets] = SPECS[key] || SPECS['intro-0'];
+
+  const livePills = [
+    { label: S.pairedDevice ? `已配对：${S.pairedDevice.name}` : '未配对设备', on: !!S.pairedDevice },
+    ...(isIOS() ? [
+      { label: `粘贴权限：${S.caps.iosPaste === 'allowed' ? '已允许' : S.caps.iosPaste === 'denied' ? '已拒' : '未设'}`, on: S.caps.iosPaste === 'allowed' },
+      { label: `Unic 键盘：${S.caps.iosKeyboard === 'ready' ? '已就绪' : '未设'}`, on: S.caps.iosKeyboard === 'ready' },
+    ] : [
+      { label: `通知权限：${S.caps.andNotify === 'allowed' ? '已允许' : '未设'}`, on: S.caps.andNotify === 'allowed' },
+      { label: `电池豁免：${S.caps.andBattery === 'allowed' ? '已开启' : '未设'}`, on: S.caps.andBattery === 'allowed' },
+    ]),
+  ];
+
+  $('#spec').innerHTML = `
+    <div class="spec-top">
+      <h3>${title}</h3>
+      <span class="spec-key">${key}</span>
+    </div>
+    <ul>${bullets.map(b => `<li>${b}</li>`).join('')}</ul>
+
+    <div class="spec-block">
+      <h4>当前交互状态（实时联动）</h4>
+      <div class="spec-state-pills">
+        ${livePills.map(p => `<span class="spec-state-pill ${p.on ? 'on' : ''}">${p.label}</span>`).join('')}
+      </div>
+    </div>
+
+    <div class="spec-block">
+      <h4>${isIOS() ? 'iOS 设计系统映射（app/expo）' : 'Android 设计系统映射（app/expo）'}</h4>
+      ${isIOS()
+        ? `色板：<code>colors.ios.ts</code> 单色墨 <code>#15171C / #F4F2EE</code> + <code>systemGroupedBackground</code><br>
+           组件：<code>AppButton.ios</code>（50pt 胶囊）、<code>HeaderCircleButton</code>（Liquid Glass）、<code>SettingsIconTile</code>（28–32pt 彩块）、<code>IosBottomSheet</code>`
+        : `色板：<code>colors.android.ts</code> Material 3 Expressive + Material You 动态取色<br>
+           组件：<code>AppButton.android</code>（56dp Pill）、<code>SettingsSectionItem</code>（20dp/4dp 分段卡）、<code>M3IconButton</code>、<code>AlertDialog</code>`
+      }
+    </div>
+
+    <div class="spec-block">
+      <h4>关联原型（v1 迁移引导）</h4>
+      <div class="spec-links">
+        <a class="spec-link" href="setup-ios.html">setup-ios.html →</a>
+        <a class="spec-link" href="setup-android.html">setup-android.html →</a>
+      </div>
+    </div>`;
+}
+
+/* =====================================================================
+   MASTER RENDER
+   ===================================================================== */
+function render() {
+  const plain = S.step === 'intro' || S.step === 'pair-scan';
+  $('#phone').classList.toggle('plain-bg', plain);
+
+  let html = '';
+  switch (S.step) {
+    case 'intro':          html = renderIntro(); break;
+    case 'pair':           html = renderPairEntry(); break;
+    case 'pair-scan':      html = renderPairScan(); break;
+    case 'pair-code':      html = renderPairCode(); break;
+    case 'pair-handshake': html = renderPairHandshake(); break;
+    case 'pair-approve':   html = renderPairApprove(); break;
+    case 'pair-success':   html = renderPairSuccess(); break;
+    case 'capabilities':   html = renderCapabilities(); break;
+    case 'ready':          html = renderReady(); break;
+    case 'mig-detected':   html = renderMigDetected(); break;
+    case 'mig-progress':   html = renderMigProgress(); break;
+    case 'mig-done':       html = renderMigDone(); break;
+    case 'history':        html = renderHistory(); break;
+  }
+
+  $('#screen').innerHTML = html
+    + renderModal()
+    + (S.toast ? `<div class="phone-toast-msg">${S.toast}</div>` : '');
+
+  renderSpec();
+  updateJumpChips();
+  bindDynamicInputs();
+}
+
+function bindDynamicInputs() {
+  // Bind 6-digit OTP inputs
+  const inputs = [...document.querySelectorAll('[data-otp]')];
+  if (inputs.length) {
+    inputs.forEach((inp, idx) => {
+      inp.oninput = e => {
+        const digits = e.target.value.replace(/\D/g, '');
+        if (digits.length > 1) {
+          digits.slice(0, 6).split('').forEach((d, j) => { S.code[j] = d; });
+          render();
+          const nextIdx = Math.min(5, digits.length);
+          const target = document.querySelector(`[data-otp="${nextIdx}"]`);
+          if (target) target.focus();
+          return;
+        }
+        S.code[idx] = digits.slice(-1);
+        e.target.value = S.code[idx];
+        const btn = $('#connectBtn');
+        if (btn) btn.disabled = !S.code.every(ch => /^\d$/.test(ch));
+        if (S.code[idx] && idx < 5) inputs[idx + 1].focus();
+      };
+      inp.onkeydown = e => {
+        if (e.key === 'Backspace' && !S.code[idx] && idx > 0) {
+          S.code[idx - 1] = '';
+          inputs[idx - 1].value = '';
+          inputs[idx - 1].focus();
+          const btn = $('#connectBtn');
+          if (btn) btn.disabled = true;
+        }
+        if (e.key === 'Enter' && S.code.every(ch => /^\d$/.test(ch))) {
+          startHandshake();
+        }
+      };
+    });
+    const firstEmpty = S.code.findIndex(c => !c);
+    if (firstEmpty >= 0 && firstEmpty < 6 && !S.modal) {
+      inputs[firstEmpty].focus();
+    }
+  }
+
+  // Bind swipe/drag gesture on Intro Carousel
+  const carousel = $('#carousel');
+  const track = $('#track');
+  if (carousel && track) {
+    let startX = null, dx = 0;
+    const width = () => carousel.clientWidth || 393;
+
+    const onDown = x => { startX = x; dx = 0; track.classList.add('dragging'); };
+    const onMove = x => {
+      if (startX === null) return;
+      dx = x - startX;
+      const base = -S.slide * width();
+      track.style.transform = `translateX(${base + dx}px)`;
+    };
+    const onUp = () => {
+      if (startX === null) return;
+      track.classList.remove('dragging');
+      let next = S.slide;
+      if (dx < -48 && S.slide < 2) next++;
+      else if (dx > 48 && S.slide > 0) next--;
+      startX = null; dx = 0;
+      setSlide(next);
+    };
+
+    carousel.onpointerdown = e => {
+      if (e.target.closest('button')) return;
+      onDown(e.clientX);
+      carousel.setPointerCapture(e.pointerId);
+    };
+    carousel.onpointermove = e => onMove(e.clientX);
+    carousel.onpointerup = () => onUp();
+    carousel.onpointercancel = () => onUp();
+  }
+}
+
+/* =====================================================================
+   ACTIONS & EVENT DELEGATION
+   ===================================================================== */
+function setSlide(nextIdx) {
+  S.slide = Math.max(0, Math.min(2, nextIdx));
+  const track = $('#track');
+  if (S.step === 'intro' && track) {
+    track.classList.remove('dragging');
+    track.style.transform = `translateX(-${S.slide * 33.3333}%)`;
+    document.querySelectorAll('.dot').forEach((d, idx) => d.classList.toggle('on', idx === S.slide));
+    const isLast = S.slide === 2;
+    const primary = $('#intro-primary');
+    if (primary) {
+      primary.dataset.act = isLast ? 'go-pair' : 'next-slide';
+      primary.textContent = isLast ? '开始配置' : '下一步';
+    }
+    const secondary = $('#intro-secondary');
+    if (secondary) {
+      secondary.style.opacity = isLast ? '1' : '0';
+      secondary.style.transform = isLast ? 'translateY(0)' : 'translateY(6px)';
+      secondary.style.pointerEvents = isLast ? 'auto' : 'none';
+      const secBtn = secondary.querySelector('button');
+      if (secBtn) secBtn.tabIndex = isLast ? 0 : -1;
+    }
+    const navSkip = $('#screen .nav-bar .nav-action');
+    if (navSkip) {
+      navSkip.style.transition = 'opacity .22s ease';
+      navSkip.style.opacity = isLast ? '0' : '1';
+      navSkip.style.pointerEvents = isLast ? 'none' : 'auto';
+    }
+    renderSpec();
+    updateJumpChips();
+    return;
+  }
+  go('intro', { slide: S.slide });
+}
+
+function act(a) {
+  switch (a) {
+    case 'next-slide':
+      if (S.slide < 2) setSlide(S.slide + 1);
+      break;
+    case 'back-intro':
+      go('intro', { slide: 2 });
+      break;
+    case 'skip-all':
+      go('history');
+      break;
+    case 'go-pair':
+      go('pair');
+      break;
+    case 'open-scan':
+      go('pair-scan');
+      break;
+    case 'toggle-torch':
+      S.torch = !S.torch; render();
+      break;
+    case 'open-code':
+      S.modal = null;
+      go('pair-code');
+      break;
+    case 'toggle-my-code':
+      S.showMyCode = !S.showMyCode; render();
+      break;
+    case 'copy-my-code':
+      showToast('已复制本机配对码 739 406');
+      break;
+    case 'sim-peer-joined':
+      startHandshake();
+      break;
+    case 'fill-demo-code':
+      S.code = ['4', '8', '2', '9', '1', '7'];
+      S.pairErr = '';
+      render();
+      break;
+    case 'submit-code':
+      startHandshake();
+      break;
+    case 'approve-pair':
+      S.pairedDevice = { ...PEER_DEMO };
+      go('pair-success');
+      break;
+    case 'reject-pair':
+      S.pairedDevice = null;
+      go('pair');
+      showToast('已拒绝此次配对请求');
+      break;
+    case 'go-pair-success':
+      go('pair-success');
+      break;
+    case 'go-caps':
+      go('capabilities');
+      break;
+    case 'go-ready':
+      go('ready');
+      break;
+    case 'enter-home':
+      go('history');
+      break;
+
+    // iOS capability modals
+    case 'trigger-ios-paste':
+      S.modal = 'ios-paste-alert'; render();
+      break;
+    case 'ios-paste-allow':
+      S.caps.iosPaste = 'allowed'; S.modal = null;
+      showToast('已允许从其他 App 粘贴');
+      break;
+    case 'ios-paste-deny':
+      S.caps.iosPaste = 'denied'; S.modal = null; render();
+      break;
+    case 'open-ios-paste-guide':
+      S.modal = 'ios-paste-guide'; render();
+      break;
+    case 'open-ios-kb':
+      S.modal = 'ios-kb-sheet'; render();
+      break;
+    case 'ios-kb-done':
+      S.caps.iosKeyboard = 'ready'; S.modal = null;
+      showToast('已检测到 Unic 键盘与完全访问');
+      break;
+    case 'open-ios-share':
+      S.modal = 'ios-share-sheet'; render();
+      break;
+
+    // Android capability dialogs
+    case 'trigger-and-notify':
+      S.modal = 'and-notify-dlg'; render();
+      break;
+    case 'and-notify-allow':
+      S.caps.andNotify = 'allowed'; S.modal = null;
+      showToast('已允许后台同步通知');
+      break;
+    case 'and-notify-deny':
+      S.caps.andNotify = 'denied'; S.modal = null; render();
+      break;
+    case 'trigger-and-battery':
+      S.modal = 'and-battery-dlg'; render();
+      break;
+    case 'and-battery-allow':
+      S.caps.andBattery = 'allowed'; S.modal = null;
+      showToast('已关闭电池优化限制');
+      break;
+    case 'and-battery-deny':
+      S.caps.andBattery = 'denied'; S.modal = null; render();
+      break;
+    case 'open-and-bg':
+      S.modal = 'and-bg-sheet'; render();
+      break;
+
+    case 'mig-start':
+      go('mig-progress');
+      break;
+    case 'mig-stop':
+      clearTimers();
+      go('mig-detected');
+      showToast('已安全停止，已提交记录已保留');
+      break;
+    case 'mig-ask-skip':
+      S.modal = 'mig-skip-confirm';
+      render();
+      break;
+    case 'mig-change-src':
+      showToast('打开系统文件选择器选取旧版备份目录');
+      break;
+    case 'close-modal':
+      S.modal = null; render();
+      break;
+    case 'toast-add':
+      showToast('打开添加内容菜单（相机 / 相册 / 文件）');
+      break;
+    case 'reset':
+      clearTimers();
+      S.slide = 0; S.torch = false; S.code = ['', '', '', '', '', ''];
+      S.showMyCode = false; S.pairErr = ''; S.pairedDevice = null;
+      S.migPhase = 'import'; S.migCount = 0; S.migratedCount = 0;
+      S.caps = { iosPaste: 'unset', iosKeyboard: 'unset', andNotify: 'unset', andBattery: 'unset' };
+      S.modal = null; S.toast = '';
+      go(S.entry === 'upgrade' ? 'mig-detected' : 'intro', { slide: 0 });
+      break;
+  }
+}
+
+// Click delegation
+document.addEventListener('click', e => {
+  const sl = e.target.closest('[data-slide]');
+  if (sl) { setSlide(+sl.dataset.slide); return; }
+  const btn = e.target.closest('[data-act]');
+  if (btn && !btn.disabled) act(btn.dataset.act);
+});
+
+// Android system back gesture simulation
+$('#sysBack').onclick = () => {
+  if (isIOS()) return;
+  if (S.modal) { S.modal = null; return render(); }
+  const backMap = {
+    'pair': () => go('intro', { slide: 2 }),
+    'pair-scan': () => go('pair'),
+    'pair-code': () => go('pair'),
+    'pair-handshake': () => go('pair'),
+    'pair-approve': () => go('pair'),
+    'pair-success': () => go('pair'),
+    'capabilities': () => go(S.pairedDevice ? 'pair-success' : 'pair'),
+    'ready': () => go('capabilities'),
+    'history': () => showToast('再次上滑返回桌面'),
+  };
+  if (S.step === 'intro' && S.slide > 0) { setSlide(S.slide - 1); return; }
+  if (backMap[S.step]) backMap[S.step]();
+};
+
+// Workbench controls
+document.querySelectorAll('[data-entry-btn]').forEach(b => b.onclick = () => {
+  S.entry = b.dataset.entryBtn;
+  document.querySelectorAll('[data-entry-btn]').forEach(x => x.classList.toggle('on', x === b));
+  go(S.entry === 'upgrade' ? 'mig-detected' : 'intro', { slide: 0 });
+});
+
+document.querySelectorAll('[data-platform-btn]').forEach(b => b.onclick = () => {
+  S.platform = b.dataset.platformBtn;
+  document.documentElement.dataset.platform = S.platform;
+  document.querySelectorAll('[data-platform-btn]').forEach(x => x.classList.toggle('on', x === b));
+  clearToast();
+  S.modal = null;
+  render();
+});
+
+document.querySelectorAll('[data-theme-btn]').forEach(b => b.onclick = () => {
+  document.documentElement.dataset.theme = b.dataset.themeBtn;
+  document.querySelectorAll('[data-theme-btn]').forEach(x => x.classList.toggle('on', x === b));
+});
+
+document.querySelectorAll('[data-seed-btn]').forEach(b => b.onclick = () => {
+  document.documentElement.dataset.seed = b.dataset.seedBtn;
+  document.querySelectorAll('[data-seed-btn]').forEach(x => x.classList.toggle('on', x === b));
+});
+
+$('#restartBtn').onclick = () => act('reset');
+
+// Quick jump chips
+const JUMPS = [
+  ['mig-detected', '旧版·询问迁移'],
+  ['mig-progress', '旧版·进度'],
+  ['mig-done', '旧版·完成'],
+  ['intro-0', '1. 欢迎'],
+  ['intro-1', '2. 跨设备同步'],
+  ['intro-2', '3. 融入系统'],
+  ['pair', '4. 连接设备'],
+  ['pair-scan', '4a. 扫码'],
+  ['pair-code', '4b. 配对码'],
+  ['pair-approve', '4c. 指纹核对'],
+  ['pair-success', '4d. 配对成功'],
+  ['capabilities', '5. 平台能力'],
+  ['ready', '6. 准备就绪'],
+  ['history', '7. 主页'],
+];
+
+const jumpsEl = $('#jumps');
+JUMPS.forEach(([key, label]) => {
+  const c = document.createElement('button');
+  c.className = 'chip';
+  c.dataset.jump = key;
+  c.textContent = label;
+  c.onclick = () => {
+    if (key.startsWith('intro-')) return go('intro', { slide: +key.split('-')[1] });
+    if (key === 'pair-success') S.pairedDevice = { ...PEER_DEMO };
+    if (key === 'pair-code' && S.code.every(v => !v)) S.code = ['4', '8', '2', '9', '1', '7'];
+    go(key);
+  };
+  jumpsEl.appendChild(c);
+});
+
+function updateJumpChips() {
+  const activeKey = S.step === 'intro' ? `intro-${S.slide}` : S.step;
+  document.querySelectorAll('#jumps .chip').forEach(c => {
+    c.classList.toggle('on', c.dataset.jump === activeKey);
+  });
+}
+
+// Boot
+go('intro', { slide: 0 });
+</script>
+</body>
+</html>

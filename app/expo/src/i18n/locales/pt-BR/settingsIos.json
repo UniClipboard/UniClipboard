@@ -32,7 +32,7 @@
         "title": "Permita o Acesso Total",
         "subtitle": "Para mostrar seus clipes sincronizados",
         "path": "Teclados › Unic › Permitir Acesso Total",
-        "readsOnly": "Lê apenas clipes que o Unic já sincronizou",
+        "readsOnly": "Lê e sincroniza a área de transferência apenas enquanto aberto; nunca registra digitação",
         "sendsOnly": "Envia apenas para dispositivos do seu espaço",
         "systemWarning": "O iOS mostra um aviso genérico ao ativar."
       },
@@ -53,6 +53,13 @@
       "switchDescription": "Em qualquer app, mantenha pressionada a tecla de globo e escolha Unic.",
       "tryLabel": "Experimente aqui",
       "tryPlaceholder": "Toque para abrir o teclado"
+    },
+    "sync": {
+      "title": "Sincronização em tempo real",
+      "autoCapture": "Sincronizar área de transferência",
+      "footer": "Com o teclado Unic aberto, lê automaticamente textos e imagens da área de transferência e os envia para seus dispositivos. Itens recebidos atualizam a lista e são copiados para a área de transferência. Digitação nunca é registrada.",
+      "pastePermissionTitle": "Evitar alertas de colagem",
+      "pastePermissionSubtitle": "Ajustes › Unic › Colar de Outros Apps › Permitir"
     },
     "feedback": {
       "title": "Feedback das teclas",

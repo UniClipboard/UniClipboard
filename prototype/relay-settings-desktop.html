@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>UniClipboard · 桌面端混合中转设置原型（BoardUI v2）</title>
 <!--
-  High-fidelity interactive HTML prototype for Desktop Hybrid Relay Settings (0035).
+  High-fidelity interactive HTML prototype for Desktop Hybrid Relay Settings (0036).
   Follows BoardUI v2 visual tokens & structure from:
     - prototype/settings.html, prototype/devices.html, prototype/device-sync-policy.html
     - app/desktop/internal/desktopui/live_settings.go & live_operations.go
-  Strictly aligns with 0035-hybrid-e2ee-relay-and-p2p-handoff.md & hybrid-relay-contract.md.
+  Strictly aligns with 0036-hybrid-e2ee-relay-and-p2p-handoff.md & hybrid-relay-contract.md.
   Open directly in any browser. Zero external dependencies.
 -->
 <style>
@@ -1507,7 +1507,7 @@ function renderReceiptComparisonCard() {
   return `
     <section class="s-group">
       <div class="s-group-head">
-        <h3 class="s-group-title">传输回执语义对比（评审预览 · 对齐 0034 / 0035）</h3>
+        <h3 class="s-group-title">传输回执语义对比（评审预览 · 对齐 0034 / 0036）</h3>
         <div class="s-group-actions">
           <span style="font-size:11px;color:var(--text-tertiary)">清晰区分「对端已接收」与「已暂存中转」</span>
         </div>
@@ -1622,7 +1622,7 @@ function renderReviewDrawer() {
             </ul>
           </div>
           <div class="rv-card">
-            <h4>安全与只写边界（0035 §3 / §6）</h4>
+            <h4>安全与只写边界（0036 §3 / §6）</h4>
             <ul>
               <li><b>两类独立中继明确区分</b>：明确标注混合 HTTP 中转（<code>unic-relay</code>）与 Tailcat P2P/DERP 节点相互独立、互不耦合。</li>
               <li><b>接入密钥严格只写不回显</b>：界面仅展示「已配置 / 未配置」胶囊；点击「设置/更换密钥」仅提供空白掩码输入框，且注明绝不进入日志、状态事件与设置备份。</li>

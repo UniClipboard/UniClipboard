@@ -68,6 +68,7 @@ export function MainNavigationBar({
   const items = state.routes.map((route, index) => {
     const name = route.name as keyof MainTabParamList;
     const label = descriptors[route.key].options.title ?? route.name;
+    const hasBadge = descriptors[route.key].options.tabBarBadge !== undefined;
     const selected = state.index === index;
     const onPress = () => {
       const event = navigation.emit({
@@ -77,7 +78,7 @@ export function MainNavigationBar({
       });
       if (!selected && !event.defaultPrevented) navigation.navigate(route.name, route.params);
     };
-    return { key: route.key, name, label, selected, onPress };
+    return { key: route.key, name, label, selected, hasBadge, onPress };
   });
 
   if (isRail) {
@@ -149,6 +150,7 @@ export function MainNavigationBar({
         indicator: colors.secondaryContainer,
         onIndicator: colors.onSecondaryContainer,
         inactive: colors.onSurfaceVariant,
+        badge: colors.error,
       }}
     />
   );

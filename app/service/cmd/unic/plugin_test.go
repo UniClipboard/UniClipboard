@@ -52,3 +52,14 @@ func TestPluginDroppedInIsFoundButNotEnabled(t *testing.T) {
 		t.Fatal("enabled a plugin that is not there")
 	}
 }
+
+func TestPluginInstallRejectsInvalidMirrorFlag(t *testing.T) {
+	root, cfg := filepath.Join(t.TempDir(), "lua"), filepath.Join(t.TempDir(), "config.toml")
+	var out bytes.Buffer
+	if err := pluginInstall(t.Context(), []string{"https://github.com/example/repo", "--mirror"}, root, cfg, &out); err == nil {
+		t.Fatal("expected error for missing --mirror value")
+	}
+	if err := pluginInstall(t.Context(), []string{"https://github.com/example/repo", "--mirror", "http://evil.example"}, root, cfg, &out); err == nil {
+		t.Fatal("expected error for non-https --mirror URL")
+	}
+}

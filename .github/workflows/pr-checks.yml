@@ -2,8 +2,54 @@ name: PR checks
 
 on:
   pull_request:
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+      - '.golangci.yml'
+      - '.golangci-lint-version'
+      - 'Makefile'
+      - 'engine/**'
+      - 'internal/**'
+      - 'plugin/**'
+      - 'plugins/**'
+      - 'sourceapp/**'
+      - 'app/service/**'
+      - 'app/desktop/**'
+      - 'e2e/**'
+      - '!e2e/packaging/**'
+      - '!e2e/release/**'
+      - 'tools/docscheck/**'
+      - 'tools/package/*.go'
+      - 'tools/release/update-sign/**'
+      - 'tools/ci/**'
+      - '.github/workflows/pr-checks.yml'
+      - '!**/README*.md'
+      - '!**/AGENTS.md'
   push:
     branches: [main]
+    paths:
+      - 'go.mod'
+      - 'go.sum'
+      - '.golangci.yml'
+      - '.golangci-lint-version'
+      - 'Makefile'
+      - 'engine/**'
+      - 'internal/**'
+      - 'plugin/**'
+      - 'plugins/**'
+      - 'sourceapp/**'
+      - 'app/service/**'
+      - 'app/desktop/**'
+      - 'e2e/**'
+      - '!e2e/packaging/**'
+      - '!e2e/release/**'
+      - 'tools/docscheck/**'
+      - 'tools/package/*.go'
+      - 'tools/release/update-sign/**'
+      - 'tools/ci/**'
+      - '.github/workflows/pr-checks.yml'
+      - '!**/README*.md'
+      - '!**/AGENTS.md'
   merge_group:
   workflow_dispatch:
 
@@ -15,11 +61,49 @@ env:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  changes:
+    name: Detect affected checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      lint: ${{ steps.classify.outputs.lint }}
+      test: ${{ steps.classify.outputs.test }}
+      headless: ${{ steps.classify.outputs.headless }}
+      desktop_e2e: ${{ steps.classify.outputs.desktop_e2e }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify PR check trigger rules
+        run: python3 -m unittest tools/ci/pr_changes_test.py
+      - name: Classify changed files
+        id: classify
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]] && git rev-parse --verify HEAD^1 >/dev/null 2>&1; then
+            python3 tools/ci/pr_changes.py --base HEAD^1 --head HEAD --github-output "$GITHUB_OUTPUT"
+          elif [[ "$EVENT_NAME" == "push" ]] && [[ -n "$PUSH_BEFORE" ]] && [[ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]]; then
+            if git fetch --no-tags --depth=1 origin "$PUSH_BEFORE" >/dev/null 2>&1; then
+              python3 tools/ci/pr_changes.py --base "$PUSH_BEFORE" --head "$HEAD_SHA" --github-output "$GITHUB_OUTPUT"
+            else
+              python3 tools/ci/pr_changes.py --all --github-output "$GITHUB_OUTPUT"
+            fi
+          else
+            python3 tools/ci/pr_changes.py --all --github-output "$GITHUB_OUTPUT"
+          fi
+
   lint:
     name: Lint
+    needs: changes
+    if: needs.changes.outputs.lint == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -35,6 +119,8 @@ jobs:
 
   test:
     name: Test and build
+    needs: changes
+    if: needs.changes.outputs.test == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -54,6 +140,8 @@ jobs:
 
   headless:
     name: Production headless E2E
+    needs: changes
+    if: needs.changes.outputs.headless == 'true'
     runs-on: ubuntu-latest
     container: golang:1.27.3-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0
     timeout-minutes: 15
@@ -80,6 +168,8 @@ jobs:
 
   desktop-e2e:
     name: Desktop E2E and visual evidence (${{ matrix.shard }})
+    needs: changes
+    if: needs.changes.outputs.desktop_e2e == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -132,8 +222,8 @@ jobs:
 
   desktop-e2e-timing:
     name: Desktop E2E timing report
-    needs: desktop-e2e
-    if: ${{ !cancelled() }}
+    needs: [changes, desktop-e2e]
+    if: ${{ !cancelled() && needs.changes.outputs.desktop_e2e == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

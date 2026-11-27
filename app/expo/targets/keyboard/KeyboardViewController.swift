@@ -5,8 +5,11 @@ final class KeyboardViewController: UIInputViewController {
   private enum Section: Hashable { case main }
 
   private let store = KeyboardSnapshotStore()
+  private lazy var engineSession = KeyboardEngineSession(store: store)
   private var strings = KeyboardStrings()
   private var preferences = KeyboardPreferences.defaults
+  private var pasteboardObserver: NSObjectProtocol?
+  private var pasteboardPollTimer: Timer?
 
   private var allItems: [KeyboardClipItem] = []
   private var displayedItems: [KeyboardClipItem] = []
@@ -31,6 +34,7 @@ final class KeyboardViewController: UIInputViewController {
   private let stateView = KeyboardStateView()
   private let editBarView = KeyboardEditBarView()
   private let previewOverlay = KeyboardPreviewOverlayView()
+  private let sendStatusPill = KeyboardSendStatusPillView()
   private let toastContainer = UIView()
   private let toastLabel = UILabel()
 
@@ -46,6 +50,15 @@ final class KeyboardViewController: UIInputViewController {
     view.backgroundColor = .clear
     view.showsVerticalScrollIndicator = false
     view.alwaysBounceVertical = true
+    view.contentInsetAdjustmentBehavior = .never
+    #if compiler(>=6.2)
+    if #available(iOS 26.0, *) {
+      view.topEdgeEffect.isHidden = true
+      view.bottomEdgeEffect.isHidden = true
+      view.leftEdgeEffect.isHidden = true
+      view.rightEdgeEffect.isHidden = true
+    }
+    #endif
     view.delegate = self
     view.register(KeyboardListRowCell.self, forCellWithReuseIdentifier: KeyboardListRowCell.reuseIdentifier)
     view.register(KeyboardImageTileCell.self, forCellWithReuseIdentifier: KeyboardImageTileCell.reuseIdentifier)
@@ -89,6 +102,7 @@ final class KeyboardViewController: UIInputViewController {
     super.viewDidLoad()
     buildHierarchy()
     wireActions()
+    wireEngineSession()
     updateHeightConstraint()
   }
 
@@ -105,11 +119,25 @@ final class KeyboardViewController: UIInputViewController {
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
     store.recordHeartbeat(hasFullAccess: hasFullAccess)
+    if hasFullAccess {
+      engineSession.start(autoSyncEnabled: preferences.autoSyncEnabled, strings: strings)
+      if preferences.autoSyncEnabled {
+        startPasteboardWatch()
+      }
+    }
+  }
+
+  override func viewWillDisappear(_ animated: Bool) {
+    super.viewWillDisappear(animated)
+    stopPasteboardWatch()
+    sendStatusPill.dismiss(animated: false)
+    engineSession.stop()
   }
 
   override func didReceiveMemoryWarning() {
     super.didReceiveMemoryWarning()
     store.clearImageMemoryCache()
+    engineSession.handleMemoryWarning()
   }
 
   override func textDidChange(_ textInput: (any UITextInput)?) {
@@ -153,6 +181,7 @@ final class KeyboardViewController: UIInputViewController {
     toastLabel.font = .systemFont(ofSize: 11.5, weight: .semibold)
     toastLabel.textColor = KeyboardTheme.onAccent
     toastContainer.addSubview(toastLabel)
+    view.addSubview(sendStatusPill)
     view.addSubview(toastContainer)
 
     view.addSubview(previewOverlay)
@@ -172,6 +201,11 @@ final class KeyboardViewController: UIInputViewController {
       stateView.trailingAnchor.constraint(equalTo: canvasContainer.trailingAnchor),
       stateView.topAnchor.constraint(equalTo: canvasContainer.topAnchor),
       stateView.bottomAnchor.constraint(equalTo: canvasContainer.bottomAnchor),
+
+      sendStatusPill.leadingAnchor.constraint(equalTo: canvasContainer.leadingAnchor, constant: 2),
+      sendStatusPill.trailingAnchor.constraint(equalTo: canvasContainer.trailingAnchor, constant: -2),
+      sendStatusPill.topAnchor.constraint(greaterThanOrEqualTo: rootStack.topAnchor),
+      sendStatusPill.bottomAnchor.constraint(equalTo: editBarView.topAnchor, constant: -6),
 
       toastLabel.leadingAnchor.constraint(equalTo: toastContainer.leadingAnchor, constant: 12),
       toastLabel.trailingAnchor.constraint(equalTo: toastContainer.trailingAnchor, constant: -12),
@@ -234,6 +268,7 @@ final class KeyboardViewController: UIInputViewController {
       guard filter != self.selectedFilter else { return }
       self.selectedFilter = filter
       self.previewOverlay.dismiss()
+      self.sendStatusPill.collapse()
       self.collectionView.setCollectionViewLayout(self.makeLayout(for: filter), animated: false)
       self.applyFilteredItems(scrollToTop: true)
       self.renderRail()
@@ -244,8 +279,12 @@ final class KeyboardViewController: UIInputViewController {
       self.triggerFeedback()
       self.syncIndicator = .syncing
       self.renderRail()
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-        self?.reloadFromStore(showToastOnRefresh: true)
+      if self.engineSession.isLive {
+        self.engineSession.manualRefresh()
+      } else {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+          self?.reloadFromStore(showToastOnRefresh: true)
+        }
       }
     }
 
@@ -303,6 +342,72 @@ final class KeyboardViewController: UIInputViewController {
       self.previewOverlay.dismiss()
       self.activateItem(item)
     }
+
+    sendStatusPill.onRetryDevice = { [weak self] historyID, deviceID in
+      guard let self else { return }
+      self.triggerFeedback()
+      self.engineSession.retrySend(historyID: historyID, deviceID: deviceID)
+    }
+  }
+
+  private func wireEngineSession() {
+    engineSession.onStateChanged = { [weak self] state in
+      guard let self else { return }
+      switch state {
+      case .connecting:
+        self.syncIndicator = .syncing
+      case .connected, .degraded, .idle:
+        self.syncIndicator = .idle
+      case .error:
+        self.syncIndicator = .error
+      }
+      self.renderRail()
+    }
+    engineSession.onItemsUpdated = { [weak self] items in
+      guard let self, self.hasFullAccess else { return }
+      self.allItems = items
+      self.loadState = items.isEmpty ? .empty : .loaded
+      self.renderChrome()
+      self.applyFilteredItems(scrollToTop: false)
+    }
+    engineSession.onToast = { [weak self] text in
+      self?.showToast(text)
+    }
+    engineSession.onSendBatchUpdated = { [weak self] batch in
+      guard let self else { return }
+      if let batch {
+        self.sendStatusPill.update(batch: batch, strings: self.strings)
+      } else {
+        self.sendStatusPill.dismiss(animated: false)
+      }
+    }
+  }
+
+  private func startPasteboardWatch() {
+    stopPasteboardWatch()
+    pasteboardObserver = NotificationCenter.default.addObserver(
+      forName: UIPasteboard.changedNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        self?.engineSession.checkClipboardChange()
+      }
+    }
+    pasteboardPollTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        self?.engineSession.checkClipboardChange()
+      }
+    }
+  }
+
+  private func stopPasteboardWatch() {
+    if let obs = pasteboardObserver {
+      NotificationCenter.default.removeObserver(obs)
+      pasteboardObserver = nil
+    }
+    pasteboardPollTimer?.invalidate()
+    pasteboardPollTimer = nil
   }
 
   // MARK: - Store Loading & Rendering
@@ -445,6 +550,9 @@ final class KeyboardViewController: UIInputViewController {
     if item.kind == .image {
       if let image = store.copyableImage(for: item) {
         UIPasteboard.general.image = image
+        let afterCC = UIPasteboard.general.changeCount
+        let hash = image.pngData().map { KeyboardSnapshotStore.sha256Hex(of: $0) } ?? ""
+        store.recordPasteboardState(changeCount: afterCC, contentSHA256: hash, origin: "applied")
         showToast(strings.toastImageCopied)
       } else {
         showToast(strings.toastImageUnavailable)
@@ -476,15 +584,20 @@ final class KeyboardViewController: UIInputViewController {
     guard let idx = allItems.firstIndex(where: { $0.id == itemID }) else { return }
     allItems[idx].pinned.toggle()
     let updated = allItems[idx]
-    store.enqueuePinChange(historyID: updated.id, pinned: updated.pinned)
     previewOverlay.dismiss()
     renderRail()
     applyFilteredItems(scrollToTop: false)
     showToast(updated.pinned ? strings.toastPinned : strings.toastUnpinned)
+    engineSession.togglePin(historyID: updated.id, pinned: updated.pinned) { [weak self] handled in
+      if !handled {
+        self?.store.enqueuePinChange(historyID: updated.id, pinned: updated.pinned)
+      }
+    }
   }
 
   @objc private func handleCardLongPress(_ gesture: UILongPressGestureRecognizer) {
     guard gesture.state == .began else { return }
+    sendStatusPill.collapse()
     let point = gesture.location(in: collectionView)
     guard let indexPath = collectionView.indexPathForItem(at: point),
           indexPath.item < displayedItems.count else { return }
@@ -517,6 +630,7 @@ final class KeyboardViewController: UIInputViewController {
   }
 
   private func showToast(_ text: String) {
+    sendStatusPill.setTemporarilySuppressed(true)
     toastLabel.text = text
     toastContainer.isHidden = false
     toastContainer.alpha = 0
@@ -534,6 +648,7 @@ final class KeyboardViewController: UIInputViewController {
       }, completion: { _ in
         if self.toastContainer.alpha == 0 {
           self.toastContainer.isHidden = true
+          self.sendStatusPill.setTemporarilySuppressed(false)
         }
       })
     }
@@ -564,7 +679,12 @@ final class KeyboardViewController: UIInputViewController {
 
 extension KeyboardViewController: UICollectionViewDelegate {
   func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+    sendStatusPill.collapse()
     guard indexPath.item < displayedItems.count else { return }
     activateItem(displayedItems[indexPath.item])
+  }
+
+  func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+    sendStatusPill.collapse()
   }
 }

@@ -37,12 +37,12 @@ import (
 const maxPayload = 500 << 20
 
 type Source struct {
-	root                     string
-	crypto                   *cryptoState
-	db                       *sql.DB
-	tx                       *sql.Tx
-	tags                     map[string]string
-	assignments, builtinTags bool
+	root                                     string
+	crypto                                   *cryptoState
+	db                                       *sql.DB
+	tx                                       *sql.Tx
+	tags                                     map[string]string
+	assignments, builtinTags, favoriteColumn bool
 }
 
 type Record struct {
@@ -146,6 +146,11 @@ func (s *Source) loadTags() error {
 	if err != nil {
 		return err
 	}
+	var favoriteColumn int
+	if s.tx.QueryRow("SELECT count(*) FROM pragma_table_info('clipboard_entry') WHERE name='is_favorited'").Scan(&favoriteColumn) != nil {
+		return ErrFormat
+	}
+	s.favoriteColumn = favoriteColumn != 0
 
 	var exists int
 	if s.tx.QueryRow("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='history_tag'").Scan(&exists) != nil {
@@ -188,9 +193,14 @@ func (s *Source) loadTags() error {
 // Walk holds a consistent, read-only SQLite snapshot and keeps only one page
 // of identifiers and one record's payloads in memory.
 func (s *Source) Walk(ctx context.Context, fn func(*Record, error) error) error {
+	query := `SELECT entry_id,created_at_ms,active_time_ms,content_category,0 FROM clipboard_entry
+WHERE deleted_at_ms IS NULL ORDER BY created_at_ms,entry_id LIMIT 128 OFFSET ?`
+	if s.favoriteColumn {
+		query = `SELECT entry_id,created_at_ms,active_time_ms,content_category,is_favorited FROM clipboard_entry
+WHERE deleted_at_ms IS NULL ORDER BY created_at_ms,entry_id LIMIT 128 OFFSET ?`
+	}
 	for offset := 0; ; offset += 128 {
-		rows, err := s.tx.QueryContext(ctx, `SELECT entry_id,created_at_ms,active_time_ms,content_category FROM clipboard_entry
-WHERE deleted_at_ms IS NULL ORDER BY created_at_ms,entry_id LIMIT 128 OFFSET ?`, offset)
+		rows, err := s.tx.QueryContext(ctx, query, offset)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -200,11 +210,12 @@ WHERE deleted_at_ms IS NULL ORDER BY created_at_ms,entry_id LIMIT 128 OFFSET ?`,
 		type entry struct {
 			id, category     string
 			created, updated int64
+			favorite         bool
 		}
 		var entries []entry
 		for rows.Next() {
 			var e entry
-			if rows.Scan(&e.id, &e.created, &e.updated, &e.category) != nil {
+			if rows.Scan(&e.id, &e.created, &e.updated, &e.category, &e.favorite) != nil {
 				_ = rows.Close()
 				return ErrFormat
 			}
@@ -223,6 +234,9 @@ WHERE deleted_at_ms IS NULL ORDER BY created_at_ms,entry_id LIMIT 128 OFFSET ?`,
 				return err
 			}
 			r := &Record{ID: e.id, CreatedAtMs: e.created, UpdatedAtMs: max(e.created, e.updated)}
+			if e.favorite {
+				r.Tags = append(r.Tags, plugin.TagFavorite)
+			}
 			err = s.readRecord(r, e.category)
 			callbackErr := fn(r, err)
 			r.Close()
@@ -281,7 +295,11 @@ func (s *Source) readRecord(r *Record, category string) error {
 			case "code":
 				r.Tags = append(r.Tags, plugin.TagCode)
 			case "favorited":
-				r.UnsupportedTags++
+				// The index mirror can be missing or stale. Only the entry
+				// column carries the persisted favorite state.
+				if !s.favoriteColumn {
+					r.UnsupportedTags++
+				}
 			}
 		}
 		err = rows.Err()

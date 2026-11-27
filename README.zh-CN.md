@@ -2,17 +2,24 @@
 
 <img src="app/desktop/internal/appicons/unic-logo.svg" alt="Unic" width="112" height="112" />
 
-# 复制一次，每台设备都能粘贴
+# 让每一次复制更有用
 
 <p>
-  <strong>Unic（原名 UniClipboard）</strong> 在你的设备之间直接同步文字、图片、文件和文件夹。<br />
-  端到端加密，无需账号，不经过云端。
+  <strong>Unic（原名 UniClipboard）</strong> 是一款原生、本地优先的剪贴板管理与跨设备同步工具，覆盖 Windows、macOS、Linux、iOS、Android 与终端命令行。<br />
+  集本地历史搜索、快捷面板、智能预览、插件扩展与端到端直连同步于一体 —— 无需账号，不经过云端。
 </p>
 
 <p>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="下载" src="https://img.shields.io/badge/%E4%B8%8B%E8%BD%BD-2563eb?style=for-the-badge&logo=github&logoColor=white" /></a>
-  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS%20Beta-1f2937?style=for-the-badge&logo=apple&logoColor=white" /></a>
-  <a href="#quick-start"><img alt="快速开始" src="https://img.shields.io/badge/%E5%BF%AB%E9%80%9F%E5%BC%80%E5%A7%8B-4b5563?style=for-the-badge" /></a>
+  <a href="https://uniclipboard.app"><img alt="官网" src="https://img.shields.io/badge/Website-0891B2?style=for-the-badge" /></a>
+  <a href="https://docs.uniclipboard.app/zh"><img alt="文档" src="https://img.shields.io/badge/Docs-4F46E5?style=for-the-badge&logo=readthedocs&logoColor=white" /></a>
+  <a href="#community"><img alt="微信群" src="https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white" /></a>
+  <a href="#community"><img alt="QQ 群" src="https://img.shields.io/badge/QQ-1688D8?style=for-the-badge&logo=qq&logoColor=white" /></a>
+  <a href="https://t.me/uniclipboard"><img alt="Telegram 群组" src="https://img.shields.io/badge/Telegram-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" /></a>
+</p>
+
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/UniClipboard/UniClipboard?style=flat-square&color=E5B650&logo=github&label=Stars" /></a>
+  <a href="LICENSE"><img alt="AGPL-3.0 许可证" src="https://img.shields.io/badge/License-AGPL--3.0-22c55e?style=flat-square" /></a>
 </p>
 
 <p>
@@ -38,10 +45,10 @@
 
 ## 为什么选择 Unic
 
-- **跨平台**：支持 Windows、macOS、Linux、iOS 和 Android 互相同步。设备在同一 Wi-Fi 或不同网络里都能连上。
-- **不经过云端**：设备之间加密直连，不需要注册账号。剪贴板历史只保存在你自己的设备上。
-- **内存占用低**：后台同步服务空闲时约占 14 MB 内存<sup>[1](#benchmarks)</sup>。在 Windows 上，主界面约占 34–49 MB<sup>[2](#benchmarks)</sup>。关闭主窗口后，界面进程会退出并释放内存。
-- **都能同步**：文字、图片、文件和整个文件夹都能同步。
+- **单机好用，多机无缝**：单机自带历史搜索、快捷面板、自动分类与链接预览；连上更多设备即可在全平台同步文字、图片、文件与文件夹。
+- **真正原生，不套壳 Electron**：Go 核心 + 原生桌面界面，主窗口关闭即退出，后台服务 `unicd` 可在无界面环境独立运行。
+- **无账号，不经过云端**：设备核验指纹后端到端加密直连，移除即断权，剪贴板历史始终只留在你自己的设备上。
+- **不止复制粘贴，还可按需扩展**：内置 Action 与 Go / Lua 插件，搭配 CLI（`unic`）覆盖终端、SSH 与免配对 6 位码传输。
 
 <a id="features"></a>
 
@@ -50,34 +57,34 @@
 <table>
   <tr>
     <td>⚡ <strong>快捷面板</strong></td>
-    <td>在任何应用里按 <code>⌘ ⌃ V</code>（Windows / Linux 上是 <code>Ctrl Alt V</code>）打开历史，选中一条，按回车直接粘贴。</td>
+    <td>在任何应用里按 <code>⌘ ⌃ V</code>（Windows / Linux 上是 <code>Ctrl Alt V</code>）呼出历史搜索，按 <code>Enter</code> 直接粘贴，或按 <code>Shift+Enter</code> 以纯文本粘贴。</td>
   </tr>
   <tr>
     <td>🔍 <strong>快速查找</strong></td>
-    <td>输入关键词，或用 <code>#标签</code>、<code>@设备</code>、<code>/类型</code> 筛选。几个月前复制的内容也能找回。</td>
+    <td>输入关键词，或用 <code>#标签</code>、<code>@设备</code>、<code>/类型</code> 与收藏筛选。几个月前复制的内容也能找回，链接还支持按网页标题与简介检索。</td>
   </tr>
   <tr>
-    <td>🏷️ <strong>自动分类</strong></td>
-    <td>自动给链接、邮箱、颜色值、版本号、UUID、IP 地址等内容打标签，还能添加自己的规则。</td>
+    <td>🏷️ <strong>自动分类与智能预览</strong></td>
+    <td>自动给链接、邮箱、颜色值、版本号、UUID、IP 地址等内容打标签（支持自定义正则规则），并为复制的链接自动生成预览卡片。</td>
   </tr>
   <tr>
-    <td>📁 <strong>文件和文件夹</strong></td>
-    <td>发送整个文件夹时，目录结构会完整保留。也可以只发给指定的设备。</td>
+    <td>🔄 <strong>跨设备同步与文件夹</strong></td>
+    <td>在已配对设备间同步文字、富文本、图片、文件和完整保留目录结构的文件夹，可同步给所有设备或指定单台设备。</td>
   </tr>
   <tr>
     <td>📮 <strong>不配对也能传</strong></td>
-    <td>运行 <code>unic send "内容"</code> 会输出传输链接。取件码可用时，也会输出 6 位取件码。接收方可以用其中一种方式接收。传输不会留下设备记录。</td>
+    <td>运行 <code>unic send "内容"</code> 会输出传输链接。取件码可用时，也会输出 6 位取件码。接收方可以用其中一种方式接收，不会留下设备记录。</td>
   </tr>
   <tr>
-    <td>🧩 <strong>插件</strong></td>
-    <td>在设置里一键安装插件，例如把图片或文件转换成分享链接。</td>
+    <td>🧩 <strong>Action 与插件扩展</strong></td>
+    <td>运行不修改原条目的 Action（文本转换、去除格式、将图片或文件转为分享链接），并可在设置中一键安装 Go 或 Lua 插件。</td>
   </tr>
   <tr>
     <td>⌨️ <strong>命令行</strong></td>
-    <td>用 <code>unic</code> 在终端、SSH 和脚本中发送、接收和筛选历史列表。</td>
+    <td>用 <code>unic</code> 在终端、SSH 和脚本中发送、接收、执行 Action 与筛选历史列表。</td>
   </tr>
   <tr>
-    <td>🌍 <strong>多语言</strong></td>
+    <td>🌍 <strong>多语言与主题</strong></td>
     <td>简体中文、English、日本語、Português、Русский，支持浅色和深色模式。</td>
   </tr>
 </table>
@@ -95,13 +102,13 @@
 
 [![Packaging status](https://repology.org/badge/vertical-allrepos/uniclipboard.svg)](https://repology.org/project/uniclipboard/versions)
 
-**2. 连接第二台设备**
+**2. 立即开始使用**
 
-在第一台设备上打开 **设备 → 添加设备**，记下 6 位配对码，然后在第二台设备上输入。两台设备显示的指纹一致后，在两边分别点击 **接受**。
+照常复制内容，在任意应用中按 `⌘ ⌃ V`（Windows / Linux 上按 `Ctrl Alt V`）呼出快捷面板，搜索历史并直接粘贴。
 
-**3. 复制**
+**3. 连接第二台设备（可选）**
 
-在一台设备上按 `Ctrl+C`，然后在另一台设备上按 `Ctrl+V`。
+在第一台设备上打开 **设备 → 添加设备**，记下 6 位配对码，然后在第二台设备上输入。两台设备显示的指纹一致后，在两边分别点击 **接受**，此后复制的内容就会自动同步。
 
 <a id="cli"></a>
 
@@ -117,18 +124,6 @@ unic history list                 # 查看历史
 
 完整命令见 [命令行文档](app/service/README.md)。
 
-<a id="benchmarks"></a>
-
-## 实测数据
-
-| | 内存 | 测试条件 |
-|---|---:|---|
-| 后台同步服务 `unicd` | **14 MB** | macOS（Apple Silicon），空历史，空闲 20 秒后读取，统计口径与“活动监视器”的“内存”列一致<sup>1</sup> |
-| 桌面主界面 | **34 MB** / 49 MB | Windows 11 ARM64 原生版 / x64 版，60 条文字历史，Windows 任务管理器口径<sup>2</sup> |
-| 桌面主界面（含图片） | 119 MB / 133 MB | 同上，另加 12 张 2048×1536 图片<sup>2</sup> |
-
-<sup>1</sup> 在提交 `e2cb68d` 上测量，测量方法是 `footprint <pid>`。<sup>2</sup> 三次测量取中位数，详见 [Windows 内存测试报告](docs/exec/windows-desktop-memory.md)。
-
 ## 隐私
 
 - 设备之间端到端加密传输，Unic 不运营存储你剪贴板内容的服务器。
@@ -143,6 +138,29 @@ unic history list                 # 查看历史
 v2 可以导入 v1 的全部历史记录，包括文字、图片、文件和标签。首次打开 v2 时，按照引导操作即可。也可以稍后在 **设置 › 存储 › 从 v1 迁移** 中导入。
 
 v2 设备不能和 v1 设备同步，所以请把所有设备都升级到 v2，然后重新配对。v1 的代码保留在 [`v1` 分支](https://github.com/UniClipboard/UniClipboard/tree/v1)。
+
+<a id="community"></a>
+
+## 社区交流
+
+欢迎加入 Unic 社区，与其他用户和开发者交流使用心得、提出建议或反馈问题：
+
+- <img src="docs/assets/community/qq.svg" alt="" width="18" /> QQ 群：`1080860954`
+- <img src="docs/assets/community/wechat.svg" alt="" width="18" /> 微信群：扫描下方二维码添加好友，拉你进交流群
+- <img src="docs/assets/community/telegram.svg" alt="" width="18" /> [Telegram 群组 (@uniclipboard)](https://t.me/uniclipboard)
+
+<table>
+  <tr>
+    <td align="center"><strong><img src="docs/assets/community/qq.svg" alt="" width="18" /> QQ 群</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/wechat.svg" alt="" width="18" /> 微信群</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/telegram.svg" alt="" width="18" /> Telegram 群组</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/assets/community/qq-qr.png" alt="Unic QQ 群二维码" width="240" /></td>
+    <td align="center"><img src="docs/assets/community/wechat-qr.png" alt="Unic 微信二维码" width="240" /></td>
+    <td align="center"><a href="https://t.me/uniclipboard"><img src="docs/assets/community/telegram-qr.jpg" alt="Unic Telegram 群组二维码" width="240" /></a></td>
+  </tr>
+</table>
 
 ## 参与开发
 

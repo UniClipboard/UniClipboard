@@ -3,5 +3,11 @@ name: Wait for partial legacy mobile migration state
 ---
 - extendedWaitUntil:
     visible:
+      id: setup-start-migration
+    timeout: 45000
+- tapOn:
+    id: setup-start-migration
+- extendedWaitUntil:
+    visible:
       id: setup-retry-partial
     timeout: 60000

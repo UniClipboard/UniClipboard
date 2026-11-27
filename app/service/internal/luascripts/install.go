@@ -19,6 +19,7 @@ type InstallOptions struct {
 	Repository string
 	Ref        string
 	Path       string
+	MirrorURL  string
 	Build      bool
 	Replace    bool
 }
@@ -107,72 +108,121 @@ func Install(ctx context.Context, root string, o InstallOptions) (string, error)
 	return InstallWithActivation(ctx, root, o, nil)
 }
 
-// InstallWithActivation lets the service start a verified replacement before
-// selecting it. The callback commits the pin at publication. On failure the
-// installer restores the exact prior lock entry while still holding the lock.
-func InstallWithActivation(ctx context.Context, root string, o InstallOptions, activate func(Script, func() error) error) (string, error) {
+// PreparedInstall holds a downloaded and validated plugin bundle in a private
+// staging directory ready to be committed under lock. Callers must call Close
+// when finished to clean up any remaining staging files.
+type PreparedInstall struct {
+	root             string
+	dir              string
+	stage            string
+	bundle           string
+	id               string
+	commit           string
+	replace          bool
+	pin              installedPlugin
+	alreadyInstalled bool
+}
+
+// Close removes the private staging directory created during PrepareInstall.
+func (p *PreparedInstall) Close() error {
+	if p == nil || p.stage == "" {
+		return nil
+	}
+	err := os.RemoveAll(p.stage)
+	p.stage = ""
+	return err
+}
+
+// PrepareInstall downloads, validates, and builds a plugin inside a private
+// staging directory without holding the installation lock. Call Commit under
+// the service lock to publish the prepared bundle.
+func PrepareInstall(ctx context.Context, root string, o InstallOptions) (*PreparedInstall, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	repo, err := openGitHub(o.Repository)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	mirror, err := resolveMirrorURL(o.MirrorURL)
+	if err != nil {
+		return nil, err
+	}
+	repo.mirror = mirror
 	if o.Path != "" && !localPath(o.Path) {
-		return "", errors.New("invalid plugin repository path")
+		return nil, errors.New("invalid plugin repository path")
 	}
 	commit, err := repo.commit(ctx, o.Ref)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	dir := installedDir(root)
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", err
+		return nil, err
 	}
 	stage, err := os.MkdirTemp(dir, ".stage-*")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	defer func() { _ = os.RemoveAll(stage) }()
+	keepStage := false
+	defer func() {
+		if !keepStage {
+			_ = os.RemoveAll(stage)
+		}
+	}()
 	source := filepath.Join(stage, "source")
 	if err := repo.source(ctx, commit, source); err != nil {
-		return "", err
+		return nil, err
 	}
 	work := filepath.Join(source, o.Path)
 	script, err := ReadManifest(work, true)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	id := script.Manifest.ID
 	pin := installedPlugin{Repository: repo.location, Commit: commit, Path: o.Path, Version: script.Manifest.Version, API: script.Manifest.APIVersion}
 	raw, err := os.ReadFile(filepath.Join(work, ManifestFile))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	pin.Manifest = digest(raw)
-	dir, lock, unlock, err := editLock(root)
-	if err != nil {
-		return "", err
-	}
-	defer unlock()
+
+	// Fast-fail conflict checks before downloading release binaries or running
+	// go build; Commit re-checks everything under the installation lock.
 	local, _ := scanLocal(root)
 	if _, exists := local[id]; exists {
-		return "", errors.New("plugin ID already exists in the local Lua directory")
+		return nil, errors.New("plugin ID already exists in the local Lua directory")
 	}
-	if old, ok := lock[id]; ok {
-		if old.Repository != pin.Repository || old.Path != pin.Path {
-			return "", errors.New("plugin ID belongs to another repository or path")
+	if lock, lockErr := readLock(dir); lockErr == nil {
+		if old, ok := lock[id]; ok {
+			if old.Repository != pin.Repository || old.Path != pin.Path {
+				return nil, errors.New("plugin ID belongs to another repository or path")
+			}
+			if old.Commit == commit {
+				if _, err := readInstalled(dir, id, old); err != nil {
+					return nil, err
+				}
+				keepStage = true
+				return &PreparedInstall{
+					root:             root,
+					dir:              dir,
+					stage:            stage,
+					id:               id,
+					commit:           commit,
+					replace:          o.Replace,
+					pin:              pin,
+					alreadyInstalled: true,
+				}, nil
+			}
+			if !o.Replace {
+				return nil, errors.New("plugin is installed at a different commit; use --replace")
+			}
 		}
-		if old.Commit == commit {
-			_, err := readInstalled(dir, id, old)
-			return id, err
-		}
-		if !o.Replace {
-			return "", errors.New("plugin is installed at a different commit; use --replace")
-		}
-		old.Previous = nil
-		pin.Previous = &old
 	}
+
 	bundle := filepath.Join(stage, "bundle")
 	if err := os.Mkdir(bundle, 0700); err != nil {
-		return "", err
+		return nil, err
 	}
 	names := []string{ManifestFile, script.Manifest.SettingsSchema}
 	switch script.Manifest.Kind {
@@ -180,24 +230,74 @@ func InstallWithActivation(ctx context.Context, root string, o InstallOptions, a
 		m := script.Manifest
 		p, err := luaplugin.New(luaplugin.Spec{ID: id, Version: m.Version, APIVersion: m.APIVersion, Capabilities: m.Capabilities, Source: script.Source})
 		if err != nil {
-			return "", errors.New("plugin failed Lua validation")
+			return nil, errors.New("plugin failed Lua validation")
 		}
 		_ = p.Close(ctx)
 		names = append(names, m.Entry)
 		pin.Source, pin.Digest = "lua", digest([]byte(script.Source))
 	case "go":
 		if err := repo.prepareGo(ctx, stage, work, bundle, script.Manifest, o.Build, &pin); err != nil {
-			return "", err
+			return nil, err
 		}
 	}
 	for _, name := range names {
 		if name != "" {
 			if err := copyPluginFile(filepath.Join(work, name), filepath.Join(bundle, name), 0600); err != nil {
-				return "", err
+				return nil, err
 			}
 		}
 	}
-	target := filepath.Join(dir, id, commit)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	keepStage = true
+	return &PreparedInstall{
+		root:    root,
+		dir:     dir,
+		stage:   stage,
+		bundle:  bundle,
+		id:      id,
+		commit:  commit,
+		replace: o.Replace,
+		pin:     pin,
+	}, nil
+}
+
+// Commit atomically installs a prepared bundle into installed.lock and runs
+// activate when replacing a previous installation.
+func (p *PreparedInstall) Commit(ctx context.Context, activate func(Script, func() error) error) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	dir, lock, unlock, err := editLock(p.root)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+	id := p.id
+	pin := p.pin
+	local, _ := scanLocal(p.root)
+	if _, exists := local[id]; exists {
+		return "", errors.New("plugin ID already exists in the local Lua directory")
+	}
+	if old, ok := lock[id]; ok {
+		if old.Repository != pin.Repository || old.Path != pin.Path {
+			return "", errors.New("plugin ID belongs to another repository or path")
+		}
+		if old.Commit == p.commit {
+			_, err := readInstalled(dir, id, old)
+			return id, err
+		}
+		if !p.replace {
+			return "", errors.New("plugin is installed at a different commit; use --replace")
+		}
+		old.Previous = nil
+		pin.Previous = &old
+	}
+	if p.alreadyInstalled {
+		return "", errors.New("plugin installation changed while preparing; retry")
+	}
+	target := filepath.Join(dir, id, p.commit)
 	if err := os.MkdirAll(filepath.Dir(target), 0700); err != nil {
 		return "", err
 	}
@@ -207,7 +307,7 @@ func InstallWithActivation(ctx context.Context, root string, o InstallOptions, a
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return "", err
-	} else if err := os.Rename(bundle, target); err != nil {
+	} else if err := os.Rename(p.bundle, target); err != nil {
 		return "", err
 	}
 	previous, hadPrevious := lock[id]
@@ -243,6 +343,18 @@ func InstallWithActivation(ctx context.Context, root string, o InstallOptions, a
 		return "", errors.New("plugin activation did not select the installation")
 	}
 	return id, nil
+}
+
+// InstallWithActivation lets the service start a verified replacement before
+// selecting it. The callback commits the pin at publication. On failure the
+// installer restores the exact prior lock entry while still holding the lock.
+func InstallWithActivation(ctx context.Context, root string, o InstallOptions, activate func(Script, func() error) error) (string, error) {
+	prep, err := PrepareInstall(ctx, root, o)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = prep.Close() }()
+	return prep.Commit(ctx, activate)
 }
 
 func Uninstall(root, id string, disable func() error) error {

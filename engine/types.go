@@ -52,7 +52,7 @@ type DirectorySyncSettings struct {
 }
 
 // RelaySyncSettings configures the optional zero-knowledge E2EE HTTP relay
-// fallback used when a target peer's P2P session is offline (0035).
+// fallback used when a target peer's P2P session is offline (0036).
 type RelaySyncSettings struct {
 	Enabled      bool   `json:"enabled"`
 	URL          string `json:"url,omitempty"`

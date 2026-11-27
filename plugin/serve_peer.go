@@ -36,7 +36,7 @@ type PeerLinkCallbackAware interface {
 }
 
 // RelayProfile describes one peer's E2EE HTTP relay mailbox route and revocable
-// delivery token exchanged over an authenticated peer session (0035).
+// delivery token exchanged over an authenticated peer session (0036).
 type RelayProfile struct {
 	RelayOrigin   string
 	MailboxID     string
@@ -58,7 +58,7 @@ type PeerRelayBridge interface {
 }
 
 // RelayHandoffOffer proposes settling an in-flight chunked relay transfer over
-// a recovered P2P session (0035 Phase 2).
+// a recovered P2P session (0036 Phase 2).
 type RelayHandoffOffer struct {
 	TransferID          string
 	EnvelopeJSON        []byte
@@ -77,7 +77,7 @@ type RelayHandoffAck struct {
 
 // PeerRelayHandoffBridge is an optional in-process hook allowing built-in
 // peer_sessions backends to carry Level 3 chunked handoff control/data frames
-// and clip_ack coordination for Engine's hybrid relay coordinator (0035 Phase 2).
+// and clip_ack coordination for Engine's hybrid relay coordinator (0036 Phase 2).
 type PeerRelayHandoffBridge interface {
 	SetRelayHandoffCallbacks(
 		onOffer func(peerID string, offer RelayHandoffOffer) RelayHandoffAck,

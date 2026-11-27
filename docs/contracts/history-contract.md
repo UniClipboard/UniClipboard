@@ -54,7 +54,7 @@ func (e *Engine) BeginApplyHistory(ctx context.Context, req ApplyHistoryRequest)
 
 ### Favorites
 
-The reserved history tag `favorite` identifies a local favorite. The Desktop search spelling is `#favorite`. Item metadata and explicit tag filters use the stored value `favorite`. The history tag list and search tag catalogue omit this value, including when an imported tag definition uses the same name. The tag uses the existing revision-checked update and visibility rules. Favoriting preserves the history order and other tags. Desktop retains the favorite when it edits ordinary tags. The normal history retention rules still apply.
+The reserved history tag `favorite` identifies a local favorite. The Desktop search spelling is `#favorite`. Item metadata and explicit tag filters use the stored value `favorite`. The history tag list and search tag catalogue omit this value, including when an imported tag definition uses the same name. The tag uses the existing revision-checked update and visibility rules. Favoriting preserves the history order and other tags. Desktop retains the favorite when it edits ordinary tags. The default cleanup policy protects favorites from automatic deletion.
 
 `ListHistoryRequest{Limit int, Cursor string, Filter HistoryFilter}`；Limit=0 使用 50，合法范围 1..200。`HistoryFilter{Kinds []HistoryKind, Tags []string, OriginKinds []HistoryOriginKind, DeviceID DeviceID, CreatedFromMs int64, CreatedBeforeMs int64}`：各字段之间 AND，同字段 Kinds/OriginKinds 内 OR，Tags 为全部匹配，时间为 `[from, before)`，0 表示不设该边界。DeviceID 只匹配 remote_device 来源；OriginKinds 可含 external。未知枚举、非法时间区间或超出标签限制返回 invalid_argument；重复筛选项规范化去重。
 
@@ -108,9 +108,10 @@ not per-record expiry defaults.
 | AutoCleanup | true | One switch for age/count cleanup and capacity-driven history deletion. |
 | RetentionDays | 180 | 0..36500; 0 disables age cleanup. Age uses stored CreatedAtMs. |
 | MaxItems | 0 | 0..1000000; 0 means unlimited eligible records. |
-| ExcludedTags | [] | Existing tag validation; exact case-sensitive OR matching. |
+| ExcludedTags | `["favorite"]` | Existing tag validation with exact case-sensitive OR matching. |
 
-Excluded records do not count toward MaxItems. Empty ExcludedTags excludes nothing.
+Excluded records do not count toward MaxItems. An omitted `history.excluded_tags`
+uses the default. An explicit list replaces the default, including an empty list.
 Tag updates, policy updates, candidate selection, and deletion serialize under the history mutex.
 Cleanup processes oldest creation time first, then commit sequence. Age and count share this order.
 It runs at startup (after the host reconciles clipboard files), on policy changes, after commits,
@@ -241,7 +242,14 @@ reserved `builtin:` namespace are rejected as unsupported source format.
 | `image` | `builtin:image` | Preserve membership, including image-file membership |
 | `directory` | `builtin:folder` | Preserve membership; directory payloads remain ZIP imports |
 | `code` | `builtin:code` | Preserve membership; Desktop provides a localized built-in filter |
-| `favorited` | None | Not imported; increment `unsupported_tags` and report `partial` |
+
+The importer reads the persisted favorite flag, `clipboard_entry.is_favorited`,
+when the source schema provides it. It adds the reserved v2 `favorite` tag
+to each live entry with the flag set. The `favorited` search index row is a
+derived copy and does not affect the result when the flag exists. A source
+without the flag column can still be imported. Any profile-scoped
+`favorited` index row in that older schema increments `unsupported_tags`
+and reports `partial`.
 
 The importer preserves custom names, multiple associations and unassigned
 custom definitions. It does not reconstruct or rebuild the v1 search index.
@@ -268,9 +276,9 @@ remaining `tag_mismatches` separately from content verification.
 
 Any later metadata edit may advance `UpdatedAtMs`. Verification still requires
 the original creation time and exact content bytes. It checks the original
-activity time only at revision 1. Remaining tag differences or deleted mapped
-records remain verification failures and report `partial`; they require manual
-review in v2. See the [repeatable process receipt](../exec/2252-v1-migration-tags.md).
+activity time only at revision 1. Skipped repairs for missing source tags and
+verification failures for deleted mapped records report `partial`. Target-only
+tags are preserved. See the [repeatable process receipt](../exec/2252-v1-migration-tags.md).
 
 ### v1 tag color preservation
 
@@ -309,6 +317,13 @@ the Desktop sidebar. For theme and usage events, fields present in
 `desktop-settings.json` take precedence over fields in `settings.json`. The
 display name comes from `settings.json`. The usage preference applies only to
 `telemetry.analytics.enabled`.
+
+For a source with the persisted favorite flag, `settings.json` supplies
+`retention_policy.skip_pinned`. Its v1 default is true. Before importing
+history, the importer fills an absent v2 `history.excluded_tags` with
+`["favorite"]` when v1 enabled protection or `[]` when v1 disabled it.
+An explicit v2 exclusion list takes precedence. The import preserves the
+target cleanup switch, retention age, count limit and explicit item expiry.
 
 Sidebar visibility comes from `history-tags/layout.v1.json`. An existing layout
 sets visibility for mapped built-in tags and authenticated custom tags. Missing

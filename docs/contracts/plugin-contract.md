@@ -305,6 +305,27 @@ The Desktop marketplace reads a version-1 static JSON catalog from
 selects the bundled catalog without network access. Remote URLs require HTTPS;
 HTTP is accepted only for loopback test servers.
 
+An optional mirror base URL may be configured via `plugins.mirror_url` in
+`config.toml` or overridden by `UNIC_PLUGIN_MIRROR_URL` (`off` or `none`
+disables a configured mirror and forces direct GitHub access). The official
+mirror preset is `https://plugins.uniclipboard.app` (deployed from
+`UniClipboard/unic-plugins/mirror/`). Mirror URLs require HTTPS (HTTP is
+accepted only for loopback test servers) with no userinfo, query or fragment,
+and apply immediately without restarting the service. When `UNIC_PLUGIN_REGISTRY_URL`
+is unset and a mirror is configured, the service requests `<mirror>/registry.json`
+first and falls back to the default GitHub registry URL on failure before
+falling back to cache or the bundled catalog.
+
+For plugin installation (`unic plugin install` and `/v1/plugins/install`), an
+active mirror routes `api.github.com`, `codeload.github.com` and `github.com`
+requests to `<mirror>/<github-host><path>` with same-origin HTTPS redirect
+enforcement only. On mirror transport errors or HTTP 404/429/5xx responses (for
+example, an unlisted third-party repository), the installer falls back to direct
+GitHub access. Archive validation, SHA-256 digest verification and executable
+format checks are never bypassed and never trigger fallback on mismatch.
+`installed.lock` always records the canonical `https://github.com/owner/repo`
+identity regardless of whether a mirror served the bytes.
+
 The service limits remote catalogs to 512 KiB and 256 entries. It validates
 unique plugin IDs, GitHub repositories, local subpaths, metadata bounds and
 categories (`share`, `text`, `organize`, `sync`). A validated catalog is cached
@@ -329,6 +350,7 @@ Plugin commands:
 ```sh
 unic plugin install https://github.com/owner/repo
 unic plugin install https://github.com/owner/repo --ref v1.2.0
+unic plugin install https://github.com/owner/repo --mirror https://plugins.uniclipboard.app
 unic plugin install https://github.com/owner/repo --build
 unic plugin install https://github.com/owner/repo --ref <commit> --path plugins/emailtag --enable
 unic plugin list
@@ -411,7 +433,7 @@ identity and the RPC handshake.
 
 ### 安装选择与 --build
 
-1. 规范 GitHub HTTPS URL，允许末尾 .git。分支、tag、commit 用 --ref；子目录用 --path，不解析 tree/blob 网页 URL。默认解析默认分支 HEAD，所有 ref 锁到完整 commit；获取该 commit 清单。首版仅公共仓库，不处理子模块。
+1. 规范 GitHub HTTPS URL，允许末尾 .git。分支、tag、commit 用 --ref；子目录用 --path，不解析 tree/blob 网页 URL。默认解析默认分支 HEAD，所有 ref 锁到完整 commit；若 --ref 已是合法 40 位小写十六进制 commit SHA，则跳过 `api.github.com` 查询直接拉取该 commit 源码包并读取清单。首版仅公共仓库，不处理子模块。
 2. Lua 获取脚本并校验语法/API。Go 查找当前 GOOS/GOARCH 与系统要求匹配的预编译项，并探测 Release 资产是否存在。
 3. 存在匹配预编译则下载，校验 SHA-256、归档边界、可执行格式/架构，无需 Go 工具链。摘要不符、包损坏、描述冲突直接失败，不用源码构建掩盖完整性错误。
 4. 没有匹配项或确认资产不存在：默认失败并提示 --build。指定 --build 才允许源码兜底。即使指定 --build，仍优先使用有效预编译；网络、限流、认证错误不能误判为“无预编译”。

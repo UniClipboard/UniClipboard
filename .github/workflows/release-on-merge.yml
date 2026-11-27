@@ -1,0 +1,130 @@
+name: Release on PR Merge
+run-name: release-on-merge-${{ github.event.pull_request.head.ref }}
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: release-on-merge-${{ github.event.pull_request.head.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Validate and dispatch release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch &&
+      startsWith(github.event.pull_request.head.ref, 'release/')
+    steps:
+      - name: Checkout merge commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Parse and validate release branch
+        id: release
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          python3 tools/release/prepare_release.py parse-branch \
+            --branch "$PR_HEAD_REF" \
+            --validate-repo \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Dispatch build and release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PLATFORM: ${{ steps.release.outputs.platform }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+          VERSION: ${{ steps.release.outputs.version }}
+          ANDROID_TRACK: ${{ steps.release.outputs.android_track }}
+        run: |
+          case "$PLATFORM" in
+            desktop)
+              gh workflow run release-cli.yml \
+                --repo "$GITHUB_REPOSITORY" \
+                --ref "$BASE_REF" \
+                -f channel="$CHANNEL" \
+                -f version="$VERSION" \
+                -f expected_source="$MERGE_SHA"
+              ;;
+            cli)
+              gh workflow run release-cli.yml \
+                --repo "$GITHUB_REPOSITORY" \
+                --ref "$BASE_REF" \
+                -f channel="$CHANNEL" \
+                -f expected_source="$MERGE_SHA"
+              ;;
+            mobile)
+              gh workflow run release-android.yml \
+                --repo "$GITHUB_REPOSITORY" \
+                --ref "$BASE_REF" \
+                -f publish=true \
+                -f track="$ANDROID_TRACK"
+              gh workflow run release-ios.yml \
+                --repo "$GITHUB_REPOSITORY" \
+                --ref "$BASE_REF" \
+                -f publish=true
+              ;;
+            android)
+              gh workflow run release-android.yml \
+                --repo "$GITHUB_REPOSITORY" \
+                --ref "$BASE_REF" \
+                -f publish=true \
+                -f track="$ANDROID_TRACK"
+              ;;
+            ios)
+              gh workflow run release-ios.yml \
+                --repo "$GITHUB_REPOSITORY" \
+                --ref "$BASE_REF" \
+                -f publish=true
+              ;;
+            *)
+              echo "Unsupported release platform: $PLATFORM" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Delete release branch
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$PR_HEAD_REF"
+
+      - name: Summary
+        env:
+          PLATFORM: ${{ steps.release.outputs.platform }}
+          CHANNEL: ${{ steps.release.outputs.channel }}
+          IDENTITY: ${{ steps.release.outputs.identity }}
+          WORKFLOWS: ${{ steps.release.outputs.workflows }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          {
+            echo "## Release Workflow Dispatched"
+            echo ""
+            echo "- **Platform:** ${PLATFORM}"
+            echo "- **Channel:** ${CHANNEL}"
+            echo "- **Identity:** ${IDENTITY}"
+            echo "- **Commit:** \`${MERGE_SHA}\`"
+            echo "- **Dispatched workflows:** \`${WORKFLOWS}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

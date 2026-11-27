@@ -41,6 +41,18 @@ auto_file_max_bytes = "100MB"
 	if p.Images || !p.Text || !p.Files || p.AutoFileMaxBytes != 100<<20 {
 		t.Errorf("policy = %+v (omitted booleans must stay true)", p)
 	}
+	if got := c.Desktop.QuickPanelPositionOrDefault(); got != "center" {
+		t.Errorf("default quick_panel_position = %q, want center", got)
+	}
+	for _, pos := range []string{"center", "cursor", "caret"} {
+		parsed, err := Parse([]byte("[desktop]\nquick_panel_position = \"" + pos + "\"\n"))
+		if err != nil {
+			t.Fatalf("parse quick_panel_position=%q: %v", pos, err)
+		}
+		if parsed.Desktop.QuickPanelPosition != pos || parsed.Desktop.QuickPanelPositionOrDefault() != pos {
+			t.Errorf("quick_panel_position = %q, want %q", parsed.Desktop.QuickPanelPosition, pos)
+		}
+	}
 }
 
 func TestRelayConfigParseAndRedaction(t *testing.T) {
@@ -157,6 +169,12 @@ func TestParseRejects(t *testing.T) {
 		"preview bad domain":  "[plugins.instances.\"builtin.preview\".preview]\nexcluded_domains = [\"bad host\"]",
 		"relay bad url":       "[sync.relay]\nenabled = true\nurl = \"ftp://relay.example\"",
 		"relay over hard cap": "[sync.relay]\nenabled = true\nurl = \"https://relay.example\"\nmax_bytes = \"5GiB\"",
+		"bad quick panel pos": "[desktop]\nquick_panel_position = \"top\"",
+		"bad mirror http":     "[plugins]\nmirror_url = \"http://plugins.example.com\"",
+		"bad mirror creds":    "[plugins]\nmirror_url = \"https://user:pass@plugins.example.com\"",
+		"bad mirror query":    "[plugins]\nmirror_url = \"https://plugins.example.com?a=1\"",
+		"bad mirror fragment": "[plugins]\nmirror_url = \"https://plugins.example.com#frag\"",
+		"bad mirror space":    "[plugins]\nmirror_url = \" https://plugins.uniclipboard.app\"",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected an error", name)
@@ -399,5 +417,27 @@ device_pairing = false
 	}
 	if c2.Desktop.Notifications.DevicePairingEnabled() {
 		t.Fatal("expected device pairing notifications disabled")
+	}
+}
+
+func TestPluginMirrorURLAppliesWithoutRestart(t *testing.T) {
+	for _, mirror := range []string{
+		"",
+		"https://plugins.uniclipboard.app",
+		"https://mirror.example.com/unic-plugins",
+		"http://127.0.0.1:8080",
+	} {
+		c, err := Parse([]byte("[plugins]\nmirror_url = \"" + mirror + "\"\n"))
+		if err != nil {
+			t.Fatalf("parse mirror_url=%q: %v", mirror, err)
+		}
+		if c.Plugins.MirrorURL != mirror {
+			t.Fatalf("mirror_url = %q, want %q", c.Plugins.MirrorURL, mirror)
+		}
+		m := Static(Default())
+		m.cur = c
+		if rr := m.State().RestartRequired; len(rr) != 0 {
+			t.Fatalf("mirror_url=%q must not require restart, got %v", mirror, rr)
+		}
 	}
 }

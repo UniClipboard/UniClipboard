@@ -125,6 +125,8 @@ def load(manifest, production=True):
 def acquire(args):
     if not str(args.run_id).isdigit():
         raise ValueError("invalid candidate run ID")
+    if args.source_sha and not args.current_artifacts:
+        raise ValueError("--source-sha is supported only with --current-artifacts")
     repo = "UniClipboard/UniClipboard"
 
     def gh(*argv):
@@ -146,6 +148,22 @@ def acquire(args):
             raise ValueError("in-run candidate must belong to this workflow and source")
     elif run.get("conclusion") != "success":
         raise ValueError("candidate is not a successful canonical repository build")
+    expected_source = run["head_sha"]
+    if args.source_sha:
+        if not re.fullmatch(r"[0-9a-f]{40}", args.source_sha):
+            raise ValueError("invalid source SHA")
+        if args.source_sha != run["head_sha"]:
+            compare = json.loads(
+                gh("api", f"repos/{repo}/compare/{args.source_sha}...{run['head_sha']}")
+            )
+            if (
+                compare.get("status") not in ("identical", "ahead")
+                or compare.get("behind_by") != 0
+            ):
+                raise ValueError(
+                    "candidate source is not an ancestor of workflow head"
+                )
+        expected_source = args.source_sha
     output = package.fresh_output(args.output)
     import tempfile
 
@@ -173,7 +191,7 @@ def acquire(args):
         for path in work.rglob("artifacts.json"):
             m = package.cli.read_json(path)
             if (
-                m["source_sha"] != run["head_sha"]
+                m["source_sha"] != expected_source
                 or not m["source_clean"]
                 or m["development"]
             ):
@@ -193,7 +211,7 @@ def acquire(args):
             work / "acquisition.json",
             {
                 "run_id": int(args.run_id),
-                "source_sha": run["head_sha"],
+                "source_sha": expected_source,
                 "created_at": run["created_at"],
                 "repository": repo,
             },
@@ -722,6 +740,7 @@ def main():
     s.add_argument("--run-id", required=True)
     s.add_argument("--output", required=True)
     s.add_argument("--current-artifacts", type=Path)
+    s.add_argument("--source-sha", default="")
     s = sub.add_parser("assemble")
     s.add_argument("--input", required=True)
     s.add_argument("--output", required=True)

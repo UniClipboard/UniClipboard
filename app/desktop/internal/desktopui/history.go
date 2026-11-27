@@ -100,6 +100,9 @@ func (d *viewState) sidebar(c *ui.Context, k desktopkit.Kit) {
 			d.source, d.tag = strings.TrimPrefix(d.nav.Value, "device:"), ""
 		default:
 			d.tag, d.source = "", ""
+			if d.nav.Value == "pinned" {
+				d.search.favorite = false
+			}
 		}
 		if d.compact {
 			d.sidebarHidden = true

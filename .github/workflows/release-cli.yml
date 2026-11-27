@@ -15,7 +15,7 @@ on:
         description: Release both products at this version; leave empty for standalone CLI
       expected_source:
         type: string
-        description: Expected source SHA for a joint release
+        description: Expected source SHA on the dispatched branch (defaults to github.sha)
       candidate_manifest_sha256:
         type: string
         description: Exact manifest required by the Desktop CLI lock
@@ -31,14 +31,65 @@ jobs:
     name: Select product builds
     runs-on: ubuntu-24.04
     outputs:
+      source_sha: ${{ steps.source.outputs.source_sha }}
       desktop_build: ${{ steps.plan.outputs.desktop_build }}
       reused_cli_sha256: ${{ steps.plan.outputs.reused_cli_sha256 }}
       cli_manifest_sha256: ${{ steps.plan.outputs.cli_manifest_sha256 }}
     steps:
+      - name: Resolve and verify release source
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPECTED_SOURCE: ${{ inputs.expected_source }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          head_sha = os.environ["GITHUB_SHA"]
+          expected = os.environ.get("EXPECTED_SOURCE", "").strip()
+          repo = os.environ["GITHUB_REPOSITORY"]
+
+          if not expected:
+              source_sha = head_sha
+          else:
+              if not re.fullmatch(r"[0-9a-f]{40}", expected):
+                  sys.exit(
+                      f"expected_source must be a 40-character lowercase hex SHA, got: {expected!r}"
+                  )
+              if expected != head_sha:
+                  result = subprocess.run(
+                      ["gh", "api", f"repos/{repo}/compare/{expected}...{head_sha}"],
+                      text=True,
+                      capture_output=True,
+                  )
+                  if result.returncode != 0:
+                      detail = result.stderr.strip() or result.stdout.strip()
+                      sys.exit(
+                          f"expected_source {expected} could not be compared against {head_sha}: {detail}"
+                      )
+                  data = json.loads(result.stdout)
+                  status = data.get("status")
+                  behind_by = data.get("behind_by")
+                  if status not in ("identical", "ahead") or behind_by != 0:
+                      sys.exit(
+                          f"expected_source {expected} is not an ancestor of dispatched HEAD {head_sha} "
+                          f"(compare status={status!r}, behind_by={behind_by!r})"
+                      )
+              source_sha = expected
+
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as out:
+              out.write(f"source_sha={source_sha}\n")
+          print(f"Resolved release source: {source_sha} (dispatched HEAD: {head_sha})")
+          PY
       - uses: actions/checkout@v6
         if: inputs.version != ''
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ steps.source.outputs.source_sha }}
           persist-credentials: false
       - uses: actions/setup-go@v6
         if: inputs.version != '' && inputs.channel == 'alpha'
@@ -50,13 +101,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}
           CHANNEL: ${{ inputs.channel }}
-          EXPECTED_SOURCE: ${{ inputs.expected_source }}
+          SOURCE_SHA: ${{ steps.source.outputs.source_sha }}
           CLI_CANDIDATE: ${{ inputs.candidate_run_id }}
         run: |
-          test -z "$CLI_CANDIDATE"
-          test -z "$EXPECTED_SOURCE" || test "$EXPECTED_SOURCE" = "$GITHUB_SHA"
+          if [[ -n "$CLI_CANDIDATE" ]]; then
+            echo "candidate_run_id cannot be combined with joint version" >&2
+            exit 1
+          fi
+          test "$SOURCE_SHA" = "$(git rev-parse HEAD)"
           python3 tools/release/joint_plan.py plan --channel "$CHANNEL" --version "$VERSION" \
-            --run-id "$GITHUB_RUN_ID" --source "$GITHUB_SHA" --output dist/joint-plan --github-output "$GITHUB_OUTPUT"
+            --run-id "$GITHUB_RUN_ID" --source "$SOURCE_SHA" --output dist/joint-plan --github-output "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         if: inputs.version != ''
         with:
@@ -73,11 +127,9 @@ jobs:
     outputs:
       staged: ${{ steps.resume.outputs.staged }}
     steps:
-      - if: inputs.expected_source != '' && inputs.expected_source != github.sha
-        run: exit 1
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.plan.outputs.source_sha }}
           persist-credentials: false
       - uses: actions/download-artifact@v4
         if: inputs.version != ''
@@ -88,9 +140,11 @@ jobs:
         id: resume
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
           JOINT_VERSION: ${{ inputs.version }}
           REUSED_DIGEST: ${{ needs.plan.outputs.reused_cli_sha256 }}
         run: |
+          test "$SOURCE_SHA" = "$(git rev-parse HEAD)"
           args=()
           if [[ -n "$JOINT_VERSION" ]]; then args+=(--metadata dist/joint-plan/products.toml); fi
           if [[ -n "$REUSED_DIGEST" ]]; then args+=(--reuse-published); fi
@@ -108,11 +162,11 @@ jobs:
           if-no-files-found: error
   build:
     name: Build and sign CLI
-    needs: resolve
+    needs: [plan, resolve]
     if: needs.resolve.outputs.staged != 'true'
     uses: ./.github/workflows/build-cli.yml
     with:
-      source_sha: ${{ github.sha }}
+      source_sha: ${{ needs.plan.outputs.source_sha }}
       distribution: true
       joint: ${{ inputs.version != '' }}
     secrets:
@@ -131,11 +185,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - if: inputs.expected_source != '' && inputs.expected_source != github.sha
-        run: exit 1
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.plan.outputs.source_sha }}
           persist-credentials: false
       - uses: actions/setup-node@v6
         with:
@@ -210,7 +262,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.plan.outputs.source_sha }}
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
@@ -231,24 +283,29 @@ jobs:
           if-no-files-found: error
   desktop_build:
     name: Build and sign Desktop
-    needs: desktop_lock
-    if: ${{ !cancelled() && needs.desktop_lock.result == 'success' }}
+    needs: [plan, desktop_lock]
+    if: ${{ !cancelled() && needs.plan.result == 'success' && needs.desktop_lock.result == 'success' }}
     uses: ./.github/workflows/build-desktop.yml
     with:
       distribution: true
-      source_sha: ${{ github.sha }}
+      source_sha: ${{ needs.plan.outputs.source_sha }}
       joint: true
     secrets: inherit
   desktop_publish:
     name: Publish Desktop
     needs: [plan, publish, desktop_build]
     if: ${{ !cancelled() && inputs.version != '' && inputs.channel == 'alpha' && needs.publish.result == 'success' && needs.desktop_build.result == 'success' }}
+    # GitHub validates permissions for the standalone mirror job even when joint mode skips it.
+    permissions:
+      contents: write
+      actions: write
     uses: ./.github/workflows/release-desktop.yml
     with:
       operation: publish
       channel: ${{ inputs.channel }}
       candidate_run_id: ${{ github.run_id }}
       joint: true
+      source_sha: ${{ needs.plan.outputs.source_sha }}
     secrets: inherit
   legacy_alpha:
     name: Verify and stage legacy upgrades
@@ -259,11 +316,15 @@ jobs:
       version: ${{ inputs.version }}
       build_number: ${{ needs.plan.outputs.desktop_build }}
       stage: true
+      source_sha: ${{ needs.plan.outputs.source_sha }}
     secrets: inherit
   desktop_promote:
     name: Advance and verify Desktop channel
-    needs: [publish, legacy_alpha]
-    if: ${{ !cancelled() && inputs.version != '' && needs.publish.result == 'success' && (inputs.channel == 'stable' || needs.legacy_alpha.result == 'success') }}
+    needs: [plan, publish, legacy_alpha]
+    if: ${{ !cancelled() && inputs.version != '' && needs.plan.result == 'success' && needs.publish.result == 'success' && (inputs.channel == 'stable' || needs.legacy_alpha.result == 'success') }}
+    permissions:
+      contents: write
+      actions: write
     uses: ./.github/workflows/release-desktop.yml
     with:
       operation: promote
@@ -271,6 +332,7 @@ jobs:
       candidate_run_id: ${{ github.run_id }}
       expected_revision: ${{ inputs.channel == 'stable' && 'auto' || needs.legacy_alpha.outputs.expected_revision }}
       joint: true
+      source_sha: ${{ needs.plan.outputs.source_sha }}
     secrets: inherit
   verify_joint_release:
     name: Verify both release results

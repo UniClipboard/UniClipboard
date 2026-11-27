@@ -31,7 +31,8 @@
     "downloading": "Baixando {{percent}}%",
     "canceled": "Download cancelado",
     "failed": "Falha no download",
-    "noSuitableApk": "Nenhum APK adequado encontrado para este dispositivo"
+    "noSuitableApk": "Nenhum APK adequado encontrado para este dispositivo",
+    "needsInstallPermission": "Permita instalar apps desconhecidos nas Configurações e depois volte e toque em Atualizar novamente"
   },
   "cancelDownload": {
     "title": "Cancelar download",

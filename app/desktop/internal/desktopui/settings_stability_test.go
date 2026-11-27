@@ -234,4 +234,50 @@ func TestSettingsAndPluginsAvoidFastBusyFlicker(t *testing.T) {
 	}
 	close(saveGate)
 	waitFor("plugin config save completed", func() bool { return !live.busy })
+
+	// 3. Settings > Quick Panel: changing "弹出位置" writes back in-place without flickering sibling controls.
+	prevShowPos := showQuickPanelPositionSetting
+	showQuickPanelPositionSetting = true
+	defer func() { showQuickPanelPositionSetting = prevShowPos }()
+
+	d.settings.Value = "quickPanel"
+	tt.Frame()
+
+	posSel, ok := tt.AccessByRole(ui.RolePopUpButton, "弹出位置")
+	if !ok {
+		t.Fatal("missing 弹出位置 select")
+	}
+	doubleTapBefore, ok := tt.AccessByRole(ui.RolePopUpButton, "双击修饰键打开快捷面板")
+	if !ok {
+		t.Fatal("missing sibling select 双击修饰键打开快捷面板")
+	}
+	qpBaseline := cloneRGBA(tt.Image())
+
+	mu.Lock()
+	saveGate = make(chan struct{})
+	mu.Unlock()
+
+	// Open the popup position select and pick "跟随输入框".
+	tt.Press(posSel.Bounds.X+posSel.Bounds.W/2, posSel.Bounds.Y+posSel.Bounds.H/2)
+	tt.Release(posSel.Bounds.X+posSel.Bounds.W/2, posSel.Bounds.Y+posSel.Bounds.H/2)
+	if err := tt.Click("跟随输入框"); err != nil {
+		t.Fatalf("select 跟随输入框: %v", err)
+	}
+	live.busySince = time.Now().Add(5 * time.Second)
+	tt.Frame()
+	qpInflight := cloneRGBA(tt.Image())
+
+	if live.config.Config.Desktop.QuickPanelPosition != "caret" {
+		t.Fatalf("quick_panel_position not written back in-place: got %q", live.config.Config.Desktop.QuickPanelPosition)
+	}
+	dtInflight, ok := tt.AccessByRole(ui.RolePopUpButton, "双击修饰键打开快捷面板")
+	if !ok || dtInflight.Disabled || dtInflight.Bounds != doubleTapBefore.Bounds {
+		t.Fatalf("sibling select flickered during quick_panel_position save: ok=%v disabled=%v bounds=%+v", ok, dtInflight.Disabled, dtInflight.Bounds)
+	}
+	if !regionPixelsEqual(qpBaseline, qpInflight, doubleTapBefore.Bounds) {
+		t.Fatal("sibling select pixels flickered during <120ms quick_panel_position save")
+	}
+
+	close(saveGate)
+	waitFor("quick_panel_position config save completed", func() bool { return !live.busy })
 }

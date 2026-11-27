@@ -121,6 +121,19 @@
     "skipTitle": "Skip the v1 migration?",
     "skipBody": "V1 data is kept. Start migration later from Settings › Storage.",
     "cancel": "Cancel",
-    "unlockFailed": "Could not unlock the v1 credentials. Enter the passphrase again."
+    "unlockFailed": "Could not unlock the v1 credentials. Enter the passphrase again.",
+    "stepBadge": "Migration",
+    "detectedShortTitle": "Legacy data found",
+    "detectedShortSub": "Import your history offline. Original data stays untouched.",
+    "mobileDetectedShortTitle": "Previous history found",
+    "mobileDetectedShortSub": "Import your previous history and tags offline. Original data stays untouched.",
+    "sourceMobile": "Previous app history",
+    "sourceV1": "Legacy backup folder",
+    "changeSource": "Change",
+    "scopeTitle": "Imports text, images, files & tags",
+    "scopeSub": "Previously paired devices need to pair again",
+    "keepForeground": "Keep the app open",
+    "stepImport": "Import history",
+    "stepVerify": "Verify records"
   }
 }

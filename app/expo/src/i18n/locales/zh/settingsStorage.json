@@ -121,6 +121,19 @@
     "skipTitle": "暂不迁移旧版数据？",
     "skipBody": "旧版数据会保留。可以稍后在“设置 › 存储”中启动迁移。",
     "cancel": "取消",
-    "unlockFailed": "无法解锁旧版凭据。请重新输入口令。"
+    "unlockFailed": "无法解锁旧版凭据。请重新输入口令。",
+    "stepBadge": "数据迁移",
+    "detectedShortTitle": "发现旧版数据",
+    "detectedShortSub": "可将旧版历史离线导入，原数据会保留。",
+    "mobileDetectedShortTitle": "发现旧版历史",
+    "mobileDetectedShortSub": "可将本机旧版历史与标签离线导入，原数据会保留。",
+    "sourceMobile": "本机旧版历史",
+    "sourceV1": "旧版备份目录",
+    "changeSource": "更换",
+    "scopeTitle": "导入文字、图片、文件与标签",
+    "scopeSub": "原有设备需在新版中重新配对",
+    "keepForeground": "请保持应用在前台",
+    "stepImport": "导入历史记录",
+    "stepVerify": "校验导入结果"
   }
 }

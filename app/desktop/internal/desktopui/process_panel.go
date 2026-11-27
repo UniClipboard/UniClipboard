@@ -36,6 +36,7 @@ type ProcessPanel struct {
 type panelResume struct {
 	query, kind          string
 	pasteFailure         string
+	favoriteOnly         bool
 	chips                []qpFilter
 	windowZoom, textZoom int
 }
@@ -89,10 +90,13 @@ func (p *ProcessPanel) newOpenState(favorites bool) *quickPanelState {
 	q.live.d.language = q.live.d.live.config.Config.Desktop.Language
 	q.live.d.devices = []device{{id: "local"}}
 	q.query, q.kind, q.chips = p.resume.query, p.resume.kind, p.resume.chips
+	q.favoriteOnly = p.resume.favoriteOnly
 	q.windowZoom, q.textZoom = p.resume.windowZoom, p.resume.textZoom
 	q.pasteFailure = p.resume.pasteFailure
 	p.resume = panelResume{}
-	q.setFavoriteFilter(favorites)
+	if favorites {
+		q.setFavoriteFilter(true)
+	}
 	q.normalizeFilters()
 	return q
 }
@@ -147,12 +151,48 @@ func (p *ProcessPanel) Open(target quickpanel.Target, captureError string, favor
 	}
 	q.live.system = quickpanel.New(quickpanel.Options{Context: q.live.d.live.ctx, Client: p.client, Clipboard: p.clipboard, Platform: p.native, Dispatch: mygo.RunOnMain, Visible: show, Changed: changed})
 	q.live.system.Open()
+	pos := p.resolvePanelPosition(q, target)
 	// The first-page read runs while the native window is being created.
 	q.live.d.live.loadHistory(q.live.d, false)
-	p.window = openQuickWindow(q, func() { p.release(q, false) })
+	p.window = openQuickWindow(q, pos, func() { p.release(q, false) })
 	p.window.Show()
 	p.window.Focus()
 	p.window.Invalidate()
+}
+
+func (p *ProcessPanel) resolvePanelPosition(q *quickPanelState, target quickpanel.Target) *mygo.Point {
+	resolver, ok := p.native.Platform.(quickpanel.PositionResolver)
+	if !ok {
+		return nil
+	}
+	mode := q.live.d.live.config.Config.Desktop.QuickPanelPositionOrDefault()
+	anchor, captured := resolver.CapturePlacement(mode, target)
+	if !captured {
+		return nil
+	}
+	rawDisplays := mygo.Screen.Displays()
+	displays := make([]quickpanel.Display, len(rawDisplays))
+	for i, d := range rawDisplays {
+		displays[i] = quickpanel.Display{
+			ID: d.ID,
+			Bounds: quickpanel.Rect{
+				X: d.Bounds.X, Y: d.Bounds.Y, Width: d.Bounds.Width, Height: d.Bounds.Height,
+			},
+			WorkArea: quickpanel.Rect{
+				X: d.WorkArea.X, Y: d.WorkArea.Y, Width: d.WorkArea.Width, Height: d.WorkArea.Height,
+			},
+			ScaleFactor: d.ScaleFactor,
+			Primary:     d.Primary,
+		}
+	}
+	scale := zoomScale(q.windowZoom)
+	panelW, panelH := int(qpPanelWidth*scale), int(qpPanelHeight*scale)
+	x, y, resolved := quickpanel.ResolvePlacement(mode, panelW, panelH, anchor, displays)
+	if !resolved {
+		return nil
+	}
+	pt := mygo.Point{X: x, Y: y}
+	return &pt
 }
 func (p *ProcessPanel) FilterFavorites() {
 	if p.Visible() {
@@ -182,7 +222,7 @@ func (p *ProcessPanel) release(q *quickPanelState, destroy bool) {
 	if p.state != q {
 		return
 	}
-	p.resume = panelResume{query: q.query, kind: q.kind, chips: slices.Clone(q.chips), windowZoom: q.windowZoom, textZoom: q.textZoom}
+	p.resume = panelResume{query: q.query, kind: q.kind, favoriteOnly: q.favoriteOnly, chips: slices.Clone(q.chips), windowZoom: q.windowZoom, textZoom: q.textZoom}
 	if !q.visible && q.live != nil && q.live.system != nil {
 		p.resume.pasteFailure = q.live.system.FailureMessage()
 	}

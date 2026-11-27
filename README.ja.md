@@ -2,17 +2,24 @@
 
 <img src="app/desktop/internal/appicons/unic-logo.svg" alt="Unic" width="112" height="112" />
 
-# 一度コピーすれば、どのデバイスでも貼り付け
+# コピーをもっと便利に
 
 <p>
-  <strong>Unic（旧称 UniClipboard）</strong> はテキスト・画像・ファイル・フォルダをデバイス間で直接同期します。<br />
-  エンドツーエンド暗号化。アカウント不要、クラウド不要。
+  <strong>Unic（旧称 UniClipboard）</strong> は、Windows・macOS・Linux・iOS・Android・ターミナルに対応したネイティブかつローカルファーストのクリップボード管理＆クロスデバイス同期ツールです。<br />
+  履歴検索、クイックパネル、スマートプレビュー、プラグイン拡張、エンドツーエンド暗号化 P2P 同期をひとつに —— アカウント不要、クラウド不要。
 </p>
 
 <p>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="ダウンロード" src="https://img.shields.io/badge/%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89-2563eb?style=for-the-badge&logo=github&logoColor=white" /></a>
-  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS%20Beta-1f2937?style=for-the-badge&logo=apple&logoColor=white" /></a>
-  <a href="#quick-start"><img alt="はじめる" src="https://img.shields.io/badge/%E3%81%AF%E3%81%98%E3%82%81%E3%82%8B-4b5563?style=for-the-badge" /></a>
+  <a href="https://uniclipboard.app"><img alt="公式サイト" src="https://img.shields.io/badge/Website-0891B2?style=for-the-badge" /></a>
+  <a href="https://docs.uniclipboard.app"><img alt="ドキュメント" src="https://img.shields.io/badge/Docs-4F46E5?style=for-the-badge&logo=readthedocs&logoColor=white" /></a>
+  <a href="#community"><img alt="WeChat グループ" src="https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white" /></a>
+  <a href="#community"><img alt="QQ グループ" src="https://img.shields.io/badge/QQ-1688D8?style=for-the-badge&logo=qq&logoColor=white" /></a>
+  <a href="https://t.me/uniclipboard"><img alt="Telegram グループ" src="https://img.shields.io/badge/Telegram-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" /></a>
+</p>
+
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/UniClipboard/UniClipboard?style=flat-square&color=E5B650&logo=github&label=Stars" /></a>
+  <a href="LICENSE"><img alt="AGPL-3.0 ライセンス" src="https://img.shields.io/badge/License-AGPL--3.0-22c55e?style=flat-square" /></a>
 </p>
 
 <p>
@@ -38,10 +45,10 @@
 
 ## Unic を選ぶ理由
 
-- **クロスプラットフォーム**：Windows、macOS、Linux、iOS、Android の間で同期。同じ Wi-Fi でも別のネットワークでもつながります。
-- **クラウドを経由しない**：デバイス同士が暗号化された接続で直接つながります。登録不要で、履歴は自分のデバイスにだけ保存されます。
-- **軽量**：バックグラウンド同期サービスはアイドル時に約 14 MB<sup>[1](#benchmarks)</sup>。Windows ではメインウィンドウが約 34–49 MB<sup>[2](#benchmarks)</sup>。閉じるとそのプロセスは終了します。
-- **何でも同期**：テキスト、画像、ファイル、フォルダごと。
+- **1 台でも便利、複数台ならシームレス**：履歴検索、クイックパネル、自動タグ、リンクプレビューを単体で備え、端末を追加すれば全プラットフォームでテキスト・画像・ファイル・フォルダを同期できます。
+- **Electron を使わないネイティブ設計**：Go コア＋ネイティブ UI。メインウィンドウは閉じると終了し、`unicd` はヘッドレス環境でも単体動作します。
+- **アカウント不要・クラウド不要**：フィンガープリント確認後に端末同士がエンドツーエンド暗号化で直結。削除した端末は即座に遮断され、履歴は自分の端末だけに残ります。
+- **コピー＆ペーストを超えて拡張**：Action、Go / Lua プラグイン、さらにターミナル・SSH・ペアリング不要の 6 桁コード転送に使える CLI（`unic`）を搭載。
 
 <a id="features"></a>
 
@@ -50,34 +57,34 @@
 <table>
   <tr>
     <td>⚡ <strong>クイックパネル</strong></td>
-    <td>どのアプリでも <code>⌘ ⌃ V</code>（Windows / Linux は <code>Ctrl Alt V</code>）で履歴を開き、選んで Enter で貼り付け。</td>
+    <td>どのアプリでも <code>⌘ ⌃ V</code>（Windows / Linux は <code>Ctrl Alt V</code>）で履歴を検索し、<code>Enter</code> で直接貼り付け、<code>Shift+Enter</code> でプレーンテキストとして貼り付け。</td>
   </tr>
   <tr>
-    <td>🔍 <strong>すぐ見つかる</strong></td>
-    <td>キーワード入力、または <code>#タグ</code>・<code>@デバイス</code>・<code>/種類</code> で絞り込み。数か月前のコピーも見つかります。</td>
+    <td>🔍 <strong>すぐ見つかるローカル検索</strong></td>
+    <td>キーワード入力、または <code>#タグ</code>・<code>@デバイス</code>・<code>/種類</code>・お気に入りで絞り込み。数か月前のコピーや、リンクのページタイトル・説明文からも見つかります。</td>
   </tr>
   <tr>
-    <td>🏷️ <strong>自動タグ付け</strong></td>
-    <td>リンク、メール、カラーコード、バージョン番号、UUID、IP アドレスを自動でタグ付け。独自ルールも追加できます。</td>
+    <td>🏷️ <strong>自動タグ付け＆スマートプレビュー</strong></td>
+    <td>リンク、メール、カラーコード、バージョン番号、UUID、IP アドレスを自動でタグ付け（正規表現の独自ルールも追加可能）。コピーしたリンクはプレビューカードで表示されます。</td>
   </tr>
   <tr>
-    <td>📁 <strong>ファイルとフォルダ</strong></td>
-    <td>フォルダを構造ごと送信。全デバイスにも、特定のデバイスにも送れます。</td>
+    <td>🔄 <strong>クロスデバイス同期＆フォルダ転送</strong></td>
+    <td>テキスト、リッチテキスト、画像、ファイル、構造を保ったフォルダごと、ペアリング済みの全デバイスまたは特定の 1 台へ同期。</td>
   </tr>
   <tr>
     <td>📮 <strong>ペアリングなしで送信</strong></td>
-    <td><code>unic send "テキスト"</code> は転送リンクを表示します。利用できる場合は、6 桁の受け取りコードも表示します。受け取りにはどちらも使えます。デバイスの記録は残りません。</td>
+    <td><code>unic send "テキスト"</code> は転送リンクを表示します。利用できる場合は 6 桁の受け取りコードも表示。どちらでも受け取れ、デバイス記録は残りません。</td>
   </tr>
   <tr>
-    <td>🧩 <strong>プラグイン</strong></td>
-    <td>設定からワンクリックでインストール。例：画像やファイルを共有リンクに変換。</td>
+    <td>🧩 <strong>Action とプラグイン</strong></td>
+    <td>元の項目を変えない Action（テキスト変換、書式除去、画像やファイルの共有リンク化）を実行でき、設定から Go / Lua プラグインをワンクリックで追加できます。</td>
   </tr>
   <tr>
     <td>⌨️ <strong>コマンドライン</strong></td>
-    <td><code>unic</code> でターミナル、SSH、スクリプトから送受信や履歴一覧の絞り込みができます。</td>
+    <td><code>unic</code> でターミナル、SSH、スクリプトから送受信、Action の実行、履歴一覧の絞り込みができます。</td>
   </tr>
   <tr>
-    <td>🌍 <strong>多言語</strong></td>
+    <td>🌍 <strong>多言語＆テーマ</strong></td>
     <td>English、简体中文、日本語、Português、Русский。ライト／ダークテーマ対応。</td>
   </tr>
 </table>
@@ -95,13 +102,13 @@
 
 [![Packaging status](https://repology.org/badge/vertical-allrepos/uniclipboard.svg)](https://repology.org/project/uniclipboard/versions)
 
-**2. 2 台目のデバイスを接続**
+**2. そのまま使い始める**
 
-1 台目で **デバイス → デバイスを追加** を開き、6 桁のコードを控えて 2 台目に入力します。両方に同じフィンガープリントが表示されたら、それぞれで **承認** をクリックします。
+普段どおりコピーして、どのアプリからでも `⌘ ⌃ V`（Windows / Linux は `Ctrl Alt V`）でクイックパネルを開き、履歴を検索して貼り付けられます。
 
-**3. コピーする**
+**3. 2 台目のデバイスを接続（任意）**
 
-一方のデバイスで `Ctrl+C`、もう一方で `Ctrl+V`。
+1 台目で **デバイス → デバイスを追加** を開き、6 桁のコードを控えて 2 台目に入力します。両方に同じフィンガープリントが表示されたら、それぞれで **承認** をクリックすると自動同期が始まります。
 
 <a id="cli"></a>
 
@@ -117,18 +124,6 @@ unic history list                 # 履歴を表示
 
 すべてのコマンドは [CLI ガイド](app/service/README.md) を参照してください。
 
-<a id="benchmarks"></a>
-
-## 実測値
-
-| | メモリ | 条件 |
-|---|---:|---|
-| 同期サービス `unicd` | **14 MB** | macOS（Apple Silicon）、履歴なし、20 秒アイドル後に計測。アクティビティモニタの「メモリ」列と同じ指標<sup>1</sup> |
-| メインウィンドウ | **34 MB** / 49 MB | Windows 11、ネイティブ ARM64 / x64 ビルド、テキスト 60 件。タスクマネージャーの指標<sup>2</sup> |
-| メインウィンドウ（画像あり） | 119 MB / 133 MB | 同上に 2048×1536 の画像 12 枚を追加<sup>2</sup> |
-
-<sup>1</sup> コミット `e2cb68d` で `footprint <pid>` により計測。<sup>2</sup> 3 回の中央値。詳細は [Windows メモリレポート](docs/exec/windows-desktop-memory.md)。
-
 ## プライバシー
 
 - デバイス間はエンドツーエンドで暗号化されます。Unic はクリップボードを保存するサーバーを運営していません。
@@ -143,6 +138,29 @@ unic history list                 # 履歴を表示
 v2 は v1 の履歴（テキスト、画像、ファイル、タグ）をすべてインポートできます。v2 を初めて開いたときの案内に従うか、あとで **設定 › ストレージ › v1 から移行** からインポートしてください。
 
 v2 のデバイスは v1 のデバイスと同期できません。すべてのデバイスを v2 にアップグレードし、ペアリングし直してください。v1 のコードは [`v1` ブランチ](https://github.com/UniClipboard/UniClipboard/tree/v1) にあります。
+
+<a id="community"></a>
+
+## コミュニティ
+
+Unic コミュニティに参加して、他のユーザーや開発者と情報交換・要望の共有・不具合報告ができます：
+
+- <img src="docs/assets/community/qq.svg" alt="" width="18" /> QQ グループ：`1080860954`
+- <img src="docs/assets/community/wechat.svg" alt="" width="18" /> WeChat：下の QR コードをスキャンしてメンテナーを友だち追加し、グループに参加できます
+- <img src="docs/assets/community/telegram.svg" alt="" width="18" /> [Telegram グループ (@uniclipboard)](https://t.me/uniclipboard)
+
+<table>
+  <tr>
+    <td align="center"><strong><img src="docs/assets/community/qq.svg" alt="" width="18" /> QQ グループ</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/wechat.svg" alt="" width="18" /> WeChat グループ</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/telegram.svg" alt="" width="18" /> Telegram グループ</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/assets/community/qq-qr.png" alt="Unic QQ グループの QR コード" width="240" /></td>
+    <td align="center"><img src="docs/assets/community/wechat-qr.png" alt="Unic WeChat の QR コード" width="240" /></td>
+    <td align="center"><a href="https://t.me/uniclipboard"><img src="docs/assets/community/telegram-qr.jpg" alt="Unic Telegram グループの QR コード" width="240" /></a></td>
+  </tr>
+</table>
 
 ## 開発に参加する
 

@@ -48,9 +48,17 @@ paths:
   - .github/workflows/check-expo.yml
   - .github/workflows/release-android.yml
   - .github/workflows/release-ios.yml
+  - .github/workflows/mirror-gitcode.yml
+  - .github/workflows/prepare-release.yml
+  - .github/workflows/release-on-merge.yml
+  - .github/workflows/release-checks.yml
+  - .github/workflows/repo-docs-check.yml
+  - .github/workflows/check-nix.yml
+  - .github/prompts/prepare-release-changelog.codex.md
+  - tools/ci
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 8dcbf0d45b84e0b58b7e0232b570b7df7f7b6140
+verified: 04c928a109eb8d8ca218d15418712b4cb63d1c30
 ---
 # Product builds and CLI releases
 
@@ -66,19 +74,34 @@ Use the [product manifest](../../release/products.toml) for the build numbers co
 checks, transitively native Release builds, and the live Engine Maestro suite.
 It saves native receipts separately from the Expo bundle verification.
 
-The **Android Store candidate** workflow generates a production AAB, signs
-it with the Play upload key, validates application metadata with bundletool,
-and retains the SHA-256 receipt. A manual upload selects the internal or
-production track. A successful production upload enables the separate GitHub
-checksum-receipt job. The **iOS Store candidate** workflow validates the app
-and Share Extension App Store profiles, archives and exports the IPA, and
-retains both artifact hashes and dSYMs. Its optional upload transfers the
-candidate to App Store Connect. TestFlight availability, submission for
-review and Store publication have their own acceptance states.
+The **Android release** workflow builds a signed `arm64-v8a` production APK
+(zipaligned and signed with `apksigner` using APK Signature Scheme v3 key
+rotation from the legacy Expo `debug.keystore` to `ANDROID_UPLOAD_KEYSTORE`
+with `--rotation-min-sdk-version 28` and rollback disabled on the legacy key,
+validated with `aapt2`, `apksigner verify`, and `apksigner lineage`) and
+optionally builds a dual-ABI (`arm64-v8a,x86_64`) Google Play AAB validated
+with `bundletool`. Android v3 Settings → About includes an in-app updater that
+checks `/v1/android/{stable,alpha}.json`, verifies downloaded APK SHA-256
+digests natively, and launches the system installer via `FileProvider`. When
+`publish` is enabled, a separate `Production` delivery job stages an immutable
+GitHub Release (`android/v<version>-build.<build>`, prerelease for `alpha`),
+uploads the APK and `candidate.json` to R2 with create-only conditional writes
+under `artifacts/android/<version>/build.<build>/`, registers the numbered
+build in FlareRelease, optionally promotes `android/alpha` or `android/stable`
+with public `/v1/android/<channel>.json` read-back, and publishes the GitHub
+Release. An optional `publish_play` flag uploads the signed AAB to Google Play
+(`internal`, `alpha`, or `production`). The **iOS Store candidate** workflow
+runs on `macos-26` (Xcode 26.6), fetches and validates the active App Store
+provisioning profiles for the main app, `.Share`, and `.Keyboard` targets via
+App Store Connect API (or optional static profile secrets), checks build-number
+availability on App Store Connect before archiving when `publish` is enabled,
+exports the signed IPA and dSYMs, and optionally uploads the IPA to App Store
+Connect for TestFlight testing. TestFlight availability, submission for review,
+and Store publication have their own acceptance states.
 
 The production variant retains `app.uniclipboard.android` and
 `app.uniclipboard.UniClipboard` from the preceding mobile product. The
-initial candidate is `2.5.0 (205)`. `internal/mobilemigration` and
+v3 alpha candidate starts at `3.0.0 (205)` above the legacy floor `204`. `internal/mobilemigration` and
 `bindings/mobile` implement read-only discovery and automatic offline import of
 the preceding mobile Expo SQLite history (`uniclipboard.db` plus iOS App Group
 `payloads/` and Android `clipboards/` attachments), and the production iOS app
@@ -87,12 +110,43 @@ declares `group.app.uniclipboard.UniClipboard` alongside its
 certificate lineage, and iOS production provisioning still require verification
 before rollout.
 
+### Prepare Release and automatic merge dispatch
+
+Run **Prepare Release** (`.github/workflows/prepare-release.yml`) with `platform` (`desktop`, `cli`, `mobile`, `android`, or `ios`), `channel` (`alpha` or `stable`), optional canonical semver `version` (defaults to the current product version in `release/products.toml`), and optional `base_branch` (defaults to `main`). `tools/release/prepare_release.py` computes the next unused build number and previous published comparison tag, updates `release/products.toml` (preserving LF bytes and unrelated sections), initializes bilingual Markdown changelog skeletons under `release/changelogs/<platform>/v<version>-build.<number>.md` (and `.zh.md`), and for `desktop` initializes `release/desktop-notes.json`.
+
+The `changelog` job uses `openai/codex-action@v1` with the explicit model `gpt-5.6-luna`, the `CODEX_API_ENDPOINT` and `CODEX_API_KEY` secrets, and `.github/prompts/prepare-release-changelog.codex.md` to generate user-facing English and Chinese changelogs (plus `release/desktop-notes.json` for `desktop`). It validates that Codex only touched the expected changelog files, replaced all placeholders, and did not introduce `<!--` markers into `release/desktop-notes.json`. The `publish` job pushes branch `release/<platform>-<channel>-v<version>-build.<number>` and opens a release PR against `base_branch`.
+
+When a release PR from the repository is merged into the default branch, **Release on PR Merge** (`.github/workflows/release-on-merge.yml`) validates the branch name against `release/products.toml` and the finalized changelog files on the merge commit, dispatches the matching release workflow(s), and deletes the merged release branch:
+
+- `desktop` -> `release-cli.yml` (`channel`, `version`, `expected_source=<merge_commit_sha>` — joint CLI + Desktop release)
+- `cli` -> `release-cli.yml` (`channel`, `expected_source=<merge_commit_sha>` — standalone CLI release)
+- `mobile` -> `release-android.yml` (`publish=true`, `track=internal` for `alpha` or `production` for `stable`) and `release-ios.yml` (`publish=true`)
+- `android` -> `release-android.yml` (`publish=true`, `track=internal|production`)
+- `ios` -> `release-ios.yml` (`publish=true`)
+
 ### Joint CLI and Desktop delivery
 
 Run **Release CLI and Desktop** from the selected release source. Supply
 `channel` and `version`. The entry uses `release-cli.yml` to retain the npm
 trusted publishing identity. Leave `version` empty to release the CLI
-independently.
+independently. When `expected_source` is supplied (for example, the release PR
+merge commit dispatched by `release-on-merge.yml` on `main`), the `plan` job
+verifies that `expected_source` is a 40-character commit SHA that is identical
+to or an ancestor of the dispatched branch HEAD, then propagates that exact
+`source_sha` across planning, CLI/Desktop builds, legacy upgrade verification,
+and Desktop publication/promotion (`desktop_release.py acquire --source-sha`
+independently re-verifies ancestry against the workflow run HEAD). This keeps
+`workflow_run.head_branch` on the default branch for npm OIDC and package
+channel dispatch while preventing concurrent merges to `main` from breaking or
+altering an in-flight release.
+
+Reusable Desktop build, delivery, and legacy upgrade workflows use the
+validated `source_sha` from the joint caller. A standalone dispatch that
+supplies `expected_source` must match the dispatched commit.
+
+The Desktop publication and promotion calls grant `actions: write` so GitHub
+can validate the reusable workflow's standalone mirror job. Joint calls skip
+that job and use the separate package dispatch workflow for mirroring.
 
 Alpha records the source SHA, selected CLI and Desktop build number in a
 create-only Git tag under `joint-release/alpha/`. The planner allocates new
@@ -147,6 +201,14 @@ After a successful joint release on the default branch, `dispatch-package-releas
 Alpha runs prepare definitions and build preview packages. COPR submits to its separate Alpha project. Stable runs can publish or submit after rechecking the current Stable selection and native acceptance. Each workflow can be retried independently against the same joint run. Registry review and public package availability have separate outcomes.
 
 The publication destinations are the project Homebrew Tap, Homebrew Cask, Scoop Extras, Chocolatey, WinGet, the project-owned AUR source package, the signed x86_64 pacman repository, COPR and the Snap Store. Nix and Flatpak publish versioned first-party assets through GitHub Releases. See the [delivery runbook](../exec/0018-desktop-release-runbook.md#package-manager-distribution) for credentials, retry inputs and first-party installation.
+
+### GitCode release mirroring
+
+GitHub Releases and R2 remain authoritative. `.github/workflows/mirror-gitcode.yml` mirrors the FlareRelease-registered artifacts of a published Desktop (`desktop/v<version>-build.<build>`, six updater archives) or Android (`android/v<version>-build.<build>`, production APK) release to GitCode and registers each verified copy with FlareRelease (`PUT /api/mirrors`) so mainland China downloads can redirect to it.
+
+`tools/release/gitcode_mirror.py prepare` validates that the GitHub Release is published (not draft), verifies the immutable `release-manifest.json` (Desktop) or `candidate.json` (Android) metadata asset and cross-checks artifact sizes and SHA-256 digests against the GitHub Release assets without downloading the installers onto the runner. Because `mkdir700/gitcode-release-mirror` (pinned at `5055ef17b7302e27ca53cbe5f6e44722f7e55f6b`, `v1.0.0`) forbids `/` in GitCode tags, the workflow maps `desktop/v<ver>-build.<n>` and `android/v<ver>-build.<n>` to `desktop-v<ver>-build.<n>` and `android-v<ver>-build.<n>`.
+
+The Action runs inside the main-only `mirror` environment over SSH to the Shanghai relay host, which fetches each artifact from R2 (`https://release.uniclipboard.app/artifacts/<product>/<ver>/build.<n>/<file>`), verifies its SHA-256, uploads or reuses identical GitCode assets without overwriting, and reads them back anonymously. `tools/release/gitcode_mirror.py register` then runs on the GitHub runner so FlareRelease Access credentials never leave GitHub, sending `product`, `version`, `buildNumber`, `filename`, `provider: "gitcode"`, `downloadUrl`, `size`, `sha256` and `source` only for receipt entries with status `mirrored` or `reused`, exact digest/size match, and a plain HTTPS GitCode/AtomGit URL. Joint Desktop releases dispatch `mirror-gitcode.yml` on the default branch from `dispatch-package-releases.yml`; standalone `release-desktop.yml` and `release-android.yml` publications dispatch it on the default branch after GitHub Release publication; human-published releases re-dispatch via `redispatch-from-release`. Live end-to-end mirroring for numbered builds requires FlareRelease's `PUT /api/mirrors` endpoint to accept `buildNumber` and the Shanghai host allow-list (`/etc/gitcode-release-mirror/config.json`) to admit `.update.tar.gz` (and `.apk` for Android). See the [delivery runbook](../exec/0018-desktop-release-runbook.md#gitcode-release-mirroring).
 
 `go run ./tools/package -product cli` builds `unic` and `unicd` for the current target. The versioned archive contains those programs and the `uniclip` alias. Unix archives preserve the relative symlink. Windows archives provide `uniclip.cmd`. Development packaging through `make package-headless` and `make package-desktop` remains available and unsigned.
 
@@ -297,7 +359,24 @@ The packaged-process E2E uses a temporary home, pseudoterminals and fixed encryp
 
 Git attributes require LF checkout bytes for release TOML metadata on every platform. Metadata digests cover the original file bytes. The real Git checkout regression enables `core.autocrlf=true` and verifies that checkout preserves the canonical metadata bytes before building candidates.
 
-`build-cli.yml` runs for PRs, main/v2 pushes, manual requests and reusable calls. PR candidates use the actual PR head rather than a synthetic merge SHA. Explicit distribution builds import the existing Apple certificate into a temporary keychain, sign CLI executables before hashing and remove the keychain after construction. Its callers provide an exact source SHA. It checks the metadata digest, source identity, required target set and native executable receipts before `npm pack`. CI builds do not publish.
+`build-cli.yml` runs on scoped CLI/core/release-tooling PRs and main pushes, as well as unfiltered manual requests and reusable calls. PR candidates use the actual PR head rather than a synthetic merge SHA. Explicit distribution builds import the existing Apple certificate into a temporary keychain, sign CLI executables before hashing and remove the keychain after construction. Its callers provide an exact source SHA. It checks the metadata digest, source identity, required target set and native executable receipts before `npm pack`. CI builds do not publish.
+
+### PR check trigger boundaries
+
+Every PR-triggered workflow declares explicit path filters so unrelated changes (such as documentation updates or release-preparation PRs touching only `release/**`) do not trigger heavy cross-platform builds:
+
+| Workflow | File | Trigger scope |
+|---|---|---|
+| PR checks | `.github/workflows/pr-checks.yml` | Root Go module code, Desktop E2E harness/cases, Go lint/build config and `tools/ci/**`. Its `changes` job (`tools/ci/pr_changes.py`) gates `lint`, `test`, `headless` and `desktop-e2e` independently; `merge_group` and `workflow_dispatch` run all jobs. |
+| Build CLI | `.github/workflows/build-cli.yml` | Headless CLI/service/core Go code, `e2e/headless/**` and CLI release/packaging scripts. `workflow_dispatch` and `workflow_call` stay unfiltered. |
+| Package process acceptance | `.github/workflows/package-acceptance.yml` | Desktop packaging, installers, updaters, app icons/license assets, Desktop release-note template and Desktop packaging/release workflows (excluding `release/**` and mobile/prepare-release scripts). |
+| Mobile build and acceptance | `.github/workflows/check-expo.yml` | `app/expo/**`, `bindings/**` and core Go packages transitively imported by `bindings/` (excluding desktop/service-only `internal/*` packages and `release/products.toml`). |
+| Nix flake check | `.github/workflows/check-nix.yml` | `flake.nix`, `nix/**`, `go.mod`, `go.sum`, `packaging/linux/**`, Desktop icons/assets and workflow changes. |
+| Docs Check (`docs-site`) | `.github/workflows/docs-check.yml` | `docs-site/**` and workflow changes. |
+| Repo docs check | `.github/workflows/repo-docs-check.yml` | Repository Markdown docs (`docs/**`, `AGENTS.md`, `README*.md`, `CONTRIBUTING.md`, `SECURITY.md`) and `tools/docscheck/**`, running `go run ./tools/docscheck`. |
+| Release checks | `.github/workflows/release-checks.yml` | `release/**`, `prepare-release` / `release-on-merge` / mobile release / `mirror-gitcode` workflows, prompt/templates and `tools/release/{prepare_release,mobile,android_release,gitcode_mirror,ios_profiles}.py`. Runs fast metadata/notes/branch validation (`tools/ci/validate_release.py`) plus `prepare_release_test.py`, `mobile_delivery_test.py` and `gitcode_mirror_test.py`. |
+
+`tools/ci/pr_changes_test.py` verifies both the `pr-checks.yml` job classifier and the workflow `paths:` trigger matrix against representative PR file sets.
 
 `release-cli.yml` supports alpha and direct stable publication. When `candidate_run_id` is supplied, the publish job acquires the canonical candidate directly. Otherwise the workflow checks for a durable record for the selected version/build and restores its exact package files when it exists. It awaits the reusable build when no record exists. It stages the manifest and packages in a draft GitHub release before publishing to npm. The product tag is `cli/v<version>-build.<number>` and must reference the accepted source SHA. Existing assets are compared and never overwritten. Incomplete staging fails before npm publication, and recovery requires the original candidate artifacts.
 
@@ -341,8 +420,10 @@ CLI assembly, publication and promotion share the pinned npm download cache. Des
 | `internal/localpaths` | Shared v1 source location without directory creation. |
 | `tools/package` | Go CLI builds/aliases, exact Desktop staging, native formats, channel definitions and repository construction. |
 | `tools/release/release.py` | Assembly, native smoke, npm publish/promote and durable build records. |
+| `tools/release/gitcode_mirror.py` | Published release validation, R2 mirror source assembly and FlareRelease `PUT /api/mirrors` registration for Desktop and Android. |
 | `.github/workflows/build-cli.yml` | Native CLI target construction and acceptance. |
 | `.github/workflows/release-cli.yml` | Candidate recovery, reusable build and npm publication. |
+| `.github/workflows/mirror-gitcode.yml` | Main-only SSH relay mirror to GitCode and FlareRelease mirror registration for Desktop and Android. |
 | `.github/workflows/promote.yml` | Exact npm build promotion. |
 | `e2e/release` | Real Go/npm processes, disposable registry and GitHub command fixture. |
 
@@ -360,7 +441,7 @@ The report records source hashes, process observations and assertions. Acceptanc
 
 ## Gaps
 
-Stable advancement requires the exact Desktop acceptance and publication receipts described above. Each distribution format has its own availability and acceptance evidence. Native sandbox GUI, package refresh and real-OS clipboard, file and network acceptance remain separate checks. GitCode delivery is deferred.
+Stable advancement requires the exact Desktop acceptance and publication receipts described above. Each distribution format has its own availability and acceptance evidence. Native sandbox GUI, package refresh and real-OS clipboard, file and network acceptance remain separate checks. GitCode mirror workflow, tooling and offline process tests are implemented; live end-to-end mirroring for numbered builds still requires FlareRelease `PUT /api/mirrors` `buildNumber` support and Shanghai relay host allow-list updates for `.update.tar.gz` and `.apk`.
 
 Mobile candidate builds, simulator runs, production signing, Store upload and rollout each have their own acceptance gate. The [mobile release preparation receipt](../exec/0031-mobile-m5-receipt.md) records candidate builds and simulator observations. The [iPhone receipt](../exec/0031-mobile-m2-receipt.md#ios-physical-device-acceptance) records the physical-device scenarios tested so far.
 

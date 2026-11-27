@@ -2,17 +2,24 @@
 
 <img src="app/desktop/internal/appicons/unic-logo.svg" alt="Unic" width="112" height="112" />
 
-# Copy once. Paste on every device.
+# Make every copy more useful.
 
 <p>
-  <strong>Unic (formerly UniClipboard)</strong> syncs text, images, files, and folders directly across your devices.<br />
-  End-to-end encrypted. No account. No cloud.
+  <strong>Unic (formerly UniClipboard)</strong> is a native, local-first clipboard workspace and cross-device sync tool for Windows, macOS, Linux, iOS, Android, and the terminal.<br />
+  Fast history search, Quick Panel, smart previews, plugins, and encrypted P2P sync — no account, no cloud.
 </p>
 
 <p>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Download" src="https://img.shields.io/badge/Download-2563eb?style=for-the-badge&logo=github&logoColor=white" /></a>
-  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS%20Beta-1f2937?style=for-the-badge&logo=apple&logoColor=white" /></a>
-  <a href="#quick-start"><img alt="Get started" src="https://img.shields.io/badge/Get%20started-4b5563?style=for-the-badge" /></a>
+  <a href="https://uniclipboard.app"><img alt="Website" src="https://img.shields.io/badge/Website-0891B2?style=for-the-badge" /></a>
+  <a href="https://docs.uniclipboard.app"><img alt="Docs" src="https://img.shields.io/badge/Docs-4F46E5?style=for-the-badge&logo=readthedocs&logoColor=white" /></a>
+  <a href="#community"><img alt="WeChat Group" src="https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white" /></a>
+  <a href="#community"><img alt="QQ Group" src="https://img.shields.io/badge/QQ-1688D8?style=for-the-badge&logo=qq&logoColor=white" /></a>
+  <a href="https://t.me/uniclipboard"><img alt="Telegram Group" src="https://img.shields.io/badge/Telegram-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" /></a>
+</p>
+
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/UniClipboard/UniClipboard?style=flat-square&color=E5B650&logo=github&label=Stars" /></a>
+  <a href="LICENSE"><img alt="AGPL-3.0 License" src="https://img.shields.io/badge/License-AGPL--3.0-22c55e?style=flat-square" /></a>
 </p>
 
 <p>
@@ -38,10 +45,10 @@
 
 ## Why Unic
 
-- **Cross-platform**: Sync between Windows, macOS, Linux, iOS, and Android, on the same Wi-Fi or across networks.
-- **No cloud**: Devices connect directly over encrypted links. No sign-up. Your history stays on your own devices.
-- **Lightweight**: The background sync service uses about 14 MB of memory when idle<sup>[1](#benchmarks)</sup>. On Windows, the main window uses about 34–49 MB<sup>[2](#benchmarks)</sup>. Close it and its process exits.
-- **Everything syncs**: Text, images, files and whole folders.
+- **Great on one machine, seamless across all**: Local history search, Quick Panel, auto-tags, and link previews out of the box — plus cross-platform sync for text, images, files, and folders when you add more devices.
+- **Truly native, no Electron**: Built with a Go core and native desktop UI. Closing the main window exits its process, and `unicd` also runs standalone on headless machines.
+- **No cloud, no account**: Devices connect directly over end-to-end encrypted links after fingerprint verification; revoking a device cuts access immediately, and history stays strictly on your own devices.
+- **Extensible beyond copy-paste**: Built-in Actions, one-click Go & Lua plugins, and a full CLI (`unic`) for terminals, SSH, scripts, and no-pairing 6-digit transfers.
 
 <a id="features"></a>
 
@@ -50,34 +57,34 @@
 <table>
   <tr>
     <td>⚡ <strong>Quick Panel</strong></td>
-    <td>Press <code>⌘ ⌃ V</code> (<code>Ctrl Alt V</code> on Windows / Linux) in any app, pick an item and press Enter to paste it.</td>
+    <td>Press <code>⌘ ⌃ V</code> (<code>Ctrl Alt V</code> on Windows / Linux) in any app to search history, press <code>Enter</code> to paste, or <code>Shift+Enter</code> for plain text.</td>
   </tr>
   <tr>
-    <td>🔍 <strong>Find anything</strong></td>
-    <td>Type a keyword, or filter with <code>#tag</code>, <code>@device</code> or <code>/type</code>. Find what you copied months ago.</td>
+    <td>🔍 <strong>Instant local search</strong></td>
+    <td>Search by keyword or filter with <code>#tag</code>, <code>@device</code>, <code>/type</code>, and favorites. Find what you copied months ago — including links matched by webpage title or description.</td>
   </tr>
   <tr>
-    <td>🏷️ <strong>Auto-tagging</strong></td>
-    <td>Links, emails, colors, version numbers, UUIDs and IP addresses are tagged automatically. Add your own rules.</td>
+    <td>🏷️ <strong>Auto-tagging &amp; smart previews</strong></td>
+    <td>Links, emails, colors, version numbers, UUIDs, and IP addresses are tagged automatically (plus custom regex rules), and copied links render rich preview cards.</td>
   </tr>
   <tr>
-    <td>📁 <strong>Files and folders</strong></td>
-    <td>Send a whole folder with its structure intact, to every device or just one.</td>
+    <td>🔄 <strong>Cross-device sync &amp; folders</strong></td>
+    <td>Sync text, rich text, images, files, and whole folders with directory structure intact — to every paired device or just one.</td>
   </tr>
   <tr>
     <td>📮 <strong>Send without pairing</strong></td>
     <td><code>unic send "text"</code> prints a transfer link and a 6-digit pickup code when available. The receiver can use either. No device record is kept.</td>
   </tr>
   <tr>
-    <td>🧩 <strong>Plugins</strong></td>
-    <td>Install plugins in one click from Settings, for example to turn an image or file into a share link.</td>
+    <td>🧩 <strong>Actions &amp; plugins</strong></td>
+    <td>Run non-destructive Actions (transform text, strip styling, turn images or files into share links) and install Go or Lua plugins in one click from Settings.</td>
   </tr>
   <tr>
     <td>⌨️ <strong>Command line</strong></td>
-    <td>Use <code>unic</code> to send, receive, and filter the history list from a terminal, over SSH, or in scripts.</td>
+    <td>Use <code>unic</code> to send, receive, run Actions, and filter history from a terminal, over SSH, or in scripts.</td>
   </tr>
   <tr>
-    <td>🌍 <strong>Languages</strong></td>
+    <td>🌍 <strong>Languages &amp; themes</strong></td>
     <td>English, 简体中文, 日本語, Português, Русский. Light and dark themes.</td>
   </tr>
 </table>
@@ -95,13 +102,13 @@
 
 [![Packaging status](https://repology.org/badge/vertical-allrepos/uniclipboard.svg)](https://repology.org/project/uniclipboard/versions)
 
-**2. Connect a second device**
+**2. Use it right away**
 
-On the first device, open **Devices → Add device** and note the 6-digit code. Enter it on the second device. When both devices show the same fingerprint, click **Accept** on each.
+Copy as usual, then press `⌘ ⌃ V` (`Ctrl Alt V` on Windows / Linux) in any app to open the Quick Panel, search your history, and paste.
 
-**3. Copy**
+**3. Connect a second device (optional)**
 
-Press `Ctrl+C` on one device, then `Ctrl+V` on the other.
+On the first device, open **Devices → Add device** and note the 6-digit code. Enter it on the second device. When both devices show the same fingerprint, click **Accept** on each — everything you copy now syncs automatically.
 
 <a id="cli"></a>
 
@@ -117,18 +124,6 @@ unic history list                 # browse history
 
 See the [CLI guide](app/service/README.md) for all commands.
 
-<a id="benchmarks"></a>
-
-## Measurements
-
-| | Memory | Conditions |
-|---|---:|---|
-| Sync service `unicd` | **14 MB** | macOS (Apple Silicon), empty history, read after 20 s idle; same measure as the Memory column in Activity Monitor<sup>1</sup> |
-| Main window | **34 MB** / 49 MB | Windows 11, native ARM64 / x64 build, 60 text items; Task Manager measure<sup>2</sup> |
-| Main window with images | 119 MB / 133 MB | Same, plus 12 images at 2048×1536<sup>2</sup> |
-
-<sup>1</sup> Measured at commit `e2cb68d` with `footprint <pid>`. <sup>2</sup> Median of three runs. See the [Windows memory report](docs/exec/windows-desktop-memory.md).
-
 ## Privacy
 
 - Content is end-to-end encrypted between devices. Unic runs no server that stores your clipboard.
@@ -143,6 +138,29 @@ Report security issues privately as described in [SECURITY.md](SECURITY.md).
 v2 imports your full v1 history: text, images, files and tags. Follow the prompt the first time you open v2, or import later from **Settings › Storage › Migrate from v1**.
 
 v2 devices cannot sync with v1 devices. Upgrade every device to v2 and pair them again. The v1 code lives on the [`v1` branch](https://github.com/UniClipboard/UniClipboard/tree/v1).
+
+<a id="community"></a>
+
+## Community
+
+Join the Unic community to share feedback, ask questions, report issues, and chat with other users and developers:
+
+- <img src="docs/assets/community/qq.svg" alt="" width="18" /> QQ Group: `1080860954`
+- <img src="docs/assets/community/wechat.svg" alt="" width="18" /> WeChat: scan the QR code below to add the maintainer and join the WeChat group
+- <img src="docs/assets/community/telegram.svg" alt="" width="18" /> [Telegram (@uniclipboard)](https://t.me/uniclipboard)
+
+<table>
+  <tr>
+    <td align="center"><strong><img src="docs/assets/community/qq.svg" alt="" width="18" /> QQ Group</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/wechat.svg" alt="" width="18" /> WeChat Group</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/telegram.svg" alt="" width="18" /> Telegram</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/assets/community/qq-qr.png" alt="Unic QQ Group QR Code" width="240" /></td>
+    <td align="center"><img src="docs/assets/community/wechat-qr.png" alt="Unic WeChat QR Code" width="240" /></td>
+    <td align="center"><a href="https://t.me/uniclipboard"><img src="docs/assets/community/telegram-qr.jpg" alt="Unic Telegram Group QR Code" width="240" /></a></td>
+  </tr>
+</table>
 
 ## Contributing
 

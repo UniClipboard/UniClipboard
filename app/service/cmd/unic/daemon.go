@@ -167,10 +167,12 @@ func runDaemonForeground(ctx context.Context, dir, socket string) error {
 	case <-ctx.Done():
 		_ = cmd.Process.Signal(syscall.SIGTERM)
 		select {
-		case <-done:
+		case err := <-done:
+			_ = err
 		case <-time.After(gracefulBudget):
 			_ = cmd.Process.Kill()
-			<-done
+			err := <-done
+			_ = err
 		}
 		return nil
 	}
@@ -315,7 +317,8 @@ func spawnStandalone(ctx context.Context, raw *api.Client, dir, socket string) (
 		// Readiness timed out or cancelled: stop the child we just started.
 		_ = cmd.Process.Signal(syscall.SIGTERM)
 		select {
-		case <-done:
+		case err := <-done:
+			_ = err
 		case <-time.After(3 * time.Second):
 			_ = cmd.Process.Kill()
 		}

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -98,11 +99,21 @@ type Desktop struct {
 	Shortcuts           map[string][]string  `toml:"shortcuts,omitempty" json:"shortcuts,omitempty"`
 	QuickPanelDoubleTap string               `toml:"quick_panel_double_tap,omitempty" json:"quick_panel_double_tap,omitempty"`
 	QuickPanelShortcut  string               `toml:"quick_panel_shortcut" json:"quick_panel_shortcut"`
+	QuickPanelPosition  string               `toml:"quick_panel_position,omitempty" json:"quick_panel_position,omitempty"`
 	Mode                string               `toml:"mode" json:"mode"`
 	LaunchAtLogin       bool                 `toml:"launch_at_login" json:"launch_at_login"`
 	StartInBackground   bool                 `toml:"start_in_background" json:"start_in_background"`
 	SystemWindowFrame   bool                 `toml:"system_window_frame" json:"system_window_frame"`
 	Notifications       DesktopNotifications `toml:"notifications" json:"notifications"`
+}
+
+// QuickPanelPositionOrDefault returns the configured Quick Panel placement mode,
+// defaulting to "center" when unset.
+func (d Desktop) QuickPanelPositionOrDefault() string {
+	if d.QuickPanelPosition == "" {
+		return "center"
+	}
+	return d.QuickPanelPosition
 }
 
 // DesktopNotifications configures desktop system and in-app notifications.
@@ -181,6 +192,10 @@ type Plugins struct {
 	// OnError is what a failed processor means for syncing, for every plugin
 	// that does not set its own: "continue" (default) or "block_sync".
 	OnError string `toml:"on_error" json:"on_error,omitempty"`
+	// MirrorURL is an optional HTTPS base URL for the plugin marketplace and
+	// GitHub plugin downloads (for example "https://plugins.uniclipboard.app").
+	// Changes apply immediately without restarting the service.
+	MirrorURL string `toml:"mirror_url" json:"mirror_url,omitempty"`
 }
 
 type Instance struct {
@@ -302,12 +317,16 @@ func Default() Config {
 	if runtime.GOOS == "darwin" {
 		shortcut = "Cmd+Ctrl+V"
 	}
+	cleanup := engine.DefaultSettings().History
 	return Config{
 		Desktop: Desktop{ColorMode: "system", TrayIcon: "glyph", UpdateChannel: "stable", Language: "zh-CN", Mode: "normal", QuickPanelShortcut: shortcut},
 		Logging: observability.Default().Logging, Telemetry: observability.Default().Telemetry,
-		Limits:    Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
-		Sync:      Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
-		History:   History{AutoCleanup: true, RetentionDays: 180, MaxBytes: 4 << 30, ExcludedTags: []string{}},
+		Limits: Limits{MaxFileBytes: 100 << 20, MaxTotalBytes: HardMaxTotal},
+		Sync:   Sync{Enabled: true, Automatic: true, Files: true, Introductions: true},
+		History: History{
+			AutoCleanup: cleanup.AutoCleanup, RetentionDays: cleanup.RetentionDays, MaxItems: cleanup.MaxItems,
+			MaxBytes: 4 << 30, ExcludedTags: cleanup.ExcludedTags,
+		},
 		FileCache: FileCache{MaxBytes: 500 << 20},
 	}
 }
@@ -433,6 +452,11 @@ func (c Config) Validate() error {
 	default:
 		return errors.New("desktop.quick_panel_shortcut: unsupported shortcut")
 	}
+	switch c.Desktop.QuickPanelPosition {
+	case "", "center", "cursor", "caret":
+	default:
+		return errors.New(`desktop.quick_panel_position: must be "center", "cursor" or "caret"`)
+	}
 	if c.Desktop.TrayIcon != "glyph" && c.Desktop.TrayIcon != "cat" {
 		return errors.New(`desktop.tray_icon: must be "glyph" or "cat"`)
 	}
@@ -453,6 +477,9 @@ func (c Config) Validate() error {
 	}
 	if !validOnError(c.Plugins.OnError) {
 		return errors.New(`plugins.on_error: must be "continue" or "block_sync"`)
+	}
+	if !validPluginMirrorURL(c.Plugins.MirrorURL) {
+		return errors.New("plugins.mirror_url: must be an https URL without credentials, query or fragment")
 	}
 	lua := map[string]bool{}
 	for _, id := range c.ExternalPlugins() {
@@ -562,6 +589,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # quick_panel_shortcut = "Ctrl+Alt+V"
 # macOS default: "Cmd+Ctrl+V"
 # quick_panel_double_tap = ""  # off, alt, control, or meta
+# quick_panel_position = "center"  # "center", "cursor", or "caret" (Windows)
 # [desktop.shortcuts]
 # "clipboard.search" = ["mod+f"]  # [] disables the binding
 # [desktop.notifications]
@@ -609,7 +637,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # auto_cleanup = true
 # retention_days = 180  # 0: no age limit
 # max_items = 0         # 0: no count limit
-# excluded_tags = []    # any exact matching tag prevents automatic deletion
+# excluded_tags = ["favorite"]  # any exact matching tag prevents automatic deletion
 # max_bytes = "4GiB"
 
 [file_cache]
@@ -683,6 +711,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # and its script), run in this order. Saving a script applies it at once;
 # changing this list needs a restart of unicd.
 # [plugins]
+# mirror_url = "https://plugins.uniclipboard.app"  # optional mirror for marketplace & GitHub downloads; falls back to GitHub
 # lua = ["example.lua-urltag"]
 #
 # What happens to a copy when a plugin fails (error, timeout, crash):
@@ -702,6 +731,21 @@ const Template = `# unic configuration. Saving this file applies it at once.
 `
 
 func validOnError(v string) bool { return v == "" || v == "continue" || v == "block_sync" }
+
+func validPluginMirrorURL(raw string) bool {
+	if raw == "" {
+		return true
+	}
+	if len(raw) > 256 || strings.TrimSpace(raw) != raw || strings.ContainsAny(raw, " \t\r\n\x00") {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return false
+	}
+	isLoopback := u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost" || u.Hostname() == "::1"
+	return u.Scheme == "https" || (u.Scheme == "http" && isLoopback)
+}
 
 // WriteTemplate creates path with the template unless it already exists.
 func WriteTemplate(path string) error {

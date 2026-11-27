@@ -4,6 +4,7 @@ package quickpanel
 
 import (
 	"os"
+	"sync"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -19,9 +20,13 @@ var sendInput = user32.NewProc("SendInput")
 var isWindow = user32.NewProc("IsWindow")
 var isIconic = user32.NewProc("IsIconic")
 
-type windowsPlatform struct{}
+type windowsPlatform struct {
+	uiaMu  sync.Mutex
+	uia    *uiaWorker
+	closed bool
+}
 
-func NewNative() Platform { return windowsPlatform{} }
+func NewNative() Platform { return &windowsPlatform{} }
 func winIdentity(hwnd uintptr) (int, uint64) {
 	valid, _, _ := isWindow.Call(hwnd)
 	if valid == 0 {
@@ -40,7 +45,7 @@ func winIdentity(hwnd uintptr) (int, uint64) {
 	}
 	return int(pid), uint64(created.HighDateTime)<<32 | uint64(created.LowDateTime)
 }
-func (windowsPlatform) Capture() (Target, error) {
+func (*windowsPlatform) Capture() (Target, error) {
 	hwnd, _, _ := getForeground.Call()
 	pid, born := winIdentity(hwnd)
 	if hwnd == 0 || pid == 0 || pid == os.Getpid() || born == 0 {
@@ -48,14 +53,14 @@ func (windowsPlatform) Capture() (Target, error) {
 	}
 	return Target{ID: hwnd, PID: pid, Born: born, Name: "原应用"}, nil
 }
-func (windowsPlatform) Check(t Target) error {
+func (*windowsPlatform) Check(t Target) error {
 	pid, born := winIdentity(t.ID)
 	if pid != t.PID || pid == 0 || pid == os.Getpid() || born != t.Born || born == 0 {
 		return ErrTarget
 	}
 	return nil
 }
-func (p windowsPlatform) Activate(t Target) error {
+func (p *windowsPlatform) Activate(t Target) error {
 	if err := p.Check(t); err != nil {
 		return err
 	}
@@ -79,14 +84,14 @@ func (p windowsPlatform) Activate(t Target) error {
 	}
 	return nil
 }
-func (windowsPlatform) ActivateBeforeHide() bool { return true }
+func (*windowsPlatform) ActivateBeforeHide() bool { return true }
 
-func (windowsPlatform) OwnsForeground() bool {
+func (*windowsPlatform) OwnsForeground() bool {
 	h, _, _ := getForeground.Call()
 	pid, _ := winIdentity(h)
 	return pid == os.Getpid()
 }
-func (p windowsPlatform) Ready(t Target) (bool, error) {
+func (p *windowsPlatform) Ready(t Target) (bool, error) {
 	if err := p.Check(t); err != nil {
 		return false, err
 	}
@@ -109,7 +114,7 @@ func (p windowsPlatform) Ready(t Target) (bool, error) {
 	}
 	return true, nil
 }
-func (p windowsPlatform) Paste(t Target) error {
+func (p *windowsPlatform) Paste(t Target) error {
 	ready, err := p.Ready(t)
 	if err != nil {
 		return err
@@ -141,7 +146,7 @@ func (p windowsPlatform) Paste(t Target) error {
 	return nil
 }
 
-func (windowsPlatform) modifierSnapshot(modifier string) func() (bool, bool) {
+func (*windowsPlatform) modifierSnapshot(modifier string) func() (bool, bool) {
 	keys := map[string][]uintptr{
 		"alt": {0x12, 0xa4, 0xa5}, "control": {0x11, 0xa2, 0xa3}, "meta": {0x5b, 0x5c},
 	}[modifier]

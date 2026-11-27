@@ -176,16 +176,82 @@ struct KeyboardStrings {
   var toastNothingToUndo: String { isChinese ? "暂无可撤销内容" : "Nothing to undo" }
   var toastPinned: String { isChinese ? "已加入置顶" : "Pinned" }
   var toastUnpinned: String { isChinese ? "已取消置顶" : "Unpinned" }
-  var toastSynced: String { isChinese ? "已刷新最新剪贴快照" : "Snapshot refreshed" }
+  var toastSynced: String { isChinese ? "已刷新最新剪贴板" : "Clipboard refreshed" }
+  var toastCapturedAndSynced: String { isChinese ? "已同步当前剪贴板到其他设备" : "Synced clipboard to devices" }
+  var toastCapturedWaitingPeer: String { isChinese ? "已读取剪贴板 · 正在连接设备…" : "Clip saved · Connecting devices…" }
+  var toastImageTooLarge: String { isChinese ? "图片过大，已跳过键盘自动同步" : "Image too large for keyboard sync" }
+  var remoteDeviceFallback: String { isChinese ? "其他设备" : "Other device" }
+  var sendClipImageTitle: String { isChinese ? "剪贴板图片" : "Clipboard Image" }
+  var sendDetailClose: String { isChinese ? "收起" : "Close" }
+  var sendRetrySingle: String { isChinese ? "重试" : "Retry" }
 
-  var gateTitle: String { isChinese ? "开启「允许完全访问」以读取剪贴板" : "Allow Full Access to View Clips" }
+  func sendDetailHeader(clipTitle: String) -> String {
+    let trimmed = clipTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty {
+      return isChinese ? "发送明细" : "Send Details"
+    }
+    return isChinese ? "发送明细 · \(trimmed)" : "Send · \(trimmed)"
+  }
+
+  func sendPillHeadline(for batch: KeyboardSendBatchState) -> String {
+    switch batch.overall {
+    case .connecting:
+      return isChinese ? "正在连接设备…" : "Connecting devices…"
+    case .sending:
+      if batch.totalCount == 1, let only = batch.devices.first {
+        return isChinese ? "正在发送至 \(only.name)…" : "Sending to \(only.name)…"
+      }
+      return isChinese ? "正在同步 \(batch.deliveredCount)/\(batch.totalCount)" : "Syncing \(batch.deliveredCount)/\(batch.totalCount)"
+    case .delivered:
+      if batch.totalCount == 1, let only = batch.devices.first {
+        return isChinese ? "已发送至 \(only.name)" : "Sent to \(only.name)"
+      }
+      return isChinese ? "已同步至 \(batch.totalCount) 台设备" : "Synced to \(batch.totalCount) devices"
+    case .partial:
+      if batch.deliveredCount == 0 && batch.failedCount == 0 {
+        return isChinese ? "已存入本机 · 设备离线" : "Saved locally · Offline"
+      }
+      let issue: String
+      if batch.failedCount > 0 {
+        issue = isChinese ? "\(batch.failedCount) 台失败" : "\(batch.failedCount) failed"
+      } else {
+        issue = isChinese ? "\(batch.offlineCount) 台离线" : "\(batch.offlineCount) offline"
+      }
+      return isChinese ? "已同步 \(batch.deliveredCount)/\(batch.totalCount) · \(issue)" : "Synced \(batch.deliveredCount)/\(batch.totalCount) · \(issue)"
+    }
+  }
+
+  func sendDeviceStateLabel(_ state: KeyboardSendDeviceState) -> String {
+    switch state {
+    case .waiting: return isChinese ? "建连中…" : "Connecting…"
+    case .sending(let pct):
+      if let pct, pct > 0 { return "\(pct)%" }
+      return isChinese ? "发送中…" : "Sending…"
+    case .delivered: return isChinese ? "已送达 ✓" : "Delivered ✓"
+    case .offline: return isChinese ? "离线" : "Offline"
+    case .failed: return isChinese ? "发送失败" : "Failed"
+    }
+  }
+
+  func toastReceivedAndCopied(from deviceName: String, isImage: Bool) -> String {
+    if isChinese {
+      return isImage
+        ? "已收到来自 \(deviceName) 的图片并复制到剪贴板"
+        : "已收到来自 \(deviceName) 的内容并复制到剪贴板"
+    }
+    return isImage
+      ? "Image from \(deviceName) copied"
+      : "Clip from \(deviceName) copied"
+  }
+
+  var gateTitle: String { isChinese ? "开启「允许完全访问」以同步剪贴板" : "Allow Full Access to Sync Clips" }
   var gateMessage: String {
     isChinese
-      ? "iOS 要求键盘扩展开启完全访问后，才能读取 Unic 同步到共享容器的剪贴记录。"
-      : "iOS requires Full Access for the keyboard to read clips synced by Unic."
+      ? "iOS 要求键盘扩展开启完全访问后，才能在打开期间读取与实时同步剪贴板内容。"
+      : "iOS requires Full Access for the keyboard to read and sync your clipboard while active."
   }
   var gateChipNoKeylog: String { isChinese ? "不记录外部打字" : "No keystroke logging" }
-  var gateChipLocalSync: String { isChinese ? "仅读取已同步内容" : "Reads synced clips only" }
+  var gateChipLocalSync: String { isChinese ? "仅打开期间同步" : "Syncs only while open" }
   var gateOpenSettings: String { isChinese ? "前往系统设置 ›" : "Open Settings ›" }
 
   var emptyAllTitle: String { isChinese ? "暂无剪贴板记录" : "No Clipboard History" }

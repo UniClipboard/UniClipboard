@@ -97,6 +97,11 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		if runErr = target.ImportHistoryTags(ctx, s.TagNames()); runErr != nil {
 			return
 		}
+		if prefs.protectFavorites != nil {
+			// Persist the source cleanup choice before committing favorites.
+			importPreferences(ctx, dst, nil, preferences{protectFavorites: prefs.protectFavorites}, &report)
+			prefs.protectFavorites = nil
+		}
 	}
 	processed := 0
 	runErr = s.Walk(ctx, func(r *Record, sourceErr error) error {
@@ -249,7 +254,7 @@ func (s *Source) Run(ctx context.Context, opts RunOptions) (report Report, runEr
 		}
 	}
 	report.Status = "complete"
-	if report.Failed > 0 || report.MissingParts > 0 || report.VerificationFailed > 0 || report.UnsupportedTags > 0 || report.ColorFailures > 0 || report.ColorsMissing > 0 || report.PreferenceFailures > 0 {
+	if report.Failed > 0 || report.MissingParts > 0 || report.VerificationFailed > 0 || report.UnsupportedTags > 0 || report.TagRepairsSkipped > 0 || report.ColorFailures > 0 || report.ColorsMissing > 0 || report.PreferenceFailures > 0 {
 		report.Status = "partial"
 	}
 	if opts.DryRun && report.Status == "complete" {

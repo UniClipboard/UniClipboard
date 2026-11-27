@@ -842,9 +842,7 @@ func (s *Source) resolveAttachment(row legacyRow) (string, os.FileInfo, bool) {
 	// 2. Stored fileUri (including container-UUID remapping for iOS upgrades).
 	if uriPath := parseFileURIPath(row.fileUri); uriPath != "" {
 		candidates = append(candidates, uriPath)
-		for _, remapped := range s.remapStoredURIPath(uriPath) {
-			candidates = append(candidates, remapped)
-		}
+		candidates = append(candidates, s.remapStoredURIPath(uriPath)...)
 	}
 
 	for _, cand := range candidates {

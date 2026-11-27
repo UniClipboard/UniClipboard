@@ -30,6 +30,7 @@ type searchCandidate struct {
 type historySearchState struct {
 	buffer, last, extension              string
 	start, end, highlight                int
+	favorite                             bool
 	open, initialized, restore           bool
 	wasFocused, hadActivity, returnFocus bool
 	options                              []searchCandidate
@@ -37,8 +38,8 @@ type historySearchState struct {
 
 var searchDimensions = []string{"type", "tag", "source", "time", "extension"}
 var searchPrefixes = map[string]string{"type": "/", "tag": "#", "source": "@", "time": "on:", "extension": "ext:"}
-var searchLabels = map[string]string{"type": "类型", "tag": "标签", "source": "设备", "time": "时间", "extension": "扩展名"}
-var searchKinds = map[string]desktopkit.SearchTokenKind{"type": desktopkit.SearchKindType, "tag": desktopkit.SearchKindTag, "source": desktopkit.SearchKindSource, "time": desktopkit.SearchKindTime, "extension": desktopkit.SearchKindOther}
+var searchLabels = map[string]string{"type": "类型", "favorite": "收藏", "tag": "标签", "source": "设备", "time": "时间", "extension": "扩展名"}
+var searchKinds = map[string]desktopkit.SearchTokenKind{"type": desktopkit.SearchKindType, "favorite": desktopkit.SearchKindOther, "tag": desktopkit.SearchKindTag, "source": desktopkit.SearchKindSource, "time": desktopkit.SearchKindTime, "extension": desktopkit.SearchKindOther}
 
 func searchWords(buffer string) []searchWord {
 	r := []rune(buffer)
@@ -137,13 +138,14 @@ func (d *viewState) searchValues() []searchCandidate {
 	for _, v := range [][2]string{{"text", "文本"}, {"richtext", "富文本"}, {"image", "图片"}, {"file", "文件"}, {"folder", "文件夹"}} {
 		add("type", v[0], v[1])
 	}
+	add("favorite", plugin.TagFavorite, "已收藏")
 	for _, tag := range d.tags {
 		add("tag", tag.id, d.tagLabel(tag.id))
 	}
 	for _, v := range d.devices {
 		add("source", v.id, d.sourceName(v.id))
 	}
-	for _, v := range [][2]string{{"today", "今天"}, {"yesterday", "昨天"}, {"last_7d", "最近 7 天"}, {"last_30d", "最近 30 天"}, {"this_week", "本周"}, {"this_month", "本月"}} {
+	for _, v := range [][2]string{{"today", "今天"}, {"yesterday", "昨天"}, {"day_before_yesterday", "前天"}, {"last_7d", "最近 7 天"}, {"last_30d", "最近 30 天"}, {"this_week", "本周"}, {"last_week", "上周"}, {"this_month", "本月"}, {"last_month", "上月"}} {
 		add("time", v[0], v[1])
 	}
 	for _, ext := range []string{"txt", "md", "jpg", "png", "pdf", "ts", "js", "json", "rs", "go"} {
@@ -152,31 +154,31 @@ func (d *viewState) searchValues() []searchCandidate {
 	return out
 }
 func (d *viewState) searchCandidates(dim, partial string) []searchCandidate {
-	if d.live != nil && dim == "tag" && partial == plugin.TagFavorite {
-		return nil
+	type rankedCandidate struct {
+		c    searchCandidate
+		rank int
 	}
-	needle := strings.ToLower(partial)
-	var out []searchCandidate
-	rank := func(c searchCandidate) int {
-		for _, v := range []string{c.value, c.label} {
-			if strings.EqualFold(v, partial) {
-				return 0
-			}
-		}
-		for _, v := range []string{c.value, c.label} {
-			if strings.HasPrefix(strings.ToLower(v), needle) {
-				return 1
-			}
-		}
-		return 2
-	}
+	var ranked []rankedCandidate
 	for _, c := range d.searchValues() {
-		if (dim == "" || dim == c.dimension) && (needle == "" || strings.Contains(strings.ToLower(c.value), needle) || strings.Contains(strings.ToLower(c.label), needle)) {
-			out = append(out, c)
+		dimOK := dim == "" || dim == c.dimension || (dim == "tag" && c.dimension == "favorite")
+		if !dimOK {
+			continue
 		}
+		rank, ok := matchSearchCandidate(c.dimension, c.value, d.searchCandidateLabel(c), c.label, partial)
+		if !ok {
+			continue
+		}
+		if dim == "tag" && strings.TrimSpace(partial) == "" && c.dimension == "favorite" {
+			rank = -1
+		}
+		ranked = append(ranked, rankedCandidate{c: c, rank: rank})
 	}
 	if dim != "" {
-		slices.SortStableFunc(out, func(a, b searchCandidate) int { return rank(a) - rank(b) })
+		slices.SortStableFunc(ranked, func(a, b rankedCandidate) int { return a.rank - b.rank })
+	}
+	out := make([]searchCandidate, len(ranked))
+	for i, r := range ranked {
+		out[i] = r.c
 	}
 	return out
 }
@@ -234,6 +236,12 @@ func (d *viewState) setSearchCondition(dim, value string) {
 				break
 			}
 		}
+	case "favorite":
+		if value == "" {
+			d.search.favorite = false
+		} else {
+			d.search.favorite = !d.search.favorite
+		}
 	case "tag":
 		tags := selectedSearchTags(d.tag)
 		if value == "" {
@@ -279,8 +287,17 @@ func (s *historySearchState) change(d *viewState, start, end int) {
 			continue
 		}
 		for _, c := range d.searchCandidates(w.dimension, w.partial) {
-			if strings.EqualFold(c.value, w.partial) || strings.EqualFold(c.label, w.partial) {
-				if c.dimension != "tag" || !slices.Contains(selectedSearchTags(d.tag), c.value) {
+			if isExactCandidateCommit(c.dimension, c.value, d.searchCandidateLabel(c), c.label, w.partial) {
+				switch c.dimension {
+				case "favorite":
+					if !d.search.favorite {
+						d.setSearchCondition(c.dimension, c.value)
+					}
+				case "tag":
+					if !slices.Contains(selectedSearchTags(d.tag), c.value) {
+						d.setSearchCondition(c.dimension, c.value)
+					}
+				default:
 					d.setSearchCondition(c.dimension, c.value)
 				}
 				removed = append(removed, w)
@@ -313,6 +330,7 @@ func (s *historySearchState) clear(d *viewState) {
 	for _, dim := range searchDimensions {
 		d.setSearchCondition(dim, "")
 	}
+	s.favorite = false
 	s.buffer, s.last = "", ""
 	s.start, s.end = 0, 0
 	s.highlight = -1
@@ -333,6 +351,9 @@ func (s *historySearchState) tokens(d *viewState) []desktopkit.SearchFieldToken 
 		if value != "" && value != "all" {
 			out = append(out, desktopkit.SearchFieldToken{ID: dim, Field: d.tr(searchLabels[dim]), Value: value, Kind: searchKinds[dim], RemoveLabel: fmt.Sprintf(d.tr("移除%s条件"), d.tr(searchLabels[dim]))})
 		}
+	}
+	if s.favorite && d.nav.Value != "pinned" {
+		add("favorite", "★ "+d.tr("已收藏"))
 	}
 	add("type", d.tr(d.kind))
 	tags := selectedSearchTags(d.tag)
@@ -445,6 +466,8 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit, tm desktopkit
 		}
 		selected := false
 		switch candidate.dimension {
+		case "favorite":
+			selected = d.search.favorite || d.nav.Value == "pinned"
 		case "type":
 			selected = d.kind == candidate.label
 		case "source":
@@ -462,7 +485,7 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit, tm desktopkit
 			q := trial.historySearchQuery()
 			prospective = append(prospective, q)
 			if count, ok := d.live.counts[searchQueryKey(q)]; ok {
-				detail = fmt.Sprintf("%d 项", count)
+				detail = fmt.Sprintf(d.tr("%d 项"), count)
 				n = int(count)
 			}
 		}
@@ -482,9 +505,9 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit, tm desktopkit
 	feedback := ""
 	if w, ok := s.active(); ok {
 		if len(s.options) > 0 {
-			feedback = d.tr("按 Enter 或 Tab 选择") + searchLabels[w.dimension] + d.tr("条件，保留已有搜索文字。")
+			feedback = d.tr("按 Enter 或 Tab 选择") + d.tr(searchLabels[w.dimension]) + d.tr("条件，保留已有搜索文字。")
 		} else {
-			feedback = d.tr("没有匹配的") + searchLabels[w.dimension] + d.tr("条件，按原文字搜索。")
+			feedback = d.tr("没有匹配的") + d.tr(searchLabels[w.dimension]) + d.tr("条件，按原文字搜索。")
 		}
 	}
 	filterCount := d.activeFilterCount()
@@ -598,6 +621,9 @@ func (d *viewState) historySearch(c *ui.Context, k desktopkit.Kit, tm desktopkit
 
 func (d *viewState) activeFilterCount() int {
 	n := 0
+	if d.hasExtraFavoriteFilter() {
+		n++
+	}
 	if d.kind != "" && d.kind != "all" {
 		n++
 	}
@@ -661,6 +687,8 @@ func filterPopoverTimes() [][2]string {
 func (d *viewState) filterPopoverTrialQuery(dim, val string) engine.HistorySearchQuery {
 	trial := *d
 	switch dim {
+	case "favorite":
+		trial.search.favorite = true
 	case "type":
 		trial.kind = val
 	case "source":
@@ -679,6 +707,7 @@ func (d *viewState) filterPopoverTrialQuery(dim, val string) engine.HistorySearc
 
 func (d *viewState) filterPopoverProspectiveQueries() []engine.HistorySearchQuery {
 	var queries []engine.HistorySearchQuery
+	queries = append(queries, d.filterPopoverTrialQuery("favorite", "1"))
 	for _, k := range d.filterPopoverKinds() {
 		queries = append(queries, d.filterPopoverTrialQuery("type", k))
 	}
@@ -707,6 +736,8 @@ func (d *viewState) filterPopover(c *ui.Context, k desktopkit.Kit) {
 		}
 		trial := *d
 		switch dim {
+		case "favorite":
+			trial.search.favorite = true
 		case "type":
 			trial.kind = val
 		case "source":
@@ -789,6 +820,20 @@ func (d *viewState) filterPopover(c *ui.Context, k desktopkit.Kit) {
 			}
 		})
 
+		section("scope", d.tr("快捷筛选"), func() {
+			active := d.search.favorite || d.nav.Value == "pinned"
+			cnt, ok := countFor("favorite", "1")
+			renderChip("favorite", "★ "+d.tr("仅看已收藏"), active, cnt, ok, nil, func() {
+				if d.nav.Value == "pinned" {
+					d.nav.Value = "all"
+					d.search.favorite = false
+				} else {
+					d.search.favorite = !d.search.favorite
+				}
+				d.search.refresh(d)
+			})
+		})
+
 		section("type", d.tr("内容类型"), func() {
 			for _, v := range d.filterPopoverKinds() {
 				val := v
@@ -861,6 +906,9 @@ func (d *viewState) filterPopover(c *ui.Context, k desktopkit.Kit) {
 }
 
 func (d *viewState) matchesSearch(e entry) bool {
+	if d.search.favorite && !e.pinned {
+		return false
+	}
 	if d.kind != "" && d.kind != "all" {
 		if d.kind == "文本" {
 			if e.kind != desktopkit.KindText && e.kind != desktopkit.KindCode && e.kind != desktopkit.KindLink {

@@ -506,5 +506,6 @@ export interface KeyboardExtensionStatus {
   last_seen_at_ms?: number;
   sound_enabled: boolean;
   haptic_enabled: boolean;
+  auto_sync_enabled: boolean;
   extension_bundle_id?: string;
 }

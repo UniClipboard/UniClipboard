@@ -1,6 +1,6 @@
 # Issue 2252: v1 tag and color migration
 
-## Current implementation contract
+## Implementation delivered for issue 2252
 
 CLI migration and Desktop setup share `internal/v1migration.Source.Run`.
 Every real migration automatically fills safe missing tags and colors.
@@ -10,7 +10,9 @@ The source remains read-only.
 Custom definitions and assignments use the authenticated v1 payloads. Built-in
 membership comes from the separate profile-scoped search table. Map link,
 image, directory and code to canonical v2 IDs. Never identify built-ins from
-localized custom display names. Favorites remain unsupported and are reported.
+localized custom display names. This implementation reported favorites as
+unsupported. The [live contract](../contracts/history-contract.md#v1-tag-migration-and-automatic-recovery-issue-2252)
+defines current favorite migration.
 
 For mapped records, union missing source tags only at revision 1 through the
 public compare-and-swap API. Preserve content, existing tags, expiry, edits and

@@ -16,7 +16,7 @@ on:
         default: false
       expected_source:
         type: string
-        description: Expected source SHA for a joint release
+        description: Expected branch HEAD SHA for this manual run
   workflow_call:
     inputs:
       version:
@@ -28,6 +28,9 @@ on:
       stage:
         type: boolean
         required: true
+      source_sha:
+        type: string
+        default: ''
     outputs:
       expected_revision:
         value: ${{ jobs.stage.outputs.expected_revision }}
@@ -39,10 +42,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - if: inputs.expected_source != '' && inputs.expected_source != github.sha
-        run: exit 1
+      - name: Reject a mismatched manual source
+        if: inputs.source_sha == '' && inputs.expected_source != '' && inputs.expected_source != github.sha
+        run: |
+          echo '::error::The expected source does not match the dispatched commit.'
+          exit 1
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - uses: actions/checkout@v6
         with:
@@ -99,6 +106,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - uses: actions/checkout@v6
         with:
@@ -142,6 +150,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.source_sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:

@@ -7,6 +7,7 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/app/desktop/internal/i18n"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 func (d *viewState) currentLanguage() string {
@@ -50,6 +51,9 @@ func (d *viewState) languageRow(c *ui.Context, k desktopkit.Kit) {
 }
 
 func (d *viewState) searchCandidateLabel(c searchCandidate) string {
+	if c.dimension == "favorite" {
+		return "★ " + d.tr("已收藏")
+	}
 	if c.dimension == "tag" {
 		return d.tagLabel(c.value)
 	}
@@ -59,14 +63,26 @@ func (d *viewState) searchCandidateLabel(c searchCandidate) string {
 	return c.label
 }
 func (p *quickPanelState) filterLabel(f qpFilter) string {
-	if f.dimension == "tag" && p.live != nil {
-		return "#" + p.live.d.tagLabel(f.value)
+	if f.dimension == "favorite" || (f.dimension == "tag" && f.value == plugin.TagFavorite) {
+		return "★ " + p.tr("已收藏")
+	}
+	if f.dimension == "tag" {
+		if p.live != nil {
+			return "#" + p.live.d.tagLabel(f.value)
+		}
+		if f.label != "" {
+			return f.label
+		}
+		return "#" + f.value
 	}
 	if f.dimension == "type" {
 		return "/" + p.tr(f.value)
 	}
 	if f.dimension == "time" {
 		return p.tr(f.value)
+	}
+	if f.dimension == "extension" {
+		return "." + strings.TrimPrefix(f.value, ".")
 	}
 	return f.label
 }

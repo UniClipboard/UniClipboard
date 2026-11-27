@@ -2,17 +2,24 @@
 
 <img src="app/desktop/internal/appicons/unic-logo.svg" alt="Unic" width="112" height="112" />
 
-# Copie uma vez. Cole em qualquer dispositivo.
+# Torne cada cópia mais útil.
 
 <p>
-  O <strong>Unic (anteriormente UniClipboard)</strong> sincroniza texto, imagens, arquivos e pastas diretamente entre seus dispositivos.<br />
-  Criptografia de ponta a ponta. Sem conta. Sem nuvem.
+  O <strong>Unic (anteriormente UniClipboard)</strong> é um espaço nativo e local-first para gerenciar sua área de transferência e sincronizar entre dispositivos no Windows, macOS, Linux, iOS, Android e terminal.<br />
+  Busca rápida no histórico, Painel rápido, prévias inteligentes, plugins e sincronização P2P criptografada — sem conta e sem nuvem.
 </p>
 
 <p>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Download" src="https://img.shields.io/badge/Download-2563eb?style=for-the-badge&logo=github&logoColor=white" /></a>
-  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS%20Beta-1f2937?style=for-the-badge&logo=apple&logoColor=white" /></a>
-  <a href="#quick-start"><img alt="Começar" src="https://img.shields.io/badge/Come%C3%A7ar-4b5563?style=for-the-badge" /></a>
+  <a href="https://uniclipboard.app"><img alt="Site oficial" src="https://img.shields.io/badge/Website-0891B2?style=for-the-badge" /></a>
+  <a href="https://docs.uniclipboard.app"><img alt="Documentação" src="https://img.shields.io/badge/Docs-4F46E5?style=for-the-badge&logo=readthedocs&logoColor=white" /></a>
+  <a href="#community"><img alt="Grupo do WeChat" src="https://img.shields.io/badge/WeChat-07C160?style=for-the-badge&logo=wechat&logoColor=white" /></a>
+  <a href="#community"><img alt="Grupo do QQ" src="https://img.shields.io/badge/QQ-1688D8?style=for-the-badge&logo=qq&logoColor=white" /></a>
+  <a href="https://t.me/uniclipboard"><img alt="Grupo do Telegram" src="https://img.shields.io/badge/Telegram-26A5E4?style=for-the-badge&logo=telegram&logoColor=white" /></a>
+</p>
+
+<p>
+  <a href="https://github.com/UniClipboard/UniClipboard/stargazers"><img alt="Estrelas no GitHub" src="https://img.shields.io/github/stars/UniClipboard/UniClipboard?style=flat-square&color=E5B650&logo=github&label=Stars" /></a>
+  <a href="LICENSE"><img alt="Licença AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-22c55e?style=flat-square" /></a>
 </p>
 
 <p>
@@ -38,10 +45,10 @@
 
 ## Por que o Unic
 
-- **Multiplataforma**: sincroniza entre Windows, macOS, Linux, iOS e Android, na mesma rede Wi-Fi ou em redes diferentes.
-- **Sem nuvem**: os dispositivos se conectam diretamente por canais criptografados. Sem cadastro. O histórico fica só nos seus dispositivos.
-- **Leve**: o serviço de sincronização usa cerca de 14 MB de memória em repouso<sup>[1](#benchmarks)</sup>. No Windows, a janela principal usa cerca de 34–49 MB<sup>[2](#benchmarks)</sup>. Ao fechá-la, o processo dela termina.
-- **Sincroniza tudo**: texto, imagens, arquivos e pastas inteiras.
+- **Ótimo em um computador, fluido em todos**: busca local, Painel rápido, etiquetas automáticas e prévias de links desde o início — além de sincronizar texto, imagens, arquivos e pastas ao adicionar outros dispositivos.
+- **Nativo de verdade, sem Electron**: núcleo em Go com interface desktop nativa. A janela principal encerra ao fechar, e o `unicd` também roda sozinho em ambientes headless.
+- **Sem nuvem, sem conta**: dispositivos se conectam diretamente com criptografia de ponta a ponta após conferir a impressão digital; revogar corta o acesso na hora e o histórico fica só nos seus dispositivos.
+- **Extensível além de copiar e colar**: Actions integradas, plugins Go e Lua em um clique e uma CLI completa (`unic`) para terminal, SSH, scripts e envios sem pareamento por código de 6 dígitos.
 
 <a id="features"></a>
 
@@ -50,34 +57,34 @@
 <table>
   <tr>
     <td>⚡ <strong>Painel rápido</strong></td>
-    <td>Pressione <code>⌘ ⌃ V</code> (<code>Ctrl Alt V</code> no Windows / Linux) em qualquer app, escolha um item e pressione Enter para colar.</td>
+    <td>Pressione <code>⌘ ⌃ V</code> (<code>Ctrl Alt V</code> no Windows / Linux) em qualquer app para buscar no histórico, pressione <code>Enter</code> para colar ou <code>Shift+Enter</code> para colar como texto simples.</td>
   </tr>
   <tr>
-    <td>🔍 <strong>Encontre tudo</strong></td>
-    <td>Digite uma palavra ou filtre com <code>#etiqueta</code>, <code>@dispositivo</code> ou <code>/tipo</code>. Encontre o que copiou há meses.</td>
+    <td>🔍 <strong>Busca local instantânea</strong></td>
+    <td>Digite uma palavra ou filtre com <code>#etiqueta</code>, <code>@dispositivo</code>, <code>/tipo</code> e favoritos. Encontre o que copiou há meses — inclusive links pelo título ou descrição da página.</td>
   </tr>
   <tr>
-    <td>🏷️ <strong>Etiquetas automáticas</strong></td>
-    <td>Links, e-mails, cores, números de versão, UUIDs e endereços IP recebem etiquetas automaticamente. Crie suas próprias regras.</td>
+    <td>🏷️ <strong>Etiquetas automáticas e prévias inteligentes</strong></td>
+    <td>Links, e-mails, cores, números de versão, UUIDs e endereços IP recebem etiquetas automaticamente (além de regras regex próprias), e links copiados exibem cartões de prévia.</td>
   </tr>
   <tr>
-    <td>📁 <strong>Arquivos e pastas</strong></td>
-    <td>Envie uma pasta inteira com a estrutura preservada, para todos os dispositivos ou só um.</td>
+    <td>🔄 <strong>Sincronização entre dispositivos e pastas</strong></td>
+    <td>Sincronize texto, texto formatado, imagens, arquivos e pastas inteiras com a estrutura preservada — para todos os dispositivos pareados ou apenas um.</td>
   </tr>
   <tr>
     <td>📮 <strong>Envio sem pareamento</strong></td>
-    <td><code>unic send "texto"</code> mostra um link de transferência e, quando disponível, um código de 6 dígitos. Quem recebe pode usar um ou outro. Nenhum registro de dispositivo fica salvo.</td>
+    <td><code>unic send "texto"</code> mostra um link de transferência e, quando disponível, um código de 6 dígitos. Quem recebe pode usar um ou outro, sem salvar nenhum registro de dispositivo.</td>
   </tr>
   <tr>
-    <td>🧩 <strong>Plugins</strong></td>
-    <td>Instale plugins com um clique nas Configurações, por exemplo para transformar uma imagem ou arquivo em link de compartilhamento.</td>
+    <td>🧩 <strong>Actions e plugins</strong></td>
+    <td>Execute Actions não destrutivas (transformar texto, remover formatação, transformar imagens ou arquivos em links de compartilhamento) e instale plugins Go ou Lua em um clique nas Configurações.</td>
   </tr>
   <tr>
     <td>⌨️ <strong>Linha de comando</strong></td>
-    <td>Use <code>unic</code> para enviar, receber e filtrar a lista do histórico pelo terminal, via SSH ou em scripts.</td>
+    <td>Use <code>unic</code> para enviar, receber, executar Actions e filtrar o histórico pelo terminal, via SSH ou em scripts.</td>
   </tr>
   <tr>
-    <td>🌍 <strong>Idiomas</strong></td>
+    <td>🌍 <strong>Idiomas e temas</strong></td>
     <td>English, 简体中文, 日本語, Português, Русский. Temas claro e escuro.</td>
   </tr>
 </table>
@@ -95,13 +102,13 @@
 
 [![Packaging status](https://repology.org/badge/vertical-allrepos/uniclipboard.svg)](https://repology.org/project/uniclipboard/versions)
 
-**2. Conecte um segundo dispositivo**
+**2. Use imediatamente**
 
-No primeiro dispositivo, abra **Dispositivos → Adicionar dispositivo** e anote o código de 6 dígitos. Digite-o no segundo dispositivo. Quando os dois mostrarem a mesma impressão digital, clique em **Aceitar** em cada um.
+Copie normalmente e pressione `⌘ ⌃ V` (`Ctrl Alt V` no Windows / Linux) em qualquer app para abrir o Painel rápido, buscar no histórico e colar.
 
-**3. Copie**
+**3. Conecte um segundo dispositivo (opcional)**
 
-Pressione `Ctrl+C` em um dispositivo e `Ctrl+V` no outro.
+No primeiro dispositivo, abra **Dispositivos → Adicionar dispositivo** e anote o código de 6 dígitos. Digite-o no segundo dispositivo. Quando os dois mostrarem a mesma impressão digital, clique em **Aceitar** em cada um — tudo o que você copiar passa a sincronizar automaticamente.
 
 <a id="cli"></a>
 
@@ -117,18 +124,6 @@ unic history list                 # ver o histórico
 
 Veja todos os comandos no [guia da CLI](app/service/README.md).
 
-<a id="benchmarks"></a>
-
-## Medições
-
-| | Memória | Condições |
-|---|---:|---|
-| Serviço `unicd` | **14 MB** | macOS (Apple Silicon), histórico vazio, lido após 20 s em repouso; mesma medida da coluna Memória do Monitor de Atividade<sup>1</sup> |
-| Janela principal | **34 MB** / 49 MB | Windows 11, build nativo ARM64 / x64, 60 itens de texto; medida do Gerenciador de Tarefas<sup>2</sup> |
-| Janela principal com imagens | 119 MB / 133 MB | Igual, mais 12 imagens de 2048×1536<sup>2</sup> |
-
-<sup>1</sup> Medido no commit `e2cb68d` com `footprint <pid>`. <sup>2</sup> Mediana de três execuções. Veja o [relatório de memória no Windows](docs/exec/windows-desktop-memory.md).
-
 ## Privacidade
 
 - O conteúdo é criptografado de ponta a ponta entre dispositivos. O Unic não mantém servidores que guardem sua área de transferência.
@@ -143,6 +138,29 @@ Relate problemas de segurança de forma privada, conforme o [SECURITY.md](SECURI
 O v2 importa todo o seu histórico do v1: texto, imagens, arquivos e etiquetas. Siga o assistente ao abrir o v2 pela primeira vez ou importe depois em **Configurações › Armazenamento › Migrar da v1**.
 
 Dispositivos v2 não sincronizam com dispositivos v1. Atualize todos para o v2 e pareie novamente. O código do v1 está no [branch `v1`](https://github.com/UniClipboard/UniClipboard/tree/v1).
+
+<a id="community"></a>
+
+## Comunidade
+
+Participe da comunidade do Unic para trocar ideias, tirar dúvidas, enviar sugestões e conversar com outros usuários e desenvolvedores:
+
+- <img src="docs/assets/community/qq.svg" alt="" width="18" /> Grupo do QQ: `1080860954`
+- <img src="docs/assets/community/wechat.svg" alt="" width="18" /> WeChat: escaneie o QR code abaixo para adicionar o mantenedor e entrar no grupo
+- <img src="docs/assets/community/telegram.svg" alt="" width="18" /> [Grupo do Telegram (@uniclipboard)](https://t.me/uniclipboard)
+
+<table>
+  <tr>
+    <td align="center"><strong><img src="docs/assets/community/qq.svg" alt="" width="18" /> Grupo do QQ</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/wechat.svg" alt="" width="18" /> Grupo do WeChat</strong></td>
+    <td align="center"><strong><img src="docs/assets/community/telegram.svg" alt="" width="18" /> Telegram</strong></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/assets/community/qq-qr.png" alt="QR code do grupo do QQ do Unic" width="240" /></td>
+    <td align="center"><img src="docs/assets/community/wechat-qr.png" alt="QR code do WeChat do Unic" width="240" /></td>
+    <td align="center"><a href="https://t.me/uniclipboard"><img src="docs/assets/community/telegram-qr.jpg" alt="QR code do grupo do Telegram do Unic" width="240" /></a></td>
+  </tr>
+</table>
 
 ## Contribuindo
 

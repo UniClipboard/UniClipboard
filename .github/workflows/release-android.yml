@@ -1,23 +1,44 @@
-name: Android Store candidate
+name: Android release
 
 on:
   workflow_dispatch:
     inputs:
+      channel:
+        description: Release channel for GitHub Release and FlareRelease
+        type: choice
+        options: [alpha, stable]
+        default: alpha
       publish:
-        description: Upload to Google Play
+        description: Publish APK to GitHub Release, R2, and FlareRelease
         type: boolean
         default: false
-      track:
-        description: Google Play track
+      promote:
+        description: Promote the selected FlareRelease Android channel after registration
+        type: boolean
+        default: true
+      previous_tag:
+        description: Optional previous Android tag for changelog comparison
+        type: string
+        default: ''
+      build_aab:
+        description: Also build and sign a Google Play AAB
+        type: boolean
+        default: false
+      publish_play:
+        description: Upload signed AAB to Google Play (requires build_aab)
+        type: boolean
+        default: false
+      play_track:
+        description: Google Play track (when publish_play is true)
         type: choice
-        options: [internal, production]
+        options: [internal, alpha, production]
         default: internal
 
 permissions:
   contents: read
 
 concurrency:
-  group: android-store-release
+  group: android-release
   cancel-in-progress: false
 
 jobs:
@@ -30,6 +51,15 @@ jobs:
       UNIC_MOBILE_VARIANT: production
       UNIC_MOBILE_RELEASE_PLATFORM: android
     steps:
+      - name: Validate workflow inputs
+        env:
+          BUILD_AAB: ${{ inputs.build_aab }}
+          PUBLISH_PLAY: ${{ inputs.publish_play }}
+        run: |
+          if [[ "$PUBLISH_PLAY" == true && "$BUILD_AAB" != true ]]; then
+            echo 'error: publish_play requires build_aab=true' >&2
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
@@ -57,14 +87,22 @@ jobs:
         env:
           UNIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
           UNIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_KEY }}
+          UNIC_ANDROID_ABI_TARGETS: ${{ inputs.build_aab && 'android/arm64,android/amd64' || 'android/arm64' }}
         run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.1.12297006" ./bindings/scripts/build-mobile.sh
-      - working-directory: app/expo
+      - name: Build Android release APK (and optional AAB)
+        working-directory: app/expo
+        env:
+          BUILD_AAB: ${{ inputs.build_aab }}
         run: |
           npm ci --no-audit --no-fund
           npx expo prebuild --platform android --no-install
-          (cd android && ./gradlew :app:bundleRelease -PreactNativeArchitectures=arm64-v8a,x86_64)
+          (cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a -PunicAbiFilters=arm64-v8a)
+          if [[ "$BUILD_AAB" == true ]]; then
+            (cd android && ./gradlew :app:bundleRelease -PreactNativeArchitectures=arm64-v8a,x86_64)
+          fi
       - name: Sign and verify candidate
         env:
+          BUILD_AAB: ${{ inputs.build_aab }}
           ANDROID_UPLOAD_KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
           ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
           ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
@@ -74,66 +112,255 @@ jobs:
           : "${ANDROID_UPLOAD_KEYSTORE:?}" "${ANDROID_UPLOAD_STORE_PASSWORD:?}" "${ANDROID_UPLOAD_KEY_PASSWORD:?}" "${ANDROID_UPLOAD_KEY_ALIAS:?}"
           umask 077
           keystore=$(mktemp)
-          trap 'unlink "$keystore"' EXIT
+          lineage=$(mktemp)
+          aligned=$(mktemp --suffix=.apk)
+          trap 'rm -f "$keystore" "$lineage" "$aligned"' EXIT
           printf '%s' "$ANDROID_UPLOAD_KEYSTORE" | base64 --decode > "$keystore"
+          legacy_keystore=app/expo/android/app/debug.keystore
+          legacy_expected_sha256=fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c
+          legacy_actual_sha256=$(keytool -list -v -keystore "$legacy_keystore" -alias androiddebugkey -storepass android \
+            | awk '/SHA256:/ {gsub(/:/, "", $2); print tolower($2); exit}')
+          if [[ "$legacy_actual_sha256" != "$legacy_expected_sha256" ]]; then
+            echo "error: legacy Android debug.keystore SHA-256 mismatch: got $legacy_actual_sha256" >&2
+            exit 1
+          fi
+          cfg=$(python3 -B tools/release/mobile.py config)
+          version=$(printf '%s' "$cfg" | jq -er .android.version)
+          build=$(printf '%s' "$cfg" | jq -er .android.build_number)
           mkdir -p dist/mobile-android
-          export artifact=dist/mobile-android/UniClipboard.aab
-          jarsigner -keystore "$keystore" -storepass:env ANDROID_UPLOAD_STORE_PASSWORD \
-            -keypass:env ANDROID_UPLOAD_KEY_PASSWORD -signedjar "$artifact" \
-            app/expo/android/app/build/outputs/bundle/release/app-release.aab "$ANDROID_UPLOAD_KEY_ALIAS"
-          jarsigner -J-Duser.language=en -J-Duser.country=US -verify "$artifact" | grep -Fx 'jar verified.'
-          jar="$RUNNER_TEMP/bundletool.jar"
-          curl -fsSL https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar -o "$jar"
-          java -jar "$jar" validate --bundle="$artifact"
-          python3 -B tools/release/mobile.py record-candidate android "$artifact" dist/mobile-android/candidate.json --bundletool "$jar"
-          (cd dist/mobile-android && sha256sum UniClipboard.aab candidate.json > SHA256SUMS)
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          unsigned_apk=app/expo/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          apk_name="unic-android-${version}-${build}-arm64-v8a.apk"
+          apk_out="dist/mobile-android/${apk_name}"
+          "$build_tools/zipalign" -p -f 4 "$unsigned_apk" "$aligned"
+          "$build_tools/apksigner" rotate \
+            --out "$lineage" \
+            --old-signer \
+              --ks "$legacy_keystore" \
+              --ks-key-alias androiddebugkey \
+              --ks-pass pass:android \
+              --key-pass pass:android \
+              --set-installed-data true \
+              --set-shared-uid false \
+              --set-permission true \
+              --set-rollback false \
+              --set-auth false \
+            --new-signer \
+              --ks "$keystore" \
+              --ks-key-alias "$ANDROID_UPLOAD_KEY_ALIAS" \
+              --ks-pass env:ANDROID_UPLOAD_STORE_PASSWORD \
+              --key-pass env:ANDROID_UPLOAD_KEY_PASSWORD
+          "$build_tools/apksigner" sign \
+            --v1-signing-enabled false \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --rotation-min-sdk-version 28 \
+            --lineage "$lineage" \
+            --ks "$legacy_keystore" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --next-signer \
+            --ks "$keystore" \
+            --ks-key-alias "$ANDROID_UPLOAD_KEY_ALIAS" \
+            --ks-pass env:ANDROID_UPLOAD_STORE_PASSWORD \
+            --key-pass env:ANDROID_UPLOAD_KEY_PASSWORD \
+            --out "$apk_out" \
+            "$aligned"
+          "$build_tools/apksigner" verify --verbose --print-certs "$apk_out"
+          python3 -B tools/release/mobile.py record-candidate android "$apk_out" dist/mobile-android/candidate.json \
+            --aapt2 "$build_tools/aapt2" \
+            --apksigner "$build_tools/apksigner" \
+            --architecture arm64-v8a \
+            --require-v3-rotation-from "$legacy_expected_sha256"
+          checksum_files=("$apk_name" candidate.json)
+          if [[ "$BUILD_AAB" == true ]]; then
+            aab_name="unic-android-${version}-${build}.aab"
+            aab_out="dist/mobile-android/${aab_name}"
+            jarsigner -keystore "$keystore" -storepass:env ANDROID_UPLOAD_STORE_PASSWORD \
+              -keypass:env ANDROID_UPLOAD_KEY_PASSWORD -signedjar "$aab_out" \
+              app/expo/android/app/build/outputs/bundle/release/app-release.aab "$ANDROID_UPLOAD_KEY_ALIAS"
+            jarsigner -J-Duser.language=en -J-Duser.country=US -verify "$aab_out" | grep -Fx 'jar verified.'
+            jar="$RUNNER_TEMP/bundletool.jar"
+            curl -fsSL https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar -o "$jar"
+            java -jar "$jar" validate --bundle="$aab_out"
+            python3 -B tools/release/mobile.py record-candidate android "$aab_out" dist/mobile-android/aab-candidate.json --bundletool "$jar"
+            checksum_files+=("$aab_name" aab-candidate.json)
+          fi
+          (cd dist/mobile-android && sha256sum "${checksum_files[@]}" > SHA256SUMS)
       - uses: actions/upload-artifact@v4
         with:
           name: mobile-android-candidate
           path: dist/mobile-android/
           if-no-files-found: error
       - uses: ruby/setup-ruby@v1
-        if: inputs.publish
+        if: inputs.publish_play
         with:
           ruby-version: '3.3'
-      - name: Upload to selected Google Play track
-        if: inputs.publish
+      - name: Upload optional AAB to Google Play
+        if: inputs.publish_play
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          PLAY_TRACK: ${{ inputs.track }}
+          PLAY_TRACK: ${{ inputs.play_track }}
         shell: bash
         run: |
           : "${PLAY_SERVICE_ACCOUNT_JSON:?}"
           umask 077
           credentials=$(mktemp)
-          trap 'unlink "$credentials"' EXIT
+          trap 'rm -f "$credentials"' EXIT
           printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > "$credentials"
           gem install fastlane -v 2.242.0 --no-document
-          app=$(jq -er .application_id dist/mobile-android/candidate.json)
+          app=$(jq -er .application_id dist/mobile-android/aab-candidate.json)
+          aab=$(jq -er .artifact.name dist/mobile-android/aab-candidate.json)
           fastlane supply --json_key "$credentials" --package_name "$app" --track "$PLAY_TRACK" \
-            --aab dist/mobile-android/UniClipboard.aab --release_status completed \
+            --aab "dist/mobile-android/${aab}" --release_status completed \
             --skip_upload_metadata true --skip_upload_changelogs true --skip_upload_images true --skip_upload_screenshots true
 
-  github-receipt:
+  deliver:
     needs: build
-    if: inputs.publish && inputs.track == 'production'
-    runs-on: ubuntu-latest
+    if: inputs.publish
+    runs-on: ubuntu-24.04
+    environment: Production
     permissions:
       contents: write
+    timeout-minutes: 25
+    outputs:
+      published_tag: ${{ steps.published_tag.outputs.tag }}
     steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: tools/release/requirements.txt
+      - run: pip install -r tools/release/requirements.txt
       - uses: actions/download-artifact@v4
         with:
           name: mobile-android-candidate
-          path: candidate
-      - name: Publish the production checksum receipt
-        env:
-          GH_TOKEN: ${{ github.token }}
+          path: dist/candidate
+      - name: Verify candidate checksums and source identity
         run: |
-          cd candidate
-          sha256sum -c SHA256SUMS
-          test "$(jq -er .source_sha candidate.json)" = "$GITHUB_SHA"
-          version=$(jq -er .version candidate.json)
-          build=$(jq -er .build_number candidate.json)
-          gh release create "android/v$version-build.$build" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Android $version ($build)" --notes 'Google Play production candidate checksums.' \
-            candidate.json SHA256SUMS
+          (cd dist/candidate && sha256sum -c SHA256SUMS)
+          test "$(jq -er .source_sha dist/candidate/candidate.json)" = "$GITHUB_SHA"
+      - name: Stage immutable GitHub Release draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL: ${{ inputs.channel }}
+          PREVIOUS_TAG: ${{ inputs.previous_tag }}
+        run: |
+          python3 - <<'PYNOTES'
+          import json, os, subprocess
+          from pathlib import Path
+          c = json.loads(Path('dist/candidate/candidate.json').read_text())
+          command = [
+              'gh', 'api', '--method', 'POST', 'repos/UniClipboard/UniClipboard/releases/generate-notes',
+              '-f', f"tag_name=android/v{c['version']}-build.{c['build_number']}",
+              '-f', 'target_commitish=' + c['source_sha'],
+          ]
+          if os.environ['PREVIOUS_TAG']:
+              command += ['-f', 'previous_tag_name=' + os.environ['PREVIOUS_TAG']]
+          result = subprocess.run(command, text=True, capture_output=True)
+          body = json.loads(result.stdout)['body'] if result.returncode == 0 else ''
+          if result.returncode:
+              print('::warning::GitHub-generated contributors are unavailable; explicit changelog remains.')
+          Path('dist/generated-notes.md').write_text(body, encoding='utf-8')
+          PYNOTES
+          python3 -B tools/release/android_release.py github draft \
+            --candidate dist/candidate/candidate.json \
+            --notes release/android-notes.json \
+            --output dist/github-page \
+            --channel "$CHANNEL" \
+            --previous-tag "$PREVIOUS_TAG" \
+            --generated-notes dist/generated-notes.md
+      - name: Publish APK to R2 and register with FlareRelease
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_RELEASE_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASE_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+          R2_ENDPOINT: ${{ vars.R2_RELEASE_ENDPOINT }}
+          RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          python3 -B tools/release/android_release.py publish-r2 \
+            --candidate dist/candidate/candidate.json \
+            --notes release/android-notes.json \
+            --endpoint "$R2_ENDPOINT" \
+            --admin "$RELEASE_ADMIN" \
+            --channel "$CHANNEL" \
+            --receipt dist/publication.json
+      - name: Promote FlareRelease Android channel
+        if: inputs.promote
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.FLARE_RELEASE_ACCESS_CLIENT_SECRET }}
+          RELEASE_ADMIN: ${{ vars.FLARE_RELEASE_ADMIN_URL }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          python3 -B tools/release/android_release.py promote \
+            --candidate dist/candidate/candidate.json \
+            --publication dist/publication.json \
+            --admin "$RELEASE_ADMIN" \
+            --channel "$CHANNEL" \
+            --expected-revision auto \
+            --forward-only \
+            --receipt dist/promotion.json
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANNEL: ${{ inputs.channel }}
+          PROMOTE: ${{ inputs.promote }}
+          PREVIOUS_TAG: ${{ inputs.previous_tag }}
+        run: |
+          args=()
+          if [[ "$PROMOTE" == true ]]; then
+            args+=(--promotion dist/promotion.json)
+          fi
+          python3 -B tools/release/android_release.py github publish \
+            --candidate dist/candidate/candidate.json \
+            --notes release/android-notes.json \
+            --output dist/github-page \
+            --channel "$CHANNEL" \
+            --previous-tag "$PREVIOUS_TAG" \
+            --generated-notes dist/generated-notes.md \
+            --publication dist/publication.json \
+            "${args[@]}"
+      - name: Record published GitHub Release tag
+        id: published_tag
+        run: |
+          tag=$(python3 -c 'import json; print(json.load(open("dist/github-page/github-receipt.json"))["tag"])')
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-android-delivery-receipt
+          path: |
+            dist/publication.json
+            dist/promotion.json
+            dist/github-page/github-receipt.json
+            dist/github-page/release-notes.md
+            dist/github-page/SHA256SUMS.txt
+          if-no-files-found: warn
+
+  dispatch-gitcode-mirror:
+    needs: deliver
+    if: ${{ success() && inputs.publish && needs.deliver.outputs.published_tag != '' && github.repository == 'UniClipboard/UniClipboard' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch GitCode mirror from default branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TAG_NAME: ${{ needs.deliver.outputs.published_tag }}
+        run: |
+          gh workflow run mirror-gitcode.yml --repo "$GITHUB_REPOSITORY" \
+            --ref "$DEFAULT_BRANCH" -f tag_name="$TAG_NAME"
+          echo "Dispatched mirror-gitcode.yml for $TAG_NAME from $DEFAULT_BRANCH." >> "$GITHUB_STEP_SUMMARY"

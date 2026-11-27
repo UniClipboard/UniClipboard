@@ -45,6 +45,11 @@ type NativeEvents = {
   onMigrationProgress: (payload: MigrationProgress) => void;
   onClipboardChanged: (payload: ClipboardChangedEvent) => void;
   onBackgroundSyncStateChanged: (payload: { reason: string }) => void;
+  onUpdateDownloadProgress: (payload: {
+    progress: number;
+    bytesReceived: number;
+    totalBytes: number;
+  }) => void;
 };
 
 export type TelemetryState = { configured_enabled: boolean; effective_enabled: boolean };
@@ -86,7 +91,11 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   listIncomingShares(): Promise<string>;
   saveIncomingShare(id: string): Promise<string>;
   getKeyboardExtensionStatus?(): Promise<string>;
-  setKeyboardPreferences?(soundEnabled: boolean, hapticEnabled: boolean): Promise<string>;
+  setKeyboardPreferences?(
+    soundEnabled: boolean,
+    hapticEnabled: boolean,
+    autoSyncEnabled: boolean,
+  ): Promise<string>;
   syncKeyboardSnapshot?(): Promise<string>;
   copyPlainText(text: string): Promise<void>;
   copyPairingTicket(text: string, expiresAtMs: number): Promise<void>;
@@ -132,6 +141,17 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   listCandidates(): Promise<string>;
   pairCandidate(reqJSON: string): Promise<string>;
   ignoreCandidate(deviceID: string, ignored: boolean): Promise<void>;
+
+  checkAndroidUpdate?(channel: string): Promise<string>;
+  downloadAndInstallAndroidUpdate?(
+    url: string,
+    filename: string,
+    expectedSha256: string | null,
+    versionKey: string,
+  ): Promise<string>;
+  cancelAndroidUpdateDownload?(): Promise<void>;
+  cleanAndroidUpdateCache?(keepVersionKey: string | null): Promise<void>;
+  hideAndroidSplashScreen?(): void;
 }
 
 const nativeMod = requireOptionalNativeModule<NativeUnicEngineModule>("UnicEngine");
@@ -294,21 +314,31 @@ export const unicEngineNative = {
         has_full_access_seen: false,
         sound_enabled: true,
         haptic_enabled: true,
+        auto_sync_enabled: true,
       };
     }
-    return callJSON<KeyboardExtensionStatus>(() => mod.getKeyboardExtensionStatus!());
+    const status = await callJSON<KeyboardExtensionStatus>(() => mod.getKeyboardExtensionStatus!());
+    return {
+      ...status,
+      auto_sync_enabled: status.auto_sync_enabled ?? true,
+    };
   },
   setKeyboardPreferences: async (
     soundEnabled: boolean,
     hapticEnabled: boolean,
+    autoSyncEnabled = true,
   ): Promise<KeyboardExtensionStatus> => {
     const mod = requireMod();
     if (!mod.setKeyboardPreferences) {
       throw new EngineError({ code: "unsupported", message: "keyboard preferences unavailable" });
     }
-    return callJSON<KeyboardExtensionStatus>(() =>
-      mod.setKeyboardPreferences!(soundEnabled, hapticEnabled),
+    const status = await callJSON<KeyboardExtensionStatus>(() =>
+      mod.setKeyboardPreferences!(soundEnabled, hapticEnabled, autoSyncEnabled),
     );
+    return {
+      ...status,
+      auto_sync_enabled: status.auto_sync_enabled ?? autoSyncEnabled,
+    };
   },
   syncKeyboardSnapshot: async (): Promise<{ count: number }> => {
     const mod = nativeMod;
@@ -500,4 +530,65 @@ export const unicEngineNative = {
     callString(() => requireMod().pairCandidate(JSON.stringify(req))),
   ignoreCandidate: (deviceID: string, ignored: boolean) =>
     callVoid(() => requireMod().ignoreCandidate(deviceID, ignored)),
+
+  addUpdateDownloadProgressListener: (
+    cb: (payload: { progress: number; bytesReceived: number; totalBytes: number }) => void,
+  ) => {
+    if (!nativeMod) return { remove: () => {} };
+    return nativeMod.addListener("onUpdateDownloadProgress", cb);
+  },
+  checkAndroidUpdate: (channel: "alpha" | "stable") =>
+    callJSON<{
+      found: boolean;
+      channel: "alpha" | "stable";
+      manifest?: Record<string, unknown>;
+      supported_abis: string[];
+    }>(() => {
+      const mod = requireMod();
+      if (!mod.checkAndroidUpdate) {
+        throw new EngineError({ code: "unsupported", message: "android update check unavailable" });
+      }
+      return mod.checkAndroidUpdate(channel);
+    }),
+  downloadAndInstallAndroidUpdate: (
+    url: string,
+    filename: string,
+    expectedSha256: string | null,
+    versionKey: string,
+  ) =>
+    callJSON<{
+      status: "installer_launched" | "needs_install_permission";
+      cached: boolean;
+      path: string;
+    }>(() => {
+      const mod = requireMod();
+      if (!mod.downloadAndInstallAndroidUpdate) {
+        throw new EngineError({
+          code: "unsupported",
+          message: "android update download unavailable",
+        });
+      }
+      return mod.downloadAndInstallAndroidUpdate(url, filename, expectedSha256, versionKey);
+    }),
+  cancelAndroidUpdateDownload: () =>
+    callVoid(async () => {
+      const mod = nativeMod;
+      if (mod?.cancelAndroidUpdateDownload) {
+        await mod.cancelAndroidUpdateDownload();
+      }
+    }),
+  cleanAndroidUpdateCache: (keepVersionKey?: string | null) =>
+    callVoid(async () => {
+      const mod = nativeMod;
+      if (mod?.cleanAndroidUpdateCache) {
+        await mod.cleanAndroidUpdateCache(keepVersionKey ?? null);
+      }
+    }),
+  hideAndroidSplashScreen: () => {
+    try {
+      nativeMod?.hideAndroidSplashScreen?.();
+    } catch {
+      // ignore if native splash already dismissed or unavailable
+    }
+  },
 };

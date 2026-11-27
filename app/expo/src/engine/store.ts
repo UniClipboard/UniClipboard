@@ -39,7 +39,7 @@ import type {
 } from "./types";
 
 export type EngineMode = "loading" | "live" | "unavailable";
-export type BootStage = "loading" | "setup" | "main";
+export type BootStage = "loading" | "setup" | "onboarding" | "main";
 export type SetupEntryMode = "first-install" | "later";
 
 const HISTORY_PAGE_SIZE = 50;
@@ -103,6 +103,7 @@ interface EngineStoreState {
   setSetupViewState: (state: SetupScreenViewState) => void;
   startMigration: (passphrase?: string) => Promise<void>;
   cancelMigration: () => Promise<void>;
+  ensureEngineStartedForOnboarding: () => Promise<void>;
   completeSetupAndEnterMain: () => Promise<void>;
   beginLaterMigration: () => Promise<void>;
 
@@ -398,6 +399,7 @@ async function hydrateHistoryItems(
 async function startLiveEngineAndSubscribe(
   set: (partial: Partial<EngineStoreState>) => void,
   get: () => EngineStoreState,
+  targetBootStage: "onboarding" | "main" = "main",
 ) {
   clearNativeListeners();
 
@@ -415,7 +417,8 @@ async function startLiveEngineAndSubscribe(
     } catch {
       return;
     }
-    if (event.instance_id !== snapshot.instance_id) return;
+    const currentInstanceId = get().snapshot?.instance_id;
+    if (currentInstanceId && event.instance_id !== currentInstanceId) return;
     pendingEvents.add(event.kind);
     if (coalesceTimer !== null) return;
     coalesceTimer = setTimeout(() => {
@@ -449,7 +452,9 @@ async function startLiveEngineAndSubscribe(
     if (state === "active") void get().refreshAll();
   });
   const subClipboard = unicEngineNative.addClipboardChangedListener((payload) => {
-    if (get().automaticCapture) set({ pendingClipboardHint: payload });
+    if (get().automaticCapture && get().bootStage === "main") {
+      set({ pendingClipboardHint: payload });
+    }
   });
   unsubscribeFns.push(
     () => subEvt.remove(),
@@ -460,7 +465,7 @@ async function startLiveEngineAndSubscribe(
 
   set({
     mode: "live",
-    bootStage: "main",
+    bootStage: targetBootStage,
     snapshot,
     capabilities: snapshot.capabilities,
     automaticCapture,
@@ -470,7 +475,11 @@ async function startLiveEngineAndSubscribe(
     lastError: null,
   });
 
-  await get().refreshAll();
+  if (targetBootStage === "main") {
+    await get().refreshAll();
+  } else {
+    await Promise.all([get().refreshSnapshot(), get().refreshDevicesAndCandidates()]);
+  }
 }
 
 export const useEngineStore = create<EngineStoreState>((set, get) => ({
@@ -537,24 +546,23 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
         return;
       }
 
-      if (det.status === "found" && det.source_kind === "mobile_sqlite") {
+      if (det.status === "found" || det.status === "invalid") {
         set({
           setupEntryMode: "first-install",
           bootStage: "setup",
           setupState,
           sourceDetection: det,
-          setupViewState: "m-importing",
+          setupViewState: detectionToWelcomeView(det),
         });
-        await get().startMigration(undefined);
         return;
       }
 
       set({
         setupEntryMode: "first-install",
-        bootStage: "setup",
+        bootStage: "onboarding",
         setupState,
         sourceDetection: det,
-        setupViewState: detectionToWelcomeView(det),
+        setupViewState: "w-clean",
       });
     } catch (err) {
       set({
@@ -698,13 +706,32 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
     }
   },
 
+  ensureEngineStartedForOnboarding: async () => {
+    if (!isNativeEngineAvailable()) return;
+    if (get().snapshot !== null) return;
+    set({ busy: true, lastError: null });
+    try {
+      await startLiveEngineAndSubscribe(set, get, "onboarding");
+    } catch (err) {
+      set({ lastError: parseEngineError(err) });
+      throw err;
+    } finally {
+      set({ busy: false });
+    }
+  },
+
   completeSetupAndEnterMain: async () => {
     set({ busy: true, lastError: null });
     try {
       await unicEngineNative.markSetupComplete();
       const setupState = await unicEngineNative.getSetupState();
       set({ setupState });
-      await startLiveEngineAndSubscribe(set, get);
+      if (get().snapshot !== null) {
+        set({ bootStage: "main" });
+        await get().refreshAll();
+      } else {
+        await startLiveEngineAndSubscribe(set, get, "main");
+      }
     } catch (err) {
       const e = parseEngineError(err);
       set({
@@ -712,6 +739,7 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
         setupViewState: "r-failed",
         migrationErrorMessage: e.message,
       });
+      throw err;
     } finally {
       set({ busy: false });
     }
@@ -943,7 +971,8 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
   },
 
   refreshDevicesAndCandidates: async () => {
-    if (get().mode !== "live" || get().bootStage !== "main") return;
+    const state = get();
+    if (state.mode !== "live" || (state.bootStage !== "main" && state.snapshot === null)) return;
     try {
       const [devices, candidates, pairingCode] = await Promise.all([
         unicEngineNative.listDevices(),
@@ -957,13 +986,14 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
   },
 
   refreshSnapshot: async () => {
-    if (get().mode !== "live" || get().bootStage !== "main") return;
+    const state = get();
+    if (state.mode !== "live" || (state.bootStage !== "main" && state.snapshot === null)) return;
     try {
       const snapshot = await unicEngineNative.getState();
-      set((state) => {
-        if (state.snapshot?.instance_id !== snapshot.instance_id ||
-            BigInt(state.snapshot.revision) > BigInt(snapshot.revision)) return state;
-        if (BigInt(state.snapshot.settings.revision) > BigInt(snapshot.settings.revision)) return state;
+      set((prev) => {
+        if (prev.snapshot?.instance_id !== snapshot.instance_id ||
+            BigInt(prev.snapshot.revision) > BigInt(snapshot.revision)) return prev;
+        if (BigInt(prev.snapshot.settings.revision) > BigInt(snapshot.settings.revision)) return prev;
         return { snapshot, capabilities: snapshot.capabilities };
       });
     } catch (err) {
@@ -972,7 +1002,12 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
   },
 
   refreshAll: async () => {
-    if (get().mode !== "live" || get().bootStage !== "main") return;
+    const state = get();
+    if (state.mode !== "live" || (state.bootStage !== "main" && state.snapshot === null)) return;
+    if (state.bootStage !== "main") {
+      await Promise.all([get().refreshSnapshot(), get().refreshDevicesAndCandidates()]);
+      return;
+    }
     await Promise.all([
       get().refreshSnapshot(),
       get().refreshDevicesAndCandidates(),
@@ -1178,11 +1213,14 @@ export const useEngineStore = create<EngineStoreState>((set, get) => ({
   }),
 
   approveDevice: async (device, verifiedFingerprint) => {
+    const allBindings = device.bindings ?? [];
+    const pendingBindings = allBindings.filter((b) => b.state === "pending");
+    const targetBindings = pendingBindings.length > 0 ? pendingBindings : allBindings;
     await unicEngineNative.approveDevice({
       id: device.id,
       expected_revision: device.revision,
       expected_fingerprint: verifiedFingerprint,
-      bindings: (device.bindings ?? []).map((b) => ({
+      bindings: targetBindings.map((b) => ({
         id: b.id,
         expected_revision: b.revision,
       })),

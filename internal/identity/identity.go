@@ -349,7 +349,7 @@ func VerifyObject(pk []byte, repoBinding []byte, seq, createdMs uint64, content 
 	return nil
 }
 
-// ---- hybrid relay (0035) ----
+// ---- hybrid relay (0036) ----
 
 // RelayX25519Key derives this device's X25519 private key from its Ed25519 seed
 // per RFC 8032 clamping, without exposing the raw Ed25519 private key.

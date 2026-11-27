@@ -2,30 +2,37 @@ import {
   Button as SwiftUIButton,
   HStack,
   Image,
-  ProgressView,
   Section,
   Spacer,
   Text as SwiftUIText,
   VStack,
 } from '@expo/ui/swift-ui';
 import {
+  background,
   buttonBorderShape,
   buttonStyle,
   contentShape,
   controlSize,
   cornerRadius,
-  background,
   font,
   foregroundStyle,
   frame,
   padding,
   shapes,
 } from '@expo/ui/swift-ui/modifiers';
+import { PlatformColor } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 import { IosSheetForm, IosSheetPage } from '@/components/ui';
 import { iosProminentButtonModifiers } from '@/components/ui/iosButtonStyles.ios';
 import type { EngineCandidate, EngineDevice, PairingCode } from '@/engine/types';
+import {
+  deviceStatusKind,
+  formatFingerprintShort,
+  formatPairingCodeDisplay,
+  needsDeviceApproval,
+  sortTrustedDevices,
+} from '@/screens/pairing/pairingUtils';
 import {
   SettingsNavRow,
   chevronColor,
@@ -52,18 +59,12 @@ export interface DevicesRootPageProps {
   devices: EngineDevice[];
   candidates: EngineCandidate[];
   pairingCode: PairingCode | null;
-  starting: boolean;
-  operationID: string | null;
-  operationStatus: string;
+  pairingCodeCountdown: string;
   onRefresh: () => void;
   onCopyLocalID: () => void;
-  onCreatePairingCode: () => void;
-  onCancelPairingCode: () => void;
-  onOpenManualJoin: () => void;
   onOpenScanJoin: () => void;
-  onExportTicket: () => void;
-  onStopWaiting: () => void;
-  onApprovePending: (device: EngineDevice) => void;
+  onOpenCodeSheet: (initialTab?: 'enter' | 'show') => void;
+  onReviewPending: (device: EngineDevice) => void;
   onSelectDevice: (device: EngineDevice) => void;
   onSelectCandidate: (candidate: EngineCandidate) => void;
   onOpenConnectionPreview: () => void;
@@ -71,8 +72,12 @@ export interface DevicesRootPageProps {
 }
 
 /**
- * iOS「设备」标签页根页（对齐 v1 DevicesRootPage.tsx）：
- * 顶部状态总览卡（44pt 圆形徽标 + 状态摘要 + 胶囊快捷按钮）→ 本机 → 待批准设备 → 已配对设备 → 配对新设备 → 推荐设备。
+ * Simplified iOS "Devices" tab root page:
+ * 1. Overview Hero Card (plain status + Scan QR & Pairing Code buttons + active code pill)
+ * 2. Pending Approval section (only when a dismissed approval is still awaiting decision)
+ * 3. Paired Devices list (online first, clean status labels)
+ * 4. Suggested Devices (only when introduced candidates exist)
+ * 5. Compact "This Device" section at bottom (tap to copy ID)
  */
 export function DevicesRootPage({
   mode,
@@ -80,25 +85,19 @@ export function DevicesRootPage({
   devices,
   candidates,
   pairingCode,
-  starting,
-  operationID,
-  operationStatus,
+  pairingCodeCountdown,
   onRefresh,
   onCopyLocalID,
-  onCreatePairingCode,
-  onCancelPairingCode,
-  onOpenManualJoin,
   onOpenScanJoin,
-  onExportTicket,
-  onStopWaiting,
-  onApprovePending,
+  onOpenCodeSheet,
+  onReviewPending,
   onSelectDevice,
   onSelectCandidate,
   onOpenConnectionPreview,
   onShowUnavailable,
 }: DevicesRootPageProps) {
   const { t } = useTranslation();
-  const pair = (key: string, values?: Record<string, string>) =>
+  const pair = (key: string, values?: Record<string, string | number>) =>
     t(`settingsSync:pairing.${key}`, values);
 
   if (mode !== 'live') {
@@ -152,14 +151,9 @@ export function DevicesRootPage({
     );
   }
 
-  const pendingDevices = devices.filter((d) => d.trust === 'pending');
-  const trustedDevices = [...devices.filter((d) => d.trust === 'trusted')].sort((left, right) => {
-    const rank = (d: EngineDevice) => (d.bindings?.[0]?.connection === 'connected' ? 0 : 1);
-    return rank(left) - rank(right);
-  });
-  const onlineCount = trustedDevices.filter(
-    (d) => d.bindings?.[0]?.connection === 'connected'
-  ).length;
+  const pendingDevices = devices.filter(needsDeviceApproval);
+  const trustedDevices = sortTrustedDevices(devices.filter((d) => d.trust === 'trusted'));
+  const onlineCount = trustedDevices.filter((d) => deviceStatusKind(d) === 'connected').length;
   const offlineCount = trustedDevices.length - onlineCount;
 
   const hasPending = pendingDevices.length > 0;
@@ -170,23 +164,31 @@ export function DevicesRootPage({
       ? statusGreen
       : settingsTileColors.blue;
   const badgeIcon = hasPending
-    ? 'exclamationmark'
+    ? 'exclamationmark.shield.fill'
     : onlineCount > 0
       ? 'checkmark'
       : 'laptopcomputer.and.iphone';
+
   const overviewTitle = hasPending
-    ? pair('pending')
+    ? pair('overviewPendingTitle')
     : onlineCount > 0
-      ? t('settingsSync:space.overview.status.healthy')
+      ? pair('overviewReadyTitle')
       : hasTrusted
-        ? t('settingsSync:space.overview.noDevicesOnline')
-        : t('settingsSync:space.overview.noOtherDevices');
-  const overviewBody = hasTrusted
-    ? t('settingsSync:space.overview.deviceSummary', {
-        online: onlineCount,
-        offline: offlineCount,
-      })
-    : pair('instructions');
+        ? pair('overviewOfflineTitle')
+        : pair('overviewEmptyTitle');
+
+  const overviewBody = hasPending
+    ? pair('overviewPendingBody', { count: pendingDevices.length })
+    : onlineCount > 0
+      ? offlineCount > 0
+        ? t('settingsSync:space.overview.deviceSummary', {
+            online: onlineCount,
+            offline: offlineCount,
+          })
+        : pair('overviewOnlineOnly', { count: onlineCount })
+      : hasTrusted
+        ? pair('overviewAllOffline', { count: trustedDevices.length })
+        : pair('overviewEmptyBody');
 
   const refreshButton = (
     <SwiftUIButton
@@ -201,7 +203,7 @@ export function DevicesRootPage({
   return (
     <IosSheetPage title={t('home:nav.devices')} rightSlots={[refreshButton]}>
       <IosSheetForm>
-        {/* ── 状态总览卡（对齐 v1 DevicesRootPage 状态卡） ── */}
+        {/* ── Overview Hero Card ── */}
         <Section>
           <VStack spacing={14} alignment="leading" modifiers={[padding({ vertical: 6 })]}>
             <HStack
@@ -209,105 +211,129 @@ export function DevicesRootPage({
               alignment="top"
               modifiers={[frame({ maxWidth: Infinity, alignment: 'leading' })]}
             >
-              {starting || operationID ? (
-                <ProgressView modifiers={[frame({ width: 44, height: 44 })]} />
-              ) : (
-                <Image
-                  systemName={badgeIcon}
-                  size={20}
-                  color="white"
-                  modifiers={[
-                    frame({ width: 44, height: 44 }),
-                    background(badgeColor),
-                    cornerRadius(22),
-                  ]}
-                />
-              )}
+              <Image
+                systemName={badgeIcon}
+                size={20}
+                color="white"
+                modifiers={[
+                  frame({ width: 44, height: 44 }),
+                  background(badgeColor),
+                  cornerRadius(22),
+                ]}
+              />
               <VStack alignment="leading" spacing={3}>
                 <SwiftUIText modifiers={[font({ size: 17, weight: 'semibold' })]}>
-                  {starting || operationID ? operationStatus : overviewTitle}
+                  {overviewTitle}
                 </SwiftUIText>
-                <SwiftUIText modifiers={[font({ size: 15 }), foregroundStyle('secondary')]}>
+                <SwiftUIText modifiers={[font({ size: 14 }), foregroundStyle('secondary')]}>
                   {overviewBody}
                 </SwiftUIText>
               </VStack>
               <Spacer />
             </HStack>
 
+            {hasPending ? (
+              <HStack spacing={10} modifiers={[padding({ leading: 58 })]}>
+                <SwiftUIButton
+                  testID="devices-review-now"
+                  onPress={() => onReviewPending(pendingDevices[0])}
+                  modifiers={capsuleButton(true)}
+                >
+                  <HStack spacing={6}>
+                    <Image systemName="checkmark.shield" size={14} />
+                    <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
+                      {pair('reviewNow')}
+                    </SwiftUIText>
+                  </HStack>
+                </SwiftUIButton>
+              </HStack>
+            ) : null}
+
             <HStack spacing={10} modifiers={[padding({ leading: 58 })]}>
               <SwiftUIButton
+                testID="devices-scan"
+                onPress={onOpenScanJoin}
+                modifiers={capsuleButton(!hasPending)}
+              >
+                <HStack spacing={6}>
+                  <Image systemName="qrcode.viewfinder" size={14} />
+                  <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
+                    {pair('scanShort')}
+                  </SwiftUIText>
+                </HStack>
+              </SwiftUIButton>
+              <SwiftUIButton
                 testID="devices-join"
-                onPress={onOpenManualJoin}
+                onPress={() => onOpenCodeSheet('enter')}
                 modifiers={capsuleButton(false)}
               >
                 <HStack spacing={6}>
-                  <Image systemName="plus" size={14} />
+                  <Image systemName="number" size={14} />
                   <SwiftUIText modifiers={[font({ weight: 'semibold' })]}>
-                    {pair('enterCode')}
+                    {pair('codeShort')}
                   </SwiftUIText>
                 </HStack>
               </SwiftUIButton>
             </HStack>
+
+            {pairingCode ? (
+              <SwiftUIButton
+                testID="devices-active-code-banner"
+                onPress={() => onOpenCodeSheet('show')}
+                modifiers={[buttonStyle('plain')]}
+              >
+                <HStack
+                  spacing={10}
+                  alignment="center"
+                  modifiers={[
+                    frame({ maxWidth: Infinity }),
+                    padding({ horizontal: 14, vertical: 10 }),
+                    background(
+                      PlatformColor('tertiarySystemFill'),
+                      shapes.roundedRectangle({ cornerRadius: 12 }),
+                    ),
+                  ]}
+                >
+                  <VStack alignment="leading" spacing={2}>
+                    <SwiftUIText modifiers={[font({ size: 12 }), foregroundStyle('secondary')]}>
+                      {pairingCodeCountdown
+                        ? pair('activeCodeBanner', { time: pairingCodeCountdown })
+                        : pair('myCodeTab')}
+                    </SwiftUIText>
+                    <SwiftUIText
+                      modifiers={[font({ size: 18, weight: 'bold', design: 'monospaced' })]}
+                    >
+                      {formatPairingCodeDisplay(pairingCode.code)}
+                    </SwiftUIText>
+                  </VStack>
+                  <Spacer />
+                  <Image systemName="chevron.right" size={13} color={chevronColor} />
+                </HStack>
+              </SwiftUIButton>
+            ) : null}
           </VStack>
         </Section>
 
-        {/* ── 配对进度（仅配对进行时显示） ── */}
-        {starting || operationID ? (
-          <Section header={<SwiftUIText>{pair('progress')}</SwiftUIText>}>
-            <SettingsNavRow
-              testID="devices-pairing-status"
-              icon="dot.radiowaves.left.and.right"
-              iconColor={settingsTileColors.blue}
-              title={operationStatus}
-              readOnly
-            />
-            <SettingsNavRow
-              testID="devices-stop-waiting"
-              icon="xmark.circle"
-              iconColor={settingsTileColors.orange}
-              title={pair('stopWaiting')}
-              subtitle={pair('stopWaitingHelp')}
-              showsChevron={false}
-              onPress={onStopWaiting}
-            />
-          </Section>
-        ) : null}
-
-        {/* ── 本机（对齐 v1 thisDevice 分组，支持等宽 ID 点按复制） ── */}
-        {self ? (
-          <Section header={<SwiftUIText>{pair('thisDevice')}</SwiftUIText>}>
-            <LocalDeviceRow
-              name={self.name}
-              deviceID={self.id}
-              subtitle={pair('deviceID', { id: self.id })}
-              onCopyID={onCopyLocalID}
-            />
-          </Section>
-        ) : null}
-
-        {/* ── 待批准设备（强制指纹核对） ── */}
+        {/* ── Pending Approval Devices (only shown if any remain pending) ── */}
         {pendingDevices.length > 0 ? (
           <Section
             header={<SwiftUIText>{`${pair('pending')} · ${pendingDevices.length}`}</SwiftUIText>}
           >
-            {pendingDevices.map((device) => {
-              const status = engineDeviceStatus(device, pair);
-              return (
-                <EngineDeviceRow
-                  key={device.id}
-                  testID={`pending-${device.id}`}
-                  device={device}
-                  subtitle={pair('fingerprint', { value: device.fingerprint })}
-                  statusLabel={status.label}
-                  dotColor={status.dot}
-                  onPress={() => onApprovePending(device)}
-                />
-              );
-            })}
+            {pendingDevices.map((device) => (
+              <EngineDeviceRow
+                key={device.id}
+                testID={`pending-${device.id}`}
+                device={device}
+                subtitle={formatFingerprintShort(device.fingerprint)}
+                statusLabel={pair('reviewNow')}
+                dotColor={settingsTileColors.orange}
+                onPress={() => onReviewPending(device)}
+              />
+            ))}
           </Section>
         ) : null}
 
-        {/* ── 已配对设备（有设备时展示；0 台时避免与顶部状态卡重复空态并消除底栏遮挡） ── */}
+        {/* ── Paired Devices ── */}
         {trustedDevices.length > 0 ? (
           <Section
             header={<SwiftUIText>{`${pair('trusted')} · ${trustedDevices.length}`}</SwiftUIText>}
@@ -328,81 +354,58 @@ export function DevicesRootPage({
           </Section>
         ) : null}
 
-        {/* ── 配对新设备（带真实 SF Symbol 图标） ── */}
-        <Section
-          header={<SwiftUIText>{pair('newDevice')}</SwiftUIText>}
-          footer={
-            <SwiftUIText>
-              {pairingCode ? pair('codeInstructions') : pair('instructions')}
-            </SwiftUIText>
-          }
-        >
-          <SettingsNavRow
-            testID="devices-create-code"
-            icon="number.circle.fill"
-            iconColor={pairingCode ? settingsTileColors.green : settingsTileColors.blue}
-            title={pairingCode ? pair('code', { code: pairingCode.code }) : pair('generateCode')}
-            onPress={onCreatePairingCode}
-          />
-          {pairingCode ? (
-            <SettingsNavRow
-              testID="devices-cancel-code"
-              icon="xmark.circle"
-              iconColor={settingsTileColors.red}
-              title={pair('cancelCode')}
-              destructive
-              showsChevron={false}
-              onPress={onCancelPairingCode}
-            />
-          ) : null}
-          <SettingsNavRow
-            testID="devices-scan"
-            icon="qrcode.viewfinder"
-            iconColor={settingsTileColors.indigo}
-            title={pair('scan')}
-            onPress={onOpenScanJoin}
-          />
-          <SettingsNavRow
-            testID="devices-export-ticket"
-            icon="qrcode"
-            iconColor={settingsTileColors.purple}
-            title={pair('showTicket')}
-            onPress={onExportTicket}
-          />
-        </Section>
-
-        {/* ── 推荐设备 ── */}
+        {/* ── Suggested Devices (introduced by trusted peers) ── */}
         {candidates.length > 0 ? (
           <Section
             header={<SwiftUIText>{`${pair('recommended')} · ${candidates.length}`}</SwiftUIText>}
           >
-            {candidates.map((candidate) => (
-              <SwiftUIButton
-                key={candidate.device_id}
-                testID={`candidate-${candidate.device_id}`}
-                onPress={() => onSelectCandidate(candidate)}
-                modifiers={[buttonStyle('plain')]}
-              >
-                <HStack
-                  spacing={16}
-                  alignment="center"
-                  modifiers={[
-                    frame({ maxWidth: Infinity, minHeight: 48 }),
-                    contentShape(shapes.rectangle()),
-                  ]}
+            {candidates.map((candidate) => {
+              const introducer = candidate.introducers?.[0]?.name;
+              const subtitle = candidate.requested
+                ? pair('phase.connecting')
+                : introducer
+                  ? pair('recommendedBy', { name: introducer })
+                  : pair('recommendedHint');
+              return (
+                <SwiftUIButton
+                  key={candidate.device_id}
+                  testID={`candidate-${candidate.device_id}`}
+                  onPress={() => onSelectCandidate(candidate)}
+                  modifiers={[buttonStyle('plain')]}
                 >
-                  <DeviceIconTile systemName="laptopcomputer" />
-                  <VStack alignment="leading" spacing={1}>
-                    <SwiftUIText>{candidate.name || candidate.device_id.slice(0, 8)}</SwiftUIText>
-                    <SwiftUIText modifiers={[font({ size: 13 }), foregroundStyle('secondary')]}>
-                      {pair(candidate.requested ? 'progress' : 'review')}
-                    </SwiftUIText>
-                  </VStack>
-                  <Spacer />
-                  <Image systemName="chevron.right" size={13} color={chevronColor} />
-                </HStack>
-              </SwiftUIButton>
-            ))}
+                  <HStack
+                    spacing={16}
+                    alignment="center"
+                    modifiers={[
+                      frame({ maxWidth: Infinity, minHeight: 48 }),
+                      contentShape(shapes.rectangle()),
+                    ]}
+                  >
+                    <DeviceIconTile systemName="laptopcomputer" />
+                    <VStack alignment="leading" spacing={1}>
+                      <SwiftUIText>{candidate.name || candidate.device_id.slice(0, 8)}</SwiftUIText>
+                      <SwiftUIText modifiers={[font({ size: 13 }), foregroundStyle('secondary')]}>
+                        {subtitle}
+                      </SwiftUIText>
+                    </VStack>
+                    <Spacer />
+                    <Image systemName="chevron.right" size={13} color={chevronColor} />
+                  </HStack>
+                </SwiftUIButton>
+              );
+            })}
+          </Section>
+        ) : null}
+
+        {/* ── This Device (compact, unobtrusive at bottom) ── */}
+        {self ? (
+          <Section header={<SwiftUIText>{pair('thisDevice')}</SwiftUIText>}>
+            <LocalDeviceRow
+              name={self.name}
+              deviceID={self.id}
+              subtitle={pair('deviceID', { id: self.id })}
+              onCopyID={onCopyLocalID}
+            />
           </Section>
         ) : null}
       </IosSheetForm>

@@ -31,7 +31,8 @@
     "downloading": "Downloading {{percent}}%",
     "canceled": "Download canceled",
     "failed": "Download failed",
-    "noSuitableApk": "No suitable APK found for this device"
+    "noSuitableApk": "No suitable APK found for this device",
+    "needsInstallPermission": "Allow installing unknown apps in Settings, then return and tap Update again"
   },
   "cancelDownload": {
     "title": "Cancel download",

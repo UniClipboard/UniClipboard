@@ -20,7 +20,7 @@ Status: independent process integration implemented; native acceptance is a sepa
 
 The activator (the tray or `unic-desktop --quick-panel`) captures the external foreground target before creating or activating the independent quick-panel OS process. Send the target only through private, profile-bound Desktop IPC. The panel validates and uses that original target before showing the panel. On macOS, Windows, and X11, a target is one process/window instance, never a name-based lookup. On Wayland, where compositors do not expose external window IDs/PIDs to clients, an eligible Wayland input backend captures a compositor-managed focus-return target (with no synthetic external PID) only when `unic` itself does not own focus. Opening from `unic` itself leaves paste unavailable and preserves Copy. Never recapture while the panel is visible. Reopening starts a new generation and invalidates pending work.
 
-Enter pastes. Command+1–9 on macOS and Ctrl+1–9 on Windows select and paste the corresponding visible result through the same controller. Shift+Enter requests the existing builtin.text/plain Action, applies its new history item, then pastes. A stored plain-text representation is required; HTML-only history receives an explicit rejection without a transform or clipboard write. Images/files cannot use plain mode. Command/Ctrl+Enter pastes and reopens the panel with the original target after a 150 ms dispatch interval and a fresh focus check. A user switch during that interval leaves the panel hidden. Copy applies history without synthetic input. Preserve current search, chip, preview and keyboard UX.
+Enter pastes. Command+1–9 on macOS and Ctrl+1–9 on Windows/Linux select and paste the corresponding visible result through the same controller (or apply the matching relaxation proposal when the filtered list is empty). Shift+Enter requests the existing builtin.text/plain Action, applies its new history item, then pastes. A stored plain-text representation is required; HTML-only history receives an explicit rejection without a transform or clipboard write. Images/files cannot use plain mode. Command/Ctrl+Enter pastes and reopens the panel with the original target after a 150 ms dispatch interval and a fresh focus check. A user switch during that interval leaves the panel hidden. Copy applies history without synthetic input. Explicit filter prefixes (`#`, `/`, `@`, `on:`, `ext:`) open suggestions with the first candidate highlighted for immediate `↑`/`↓` (`Ctrl+P`/`Ctrl+N`) and `Enter`/`Tab` selection (`Shift+Tab` moves backward in open suggestions or cycles content types including folders when suggestions are closed; `Escape` dismisses suggestions before clearing filters or closing). Full keyboard navigation also covers: `quickPanel.favoritesFilter` (default `Cmd/Ctrl+F`) to toggle the Favorites-only filter; action menu navigation (`↑`/`↓`/`→`/`←`/`Enter`/`Escape`) while blocking search text edits; `PageUp`/`PageDown`/`Home`/`End` list paging and `Alt+←`/`→` image-grid stepping while typing; immediate preview toggle (`Ctrl+Space`), preview scrolling (`Alt+↑`/`↓` and `Shift+PageUp`/`PageDown`), and image 1:1 preview zoom (`Cmd/Ctrl+0`). Auxiliary controls retain input focus so keyboard commands never stall.
 
 Before handing back keyboard focus, validate the captured target and native permission. Prepare an authorized Wayland `RemoteDesktop` session if required. Apply history through the service-coordinated clipboard path and confirm one tracked write through read-back verification. On macOS this path uses the daemon adapter in `unicd` with on-demand opt-in. On Windows and Linux it uses the panel's mygo board authorized by `unicd`'s `/v1/desktop/panel-apply/*` endpoints.
 
@@ -68,6 +68,21 @@ of Alt, Ctrl or the platform Super key. The setting defaults to off. The tray
 samples only the selected modifier and the presence of other keys while this
 feature is active. macOS requires Accessibility permission. Windows and native
 X11 support the feature. Wayland cannot observe the global modifier gesture.
+
+`desktop.quick_panel_position` selects where the Quick Panel opens on Windows
+(`"center"`, `"cursor"`, or `"caret"`; defaults to `"center"` when omitted).
+`"center"` centers the panel within the work area of the monitor containing the
+captured active window (falling back to the cursor's monitor, then the primary
+monitor). `"cursor"` opens near the mouse pointer with a small anti-hover
+offset, flipping and clamping inside that monitor's work area. `"caret"` probes
+the active text insertion caret while the external target still owns foreground
+focus (`GetGUIThreadInfo`, MSAA `OBJID_CARET`, and bounded-timeout UI
+Automation `TextPattern2::GetCaretRange` / `TextPattern::GetSelection`),
+anchoring below the caret (or flipping above when bottom space is insufficient);
+when exact caret bounds are unavailable, it anchors below a focused compact
+single-line `Edit`/`ComboBox` control, and otherwise falls back to `"cursor"`.
+UI Automation and MSAA probes read only geometry rectangles and never query
+text content, control names, or window titles.
 
 The quick-panel process registers no global shortcuts and acquires no background observer adapter session. It opts in on demand and uses the native adapter in `unicd` for tracked writes and clipboard checks. On Linux sessions where the daemon cannot enable the adapter, explicit copy can still use the local Desktop board under `unicd`'s bounded application protocol. The panel checks its local write mark if it used that path.
 

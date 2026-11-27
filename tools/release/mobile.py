@@ -2,6 +2,7 @@
 """Resolve mobile release identity and record native candidate artifacts."""
 
 import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
@@ -13,62 +14,185 @@ from release import ROOT, digest, metadata, save
 
 
 METADATA = ROOT / "release/products.toml"
-PRODUCTS = {"android": "android-aab", "ios": "ios-arm64"}
+ALLOWED_TARGETS = {
+    "android": {"android-apk-arm64", "android-aab"},
+    "ios": {"ios-arm64"},
+}
+REQUIRED_TARGETS = {
+    "android": {"android-apk-arm64"},
+    "ios": {"ios-arm64"},
+}
+PRODUCTS = tuple(ALLOWED_TARGETS)
 
 
-def mobile_metadata(platform):
-    product = metadata(METADATA, platform)
+def mobile_metadata(platform, metadata_path=METADATA):
+    product = metadata(metadata_path, platform)
     app_id = product["application_id"]
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)+", app_id):
         raise ValueError("invalid mobile application identifier")
-    if product["targets"] != [PRODUCTS[platform]]:
-        raise ValueError("invalid mobile release target")
+    targets = set(product["targets"])
+    if not targets or not targets <= ALLOWED_TARGETS[platform] or not REQUIRED_TARGETS[platform] <= targets:
+        raise ValueError("invalid mobile release targets")
     if not 0 <= product["legacy_build_floor"] < product["build_number"]:
         raise ValueError("mobile build number must advance beyond the legacy build floor")
     return product
 
 
-def candidate(platform, artifact, output, bundletool):
-    product = mobile_metadata(platform)
+def _verify_android_apk(
+    artifact,
+    entries,
+    product,
+    aapt2,
+    apksigner,
+    architecture,
+    require_v3_rotation_from=None,
+):
+    if "AndroidManifest.xml" not in entries:
+        raise ValueError("Android APK candidate is missing AndroidManifest.xml")
+    if not aapt2:
+        raise ValueError("Android APK verification requires --aapt2")
+    abis = sorted({
+        parts[1]
+        for name in entries
+        if name.startswith("lib/") and len((parts := name.split("/"))) >= 3 and parts[2].endswith(".so")
+    })
+    if architecture and abis != [architecture]:
+        raise ValueError(f"Android APK ABIs {abis!r} do not match expected [{architecture!r}]")
+    badging = subprocess.check_output([aapt2, "dump", "badging", str(artifact)], text=True)
+    match = re.search(
+        r"^package:\s+name='([^']+)'\s+versionCode='([^']+)'\s+versionName='([^']+)'",
+        badging,
+        re.M,
+    )
+    if not match:
+        raise ValueError("failed to parse Android APK package badging")
+    if match.groups() != (product["application_id"], str(product["build_number"]), product["version"]):
+        raise ValueError("APK identity differs from release metadata")
+    if apksigner:
+        output = subprocess.check_output(
+            [apksigner, "verify", "--verbose", "--print-certs", str(artifact)],
+            text=True,
+            stderr=subprocess.STDOUT,
+        )
+        if not (
+            "Verified using v2 scheme (APK Signature Scheme v2): true" in output
+            or "Verified using v3 scheme (APK Signature Scheme v3): true" in output
+        ):
+            raise ValueError("APK signature must include v2 or v3 scheme")
+        if require_v3_rotation_from:
+            expected_old = require_v3_rotation_from.strip().lower()
+            if "Verified using v3 scheme (APK Signature Scheme v3): true" not in output:
+                raise ValueError("APK signature must verify with APK Signature Scheme v3 for key rotation")
+            lineage_out = subprocess.check_output(
+                [apksigner, "lineage", "--print-certs", "--in", str(artifact)],
+                text=True,
+                stderr=subprocess.STDOUT,
+            )
+            if f"signer #1 in lineage certificate sha-256 digest: {expected_old}" not in lineage_out.lower():
+                raise ValueError("APK v3 signing lineage does not start from expected legacy certificate")
+            if "signer #2 in lineage certificate sha-256 digest:" not in lineage_out.lower():
+                raise ValueError("APK v3 signing lineage must include rotated release certificate")
+
+
+def _verify_android_aab(artifact, entries, product, bundletool):
+    if not {"BundleConfig.pb", "base/manifest/AndroidManifest.xml"} <= entries:
+        raise ValueError("Android candidate must be an app bundle")
+    if not bundletool:
+        raise ValueError("Android AAB verification requires --bundletool")
+    manifest = ET.fromstring(subprocess.check_output([
+        "java", "-jar", bundletool, "dump", "manifest", f"--bundle={artifact}", "--module=base",
+    ]))
+    ns = "{http://schemas.android.com/apk/res/android}"
+    if (manifest.get("package"), manifest.get(ns + "versionName"), manifest.get(ns + "versionCode")) != (
+        product["application_id"], product["version"], str(product["build_number"])
+    ):
+        raise ValueError("app bundle identity differs from release metadata")
+
+
+def _verify_ios_ipa(artifact, archive, entries, product):
+    from plistlib import loads
+
+    names = [n for n in entries if re.fullmatch(r"Payload/[^/]+\.app/Info.plist", n)]
+    if len(names) != 1:
+        raise ValueError("iOS candidate must contain one application")
+    info = loads(archive.read(names[0]))
+    if (info.get("CFBundleIdentifier"), info.get("CFBundleShortVersionString"), str(info.get("CFBundleVersion"))) != (
+        product["application_id"], product["version"], str(product["build_number"])
+    ):
+        raise ValueError("exported app identity differs from release metadata")
+
+
+def candidate(
+    platform,
+    artifact,
+    output,
+    bundletool=None,
+    aapt2=None,
+    apksigner=None,
+    architecture=None,
+    require_v3_rotation_from=None,
+    metadata_path=METADATA,
+    published_at=None,
+    source_sha=None,
+    fixture=False,
+):
+    product = mobile_metadata(platform, metadata_path)
     artifact = Path(artifact)
-    expected = ".ipa" if platform == "ios" else ".aab"
-    if not artifact.is_file() or artifact.suffix != expected:
-        raise ValueError(f"expected a native {expected} file")
+    if not artifact.is_file():
+        raise ValueError("candidate artifact file does not exist")
+    if platform == "ios":
+        if artifact.suffix != ".ipa":
+            raise ValueError("expected a native .ipa file")
+        fmt = "ipa"
+        arch = architecture or "arm64"
+    else:
+        if artifact.suffix == ".apk":
+            fmt = "apk"
+            arch = architecture or "arm64-v8a"
+        elif artifact.suffix == ".aab":
+            fmt = "aab"
+            arch = architecture or "universal"
+        else:
+            raise ValueError("expected a native .apk or .aab file")
     with zipfile.ZipFile(artifact) as archive:
         if archive.testzip() is not None:
             raise ValueError("candidate archive failed its CRC check")
         entries = set(archive.namelist())
         if platform == "android":
-            if not {"BundleConfig.pb", "base/manifest/AndroidManifest.xml"} <= entries:
-                raise ValueError("Android candidate must be an app bundle")
-            if not bundletool:
-                raise ValueError("Android candidate verification requires bundletool")
-            manifest = ET.fromstring(subprocess.check_output([
-                "java", "-jar", bundletool, "dump", "manifest", f"--bundle={artifact}", "--module=base",
-            ]))
-            ns = "{http://schemas.android.com/apk/res/android}"
-            if (manifest.get("package"), manifest.get(ns + "versionName"), manifest.get(ns + "versionCode")) != (
-                product["application_id"], product["version"], str(product["build_number"])
-            ):
-                raise ValueError("app bundle identity differs from release metadata")
+            if fmt == "apk":
+                _verify_android_apk(
+                    artifact,
+                    entries,
+                    product,
+                    aapt2,
+                    apksigner,
+                    arch,
+                    require_v3_rotation_from=require_v3_rotation_from,
+                )
+            else:
+                _verify_android_aab(artifact, entries, product, bundletool)
         else:
-            from plistlib import loads
-
-            names = [n for n in entries if re.fullmatch(r"Payload/[^/]+\.app/Info.plist", n)]
-            if len(names) != 1:
-                raise ValueError("iOS candidate must contain one application")
-            info = loads(archive.read(names[0]))
-            if (info.get("CFBundleIdentifier"), info.get("CFBundleShortVersionString"), str(info.get("CFBundleVersion"))) != (
-                product["application_id"], product["version"], str(product["build_number"])
-            ):
-                raise ValueError("exported app identity differs from release metadata")
-    if subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip():
-        raise ValueError("candidate receipt requires a clean source checkout")
-    revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+            _verify_ios_ipa(artifact, archive, entries, product)
+    source_clean = True
+    if fixture:
+        revision = source_sha or subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+        source_clean = not bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip())
+    else:
+        if subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True).strip():
+            raise ValueError("candidate receipt requires a clean source checkout")
+        revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+    if not re.fullmatch(r"[a-f0-9]{40}", revision):
+        raise ValueError("invalid candidate source SHA")
+    timestamp = published_at or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     save(output, {
         "schema": 1,
         "platform": platform,
+        "product": platform,
+        "format": fmt,
+        "architecture": arch,
         "source_sha": revision,
+        "source_clean": source_clean,
+        "published_at": timestamp,
         "application_id": product["application_id"],
         "version": product["version"],
         "build_number": product["build_number"],
@@ -79,17 +203,39 @@ def candidate(platform, artifact, output, bundletool):
 def main():
     cli = argparse.ArgumentParser(description=__doc__)
     sub = cli.add_subparsers(dest="command", required=True)
-    sub.add_parser("config")
+    cfg = sub.add_parser("config")
+    cfg.add_argument("--metadata", type=Path, default=METADATA)
     record = sub.add_parser("record-candidate")
     record.add_argument("platform", choices=PRODUCTS)
     record.add_argument("artifact")
     record.add_argument("output")
     record.add_argument("--bundletool")
+    record.add_argument("--aapt2")
+    record.add_argument("--apksigner")
+    record.add_argument("--architecture")
+    record.add_argument("--require-v3-rotation-from")
+    record.add_argument("--metadata", type=Path, default=METADATA)
+    record.add_argument("--published-at")
+    record.add_argument("--source-sha")
+    record.add_argument("--fixture", action="store_true")
     args = cli.parse_args()
     if args.command == "config":
-        print(json.dumps({platform: mobile_metadata(platform) for platform in PRODUCTS}))
+        print(json.dumps({platform: mobile_metadata(platform, args.metadata) for platform in PRODUCTS}))
     else:
-        candidate(args.platform, args.artifact, args.output, args.bundletool)
+        candidate(
+            args.platform,
+            args.artifact,
+            args.output,
+            bundletool=args.bundletool,
+            aapt2=args.aapt2,
+            apksigner=args.apksigner,
+            architecture=args.architecture,
+            require_v3_rotation_from=args.require_v3_rotation_from,
+            metadata_path=args.metadata,
+            published_at=args.published_at,
+            source_sha=args.source_sha,
+            fixture=args.fixture,
+        )
 
 
 if __name__ == "__main__":

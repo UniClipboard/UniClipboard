@@ -121,6 +121,19 @@
     "skipTitle": "Pular a migração da versão 1?",
     "skipBody": "Os dados da versão 1 serão mantidos. Inicie a migração depois em Configurações › Armazenamento.",
     "cancel": "Cancelar",
-    "unlockFailed": "Não foi possível desbloquear as credenciais da versão 1. Digite a senha novamente."
+    "unlockFailed": "Não foi possível desbloquear as credenciais da versão 1. Digite a senha novamente.",
+    "stepBadge": "Migração",
+    "detectedShortTitle": "Dados anteriores encontrados",
+    "detectedShortSub": "Importe seu histórico offline. Os dados originais são mantidos.",
+    "mobileDetectedShortTitle": "Histórico anterior encontrado",
+    "mobileDetectedShortSub": "Importe histórico e tags offline. Os dados originais são mantidos.",
+    "sourceMobile": "Histórico do app anterior",
+    "sourceV1": "Pasta de backup anterior",
+    "changeSource": "Alterar",
+    "scopeTitle": "Importa textos, imagens, arquivos e tags",
+    "scopeSub": "Será preciso parear os dispositivos novamente",
+    "keepForeground": "Mantenha o app aberto",
+    "stepImport": "Importar registros",
+    "stepVerify": "Verificar integridade"
   }
 }

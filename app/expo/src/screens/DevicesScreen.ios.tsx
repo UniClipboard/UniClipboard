@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Linking, StyleSheet } from 'react-native';
+import { useRef, useState } from 'react';
+import { Alert, Linking, StyleSheet } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Host, NavigationStack, ZStack } from '@expo/ui/swift-ui';
@@ -12,33 +12,26 @@ import {
 } from '@/components/ui';
 import { parseEngineError, unicEngineNative } from '@/engine/nativeModule';
 import { useEngineStore } from '@/engine/store';
-import type {
-  EngineCandidate,
-  EngineDevice,
-  EngineEvent,
-  EngineOperation,
-  SensitiveTicket,
-} from '@/engine/types';
+import type { EngineCandidate } from '@/engine/types';
 import type { RootStackParamList, SpaceDeviceTarget } from '@/navigation/AppNavigator.types';
 import { useHideTabBarOnSubPage } from '@/navigation/ios/useHideTabBarOnSubPage';
+import { usePairingUIStore } from '@/screens/pairing/pairingStore';
+import { usePairingFlow } from '@/screens/pairing/usePairingFlow';
 import { showUnavailable } from '@/shell/notice';
 import { useMessageStore } from '@/stores/messageStore';
 import { iosAccentColor } from '@/theme/iosDesignTokens';
 import { DeviceDetailSheet } from './ios/devices/DeviceDetailSheet';
 import { DevicesRootPage } from './ios/devices/DevicesRootPage';
-import {
-  CandidateDetailSheet,
-  PairingApproveSheet,
-  PairingJoinSheet,
-  PairingTicketSheet,
-} from './ios/devices/PairingSheets';
+import { CandidateDetailSheet, PairingFlowSheet } from './ios/devices/PairingSheets';
 
 const fillModifier = frame({ maxWidth: Infinity, maxHeight: Infinity });
 const NAVIGATION_CHROME: IosPageChrome = { kind: 'navigation' };
 
 /**
  * iOS "Devices" tab.
- * Full-screen SwiftUI Host owning the `NavigationStack` and all sibling native sheets.
+ * Full-screen SwiftUI Host owning the `NavigationStack` and sibling native sheets.
+ * Incoming pairing approvals are auto-surfaced either inline inside `PairingFlowSheet`
+ * (when actively pairing) or globally via `PairingApprovalHost`.
  */
 export function DevicesScreen(_props: SpaceDeviceTarget) {
   const { t } = useTranslation();
@@ -54,89 +47,11 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
   const self = useEngineStore((s) => s.snapshot?.self);
   const devices = useEngineStore((s) => s.devices);
   const candidates = useEngineStore((s) => s.candidates);
-  const pairingCode = useEngineStore((s) => s.pairingCode);
 
-  const [manualJoinOpen, setManualJoinOpen] = useState(false);
+  const flow = usePairingFlow(focused);
   const scanningRef = useRef(false);
-  const [starting, setStarting] = useState(false);
-  const startingRef = useRef(false);
-  const operationGeneration = useRef(0);
-  const [operationID, setOperationID] = useState<string | null>(null);
-  const [operation, setOperation] = useState<EngineOperation | null>(null);
-  const [operationError, setOperationError] = useState<string | null>(null);
-  const [ticket, setTicket] = useState<SensitiveTicket | null>(null);
-  const ticketGeneration = useRef(0);
-  const exporting = useRef(false);
-  const [pendingApproveDevice, setPendingApproveDevice] = useState<EngineDevice | null>(null);
   const [selectedDeviceID, setSelectedDeviceID] = useState<string | null>(null);
   const [selectedCandidate, setSelectedCandidate] = useState<EngineCandidate | null>(null);
-  const [foreground, setForeground] = useState(AppState.currentState === 'active');
-
-  const closeTicket = useCallback(() => {
-    ticketGeneration.current++;
-    setTicket(null);
-  }, []);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (state) => {
-      const active = state === 'active';
-      setForeground(active);
-      if (!active) closeTicket();
-    });
-    return () => subscription.remove();
-  }, [closeTicket]);
-
-  useEffect(() => {
-    if (focused && mode === 'live') return;
-    setManualJoinOpen(false);
-    closeTicket();
-  }, [focused, mode, closeTicket]);
-
-  useEffect(() => {
-    if (!ticket) return;
-    const timer = setTimeout(closeTicket, Math.max(0, ticket.expires_at_ms - Date.now()));
-    return () => clearTimeout(timer);
-  }, [ticket, closeTicket]);
-
-  useEffect(() => {
-    if (!operationID || mode !== 'live') return;
-    let request = 0;
-    let disposed = false;
-    const refresh = async () => {
-      const current = ++request;
-      try {
-        const result = await unicEngineNative.getOperation(operationID);
-        if (!disposed && current === request) {
-          setOperation(result);
-          setOperationError(null);
-        }
-      } catch (error) {
-        if (!disposed && current === request) setOperationError(parseEngineError(error).code);
-      }
-    };
-    const events = unicEngineNative.addEventListener((raw) => {
-      let event: EngineEvent;
-      try {
-        event = JSON.parse(raw) as EngineEvent;
-      } catch {
-        return;
-      }
-      if (event.kind === 'operations' && event.objects?.some(({ id }) => id === operationID)) {
-        void refresh();
-      }
-    });
-    const resync = unicEngineNative.addResyncListener(() => void refresh());
-    const active = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void refresh();
-    });
-    void refresh();
-    return () => {
-      disposed = true;
-      events.remove();
-      resync.remove();
-      active.remove();
-    };
-  }, [operationID, mode]);
 
   const errorText = (error: unknown) => {
     const code = parseEngineError(error).code;
@@ -151,50 +66,15 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
     }
   };
 
-  const start = async (action: () => Promise<string>) => {
-    if (startingRef.current) return;
-    startingRef.current = true;
-    const generation = ++operationGeneration.current;
-    setStarting(true);
-    setOperationID(null);
-    setOperation(null);
-    setOperationError(null);
-    try {
-      const id = await action();
-      if (generation === operationGeneration.current) setOperationID(id);
-    } catch (error) {
-      if (generation === operationGeneration.current) {
-        Alert.alert(pair('actionFailed'), errorText(error));
-      }
-    } finally {
-      startingRef.current = false;
-      setStarting(false);
-    }
-  };
-
-  const submit = (input: string) => {
-    const raw = input.trim();
-    const digits = raw.replace(/\s+/g, '');
-    const store = useEngineStore.getState();
-    setManualJoinOpen(false);
-    if (/^\d{3}-?\d{3}$/.test(digits)) {
-      void start(() => store.joinByCode(digits));
-    } else if (raw.startsWith('unic-pair:')) {
-      void start(() => store.joinByTicket(raw));
-    } else {
-      Alert.alert(pair('actionFailed'), pair('invalidInput'));
-    }
-  };
-
   const handleScanJoin = async () => {
     if (scanningRef.current) return;
     scanningRef.current = true;
     try {
       const scanned = await unicEngineNative.scanQRCode(
         t('common:action.cancel'),
-        t('settingsSync:lan.qr.hint')
+        t('settingsSync:lan.qr.hint'),
       );
-      if (scanned) submit(scanned);
+      if (scanned) flow.submitInput(scanned);
     } catch (error) {
       const parsed = parseEngineError(error);
       if (parsed.code === 'permission_denied') {
@@ -212,38 +92,8 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
     }
   };
 
-  const exportTicket = async () => {
-    if (exporting.current) return;
-    exporting.current = true;
-    const generation = ++ticketGeneration.current;
-    try {
-      const result = await useEngineStore.getState().exportPairingTicket();
-      if (generation === ticketGeneration.current && result.expires_at_ms > Date.now()) {
-        setTicket(result);
-      }
-    } catch (error) {
-      if (generation === ticketGeneration.current) {
-        Alert.alert(pair('actionFailed'), errorText(error));
-      }
-    } finally {
-      exporting.current = false;
-    }
-  };
-
   const store = useEngineStore.getState();
   const trusted = devices.find((d) => d.trust === 'trusted' && d.id === selectedDeviceID) ?? null;
-  const peer = devices.find((d) => d.id === operation?.pairing?.peer_id);
-  const waitingApproval = Boolean(
-    operation?.pairing &&
-      ((operation.pairing.awaiting_local_approval && peer?.trust !== 'trusted') ||
-        (operation.pairing.awaiting_remote_approval &&
-          !peer?.bindings?.some((binding) => binding.connection === 'connected')))
-  );
-  const phase = waitingApproval ? 'waitingApproval' : (operation?.phase ?? 'resolving');
-  const operationMessage = operationError || operation?.error?.code;
-  const operationStatus = operationMessage
-    ? t(`errors:engine.${operationMessage}`, { defaultValue: t('errors:engine.internal') })
-    : t(`settingsSync:pairing.phase.${phase}`, { defaultValue: pair('phase.resolving') });
 
   return (
     <Host style={styles.host}>
@@ -255,10 +105,8 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
               self={self}
               devices={devices}
               candidates={candidates}
-              pairingCode={pairingCode}
-              starting={starting}
-              operationID={operationID}
-              operationStatus={operationStatus}
+              pairingCode={flow.pairingCode}
+              pairingCodeCountdown={flow.countdown}
               onRefresh={() => void run(store.refreshDevicesAndCandidates)}
               onCopyLocalID={() => {
                 if (!self) return;
@@ -267,19 +115,11 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
                   useMessageStore.getState().showMessage(t('errors:copy.copied'), 'success');
                 });
               }}
-              onCreatePairingCode={() => void run(store.createPairingCode)}
-              onCancelPairingCode={() => void run(store.cancelPairingCode)}
-              onOpenManualJoin={() => setManualJoinOpen(true)}
               onOpenScanJoin={() => void handleScanJoin()}
-              onExportTicket={() => void exportTicket()}
-              onStopWaiting={() => {
-                operationGeneration.current++;
-                setStarting(false);
-                setOperationID(null);
-                setOperation(null);
-                setOperationError(null);
-              }}
-              onApprovePending={setPendingApproveDevice}
+              onOpenCodeSheet={(initialTab) => flow.openCodeSheet(initialTab)}
+              onReviewPending={(device) =>
+                usePairingUIStore.getState().openManualApproval(device.id)
+              }
               onSelectDevice={(device) => setSelectedDeviceID(device.id)}
               onSelectCandidate={setSelectedCandidate}
               onOpenConnectionPreview={() => navigation.navigate('ConnectionPreview')}
@@ -306,56 +146,50 @@ export function DevicesScreen(_props: SpaceDeviceTarget) {
           }}
         />
 
-        <PairingJoinSheet
-          visible={manualJoinOpen}
-          starting={starting}
-          onSubmitInput={submit}
-          onClose={() => setManualJoinOpen(false)}
-        />
-
-        <PairingTicketSheet
-          ticket={ticket}
-          focused={focused}
-          foreground={foreground}
-          onCopy={(activeTicket) => {
-            void run(async () => {
-              if (activeTicket.expires_at_ms <= Date.now()) {
-                closeTicket();
-                return;
-              }
-              await unicEngineNative.copyPairingTicket(
-                activeTicket.ticket,
-                activeTicket.expires_at_ms
-              );
-              Alert.alert(t('errors:copy.copied'));
-            });
+        <PairingFlowSheet
+          visible={flow.open}
+          tab={flow.tab}
+          stage={flow.stage}
+          busy={flow.busy}
+          errorMessage={flow.errorMessage}
+          creatingCode={flow.creatingCode}
+          codeError={flow.codeError}
+          pairingCode={flow.pairingCode}
+          countdown={flow.countdown}
+          ticket={flow.ticket}
+          exportingTicket={flow.exportingTicket}
+          verifyDevice={flow.verifyDevice}
+          approvedPeerName={flow.approvedPeer?.name ?? ''}
+          handshakeStageIndex={flow.handshakeStageIndex}
+          onSelectTab={flow.selectTab}
+          onSubmitInput={flow.submitInput}
+          onSwitchToScan={() => {
+            flow.close();
+            void handleScanJoin();
           }}
-          onClose={closeTicket}
+          onRegenerateCode={() => void flow.generateCode()}
+          onCancelCode={() => void flow.cancelCode()}
+          onCopyCode={() => void flow.copyPairingCode()}
+          onExportTicket={() => void flow.exportOfflineTicket()}
+          onCopyTicket={() => void flow.copyOfflineTicket()}
+          onApprove={() => void flow.approveVerifyDevice()}
+          onReject={() => void flow.rejectVerifyDevice()}
+          onRetryEntry={flow.retryEntry}
+          onClose={flow.close}
         />
 
         <CandidateDetailSheet
           candidate={selectedCandidate}
-          starting={starting}
+          starting={flow.stage === 'connecting'}
           onConnect={(candidate) => {
             setSelectedCandidate(null);
-            void start(() => store.pairCandidate(candidate));
+            flow.pairCandidate(candidate);
           }}
           onIgnore={(candidate) => {
             setSelectedCandidate(null);
             void run(() => store.ignoreCandidate(candidate.device_id, true));
           }}
           onClose={() => setSelectedCandidate(null)}
-        />
-
-        <PairingApproveSheet
-          device={pendingApproveDevice}
-          onApprove={async (device) => {
-            await run(async () => {
-              await store.approveDevice(device, device.fingerprint);
-              setPendingApproveDevice(null);
-            });
-          }}
-          onClose={() => setPendingApproveDevice(null)}
         />
       </ZStack>
     </Host>

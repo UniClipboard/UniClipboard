@@ -1,1 +1,1 @@
-export { MigrationSetupScreen } from "./MigrationSetupScreen.ios";
+export { MigrationSetupScreen } from "./MigrationSetupScreen.android";

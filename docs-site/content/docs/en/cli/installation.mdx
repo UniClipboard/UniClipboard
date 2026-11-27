@@ -72,29 +72,30 @@ The v2 data directory is completely separate from v1; replacing the binary does 
 
 ## Initial Setup
 
-Each data directory must be explicitly initialized before first use, otherwise operational commands will refuse to run with exit code `6` (reason `migration_required`). Help, version, and `migrate` itself are exempt.
+Each data directory must be explicitly initialized before first use, otherwise operational commands will refuse to run with exit code `6` (reason `migration_required`). Help, version, `init`, and `migrate` itself are exempt.
 
 <Steps>
 <Step>
 
-Read the migration instructions:
+Run initialization (completes immediately if no v1 data exists; in an interactive terminal, prompts to import v1 history or start fresh when v1 data is detected):
 
 ```sh
-unic migrate --help
+unic init
 ```
 
 </Step>
 <Step>
 
-If you have v1 history to import, run `unic migrate` as instructed (see [Migrate from v1](../migration/v1-to-v2)). If you have no v1 data, explicitly initialize an empty directory:
+To import v1 history directly (see [Migrate from v1](../migration/v1-to-v2)), or skip detected v1 data non-interactively:
 
 ```sh
-unic migrate --initialize-empty --json
+unic migrate           # import from default v1 source
+unic init --fresh      # start fresh skipping detected v1 data
 ```
 
 </Step>
 </Steps>
 
-Partial imports, failures, cancellations, or `--dry-run` do not complete initialization; `--initialize-empty` cannot be used while an incomplete import exists. An import completed in the Desktop app satisfies this requirement, but clicking "Skip" on the Desktop welcome screen does not initialize the directory for the CLI.
+Automated scripts can also use `unic init --json` or `unic migrate --initialize-empty --json`. Partial imports, failures, cancellations, or `--dry-run` do not complete initialization; when a partial `pending` import exists, finish it with `unic migrate` or explicitly abandon it with `unic init --fresh --discard-pending`. An import completed in the Desktop app satisfies this requirement, but clicking "Skip" on the Desktop welcome screen does not initialize the directory for the CLI.
 
 Next: [CLI Quickstart](./getting-started).

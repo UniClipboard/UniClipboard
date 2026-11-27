@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/servicelaunch"
 	"github.com/uniclipboard/unic/internal/v1migration/v1fixture"
 )
 
@@ -126,11 +127,31 @@ func TestMigrationFirstRun(t *testing.T) {
 			t.Fatalf("JSON flag %s lost machine refusal: %d %s", jsonFlag, code, stderr)
 		}
 	}
-	for _, args := range [][]string{{"help", "--json"}, {"--version", "--json"}, {"migrate", "--help"}} {
+	for _, args := range [][]string{{"help", "--json"}, {"--version", "--json"}, {"migrate", "--help"}, {"migrate", "-h"}, {"help", "migrate"}} {
 		code, _, stderr := call(a, "", args...)
 		if code != 0 {
 			t.Fatalf("guide inaccessible: %v %s", args, stderr)
 		}
+	}
+	// Positional `unic migrate help` must exit 2 without creating target.
+	absentHelp := filepath.Join(work, "absent-help")
+	if code, helpOut, helpErr := call(absentHelp, "", "migrate", "help"); code != 2 || helpOut != "" || !strings.Contains(helpErr, "unic migrate --help") {
+		t.Fatalf("migrate help positional should exit 2: code=%d out=%q err=%q", code, helpOut, helpErr)
+	}
+	if _, err := os.Stat(absentHelp); !os.IsNotExist(err) {
+		t.Fatal("migrate help created target directory")
+	}
+	// Bare `unic migrate` without v1 source fails cleanly without creating target.
+	absentHome := filepath.Join(work, "absent-bare")
+	code, _, stderr := call(absentHome, "", "migrate")
+	if code != 1 || !strings.Contains(stderr, "unic init") {
+		t.Fatalf("bare migrate without v1 source should fail with unic init hint: %d %s", code, stderr)
+	}
+	if _, err := os.Stat(absentHome); !os.IsNotExist(err) {
+		t.Fatal("bare migrate without v1 source created target directory")
+	}
+	if code, _, stderr = call(absentHome, "", "migrate", "--fresh"); code != 2 || !strings.Contains(stderr, "unic init --fresh") {
+		t.Fatalf("migrate --fresh should exit 2 with unic init --fresh hint: %d %s", code, stderr)
 	}
 	code, out, stderr := call(a, "", "migrate", "--initialize-empty", "--json")
 	if code != 0 || !strings.Contains(out, `"status":"complete"`) {
@@ -266,7 +287,33 @@ func TestMigrationFirstRun(t *testing.T) {
 		t.Fatal("corrupt state blocked guidance")
 	}
 	checks = append(checks, "corrupt state fails closed and keeps guidance accessible")
-	// An interrupt while waiting for a supplied passphrase must not mark completion.
+	// Real partial import keeps pending state: ordinary `init --fresh` refuses,
+	// while `init --fresh --discard-pending` abandons pending without deleting unic.db.
+	partialSource, _, _, err := v1fixture.Build(filepath.Join(work, "partial-source"))
+	must(err)
+	discardable := profile("discard-pending")
+	code, _, stderr = call(discardable, fixture.Passphrase+"\n", "migrate", "--source", partialSource, "--passphrase-stdin", "--json")
+	if code != 3 {
+		t.Fatalf("expected partial fixture for discard-pending %d %s", code, stderr)
+	}
+	code, _, stderr = call(discardable, "", "init", "--fresh", "--json")
+	if code != 1 || !strings.Contains(stderr, "migration_pending") {
+		t.Fatalf("ordinary init --fresh must refuse pending migration: %d %s", code, stderr)
+	}
+	code, out, stderr = call(discardable, "", "init", "--fresh", "--discard-pending", "--json")
+	if code != 0 || !strings.Contains(out, `"outcome":"fresh"`) {
+		t.Fatalf("init --fresh --discard-pending failed: %d %s %s", code, out, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(discardable, "unic.db")); err != nil {
+		t.Fatalf("discard-pending deleted unic.db: %v", err)
+	}
+	code, _, stderr = call(discardable, "", "status", "--json")
+	if code != 0 {
+		t.Fatalf("profile still blocked after discard-pending: %d %s", code, stderr)
+	}
+
+	// An interrupt while waiting for a passphrase must not write pending or unic.db,
+	// so `unic init --fresh` remains available immediately.
 	cancelled := profile("cancelled")
 	ctx, stop := context.WithTimeout(context.Background(), 15*time.Second)
 	defer stop()
@@ -278,25 +325,43 @@ func TestMigrationFirstRun(t *testing.T) {
 	var cancelErr bytes.Buffer
 	proc.Stderr = &cancelErr
 	must(proc.Start())
-	// Pending state is published before reading any secret.
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		if _, e := os.Stat(filepath.Join(cancelled, "cli-migration.json")); e == nil {
-			break
-		}
-		if time.Now().After(deadline) {
+	time.Sleep(150 * time.Millisecond)
+	for _, artifact := range []string{"cli-migration.json", "unic.db"} {
+		if _, e := os.Stat(filepath.Join(cancelled, artifact)); !os.IsNotExist(e) {
 			_ = proc.Process.Kill()
-			t.Fatal("pending state not published before credential input")
+			t.Fatalf("pre-unlock wait created %s", artifact)
 		}
-		time.Sleep(10 * time.Millisecond)
 	}
-	waiter := exec.CommandContext(ctx, filepath.Join(binDir, "unic"), "migrate", "--source", source, "--passphrase-stdin", "--json")
-	waiter.Env = append(baseEnv, "UNIC_HOME="+cancelled)
-	waiterIn, err := waiter.StdinPipe()
+	must(proc.Process.Signal(os.Interrupt))
+	if err := proc.Wait(); err == nil {
+		t.Fatal("cancelled import succeeded")
+	}
+	if ctx.Err() != nil {
+		t.Fatal("interrupt did not release passphrase input")
+	}
+	for _, artifact := range []string{"cli-migration.json", "unic.db", "unic.sock"} {
+		if _, e := os.Stat(filepath.Join(cancelled, artifact)); !os.IsNotExist(e) {
+			t.Fatalf("cancelled pre-unlock migration created %s", artifact)
+		}
+	}
+	code, _, _ = call(cancelled, "", "status", "--json")
+	if code != 6 {
+		t.Fatal("cancelled migration bypassed gate")
+	}
+	code, out, stderr = call(cancelled, "", "init", "--fresh", "--json")
+	if code != 0 || !strings.Contains(out, `"status":"complete"`) {
+		t.Fatalf("init --fresh blocked after pre-unlock interrupt: %d %s %s", code, out, stderr)
+	}
+
+	// SIGINT interrupts a second process waiting for the migration transition lock.
+	lockTarget := profile("lock-wait")
+	unlockTarget, err := servicelaunch.LockContext(ctx, lockTarget)
 	must(err)
-	defer func() { _ = waiterIn.Close() }()
+	waiter := exec.CommandContext(ctx, filepath.Join(binDir, "unic"), "migrate", "--source", source, "--passphrase-stdin", "--json")
+	waiter.Env = append(baseEnv, "UNIC_HOME="+lockTarget)
+	waiter.Stdin = strings.NewReader(fixture.Passphrase + "\n")
 	must(waiter.Start())
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(250 * time.Millisecond)
 	must(waiter.Process.Signal(os.Interrupt))
 	waiterDone := make(chan error, 1)
 	go func() { waiterDone <- waiter.Wait() }()
@@ -309,22 +374,9 @@ func TestMigrationFirstRun(t *testing.T) {
 		_ = waiter.Process.Kill()
 		t.Fatal("SIGINT did not interrupt lock wait")
 	}
+	unlockTarget()
 	checks = append(checks, "SIGINT interrupts a second process waiting for the migration lock")
-	must(proc.Process.Signal(os.Interrupt))
-	if err := proc.Wait(); err == nil {
-		t.Fatal("cancelled import succeeded")
-	}
-	if ctx.Err() != nil {
-		t.Fatal("interrupt did not release passphrase input")
-	}
-	code, _, _ = call(cancelled, "", "status", "--json")
-	if code != 6 {
-		t.Fatal("cancelled migration bypassed gate")
-	}
-	if _, err := os.Stat(filepath.Join(cancelled, "unic.sock")); !os.IsNotExist(err) {
-		t.Fatal("cancelled migration started service")
-	}
-	checks = append(checks, "SIGINT during secret input exits and leaves pending state")
+	checks = append(checks, "SIGINT during secret input exits without pending state and allows init --fresh")
 
 	// A different authenticated identity must not complete a pending source.
 	mismatch := profile("mismatch")

@@ -7,12 +7,13 @@ When troubleshooting, start by running `unic status` and `unic config` to inspec
 
 ## Command reports migration_required (exit code 6)
 
-The current data directory has not completed migration initialization.
+The current data directory has not completed initialization.
 
-- If you have v1 data: run `unic migrate --dry-run --json` to preflight, then run `unic migrate --json`.
-- If you do not have v1 data: run `unic migrate --initialize-empty --json`.
+- Interactive one-step setup (detects v1 data and offers import or fresh start): run `unic init`.
+- Import v1 history directly: run `unic migrate`.
+- Non-interactive fresh start skipping detected v1 data: run `unic init --fresh` (to abandon a partially imported pending migration, run `unic init --fresh --discard-pending`).
 
-Dry runs, partial completions, or failures do not unlock the directory; see [v1 Migration](../migration/v1-to-v2#results-and-retries).
+Dry runs (`--dry-run`), partial completions, or failures do not unlock the directory; see [v1 Migration](../migration/v1-to-v2#results-and-retries).
 
 ## Configuration changes did not take effect
 

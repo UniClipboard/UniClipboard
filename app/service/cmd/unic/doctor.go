@@ -95,11 +95,11 @@ func runDoctor(ctx context.Context, args []string, asJSONDefault bool) error {
 	state, rerr := climigration.Read(dir)
 	switch {
 	case rerr != nil:
-		add("initialization", "fail", rerr.Error(), "run `unic migrate --help`")
+		add("initialization", "fail", rerr.Error(), "run `unic init` or `unic migrate`")
 	case state.Status == "complete":
 		add("initialization", "ok", "complete ("+state.Outcome+")", "")
 	case state.Status == "pending":
-		add("initialization", "fail", "v1 migration is incomplete", "finish with `unic migrate`")
+		add("initialization", "fail", "v1 migration is incomplete", "finish with `unic migrate` (or `unic init --fresh --discard-pending` to start fresh)")
 	default:
 		add("initialization", "warn", "not initialized", "run `unic init` (or `unic migrate` for v1 history)")
 	}

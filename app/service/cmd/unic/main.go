@@ -123,7 +123,7 @@ func run(args []string) int {
 	}
 
 	if l.Name == "init" {
-		return runInit(left, os.Stdout, os.Stderr, globalJSON)
+		return runInit(left, os.Stdin, os.Stdout, os.Stderr, globalJSON)
 	}
 	if l.Name == "migrate" {
 		if globalJSON && !jsonRequested(rest) {
@@ -266,7 +266,7 @@ func report(args []string, err error) int {
 				"reason":             "migration_required",
 				"next_command":       "unic init",
 				"initialize_command": "unic init --json",
-				"migrate_command":    "unic migrate --help",
+				"migrate_command":    "unic migrate",
 			})
 		} else {
 			fmt.Fprintln(os.Stderr, errorLine(required.Error()))

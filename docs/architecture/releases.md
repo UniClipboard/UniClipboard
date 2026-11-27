@@ -347,7 +347,7 @@ the previous offer, or remove the selected offer object to stop new offers.
 
 The CLI checks known v1 paths only when stderr is a terminal and `--json` is absent. It performs directory stat calls; it does not open credentials or a database. A default v1 directory or the active `UC_PROFILE` directory triggers the warning. Missing paths and regular files remain silent. Custom and portable profiles outside these locations require explicit `--source` selection.
 
-The warning explains v1 incompatibility and points to migration help, preflight and import commands. It does not request acknowledgement or migrate automatically. `unic migrate` and `unic migrate --help` print a read-only guide before opening any profile.
+The warning explains v1 incompatibility and points to migration help, preflight and import commands. It does not request acknowledgement or migrate automatically. `unic migrate --help` prints a concise read-only guide before opening any profile, while bare `unic migrate` runs offline import directly using the default v1 source and active target.
 
 CLI archives and npm platform packages include the migration importer within `unic`. Explicit migration runs in-process without starting the service. The importer keeps source data unchanged, verifies reopened target content and resumes by record identity. Partial migration returns 3. The importer fills unset display name, theme, anonymous usage-event, and tag presentation settings. All peers must use v2 and pair again with new device identities and trust relationships. See the [preference contract](../contracts/history-contract.md#v1-preference-preservation).
 

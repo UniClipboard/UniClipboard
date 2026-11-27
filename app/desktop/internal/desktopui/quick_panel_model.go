@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/richtext"
 
@@ -79,13 +80,14 @@ type quickPanelState struct {
 	now                                            time.Time
 	effects                                        []qpEffect
 	input                                          ui.Handle
-	anchor                                         ui.Rect
+	anchor, listViewport                           ui.Rect
 	pointerX, pointerY                             float32
 	pointerKnown                                   bool
 	onUpdate                                       func()
 	panelInvalidate, satelliteInvalidate           func()
 	measureText                                    func(float32, ...ui.Span) (float32, float32)
 	satelliteWidth, satelliteHeight                int
+	satelliteAnchor                                mygo.Rectangle
 }
 
 func (p *quickPanelState) update() {
@@ -270,13 +272,16 @@ func (p *quickPanelState) applySearch() {
 		// Reopening the same query can reuse an unchanged service revision.
 		// Rebuild the cleared projection even when no new result serial arrives.
 		p.live.seen = 0
+		p.live.resetSelection = true
 		p.previewID = ""
 		p.pendingPreview = ""
+		p.previewDue = time.Time{}
 		p.selected = 0
 		p.hovered = -1
 		p.gridTop = 0
 		p.revealSelection = true
 		p.keyboard = true
+		p.anchor = ui.Rect{}
 		p.update()
 		p.normalizeFilters()
 		l := p.live.d.live
@@ -292,6 +297,7 @@ func (p *quickPanelState) applySearch() {
 	p.hovered = -1
 	p.gridTop = 0
 	p.keyboard = true
+	p.anchor = ui.Rect{}
 	if p.mode == "history" {
 		for _, e := range p.entries {
 			if p.matches(e, -1) {
@@ -304,12 +310,19 @@ func (p *quickPanelState) applySearch() {
 	p.previewDue = time.Time{}
 	p.schedulePreview()
 }
-func (p *quickPanelState) active() *qpEntry {
+func (p *quickPanelState) activeIndex() int {
 	at := p.selected
 	if p.hovered >= 0 && !p.keyboard {
 		at = p.hovered
 	}
 	if at < 0 || at >= len(p.rows) {
+		return -1
+	}
+	return at
+}
+func (p *quickPanelState) active() *qpEntry {
+	at := p.activeIndex()
+	if at < 0 {
 		return nil
 	}
 	return &p.rows[at]

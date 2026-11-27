@@ -18,6 +18,7 @@ type quickLive struct {
 	system            *quickpanel.Controller
 	d                 *viewState
 	seen, contentSeen uint64
+	resetSelection    bool
 	root              func(string)
 }
 
@@ -96,12 +97,17 @@ func (q *quickLive) poll(p *quickPanelState) {
 		}
 		l.poll(d)
 	}
-	if q.seen != l.appliedSerial || q.contentSeen != l.contentSerial {
+	// Do not project entries belonging to a superseded query while a new
+	// search or filter request is still in flight.
+	staleQuery := l.displayedKey != "" && l.displayedKey != d.liveQueryKey()
+	if !staleQuery && (q.seen != l.appliedSerial || q.contentSeen != l.contentSerial) {
 		resultsChanged := q.seen != l.appliedSerial
 		q.seen, q.contentSeen = l.appliedSerial, l.contentSerial
 		old := ""
-		if a := p.active(); a != nil {
-			old = a.id
+		if !q.resetSelection {
+			if a := p.active(); a != nil {
+				old = a.id
+			}
 		}
 		p.entries = nil
 		for _, v := range d.entries {
@@ -119,11 +125,21 @@ func (q *quickLive) poll(p *quickPanelState) {
 		}
 		p.rows = slices.Clone(p.entries)
 		p.selected = 0
-		for i, v := range p.rows {
-			if v.id == old {
-				p.selected = i
-				break
+		if old != "" {
+			for i, v := range p.rows {
+				if v.id == old {
+					p.selected = i
+					break
+				}
 			}
+		}
+		if q.resetSelection {
+			q.resetSelection = false
+			p.hovered = -1
+			p.gridTop = 0
+			p.revealSelection = true
+			p.keyboard = true
+			p.anchor = ui.Rect{}
 		}
 		if resultsChanged {
 			p.hovered = -1

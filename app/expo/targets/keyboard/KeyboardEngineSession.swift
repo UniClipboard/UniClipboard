@@ -46,6 +46,16 @@ final class KeyboardEngineSession {
     var sentDeviceIDs: Set<String>
   }
 
+  private struct ActiveSendBatch {
+    let historyID: String
+    let clipTitle: String
+    var operationIDs: [String]
+    var deviceOrder: [String]
+    var deviceStates: [String: KeyboardSendDeviceState]
+    var lastHighlightText: String?
+    var graceExpired: Bool
+  }
+
   private static let maxItems = 50
   private static let maxImages = 20
   private static let maxTextBytes = 4 * 1024 * 1024
@@ -57,6 +67,7 @@ final class KeyboardEngineSession {
   private static let maxTitleChars = 320
   private static let thumbnailMaxPixel = 260
   private static let maxPendingFlushItems = 10
+  private static let sendOfflineGraceSeconds: TimeInterval = 5.5
 
   private static let configureMemoryOnce: Void = {
     MobileConfigureRuntimeMemory(25, 18)
@@ -69,11 +80,14 @@ final class KeyboardEngineSession {
   private var engine: MobileEngine?
   private var pathMonitor: NWPathMonitor?
   private var refreshWorkItem: DispatchWorkItem?
+  private var sendGraceWorkItem: DispatchWorkItem?
   private var autoSyncEnabled = true
   private var strings = KeyboardStrings()
 
   private var seenReceiptIDs = Set<String>()
   private var pendingFlushes: [PendingFlush] = []
+  private var activeSendBatch: ActiveSendBatch?
+  private var trustedDeviceOrder: [String] = []
   private var lastCheckedChangeCount = -1
   private var selfDeviceName = "iPhone"
   private var deviceNames: [String: String] = [:]
@@ -86,6 +100,7 @@ final class KeyboardEngineSession {
   var onStateChanged: (@MainActor (ConnectionState) -> Void)?
   var onItemsUpdated: (@MainActor ([KeyboardClipItem]) -> Void)?
   var onToast: (@MainActor (String) -> Void)?
+  var onSendBatchUpdated: (@MainActor (KeyboardSendBatchState?) -> Void)?
 
   init(store: KeyboardSnapshotStore) {
     self.store = store
@@ -191,6 +206,9 @@ final class KeyboardEngineSession {
       // Snapshot already-existing receipts so we only auto-apply items arriving during this active session.
       self.seenReceiptIDs.removeAll()
       self.pendingFlushes.removeAll()
+      self.activeSendBatch = nil
+      self.sendGraceWorkItem?.cancel()
+      self.sendGraceWorkItem = nil
       self.seedExistingReceipts(eng)
 
       let sink = KeyboardEngineEventBridge(
@@ -202,6 +220,7 @@ final class KeyboardEngineSession {
             guard let self, self.activeGeneration == gen else { return }
             self.scheduleHistoryRefresh(delay: 0.1)
             self.refreshPeersAndFlush()
+            self.pollActiveSendOperationsLocked()
           }
         }
       )
@@ -242,8 +261,12 @@ final class KeyboardEngineSession {
       self.activeGeneration &+= 1
       self.refreshWorkItem?.cancel()
       self.refreshWorkItem = nil
+      self.sendGraceWorkItem?.cancel()
+      self.sendGraceWorkItem = nil
       self.stopNetworkMonitor()
       self.pendingFlushes.removeAll()
+      self.activeSendBatch = nil
+      self.emitSendBatch(nil)
 
       if let eng = self.engine {
         if !self.lastItems.isEmpty {
@@ -260,6 +283,63 @@ final class KeyboardEngineSession {
         self.setLive(false)
       }
       self.emitState(.idle)
+    }
+  }
+
+  func retrySend(historyID: String, deviceID: String) {
+    queue.async { [weak self] in
+      guard let self, let eng = self.engine else { return }
+      guard var batch = self.activeSendBatch, batch.historyID == historyID else { return }
+
+      try? eng.notifyNetworkChanged()
+      if !batch.deviceOrder.contains(deviceID) {
+        batch.deviceOrder.append(deviceID)
+      }
+      batch.deviceStates[deviceID] = .sending(progressPercent: nil)
+      self.activeSendBatch = batch
+      self.emitActiveSendBatchLocked()
+
+      let req: [String: Any] = [
+        "request_id": "ios-kb-retry-\(UUID().uuidString)",
+        "history_id": historyID,
+        "device_ids": [deviceID],
+      ]
+      guard let reqData = try? JSONSerialization.data(withJSONObject: req),
+            let reqJSON = String(data: reqData, encoding: .utf8) else { return }
+
+      var sendErr: NSError?
+      let resJSON = eng.resendHistoryItem(nil, reqJSON: reqJSON, error: &sendErr)
+      guard var updated = self.activeSendBatch, updated.historyID == historyID else { return }
+      if sendErr != nil {
+        updated.deviceStates[deviceID] = .failed
+        self.activeSendBatch = updated
+        self.emitActiveSendBatchLocked()
+        return
+      }
+
+      var opID = ""
+      var disposition = ""
+      if let data = resJSON.data(using: .utf8),
+         let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        opID = (obj["operation_id"] as? String) ?? ""
+        disposition = (obj["sync_disposition"] as? String) ?? ""
+      }
+
+      if !opID.isEmpty {
+        if !updated.operationIDs.contains(opID) {
+          updated.operationIDs.append(opID)
+        }
+        self.activeSendBatch = updated
+        self.pollActiveSendOperationsLocked()
+      } else if disposition == "no_targets" {
+        updated.deviceStates[deviceID] = .offline
+        self.activeSendBatch = updated
+        self.emitActiveSendBatchLocked()
+      } else {
+        updated.deviceStates[deviceID] = .failed
+        self.activeSendBatch = updated
+        self.emitActiveSendBatchLocked()
+      }
     }
   }
 
@@ -384,6 +464,7 @@ final class KeyboardEngineSession {
 
     var leaseID: String?
     var contentHash = ""
+    var capturedTitle = ""
 
     if let text = pb.1 {
       let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -393,6 +474,8 @@ final class KeyboardEngineSession {
       if store.shouldSuppressCapture(changeCount: changeCount, contentSHA256: contentHash) {
         return
       }
+      let singleLine = trimmed.replacingOccurrences(of: "\r\n", with: " ").replacingOccurrences(of: "\n", with: " ")
+      capturedTitle = String(singleLine.prefix(28))
       var err: NSError?
       let hJSON = eng.importText(text, html: "", obsKey: "ios-kb:\(changeCount)", error: &err)
       if err == nil,
@@ -409,6 +492,7 @@ final class KeyboardEngineSession {
       if store.shouldSuppressCapture(changeCount: changeCount, contentSHA256: contentHash) {
         return
       }
+      capturedTitle = strings.sendClipImageTitle
       // fileName MUST be empty so Engine stores as clipboard representation (not file attachment).
       var err: NSError?
       let hJSON = eng.importBytes("image/png", fileName: "", data: pngData, error: &err)
@@ -439,20 +523,20 @@ final class KeyboardEngineSession {
 
     var historyID = ""
     var syncDisposition = ""
+    var operationID = ""
     if let subData = subJSON.data(using: .utf8),
        let subObj = try? JSONSerialization.jsonObject(with: subData) as? [String: Any] {
       historyID = (subObj["history_id"] as? String) ?? ""
       syncDisposition = (subObj["sync_disposition"] as? String) ?? ""
+      operationID = (subObj["operation_id"] as? String) ?? ""
     }
 
-    if !historyID.isEmpty && syncDisposition == "no_targets" {
-      pendingFlushes.append(PendingFlush(historyID: historyID, sentDeviceIDs: []))
-      if pendingFlushes.count > Self.maxPendingFlushItems {
-        pendingFlushes.removeFirst(pendingFlushes.count - Self.maxPendingFlushItems)
-      }
-      emitToast(strings.toastCapturedWaitingPeer)
-    } else if syncDisposition == "queued" {
-      emitToast(strings.toastCapturedAndSynced)
+    if !historyID.isEmpty && (syncDisposition == "no_targets" || syncDisposition == "queued") {
+      startActiveSendBatchLocked(
+        historyID: historyID,
+        clipTitle: capturedTitle,
+        initialOperationID: operationID.isEmpty ? nil : operationID
+      )
     }
 
     refreshHistoryLocked(eng, writeSnapshot: true)
@@ -489,6 +573,9 @@ final class KeyboardEngineSession {
       if eventJSON.contains("\"devices\"") {
         self.refreshPeersAndFlush()
       }
+      if eventJSON.contains("\"operations\"") {
+        self.pollActiveSendOperationsLocked()
+      }
       if eventJSON.contains("\"received\"") {
         self.handleIncomingReceivedLocked()
       }
@@ -496,6 +583,164 @@ final class KeyboardEngineSession {
         self.scheduleHistoryRefresh(delay: 0.12)
       }
     }
+  }
+
+  private func startActiveSendBatchLocked(
+    historyID: String,
+    clipTitle: String,
+    initialOperationID: String?
+  ) {
+    var order = trustedDeviceOrder
+    var states: [String: KeyboardSendDeviceState] = [:]
+    for devID in order {
+      states[devID] = .waiting
+    }
+    var opIDs: [String] = []
+    var alreadySent = Set<String>()
+
+    if let opID = initialOperationID, !opID.isEmpty {
+      opIDs.append(opID)
+      if let eng = self.engine {
+        let seeded = parseOperationTargets(eng: eng, opID: opID)
+        for (devID, st) in seeded {
+          if !order.contains(devID) { order.append(devID) }
+          states[devID] = st
+          alreadySent.insert(devID)
+        }
+      }
+    }
+
+    // Track in pendingFlushes so any trusted peers that connect a moment later also receive
+    // this item and fold into the exact same aggregated send pill.
+    pendingFlushes.removeAll { $0.historyID == historyID }
+    pendingFlushes.append(PendingFlush(historyID: historyID, sentDeviceIDs: alreadySent))
+    if pendingFlushes.count > Self.maxPendingFlushItems {
+      pendingFlushes.removeFirst(pendingFlushes.count - Self.maxPendingFlushItems)
+    }
+
+    activeSendBatch = ActiveSendBatch(
+      historyID: historyID,
+      clipTitle: clipTitle,
+      operationIDs: opIDs,
+      deviceOrder: order,
+      deviceStates: states,
+      lastHighlightText: nil,
+      graceExpired: false
+    )
+    scheduleSendOfflineGraceLocked(historyID: historyID)
+    emitActiveSendBatchLocked()
+  }
+
+  private func scheduleSendOfflineGraceLocked(historyID: String) {
+    sendGraceWorkItem?.cancel()
+    let gen = activeGeneration
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, self.activeGeneration == gen else { return }
+      guard var batch = self.activeSendBatch, batch.historyID == historyID else { return }
+      batch.graceExpired = true
+      var changed = false
+      for devID in batch.deviceOrder {
+        if batch.deviceStates[devID] == .waiting {
+          batch.deviceStates[devID] = .offline
+          changed = true
+        }
+      }
+      self.activeSendBatch = batch
+      if changed || batch.deviceOrder.isEmpty {
+        self.emitActiveSendBatchLocked()
+      }
+    }
+    sendGraceWorkItem = work
+    queue.asyncAfter(deadline: .now() + Self.sendOfflineGraceSeconds, execute: work)
+  }
+
+  private func pollActiveSendOperationsLocked() {
+    guard let eng = self.engine, var batch = self.activeSendBatch, !batch.operationIDs.isEmpty else { return }
+    var changed = false
+    for opID in batch.operationIDs {
+      let targets = parseOperationTargets(eng: eng, opID: opID)
+      for (devID, newState) in targets {
+        if !batch.deviceOrder.contains(devID) {
+          batch.deviceOrder.append(devID)
+          changed = true
+        }
+        let prev = batch.deviceStates[devID]
+        // Do not let an older operation overwrite a newer retry or already-delivered state.
+        if prev == .delivered && newState != .delivered {
+          continue
+        }
+        if prev != newState {
+          batch.deviceStates[devID] = newState
+          changed = true
+          if newState == .delivered {
+            let name = deviceNames[devID] ?? String(devID.prefix(8))
+            batch.lastHighlightText = "\(name) ✓"
+          }
+        }
+      }
+    }
+    if changed {
+      self.activeSendBatch = batch
+      self.emitActiveSendBatchLocked()
+    }
+  }
+
+  private func parseOperationTargets(eng: MobileEngine, opID: String) -> [(String, KeyboardSendDeviceState)] {
+    var err: NSError?
+    let raw = eng.getOperation(opID, error: &err)
+    guard err == nil,
+          let data = raw.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let targets = obj["targets"] as? [[String: Any]] else { return [] }
+
+    var result: [(String, KeyboardSendDeviceState)] = []
+    for t in targets {
+      let devID = (t["target_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        ?? (t["peer_id"] as? String)
+      guard let devID, !devID.isEmpty else { continue }
+      let rawState = (t["state"] as? String) ?? ""
+      switch rawState {
+      case "queued":
+        result.append((devID, .sending(progressPercent: nil)))
+      case "sending":
+        var pct: Int? = nil
+        if let prog = t["progress"] as? [String: Any],
+           let sent = (prog["bytes_sent"] as? NSNumber)?.int64Value,
+           let total = (prog["total_bytes"] as? NSNumber)?.int64Value,
+           total > 0 {
+          pct = max(1, min(99, Int((Double(sent) / Double(total)) * 100.0)))
+        }
+        result.append((devID, .sending(progressPercent: pct)))
+      case "sent", "discarded":
+        result.append((devID, .delivered))
+      case "failed":
+        result.append((devID, .failed))
+      default:
+        break
+      }
+    }
+    return result
+  }
+
+  private func emitActiveSendBatchLocked() {
+    guard let batch = self.activeSendBatch else {
+      emitSendBatch(nil)
+      return
+    }
+    let devices: [KeyboardSendDeviceStatus] = batch.deviceOrder.map { devID in
+      let name = deviceNames[devID] ?? String(devID.prefix(8))
+      let state = batch.deviceStates[devID] ?? (batch.graceExpired ? .offline : .waiting)
+      return KeyboardSendDeviceStatus(id: devID, name: name, state: state)
+    }
+    let isConnectingOnly = devices.isEmpty && !batch.graceExpired
+    let dto = KeyboardSendBatchState(
+      historyID: batch.historyID,
+      clipTitle: batch.clipTitle,
+      devices: devices,
+      lastHighlightText: batch.lastHighlightText,
+      isConnectingOnly: isConnectingOnly
+    )
+    emitSendBatch(dto)
   }
 
   private func seedExistingReceipts(_ eng: MobileEngine) {
@@ -519,6 +764,7 @@ final class KeyboardEngineSession {
           let data = raw.data(using: .utf8),
           let devs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
 
+    var trustedIDs: [String] = []
     var connectedIDs: [String] = []
     for d in devs {
       guard let id = d["id"] as? String else { continue }
@@ -526,10 +772,27 @@ final class KeyboardEngineSession {
         ?? (d["reported_name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         ?? String(id.prefix(8))
       deviceNames[id] = name
-      if (d["trust"] as? String) == "trusted",
-         let bindings = d["bindings"] as? [[String: Any]],
-         bindings.contains(where: { ($0["connection"] as? String) == "connected" }) {
-        connectedIDs.append(id)
+      if (d["trust"] as? String) == "trusted" {
+        trustedIDs.append(id)
+        if let bindings = d["bindings"] as? [[String: Any]],
+           bindings.contains(where: { ($0["connection"] as? String) == "connected" }) {
+          connectedIDs.append(id)
+        }
+      }
+    }
+    trustedDeviceOrder = trustedIDs
+
+    // Ensure active batch reflects newly discovered trusted devices.
+    if var batch = self.activeSendBatch {
+      var batchChanged = false
+      for id in trustedIDs where !batch.deviceOrder.contains(id) {
+        batch.deviceOrder.append(id)
+        batch.deviceStates[id] = batch.graceExpired ? .offline : .waiting
+        batchChanged = true
+      }
+      if batchChanged {
+        self.activeSendBatch = batch
+        self.emitActiveSendBatchLocked()
       }
     }
 
@@ -541,26 +804,45 @@ final class KeyboardEngineSession {
 
     guard !pendingFlushes.isEmpty else { return }
     let connectedSet = Set(connectedIDs)
-    var sentAny = false
+    var updatedActiveBatch = false
     for idx in pendingFlushes.indices {
       let unsent = Array(connectedSet.subtracting(pendingFlushes[idx].sentDeviceIDs))
       guard !unsent.isEmpty else { continue }
+      let historyID = pendingFlushes[idx].historyID
       let req: [String: Any] = [
         "request_id": "ios-kb-flush-\(UUID().uuidString)",
-        "history_id": pendingFlushes[idx].historyID,
+        "history_id": historyID,
         "device_ids": unsent,
       ]
       guard let reqData = try? JSONSerialization.data(withJSONObject: req),
             let reqJSON = String(data: reqData, encoding: .utf8) else { continue }
       var sendErr: NSError?
-      _ = eng.resendHistoryItem(nil, reqJSON: reqJSON, error: &sendErr)
+      let resJSON = eng.resendHistoryItem(nil, reqJSON: reqJSON, error: &sendErr)
       if sendErr == nil {
         pendingFlushes[idx].sentDeviceIDs.formUnion(unsent)
-        sentAny = true
+        if var batch = self.activeSendBatch, batch.historyID == historyID {
+          var opID = ""
+          if let data = resJSON.data(using: .utf8),
+             let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            opID = (obj["operation_id"] as? String) ?? ""
+          }
+          if !opID.isEmpty && !batch.operationIDs.contains(opID) {
+            batch.operationIDs.append(opID)
+          }
+          for devID in unsent {
+            if !batch.deviceOrder.contains(devID) { batch.deviceOrder.append(devID) }
+            if batch.deviceStates[devID] != .delivered {
+              batch.deviceStates[devID] = .sending(progressPercent: nil)
+            }
+          }
+          self.activeSendBatch = batch
+          updatedActiveBatch = true
+        }
       }
     }
-    if sentAny {
-      emitToast(strings.toastCapturedAndSynced)
+    if updatedActiveBatch {
+      pollActiveSendOperationsLocked()
+      emitActiveSendBatchLocked()
     }
   }
 
@@ -1008,6 +1290,12 @@ final class KeyboardEngineSession {
   private func emitToast(_ text: String) {
     Task { @MainActor [weak self] in
       self?.onToast?(text)
+    }
+  }
+
+  private func emitSendBatch(_ batch: KeyboardSendBatchState?) {
+    Task { @MainActor [weak self] in
+      self?.onSendBatchUpdated?(batch)
     }
   }
 }

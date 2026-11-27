@@ -181,6 +181,57 @@ struct KeyboardStrings {
   var toastCapturedWaitingPeer: String { isChinese ? "已读取剪贴板 · 正在连接设备…" : "Clip saved · Connecting devices…" }
   var toastImageTooLarge: String { isChinese ? "图片过大，已跳过键盘自动同步" : "Image too large for keyboard sync" }
   var remoteDeviceFallback: String { isChinese ? "其他设备" : "Other device" }
+  var sendClipImageTitle: String { isChinese ? "剪贴板图片" : "Clipboard Image" }
+  var sendDetailClose: String { isChinese ? "收起" : "Close" }
+  var sendRetrySingle: String { isChinese ? "重试" : "Retry" }
+
+  func sendDetailHeader(clipTitle: String) -> String {
+    let trimmed = clipTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.isEmpty {
+      return isChinese ? "发送明细" : "Send Details"
+    }
+    return isChinese ? "发送明细 · \(trimmed)" : "Send · \(trimmed)"
+  }
+
+  func sendPillHeadline(for batch: KeyboardSendBatchState) -> String {
+    switch batch.overall {
+    case .connecting:
+      return isChinese ? "正在连接设备…" : "Connecting devices…"
+    case .sending:
+      if batch.totalCount == 1, let only = batch.devices.first {
+        return isChinese ? "正在发送至 \(only.name)…" : "Sending to \(only.name)…"
+      }
+      return isChinese ? "正在同步 \(batch.deliveredCount)/\(batch.totalCount)" : "Syncing \(batch.deliveredCount)/\(batch.totalCount)"
+    case .delivered:
+      if batch.totalCount == 1, let only = batch.devices.first {
+        return isChinese ? "已发送至 \(only.name)" : "Sent to \(only.name)"
+      }
+      return isChinese ? "已同步至 \(batch.totalCount) 台设备" : "Synced to \(batch.totalCount) devices"
+    case .partial:
+      if batch.deliveredCount == 0 && batch.failedCount == 0 {
+        return isChinese ? "已存入本机 · 设备离线" : "Saved locally · Offline"
+      }
+      let issue: String
+      if batch.failedCount > 0 {
+        issue = isChinese ? "\(batch.failedCount) 台失败" : "\(batch.failedCount) failed"
+      } else {
+        issue = isChinese ? "\(batch.offlineCount) 台离线" : "\(batch.offlineCount) offline"
+      }
+      return isChinese ? "已同步 \(batch.deliveredCount)/\(batch.totalCount) · \(issue)" : "Synced \(batch.deliveredCount)/\(batch.totalCount) · \(issue)"
+    }
+  }
+
+  func sendDeviceStateLabel(_ state: KeyboardSendDeviceState) -> String {
+    switch state {
+    case .waiting: return isChinese ? "建连中…" : "Connecting…"
+    case .sending(let pct):
+      if let pct, pct > 0 { return "\(pct)%" }
+      return isChinese ? "发送中…" : "Sending…"
+    case .delivered: return isChinese ? "已送达 ✓" : "Delivered ✓"
+    case .offline: return isChinese ? "离线" : "Offline"
+    case .failed: return isChinese ? "发送失败" : "Failed"
+    }
+  }
 
   func toastReceivedAndCopied(from deviceName: String, isImage: Bool) -> String {
     if isChinese {

@@ -34,6 +34,7 @@ final class KeyboardViewController: UIInputViewController {
   private let stateView = KeyboardStateView()
   private let editBarView = KeyboardEditBarView()
   private let previewOverlay = KeyboardPreviewOverlayView()
+  private let sendStatusPill = KeyboardSendStatusPillView()
   private let toastContainer = UIView()
   private let toastLabel = UILabel()
 
@@ -129,6 +130,7 @@ final class KeyboardViewController: UIInputViewController {
   override func viewWillDisappear(_ animated: Bool) {
     super.viewWillDisappear(animated)
     stopPasteboardWatch()
+    sendStatusPill.dismiss(animated: false)
     engineSession.stop()
   }
 
@@ -179,6 +181,7 @@ final class KeyboardViewController: UIInputViewController {
     toastLabel.font = .systemFont(ofSize: 11.5, weight: .semibold)
     toastLabel.textColor = KeyboardTheme.onAccent
     toastContainer.addSubview(toastLabel)
+    view.addSubview(sendStatusPill)
     view.addSubview(toastContainer)
 
     view.addSubview(previewOverlay)
@@ -198,6 +201,11 @@ final class KeyboardViewController: UIInputViewController {
       stateView.trailingAnchor.constraint(equalTo: canvasContainer.trailingAnchor),
       stateView.topAnchor.constraint(equalTo: canvasContainer.topAnchor),
       stateView.bottomAnchor.constraint(equalTo: canvasContainer.bottomAnchor),
+
+      sendStatusPill.leadingAnchor.constraint(equalTo: canvasContainer.leadingAnchor, constant: 2),
+      sendStatusPill.trailingAnchor.constraint(equalTo: canvasContainer.trailingAnchor, constant: -2),
+      sendStatusPill.topAnchor.constraint(greaterThanOrEqualTo: rootStack.topAnchor),
+      sendStatusPill.bottomAnchor.constraint(equalTo: editBarView.topAnchor, constant: -6),
 
       toastLabel.leadingAnchor.constraint(equalTo: toastContainer.leadingAnchor, constant: 12),
       toastLabel.trailingAnchor.constraint(equalTo: toastContainer.trailingAnchor, constant: -12),
@@ -260,6 +268,7 @@ final class KeyboardViewController: UIInputViewController {
       guard filter != self.selectedFilter else { return }
       self.selectedFilter = filter
       self.previewOverlay.dismiss()
+      self.sendStatusPill.collapse()
       self.collectionView.setCollectionViewLayout(self.makeLayout(for: filter), animated: false)
       self.applyFilteredItems(scrollToTop: true)
       self.renderRail()
@@ -333,6 +342,12 @@ final class KeyboardViewController: UIInputViewController {
       self.previewOverlay.dismiss()
       self.activateItem(item)
     }
+
+    sendStatusPill.onRetryDevice = { [weak self] historyID, deviceID in
+      guard let self else { return }
+      self.triggerFeedback()
+      self.engineSession.retrySend(historyID: historyID, deviceID: deviceID)
+    }
   }
 
   private func wireEngineSession() {
@@ -357,6 +372,14 @@ final class KeyboardViewController: UIInputViewController {
     }
     engineSession.onToast = { [weak self] text in
       self?.showToast(text)
+    }
+    engineSession.onSendBatchUpdated = { [weak self] batch in
+      guard let self else { return }
+      if let batch {
+        self.sendStatusPill.update(batch: batch, strings: self.strings)
+      } else {
+        self.sendStatusPill.dismiss(animated: false)
+      }
     }
   }
 
@@ -574,6 +597,7 @@ final class KeyboardViewController: UIInputViewController {
 
   @objc private func handleCardLongPress(_ gesture: UILongPressGestureRecognizer) {
     guard gesture.state == .began else { return }
+    sendStatusPill.collapse()
     let point = gesture.location(in: collectionView)
     guard let indexPath = collectionView.indexPathForItem(at: point),
           indexPath.item < displayedItems.count else { return }
@@ -606,6 +630,7 @@ final class KeyboardViewController: UIInputViewController {
   }
 
   private func showToast(_ text: String) {
+    sendStatusPill.setTemporarilySuppressed(true)
     toastLabel.text = text
     toastContainer.isHidden = false
     toastContainer.alpha = 0
@@ -623,6 +648,7 @@ final class KeyboardViewController: UIInputViewController {
       }, completion: { _ in
         if self.toastContainer.alpha == 0 {
           self.toastContainer.isHidden = true
+          self.sendStatusPill.setTemporarilySuppressed(false)
         }
       })
     }
@@ -653,7 +679,12 @@ final class KeyboardViewController: UIInputViewController {
 
 extension KeyboardViewController: UICollectionViewDelegate {
   func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+    sendStatusPill.collapse()
     guard indexPath.item < displayedItems.count else { return }
     activateItem(displayedItems[indexPath.item])
+  }
+
+  func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+    sendStatusPill.collapse()
   }
 }

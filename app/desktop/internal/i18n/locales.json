@@ -10168,5 +10168,35 @@
     "ja": "一部のデバイスは未同期です。一度オンライン接続すると自動で有効になります。",
     "pt-BR": "Alguns dispositivos ainda não sincronizaram. Conecte online uma vez para ativar.",
     "ru": "Некоторые устройства ещё не получили настройки. Подключите их онлайн один раз."
+  },
+  "登录账号后自动填入，自建服务可手动填写。": {
+    "en": "Filled automatically after sign-in; set manually for self-hosted.",
+    "ja": "ログイン後に自動入力されます。セルフホスト時は手動で設定できます。",
+    "pt-BR": "Preenchida ao entrar; defina manualmente para servidor próprio.",
+    "ru": "Заполняется после входа; для своего сервера задайте вручную."
+  },
+  "输入后按回车或点击保存。": {
+    "en": "Press Enter or click Save to update.",
+    "ja": "入力後、Enter または保存を押してください。",
+    "pt-BR": "Pressione Enter ou clique em Salvar.",
+    "ru": "Нажмите Enter или «Сохранить»."
+  },
+  "填写密钥": {
+    "en": "Set key",
+    "ja": "キーを設定",
+    "pt-BR": "Definir chave",
+    "ru": "Задать ключ"
+  },
+  "更换": {
+    "en": "Replace",
+    "ja": "変更",
+    "pt-BR": "Alterar",
+    "ru": "Заменить"
+  },
+  "请输入密钥": {
+    "en": "Enter a key",
+    "ja": "キーを入力してください",
+    "pt-BR": "Digite uma chave",
+    "ru": "Введите ключ"
   }
 }

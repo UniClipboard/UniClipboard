@@ -56,7 +56,7 @@ func TestRelaySettingsGroupRenderAndInteractions(t *testing.T) {
 	tester.Frame()
 
 	texts := strings.Join(tester.Texts(), " | ")
-	for _, want := range []string{"混合中转", "1/2 台已就绪", "启用混合中转", "服务地址", "单次大小上限", "接入密钥", "已配置", "清除", "恢复默认"} {
+	for _, want := range []string{"混合中转", "1/2 台已就绪", "启用混合中转", "服务地址", "单次大小上限", "接入密钥", "已配置", "更换", "清除", "恢复默认"} {
 		if !strings.Contains(texts, want) {
 			t.Fatalf("expected %q in relay settings UI, got: %s", want, texts)
 		}

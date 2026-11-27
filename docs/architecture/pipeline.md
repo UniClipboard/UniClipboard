@@ -54,8 +54,9 @@ paths:
   - internal/sqldb
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
+  - internal/plugins/builtinsecurity
   - plugin/tags.go
-verified: 21602670c54a73744721a8f425f4e3a090249cd4
+verified: 1b9d12056cca5df3b6274c734469e6543e121a25
 ---
 # Clipboard pipeline and local history
 
@@ -66,7 +67,7 @@ Engine owns processing, commit, synchronization, local history and user-triggere
 The stage chain is Capture/Receive → Processing → Commit → Sync → Use → End.
 
 - **Entry points**: `ObserveClipboard` uses origin `local_system` and a reserved observation request key. Baseline, echo, unchanged and empty observations do not enter processing. Explicit `CommitContent`/`SubmitContent` and `RunAction` use origins `explicit` and `action`. These entries share `startSubmissionLocked` and `runSubmission`. Remote receipt uses `delivered` without a submission record.
-- **Processing**: The service passes an explicit processing order for configured IDs across built-in, Go process and Lua processors. Unlisted processors keep their assembly order. Local entries emit `clipboard.captured`; receipt emits `clipboard.received`. Processors can stage tags, persistence, sync and expiry through `processingContext`. They cannot change content. Each call has a 200 ms budget including its shared per-instance serial gate. Errors, timeout, panic or an invalid mutation discard that call's changes. A failed `on_error=block_sync` processor disables sync for all later processors. Persistence and sync default to true. Exact limits are in the [plugin contract](../contracts/plugin-contract.md).
+- **Processing**: The service passes an explicit processing order for configured IDs across built-in, Go process and Lua processors. Unlisted processors keep their assembly order. Processors may declare an optional `processor_stage` of `guard` or `annotate` (default `annotate`): Engine always runs all `guard` processors before `annotate` processors, and `plugins.order` only orders processors within the same sub-stage. Local entries emit `clipboard.captured`; receipt emits `clipboard.received`. Processors can stage tags, persistence, sync and expiry through `processingContext`. They cannot change content. Each call has a 200 ms budget including its shared per-instance serial gate. Errors, timeout, panic or an invalid mutation discard that call's changes. A failed `on_error=block_sync` processor disables sync for all later processors. Persistence and sync default to true. Exact limits are in the [plugin contract](../contracts/plugin-contract.md).
 - **Commit**: With persistence enabled, validate size, reserve storage and persist blobs before publishing history and deduplication. Capacity reclamation follows unified cleanup eligibility. Bounded age/count cleanup preserves the newly committed record. Notifications and sync dispatch follow successful commit. Sending failure does not undo history.
 - **Sync**: `dispatchProcessed` checks global and item switches, automatic-sync settings, backend type policy, automatic file thresholds and transfer limits. Only explicit submissions bypass the automatic file threshold. Backends run in ID order and share one Operation. History stores per-backend sync summaries when a backend queues or fails. Restart marks pending summaries interrupted without resending.
 - **Device selection**: `CommitContent.DeviceIDs=nil` selects all eligible targets. A nonempty selection is sorted before request-key construction. Empty, repeated, unknown or revoked IDs return `invalid_argument`. Peer-session backends filter their live targets by the selection. Non-peer backends skip selected-device submissions. Validation loads device records; actual sending still requires an eligible live peer session.
@@ -105,7 +106,8 @@ credentials.
 
 ## Built-in content tags
 
-The service assembles `builtin.classify` before `builtin.text` by default.
+The service assembles `builtin.security` (Guard stage, enabled by default and user-disableable via `plugins.instances."builtin.security"`), `builtin.classify`, and `builtin.text` by default.
+`builtin.security` runs in the `guard` processor sub-stage before standard `annotate` processors and before commit/sync, detecting private keys, API tokens/JWTs, credentialed connection strings, secret key-value assignments, known password-manager source applications, sensitive filenames, and user-defined app/regex/keyword rules locally with zero network access. By default (`mode = "block"`), matched items set `Persist = false` and `Sync = false`.
 The classifier adds `builtin:text`, `builtin:image`, `builtin:files` or `builtin:folder` from the Engine item type on capture, explicit commit, Action results and receipt.
 It also adds `builtin:link` when the first 64 KiB of text contains an HTTP(S) URL. The independent `builtin.text` plugin adds `builtin:email` for email addresses and supplies text Actions.
 The classifier runs four default full-text rules for colors, version numbers, UUIDs and IPv4 addresses. It trims surrounding whitespace before matching text up to 64 KiB. Each default rule has an independent switch. The classifier applies custom [regular expression rules](../contracts/plugin-contract.md#built-in-content-classification) to the original text prefix. Local Lua processors can apply tags through `ctx:add_tag` under the existing sandbox and event subscriptions. Tags belong to the local history, so each peer applies its own rules.

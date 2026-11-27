@@ -456,4 +456,16 @@ func TestHandshake(t *testing.T) {
 	if actA.Equal(actC) {
 		t.Fatal("Spec.Equal ignored differing action post_actions")
 	}
+
+	procDefault := Spec{ID: "example.p", Version: "1.0.0", APIVersion: 1, Capabilities: []string{"processor"}}
+	procAnnotate := procDefault
+	procAnnotate.ProcessorStage = "annotate"
+	procGuard := procDefault
+	procGuard.ProcessorStage = "guard"
+	if !procDefault.Equal(procAnnotate) {
+		t.Fatal("Spec.Equal should treat omitted and annotate processor_stage as equivalent")
+	}
+	if procDefault.Equal(procGuard) || procAnnotate.Equal(procGuard) {
+		t.Fatal("Spec.Equal ignored differing processor_stage")
+	}
 }

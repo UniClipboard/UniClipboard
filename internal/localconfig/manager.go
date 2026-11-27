@@ -21,6 +21,7 @@ import (
 
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
+	"github.com/uniclipboard/unic/internal/plugins/builtinsecurity"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
@@ -111,6 +112,7 @@ func (m *Manager) State() State {
 		s.RestartRequired = append(s.RestartRequired, "history")
 	}
 	if m.cur.PluginEnabled("builtin.tailcat") != m.started.PluginEnabled("builtin.tailcat") ||
+		m.cur.PluginEnabled(builtinsecurity.ID) != m.started.PluginEnabled(builtinsecurity.ID) ||
 		m.cur.PluginEnabled(builtintext.ID) != m.started.PluginEnabled(builtintext.ID) ||
 		m.cur.PluginEnabled(builtinclassify.ID) != m.started.PluginEnabled(builtinclassify.ID) ||
 		m.cur.PluginEnabled(builtinpreview.ID) != m.started.PluginEnabled(builtinpreview.ID) {

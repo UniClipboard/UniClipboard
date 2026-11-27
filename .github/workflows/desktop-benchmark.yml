@@ -1,0 +1,164 @@
+name: Desktop resource benchmark
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Comma-separated scenario IDs or 'all'
+        type: string
+        required: false
+        default: all
+      track:
+        description: Benchmark binary track
+        type: choice
+        required: false
+        default: both
+        options:
+          - both
+          - production
+          - interactive
+      dataset:
+        description: Optional comma-separated datasets (empty uses profile default)
+        type: string
+        required: false
+        default: ''
+      profile:
+        description: Timing and cycle profile
+        type: choice
+        required: false
+        default: default
+        options:
+          - default
+          - soak
+      repetitions:
+        description: Repeat rounds for steady-state scenarios
+        type: string
+        required: false
+        default: '3'
+      target:
+        description: Platform target filter ('all' runs full Win/Mac matrix)
+        type: choice
+        required: false
+        default: all
+        options:
+          - all
+          - darwin-arm64
+          - darwin-amd64
+          - windows-amd64
+          - windows-arm64
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Select benchmark targets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        env:
+          BENCH_TARGET_INPUT: ${{ inputs.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix=$(python3 -c '
+          import json, os, sys
+          all_targets = [
+              {"runner": "macos-15", "target": "darwin-arm64"},
+              {"runner": "macos-15-intel", "target": "darwin-amd64"},
+              {"runner": "windows-2025", "target": "windows-amd64"},
+              {"runner": "windows-11-arm", "target": "windows-arm64"},
+          ]
+          sel = os.environ.get("BENCH_TARGET_INPUT", "all").strip() or "all"
+          if sel == "all":
+              chosen = all_targets
+          else:
+              chosen = [t for t in all_targets if t["target"] == sel]
+          if not chosen:
+              sys.stderr.write(f"unknown target selection: {sel!r}\n")
+              sys.exit(1)
+          print(json.dumps({"include": chosen}, separators=(",", ":")))
+          ')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+  benchmark:
+    needs: prepare
+    env:
+      CGO_ENABLED: ${{ matrix.target == 'windows-arm64' && '0' || '1' }}
+      BENCH_SUITE: ${{ inputs.suite }}
+      BENCH_TRACK: ${{ inputs.track }}
+      BENCH_DATASET: ${{ inputs.dataset }}
+      BENCH_PROFILE: ${{ inputs.profile }}
+      BENCH_REPETITIONS: ${{ inputs.repetitions }}
+      BENCH_TARGET: ${{ matrix.target }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Build unic-bench
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=""
+          if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
+            exe=".exe"
+          fi
+          mkdir -p .build/bin ".build/bench/${BENCH_TARGET}"
+          go build -o ".build/bin/unic-bench${exe}" ./tools/bench/cmd/unic-bench
+      - name: Run environment doctor
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=""
+          if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
+            exe=".exe"
+          fi
+          ".build/bin/unic-bench${exe}" doctor --json > ".build/bench/${BENCH_TARGET}/doctor.json"
+      - name: Run desktop resource benchmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          exe=""
+          if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
+            exe=".exe"
+          fi
+          args=(
+            run
+            --suite "${BENCH_SUITE}"
+            --track "${BENCH_TRACK}"
+            --profile "${BENCH_PROFILE}"
+            --repetitions "${BENCH_REPETITIONS}"
+            --output ".build/bench/${BENCH_TARGET}"
+          )
+          if [[ -n "${BENCH_DATASET}" ]]; then
+            args+=(--dataset "${BENCH_DATASET}")
+          fi
+          ".build/bin/unic-bench${exe}" "${args[@]}"
+      - name: Append report summary
+        if: always()
+        shell: bash
+        run: |
+          summary_file=".build/bench/${BENCH_TARGET}/report.md"
+          if [[ -f "${summary_file}" && -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+            {
+              echo "## Desktop Resource Benchmark (${BENCH_TARGET})"
+              echo ""
+              cat "${summary_file}"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-benchmark-${{ matrix.target }}
+          path: .build/bench/${{ matrix.target }}
+          include-hidden-files: true
+          if-no-files-found: warn

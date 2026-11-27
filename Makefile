@@ -112,3 +112,37 @@ desktop-e2e-doctor:
 .PHONY: traces-e2e
 traces-e2e:
 	sh docs/exec/evidence/observability-traces/replay.sh
+
+# Desktop resource benchmarks (macOS native, Parallels Windows VM, and regression compare).
+BENCH_SUITE ?= all
+BENCH_TRACK ?= both
+BENCH_DATASET ?= empty,standard
+BENCH_PROFILE ?= default
+BENCH_REPS ?= 3
+VM ?= Windows 11
+BENCH_ARCH ?= arm64
+
+.PHONY: bench-mac bench-win-vm bench-compare
+bench-mac:
+	go run ./tools/bench/cmd/unic-bench run \
+		--suite "$(BENCH_SUITE)" \
+		--track "$(BENCH_TRACK)" \
+		$(if $(BENCH_DATASET),--dataset "$(BENCH_DATASET)") \
+		--profile "$(BENCH_PROFILE)" \
+		--repetitions "$(BENCH_REPS)" \
+		--output "$(or $(BENCH_OUT),.build/bench/mac-$(BENCH_PROFILE))"
+
+bench-win-vm:
+	python3 tools/bench/vm/run_parallels.py \
+		--vm "$(VM)" \
+		--arch "$(BENCH_ARCH)" \
+		--suite "$(BENCH_SUITE)" \
+		--track "$(BENCH_TRACK)" \
+		$(if $(BENCH_DATASET),--dataset "$(BENCH_DATASET)") \
+		--profile "$(BENCH_PROFILE)" \
+		--repetitions "$(BENCH_REPS)" \
+		--output "$(or $(BENCH_OUT),.build/bench/win-$(BENCH_ARCH))"
+
+bench-compare:
+	test -n "$(BASE)" && test -n "$(CAND)"
+	go run ./tools/bench/cmd/unic-bench compare "$(BASE)" "$(CAND)" $(if $(BUDGET),--budget "$(BUDGET)") $(BENCH_COMPARE_FLAGS)

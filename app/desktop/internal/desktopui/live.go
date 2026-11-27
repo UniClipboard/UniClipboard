@@ -40,9 +40,10 @@ func NewDesktop(ctx context.Context, client *api.Client) *Desktop {
 	context.AfterFunc(ctx, d.live.stopWake)
 	go d.live.work()
 	go d.live.follow()
+	benchRegisterView(d)
 	return &Desktop{d: d}
 }
-func (s *Desktop) View(c *ui.Context) { s.d.view(c) }
+func (s *Desktop) View(c *ui.Context) { s.d.view(c); benchNotifyView(s.d) }
 
 // SetWindowToolbar binds host controls and the frame value used by this GUI.
 // Call on the view thread before the first frame. A nil slot uses native controls.

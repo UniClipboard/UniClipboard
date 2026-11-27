@@ -578,7 +578,7 @@ ui-click button 返回历史
 external-roundtrip
 ui-wait listItem external-desktop-to-peer
 ui-click listItem external-desktop-to-peer
-ui-wait text '已送达 1/1 台设备'
+ui-wait button '已送达 1/1 台设备'
 screenshot external-result
 stop-policy-peer
 ```

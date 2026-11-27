@@ -182,6 +182,7 @@ type viewState struct {
 	backup          backupSettingsState
 	shortcuts       shortcutSettingsState
 	notifications   notificationSettingsState
+	cloud           cloudAccountState
 	relay           relaySettingsState
 
 	reference                                                             string

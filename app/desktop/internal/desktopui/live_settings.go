@@ -140,6 +140,9 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 		d.builtinPluginsContent(c, k)
 		return
 
+	case "cloud":
+		d.cloudSettingsContent(c, k, &cfg)
+
 	case "sync":
 		group("sync", d.tr("同步行为"), func() {
 			if l.clipboardUnavailable != nil && l.clipboardUnavailable() {

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Alert } from 'react-native';
 import { Section, Text as SwiftUIText } from '@expo/ui/swift-ui';
 import { nativeApplicationVersion } from 'expo-application';
@@ -8,6 +9,8 @@ import { IosSheetForm, IosSheetPage } from '@/components/ui';
 import { useEngineStore } from '@/engine/store';
 import { useTheme } from '@/hooks/useTheme';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
+import { cloudUserLabel } from '@/lib/cloudAuth';
+import { useCloudStore } from '@/stores/cloudStore';
 import {
   IconToggleRow,
   SettingsNavRow,
@@ -25,6 +28,46 @@ export function SettingsRootPage({ onNavigate }: { onNavigate: (page: IosSetting
   const { t } = useTranslation();
   const { themeMode, setThemeMode } = useTheme();
   const { preference, setLanguage } = useAppLanguage();
+  const cloud = useCloudStore(
+    useShallow((s) => ({
+      session: s.session,
+      busy: s.busy,
+      hydrate: s.hydrate,
+      signIn: s.signIn,
+      signOut: s.signOut,
+    }))
+  );
+  useEffect(() => {
+    void cloud.hydrate();
+  }, [cloud.hydrate]);
+
+  const handleCloudSignIn = () => {
+    if (cloud.busy) return;
+    void cloud
+      .signIn()
+      .then(() =>
+        Alert.alert(
+          t('settings:live.cloudSignInSuccessTitle'),
+          t('settings:live.cloudSignInSuccessBody')
+        )
+      )
+      .catch((error) =>
+        Alert.alert(
+          t('settings:live.cloudSignInFailed'),
+          error instanceof Error ? error.message : undefined
+        )
+      );
+  };
+
+  const handleCloudSignOut = () => {
+    if (cloud.busy) return;
+    void cloud.signOut().catch((error) =>
+      Alert.alert(
+        t('settingsStorage:setFailed'),
+        error instanceof Error ? error.message : undefined
+      )
+    );
+  };
   const state = useEngineStore(
     useShallow((s) => ({
       settings: s.snapshot?.settings.value,
@@ -61,6 +104,43 @@ export function SettingsRootPage({ onNavigate }: { onNavigate: (page: IosSetting
   return (
     <IosSheetPage title={t('common:action.settings')}>
       <IosSheetForm>
+        {/* ── UniClipboard Cloud 账号 ── */}
+        <Section
+          header={<SwiftUIText>{t('settings:live.cloudSection')}</SwiftUIText>}
+          footer={<SwiftUIText>{t('settings:live.cloudFooter')}</SwiftUIText>}
+        >
+          {cloud.session ? (
+            <>
+              <SettingsNavRow
+                testID="cloud-account"
+                icon="icloud"
+                iconColor={settingsTileColors.blue}
+                title={cloudUserLabel(cloud.session.user)}
+                value={t('settings:live.cloudSignedIn')}
+                readOnly
+              />
+              <SettingsNavRow
+                testID="cloud-sign-out"
+                title={t('settings:live.cloudSignOut')}
+                destructive
+                showsChevron={false}
+                disabled={cloud.busy}
+                onPress={handleCloudSignOut}
+              />
+            </>
+          ) : (
+            <SettingsNavRow
+              testID="cloud-sign-in"
+              icon="icloud"
+              iconColor={settingsTileColors.blue}
+              title={cloud.busy ? t('settings:live.cloudSigningIn') : t('settings:live.cloudSignIn')}
+              showsChevron={!cloud.busy}
+              disabled={cloud.busy}
+              onPress={handleCloudSignIn}
+            />
+          )}
+        </Section>
+
         {/* ── 剪贴板同步（对齐 v1 第一组：内联自动写入/自动推送开关 + 更多同步设置） ── */}
         <Section
           header={<SwiftUIText>{t('settings:hub.clipboardSync.title')}</SwiftUIText>}

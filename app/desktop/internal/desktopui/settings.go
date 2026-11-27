@@ -25,6 +25,7 @@ var settingsSections = []settingsSectionSpec{
 	{
 		id: "sync-data", title: "同步与数据",
 		items: []desktopkit.SidebarNavItem{
+			{ID: "cloud", Label: "云服务", Icon: desktopkit.IconGlobe},
 			{ID: "sync", Label: "同步", Icon: desktopkit.IconRetry},
 			{ID: "storage", Label: "存储与备份", Icon: desktopkit.IconFolder},
 			{ID: "plugins", Label: "插件", Icon: desktopkit.IconPackage},
@@ -261,6 +262,12 @@ func (d *viewState) settingsContent(c *ui.Context, k desktopkit.Kit) {
 		group("notifications", d.tr("通知开关"), func() {
 			d.switchRow(c, k, "notificationsEnabled", d.tr("系统通知"), d.tr("接收来自 Unic 的系统级桌面通知。关闭后仍会在应用内保留红点提醒。"))
 			d.switchRow(c, k, "notificationsDevicePairing", d.tr("新设备配对与路径请求"), d.tr("有新设备请求加入或新增同步路径时发送系统通知。"))
+		})
+	case "cloud":
+		group("cloud-account", d.tr("账号"), func() {
+			k.SettingsRow(c, desktopkit.SettingsRowProps{Label: d.tr("登录账号"), Description: d.tr("登录后可使用官方中转等云功能。")}, nil, func() {
+				k.Text(c, d.tr("未登录"), desktopkit.TextProps{Tone: desktopkit.ToneSecondary})
+			})
 		})
 	case "sync":
 		group("sync", d.tr("同步行为"), func() {

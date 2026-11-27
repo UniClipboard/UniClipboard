@@ -60,6 +60,10 @@ var catalog = []leaf{
 	{Name: "profile", Requirement: reqLocal, Completion: doneNone},
 
 	{Name: "config path", Requirement: reqLocal, Completion: doneNone},
+	{Name: "cloud login", Requirement: reqLocal, Completion: doneNone},
+	{Name: "cloud status", Requirement: reqLocal, Completion: doneNone},
+	{Name: "cloud logout", Requirement: reqLocal, Completion: doneNone},
+	{Name: "cloud help", Aliases: []string{"-h", "--help"}, Requirement: reqLocal, Completion: doneNone},
 	{Name: "dev help", Aliases: []string{"-h", "--help"}, Requirement: reqLocal, Completion: doneNone},
 	{Name: "dev logs export", Requirement: reqLocal, Completion: doneNone},
 	{Name: "dev logs help", Aliases: []string{"-h", "--help"}, Requirement: reqLocal, Completion: doneNone},
@@ -128,6 +132,7 @@ var groupUsage = map[string]string{
 	"dev":     formatUsageLine(devUsage),
 	"history": formatUsageLine(historyUsage),
 	"profile": formatUsageLine(profileUsage),
+	"cloud":   formatUsageLine(cloudUsage),
 }
 
 // classify resolves a command line to its declaration before any service is touched.

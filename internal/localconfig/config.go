@@ -679,12 +679,13 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # automatic = false  # copy records references; explicit send prepares the tree
 
 # Optional zero-knowledge E2EE temporary HTTP relay for offline peer fallback
-# (separate from Tailcat P2P DERP relays). Defaults off until configured.
+# (separate from Tailcat P2P DERP relays). Sign in to UniClipboard Cloud via
+# "unic cloud login" (or Desktop/Mobile settings) to enable it automatically.
 # [sync.relay]
 # enabled = false
-# url = "https://relay.example.com"  # or $UNIC_RELAY_URL
-# access_key = ""                    # optional self-host X-Unic-Relay-Key (or $UNIC_RELAY_ACCESS_KEY)
-# max_bytes = "25MB"                 # per-transfer relay cap (default 25 MiB, max 4 GiB)
+# url = "https://relay.uniclipboard.app"  # or $UNIC_RELAY_URL / self-hosted HTTPS URL
+# access_key = ""                         # Cloud API key or self-host X-Unic-Relay-Key ($UNIC_RELAY_ACCESS_KEY)
+# max_bytes = "25MB"                      # per-transfer relay cap (default 25 MiB, max 4 GiB)
 
 # What the built-in device-to-device sync (builtin.tailcat) sends and accepts.
 # Applies to transfers that start after the change. Uncomment the header too.

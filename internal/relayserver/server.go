@@ -857,6 +857,9 @@ func (s *Server) handleChunkUploadURL(w http.ResponseWriter, r *http.Request, ma
 	s.sweepMailboxLocked(mailboxID, mb, now)
 	tr := mb.transfers[transferID]
 	if tr == nil {
+		// Clean up any chunk object whose presigned PUT raced with a receiver
+		// discard/ack/expiry so orphaned test-server objects cannot linger.
+		delete(s.objects, objectKey(mailboxID, transferID, idx))
 		s.mu.Unlock()
 		writeErr(w, http.StatusNotFound, "not_found")
 		return
@@ -899,6 +902,9 @@ func (s *Server) handleCommitChunk(w http.ResponseWriter, r *http.Request, mailb
 	s.sweepMailboxLocked(mailboxID, mb, now)
 	tr := mb.transfers[transferID]
 	if tr == nil {
+		// Clean up any chunk object whose presigned PUT raced with a receiver
+		// discard/ack/expiry so orphaned test-server objects cannot linger.
+		delete(s.objects, objectKey(mailboxID, transferID, idx))
 		s.mu.Unlock()
 		writeErr(w, http.StatusNotFound, "not_found")
 		return

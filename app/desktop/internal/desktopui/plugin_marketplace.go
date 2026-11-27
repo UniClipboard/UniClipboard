@@ -14,6 +14,9 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
+	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
+	"github.com/uniclipboard/unic/internal/plugins/builtinsecurity"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 const (
@@ -858,17 +861,87 @@ func (d *viewState) marketplaceDetailInspector(c *ui.Context, k desktopkit.Kit, 
 	})
 }
 
-func (d *viewState) pluginsAdvancedView(c *ui.Context, k desktopkit.Kit, cfg config.Config) {
-	l := d.live
-	subtleInfoCard(c.Key("order-note"), k, "", d.tr("顺序仅影响同一阶段多个插件的先后；同步始终在本地保存之后执行。"))
-
-	// Assemble visible order list from configured order + built-ins.
-	order := slices.Clone(cfg.Plugins.Order)
-	for _, b := range builtinPluginEntries {
-		if cfg.PluginEnabled(b.id) && !slices.Contains(order, b.id) {
-			order = append(order, b.id)
+// stageEffectiveOrder computes the engine's actual execution order for the
+// plugins belonging to a single stage: unlisted plugins keep their assembly
+// order ahead of those explicitly named in configuredOrder.
+func stageEffectiveOrder(configuredOrder, candidates []string) []string {
+	out := make([]string, 0, len(candidates))
+	for _, id := range candidates {
+		if !slices.Contains(configuredOrder, id) {
+			out = append(out, id)
 		}
 	}
+	for _, id := range configuredOrder {
+		if slices.Contains(candidates, id) && !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// reorderPluginStage swaps idx and idx+delta within stageOrder and writes the
+// updated stage sequence back into configuredOrder without dropping any other
+// enabled external plugins (sync backends, actions, or other stages).
+func reorderPluginStage(configuredOrder, stageOrder []string, idx, delta int) []string {
+	target := idx + delta
+	if idx < 0 || idx >= len(stageOrder) || target < 0 || target >= len(stageOrder) {
+		return slices.Clone(configuredOrder)
+	}
+	swapped := slices.Clone(stageOrder)
+	swapped[idx], swapped[target] = swapped[target], swapped[idx]
+	next := make([]string, 0, len(configuredOrder)+len(swapped))
+	for _, id := range configuredOrder {
+		if !slices.Contains(stageOrder, id) {
+			next = append(next, id)
+		}
+	}
+	return append(next, swapped...)
+}
+
+func (d *viewState) pluginsAdvancedView(c *ui.Context, k desktopkit.Kit, cfg config.Config) {
+	l := d.live
+	subtleInfoCard(c.Key("order-note"), k, "", d.tr("流水线按固定阶段运行：前置拦截（Guard）→ 内容处理（Annotate）→ 本地保存 → 同步发送。调整顺序仅影响同一阶段内的插件先后。"))
+
+	var guardCandidates, annotateCandidates, enricherCandidates, syncBackends []string
+	// Built-in assembly order matches app/service/internal/host/node.go.
+	if cfg.PluginEnabled(builtinsecurity.ID) {
+		guardCandidates = append(guardCandidates, builtinsecurity.ID)
+	}
+	if cfg.PluginEnabled("builtin.classify") {
+		annotateCandidates = append(annotateCandidates, "builtin.classify")
+	}
+	if cfg.PluginEnabled("builtin.text") {
+		annotateCandidates = append(annotateCandidates, "builtin.text")
+	}
+	if cfg.PluginEnabled(builtinpreview.ID) {
+		enricherCandidates = append(enricherCandidates, builtinpreview.ID)
+	}
+	if cfg.PluginEnabled("builtin.tailcat") {
+		syncBackends = append(syncBackends, "builtin.tailcat")
+	}
+	for _, item := range l.externalPlugins {
+		if !item.Configured {
+			continue
+		}
+		if slices.Contains(item.Capabilities, plugin.CapProcessor) {
+			if item.ProcessorStage == plugin.ProcessorStageGuard {
+				guardCandidates = append(guardCandidates, item.ID)
+			} else {
+				annotateCandidates = append(annotateCandidates, item.ID)
+			}
+		}
+		if slices.Contains(item.Capabilities, plugin.CapEnricher) {
+			enricherCandidates = append(enricherCandidates, item.ID)
+		}
+		if slices.Contains(item.Capabilities, plugin.CapSyncBackend) {
+			syncBackends = append(syncBackends, item.ID)
+		}
+	}
+	guardOrder := stageEffectiveOrder(cfg.Plugins.Order, guardCandidates)
+	annotateOrder := stageEffectiveOrder(cfg.Plugins.Order, annotateCandidates)
+	enricherOrder := stageEffectiveOrder(cfg.Plugins.Order, enricherCandidates)
+	slices.Sort(syncBackends)
+
 	nameOf := func(id string) string {
 		for _, b := range builtinPluginEntries {
 			if b.id == id {
@@ -885,32 +958,71 @@ func (d *viewState) pluginsAdvancedView(c *ui.Context, k desktopkit.Kit, cfg con
 		return id
 	}
 
-	k.SettingsGroup(c.Key("plugin-order-group"), desktopkit.SettingsGroupProps{Title: d.tr("处理先后顺序")}, func() {
-		if len(order) == 0 {
-			k.SettingsRow(c.Key("order-empty"), desktopkit.SettingsRowProps{Label: d.tr("当前没有已启用插件")}, nil, nil)
-			return
-		}
-		for i, id := range order {
-			idx := i
-			k.SettingsRow(c.Key("ord-"+id), desktopkit.SettingsRowProps{
-				Label:       fmt.Sprintf("%d. %s", idx+1, nameOf(id)),
-				Description: id,
-			}, nil, func() {
-				if k.Button(c.Key("up-"+id), d.tr("上移"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: idx == 0 || l.showBusy()}).Clicked() && !l.busy {
-					next := slices.Clone(order)
-					next[idx-1], next[idx] = next[idx], next[idx-1]
-					cfg.Plugins.Order = next
-					d.saveLiveConfig(cfg)
-				}
-				if k.Button(c.Key("down-"+id), d.tr("下移"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: idx == len(order)-1 || l.showBusy()}).Clicked() && !l.busy {
-					next := slices.Clone(order)
-					next[idx+1], next[idx] = next[idx], next[idx+1]
-					cfg.Plugins.Order = next
-					d.saveLiveConfig(cfg)
-				}
-			})
-		}
-	})
+	renderStageGroup := func(key, title, footer, emptyText string, stageOrder []string) {
+		k.SettingsGroup(c.Key(key), desktopkit.SettingsGroupProps{Title: d.tr(title), Footer: d.tr(footer)}, func() {
+			if len(stageOrder) == 0 {
+				k.SettingsRow(c.Key("empty"), desktopkit.SettingsRowProps{Label: d.tr(emptyText)}, nil, nil)
+				return
+			}
+			for i, id := range stageOrder {
+				idx := i
+				k.SettingsRow(c.Key("ord-"+id), desktopkit.SettingsRowProps{
+					Label:       fmt.Sprintf("%d. %s", idx+1, nameOf(id)),
+					Description: id,
+				}, nil, func() {
+					if k.Button(c.Key("up-"+id), d.tr("上移"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: idx == 0 || l.showBusy()}).Clicked() && !l.busy {
+						cfg.Plugins.Order = reorderPluginStage(cfg.Plugins.Order, stageOrder, idx, -1)
+						d.saveLiveConfig(cfg)
+					}
+					if k.Button(c.Key("down-"+id), d.tr("下移"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Disabled: idx == len(stageOrder)-1 || l.showBusy()}).Clicked() && !l.busy {
+						cfg.Plugins.Order = reorderPluginStage(cfg.Plugins.Order, stageOrder, idx, 1)
+						d.saveLiveConfig(cfg)
+					}
+				})
+			}
+		})
+	}
+
+	if len(guardOrder) > 0 {
+		renderStageGroup(
+			"plugin-order-guard",
+			"前置拦截顺序（Guard）",
+			"始终先于常规处理器与所有同步后端运行，修改后重启生效。",
+			"当前没有已启用的前置拦截插件",
+			guardOrder,
+		)
+	}
+	renderStageGroup(
+		"plugin-order-group",
+		"内容处理顺序（Annotate）",
+		"在前置拦截之后、本地保存之前运行，修改后重启生效。",
+		"当前没有已启用的内容处理插件",
+		annotateOrder,
+	)
+	if len(enricherOrder) > 0 {
+		renderStageGroup(
+			"plugin-order-enricher",
+			"异步富化与预览优先级（Enricher）",
+			"在条目保存到本地历史后异步运行，决定预览卡片展示优先级。",
+			"当前没有已启用的异步富化插件",
+			enricherOrder,
+		)
+	}
+	if len(syncBackends) > 0 {
+		k.SettingsGroup(c.Key("plugin-order-sync"), desktopkit.SettingsGroupProps{
+			Title:  d.tr("同步后端（本地保存后执行）"),
+			Footer: d.tr("所有同步后端都在拦截与处理完成、本地保存后由引擎统一派发，不参与处理器先后排序。"),
+		}, func() {
+			for _, id := range syncBackends {
+				k.SettingsRow(c.Key("sync-"+id), desktopkit.SettingsRowProps{
+					Label:       nameOf(id),
+					Description: id,
+				}, nil, func() {
+					k.Tag(c.Key("tag"), d.tr("同步阶段"), desktopkit.TagProps{Color: "gray"})
+				})
+			}
+		})
+	}
 
 	k.SettingsGroup(c.Key("plugin-global-error"), desktopkit.SettingsGroupProps{Title: d.tr("异常处理")}, func() {
 		policy := cfg.Plugins.OnError

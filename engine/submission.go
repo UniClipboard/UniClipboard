@@ -321,6 +321,8 @@ func (e *Engine) runSubmission(ctx context.Context, req SubmitRequest, entry *su
 			}
 		}
 		e.productEvent(ctx, ProductEvent{Name: "manual_send_completed", Result: result, Code: code, ContentKind: commitKind})
+	} else if req.Origin == OriginClipboard && failure == nil {
+		e.productEvent(ctx, ProductEvent{Name: "daily_active"})
 	}
 	e.diagnostic(ctx, DiagnosticRecord{Stage: "commit", Result: outcome, Backend: "none", ContentKind: commitKind, Code: code, Duration: time.Since(entry.started)})
 	if e.log != nil {

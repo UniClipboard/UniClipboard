@@ -21,6 +21,7 @@ import (
 
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
+	"github.com/uniclipboard/unic/internal/plugins/builtinsecurity"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
@@ -94,7 +95,10 @@ func (m *Manager) State() State {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	sum := sha256.Sum256(m.raw)
-	s := State{CacheScope: "default_directory_only", Path: m.path, Config: m.cur, Revision: hex.EncodeToString(sum[:]), ApplyError: m.applyError}
+	cfg := m.cur
+	cfg.Sync.Relay.AccessKeySet = m.cur.Sync.Relay.AccessKey != ""
+	cfg.Sync.Relay.AccessKey = ""
+	s := State{CacheScope: "default_directory_only", Path: m.path, Config: cfg, Revision: hex.EncodeToString(sum[:]), ApplyError: m.applyError}
 	if m.err != nil {
 		s.Error = m.err.Error()
 	}
@@ -108,6 +112,7 @@ func (m *Manager) State() State {
 		s.RestartRequired = append(s.RestartRequired, "history")
 	}
 	if m.cur.PluginEnabled("builtin.tailcat") != m.started.PluginEnabled("builtin.tailcat") ||
+		m.cur.PluginEnabled(builtinsecurity.ID) != m.started.PluginEnabled(builtinsecurity.ID) ||
 		m.cur.PluginEnabled(builtintext.ID) != m.started.PluginEnabled(builtintext.ID) ||
 		m.cur.PluginEnabled(builtinclassify.ID) != m.started.PluginEnabled(builtinclassify.ID) ||
 		m.cur.PluginEnabled(builtinpreview.ID) != m.started.PluginEnabled(builtinpreview.ID) {
@@ -208,7 +213,7 @@ func (m *Manager) publish(raw []byte, c Config, err error) {
 // Replace validates a complete TOML document and atomically replaces the file.
 // External editors do not honor ioMu; the watcher imports later external saves.
 func (m *Manager) Replace(revision string, raw []byte) (State, error) {
-	c, err := Parse(raw)
+	c, hasRelayKey, err := parseWithMeta(raw)
 	if err != nil {
 		return State{}, err
 	}
@@ -228,9 +233,21 @@ func (m *Manager) Replace(revision string, raw []byte) (State, error) {
 	}
 	m.mu.RLock()
 	same := bytes.Equal(disk, m.raw)
+	existingRelayKey := m.cur.Sync.Relay.AccessKey
 	m.mu.RUnlock()
 	if !same {
 		return State{}, ErrConflict
+	}
+	// Preserve existing secret relay access_key when omitted by callers that
+	// round-trip redacted GET /v1/config snapshots (e.g. Desktop settings UI).
+	// Explicit `access_key = ""` in TOML clears it; non-empty updates it.
+	if !hasRelayKey && existingRelayKey != "" {
+		c.Sync.Relay.AccessKey = existingRelayKey
+		var buf bytes.Buffer
+		if encErr := toml.NewEncoder(&buf).Encode(c); encErr != nil {
+			return State{}, errors.New("cannot encode configuration file")
+		}
+		raw = buf.Bytes()
 	}
 	f, err := os.CreateTemp(filepath.Dir(m.path), ".unic-config-*")
 	if err != nil {

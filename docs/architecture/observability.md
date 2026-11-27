@@ -65,9 +65,15 @@ Current workspace implementation and acceptance scope are recorded in the [PostH
 The in-process mobile binding instantiates the same controller per Engine with
 `service.name=unic-mobile`.
 It subscribes to categorical Engine diagnostics, product events, the
-`engine.Options.Tracer` hook, and the built-in sync collector. The Boolean
-`mobile-telemetry.json` in the private profile holds the upload preference. An
-absent preference defaults to enabled. An unreadable preference disables upload.
+`engine.Options.Tracer` hook, and the built-in sync collector. On successful
+`Start`, the main mobile Engine calls `StartProduct("mobile")` (emitting
+`app_started` and stamping `product=mobile` with `os=ios|android` on all mobile
+product events), while short-lived app extensions (`extension_mode=true`) call
+`EnableProduct("mobile")` so they reuse the shared App Group `analytics-id` and
+daily marker without emitting `app_started` on each extension activation. The
+Boolean `mobile-telemetry.json` in the private profile holds the upload
+preference. An absent preference defaults to enabled. An unreadable preference
+disables upload.
 The native settings page supports a 10-minute temporary local `debug` log-level
 override (`SetLocalLogLevelOverride`) and exports a redacted `.zip` diagnostic
 bundle (`ExportDiagnosticArchive`) through the operating system share sheet (and
@@ -159,7 +165,7 @@ See section 12 of the [observability contract](../contracts/observability-contra
 The host injects `Options.ProductEvents` alongside Logger and Diagnostics.
 Engine emits pairing trust commits, unique Action completions, manual send terminal results and successful explicit history application.
 Events are emitted outside the Engine state mutex (`e.mu`); lifecycle and commit guards may still be held. Callbacks must not call Engine methods or wait for lifecycle work. Events do not rely on lossy GUI notifications.
-Engine also emits successful device-receipt application and stored-origin history classification. The remote-application event requires a nonempty peer ID and no channel ID; temporary-transfer and external-channel receipts do not qualify. The service coalesces remote receipt notifications into a persisted identity/UTC-day availability event. Per-operation automatic volume remains in metrics. See section 11 of the observability contract.
+Engine also emits successful device-receipt application, stored-origin history classification, and `daily_active` on committed real local clipboard observations (excluding baseline, unchanged, empty and echo). The remote-application event requires a nonempty peer ID and no channel ID; temporary-transfer and external-channel receipts do not qualify. The service and mobile binding coalesce remote receipt notifications (`analytics-remote-day`) and genuine usage (`analytics-active-day`, triggered by committed local observations or any non-startup product event, never by idle `app_started`) into persisted identity/UTC-day events (at most one per identity per UTC day). Per-operation automatic volume remains in metrics. See sections 10 and 11 of the observability contract.
 The service emits startup events. Desktop registration carries a bounded local launch key until the first ready acknowledgement; later reconnects omit it. The service remembers the last ready launch key to suppress duplicate ready calls and uncertain-result retries. The key never enters telemetry.
 The service is the sole exporter; Desktop does not receive the analytics identifier.
 

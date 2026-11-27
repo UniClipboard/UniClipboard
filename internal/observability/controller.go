@@ -29,32 +29,33 @@ type Options struct {
 	TraceInterval     time.Duration
 }
 type Controller struct {
-	syncEpoch      uint64
-	syncWake       chan struct{}
-	syncCollector  func(uint64) ([]syncdiag.Record, bool)
-	failures       [5][7]uint64
-	effective      bool
-	lastLocalError time.Time
-	control        sync.Mutex
-	mu             sync.Mutex
-	cfg            Config
-	endpoint       string
-	opts           Options
-	overrides      [2]override
-	closed         bool
-	local          chan []byte
-	localFlush     chan chan struct{}
-	localStop      chan struct{}
-	localDone      chan struct{}
-	logs           *generation
-	metrics        *generation
-	traces         *generation
-	states         [5]SignalState
-	drops          [5][5]uint64
-	logger         *slog.Logger
-	analytics      *analyticsGeneration
-	analyticsReady bool
-	identityReset  bool
+	syncEpoch        uint64
+	syncWake         chan struct{}
+	syncCollector    func(uint64) ([]syncdiag.Record, bool)
+	failures         [5][7]uint64
+	effective        bool
+	lastLocalError   time.Time
+	control          sync.Mutex
+	mu               sync.Mutex
+	cfg              Config
+	endpoint         string
+	opts             Options
+	overrides        [2]override
+	closed           bool
+	local            chan []byte
+	localFlush       chan chan struct{}
+	localStop        chan struct{}
+	localDone        chan struct{}
+	logs             *generation
+	metrics          *generation
+	traces           *generation
+	states           [5]SignalState
+	drops            [5][5]uint64
+	logger           *slog.Logger
+	analytics        *analyticsGeneration
+	analyticsReady   bool
+	analyticsProduct string
+	identityReset    bool
 }
 
 func New(o Options) *Controller {

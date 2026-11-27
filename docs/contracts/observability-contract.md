@@ -459,18 +459,19 @@ It does not install SDK request-context middleware, identify users, alias identi
 
 | Event | Authoritative emission boundary |
 |---|---|
-| `app_started` | Successful service startup (`product=cli`), or first ready for a pending Desktop process launch (`product=desktop`). A local launch key suppresses repeated ready calls and same-process reconnects; the client clears its pending key after acknowledgement. |
+| `app_started` | Successful service startup (`product=cli`), first ready for a pending Desktop process launch (`product=desktop`), or successful mobile Engine startup (`product=mobile`). A local launch key suppresses repeated ready calls and same-process reconnects; the client clears its pending key after acknowledgement. Mobile app extensions (`extension_mode=true`) sharing the app group profile activate analytics without emitting `app_started`. |
 | `pairing_completed` | Successful atomic approval changes an untrusted device to trusted. Approval failure, pending requests and reconnects do not emit it. |
 | `history_applied` | A successful, non-dead application ticket with `ApplyHistoryRequest.UserRestore=true`. Duplicate apply reports do not emit again. Action application sets UserRestore false. |
 | `manual_send_completed` | One explicit send operation reaches a terminal outcome across all targets. A submission with no operation emits `skipped`, its commit failure, or `failed` with the sync error code when commit succeeded but sync admission failed. Automatic observations, Action dispatch and restore-triggered synchronization are excluded. |
 | `action_completed` | The unique idempotent Action submission finishes execution/commit. An apply failure after that commit does not change its execution result. |
+| `daily_active` | Coalesced to at most one event per analytics identity and UTC day on genuine usage: a committed real clipboard observation (`ObserveClipboard` change, excluding `baseline`, `unchanged`, `empty`, and `echo`), or any valid `pairing_completed`, `history_applied`, `manual_send_completed`, `action_completed`, or `remote_content_applied` event. Idle process startups (`app_started`) never emit `daily_active`. Uses a private `analytics-active-day` high-water marker with the same persist-before-enqueue, rollback, and disable-cleanup semantics as `remote_content_applied`. |
 
 The public ProductEvent has `Name`, `Product`, `Result`, `Code`, `ContentKind`, `ActionCategory` and `SourceKind`.
-Allowed names are the five entries above plus `remote_content_applied` from section 11. Product is `cli` or `desktop` (empty maps to cli).
+Allowed names are the six entries above plus `remote_content_applied` from section 11. Product is `cli`, `desktop`, or `mobile` (empty maps to the host's active default product: `cli` on `unicd`, `mobile` on `unic-mobile`).
 Result accepts empty, `succeeded`, `failed`, `cancelled`, `superseded`, `partial`, or `skipped`.
 Code uses the existing safe Engine code vocabulary; content category uses the existing diagnostic content vocabulary.
 Action category is empty, `builtin`, or `external`. No plugin/action key is exported.
-Common properties are schema version 1, published component version (or dev), OS and architecture. `product` identifies the emitting component: service completions use `cli`; only adapter startup uses `desktop`. It does not assert which UI originated a service action.
+Common properties are schema version 1, published component version (or dev), OS and architecture. `product` identifies the emitting component: service completions use `cli`; only adapter startup uses `desktop`; in-process mobile Engine startup and completions use `mobile` (distinguished by `os=ios|android`). It does not assert which UI originated a service action.
 The SDK processing flags are always `$process_person_profile=false` and `$geoip_disable=true`.
 No device identity, content, search term, path, target list or business request/operation identifier enters an event.
 An event UUID is SDK-generated delivery metadata, not the business request identity.

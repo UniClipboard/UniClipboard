@@ -1299,7 +1299,7 @@ func (d *viewState) detail(c *ui.Context, k desktopkit.Kit) {
 					}
 				}
 				d.detailTags(c.Key("detail-tags"), k, v)
-				d.renderDeliverySection(c.Key("detail-delivery"), k, v, true)
+				d.renderDeliverySection(c.Key("detail-delivery"), k, v, false)
 			})
 		})
 	})
@@ -1581,7 +1581,7 @@ func (d *viewState) gridDetailDrawer(c *ui.Context, k desktopkit.Kit, items []en
 				}
 
 				// Delivery status section.
-				d.renderDeliverySection(c.Key("delivery"), k, item, false)
+				d.renderDeliverySection(c.Key("delivery"), k, item, true)
 			})
 		})
 		return layer

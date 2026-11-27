@@ -13,6 +13,7 @@ import (
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
+	"github.com/uniclipboard/unic/internal/plugins/builtinsecurity"
 )
 
 // Built-in settings are host policy, not plugin-specific Schema fields.
@@ -42,6 +43,7 @@ type builtinPluginSettings struct {
 	form                                    *pluginSettingsForm
 	classification                          classificationSettings
 	preview                                 previewSettingsState
+	security                                securitySettingsState
 }
 
 type builtinPluginEntry struct {
@@ -54,6 +56,8 @@ type builtinPluginEntry struct {
 
 var builtinPluginEntries = []builtinPluginEntry{
 	{id: "builtin.tailcat", name: "Tailcat 同步", description: "在已配对设备间点对点同步剪贴板，支持文本、图片、文件与文件夹。", icon: desktopkit.IconRetry, tone: "teal", capabilities: []string{"同步后端"}},
+	{id: builtinsecurity.ID, name: "敏感内容拦截", description: "自动识别剪贴板中的密钥、密码管理器内容与敏感文件，默认拦截不入库且不同步。", icon: desktopkit.IconShield, tone: "purple",
+		capabilities: []string{"前置拦截", "自动标注"}, events: []string{"clipboard.captured", "clipboard.received"}},
 	{id: builtinpreview.ID, name: "智能预览", description: "为剪贴板内容生成语义预览卡片并写入检索索引，首版支持网页链接预览，后续可扩展验证码等更多预览。", icon: desktopkit.IconLink, tone: "accent",
 		capabilities: []string{"异步富化"}},
 	{id: "builtin.text", name: "文本工具", description: "提供转大写、转小写、去除首尾空白和纯文本四个常用动作。", icon: desktopkit.IconEdit, tone: "purple",
@@ -252,6 +256,10 @@ func (d *viewState) builtinPluginsContent(c *ui.Context, k desktopkit.Kit) {
 	}
 	if p.id == builtinpreview.ID {
 		d.smartPreviewSettings(c, k, cfg, instance)
+		return
+	}
+	if p.id == builtinsecurity.ID {
+		d.securityGuardSettings(c, k, cfg, instance)
 		return
 	}
 	k.SettingsGroup(c.Key("plugin-detail-"+p.id), desktopkit.SettingsGroupProps{Title: name, Footer: d.tr("以下策略保存后立即生效，仍受全局同步设置限制。")}, func() {
@@ -523,7 +531,7 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 				})
 				ui.Row(c.Key("ctrl")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
 					icon := desktopkit.IconChevronRight
-					if entry.id == "builtin.tailcat" || entry.id == builtinpreview.ID {
+					if entry.id == "builtin.tailcat" || entry.id == builtinpreview.ID || entry.id == builtinsecurity.ID {
 						icon = desktopkit.IconSettings
 					}
 					if k.Button(c.Key("open-"+entry.id), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: icon, Label: d.tr(entry.name), Tooltip: d.tr(entry.name), Disabled: l.showBusy()}).Clicked() && !l.busy {

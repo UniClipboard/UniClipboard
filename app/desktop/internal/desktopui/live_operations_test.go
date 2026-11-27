@@ -9,7 +9,6 @@ import (
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
-	api "github.com/uniclipboard/unic/internal/localapi"
 )
 
 func TestTransferTargetItemStatesAndReceipts(t *testing.T) {
@@ -53,6 +52,17 @@ func TestTransferTargetItemStatesAndReceipts(t *testing.T) {
 	})
 	if received.Tone != desktopkit.StatusPositive || received.Status != "对端已接收" {
 		t.Fatalf("received item = %+v", received)
+	}
+
+	relayStored := d.transferTargetItem("op1", engine.TargetStatus{
+		BackendID:      engine.BackendTailcat,
+		TargetID:       "dev-mac",
+		State:          engine.TargetSent,
+		ReceiptStage:   engine.ReceiptStageRelayStored,
+		TransportRoute: engine.RouteRelay,
+	})
+	if relayStored.Tone != desktopkit.StatusPositive || relayStored.Status != "已暂存中转" {
+		t.Fatalf("relay stored item = %+v", relayStored)
 	}
 
 	discarded := d.transferTargetItem("op1", engine.TargetStatus{
@@ -106,31 +116,26 @@ func TestLiveDeliverySectionRendersPerDeviceProgressAndReceipt(t *testing.T) {
 	detailEntry := &entry{
 		id:        "hist-file-1",
 		syncState: "pending",
-		backendSync: []api.HistoryBackendSync{{
-			BackendID:   "e2e.desktop",
-			State:       "pending",
-			Disposition: "queued",
-		}},
 	}
 	tester := ui.NewTester(func(c *ui.Context) {
 		k.Apply(c)
 		ui.Column(c).Children(func() {
 			d.toolbarTransferStatus(c, k)
-			d.renderDeliverySection(c.Key("delivery"), k, detailEntry, true)
+			d.renderDeliverySection(c.Key("delivery"), k, detailEntry, false)
 		})
 	}, 600, 400)
 	tester.Frame()
 	if !tester.HasText("MacBook Pro") || !tester.HasText("40%") {
 		t.Fatalf("expected per-device 40%% transfer item in delivery section, texts=%v", tester.Texts())
 	}
-	if !tester.HasText("e2e.desktop") {
-		t.Fatalf("expected per-backend summary to remain visible alongside operation targets, texts=%v", tester.Texts())
+	if tester.HasText(string(engine.BackendTailcat)) {
+		t.Fatalf("did not expect raw backend ID summary in delivery section, texts=%v", tester.Texts())
 	}
 	if _, ok := tester.Find("传输进度"); !ok {
 		t.Fatalf("expected active transfer status indicator in toolbar, texts=%v", tester.Texts())
 	}
 
-	// Transition to remote_received and verify UI updates to "对端已接收".
+	// Transition to remote_received and verify UI updates to "对端已接收" without collapsing.
 	d.live.applyOperations([]engine.Operation{{
 		ID:          "op-file-1",
 		Kind:        engine.OperationSend,
@@ -149,6 +154,69 @@ func TestLiveDeliverySectionRendersPerDeviceProgressAndReceipt(t *testing.T) {
 	tester.Frame()
 	if !tester.HasText("对端已接收") {
 		t.Fatalf("expected MacBook Pro receipt confirmation label after remote_received, texts=%v", tester.Texts())
+	}
+}
+
+func TestDeliveryTargetMetaIconsExternalChannelAndRetryability(t *testing.T) {
+	d := &viewState{
+		language: "zh-CN",
+		devices: []device{
+			{id: "dev-iphone", deviceID: "dev-iphone", name: "iPhone", icon: desktopkit.IconDesktop},
+			{id: "dev-mac", deviceID: "dev-mac", name: "Mac-mini.local", icon: desktopkit.IconDesktop},
+		},
+		channels: []externalChannel{
+			{id: "ch-wetype", name: "WeType"},
+		},
+		live: &liveState{opsByHistory: map[string]engine.Operation{}},
+	}
+
+	iphone := d.deliveryTargetItem("op1", engine.TargetStatus{
+		BackendID:    engine.BackendTailcat,
+		TargetKind:   engine.TargetDevice,
+		TargetID:     "dev-iphone",
+		PeerID:       "dev-iphone",
+		State:        engine.TargetFailed,
+		ReceiptStage: engine.ReceiptStageLocalWritten,
+		Error:        &engine.Error{Code: engine.CodeTimeout},
+	})
+	if iphone.Icon != desktopkit.IconPhone || iphone.External || !iphone.Retryable || iphone.RetryTarget != "dev-iphone" || iphone.Reason == "" {
+		t.Fatalf("iphone delivery item = %+v", iphone)
+	}
+
+	mac := d.deliveryTargetItem("op1", engine.TargetStatus{
+		BackendID:    engine.BackendTailcat,
+		TargetKind:   engine.TargetDevice,
+		TargetID:     "dev-mac",
+		PeerID:       "dev-mac",
+		State:        engine.TargetSent,
+		ReceiptStage: engine.ReceiptStageRemoteReceived,
+	})
+	if mac.Icon != desktopkit.IconDesktop || !mac.Confirmed || mac.Retryable {
+		t.Fatalf("mac delivery item = %+v", mac)
+	}
+
+	relay := d.deliveryTargetItem("op1", engine.TargetStatus{
+		BackendID:      engine.BackendTailcat,
+		TargetKind:     engine.TargetDevice,
+		TargetID:       "dev-mac",
+		PeerID:         "dev-mac",
+		State:          engine.TargetSent,
+		ReceiptStage:   engine.ReceiptStageRelayStored,
+		TransportRoute: engine.RouteRelay,
+	})
+	if relay.Tone != desktopkit.StatusPositive || relay.Confirmed || relay.Status != "已暂存中转" {
+		t.Fatalf("relay delivery item = %+v", relay)
+	}
+
+	wetype := d.deliveryTargetItem("op1", engine.TargetStatus{
+		BackendID:  "unic.wxime",
+		TargetKind: engine.TargetGroup,
+		TargetID:   "ch-wetype",
+		State:      engine.TargetFailed,
+		Error:      &engine.Error{Code: engine.CodeTimeout},
+	})
+	if wetype.Icon != desktopkit.IconLink || !wetype.External || wetype.Retryable || wetype.Label != "WeType" {
+		t.Fatalf("wetype delivery item = %+v", wetype)
 	}
 }
 

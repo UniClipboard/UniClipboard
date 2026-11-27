@@ -46,6 +46,12 @@
           "maxItems": 4,
           "uniqueItems": true
         },
+        "processor_stage": {
+          "enum": [
+            "guard",
+            "annotate"
+          ]
+        },
         "transport_kind": {
           "enum": [
             "peer_sessions",

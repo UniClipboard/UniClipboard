@@ -78,6 +78,7 @@ type Spec struct {
 	APIVersion     int      `json:"api_version"`
 	SettingsSHA256 string   `json:"settings_sha256,omitempty"`
 	Capabilities   []string `json:"capabilities"`
+	ProcessorStage string   `json:"processor_stage,omitempty"`
 	TransportKind  string   `json:"transport_kind,omitempty"`
 	// ExternalChannels and RemoteRevocation describe an external-channel sync
 	// backend (decision 0009).
@@ -87,9 +88,16 @@ type Spec struct {
 	Enricher         *EnricherSpec `json:"enricher,omitempty"`
 }
 
-// Equal compares ID, version, API, capabilities (as a set), actions and enricher.
+func normProcessorStage(stage string) string {
+	if stage == "" {
+		return "annotate"
+	}
+	return stage
+}
+
+// Equal compares ID, version, API, capabilities (as a set), processor stage, actions and enricher.
 func (s Spec) Equal(o Spec) bool {
-	if s.ID != o.ID || s.Version != o.Version || s.APIVersion != o.APIVersion || s.SettingsSHA256 != o.SettingsSHA256 || s.TransportKind != o.TransportKind || s.ExternalChannels != o.ExternalChannels || s.RemoteRevocation != o.RemoteRevocation {
+	if s.ID != o.ID || s.Version != o.Version || s.APIVersion != o.APIVersion || s.SettingsSHA256 != o.SettingsSHA256 || normProcessorStage(s.ProcessorStage) != normProcessorStage(o.ProcessorStage) || s.TransportKind != o.TransportKind || s.ExternalChannels != o.ExternalChannels || s.RemoteRevocation != o.RemoteRevocation {
 		return false
 	}
 	norm := func(c []string) []string { return slices.Sorted(slices.Values(c)) }

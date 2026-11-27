@@ -100,6 +100,64 @@ func (p *Plugin) SetLinkStatusChanged(fn func(peerID string)) {
 		p.b.SetLinkStatusChanged(fn)
 	}
 }
+func (p *Plugin) SetRelayCallbacks(
+	provide func(peerID string) (plugin.RelayProfile, bool),
+	onPeerProfile func(peerID string, prof plugin.RelayProfile),
+) {
+	if p.b != nil {
+		p.b.SetRelayCallbacks(provide, onPeerProfile)
+	}
+}
+func (p *Plugin) PushRelayProfiles() {
+	if p.b != nil {
+		p.b.PushRelayProfiles()
+	}
+}
+func (p *Plugin) WakePeer(peerID string) {
+	if p.b != nil {
+		p.b.WakePeer(peerID)
+	}
+}
+func (p *Plugin) SetRelayHandoffCallbacks(
+	onOffer func(peerID string, offer plugin.RelayHandoffOffer) plugin.RelayHandoffAck,
+	onChunk func(peerID, transferID string, index int, ciphertext []byte),
+	onPeerConnected func(peerID string, handoffCap, clipAckCap bool),
+	onPeerDisconnected func(peerID string),
+) {
+	if p.b != nil {
+		p.b.SetRelayHandoffCallbacks(onOffer, onChunk, onPeerConnected, onPeerDisconnected)
+	}
+}
+func (p *Plugin) PeerHandoffCaps(peerID string) (connected, handoffCap, clipAckCap bool) {
+	if p.b == nil {
+		return false, false, false
+	}
+	return p.b.PeerHandoffCaps(peerID)
+}
+func (p *Plugin) RegisterRelayClipAckWaiter(peerID, transferID string) (<-chan string, <-chan struct{}, func(), bool) {
+	if p.b == nil {
+		return nil, nil, func() {}, false
+	}
+	return p.b.RegisterRelayClipAckWaiter(peerID, transferID)
+}
+func (p *Plugin) SendRelayHandoffOffer(ctx context.Context, peerID string, offer plugin.RelayHandoffOffer) (plugin.RelayHandoffAck, error) {
+	if p.b == nil {
+		return plugin.RelayHandoffAck{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	return p.b.SendRelayHandoffOffer(ctx, peerID, offer)
+}
+func (p *Plugin) SendRelayChunk(ctx context.Context, peerID, transferID string, index int, ciphertext []byte) error {
+	if p.b == nil {
+		return rpc.NewError(rpc.CodeUnavailable)
+	}
+	return p.b.SendRelayChunk(ctx, peerID, transferID, index, ciphertext)
+}
+func (p *Plugin) SendRelayClipAck(peerID, transferID, status string) bool {
+	if p.b == nil {
+		return false
+	}
+	return p.b.SendRelayClipAck(peerID, transferID, status)
+}
 func (p *Plugin) LinkSnapshots() map[string]rpc.PeerLinkStatus {
 	if p.b == nil {
 		return nil

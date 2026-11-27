@@ -128,6 +128,7 @@ internal object UnicEngineHost {
   private var lastAppliedFingerprint: String? = null
   private var resolvedDataDir: String? = null
   private var resolvedCacheDir: String? = null
+  private var bgDrainJob: kotlinx.coroutines.Job? = null
 
   @Synchronized
   private fun ensureInitialized(context: Context): Context {
@@ -651,8 +652,40 @@ internal object UnicEngineHost {
   private fun reconcileRuntimeState(app: Context) {
     val eng = engine ?: return
     val desired = if (isForeground || isBackgroundSyncPermittedNow(app)) "active" else "suspended"
+    if (desired == "active") {
+      bgDrainJob?.cancel()
+      bgDrainJob = null
+      try {
+        eng.setRuntimeState("active")
+      } catch (_: Exception) {
+      }
+      return
+    }
+    if (runCatching { eng.hasActiveSends() }.getOrDefault(false)) {
+      if (bgDrainJob?.isActive == true) return
+      bgDrainJob = engineScope.launch {
+        val deadlineMs = System.currentTimeMillis() + 25_000L
+        while (System.currentTimeMillis() < deadlineMs) {
+          if (isForeground || isBackgroundSyncPermittedNow(app)) {
+            return@launch
+          }
+          val active = runCatching { engine?.hasActiveSends() == true }.getOrDefault(false)
+          if (!active) break
+          kotlinx.coroutines.delay(350L)
+        }
+        if (!isForeground && !isBackgroundSyncPermittedNow(app)) {
+          try {
+            engine?.setRuntimeState("suspended")
+          } catch (_: Exception) {
+          }
+        }
+      }
+      return
+    }
+    bgDrainJob?.cancel()
+    bgDrainJob = null
     try {
-      eng.setRuntimeState(desired)
+      eng.setRuntimeState("suspended")
     } catch (_: Exception) {
     }
   }

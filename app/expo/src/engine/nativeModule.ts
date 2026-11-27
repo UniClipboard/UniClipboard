@@ -418,7 +418,7 @@ export const unicEngineNative = {
   exportDiagnosticArchive: (action: "share" | "save" = "share") =>
     callJSON<DiagnosticArchiveResult>(() => requireMod().exportDiagnosticArchive(action)),
   getCapabilities: () => callJSON<Capabilities>(() => requireMod().getCapabilities()),
-  updateSettings: (req: { expected_revision: string; value: EngineSettings }) =>
+  updateSettings: (req: { expected_revision: string; value: EngineSettings; relay_access_key?: string }) =>
     callJSON<SettingsState>(() => requireMod().updateSettings(JSON.stringify(req))),
 
   getFileCacheState: () => callJSON<FileCacheState>(() => requireMod().getFileCacheState()),

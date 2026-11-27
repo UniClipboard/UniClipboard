@@ -226,7 +226,54 @@ public final class UnicEngineModule: Module {
   private var engineShouldResumeOnForeground: Bool = false
   private var lastInitDeviceName: String?
   private var legacyDataMigrated: Bool = false
-  private var bgReleaseTask: UIBackgroundTaskIdentifier = .invalid
+  private var bgTaskID: UIBackgroundTaskIdentifier = .invalid
+  private var bgDrainWorkItem: DispatchWorkItem?
+  private static let bgDrainMaxSeconds: TimeInterval = 25
+  private static let bgDrainPollSeconds: TimeInterval = 0.35
+
+  private func endBackgroundTaskLocked() {
+    self.bgDrainWorkItem?.cancel()
+    self.bgDrainWorkItem = nil
+    let taskID = self.bgTaskID
+    self.bgTaskID = .invalid
+    if taskID != .invalid {
+      DispatchQueue.main.async {
+        UIApplication.shared.endBackgroundTask(taskID)
+      }
+    }
+  }
+
+  private func finishBackgroundReleaseLocked() {
+    self.stopPasteboardObserver()
+    self.stopNetworkMonitor()
+    if let eng = self.engine {
+      self.keyboardSyncWorkItem?.cancel()
+      self.keyboardSyncWorkItem = nil
+      _ = try? self.keyboardBridge.publishSnapshot(engine: eng)
+      self.updateHostCapabilities(eng, foreground: false)
+      // Release unic.lock + SQLite + tailcat cleanly before suspension so
+      // the iOS Keyboard Extension can acquire the shared DataDir without 0xdead10cc.
+      self.shutdownEngineInternal(keepResumeIntent: true)
+    }
+    self.endBackgroundTaskLocked()
+  }
+
+  private func scheduleBackgroundDrainPollLocked(eng: MobileEngine, deadline: Date) {
+    let item = DispatchWorkItem { [weak self] in
+      guard let self = self else { return }
+      guard !self.isForeground else {
+        self.endBackgroundTaskLocked()
+        return
+      }
+      if self.engine !== eng || !eng.hasActiveSends() || Date() >= deadline {
+        self.finishBackgroundReleaseLocked()
+        return
+      }
+      self.scheduleBackgroundDrainPollLocked(eng: eng, deadline: deadline)
+    }
+    self.bgDrainWorkItem = item
+    self.engineQueue.asyncAfter(deadline: .now() + Self.bgDrainPollSeconds, execute: item)
+  }
 
   private func updateHostCapabilities(_ eng: MobileEngine, foreground: Bool) {
     let caps: [String: Any] = [
@@ -885,12 +932,15 @@ public final class UnicEngineModule: Module {
       guard let self = self else { return }
       self.engineQueue.async {
         self.isForeground = true
+        self.endBackgroundTaskLocked()
         if self.engine == nil && self.engineShouldResumeOnForeground {
           if (try? self.openEngineInternal(deviceName: self.lastInitDeviceName, retryOnInUse: true)) != nil {
             self.sendEvent("onEngineResync", ["reason": "reopened"])
           }
         }
         guard let eng = self.engine else { return }
+        self.startNetworkMonitor()
+        self.startPasteboardObserver()
         self.updateHostCapabilities(eng, foreground: true)
         try? eng.setRuntimeState("active")
         if self.keyboardBridge.drainPendingActions(engine: eng) > 0 {
@@ -919,35 +969,35 @@ public final class UnicEngineModule: Module {
 
     OnAppEntersBackground { [weak self] in
       guard let self = self else { return }
-      let taskID = UIApplication.shared.beginBackgroundTask(withName: "unic-engine-release") { [weak self] in
+      let granted = UIApplication.shared.beginBackgroundTask(withName: "unic-engine-release") { [weak self] in
         guard let self = self else { return }
-        if self.bgReleaseTask != .invalid {
-          UIApplication.shared.endBackgroundTask(self.bgReleaseTask)
-          self.bgReleaseTask = .invalid
+        self.engineQueue.async {
+          if !self.isForeground {
+            self.finishBackgroundReleaseLocked()
+          } else {
+            self.endBackgroundTaskLocked()
+          }
         }
       }
-      self.bgReleaseTask = taskID
       self.engineQueue.async {
+        self.endBackgroundTaskLocked()
+        self.bgTaskID = granted
         self.isForeground = false
         self.observationEpoch = ""
         self.observationSequence = 0
         self.stopPasteboardObserver()
-        self.stopNetworkMonitor()
-        if let eng = self.engine {
+        if let eng = self.engine, granted != .invalid, eng.hasActiveSends() {
           self.keyboardSyncWorkItem?.cancel()
           self.keyboardSyncWorkItem = nil
           _ = try? self.keyboardBridge.publishSnapshot(engine: eng)
           self.updateHostCapabilities(eng, foreground: false)
-          // Release unic.lock + SQLite + tailcat cleanly before suspension so
-          // the iOS Keyboard Extension can acquire the shared DataDir without 0xdead10cc.
-          self.shutdownEngineInternal(keepResumeIntent: true)
+          self.scheduleBackgroundDrainPollLocked(
+            eng: eng,
+            deadline: Date().addingTimeInterval(Self.bgDrainMaxSeconds)
+          )
+          return
         }
-        DispatchQueue.main.async {
-          if self.bgReleaseTask != .invalid {
-            UIApplication.shared.endBackgroundTask(self.bgReleaseTask)
-            self.bgReleaseTask = .invalid
-          }
-        }
+        self.finishBackgroundReleaseLocked()
       }
     }
 
@@ -959,6 +1009,7 @@ public final class UnicEngineModule: Module {
       self.stopSecurityScopedSetupURL()
       self.setIdleTimerDisabled(false)
       self.engineQueue.sync {
+        self.endBackgroundTaskLocked()
         self.shutdownEngineInternal()
       }
     }
@@ -1083,6 +1134,7 @@ public final class UnicEngineModule: Module {
     }.runOnQueue(engineQueue)
 
     AsyncFunction("shutdownEngine") { () in
+      self.endBackgroundTaskLocked()
       self.stopPasteboardObserver()
       self.stopNetworkMonitor()
       self.observationEpoch = ""

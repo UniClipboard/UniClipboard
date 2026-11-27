@@ -35,25 +35,33 @@ func safeVersion(v string) string {
 // analyticsGeneration retains no business object or caller context. A single
 // admission counter bounds all SDK queues, its batch and in-flight events.
 type analyticsGeneration struct {
-	c            *Controller
-	client       posthog.Client
-	ctx          context.Context
-	cancel       context.CancelFunc
-	mu           sync.Mutex
-	active       bool
-	pending      atomic.Int64
-	identity     string
-	transport    *http.Transport
-	host         string
-	dailyWake    chan struct{}
-	dailyStop    chan struct{}
-	dailyDone    chan struct{}
-	dailyMarked  string
-	dailyPending string
-	dailyFailed  bool
+	c              *Controller
+	client         posthog.Client
+	ctx            context.Context
+	cancel         context.CancelFunc
+	mu             sync.Mutex
+	active         bool
+	pending        atomic.Int64
+	identity       string
+	defaultProduct string
+	transport      *http.Transport
+	host           string
+	dailyWake      chan struct{}
+	dailyStop      chan struct{}
+	dailyDone      chan struct{}
+	daily          [2]dailySlot
 }
 
-func (c *Controller) newAnalytics() (*analyticsGeneration, error) {
+func normalizeProduct(product string) string {
+	switch product {
+	case "cli", "desktop", "mobile":
+		return product
+	default:
+		return "cli"
+	}
+}
+
+func (c *Controller) newAnalytics(defaultProduct string) (*analyticsGeneration, error) {
 	if c.endpoint == "" || c.opts.Token == nil {
 		return nil, errors.New("not_configured")
 	}
@@ -73,7 +81,7 @@ func (c *Controller) newAnalytics() (*analyticsGeneration, error) {
 	// APIfy lazily probes OS information in this SDK release. Warm its cache
 	// on the lifecycle/control path so the first business Enqueue never does I/O.
 	_ = (posthog.Capture{}).APIfy()
-	g := &analyticsGeneration{c: c, ctx: ctx, cancel: cancel, identity: id, host: analyticsHost(c.endpoint), active: true, transport: &http.Transport{Proxy: http.ProxyFromEnvironment, MaxConnsPerHost: 1, MaxIdleConnsPerHost: 1, IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 3 * time.Second}}
+	g := &analyticsGeneration{c: c, ctx: ctx, cancel: cancel, identity: id, defaultProduct: normalizeProduct(defaultProduct), host: analyticsHost(c.endpoint), active: true, transport: &http.Transport{Proxy: http.ProxyFromEnvironment, MaxConnsPerHost: 1, MaxIdleConnsPerHost: 1, IdleConnTimeout: 30 * time.Second, TLSHandshakeTimeout: 3 * time.Second}}
 	interval := 5 * time.Second
 	if c.opts.AnalyticsInterval > 0 {
 		interval = c.opts.AnalyticsInterval
@@ -105,7 +113,7 @@ func (g *analyticsGeneration) Failure(_ posthog.APIMessage, _ error) {
 }
 func validProductEvent(e engine.ProductEvent) bool {
 	switch e.Name {
-	case "app_started", "pairing_completed", "history_applied", "manual_send_completed", "action_completed", "remote_content_applied":
+	case "app_started", "pairing_completed", "history_applied", "manual_send_completed", "action_completed", "remote_content_applied", "daily_active":
 	default:
 		return false
 	}
@@ -115,7 +123,7 @@ func validProductEvent(e engine.ProductEvent) bool {
 		return false
 	}
 	switch e.Product {
-	case "", "cli", "desktop":
+	case "", "cli", "desktop", "mobile":
 	default:
 		return false
 	}
@@ -161,11 +169,19 @@ func (c *Controller) ProductEvent(_ context.Context, e engine.ProductEvent) {
 		c.drop(3, 2, 1)
 		return
 	}
+	if e.Name == "daily_active" {
+		g.notifyDaily(dailySlotActive)
+		return
+	}
 	if e.Name == "remote_content_applied" {
-		g.notifyDaily()
+		g.notifyDaily(dailySlotRemote)
+		g.notifyDaily(dailySlotActive)
 		return
 	}
 	g.enqueue(e)
+	if e.Name != "app_started" {
+		g.notifyDaily(dailySlotActive)
+	}
 }
 func (g *analyticsGeneration) enqueue(e engine.ProductEvent) {
 	c := g.c
@@ -186,7 +202,10 @@ func (g *analyticsGeneration) enqueue(e engine.ProductEvent) {
 	}
 	product := e.Product
 	if product == "" {
-		product = "cli"
+		product = g.defaultProduct
+		if product == "" {
+			product = "cli"
+		}
 	}
 	props := posthog.Properties{"schema_version": 1, "product": product, "product_version": safeVersion(c.opts.Version), "os": runtime.GOOS, "arch": runtime.GOARCH, "$process_person_profile": false, "$geoip_disable": true}
 	if e.Result != "" {
@@ -413,20 +432,35 @@ func clearAnalyticsIdentity(dir string) error {
 	return err
 }
 
+// EnableProduct activates product analytics for the host without emitting an
+// app_started event (for example, in short-lived mobile app extensions that
+// share the main app's profile directory).
+func (c *Controller) EnableProduct(product string) {
+	c.startProduct(product, false)
+}
+
 // StartProduct is called after the Engine acquires its exclusive profile lock.
 func (c *Controller) StartProduct(product string) {
+	c.startProduct(product, true)
+}
+
+func (c *Controller) startProduct(product string, emitStart bool) {
+	p := normalizeProduct(product)
 	c.control.Lock()
 	c.mu.Lock()
 	first := !c.analyticsReady
 	c.analyticsReady = true
+	if first {
+		c.analyticsProduct = p
+	}
 	cfg := c.cfg
 	c.mu.Unlock()
 	if first {
 		c.applyAnalytics(cfg)
 	}
 	c.control.Unlock()
-	if first {
-		c.ProductEvent(context.Background(), engine.ProductEvent{Name: "app_started", Product: product})
+	if first && emitStart {
+		c.ProductEvent(context.Background(), engine.ProductEvent{Name: "app_started", Product: p})
 	}
 }
 func (c *Controller) applyAnalytics(cfg Config) {
@@ -475,13 +509,14 @@ func (c *Controller) applyAnalytics(cfg Config) {
 	}
 	c.mu.Lock()
 	reset := c.identityReset
+	defaultProduct := c.analyticsProduct
 	c.mu.Unlock()
 	var err error
 	if reset {
 		err = clearAnalyticsIdentity(c.opts.Dir)
 	}
 	if err == nil {
-		g, err = c.newAnalytics()
+		g, err = c.newAnalytics(defaultProduct)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()

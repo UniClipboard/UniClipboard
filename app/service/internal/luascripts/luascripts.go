@@ -41,6 +41,7 @@ type Manifest struct {
 	Kind               string               `toml:"kind"`
 	Entry              string               `toml:"entry"`
 	Capabilities       []string             `toml:"capabilities"`
+	ProcessorStage     string               `toml:"processor_stage"`
 	Events             []string             `toml:"events"`
 	SettingsSchema     string               `toml:"settings_schema"`
 	SettingsSHA256     string               `toml:"settings_sha256"`
@@ -98,6 +99,7 @@ func (s Script) Same(o Script) bool {
 	a, b := s.Manifest, o.Manifest
 	return a.ID == b.ID && a.Version == b.Version && a.APIVersion == b.APIVersion &&
 		slices.Equal(sorted(a.Capabilities), sorted(b.Capabilities)) &&
+		plugin.EffectiveProcessorStage(a.ProcessorStage) == plugin.EffectiveProcessorStage(b.ProcessorStage) &&
 		slices.Equal(a.Events, b.Events) && s.Commit == o.Commit && schemaDigest(s.Schema) == schemaDigest(o.Schema)
 }
 
@@ -283,7 +285,7 @@ func Specs(root string, enabled []string, settings func(id string) (onError stri
 			return nil, nil, err
 		}
 		specs = append(specs, engine.LuaPluginSpec{ID: m.ID, Version: m.Version, APIVersion: m.APIVersion,
-			Capabilities: m.Capabilities, Source: s.Source, Config: cfg, Events: m.Events, OnError: onError})
+			Capabilities: m.Capabilities, ProcessorStage: m.ProcessorStage, Source: s.Source, Config: cfg, Events: m.Events, OnError: onError})
 	}
 	return specs, loaded, nil
 }

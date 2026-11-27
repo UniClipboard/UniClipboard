@@ -46,6 +46,14 @@ func (m Manifest) validate(installed bool) error {
 	if m.ImageFilesAsImages && (m.Kind != "go" || !m.ExternalChannels || !slices.Contains(m.Capabilities, plugin.CapSyncBackend)) {
 		return errors.New("image file projection requires an external Go sync backend")
 	}
+	switch m.ProcessorStage {
+	case "", plugin.ProcessorStageGuard, plugin.ProcessorStageAnnotate:
+	default:
+		return errors.New("invalid plugin processor stage")
+	}
+	if m.ProcessorStage != "" && !slices.Contains(m.Capabilities, plugin.CapProcessor) {
+		return errors.New("processor stage requires processor capability")
+	}
 	platforms := map[string]bool{}
 	for _, a := range m.Artifacts {
 		key := a.GOOS + "/" + a.GOARCH
@@ -92,5 +100,5 @@ func (m Manifest) validKind(installed bool) bool {
 
 func (m Manifest) PluginSpec() plugin.Spec {
 	return plugin.Spec{ID: m.ID, Version: m.Version, APIVersion: m.APIVersion, Capabilities: m.Capabilities,
-		SettingsSHA256: m.SettingsSHA256, Actions: m.Actions, Enricher: m.Enricher, TransportKind: m.TransportKind, ExternalChannels: m.ExternalChannels, RemoteRevocation: m.RemoteRevocation}
+		ProcessorStage: m.ProcessorStage, SettingsSHA256: m.SettingsSHA256, Actions: m.Actions, Enricher: m.Enricher, TransportKind: m.TransportKind, ExternalChannels: m.ExternalChannels, RemoteRevocation: m.RemoteRevocation}
 }

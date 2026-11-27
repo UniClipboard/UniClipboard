@@ -50,6 +50,8 @@ u alpha h list --tag sensitive
 ! logs beta hunter2-e2e
 -- alpha/config.toml --
 device_name = "alpha"
+[plugins.instances."builtin.security"]
+enabled = false
 -- beta/config.toml --
 device_name = "beta"
 -- plain.txt --

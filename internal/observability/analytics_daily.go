@@ -14,8 +14,24 @@ type dailyMarker struct {
 	Day      string `json:"day"`
 }
 
-const dailyMarkerFile = "analytics-remote-day"
-const dailyTemporaryFile = ".analytics-remote-day.tmp"
+type dailySlot struct {
+	markerFile string
+	tempFile   string
+	event      engine.ProductEvent
+	marked     string
+	pending    string
+	failed     bool
+}
+
+const (
+	dailySlotRemote = 0
+	dailySlotActive = 1
+
+	dailyMarkerFile          = "analytics-remote-day"
+	dailyTemporaryFile       = ".analytics-remote-day.tmp"
+	dailyActiveMarkerFile    = "analytics-active-day"
+	dailyActiveTemporaryFile = ".analytics-active-day.tmp"
+)
 
 func (c *Controller) now() time.Time {
 	if c.opts.Now != nil {
@@ -23,74 +39,99 @@ func (c *Controller) now() time.Time {
 	}
 	return time.Now()
 }
+
 func (g *analyticsGeneration) loadDaily() {
 	g.dailyWake = make(chan struct{}, 1)
 	g.dailyStop = make(chan struct{})
 	g.dailyDone = make(chan struct{})
+	g.daily = [2]dailySlot{
+		dailySlotRemote: {
+			markerFile: dailyMarkerFile,
+			tempFile:   dailyTemporaryFile,
+			event:      engine.ProductEvent{Name: "remote_content_applied", Result: "succeeded"},
+		},
+		dailySlotActive: {
+			markerFile: dailyActiveMarkerFile,
+			tempFile:   dailyActiveTemporaryFile,
+			event:      engine.ProductEvent{Name: "daily_active"},
+		},
+	}
 	root, err := os.OpenRoot(g.c.opts.Dir)
 	if err != nil {
-		g.dailyFailed = true
+		for i := range g.daily {
+			g.daily[i].failed = true
+		}
 		g.c.drop(3, 3, 1)
 		return
 	}
 	defer func() { _ = root.Close() }()
+	for i := range g.daily {
+		g.loadDailySlot(root, &g.daily[i])
+	}
+}
+
+func (g *analyticsGeneration) loadDailySlot(root *os.Root, slot *dailySlot) {
 	// The fixed reserved temporary name bounds crash residue to one file. The
 	// exclusive profile owner removes a stale temporary before daily admission.
-	if err := root.Remove(dailyTemporaryFile); err != nil && !os.IsNotExist(err) {
-		g.dailyFailed = true
+	if err := root.Remove(slot.tempFile); err != nil && !os.IsNotExist(err) {
+		slot.failed = true
 		g.c.drop(3, 3, 1)
 		return
 	}
-	info, err := root.Lstat(dailyMarkerFile)
+	info, err := root.Lstat(slot.markerFile)
 	if os.IsNotExist(err) {
 		return
 	}
 	if err != nil || !info.Mode().IsRegular() {
-		g.dailyFailed = true
+		slot.failed = true
 		g.c.drop(3, 3, 1)
 		return
 	}
-	f, err := root.Open(dailyMarkerFile)
+	f, err := root.Open(slot.markerFile)
 	if err != nil {
-		g.dailyFailed = true
+		slot.failed = true
 		g.c.drop(3, 3, 1)
 		return
 	}
 	defer func() { _ = f.Close() }()
 	actual, err := f.Stat()
 	if err != nil || !os.SameFile(info, actual) {
-		g.dailyFailed = true
+		slot.failed = true
 		g.c.drop(3, 3, 1)
 		return
 	}
 	var marker dailyMarker
 	data, err := io.ReadAll(io.LimitReader(f, 256))
 	if err != nil || json.Unmarshal(data, &marker) != nil || !validDay(marker.Day) {
-		g.dailyFailed = true
+		slot.failed = true
 		g.c.drop(3, 3, 1)
 		return
 	}
 	if marker.Identity == g.identity {
-		g.dailyMarked = marker.Day
+		slot.marked = marker.Day
 	}
 }
+
 func validDay(day string) bool {
 	v, err := time.Parse("2006-01-02", day)
 	return err == nil && v.Format("2006-01-02") == day
 }
-func (g *analyticsGeneration) notifyDaily() {
+
+func (g *analyticsGeneration) notifyDaily(slotIdx int) {
 	day := g.c.now().UTC().Format("2006-01-02")
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if !g.active || g.dailyFailed || day <= g.dailyMarked || day <= g.dailyPending {
+	slot := &g.daily[slotIdx]
+	if !g.active || slot.failed || day <= slot.marked || day <= slot.pending {
 		return
 	}
-	g.dailyPending = day
+	slot.pending = day
 	select {
 	case g.dailyWake <- struct{}{}:
 	default:
 	}
 }
+
 func (g *analyticsGeneration) dailyWorker() {
 	defer close(g.dailyDone)
 	for {
@@ -98,38 +139,42 @@ func (g *analyticsGeneration) dailyWorker() {
 		case <-g.dailyStop:
 			return
 		case <-g.dailyWake:
-			g.mu.Lock()
-			day := g.dailyPending
-			g.dailyPending = ""
-			admit := g.active && !g.dailyFailed && day > g.dailyMarked
-			if admit {
-				g.dailyMarked = day
+			for i := range g.daily {
+				g.mu.Lock()
+				slot := &g.daily[i]
+				day := slot.pending
+				slot.pending = ""
+				admit := g.active && !slot.failed && day > slot.marked
+				if admit {
+					slot.marked = day
+				}
+				markerFile, tempFile, ev := slot.markerFile, slot.tempFile, slot.event
+				g.mu.Unlock()
+				if !admit {
+					continue
+				}
+				if err := g.persistDailySlot(markerFile, tempFile, day); err != nil {
+					g.c.drop(3, 3, 1)
+					continue
+				}
+				// Persistence precedes enqueue. Loss never causes same-day replay.
+				g.enqueue(ev)
 			}
-			g.mu.Unlock()
-			if !admit {
-				continue
-			}
-			if err := g.persistDaily(day); err != nil {
-				g.c.drop(3, 3, 1)
-				continue
-			}
-			// Persistence precedes enqueue. Loss never causes same-day replay.
-			g.enqueue(engine.ProductEvent{Name: "remote_content_applied", Result: "succeeded"})
 		}
 	}
 }
-func (g *analyticsGeneration) persistDaily(day string) error {
+
+func (g *analyticsGeneration) persistDailySlot(markerFile, tempFile, day string) error {
 	root, err := os.OpenRoot(g.c.opts.Dir)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = root.Close() }()
-	temp := dailyTemporaryFile
-	f, err := root.OpenFile(temp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	f, err := root.OpenFile(tempFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = root.Remove(temp) }()
+	defer func() { _ = root.Remove(tempFile) }()
 	err = json.NewEncoder(f).Encode(dailyMarker{Identity: g.identity, Day: day})
 	if err == nil {
 		err = f.Sync()
@@ -139,10 +184,11 @@ func (g *analyticsGeneration) persistDaily(day string) error {
 		err = cerr
 	}
 	if err == nil {
-		err = root.Rename(temp, dailyMarkerFile)
+		err = root.Rename(tempFile, markerFile)
 	}
 	return err
 }
+
 func clearDailyMarker(dir string) error {
 	root, err := os.OpenRoot(dir)
 	if os.IsNotExist(err) {
@@ -153,7 +199,7 @@ func clearDailyMarker(dir string) error {
 	}
 	defer func() { _ = root.Close() }()
 	var failure error
-	for _, name := range []string{dailyTemporaryFile, dailyMarkerFile} {
+	for _, name := range []string{dailyTemporaryFile, dailyMarkerFile, dailyActiveTemporaryFile, dailyActiveMarkerFile} {
 		if err := root.Remove(name); err != nil && !os.IsNotExist(err) && failure == nil {
 			failure = err
 		}

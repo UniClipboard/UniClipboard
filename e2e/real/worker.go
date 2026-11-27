@@ -417,7 +417,7 @@ func (w *worker) configure(ctx context.Context, v installConfig) error {
 			return fmt.Errorf("plugin_write_failed")
 		}
 	}
-	config := fmt.Sprintf("device_name = %q\n[telemetry]\nenabled = false\n[plugins]\nlua = [\"example.lua-sensitive\", \"example.lua-emailtag\"]\n[plugins.instances.\"example.lua-emailtag\".config]\ntag = %q\n", "lab-"+w.name, "local-"+w.name)
+	config := fmt.Sprintf("device_name = %q\n[telemetry]\nenabled = false\n[plugins]\nlua = [\"example.lua-sensitive\", \"example.lua-emailtag\"]\n[plugins.instances.\"builtin.security\"]\nenabled = false\n[plugins.instances.\"example.lua-emailtag\".config]\ntag = %q\n", "lab-"+w.name, "local-"+w.name)
 	if err := os.WriteFile(filepath.Join(w.root, "state", "config.toml"), []byte(config), 0600); err != nil {
 		return fmt.Errorf("configuration_write_failed")
 	}
@@ -849,7 +849,7 @@ func (w *worker) handle(ctx context.Context, r request) (any, error) {
 		if !ok {
 			return nil, fmt.Errorf("invalid_policy")
 		}
-		cfg := fmt.Sprintf("device_name = %q\n[telemetry]\nenabled=false\n[plugins]\nlua=[\"example.lua-sensitive\",\"example.lua-emailtag\"]\n[plugins.instances.\"example.lua-emailtag\".config]\ntag=%q\n[plugins.instances.\"builtin.tailcat\".sync]\ntext=%t\n", "lab-"+w.name, "local-"+w.name, text)
+		cfg := fmt.Sprintf("device_name = %q\n[telemetry]\nenabled=false\n[plugins]\nlua=[\"example.lua-sensitive\",\"example.lua-emailtag\"]\n[plugins.instances.\"builtin.security\"]\nenabled=false\n[plugins.instances.\"example.lua-emailtag\".config]\ntag=%q\n[plugins.instances.\"builtin.tailcat\".sync]\ntext=%t\n", "lab-"+w.name, "local-"+w.name, text)
 		path := filepath.Join(w.root, "policy.toml")
 		if err = os.WriteFile(path, []byte(cfg), 0600); err != nil {
 			return nil, fmt.Errorf("policy_write_failed")
@@ -873,7 +873,7 @@ func (w *worker) handle(ctx context.Context, r request) (any, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid_request")
 		}
-		cfg := fmt.Sprintf("device_name = %q\n[telemetry]\nenabled=false\n[plugins]\nlua=[\"example.lua-sensitive\",\"example.lua-emailtag\"]\n[plugins.instances.\"example.lua-emailtag\".config]\ntag=%q\n[plugins.instances.\"builtin.tailcat\".sync]\ntext=%t\nimages=%t\nfiles=%t\n",
+		cfg := fmt.Sprintf("device_name = %q\n[telemetry]\nenabled=false\n[plugins]\nlua=[\"example.lua-sensitive\",\"example.lua-emailtag\"]\n[plugins.instances.\"builtin.security\"]\nenabled=false\n[plugins.instances.\"example.lua-emailtag\".config]\ntag=%q\n[plugins.instances.\"builtin.tailcat\".sync]\ntext=%t\nimages=%t\nfiles=%t\n",
 			"lab-"+w.name, "local-"+w.name, v.Text, v.Images, v.Files)
 		path := filepath.Join(w.root, "channel-policy.toml")
 		if err = os.WriteFile(path, []byte(cfg), 0600); err != nil {

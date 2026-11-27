@@ -1577,5 +1577,9 @@ class UnicEngineModule : Module() {
     AsyncFunction("cleanAndroidUpdateCache") { keepVersionKey: String? ->
       appUpdateManager.cleanCache(appContextOrThrow(), keepVersionKey)
     }.runOnQueue(updateScope)
+
+    Function("hideAndroidSplashScreen") {
+      AndroidSplashController.hide()
+    }
   }
 }

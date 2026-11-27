@@ -49,6 +49,15 @@ final class KeyboardViewController: UIInputViewController {
     view.backgroundColor = .clear
     view.showsVerticalScrollIndicator = false
     view.alwaysBounceVertical = true
+    view.contentInsetAdjustmentBehavior = .never
+    #if compiler(>=6.2)
+    if #available(iOS 26.0, *) {
+      view.topEdgeEffect.isHidden = true
+      view.bottomEdgeEffect.isHidden = true
+      view.leftEdgeEffect.isHidden = true
+      view.rightEdgeEffect.isHidden = true
+    }
+    #endif
     view.delegate = self
     view.register(KeyboardListRowCell.self, forCellWithReuseIdentifier: KeyboardListRowCell.reuseIdentifier)
     view.register(KeyboardImageTileCell.self, forCellWithReuseIdentifier: KeyboardImageTileCell.reuseIdentifier)

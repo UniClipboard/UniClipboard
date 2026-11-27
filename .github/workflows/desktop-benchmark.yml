@@ -1,5 +1,8 @@
 name: Desktop resource benchmark
 on:
+  schedule:
+    # Nightly at 19:00 UTC (03:00 Asia/Shanghai)
+    - cron: '0 19 * * *'
   workflow_dispatch:
     inputs:
       suite:
@@ -45,33 +48,68 @@ on:
           - darwin-amd64
           - windows-amd64
           - windows-arm64
+      publish_pages:
+        description: Publish dashboard to GitHub Pages (/bench/)
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: desktop-benchmark-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   prepare:
     name: Select benchmark targets
+    if: ${{ github.event_name != 'schedule' || github.repository == 'UniClipboard/UniClipboard' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
+      suite: ${{ steps.matrix.outputs.suite }}
+      track: ${{ steps.matrix.outputs.track }}
+      dataset: ${{ steps.matrix.outputs.dataset }}
+      profile: ${{ steps.matrix.outputs.profile }}
+      repetitions: ${{ steps.matrix.outputs.repetitions }}
+      target: ${{ steps.matrix.outputs.target }}
     steps:
       - id: matrix
         env:
+          BENCH_SUITE_INPUT: ${{ inputs.suite }}
+          BENCH_TRACK_INPUT: ${{ inputs.track }}
+          BENCH_DATASET_INPUT: ${{ inputs.dataset }}
+          BENCH_PROFILE_INPUT: ${{ inputs.profile }}
+          BENCH_REPETITIONS_INPUT: ${{ inputs.repetitions }}
           BENCH_TARGET_INPUT: ${{ inputs.target }}
         shell: bash
         run: |
           set -euo pipefail
-          matrix=$(python3 -c '
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json, os, sys
+
+          def clean_value(name: str, default: str) -> str:
+              val = os.environ.get(name, "").strip()
+              if "\n" in val or "\r" in val:
+                  sys.stderr.write(f"invalid multiline input in {name}\n")
+                  sys.exit(1)
+              return val or default
+
+          suite = clean_value("BENCH_SUITE_INPUT", "all")
+          track = clean_value("BENCH_TRACK_INPUT", "both")
+          dataset = clean_value("BENCH_DATASET_INPUT", "")
+          profile = clean_value("BENCH_PROFILE_INPUT", "default")
+          repetitions = clean_value("BENCH_REPETITIONS_INPUT", "3")
+          sel = clean_value("BENCH_TARGET_INPUT", "all")
+
           all_targets = [
               {"runner": "macos-15", "target": "darwin-arm64"},
               {"runner": "macos-15-intel", "target": "darwin-amd64"},
               {"runner": "windows-2025", "target": "windows-amd64"},
               {"runner": "windows-11-arm", "target": "windows-arm64"},
           ]
-          sel = os.environ.get("BENCH_TARGET_INPUT", "all").strip() or "all"
           if sel == "all":
               chosen = all_targets
           else:
@@ -79,18 +117,25 @@ jobs:
           if not chosen:
               sys.stderr.write(f"unknown target selection: {sel!r}\n")
               sys.exit(1)
-          print(json.dumps({"include": chosen}, separators=(",", ":")))
-          ')
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+          matrix = json.dumps({"include": chosen}, separators=(",", ":"))
+          print(f"matrix={matrix}")
+          print(f"suite={suite}")
+          print(f"track={track}")
+          print(f"dataset={dataset}")
+          print(f"profile={profile}")
+          print(f"repetitions={repetitions}")
+          print(f"target={sel}")
+          PY
   benchmark:
     needs: prepare
     env:
       CGO_ENABLED: ${{ matrix.target == 'windows-arm64' && '0' || '1' }}
-      BENCH_SUITE: ${{ inputs.suite }}
-      BENCH_TRACK: ${{ inputs.track }}
-      BENCH_DATASET: ${{ inputs.dataset }}
-      BENCH_PROFILE: ${{ inputs.profile }}
-      BENCH_REPETITIONS: ${{ inputs.repetitions }}
+      BENCH_SUITE: ${{ needs.prepare.outputs.suite }}
+      BENCH_TRACK: ${{ needs.prepare.outputs.track }}
+      BENCH_DATASET: ${{ needs.prepare.outputs.dataset }}
+      BENCH_PROFILE: ${{ needs.prepare.outputs.profile }}
+      BENCH_REPETITIONS: ${{ needs.prepare.outputs.repetitions }}
       BENCH_TARGET: ${{ matrix.target }}
     timeout-minutes: 60
     strategy:
@@ -160,14 +205,18 @@ jobs:
         with:
           name: desktop-benchmark-${{ matrix.target }}
           path: .build/bench/${{ matrix.target }}
+          retention-days: 30
           include-hidden-files: true
           if-no-files-found: warn
   dashboard:
     name: Render cross-platform benchmark dashboard
     needs: benchmark
-    if: always()
+    if: ${{ always() && needs.benchmark.result != 'skipped' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      has_dashboard: ${{ steps.render.outputs.has_dashboard }}
+      targets: ${{ steps.render.outputs.targets }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -180,27 +229,166 @@ jobs:
           pattern: desktop-benchmark-*
           path: .build/bench-artifacts
           merge-multiple: false
-      - name: Render merged HTML dashboard
+      - id: render
+        name: Render merged HTML dashboard
         shell: bash
         run: |
           set -euo pipefail
           mapfile -t reports < <(find .build/bench-artifacts -type f -name 'report.json' | sort)
           if [[ "${#reports[@]}" -eq 0 ]]; then
             echo "No report.json artifacts found; skipping dashboard render."
+            echo "has_dashboard=false" >> "${GITHUB_OUTPUT}"
+            echo "targets=" >> "${GITHUB_OUTPUT}"
             exit 0
           fi
           mkdir -p .build/bench/dashboard
           args=(render --out .build/bench/dashboard/index.html --title "Desktop Resource Benchmark Dashboard")
+          labels=()
           for r in "${reports[@]}"; do
             dir_name="$(basename "$(dirname "$r")")"
             label="${dir_name#desktop-benchmark-}"
+            labels+=("${label}")
             args+=(--in "$r" --label "$label")
           done
           go run ./tools/bench/cmd/unic-bench "${args[@]}"
+          dashboard_sha256="$(sha256sum .build/bench/dashboard/index.html | awk '{print $1}')"
+          targets_csv="$(IFS=,; echo "${labels[*]}")"
+          echo "has_dashboard=true" >> "${GITHUB_OUTPUT}"
+          echo "targets=${targets_csv}" >> "${GITHUB_OUTPUT}"
+          if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+            {
+              echo "## Merged Desktop Resource Benchmark Dashboard"
+              echo ""
+              echo "- **Targets**: \`${targets_csv}\`"
+              echo "- **Dashboard SHA-256**: \`${dashboard_sha256}\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: desktop-benchmark-dashboard
           path: .build/bench/dashboard
+          retention-days: 30
           include-hidden-files: true
           if-no-files-found: warn
+  publish:
+    name: Publish benchmark dashboard to GitHub Pages
+    needs: [benchmark, dashboard]
+    if: ${{ github.repository == 'UniClipboard/UniClipboard' && github.ref == 'refs/heads/main' && needs.dashboard.outputs.has_dashboard == 'true' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.publish_pages == true)) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pages: write
+    concurrency:
+      group: gh-pages-bench-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-benchmark-dashboard
+          path: .build/bench-dashboard
+      - uses: actions/checkout@v6
+        with:
+          ref: gh-pages
+          path: .build/gh-pages
+          fetch-depth: 1
+          persist-credentials: true
+      - id: publish_push
+        name: Publish /bench/ and push gh-pages
+        env:
+          BENCH_RUN_ID: ${{ github.run_id }}
+          BENCH_COMMIT: ${{ github.sha }}
+          BENCH_BRANCH: ${{ github.ref_name }}
+          BENCH_EVENT: ${{ github.event_name }}
+          BENCH_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BENCH_TARGETS: ${{ needs.dashboard.outputs.targets }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .build/bench
+          publish_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git -C .build/gh-pages config user.name "github-actions[bot]"
+          git -C .build/gh-pages config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          pushed=false
+          for attempt in 1 2 3; do
+            python3 tools/bench/ci/publish_pages.py \
+              --pages-dir .build/gh-pages \
+              --dashboard-html .build/bench-dashboard/index.html \
+              --run-id "${BENCH_RUN_ID}" \
+              --timestamp "${publish_ts}" \
+              --commit "${BENCH_COMMIT}" \
+              --branch "${BENCH_BRANCH}" \
+              --event "${BENCH_EVENT}" \
+              --run-url "${BENCH_RUN_URL}" \
+              --targets "${BENCH_TARGETS}" \
+              --max-runs 30 \
+              --summary-out .build/bench/publish-summary.md
+
+            python3 - <<'PY'
+          import subprocess, sys
+          raw = subprocess.check_output(["git", "-C", ".build/gh-pages", "status", "--porcelain", "-z"])
+          entries = [e for e in raw.split(b"\0") if e]
+          for entry in entries:
+              path = entry[3:].decode("utf-8", errors="strict")
+              if not path.startswith("bench/"):
+                  sys.stderr.write(f"refusing dirty path outside bench/: {path!r}\n")
+                  sys.exit(1)
+          PY
+
+            git -C .build/gh-pages add -A -- bench/
+            staged="$(git -C .build/gh-pages diff --cached --name-only)"
+            if [[ -z "${staged}" ]]; then
+              echo "No changes under bench/; skipping commit and push."
+              pushed=false
+              break
+            fi
+
+            python3 - <<'PY'
+          import subprocess, sys
+          raw = subprocess.check_output(["git", "-C", ".build/gh-pages", "diff", "--cached", "--name-only", "-z"])
+          for item in [p for p in raw.split(b"\0") if p]:
+              path = item.decode("utf-8", errors="strict")
+              if not path.startswith("bench/"):
+                  sys.stderr.write(f"refusing staged path outside bench/: {path!r}\n")
+                  sys.exit(1)
+          PY
+
+            git -C .build/gh-pages commit -m "chore(bench): publish desktop benchmark dashboard (run ${BENCH_RUN_ID})"
+            if git -C .build/gh-pages push origin HEAD:gh-pages; then
+              pushed=true
+              break
+            fi
+
+            if [[ "${attempt}" -lt 3 ]]; then
+              echo "Non-fast-forward rejection on attempt ${attempt}; fetching origin/gh-pages and regenerating."
+              git -C .build/gh-pages fetch origin gh-pages
+              git -C .build/gh-pages reset --hard origin/gh-pages
+              git -C .build/gh-pages clean -fd -- bench
+            else
+              echo "failed to push gh-pages after 3 attempts" >&2
+              exit 1
+            fi
+          done
+
+          if [[ -f .build/bench/publish-summary.md && -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+            cat .build/bench/publish-summary.md >> "${GITHUB_STEP_SUMMARY}"
+          fi
+          echo "pushed=${pushed}" >> "${GITHUB_OUTPUT}"
+      - name: Trigger GitHub Pages build
+        if: ${{ steps.publish_push.outputs.pushed == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body -sS -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages/builds"

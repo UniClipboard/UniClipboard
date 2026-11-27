@@ -53,6 +53,7 @@
       "preparing": "Preparing…",
       "sending": "Sending",
       "confirming": "Waiting for confirmation…",
+      "relay_stored": "Stored on relay",
       "success": "Sent",
       "failed": "Send failed",
       "unconfirmed": "Delivery unconfirmed"
@@ -71,6 +72,7 @@
     "textHint": "Enter text to save or send…",
     "targets": "Choose devices. With none selected, sync settings determine the targets.",
     "connected": "Connected",
+    "relayReady": "Ready via relay",
     "offline": "Offline or connecting",
     "noTargets": "No paired devices. Content will be saved to this device.",
     "commitText": "Save and send text",

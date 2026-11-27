@@ -18,11 +18,12 @@ import (
 
 // Spec is what the host declares; the script's table must agree with it.
 type Spec struct {
-	ID           string
-	Version      string
-	APIVersion   int
-	Capabilities []string
-	Source       string
+	ID             string
+	Version        string
+	APIVersion     int
+	Capabilities   []string
+	ProcessorStage string
+	Source         string
 }
 
 // Failure categories surfaced to the engine.
@@ -133,10 +134,11 @@ func (b *base) load(ctx context.Context, src string) (*lua.Sandbox, *lua.LTable,
 	}
 	slices.Sort(caps)
 	want := slices.Sorted(slices.Values(b.spec.Capabilities))
-	if str("id") != b.spec.ID || str("version") != b.spec.Version || num("api_version") != b.spec.APIVersion || !slices.Equal(caps, want) {
+	if str("id") != b.spec.ID || str("version") != b.spec.Version || num("api_version") != b.spec.APIVersion || !slices.Equal(caps, want) ||
+		plugin.EffectiveProcessorStage(str("processor_stage")) != plugin.EffectiveProcessorStage(b.spec.ProcessorStage) {
 		return fail(fmt.Errorf("%w: plugin table does not match its declaration", ErrFailed))
 	}
-	ps := plugin.Spec{ID: b.spec.ID, Version: b.spec.Version, APIVersion: b.spec.APIVersion, Capabilities: slices.Clone(b.spec.Capabilities)}
+	ps := plugin.Spec{ID: b.spec.ID, Version: b.spec.Version, APIVersion: b.spec.APIVersion, Capabilities: slices.Clone(b.spec.Capabilities), ProcessorStage: b.spec.ProcessorStage}
 	if slices.Contains(want, plugin.CapAction) {
 		at, _ := t.RawGetString("actions").(*lua.LTable)
 		if at != nil {

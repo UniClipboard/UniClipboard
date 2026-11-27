@@ -769,6 +769,7 @@ func (l *liveState) loadHistory(d *viewState, more bool) {
 							revision:         b.Revision,
 							lastActive:       formatLastActiveMs(b.LastActiveMs),
 							lastError:        b.LastError,
+							relayRouteReady:  b.RelayRouteReady,
 						})
 					}
 					d.devices = append(d.devices, device{
@@ -1235,6 +1236,14 @@ func (d *viewState) saveLiveConfig(cfg config.Config) {
 	d.saveLiveConfigThen(cfg, nil)
 }
 func (d *viewState) saveLiveConfigThen(cfg config.Config, after func()) {
+	d.saveLiveConfigTOMLThen(cfg, false, after)
+}
+
+func (d *viewState) clearLiveRelayAccessKey(cfg config.Config, after func()) {
+	d.saveLiveConfigTOMLThen(cfg, true, after)
+}
+
+func (d *viewState) saveLiveConfigTOMLThen(cfg config.Config, clearRelayAccessKey bool, after func()) {
 	if d.live.busy {
 		return
 	}
@@ -1256,12 +1265,24 @@ func (d *viewState) saveLiveConfigThen(cfg config.Config, after func()) {
 		}
 	}
 	d.mutate(func(ctx context.Context) error {
-		var buf bytes.Buffer
-		if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
-			rollback(ctx)
-			return err
+		var raw []byte
+		if clearRelayAccessKey {
+			cfg.Sync.Relay.AccessKey = ""
+			var err error
+			raw, err = config.Set(cfg, "sync.relay.access_key", `""`)
+			if err != nil {
+				rollback(ctx)
+				return err
+			}
+		} else {
+			var buf bytes.Buffer
+			if err := toml.NewEncoder(&buf).Encode(cfg); err != nil {
+				rollback(ctx)
+				return err
+			}
+			raw = buf.Bytes()
 		}
-		state, err := client.SaveConfig(ctx, revision, buf.Bytes())
+		state, err := client.SaveConfig(ctx, revision, raw)
 		if err == nil {
 			// Publish the saved snapshot before mutate enables another write.
 			// Waiting for a later history refresh can expose the old switch
@@ -1299,6 +1320,11 @@ func (d *viewState) projectLiveConfig() {
 	d.options["autoSync"] = c.Sync.Automatic
 	d.options["restore"] = c.Sync.OnRestore
 	d.options["telemetry"] = c.Telemetry.Enabled
+	if c.Sync.Relay.URL != d.relay.urlSynced {
+		d.relay.urlDraft = c.Sync.Relay.URL
+		d.relay.urlSynced = c.Sync.Relay.URL
+		d.relay.urlErr = ""
+	}
 }
 func (d *viewState) newLiveCode() {
 	if d.live.busy || d.live.pairingBackend == "" {

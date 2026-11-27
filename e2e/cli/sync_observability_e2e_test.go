@@ -133,15 +133,18 @@ func TestSyncObservability(t *testing.T) {
 		if b.eventCount("remote_content_applied") != 1 {
 			t.Fatal("same UTC day admitted after restart")
 		}
+		if b.eventCount("daily_active") != 1 {
+			t.Fatalf("same UTC day daily_active=%d after restart, want 1", b.eventCount("daily_active"))
+		}
 		syncControl(t, b, "next-day")
 		a.cli(t, "dev", "copy", "0020-next-utc-day")
-		b.eventually(t, func() bool { return b.eventCount("remote_content_applied") == 2 })
+		b.eventually(t, func() bool { return b.eventCount("remote_content_applied") == 2 && b.eventCount("daily_active") == 2 })
 	})
 
 	a.run(t, "analytics-disable-and-identity-rotation", func(t *testing.T) {
 		previous := b.analytics()[len(b.analytics())-1]["distinct_id"]
 		b.cli(t, "config", "set", "telemetry.analytics.enabled", "false")
-		for _, name := range []string{"analytics-id", "analytics-remote-day", ".analytics-remote-day.tmp"} {
+		for _, name := range []string{"analytics-id", "analytics-remote-day", ".analytics-remote-day.tmp", "analytics-active-day", ".analytics-active-day.tmp"} {
 			if _, err := os.Lstat(filepath.Join(b.home, name)); !os.IsNotExist(err) {
 				t.Fatal("analytics private state retained on disable")
 			}

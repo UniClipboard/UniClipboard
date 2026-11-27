@@ -1,0 +1,1700 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light" data-seed="baseline">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UniClipboard · 移动端混合中转设置原型（iOS insetGrouped & Android M3 Expressive）</title>
+<!--
+  High-fidelity interactive HTML prototype for Mobile Hybrid Relay Settings (0036):
+    - iOS: SwiftUI insetGrouped NetworkPage + SettingFieldSheet + SendSheet.ios.tsx
+    - Android: Material 3 Expressive NetworkSection + SettingsHeroCard + SettingsFieldDialog + SendSheet.tsx
+  Strictly aligns with 0036-hybrid-e2ee-relay-and-p2p-handoff.md & hybrid-relay-contract.md.
+  Open directly in any browser. Zero external dependencies.
+-->
+<style>
+:root {
+  /* External Workbench Tokens */
+  --stage-bg: #e8eaef;
+  --bar-bg: rgba(255,255,255,.88);
+  --bar-border: #dce0e8;
+  --bar-text: #1b1d22;
+  --bar-muted: #667080;
+  --bar-faint: #949ca8;
+  --bar-surface: #f2f4f8;
+  --bar-accent: #15171c;
+  --bar-on-accent: #ffffff;
+  --card-bg: #ffffff;
+  --card-shadow: 0 18px 44px -14px rgba(15,23,42,.16), 0 0 0 .5px rgba(0,0,0,.08);
+
+  /* iOS Native Semantic Tokens (from prototype/setup-ios.html & colors.ios.ts) */
+  --ios-bg: #ffffff;
+  --ios-grouped-bg: #f2f2f7;
+  --ios-card: #ffffff;
+  --ios-fill-primary: rgba(120,120,128,.20);
+  --ios-fill-secondary: rgba(120,120,128,.16);
+  --ios-fill-tertiary: rgba(118,118,128,.12);
+  --ios-fill-quaternary: rgba(116,116,128,.08);
+  --ios-label: #000000;
+  --ios-secondary-label: rgba(60,60,67,.60);
+  --ios-tertiary-label: rgba(60,60,67,.30);
+  --ios-separator: rgba(60,60,67,.22);
+  --ios-accent: #15171c;
+  --ios-on-accent: #ffffff;
+  --ios-blue: #007aff;
+  --ios-green: #34c759;
+  --ios-status-green: #248a3d;
+  --ios-green-bg: #e6f4ea;
+  --ios-green-text: #1b5e20;
+  --ios-orange: #ff9500;
+  --ios-status-orange: #c93400;
+  --ios-orange-bg: #fff4e5;
+  --ios-orange-text: #8c5400;
+  --ios-orange-border: #ffe0b2;
+  --ios-red: #ff3b30;
+  --ios-red-bg: #f9dedc;
+  --ios-red-text: #8c1d18;
+  --ios-red-border: #f2b8b5;
+  --ios-teal: #0891b2;
+  --ios-teal-bg: #e0f7fa;
+  --ios-teal-text: #0e7490;
+  --ios-glass-bg: rgba(255,255,255,.74);
+  --ios-glass-border: rgba(0,0,0,.07);
+  --ios-glass-shadow: 0 8px 24px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.85);
+  --ios-sheet-bg: #f2f2f7;
+  --ios-backdrop: rgba(0,0,0,.38);
+
+  /* Android Material 3 Expressive Baseline Light (from prototype/setup-android.html) */
+  --m3-primary: #6750a4;
+  --m3-on-primary: #ffffff;
+  --m3-primary-container: #eaddff;
+  --m3-on-primary-container: #21005d;
+  --m3-bg: #fef7ff;
+  --m3-surface-lowest: #ffffff;
+  --m3-surface-low: #f7f2fa;
+  --m3-surface-mid: #f3edf7;
+  --m3-surface-high: #ece6f0;
+  --m3-surface-highest: #e6e0e9;
+  --m3-on-surface: #1d1b20;
+  --m3-on-surface-variant: #49454f;
+  --m3-outline: #79747e;
+  --m3-outline-variant: #cac4d0;
+  --m3-ripple: rgba(29,27,32,.09);
+  --m3-scrim: rgba(0,0,0,.40);
+  --m3-error: #b3261e;
+  --m3-error-container: #f9dedc;
+  --m3-on-error-container: #410e0b;
+  --m3-warning: #8b5000;
+  --m3-warning-container: #ffdcbe;
+  --m3-on-warning-container: #2c1600;
+  --m3-success: #146c2e;
+  --m3-success-container: #c4efc6;
+  --m3-on-success-container: #002107;
+  --m3-info: #0b57d0;
+  --m3-info-container: #d3e3fd;
+  --m3-on-info-container: #041e49;
+  --m3-relay-container: #cffafe;
+  --m3-on-relay-container: #083344;
+  --m3-relay: #0e7490;
+}
+
+/* Android Material You Seeds (Light) */
+[data-seed="ocean"] {
+  --m3-primary: #1c5fa8; --m3-on-primary: #ffffff;
+  --m3-primary-container: #d4e3ff; --m3-on-primary-container: #001c3a;
+  --m3-bg: #f8f9ff; --m3-surface-low: #f2f4fa; --m3-surface-mid: #eceef5;
+  --m3-surface-high: #e6e8ef; --m3-surface-highest: #e0e3ea;
+  --m3-on-surface: #191c20; --m3-on-surface-variant: #43474e;
+  --m3-outline: #74777f; --m3-outline-variant: #c3c6cf;
+}
+[data-seed="sage"] {
+  --m3-primary: #35693e; --m3-on-primary: #ffffff;
+  --m3-primary-container: #b7f1ba; --m3-on-primary-container: #002109;
+  --m3-bg: #f7fbf2; --m3-surface-low: #f1f5ec; --m3-surface-mid: #ebefe6;
+  --m3-surface-high: #e5eae1; --m3-surface-highest: #e0e4db;
+  --m3-on-surface: #181d17; --m3-on-surface-variant: #424940;
+  --m3-outline: #72796f; --m3-outline-variant: #c2c9bd;
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+  --stage-bg: #0d0e11;
+  --bar-bg: rgba(24,25,29,.90);
+  --bar-border: #2b2e36;
+  --bar-text: #eceef2;
+  --bar-muted: #9aa1ad;
+  --bar-faint: #68707d;
+  --bar-surface: #23262d;
+  --bar-accent: #f4f2ee;
+  --bar-on-accent: #15171c;
+  --card-bg: #191b20;
+  --card-shadow: 0 20px 50px -12px rgba(0,0,0,.65), 0 0 0 .5px rgba(255,255,255,.08);
+
+  --ios-bg: #000000;
+  --ios-grouped-bg: #000000;
+  --ios-card: #1c1c1e;
+  --ios-fill-primary: rgba(120,120,128,.36);
+  --ios-fill-secondary: rgba(120,120,128,.32);
+  --ios-fill-tertiary: rgba(118,118,128,.24);
+  --ios-fill-quaternary: rgba(116,116,128,.18);
+  --ios-label: #ffffff;
+  --ios-secondary-label: rgba(235,235,245,.60);
+  --ios-tertiary-label: rgba(235,235,245,.30);
+  --ios-separator: rgba(84,84,88,.65);
+  --ios-accent: #f4f2ee;
+  --ios-on-accent: #15171c;
+  --ios-blue: #0a84ff;
+  --ios-green: #30d158;
+  --ios-status-green: #30d158;
+  --ios-green-bg: #14331d;
+  --ios-green-text: #a5d6a7;
+  --ios-orange: #ff9f0a;
+  --ios-status-orange: #ff9f0a;
+  --ios-orange-bg: #3b2a0f;
+  --ios-orange-text: #ffd58a;
+  --ios-orange-border: rgba(255,159,10,.35);
+  --ios-red: #ff453a;
+  --ios-red-bg: #4a1513;
+  --ios-red-text: #f9dedc;
+  --ios-red-border: rgba(242,184,181,.35);
+  --ios-teal: #22d3ee;
+  --ios-teal-bg: rgba(6,182,212,.22);
+  --ios-teal-text: #67e8f9;
+  --ios-glass-bg: rgba(44,44,46,.74);
+  --ios-glass-border: rgba(255,255,255,.12);
+  --ios-glass-shadow: 0 10px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.12);
+  --ios-sheet-bg: #1c1c1e;
+  --ios-backdrop: rgba(0,0,0,.62);
+
+  --m3-primary: #d0bcff;
+  --m3-on-primary: #381e72;
+  --m3-primary-container: #4f378b;
+  --m3-on-primary-container: #eaddff;
+  --m3-bg: #141218;
+  --m3-surface-lowest: #0f0d13;
+  --m3-surface-low: #1d1b20;
+  --m3-surface-mid: #211f26;
+  --m3-surface-high: #2b2930;
+  --m3-surface-highest: #36343b;
+  --m3-on-surface: #e6e0e9;
+  --m3-on-surface-variant: #cac4d0;
+  --m3-outline: #938f99;
+  --m3-outline-variant: #49454f;
+  --m3-ripple: rgba(230,224,233,.12);
+  --m3-scrim: rgba(0,0,0,.62);
+  --m3-error: #f2b8b5;
+  --m3-error-container: #8c1d18;
+  --m3-on-error-container: #f9dedc;
+  --m3-warning: #ffb870;
+  --m3-warning-container: #693c00;
+  --m3-on-warning-container: #ffdcbe;
+  --m3-success: #88d98e;
+  --m3-success-container: #00531d;
+  --m3-on-success-container: #c4efc6;
+  --m3-info: #a8c7fa;
+  --m3-info-container: #0842a0;
+  --m3-on-info-container: #d3e3fd;
+  --m3-relay-container: #164e63;
+  --m3-on-relay-container: #cffafe;
+  --m3-relay: #67e8f9;
+}
+[data-theme="dark"][data-seed="ocean"] {
+  --m3-primary: #a5c8ff; --m3-on-primary: #00315f;
+  --m3-primary-container: #004786; --m3-on-primary-container: #d4e3ff;
+  --m3-bg: #111318; --m3-surface-low: #191c20; --m3-surface-mid: #1d2024;
+  --m3-surface-high: #282a2f; --m3-surface-highest: #33353a;
+  --m3-on-surface: #e2e2e9; --m3-on-surface-variant: #c3c6cf;
+  --m3-outline: #8d9199; --m3-outline-variant: #43474e;
+}
+[data-theme="dark"][data-seed="sage"] {
+  --m3-primary: #9cd49f; --m3-on-primary: #003914;
+  --m3-primary-container: #1c5128; --m3-on-primary-container: #b7f1ba;
+  --m3-bg: #101510; --m3-surface-low: #181d17; --m3-surface-mid: #1c211b;
+  --m3-surface-high: #262b25; --m3-surface-highest: #313630;
+  --m3-on-surface: #e0e4db; --m3-on-surface-variant: #c2c9bd;
+  --m3-outline: #8c9388; --m3-outline-variant: #424940;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body {
+  margin: 0;
+  background: var(--stage-bg);
+  color: var(--bar-text);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Roboto", "PingFang SC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background .2s, color .2s;
+}
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+svg { display: block; flex: none; }
+a { color: inherit; text-decoration: none; }
+code {
+  font: 11px ui-monospace, "SF Mono", Menlo, monospace;
+  background: var(--bar-surface);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--bar-text);
+}
+
+/* ---------------- Top Review Control Bar ---------------- */
+.toolbar {
+  position: sticky; top: 0; z-index: 40;
+  display: flex; flex-direction: column; gap: 7px;
+  padding: 10px 22px;
+  background: var(--bar-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--bar-border);
+}
+.toolbar .line { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.toolbar b { font-size: 13.5px; }
+.platform-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px;
+  background: var(--bar-accent); color: var(--bar-on-accent); font-size: 11px; font-weight: 600;
+}
+.grp { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.lbl { color: var(--bar-muted); font-size: 11.5px; margin-right: 3px; }
+.chip {
+  border: 1px solid var(--bar-border); background: var(--card-bg); color: var(--bar-text);
+  padding: 3px 10px; border-radius: 999px; font-size: 11.5px; transition: all .14s;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.chip:hover { background: var(--bar-surface); }
+.chip.on { background: var(--bar-accent); border-color: var(--bar-accent); color: var(--bar-on-accent); font-weight: 500; }
+.tb-sp { flex: 1; }
+
+/* ---------------- Stage Layout ---------------- */
+.stage {
+  display: flex; gap: 32px; justify-content: center; align-items: flex-start;
+  padding: 24px 22px 64px; flex-wrap: wrap;
+}
+.companion-col {
+  width: 398px; max-width: 100%;
+  display: flex; flex-direction: column; gap: 18px;
+}
+
+/* ---------------- Phone Bezels (iOS & Android) ---------------- */
+.bezel-ios {
+  width: 417px; padding: 12px; border-radius: 56px; flex: none;
+  background: linear-gradient(155deg,#2a2c31 0%,#141518 55%,#22242a 100%);
+  box-shadow: 0 32px 72px -18px rgba(0,0,0,.42), 0 0 0 1px rgba(255,255,255,.14) inset;
+}
+.phone-ios {
+  width: 393px; height: 820px; border-radius: 45px; overflow: hidden; position: relative;
+  background: var(--ios-grouped-bg); color: var(--ios-label);
+  display: flex; flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", sans-serif;
+}
+
+.bezel-and {
+  width: 424px; padding: 12px; border-radius: 46px; flex: none;
+  background: linear-gradient(155deg,#2e2e32 0%,#151518 55%,#252529 100%);
+  box-shadow: 0 32px 72px -18px rgba(0,0,0,.42), 0 0 0 1px rgba(255,255,255,.12) inset;
+}
+.phone-and {
+  width: 400px; height: 836px; border-radius: 35px; overflow: hidden; position: relative;
+  background: var(--m3-bg); color: var(--m3-on-surface);
+  display: flex; flex-direction: column;
+  font-family: "Roboto", "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+}
+
+/* Status Bars */
+.ios-status {
+  height: 54px; padding: 16px 28px 0; display: flex; align-items: center; justify-content: space-between;
+  flex: none; position: relative; z-index: 5; user-select: none;
+}
+.ios-time { font-size: 15px; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.island {
+  position: absolute; left: 50%; top: 11px; transform: translateX(-50%);
+  width: 120px; height: 34px; border-radius: 20px; background: #000;
+  display: flex; align-items: center; justify-content: flex-end; padding-right: 10px;
+}
+.island .cam { width: 10px; height: 10px; border-radius: 50%; background: radial-gradient(circle at 35% 35%,#273c68,#0c101d 65%); }
+.ios-ind { display: flex; align-items: center; gap: 6px; }
+.ios-ind svg { height: 12px; width: auto; }
+.home-ind { height: 22px; flex: none; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 7px; }
+.home-ind i { width: 134px; height: 5px; border-radius: 999px; background: var(--ios-label); opacity: .82; display: block; }
+
+.and-status {
+  height: 40px; padding: 8px 22px 0; display: flex; align-items: center; justify-content: space-between;
+  flex: none; position: relative; z-index: 5; user-select: none; font-size: 13px; font-weight: 500;
+}
+.punch {
+  position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
+  width: 18px; height: 18px; border-radius: 50%; background: #09090b;
+  box-shadow: inset 0 0 0 2px #1c1d22;
+}
+.and-ind { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; }
+.and-ind svg { height: 12px; width: auto; }
+.gesture-bar { height: 22px; flex: none; display: flex; align-items: center; justify-content: center; }
+.gesture-bar i { width: 108px; height: 4px; border-radius: 999px; background: var(--m3-on-surface); opacity: .38; display: block; }
+
+/* ---------------- iOS SwiftUI insetGrouped Components ---------------- */
+.ios-nav {
+  height: 48px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between;
+  flex: none; position: relative;
+}
+.ios-nav-title {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  font-size: 17px; font-weight: 600; letter-spacing: -.43px; color: var(--ios-label);
+}
+.glass-btn {
+  width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--ios-glass-border);
+  background: var(--ios-glass-bg); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  box-shadow: var(--ios-glass-shadow); display: grid; place-items: center; color: var(--ios-label); padding: 0;
+}
+.glass-btn svg { width: 17px; height: 17px; }
+.ios-scroll { flex: 1; overflow-y: auto; padding: 4px 16px 24px; scrollbar-width: none; }
+.ios-scroll::-webkit-scrollbar { display: none; }
+
+.ios-sec-head {
+  font-size: 13px; line-height: 18px; font-weight: 500; color: var(--ios-secondary-label);
+  padding: 0 16px; margin: 18px 0 6px; display: flex; align-items: center; justify-content: space-between;
+}
+.ios-sec-head:first-child { margin-top: 6px; }
+.ios-sec-foot {
+  font-size: 12px; line-height: 16.5px; color: var(--ios-secondary-label);
+  padding: 7px 16px 0;
+}
+.ios-group {
+  background: var(--ios-card); border-radius: 20px; overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,.03);
+}
+.ios-row {
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px; min-height: 46px;
+  position: relative; width: 100%; border: 0; background: transparent; text-align: left;
+  color: var(--ios-label);
+}
+.ios-row + .ios-row::before {
+  content: ""; position: absolute; top: 0; left: 16px; right: 0; height: .5px;
+  background: var(--ios-separator);
+}
+.ios-row.tap:active { background: var(--ios-fill-tertiary); }
+.ios-row.dim { opacity: .45; }
+.ios-row.dim.tap { pointer-events: none; }
+.ios-row-body { flex: 1; min-width: 0; }
+.ios-row-title { font-size: 16px; line-height: 21px; letter-spacing: -.32px; color: var(--ios-label); }
+.ios-row-title.destructive { color: var(--ios-red); }
+.ios-row-sub {
+  font-size: 12.5px; line-height: 16.5px; color: var(--ios-secondary-label); margin-top: 2px;
+}
+.ios-row-val {
+  font-size: 15px; color: var(--ios-secondary-label); flex: none; max-width: 175px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right;
+}
+.ios-row-val.green { color: var(--ios-status-green); font-weight: 500; }
+.ios-row-val.orange { color: var(--ios-status-orange); font-weight: 500; }
+.ios-row-val.teal { color: var(--ios-teal); font-weight: 500; }
+.ios-row-val.red { color: var(--ios-red); font-weight: 500; }
+.ios-chev { width: 14px; height: 14px; color: #8e8e93; flex: none; }
+
+/* iOS systemGreen Switch (matches SettingsToggle in common.tsx) */
+.ios-switch {
+  width: 51px; height: 31px; border-radius: 16px; border: 0; padding: 2px;
+  background: var(--ios-fill-primary); position: relative; flex: none;
+  transition: background .18s ease;
+}
+.ios-switch::after {
+  content: ""; display: block; width: 27px; height: 27px; border-radius: 50%;
+  background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,.22);
+  transform: translateX(0); transition: transform .18s cubic-bezier(.32,.72,0,1);
+}
+.ios-switch.on { background: var(--ios-green); }
+.ios-switch.on::after { transform: translateX(20px); }
+.ios-switch:disabled { opacity: .4; cursor: default; }
+
+.ios-banner {
+  margin-top: 10px; padding: 11px 14px; border-radius: 16px;
+  display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; line-height: 17px;
+  border: 1px solid transparent;
+}
+.ios-banner svg { width: 16px; height: 16px; margin-top: 1px; }
+.ios-banner.warn { background: var(--ios-orange-bg); color: var(--ios-orange-text); border-color: var(--ios-orange-border); }
+.ios-banner.err { background: var(--ios-red-bg); color: var(--ios-red-text); border-color: var(--ios-red-border); }
+.ios-banner.info { background: var(--ios-teal-bg); color: var(--ios-teal-text); }
+
+/* iOS SettingFieldSheet Modal Overlay */
+.ios-overlay {
+  position: absolute; inset: 0; background: var(--ios-backdrop); z-index: 25;
+  display: flex; align-items: flex-end;
+  animation: fadeIn .15s ease;
+}
+.ios-sheet {
+  width: 100%; max-height: 82%; background: var(--ios-sheet-bg);
+  border-radius: 26px 26px 0 0; padding: 8px 16px 26px;
+  display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 -12px 36px rgba(0,0,0,.28);
+  animation: slideUp .2s cubic-bezier(.2,.9,.2,1);
+  overflow-y: auto;
+}
+.ios-grabber { width: 36px; height: 5px; border-radius: 999px; background: var(--ios-fill-primary); margin: 0 auto 4px; }
+.ios-sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 0 2px; }
+.ios-sheet-head h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--ios-label); }
+.ios-input-box {
+  background: var(--ios-card); border-radius: 16px; padding: 0 14px; height: 48px;
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid transparent;
+}
+.ios-input-box.bad { border-color: var(--ios-red); }
+.ios-input-box input {
+  flex: 1; min-width: 0; border: 0; background: transparent; outline: none;
+  color: var(--ios-label); font-size: 15px;
+}
+.ios-input-box input::placeholder { color: var(--ios-tertiary-label); }
+.ios-btn {
+  width: 100%; min-height: 48px; border-radius: 999px; border: 0; padding: 0 20px;
+  font-size: 16px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  transition: transform .1s, opacity .15s;
+}
+.ios-btn:active:not(:disabled) { transform: scale(.98); }
+.ios-btn:disabled { opacity: .38; cursor: default; }
+.ios-btn.primary { background: var(--ios-accent); color: var(--ios-on-accent); }
+.ios-btn.secondary { background: var(--ios-fill-tertiary); color: var(--ios-label); min-height: 42px; font-size: 15px; }
+.ios-btn.danger { background: var(--ios-red-bg); color: var(--ios-red); min-height: 42px; font-size: 15px; }
+
+/* ---------------- Android Material 3 Expressive Components ---------------- */
+.m3-topbar {
+  min-height: 54px; padding: 2px 8px 2px 10px; display: flex; align-items: center; gap: 4px; flex: none;
+}
+.m3-icon-btn {
+  width: 44px; height: 44px; border-radius: 22px; border: 0; background: transparent;
+  color: var(--m3-on-surface); display: grid; place-items: center;
+}
+.m3-icon-btn:hover { background: var(--m3-ripple); }
+.m3-icon-btn svg { width: 22px; height: 22px; }
+.m3-topbar-title { font-size: 21px; line-height: 28px; font-weight: 400; color: var(--m3-on-surface); padding-left: 4px; }
+.m3-scroll { flex: 1; overflow-y: auto; padding: 4px 16px 26px; scrollbar-width: none; }
+.m3-scroll::-webkit-scrollbar { display: none; }
+
+/* SettingsHeroCard (28dp radius) */
+.m3-hero {
+  border-radius: 28px; padding: 18px 20px;
+  display: flex; flex-direction: column; gap: 12px;
+  background: var(--m3-primary-container); color: var(--m3-on-primary-container);
+  transition: background .2s;
+}
+.m3-hero.neutral { background: var(--m3-surface-mid); color: var(--m3-on-surface); }
+.m3-hero.warn { background: var(--m3-warning-container); color: var(--m3-on-warning-container); }
+.m3-hero-top { display: flex; align-items: center; gap: 14px; }
+.m3-hero-ic {
+  width: 42px; height: 42px; border-radius: 21px; flex: none;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  display: grid; place-items: center;
+}
+.m3-hero-ic svg { width: 22px; height: 22px; }
+.m3-hero-title { font-size: 20px; line-height: 26px; font-weight: 500; }
+.m3-hero-sub { font-size: 13px; line-height: 18px; opacity: .86; margin-top: 1px; }
+.m3-hero-metrics { display: flex; gap: 8px; flex-wrap: wrap; }
+.m3-metric-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 500;
+  background: color-mix(in srgb, currentColor 11%, transparent);
+}
+.m3-metric-pill i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .78; }
+
+.m3-sec-title {
+  font-size: 13.5px; line-height: 18px; font-weight: 500; letter-spacing: .1px;
+  color: var(--m3-primary); padding: 0 6px; margin: 16px 0 8px;
+}
+.m3-sec-foot {
+  font-size: 12px; line-height: 17px; color: var(--m3-on-surface-variant);
+  padding: 8px 12px 0;
+}
+.m3-seg-list { display: flex; flex-direction: column; gap: 2px; }
+.m3-seg-row {
+  display: flex; align-items: center; gap: 12px; padding: 13px 16px; min-height: 58px;
+  width: 100%; border: 0; text-align: left;
+  background: var(--m3-surface-mid); color: var(--m3-on-surface);
+  border-radius: 4px; transition: background .12s;
+}
+.m3-seg-row:first-child { border-top-left-radius: 20px; border-top-right-radius: 20px; }
+.m3-seg-row:last-child { border-bottom-left-radius: 20px; border-bottom-right-radius: 20px; }
+.m3-seg-row.tap:hover { background: var(--m3-surface-high); }
+.m3-seg-row.dim { opacity: .45; }
+.m3-seg-row.dim.tap { pointer-events: none; }
+.m3-seg-row.warn { background: var(--m3-warning-container); color: var(--m3-on-warning-container); }
+.m3-seg-row.err { background: var(--m3-error-container); color: var(--m3-on-error-container); }
+.m3-row-body { flex: 1; min-width: 0; }
+.m3-row-title { font-size: 15.5px; line-height: 21px; font-weight: 400; }
+.m3-row-sub { font-size: 12.5px; line-height: 17px; color: var(--m3-on-surface-variant); margin-top: 2px; }
+.m3-seg-row.warn .m3-row-sub, .m3-seg-row.err .m3-row-sub { color: inherit; opacity: .88; }
+.m3-trailing {
+  display: inline-flex; align-items: center; gap: 4px; flex: none;
+  font-size: 13.5px; font-weight: 500; color: var(--m3-on-surface-variant);
+  max-width: 165px;
+}
+.m3-trailing span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m3-trailing.primary { color: var(--m3-primary); }
+.m3-trailing.green { color: var(--m3-success); }
+.m3-trailing.warn { color: var(--m3-warning); }
+.m3-trailing.teal { color: var(--m3-relay); }
+.m3-trailing.err { color: var(--m3-error); }
+.m3-trailing svg { width: 18px; height: 18px; }
+
+/* M3 Switch */
+.m3-switch {
+  width: 52px; height: 32px; border-radius: 16px; padding: 0; flex: none;
+  border: 2px solid var(--m3-outline); background: var(--m3-surface-highest);
+  position: relative; transition: background .16s, border-color .16s;
+}
+.m3-switch::after {
+  content: ""; position: absolute; top: 50%; left: 6px; transform: translateY(-50%);
+  width: 16px; height: 16px; border-radius: 50%; background: var(--m3-outline);
+  transition: all .16s cubic-bezier(.32,.72,0,1);
+}
+.m3-switch.on { background: var(--m3-primary); border-color: var(--m3-primary); }
+.m3-switch.on::after {
+  left: 22px; width: 24px; height: 24px; background: var(--m3-on-primary);
+}
+.m3-switch:disabled { opacity: .4; cursor: default; }
+
+/* M3 SettingsFieldDialog (28dp AlertDialog) */
+.m3-scrim {
+  position: absolute; inset: 0; background: var(--m3-scrim); z-index: 25;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+  animation: fadeIn .14s ease;
+}
+.m3-dialog {
+  width: 100%; max-width: 344px; border-radius: 28px; background: var(--m3-surface-high);
+  padding: 22px; box-shadow: 0 18px 40px rgba(0,0,0,.35);
+  display: flex; flex-direction: column; gap: 13px;
+}
+.m3-dialog h3 { margin: 0; font-size: 21px; line-height: 27px; font-weight: 400; color: var(--m3-on-surface); }
+.m3-dialog-desc { margin: 0; font-size: 13px; line-height: 18.5px; color: var(--m3-on-surface-variant); }
+.m3-field {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 52px; padding: 0 14px; border-radius: 14px;
+  background: var(--m3-surface-lowest); border: 1.5px solid var(--m3-outline-variant);
+}
+[data-theme="dark"] .m3-field { background: var(--m3-surface-mid); }
+.m3-field:focus-within { border-color: var(--m3-primary); }
+.m3-field.bad { border-color: var(--m3-error); }
+.m3-field input {
+  flex: 1; min-width: 0; border: 0; background: transparent; outline: none;
+  color: var(--m3-on-surface); font-size: 15px;
+}
+.m3-field-err { font-size: 12px; color: var(--m3-error); line-height: 1.45; }
+.m3-dialog-acts { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.m3-text-btn {
+  border: 0; background: transparent; padding: 9px 13px; border-radius: 999px;
+  font-size: 13.5px; font-weight: 500; color: var(--m3-primary);
+}
+.m3-text-btn:hover { background: var(--m3-ripple); }
+.m3-text-btn.muted { color: var(--m3-on-surface-variant); }
+.m3-text-btn.danger { color: var(--m3-error); }
+
+.m3-radio-list { display: flex; flex-direction: column; gap: 4px; }
+.m3-radio-item {
+  width: 100%; border: 0; border-radius: 14px; padding: 11px 14px; text-align: left;
+  background: var(--m3-surface-mid); color: var(--m3-on-surface);
+  display: flex; align-items: center; justify-content: space-between; font-size: 14.5px;
+}
+.m3-radio-item.on { background: var(--m3-primary-container); color: var(--m3-on-primary-container); font-weight: 500; }
+
+/* ---------------- Companion SendSheet Live Preview ---------------- */
+.preview-card {
+  background: var(--card-bg); border-radius: 24px;
+  box-shadow: var(--card-shadow); overflow: hidden;
+  border: 1px solid var(--bar-border);
+}
+.preview-top {
+  padding: 13px 16px; border-bottom: 1px solid var(--bar-border);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+}
+.preview-top h3 { margin: 0; font-size: 14px; font-weight: 650; display: flex; align-items: center; gap: 7px; }
+.mini-seg {
+  display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px;
+  background: var(--bar-surface); border: 1px solid var(--bar-border);
+}
+.mini-seg button {
+  border: 0; background: transparent; padding: 2px 9px; border-radius: 999px;
+  font-size: 11px; color: var(--bar-muted);
+}
+.mini-seg button.on { background: var(--card-bg); color: var(--bar-text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+/* iOS SendSheet Inside Preview */
+.ss-ios {
+  background: var(--ios-grouped-bg); color: var(--ios-label);
+  padding: 10px 14px 16px; display: flex; flex-direction: column; gap: 12px;
+}
+.ss-ios-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px; }
+.ss-ios-head b { font-size: 16px; letter-spacing: -.3px; }
+.ss-item-row { display: flex; align-items: center; gap: 11px; padding: 10px 14px; }
+.ss-thumb {
+  width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; flex: none;
+  background: rgba(0,122,255,.14); color: var(--ios-blue);
+}
+.ss-thumb.video { background: rgba(175,82,222,.16); color: #af52de; }
+.ss-dev-row {
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; gap: 10px; padding: 11px 14px;
+  width: 100%; border: 0; background: transparent; text-align: left; color: var(--ios-label);
+}
+.ss-dev-row + .ss-dev-row::before {
+  content: ""; position: absolute; top: 0; left: 14px; right: 0; height: .5px; background: var(--ios-separator); z-index: 2;
+}
+.ss-dev-fill {
+  position: absolute; inset: 0; width: 0%; z-index: 0; transition: width .35s ease;
+}
+.ss-dev-fill.ok { background: var(--ios-green-bg); width: 100%; }
+.ss-dev-fill.relay { background: var(--ios-teal-bg); width: 100%; }
+.ss-dev-fill.warn { background: var(--ios-orange-bg); width: 100%; }
+.ss-dev-content { position: relative; z-index: 1; flex: 1; min-width: 0; }
+.ss-dev-name { font-size: 15px; font-weight: 500; }
+.ss-dev-st { font-size: 12px; color: var(--ios-secondary-label); margin-top: 2px; display: flex; align-items: center; gap: 5px; }
+.ss-dev-st.green { color: var(--ios-status-green); font-weight: 500; }
+.ss-dev-st.teal { color: var(--ios-teal-text); font-weight: 500; }
+.ss-dev-st.orange { color: var(--ios-status-orange); font-weight: 500; }
+.ss-dev-ic { position: relative; z-index: 1; flex: none; }
+
+/* Android SendSheet Inside Preview */
+.ss-and {
+  background: var(--m3-surface-low); color: var(--m3-on-surface);
+  padding: 10px 14px 16px; display: flex; flex-direction: column; gap: 10px;
+}
+.ss-and-item {
+  padding: 11px 13px; border-radius: 16px; background: var(--m3-surface-mid);
+  display: flex; align-items: center; gap: 11px;
+}
+.ss-and-dev {
+  width: 100%; border: 0; border-radius: 16px; padding: 12px 14px; text-align: left;
+  background: var(--m3-surface-mid); color: var(--m3-on-surface);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  transition: background .18s;
+}
+.ss-and-dev.sel { background: var(--m3-primary-container); color: var(--m3-on-primary-container); }
+.ss-and-dev.done-ok { background: var(--m3-success-container); color: var(--m3-on-success-container); }
+.ss-and-dev.done-relay { background: var(--m3-relay-container); color: var(--m3-on-relay-container); }
+.ss-and-dev.done-warn { background: var(--m3-warning-container); color: var(--m3-on-warning-container); }
+.ss-and-sub { font-size: 12px; opacity: .82; margin-top: 2px; }
+.m3-pill-btn {
+  width: 100%; min-height: 46px; border-radius: 999px; border: 0; padding: 0 20px;
+  font-size: 14.5px; font-weight: 500;
+  background: var(--m3-primary); color: var(--m3-on-primary);
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+}
+.m3-pill-btn.tonal { background: var(--m3-primary-container); color: var(--m3-on-primary-container); }
+
+/* Spec Card */
+.spec-card {
+  background: var(--card-bg); border-radius: 20px; border: 1px solid var(--bar-border);
+  box-shadow: var(--card-shadow); padding: 16px 18px; font-size: 12.5px;
+}
+.spec-card h4 { margin: 0 0 8px; font-size: 13.5px; font-weight: 650; }
+.spec-card ul { margin: 0; padding-left: 17px; color: var(--bar-muted); line-height: 1.62; }
+.spec-card li b { color: var(--bar-text); }
+
+/* Phone Toast */
+.phone-toast {
+  position: absolute; left: 50%; bottom: 32px; transform: translateX(-50%);
+  z-index: 35; background: rgba(20,20,24,.92); color: #fff;
+  padding: 7px 14px; border-radius: 999px; font-size: 12px; font-weight: 500;
+  white-space: nowrap; max-width: 88%; overflow: hidden; text-overflow: ellipsis;
+  box-shadow: 0 8px 22px rgba(0,0,0,.3);
+}
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(28px); opacity: .6; } to { transform: none; opacity: 1; } }
+</style>
+</head>
+<body>
+
+<!-- Top Review Control Bar -->
+<div class="toolbar">
+  <div class="line">
+    <span class="platform-badge" id="platBadge">iOS · SwiftUI insetGrouped</span>
+    <b>移动端混合中转设置与 SendSheet 联动原型</b>
+    <div class="grp">
+      <span class="lbl">平台</span>
+      <button class="chip" data-plat="ios">iOS</button>
+      <button class="chip" data-plat="android">Android</button>
+    </div>
+    <div class="grp">
+      <span class="lbl">主题</span>
+      <button class="chip" data-theme-btn="light">浅色</button>
+      <button class="chip" data-theme-btn="dark">深色</button>
+    </div>
+    <div class="grp" id="seedGrp" style="display:none">
+      <span class="lbl">Material You</span>
+      <button class="chip" data-seed-btn="baseline">品牌紫</button>
+      <button class="chip" data-seed-btn="ocean">海湾蓝</button>
+      <button class="chip" data-seed-btn="sage">青苔绿</button>
+    </div>
+    <div class="tb-sp"></div>
+    <a class="chip" href="relay-settings-desktop.html">← 切换至桌面端原型（BoardUI）</a>
+  </div>
+  <div class="line">
+    <div class="grp">
+      <span class="lbl">场景预设</span>
+      <button class="chip" data-preset="official">1. 官方默认已开启</button>
+      <button class="chip" data-preset="selfhost">2. 自部署模式</button>
+      <button class="chip" data-preset="disabled">3. 已关闭中转</button>
+      <button class="chip" data-preset="syncPaused">4. 同步总开关已暂停</button>
+      <button class="chip" data-preset="edgeErrors">5. 异常 / 边界态</button>
+    </div>
+  </div>
+</div>
+
+<!-- Main Stage: Phone (Network Settings) + Companion (Live SendSheet Preview & Notes) -->
+<div class="stage">
+  <div id="phoneRoot"></div>
+  <div class="companion-col">
+    <div id="sendSheetRoot"></div>
+    <div id="specRoot"></div>
+  </div>
+</div>
+
+<script>
+const OFFICIAL_URL = 'https://relay.uniclipboard.app';
+const MAX_OPTIONS = [10, 25, 50, 100, 250];
+
+const I = {
+  chevL: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
+  chevR: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>',
+  arrowL: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>',
+  expand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  wifi: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0M1.42 9a16 16 0 0 1 21.16 0M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 19.5h19z"/><path d="M12 10v4.2M12 17h.01"/></svg>',
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+  checkCircle: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm4.7 8.2-5.4 5.5a1 1 0 0 1-1.4 0l-2.6-2.6a1 1 0 1 1 1.4-1.4l1.9 1.9 4.7-4.8a1 1 0 0 1 1.4 1.4Z"/></svg>',
+  circle: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9.5"/></svg>',
+  cloudCheck: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 11a4 4 0 0 1-.5 8z"/><path d="m9.5 14 1.8 1.8 3.6-3.8"/></svg>',
+  alertCircle: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>',
+  image: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.5"/><path d="m21 16-5-5L6 20"/></svg>',
+  video: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="14" height="14" rx="2.5"/><path d="m16.5 10 5-3v10l-5-3z"/></svg>',
+  eye: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>',
+  eyeOff: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 10.6a2.6 2.6 0 0 0 3.6 3.6M9.9 5.6A10.7 10.7 0 0 1 12 5.5c6.2 0 10 6.5 10 6.5a17 17 0 0 1-3.3 4M6.6 6.7A16.7 16.7 0 0 0 2 12s3.8 6.5 10 6.5a10 10 0 0 0 4.3-.9"/></svg>',
+  lock: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+};
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+}
+
+function validateRelayUrl(raw) {
+  const v = (raw || '').trim();
+  if (!v) return { ok: true, normalized: '' }; // empty resets to official default
+  let u;
+  try { u = new URL(v); } catch {
+    return { ok: false, msg: 'URL 格式无效，请输入完整 HTTPS 地址（如 https://relay.example.com）。' };
+  }
+  if (u.protocol !== 'https:') {
+    return { ok: false, msg: '仅支持 HTTPS 协议，已拒绝明文 HTTP。' };
+  }
+  const h = u.hostname.toLowerCase();
+  if (h === 'localhost' || h.endsWith('.local') || /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h)) {
+    return { ok: false, msg: '基于 SSRF 防护，拒绝连接本机环回或私网 IP 端点。' };
+  }
+  return { ok: true, normalized: u.origin + u.pathname.replace(/\/+$/, '') };
+}
+
+function shortHost(url) {
+  if (!url || url === OFFICIAL_URL) return '官方默认';
+  try { return new URL(url).host; } catch { return url; }
+}
+
+function makeState(preset) {
+  const s = {
+    platform: 'ios',
+    theme: document.documentElement.dataset.theme || 'light',
+    seed: document.documentElement.dataset.seed || 'baseline',
+    preset,
+
+    syncEnabled: true,
+    rendezvousUrl: '',
+    relayEnabled: true,
+    relayUrl: '', // '' means official default
+    relayMaxMB: 25,
+    accessKeyConfigured: false,
+    pendingUrlError: '',
+    invalidDraftUrl: '',
+
+    // Devices
+    devices: [
+      { id: 'mac-studio', name: '办公室 Mac Studio', p2p: 'connected', relayState: 'ready', endpoint: OFFICIAL_URL },
+      { id: 'mbp', name: 'Mark 的 MacBook Pro', p2p: 'offline', relayState: 'ready', endpoint: OFFICIAL_URL },
+      { id: 'ipad', name: 'iPad Pro', p2p: 'offline', relayState: 'pending_p2p', endpoint: '' },
+    ],
+
+    // Active sheet/dialog inside phone: null | { kind: 'rendezvous'|'relay_url'|'relay_max'|'relay_key'|'devices', draft, error, showSecret }
+    modal: null,
+
+    // Companion SendSheet state
+    payloadKind: 'image', // 'image' (3.8 MB) | 'video' (48 MB)
+    selectedIds: ['mac-studio', 'mbp'],
+    sendPhase: 'idle', // 'idle' | 'sending' | 'done'
+
+    toast: '',
+    toastTimer: null,
+  };
+
+  if (preset === 'selfhost') {
+    const u = 'https://relay.home.example.com';
+    s.relayUrl = u;
+    s.relayMaxMB = 100;
+    s.accessKeyConfigured = true;
+    s.devices = [
+      { id: 'mac-studio', name: '办公室 Mac Studio', p2p: 'connected', relayState: 'ready', endpoint: u },
+      { id: 'mbp', name: 'Mark 的 MacBook Pro', p2p: 'offline', relayState: 'ready', endpoint: u },
+      { id: 'ipad', name: 'iPad Pro', p2p: 'offline', relayState: 'ready', endpoint: u },
+    ];
+  } else if (preset === 'disabled') {
+    s.relayEnabled = false;
+  } else if (preset === 'syncPaused') {
+    s.syncEnabled = false;
+  } else if (preset === 'edgeErrors') {
+    s.relayUrl = 'https://relay.team.example.com';
+    s.relayMaxMB = 25;
+    s.invalidDraftUrl = 'http://192.168.1.10:8080';
+    s.pendingUrlError = validateRelayUrl(s.invalidDraftUrl).msg;
+    s.payloadKind = 'video';
+    s.devices = [
+      { id: 'mac-studio', name: '办公室 Mac Studio', p2p: 'connected', relayState: 'ready', endpoint: 'https://relay.team.example.com' },
+      { id: 'mbp', name: 'Mark 的 MacBook Pro', p2p: 'offline', relayState: 'mismatch', endpoint: OFFICIAL_URL },
+      { id: 'ipad', name: 'iPad Pro', p2p: 'offline', relayState: 'pending_p2p', endpoint: '' },
+    ];
+  }
+  return s;
+}
+
+let S = makeState('official');
+
+function toast(msg) {
+  S.toast = msg;
+  render();
+  clearTimeout(S.toastTimer);
+  S.toastTimer = setTimeout(() => { S.toast = ''; render(); }, 2200);
+}
+
+function loadPreset(name) {
+  const { platform, theme, seed } = S;
+  S = makeState(name);
+  S.platform = platform;
+  S.theme = theme;
+  S.seed = seed;
+  render();
+}
+
+function setPlatform(plat) {
+  S.platform = plat;
+  S.modal = null;
+  render();
+}
+
+function setTheme(theme) {
+  S.theme = theme;
+  document.documentElement.dataset.theme = theme;
+  render();
+}
+
+function setSeed(seed) {
+  S.seed = seed;
+  document.documentElement.dataset.seed = seed;
+  render();
+}
+
+function effectiveRelayUrl() {
+  return S.relayUrl || OFFICIAL_URL;
+}
+
+function stats() {
+  const total = S.devices.length;
+  const p2pConnected = S.devices.filter(d => d.p2p === 'connected').length;
+  const relayReady = S.devices.filter(d => d.relayState === 'ready').length;
+  const mismatch = S.devices.filter(d => d.relayState === 'mismatch').length;
+  return { total, p2pConnected, relayReady, mismatch };
+}
+
+function openModal(kind) {
+  if (!S.syncEnabled && kind !== 'rendezvous') return;
+  if (!S.relayEnabled && (kind === 'relay_url' || kind === 'relay_max' || kind === 'relay_key' || kind === 'devices')) return;
+
+  if (kind === 'rendezvous') {
+    S.modal = { kind, draft: S.rendezvousUrl, error: '' };
+  } else if (kind === 'relay_url') {
+    const draft = S.pendingUrlError ? S.invalidDraftUrl : S.relayUrl;
+    S.modal = { kind, draft, error: S.pendingUrlError || '' };
+  } else if (kind === 'relay_max') {
+    S.modal = { kind, draft: S.relayMaxMB, error: '' };
+  } else if (kind === 'relay_key') {
+    S.modal = { kind, draft: '', error: '', showSecret: false };
+  } else if (kind === 'devices') {
+    S.modal = { kind };
+  }
+  render();
+}
+
+function closeModal() {
+  S.modal = null;
+  render();
+}
+
+function saveModal() {
+  const m = S.modal;
+  if (!m) return;
+  if (m.kind === 'rendezvous') {
+    S.rendezvousUrl = (m.draft || '').trim();
+    S.modal = null;
+    toast(S.rendezvousUrl ? '配对服务 URL 已保存' : '已恢复默认配对服务');
+    return;
+  }
+  if (m.kind === 'relay_url') {
+    const res = validateRelayUrl(m.draft);
+    if (!res.ok) {
+      m.error = res.msg;
+      render();
+      return;
+    }
+    S.relayUrl = res.normalized === OFFICIAL_URL ? '' : res.normalized;
+    S.pendingUrlError = '';
+    S.invalidDraftUrl = '';
+    const eff = effectiveRelayUrl();
+    S.devices = S.devices.map(d => {
+      if (d.relayState === 'pending_p2p') return d;
+      if (d.endpoint && d.endpoint !== eff) return { ...d, relayState: 'mismatch' };
+      return { ...d, relayState: 'ready', endpoint: eff };
+    });
+    if (!S.relayUrl && S.relayMaxMB > 25) S.relayMaxMB = 25;
+    S.modal = null;
+    S.sendPhase = 'idle';
+    toast(S.relayUrl ? '自部署中转地址已保存' : '已恢复官方默认中转服务');
+    return;
+  }
+  if (m.kind === 'relay_key') {
+    const v = (m.draft || '').trim();
+    if (!v) {
+      m.error = '请输入新的接入密钥；如需移除请点击「清除密钥」。';
+      render();
+      return;
+    }
+    S.accessKeyConfigured = true;
+    S.modal = null;
+    toast('接入密钥已写入安全存储（只写不回显）');
+    return;
+  }
+}
+
+function resetRelayToOfficial() {
+  S.relayUrl = '';
+  S.pendingUrlError = '';
+  S.invalidDraftUrl = '';
+  if (S.relayMaxMB > 25) S.relayMaxMB = 25;
+  S.devices = S.devices.map(d => d.relayState === 'mismatch'
+    ? { ...d, relayState: 'ready', endpoint: OFFICIAL_URL }
+    : d.relayState === 'ready' ? { ...d, endpoint: OFFICIAL_URL } : d
+  );
+  S.modal = null;
+  S.sendPhase = 'idle';
+  toast('已恢复官方默认中转服务');
+}
+
+function selectMaxMB(mb) {
+  S.relayMaxMB = mb;
+  S.modal = null;
+  S.sendPhase = 'idle';
+  toast(`单次中转上限已设为 ${mb} MB`);
+}
+
+function clearAccessKey() {
+  S.accessKeyConfigured = false;
+  S.modal = null;
+  toast('已清除自部署接入密钥');
+}
+
+function alignDevice(id) {
+  const eff = effectiveRelayUrl();
+  S.devices = S.devices.map(d => d.id === id ? { ...d, relayState: 'ready', endpoint: eff } : d);
+  S.sendPhase = 'idle';
+  toast('已模拟两端对齐至同一中转端点');
+}
+
+function toggleRelaySwitch() {
+  if (!S.syncEnabled) return;
+  S.relayEnabled = !S.relayEnabled;
+  S.sendPhase = 'idle';
+  toast(S.relayEnabled ? '已启用混合中转' : '已关闭中转，仅使用 P2P 直连');
+}
+
+/* ---------------- iOS Phone Renderer ---------------- */
+function renderIosModal() {
+  const m = S.modal;
+  if (!m) return '';
+  let title = '';
+  let body = '';
+
+  if (m.kind === 'rendezvous' || m.kind === 'relay_url') {
+    const isRelay = m.kind === 'relay_url';
+    title = isRelay ? '中转服务 URL' : '配对服务 URL';
+    body = `
+      <div class="ios-input-box ${m.error ? 'bad' : ''}">
+        <input type="url" value="${esc(m.draft)}" placeholder="${isRelay ? OFFICIAL_URL : '默认配对服务'}"
+          oninput="S.modal.draft=this.value; if(S.modal.error){S.modal.error=''; render();}"
+          onkeydown="if(event.key==='Enter') saveModal()">
+      </div>
+      ${m.error ? `<div class="ios-banner err" style="margin-top:0">${I.warn}<span>${esc(m.error)}</span></div>` : ''}
+      <div class="ios-sec-foot" style="padding:0 4px">
+        ${isRelay
+          ? '留空或恢复默认将使用官方托管（https://relay.uniclipboard.app）。仅接受公网 HTTPS；与 Tailcat P2P/DERP 中继相互独立。'
+          : '留空将使用官方默认配对服务。'}
+      </div>
+      <button class="ios-btn primary" onclick="saveModal()">保存</button>
+      ${isRelay ? `<button class="ios-btn secondary" onclick="resetRelayToOfficial()">恢复官方默认</button>` : ''}
+    `;
+  } else if (m.kind === 'relay_max') {
+    title = '单次中转上限';
+    body = `
+      <div class="ios-group">
+        ${MAX_OPTIONS.map(mb => `
+          <button class="ios-row tap" onclick="selectMaxMB(${mb})">
+            <div class="ios-row-body"><div class="ios-row-title">${mb} MB${mb === 25 ? '（官方默认）' : ''}</div></div>
+            ${S.relayMaxMB === mb ? `<span style="color:var(--ios-status-green);width:16px;height:16px">${I.check}</span>` : ''}
+          </button>
+        `).join('')}
+      </div>
+      <div class="ios-sec-foot" style="padding:0 4px">
+        超过此上限的内容在目标离线时不会走中转，仅在 P2P 直连后传输。官方托管服务端硬上限为 25 MB。
+      </div>
+    `;
+  } else if (m.kind === 'relay_key') {
+    title = '自部署接入密钥';
+    body = `
+      <div class="ios-input-box ${m.error ? 'bad' : ''}">
+        <span style="color:var(--ios-secondary-label)">${I.lock}</span>
+        <input type="${m.showSecret ? 'text' : 'password'}" value="${esc(m.draft)}"
+          placeholder="${S.accessKeyConfigured ? '输入新密钥以覆盖（不回显旧值）' : '输入 X-Unic-Relay-Key'}"
+          oninput="S.modal.draft=this.value; if(S.modal.error){S.modal.error='';}"
+          onkeydown="if(event.key==='Enter') saveModal()">
+        <button style="border:0;background:transparent;color:var(--ios-secondary-label);padding:4px" onclick="S.modal.showSecret=!S.modal.showSecret;render()">
+          ${m.showSecret ? I.eyeOff : I.eye}
+        </button>
+      </div>
+      ${m.error ? `<div class="ios-banner err" style="margin-top:0">${I.warn}<span>${esc(m.error)}</span></div>` : ''}
+      <div class="ios-sec-foot" style="padding:0 4px">
+        严格只写不回显：保存后无法再次查看明文，绝不写入系统日志、诊断包或设置备份导出。
+      </div>
+      <button class="ios-btn primary" onclick="saveModal()">保存密钥</button>
+      ${S.accessKeyConfigured ? `<button class="ios-btn danger" onclick="clearAccessKey()">清除密钥</button>` : ''}
+    `;
+  } else if (m.kind === 'devices') {
+    title = '设备中转路由状态';
+    body = `
+      <div class="ios-group">
+        ${S.devices.map(d => {
+          const stLabel = d.relayState === 'ready' ? '就绪' : d.relayState === 'mismatch' ? '端点不一致' : '待首次 P2P 交换';
+          const stCls = d.relayState === 'ready' ? 'teal' : d.relayState === 'mismatch' ? 'orange' : '';
+          const sub = d.relayState === 'ready'
+            ? (d.p2p === 'connected' ? 'P2P 已直连 · 断线可立即回退中转' : 'P2P 离线 · 已持有投递令牌，可 0 等待中转')
+            : d.relayState === 'mismatch'
+              ? `对端端点 ${shortHost(d.endpoint)} 与本机不符（SSRF 已拒绝）`
+              : '下次 P2P 建连时自动交换路由，无需重新配对';
+          return `
+            <div class="ios-row">
+              <div class="ios-row-body">
+                <div class="ios-row-title">${esc(d.name)}</div>
+                <div class="ios-row-sub">${esc(sub)}</div>
+                ${d.relayState === 'mismatch' ? `<button style="margin-top:6px;border:0;background:var(--ios-fill-tertiary);color:var(--ios-blue);padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600" onclick="alignDevice('${d.id}')">模拟两端端点对齐</button>` : ''}
+              </div>
+              <span class="ios-row-val ${stCls}" style="font-size:13px">${stLabel}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  return `
+    <div class="ios-overlay" onclick="if(event.target===this) closeModal()">
+      <div class="ios-sheet">
+        <div class="ios-grabber"></div>
+        <div class="ios-sheet-head">
+          <h3>${title}</h3>
+          <button class="glass-btn" style="width:32px;height:32px" onclick="closeModal()" aria-label="关闭">${I.x}</button>
+        </div>
+        ${body}
+      </div>
+    </div>
+  `;
+}
+
+function renderIosPhone() {
+  const st = stats();
+  const masterOff = !S.syncEnabled;
+  const relayDim = masterOff || !S.relayEnabled;
+  const runtimeLabel = S.syncEnabled ? '运行中' : '同步已关闭';
+  const runtimeCls = S.syncEnabled ? 'green' : 'orange';
+  const relayReadyVal = masterOff
+    ? '已暂停'
+    : !S.relayEnabled
+      ? '已关闭'
+      : st.mismatch > 0
+        ? `${st.relayReady}/${st.total} 台 · ${st.mismatch} 台不一致`
+        : `${st.relayReady}/${st.total} 台就绪`;
+  const relayReadyCls = masterOff || !S.relayEnabled ? '' : st.mismatch > 0 ? 'orange' : 'teal';
+
+  return `
+    <div class="bezel-ios">
+      <div class="phone-ios">
+        <div class="ios-status">
+          <span class="ios-time">9:41</span>
+          <div class="island"><span class="cam"></span></div>
+          <div class="ios-ind" aria-hidden="true">
+            <svg viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+            <svg viewBox="0 0 16 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M1.5 4.2a9.5 9.5 0 0 1 13 0M4.2 7a5.8 5.8 0 0 1 7.6 0"/><circle cx="8" cy="10.2" r="1.2" fill="currentColor" stroke="none"/></svg>
+            <svg viewBox="0 0 26 12" fill="none"><rect x=".75" y=".75" width="21.5" height="10.5" rx="3" stroke="currentColor" stroke-opacity=".4" stroke-width="1.2"/><rect x="2.4" y="2.4" width="17" height="7.2" rx="1.6" fill="currentColor"/><path d="M23.5 4.2v3.6a1.4 1.4 0 0 0 0-3.6z" fill="currentColor" fill-opacity=".45"/></svg>
+          </div>
+        </div>
+
+        <div class="ios-nav">
+          <button class="glass-btn" onclick="toast('返回设置首页')" aria-label="返回">${I.chevL}</button>
+          <span class="ios-nav-title">高级网络</span>
+          <span style="width:36px"></span>
+        </div>
+
+        <div class="ios-scroll">
+          <!-- Existing Section 1: Runtime + Tailcat -->
+          <div class="ios-group">
+            <div class="ios-row">
+              <div class="ios-row-body"><div class="ios-row-title">网络活动</div></div>
+              <span class="ios-row-val ${runtimeCls}">${runtimeLabel}</span>
+            </div>
+            <div class="ios-row">
+              <div class="ios-row-body"><div class="ios-row-title">Tailcat 连接</div></div>
+              <span class="ios-row-val">已连接 ${st.p2pConnected} 台，共 ${st.total} 台</span>
+            </div>
+          </div>
+
+          <!-- Existing Section 2: Rendezvous URL -->
+          <div class="ios-sec-head">配对服务</div>
+          <div class="ios-group">
+            <button class="ios-row tap" onclick="openModal('rendezvous')">
+              <div class="ios-row-body"><div class="ios-row-title">配对服务 URL</div></div>
+              <span class="ios-row-val">${esc(S.rendezvousUrl || '默认')}</span>
+              <span class="ios-chev">${I.chevR}</span>
+            </button>
+            <button class="ios-row tap ${!S.rendezvousUrl ? 'dim' : ''}" onclick="if(S.rendezvousUrl){S.rendezvousUrl='';toast('已恢复默认配对服务');}">
+              <div class="ios-row-body"><div class="ios-row-title">恢复默认配对服务</div></div>
+            </button>
+          </div>
+
+          <!-- NEW Section 3: Hybrid Relay -->
+          <div class="ios-sec-head">
+            <span>混合中转</span>
+            <span>零知识 E2EE</span>
+          </div>
+          ${masterOff ? `
+            <div class="ios-banner warn" style="margin-top:0;margin-bottom:8px">
+              ${I.warn}
+              <span>同步总开关已暂停，混合中转已联动停用并断开 SSE；重新启用同步后自动恢复。</span>
+            </div>
+          ` : ''}
+          <div class="ios-group">
+            <div class="ios-row ${masterOff ? 'dim' : ''}">
+              <div class="ios-row-body">
+                <div class="ios-row-title">启用混合中转</div>
+                <div class="ios-row-sub">P2P 在线直连；离线 0 等待加密中转</div>
+              </div>
+              <button class="ios-switch ${S.relayEnabled ? 'on' : ''}" ${masterOff ? 'disabled' : ''} onclick="toggleRelaySwitch()"></button>
+            </div>
+            <button class="ios-row tap ${relayDim ? 'dim' : ''}" onclick="openModal('devices')">
+              <div class="ios-row-body"><div class="ios-row-title">中转就绪设备</div></div>
+              <span class="ios-row-val ${relayReadyCls}">${esc(relayReadyVal)}</span>
+              <span class="ios-chev">${I.chevR}</span>
+            </button>
+            <button class="ios-row tap ${relayDim ? 'dim' : ''}" onclick="openModal('relay_url')">
+              <div class="ios-row-body"><div class="ios-row-title">中转服务 URL</div></div>
+              <span class="ios-row-val ${S.pendingUrlError ? 'red' : ''}">${S.pendingUrlError ? '地址无效' : esc(shortHost(S.relayUrl))}</span>
+              <span class="ios-chev">${I.chevR}</span>
+            </button>
+            <button class="ios-row tap ${relayDim ? 'dim' : ''}" onclick="openModal('relay_max')">
+              <div class="ios-row-body"><div class="ios-row-title">单次中转上限</div></div>
+              <span class="ios-row-val">${S.relayMaxMB} MB</span>
+              <span class="ios-chev">${I.chevR}</span>
+            </button>
+            <button class="ios-row tap ${relayDim ? 'dim' : ''}" onclick="openModal('relay_key')">
+              <div class="ios-row-body">
+                <div class="ios-row-title">自部署接入密钥</div>
+                <div class="ios-row-sub">只写不回显 · 不入日志与备份</div>
+              </div>
+              <span class="ios-row-val ${S.accessKeyConfigured ? 'green' : ''}">${S.accessKeyConfigured ? '已配置' : '未配置'}</span>
+              <span class="ios-chev">${I.chevR}</span>
+            </button>
+          </div>
+
+          ${!relayDim && S.pendingUrlError ? `
+            <div class="ios-banner err" onclick="openModal('relay_url')" style="cursor:pointer">
+              ${I.warn}
+              <span><b>中转 URL 校验失败</b>：${esc(S.pendingUrlError)}（点此修正）</span>
+            </div>
+          ` : ''}
+          ${!relayDim && st.mismatch > 0 ? `
+            <div class="ios-banner warn" onclick="openModal('devices')" style="cursor:pointer">
+              ${I.warn}
+              <span><b>${st.mismatch} 台设备中转端点不一致</b>：基于 SSRF 防护已拒绝连接陌生端点，请将两端设为同一地址（点此查看）。</span>
+            </div>
+          ` : ''}
+          ${!relayDim && S.preset === 'edgeErrors' ? `
+            <div class="ios-banner info">
+              ${I.lock}
+              <span>超过 ${S.relayMaxMB} MB 的内容在对方离线时不会走中转，仅在 P2P 建连后直连传输。</span>
+            </div>
+          ` : ''}
+
+          <div class="ios-sec-foot">
+            复用已配对设备的 Ed25519 密钥端到端加密，服务端不可见明文与文件名（默认 10 分钟过期，领取即删）。与 Tailcat P2P/DERP 中继节点相互独立；关闭后零中转请求。
+          </div>
+        </div>
+
+        ${renderIosModal()}
+        ${S.toast ? `<div class="phone-toast">${esc(S.toast)}</div>` : ''}
+        <div class="home-ind"><i></i></div>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------------- Android M3 Expressive Phone Renderer ---------------- */
+function renderAndroidModal() {
+  const m = S.modal;
+  if (!m) return '';
+  let title = '';
+  let body = '';
+  let acts = '';
+
+  if (m.kind === 'rendezvous' || m.kind === 'relay_url') {
+    const isRelay = m.kind === 'relay_url';
+    title = isRelay ? '中转服务 URL' : '配对服务 URL';
+    body = `
+      <p class="m3-dialog-desc">${isRelay
+        ? '留空使用官方默认（https://relay.uniclipboard.app）；自部署仅允许公网 HTTPS，与 Tailcat DERP 相互独立。'
+        : '留空使用官方默认配对服务。'}</p>
+      <div class="m3-field ${m.error ? 'bad' : ''}">
+        <input type="url" value="${esc(m.draft)}" placeholder="${isRelay ? OFFICIAL_URL : '默认'}"
+          oninput="S.modal.draft=this.value; if(S.modal.error){S.modal.error=''; render();}"
+          onkeydown="if(event.key==='Enter') saveModal()">
+      </div>
+      ${m.error ? `<div class="m3-field-err">${esc(m.error)}</div>` : ''}
+    `;
+    acts = `
+      ${isRelay ? `<button class="m3-text-btn muted" style="margin-right:auto" onclick="resetRelayToOfficial()">恢复默认</button>` : ''}
+      <button class="m3-text-btn muted" onclick="closeModal()">取消</button>
+      <button class="m3-text-btn" onclick="saveModal()">保存</button>
+    `;
+  } else if (m.kind === 'relay_max') {
+    title = '单次中转上限';
+    body = `
+      <p class="m3-dialog-desc">超过上限的大文件在目标离线时不经中转，仅通过 P2P 直连发送。</p>
+      <div class="m3-radio-list">
+        ${MAX_OPTIONS.map(mb => `
+          <button class="m3-radio-item ${S.relayMaxMB === mb ? 'on' : ''}" onclick="selectMaxMB(${mb})">
+            <span>${mb} MB${mb === 25 ? '（官方默认）' : ''}</span>
+            ${S.relayMaxMB === mb ? `<span style="width:16px;height:16px">${I.check}</span>` : ''}
+          </button>
+        `).join('')}
+      </div>
+    `;
+    acts = `<button class="m3-text-btn muted" onclick="closeModal()">关闭</button>`;
+  } else if (m.kind === 'relay_key') {
+    title = '自部署接入密钥';
+    body = `
+      <p class="m3-dialog-desc">用于请求头 <code>X-Unic-Relay-Key</code>。严格只写不回显，绝不写入日志或备份导出。</p>
+      <div class="m3-field ${m.error ? 'bad' : ''}">
+        <input type="${m.showSecret ? 'text' : 'password'}" value="${esc(m.draft)}"
+          placeholder="${S.accessKeyConfigured ? '输入新密钥以覆盖' : '粘贴接入密钥'}"
+          oninput="S.modal.draft=this.value; if(S.modal.error){S.modal.error='';}"
+          onkeydown="if(event.key==='Enter') saveModal()">
+        <button style="border:0;background:transparent;color:var(--m3-on-surface-variant);padding:4px" onclick="S.modal.showSecret=!S.modal.showSecret;render()">
+          ${m.showSecret ? I.eyeOff : I.eye}
+        </button>
+      </div>
+      ${m.error ? `<div class="m3-field-err">${esc(m.error)}</div>` : ''}
+    `;
+    acts = `
+      ${S.accessKeyConfigured ? `<button class="m3-text-btn danger" style="margin-right:auto" onclick="clearAccessKey()">清除密钥</button>` : ''}
+      <button class="m3-text-btn muted" onclick="closeModal()">取消</button>
+      <button class="m3-text-btn" onclick="saveModal()">保存</button>
+    `;
+  } else if (m.kind === 'devices') {
+    title = '设备中转路由状态';
+    body = `
+      <div class="m3-seg-list">
+        ${S.devices.map(d => {
+          const badge = d.relayState === 'ready' ? '就绪' : d.relayState === 'mismatch' ? '端点不一致' : '待交换';
+          const cls = d.relayState === 'ready' ? 'teal' : d.relayState === 'mismatch' ? 'warn' : '';
+          const sub = d.relayState === 'ready'
+            ? (d.p2p === 'connected' ? 'P2P 已直连 · 断线自动回退' : 'P2P 离线 · 可 0 等待加密中转')
+            : d.relayState === 'mismatch'
+              ? `对端 ${shortHost(d.endpoint)} ≠ 本机（SSRF 已拒绝）`
+              : '待首次活跃 P2P 连接自动交换路由';
+          return `
+            <div class="m3-seg-row ${d.relayState === 'mismatch' ? 'warn' : ''}" style="min-height:52px;padding:11px 13px">
+              <div class="m3-row-body">
+                <div class="m3-row-title" style="font-size:14.5px">${esc(d.name)}</div>
+                <div class="m3-row-sub">${esc(sub)}</div>
+                ${d.relayState === 'mismatch' ? `<button class="m3-text-btn" style="padding:4px 0 0;font-size:12px" onclick="alignDevice('${d.id}')">模拟对齐本机端点</button>` : ''}
+              </div>
+              <span class="m3-trailing ${cls}" style="font-size:12px">${badge}</span>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+    acts = `<button class="m3-text-btn" onclick="closeModal()">完成</button>`;
+  }
+
+  return `
+    <div class="m3-scrim" onclick="if(event.target===this) closeModal()">
+      <div class="m3-dialog" role="dialog" aria-modal="true">
+        <h3>${title}</h3>
+        ${body}
+        <div class="m3-dialog-acts">${acts}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAndroidPhone() {
+  const st = stats();
+  const masterOff = !S.syncEnabled;
+  const relayDim = masterOff || !S.relayEnabled;
+  const runtimeLabel = S.syncEnabled ? '运行中' : '同步已关闭';
+  const heroTone = masterOff ? 'neutral' : (st.mismatch > 0 || S.pendingUrlError) ? 'warn' : '';
+  const relayPillText = masterOff
+    ? '混合中转 · 已暂停'
+    : !S.relayEnabled
+      ? '混合中转 · 已关闭'
+      : st.mismatch > 0
+        ? `中转就绪 ${st.relayReady}/${st.total} · ${st.mismatch} 异常`
+        : `中转就绪 ${st.relayReady}/${st.total}`;
+
+  return `
+    <div class="bezel-and">
+      <div class="phone-and">
+        <div class="and-status">
+          <span>9:41</span>
+          <div class="punch" aria-hidden="true"></div>
+          <div class="and-ind" aria-hidden="true">
+            <span>5G</span>
+            <svg viewBox="0 0 16 12" fill="currentColor"><path d="M1 11h14V1z" fill-opacity=".28"/><path d="M1 11h10V3.8z"/></svg>
+            <svg viewBox="0 0 14 12" fill="currentColor"><path d="M4.5 1h5v1H11a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1h1.5z"/></svg>
+          </div>
+        </div>
+
+        <div class="m3-topbar">
+          <button class="m3-icon-btn" onclick="toast('返回设置首页')" aria-label="返回">${I.arrowL}</button>
+          <span class="m3-topbar-title">高级网络</span>
+        </div>
+
+        <div class="m3-scroll">
+          <!-- M3 Expressive Hero Card: P2P Online + Relay Ready -->
+          <div class="m3-hero ${heroTone}">
+            <div class="m3-hero-top">
+              <div class="m3-hero-ic">${I.wifi}</div>
+              <div>
+                <div class="m3-hero-title">${runtimeLabel}</div>
+                <div class="m3-hero-sub">${S.syncEnabled
+                  ? (S.relayEnabled ? 'P2P 优先直连 · 离线 0 等待 E2EE 中转' : '仅 P2P 直连 · 零中转请求')
+                  : '同步总开关已暂停，在途传输已中止'}</div>
+              </div>
+            </div>
+            <div class="m3-hero-metrics">
+              <span class="m3-metric-pill"><i></i>Tailcat 直连 ${st.p2pConnected}/${st.total}</span>
+              <span class="m3-metric-pill"><i></i>${esc(relayPillText)}</span>
+            </div>
+          </div>
+
+          <!-- Existing Group 1: Runtime & Tailcat -->
+          <div style="height:14px"></div>
+          <div class="m3-seg-list">
+            <div class="m3-seg-row">
+              <div class="m3-row-body"><div class="m3-row-title">网络活动</div></div>
+              <span class="m3-trailing ${S.syncEnabled ? 'green' : 'warn'}">${runtimeLabel}</span>
+            </div>
+            <div class="m3-seg-row">
+              <div class="m3-row-body"><div class="m3-row-title">Tailcat 连接</div></div>
+              <span class="m3-trailing">已连接 ${st.p2pConnected} 台，共 ${st.total} 台</span>
+            </div>
+          </div>
+
+          <!-- Existing Group 2: Rendezvous -->
+          <div style="height:14px"></div>
+          <div class="m3-seg-list">
+            <button class="m3-seg-row tap" onclick="openModal('rendezvous')">
+              <div class="m3-row-body"><div class="m3-row-title">配对服务 URL</div></div>
+              <span class="m3-trailing"><span>${esc(S.rendezvousUrl || '默认')}</span>${I.chevR}</span>
+            </button>
+            <button class="m3-seg-row tap ${!S.rendezvousUrl ? 'dim' : ''}" onclick="if(S.rendezvousUrl){S.rendezvousUrl='';toast('已恢复默认配对服务');}">
+              <div class="m3-row-body"><div class="m3-row-title">恢复默认配对服务</div></div>
+              <span class="m3-trailing ${S.rendezvousUrl ? 'primary' : ''}">重置</span>
+            </button>
+          </div>
+
+          <!-- NEW Group 3: Hybrid Relay -->
+          <div class="m3-sec-title">混合中转（零知识 E2EE）</div>
+          <div class="m3-seg-list">
+            <div class="m3-seg-row ${masterOff ? 'dim' : ''}">
+              <div class="m3-row-body">
+                <div class="m3-row-title">启用混合中转</div>
+                <div class="m3-row-sub">目标离线时 0 等待加密暂存，与 Tailcat DERP 相互独立</div>
+              </div>
+              <button class="m3-switch ${S.relayEnabled ? 'on' : ''}" ${masterOff ? 'disabled' : ''} onclick="toggleRelaySwitch()"></button>
+            </div>
+            <button class="m3-seg-row tap ${relayDim ? 'dim' : ''}" onclick="openModal('devices')">
+              <div class="m3-row-body">
+                <div class="m3-row-title">中转就绪设备</div>
+                <div class="m3-row-sub">查看各已配对设备的路由与端点一致性</div>
+              </div>
+              <span class="m3-trailing ${st.mismatch > 0 ? 'warn' : 'teal'}">
+                <span>${masterOff ? '已暂停' : !S.relayEnabled ? '已关闭' : `${st.relayReady}/${st.total} 就绪`}</span>${I.chevR}
+              </span>
+            </button>
+            <button class="m3-seg-row tap ${relayDim ? 'dim' : ''}" onclick="openModal('relay_url')">
+              <div class="m3-row-body">
+                <div class="m3-row-title">中转服务 URL</div>
+                <div class="m3-row-sub">${S.pendingUrlError ? '待保存地址校验失败（点击修正）' : esc(effectiveRelayUrl())}</div>
+              </div>
+              <span class="m3-trailing ${S.pendingUrlError ? 'err' : ''}">
+                <span>${S.pendingUrlError ? '无效' : esc(shortHost(S.relayUrl))}</span>${I.chevR}
+              </span>
+            </button>
+            <button class="m3-seg-row tap ${relayDim ? 'dim' : ''}" onclick="openModal('relay_max')">
+              <div class="m3-row-body"><div class="m3-row-title">单次中转上限</div></div>
+              <span class="m3-trailing"><span>${S.relayMaxMB} MB</span>${I.expand}</span>
+            </button>
+            <button class="m3-seg-row tap ${relayDim ? 'dim' : ''}" onclick="openModal('relay_key')">
+              <div class="m3-row-body">
+                <div class="m3-row-title">自部署接入密钥</div>
+                <div class="m3-row-sub">X-Unic-Relay-Key · 严格只写不回显</div>
+              </div>
+              <span class="m3-trailing ${S.accessKeyConfigured ? 'green' : ''}">
+                <span>${S.accessKeyConfigured ? '已配置' : '未配置'}</span>${I.chevR}
+              </span>
+            </button>
+            ${!relayDim && (st.mismatch > 0 || S.pendingUrlError) ? `
+              <button class="m3-seg-row tap ${S.pendingUrlError ? 'err' : 'warn'}" onclick="openModal('${S.pendingUrlError ? 'relay_url' : 'devices'}')">
+                <div class="m3-row-body">
+                  <div class="m3-row-title">${S.pendingUrlError ? '非法中转 URL 已拦截' : `${st.mismatch} 台设备中转端点不一致`}</div>
+                  <div class="m3-row-sub">${S.pendingUrlError ? esc(S.pendingUrlError) : '基于 SSRF 防护已拒绝盲连对端域名，点击核对设备路由。'}</div>
+                </div>
+                <span class="m3-trailing">${I.chevR}</span>
+              </button>
+            ` : ''}
+          </div>
+
+          <div class="m3-sec-foot">
+            短 TTL（默认 10 分钟，领取即删），复用 Ed25519 身份派生加密密钥，服务端不可见明文与文件名；超过 ${S.relayMaxMB} MB 的内容离线时不经中转，仅走 P2P 直连。
+          </div>
+        </div>
+
+        ${renderAndroidModal()}
+        ${S.toast ? `<div class="phone-toast">${esc(S.toast)}</div>` : ''}
+        <div class="gesture-bar"><i></i></div>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------------- Linked SendSheet Live Preview ---------------- */
+function evalSendTarget(dev) {
+  const payloadMB = S.payloadKind === 'video' ? 48 : 3.8;
+  if (!S.syncEnabled) {
+    return { idleText: '同步已暂停', idleTone: 'orange', sendOutcome: 'failed', doneText: '发送失败 · 同步已暂停', doneTone: 'warn' };
+  }
+  if (dev.p2p === 'connected') {
+    return { idleText: '已连接（直连）', idleTone: 'green', sendOutcome: 'success', doneText: '已发送 · 对端已接收', doneTone: 'ok' };
+  }
+  if (!S.relayEnabled) {
+    return { idleText: '离线或正在连接', idleTone: '', sendOutcome: 'failed', doneText: '设备离线 · 中转已关闭', doneTone: 'warn' };
+  }
+  if (dev.relayState === 'mismatch') {
+    return { idleText: '中转端点不一致 · 仅等待 P2P', idleTone: 'orange', sendOutcome: 'failed', doneText: '未发送 · SSRF 拒绝不匹配端点', doneTone: 'warn' };
+  }
+  if (dev.relayState === 'ready') {
+    if (payloadMB > S.relayMaxMB) {
+      return { idleText: `超出中转上限（${S.relayMaxMB} MB）· 仅走 P2P`, idleTone: 'orange', sendOutcome: 'failed', doneText: `超出中转上限（relay_size_exceeded）`, doneTone: 'warn' };
+    }
+    return { idleText: '可立即中转发送', idleTone: 'teal', sendOutcome: 'relay_stored', doneText: '已暂存中转 · 等待对方上线领取', doneTone: 'relay' };
+  }
+  return { idleText: '离线或正在连接', idleTone: '', sendOutcome: 'failed', doneText: '离线 · 待首次 P2P 交换路由', doneTone: 'warn' };
+}
+
+function toggleSendTarget(id) {
+  if (S.sendPhase !== 'idle') return;
+  if (S.selectedIds.includes(id)) S.selectedIds = S.selectedIds.filter(x => x !== id);
+  else S.selectedIds = [...S.selectedIds, id];
+  render();
+}
+
+function runSendSimulation() {
+  if (S.sendPhase === 'done') {
+    S.sendPhase = 'idle';
+    render();
+    return;
+  }
+  if (S.selectedIds.length === 0 || S.sendPhase === 'sending') return;
+  S.sendPhase = 'sending';
+  render();
+  setTimeout(() => {
+    S.sendPhase = 'done';
+    render();
+  }, 550);
+}
+
+function renderSendSheetPreview() {
+  const isIos = S.platform === 'ios';
+  const isVideo = S.payloadKind === 'video';
+  const itemTitle = isVideo ? '4K 录屏片段.mp4' : '项目方案截屏.png';
+  const itemMeta = isVideo ? '视频 · 48.0 MB' : '图片 · 3.8 MB';
+
+  const btnText = S.sendPhase === 'sending' ? '发送中…' : S.sendPhase === 'done' ? '重置发送预览' : `发送至已选设备 (${S.selectedIds.length})`;
+
+  const inner = isIos ? `
+    <div class="ss-ios">
+      <div class="ios-grabber" style="margin-bottom:2px"></div>
+      <div class="ss-ios-head">
+        <b>发送到设备</b>
+        <span style="font-size:12px;color:var(--ios-secondary-label)">SendSheet.ios 联动</span>
+      </div>
+
+      <div class="ios-group">
+        <div class="ss-item-row">
+          <div class="ss-thumb ${isVideo ? 'video' : ''}">${isVideo ? I.video : I.image}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${itemTitle}</div>
+            <div style="font-size:12px;color:var(--ios-secondary-label)">${itemMeta}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ios-group">
+        ${S.devices.map(dev => {
+          const sel = S.selectedIds.includes(dev.id);
+          const ev = evalSendTarget(dev);
+          const showDone = S.sendPhase === 'done' && sel;
+          const showSending = S.sendPhase === 'sending' && sel;
+          const fillCls = showDone ? ev.doneTone : '';
+          const stText = showSending ? '正在发送…' : showDone ? ev.doneText : ev.idleText;
+          const stTone = showSending ? '' : showDone ? (ev.doneTone === 'ok' ? 'green' : ev.doneTone === 'relay' ? 'teal' : 'orange') : ev.idleTone;
+          const trailIcon = showDone
+            ? (ev.doneTone === 'ok'
+                ? `<span style="color:var(--ios-status-green)">${I.checkCircle}</span>`
+                : ev.doneTone === 'relay'
+                  ? `<span style="color:var(--ios-teal)">${I.cloudCheck}</span>`
+                  : `<span style="color:var(--ios-status-orange)">${I.alertCircle}</span>`)
+            : `<span style="color:${sel ? 'var(--ios-blue)' : 'var(--ios-tertiary-label)'}">${sel ? I.checkCircle : I.circle}</span>`;
+
+          return `
+            <button class="ss-dev-row" onclick="toggleSendTarget('${dev.id}')">
+              <div class="ss-dev-fill ${fillCls}"></div>
+              <div class="ss-dev-content">
+                <div class="ss-dev-name">${esc(dev.name)}</div>
+                <div class="ss-dev-st ${stTone}">${esc(stText)}</div>
+              </div>
+              <div class="ss-dev-ic">${trailIcon}</div>
+            </button>
+          `;
+        }).join('')}
+      </div>
+
+      <button class="ios-btn primary" style="min-height:44px;font-size:15px" ${S.selectedIds.length === 0 && S.sendPhase === 'idle' ? 'disabled' : ''} onclick="runSendSimulation()">
+        ${btnText}
+      </button>
+    </div>
+  ` : `
+    <div class="ss-and">
+      <div style="width:32px;height:4px;border-radius:999px;background:var(--m3-outline);opacity:.4;margin:0 auto"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:0 2px">
+        <b style="font-size:17px;font-weight:500">发送到设备</b>
+        <span style="font-size:11.5px;color:var(--m3-on-surface-variant)">SendSheet M3 联动</span>
+      </div>
+
+      <div class="ss-and-item">
+        <div class="ss-thumb ${isVideo ? 'video' : ''}" style="border-radius:12px">${isVideo ? I.video : I.image}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600">${itemTitle}</div>
+          <div style="font-size:12px;color:var(--m3-on-surface-variant)">${itemMeta}</div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:6px">
+        ${S.devices.map(dev => {
+          const sel = S.selectedIds.includes(dev.id);
+          const ev = evalSendTarget(dev);
+          const showDone = S.sendPhase === 'done' && sel;
+          const showSending = S.sendPhase === 'sending' && sel;
+          const cardCls = showDone ? `done-${ev.doneTone}` : sel ? 'sel' : '';
+          const stText = showSending ? '正在发送…' : showDone ? ev.doneText : ev.idleText;
+          const trail = showDone
+            ? (ev.doneTone === 'ok' ? I.checkCircle : ev.doneTone === 'relay' ? I.cloudCheck : I.alertCircle)
+            : (sel ? I.checkCircle : I.circle);
+          return `
+            <button class="ss-and-dev ${cardCls}" onclick="toggleSendTarget('${dev.id}')">
+              <div style="min-width:0;flex:1">
+                <div style="font-size:14.5px;font-weight:600">${esc(dev.name)}</div>
+                <div class="ss-and-sub">${esc(stText)}</div>
+              </div>
+              <span>${trail}</span>
+            </button>
+          `;
+        }).join('')}
+      </div>
+
+      <button class="m3-pill-btn ${S.sendPhase === 'done' ? 'tonal' : ''}" ${S.selectedIds.length === 0 && S.sendPhase === 'idle' ? 'disabled' : ''} onclick="runSendSimulation()">
+        ${btnText}
+      </button>
+    </div>
+  `;
+
+  return `
+    <div class="preview-card">
+      <div class="preview-top">
+        <h3>分享发送面板联动（SendSheet）</h3>
+        <div class="mini-seg" role="tablist" aria-label="模拟发送内容大小">
+          <button class="${!isVideo ? 'on' : ''}" onclick="S.payloadKind='image';S.sendPhase='idle';render()">截图 3.8 MB</button>
+          <button class="${isVideo ? 'on' : ''}" onclick="S.payloadKind='video';S.sendPhase='idle';render()">大视频 48 MB</button>
+        </div>
+      </div>
+      ${inner}
+    </div>
+  `;
+}
+
+function renderSpecCard() {
+  return `
+    <div class="spec-card">
+      <h4>移动端实现映射与契约要点</h4>
+      <ul>
+        <li><b>承接现有「高级网络」结构</b>：保留「网络活动」「Tailcat 连接」与「配对服务 URL」，在其下方新增「混合中转」分区；Android 顶部 <code>SettingsHeroCard</code> 同步呈现 P2P 在线数与中转就绪数。</li>
+        <li><b>原生弹层编辑</b>：iOS 点击 URL / 上限 / 接入密钥弹出 <code>SettingFieldSheet</code>，Android 弹出 28dp <code>SettingsFieldDialog</code>。</li>
+        <li><b>只写不回显</b>：自部署接入密钥（<code>X-Unic-Relay-Key</code>）仅显示「已配置 / 未配置」，录入框不回显旧值，支持一键「清除密钥」。</li>
+        <li><b>SendSheet 状态诚实区隔</b>：对比「已连接（直连）」「可立即中转发送」「离线或正在连接」；点击「发送」可观察 <code>relay_stored</code> 呈现为独立的「已暂存中转」（青蓝云盾），绝不伪装为「对端已接收」。</li>
+      </ul>
+    </div>
+  `;
+}
+
+function syncToolbar() {
+  const isAnd = S.platform === 'android';
+  document.getElementById('platBadge').textContent = isAnd ? 'Android · Material 3 Expressive' : 'iOS · SwiftUI insetGrouped';
+  document.getElementById('seedGrp').style.display = isAnd ? 'flex' : 'none';
+  document.querySelectorAll('[data-plat]').forEach(b => b.classList.toggle('on', b.dataset.plat === S.platform));
+  document.querySelectorAll('[data-theme-btn]').forEach(b => b.classList.toggle('on', b.dataset.themeBtn === S.theme));
+  document.querySelectorAll('[data-seed-btn]').forEach(b => b.classList.toggle('on', b.dataset.seedBtn === S.seed));
+  document.querySelectorAll('[data-preset]').forEach(b => b.classList.toggle('on', b.dataset.preset === S.preset));
+}
+
+function render() {
+  syncToolbar();
+  document.getElementById('phoneRoot').innerHTML = S.platform === 'ios' ? renderIosPhone() : renderAndroidPhone();
+  document.getElementById('sendSheetRoot').innerHTML = renderSendSheetPreview();
+  document.getElementById('specRoot').innerHTML = renderSpecCard();
+}
+
+document.querySelectorAll('[data-plat]').forEach(b => b.addEventListener('click', () => setPlatform(b.dataset.plat)));
+document.querySelectorAll('[data-theme-btn]').forEach(b => b.addEventListener('click', () => setTheme(b.dataset.themeBtn)));
+document.querySelectorAll('[data-seed-btn]').forEach(b => b.addEventListener('click', () => setSeed(b.dataset.seedBtn)));
+document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => loadPreset(b.dataset.preset)));
+
+render();
+</script>
+</body>
+</html>

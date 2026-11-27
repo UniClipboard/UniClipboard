@@ -496,7 +496,7 @@ retained previous version and also requires restart. History and local plugin
 configuration remain intact.
 
 `PluginInfo` includes optional `repository`, `commit`, `has_previous`,
-`previous_version`, `events` and `actions`. Each action exposes
+`previous_version`, `processor_stage`, `events` and `actions`. Each action exposes
 `{id,key,title,accepts?,placements?,post_actions?,timeout_ms?}`. The existing
 `configured_enabled`, `running_version` and `restart_required` fields remain
 the source of activation state.

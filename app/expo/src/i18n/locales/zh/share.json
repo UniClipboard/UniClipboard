@@ -53,6 +53,7 @@
       "preparing": "准备发送…",
       "sending": "正在发送",
       "confirming": "等待设备确认…",
+      "relay_stored": "已暂存中转",
       "success": "已发送",
       "failed": "发送失败",
       "unconfirmed": "结果未确认"
@@ -71,6 +72,7 @@
     "textHint": "输入要保存或发送的文本内容…",
     "targets": "选择目标设备。不选择时，按同步规则发送。",
     "connected": "已连接",
+    "relayReady": "可立即中转发送",
     "offline": "离线或正在连接",
     "noTargets": "暂无已配对设备。内容将保存到本机历史。",
     "commitText": "保存并发送文本",

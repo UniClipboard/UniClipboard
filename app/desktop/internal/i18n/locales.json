@@ -8903,6 +8903,12 @@
     "pt-BR": "Recebido",
     "ru": "Получено"
   },
+  "已暂存中转": {
+    "en": "Stored on relay",
+    "ja": "リレーに一時保存済み",
+    "pt-BR": "Armazenado no relay",
+    "ru": "Сохранено на ретрансляторе"
+  },
   "对端未接纳": {
     "en": "Declined by device",
     "ja": "相手デバイスが拒否",
@@ -8998,6 +9004,132 @@
     "ja": "サイズ上限を超えています",
     "pt-BR": "Limite de tamanho excedido",
     "ru": "Превышен лимит размера"
+  },
+  "已开启": {
+    "en": "On",
+    "ja": "オン",
+    "pt-BR": "Ativado",
+    "ru": "Вкл."
+  },
+  "%d/%d 台设备中转就绪": {
+    "en": "%d of %d devices ready for relay",
+    "ja": "%d/%d 台のデバイスがリレー準備完了",
+    "pt-BR": "%d de %d dispositivos prontos para relay",
+    "ru": "Ретрансляция готова: %d из %d"
+  },
+  "混合中转": {
+    "en": "Hybrid Relay",
+    "ja": "ハイブリッドリレー",
+    "pt-BR": "Relay híbrido",
+    "ru": "Гибридная ретрансляция"
+  },
+  "启用混合中转": {
+    "en": "Enable Hybrid Relay",
+    "ja": "ハイブリッドリレーを有効にする",
+    "pt-BR": "Ativar relay híbrido",
+    "ru": "Включить гибридную ретрансляцию"
+  },
+  "P2P 在线直连优先；对端离线时 0 等待走零知识端到端加密临时 HTTP 中转。与 Tailcat P2P/DERP 节点相互独立。": {
+    "en": "Prefers direct P2P when online; falls back immediately to zero-knowledge end-to-end encrypted temporary HTTP relay when a device is offline. Separate from Tailcat P2P/DERP relays.",
+    "ja": "オンライン時はP2P直接接続を優先し、オフライン時は待機なしでゼロ知識エンドツーエンド暗号化の一時HTTPリレーを使用します。TailcatのP2P/DERPノードとは独立しています。",
+    "pt-BR": "Prioriza P2P direto quando online; usa imediatamente o relay HTTP temporário com criptografia de ponta a ponta de conhecimento zero quando o dispositivo está offline. Independente dos nós P2P/DERP do Tailcat.",
+    "ru": "Предпочитает прямое P2P-соединение онлайн; при офлайне устройства мгновенно использует временный HTTP-ретранслятор со сквозным шифрованием с нулевым разглашением. Независимо от узлов Tailcat P2P/DERP."
+  },
+  "中转服务地址": {
+    "en": "Relay server URL",
+    "ja": "リレーサーバー URL",
+    "pt-BR": "URL do servidor de relay",
+    "ru": "URL сервера ретрансляции"
+  },
+  "留空使用官方默认地址；填入自部署 HTTPS 地址并保存即可切换。": {
+    "en": "Leave blank to use the official default, or enter a self-hosted HTTPS URL and save.",
+    "ja": "空欄の場合は公式のデフォルトを使用します。セルフホストの HTTPS URL を入力して保存すると切り替えられます。",
+    "pt-BR": "Deixe em branco para usar o padrão oficial ou informe uma URL HTTPS auto-hospedada e salve.",
+    "ru": "Оставьте пустым для официального сервера или укажите собственный HTTPS-адрес и сохраните."
+  },
+  "请输入有效的 http(s) 中转地址": {
+    "en": "Enter a valid http(s) relay URL",
+    "ja": "有効な http(s) リレー URL を入力してください",
+    "pt-BR": "Digite uma URL http(s) válida para o relay",
+    "ru": "Введите корректный http(s) URL ретранслятора"
+  },
+  "25 MB（默认）": {
+    "en": "25 MB (Default)",
+    "ja": "25 MB（デフォルト）",
+    "pt-BR": "25 MB (Padrão)",
+    "ru": "25 МБ (по умолчанию)"
+  },
+  "单次中转大小上限": {
+    "en": "Per-transfer relay limit",
+    "ja": "リレー転送サイズ上限",
+    "pt-BR": "Limite por transferência no relay",
+    "ru": "Лимит размера через ретранслятор"
+  },
+  "超出上限的内容仅在 P2P 在线时直连传输。": {
+    "en": "Items larger than this limit transfer only over direct P2P when online.",
+    "ja": "この上限を超える項目は、オンライン時の P2P 直接接続のみで転送されます。",
+    "pt-BR": "Itens acima deste limite são transferidos apenas por P2P direto quando online.",
+    "ru": "Элементы больше этого лимита передаются только напрямую по P2P в сети."
+  },
+  "自部署接入密钥": {
+    "en": "Self-hosted access key",
+    "ja": "セルフホストアクセスキー",
+    "pt-BR": "Chave de acesso auto-hospedada",
+    "ru": "Ключ доступа для своего сервера"
+  },
+  "可选，对应服务端 X-Unic-Relay-Key。仅写入不回显，不写入日志或设置备份。": {
+    "en": "Optional server X-Unic-Relay-Key. Write-only and never shown, logged, or included in settings backups.",
+    "ja": "任意（サーバーの X-Unic-Relay-Key に対応）。書き込み専用で表示されず、ログや設定バックアップにも含まれません。",
+    "pt-BR": "Opcional, corresponde ao X-Unic-Relay-Key do servidor. Somente gravação; nunca é exibida, registrada em logs ou incluída em backups.",
+    "ru": "Необязательно (заголовок X-Unic-Relay-Key). Только для записи: не отображается, не попадает в журналы и резервные копии."
+  },
+  "已配置": {
+    "en": "Configured",
+    "ja": "設定済み",
+    "pt-BR": "Configurada",
+    "ru": "Задан"
+  },
+  "未配置": {
+    "en": "Not set",
+    "ja": "未設定",
+    "pt-BR": "Não definida",
+    "ru": "Не задан"
+  },
+  "输入新密钥（只写不回显）": {
+    "en": "Enter new key (write-only)",
+    "ja": "新しいキーを入力（非表示）",
+    "pt-BR": "Digite a nova chave (somente gravação)",
+    "ru": "Введите новый ключ (не отображается)"
+  },
+  "请输入接入密钥，或点击清除密钥": {
+    "en": "Enter an access key or choose Clear key",
+    "ja": "アクセスキーを入力するか、「キーを消去」を選択してください",
+    "pt-BR": "Digite uma chave de acesso ou escolha Limpar chave",
+    "ru": "Введите ключ доступа или нажмите «Очистить ключ»"
+  },
+  "接入密钥格式无效": {
+    "en": "Invalid access key format",
+    "ja": "アクセスキーの形式が無効です",
+    "pt-BR": "Formato de chave de acesso inválido",
+    "ru": "Недопустимый формат ключа доступа"
+  },
+  "保存密钥": {
+    "en": "Save key",
+    "ja": "キーを保存",
+    "pt-BR": "Salvar chave",
+    "ru": "Сохранить ключ"
+  },
+  "清除密钥": {
+    "en": "Clear key",
+    "ja": "キーを消去",
+    "pt-BR": "Limpar chave",
+    "ru": "Очистить ключ"
+  },
+  "部分已配对设备尚未交换中转路由，请确保两端配置了相同的中转服务地址并至少完成一次 P2P 连接。": {
+    "en": "Some paired devices haven't exchanged a relay route yet. Ensure both devices use the same relay URL and connect over P2P at least once.",
+    "ja": "一部のペアリング済みデバイスはリレールートをまだ交換していません。両方のデバイスで同じリレー URL を設定し、一度 P2P 接続してください。",
+    "pt-BR": "Alguns dispositivos pareados ainda não trocaram a rota de relay. Verifique se ambos usam a mesma URL de relay e conectaram por P2P ao menos uma vez.",
+    "ru": "Некоторые сопряжённые устройства ещё не обменялись маршрутом ретрансляции. Убедитесь, что на обоих устройствах указан один и тот же URL и установлено хотя бы одно P2P-соединение."
   },
   "配对二维码": {
     "en": "Pairing QR code",
@@ -9268,5 +9400,545 @@
     "ja": "閉じる",
     "pt-BR": "Ocultar",
     "ru": "Свернуть"
+  },
+  "前置拦截": {
+    "en": "Pre-filter",
+    "ja": "事前フィルター",
+    "pt-BR": "Pré-filtro",
+    "ru": "Предфильтр"
+  },
+  "此插件运行在前置拦截阶段，始终先于常规处理器与所有同步后端执行。": {
+    "en": "Runs in the Guard stage, always before standard processors and all sync backends.",
+    "ja": "このプラグインは Guard ステージで実行され、通常のプロセッサーやすべての同期バックエンドより常に先に処理されます。",
+    "pt-BR": "Executa no estágio Guard, sempre antes dos processadores padrão e de todos os backends de sincronização.",
+    "ru": "Работает на этапе Guard — всегда перед обычными обработчиками и всеми бэкендами синхронизации."
+  },
+  "当此插件运行出错或超时时，决定是否允许该条剪贴板继续同步。重启后生效。": {
+    "en": "Choose whether an item may still sync if this plugin fails or times out. Takes effect after restart.",
+    "ja": "このプラグインでエラーまたはタイムアウトが発生したときに、その項目を同期するかどうかを指定します。再起動後に有効になります。",
+    "pt-BR": "Escolha se o item ainda pode ser sincronizado caso este plugin falhe ou exceda o tempo limite. Entra em vigor após reiniciar.",
+    "ru": "Определяет, разрешена ли синхронизация элемента при ошибке или тайм-ауте этого плагина. Вступит в силу после перезапуска."
+  },
+  "未能加载插件设置": {
+    "en": "Couldn't load plugin settings",
+    "ja": "プラグイン設定を読み込めませんでした",
+    "pt-BR": "Não foi possível carregar as configurações do plugin",
+    "ru": "Не удалось загрузить настройки плагина"
+  },
+  "点击重试以重新读取当前插件配置。": {
+    "en": "Click Retry to load the current plugin configuration again.",
+    "ja": "「再試行」をクリックして現在のプラグイン設定を再読み込みしてください。",
+    "pt-BR": "Clique em Tentar novamente para recarregar a configuração atual do plugin.",
+    "ru": "Нажмите «Повторить», чтобы снова загрузить текущую конфигурацию плагина."
+  },
+  "请修正无效配置项后再保存。": {
+    "en": "Fix invalid settings before saving.",
+    "ja": "保存する前に無効な設定項目を修正してください。",
+    "pt-BR": "Corrija as configurações inválidas antes de salvar.",
+    "ru": "Исправьте недопустимые параметры перед сохранением."
+  },
+  "配置已保存，退出并重新启动桌面端后生效。": {
+    "en": "Settings saved. Quit and reopen the desktop app to apply.",
+    "ja": "設定を保存しました。適用するにはデスクトップアプリを終了して再起動してください。",
+    "pt-BR": "Configurações salvas. Feche e reabra o aplicativo para aplicar.",
+    "ru": "Настройки сохранены. Закройте и снова откройте приложение, чтобы применить их."
+  },
+  "有未保存的更改。": {
+    "en": "You have unsaved changes.",
+    "ja": "未保存の変更があります。",
+    "pt-BR": "Há alterações não salvas.",
+    "ru": "Есть несохраненные изменения."
+  },
+  "常规处理（annotate）": {
+    "en": "Standard (annotate)",
+    "ja": "標準処理（annotate）",
+    "pt-BR": "Padrão (annotate)",
+    "ru": "Обычная обработка (annotate)"
+  },
+  "前置拦截（guard）": {
+    "en": "Guard (guard)",
+    "ja": "事前フィルター（guard）",
+    "pt-BR": "Proteção (guard)",
+    "ru": "Защитный фильтр (guard)"
+  },
+  "处理阶段": {
+    "en": "Processing stage",
+    "ja": "処理ステージ",
+    "pt-BR": "Estágio de processamento",
+    "ru": "Этап обработки"
+  },
+  "常规": {
+    "en": "General",
+    "ja": "一般",
+    "pt-BR": "Geral",
+    "ru": "Основные"
+  },
+  "暂无配置项": {
+    "en": "No items",
+    "ja": "項目がありません",
+    "pt-BR": "Nenhum item",
+    "ru": "Нет элементов"
+  },
+  "减少": {
+    "en": "Decrease ",
+    "ja": "減らす: ",
+    "pt-BR": "Diminuir ",
+    "ru": "Уменьшить "
+  },
+  "增加": {
+    "en": "Increase ",
+    "ja": "増やす: ",
+    "pt-BR": "Aumentar ",
+    "ru": "Увеличить "
+  },
+  "配置项格式无效。": {
+    "en": "Invalid value.",
+    "ja": "無効な値です。",
+    "pt-BR": "Valor inválido.",
+    "ru": "Недопустимое значение."
+  },
+  "请输入 %g 到 %g 之间的数值。": {
+    "en": "Enter a number between %g and %g.",
+    "ja": "%g から %g の間の数値を入力してください。",
+    "pt-BR": "Digite um número entre %g e %g.",
+    "ru": "Введите число от %g до %g."
+  },
+  "数值不能小于 %g。": {
+    "en": "Value must be at least %g.",
+    "ja": "%g 以上の数値を入力してください。",
+    "pt-BR": "O valor deve ser pelo menos %g.",
+    "ru": "Значение должно быть не меньше %g."
+  },
+  "数值不能大于 %g。": {
+    "en": "Value must be at most %g.",
+    "ja": "%g 以下の数値を入力してください。",
+    "pt-BR": "O valor deve ser no máximo %g.",
+    "ru": "Значение должно быть не больше %g."
+  },
+  "长度需在 %d 到 %d 个字符之间。": {
+    "en": "Enter between %d and %d characters.",
+    "ja": "%d 〜 %d 文字で入力してください。",
+    "pt-BR": "Digite entre %d e %d caracteres.",
+    "ru": "Введите от %d до %d символов."
+  },
+  "长度不能少于 %d 个字符。": {
+    "en": "Enter at least %d characters.",
+    "ja": "%d 文字以上で入力してください。",
+    "pt-BR": "Digite pelo menos %d caracteres.",
+    "ru": "Введите не менее %d символов."
+  },
+  "长度不能超过 %d 个字符。": {
+    "en": "Enter at most %d characters.",
+    "ja": "%d 文字以内で入力してください。",
+    "pt-BR": "Digite no máximo %d caracteres.",
+    "ru": "Введите не более %d символов."
+  },
+  "内容长度不符合要求。": {
+    "en": "Text length is out of range.",
+    "ja": "文字数が範囲外です。",
+    "pt-BR": "O comprimento do texto está fora do intervalo.",
+    "ru": "Длина текста вне допустимого диапазона."
+  },
+  "数量需在 %d 到 %d 项之间。": {
+    "en": "Add between %d and %d items.",
+    "ja": "%d 〜 %d 件の項目を指定してください。",
+    "pt-BR": "Adicione entre %d e %d itens.",
+    "ru": "Укажите от %d до %d элементов."
+  },
+  "至少需要 %d 项。": {
+    "en": "At least %d items required.",
+    "ja": "%d 件以上の項目が必要です。",
+    "pt-BR": "São necessários pelo menos %d itens.",
+    "ru": "Требуется не менее %d элементов."
+  },
+  "最多允许 %d 项。": {
+    "en": "At most %d items allowed.",
+    "ja": "指定できる項目は最大 %d 件です。",
+    "pt-BR": "No máximo %d itens são permitidos.",
+    "ru": "Допускается не более %d элементов."
+  },
+  "列表数量不符合要求。": {
+    "en": "Item count is out of range.",
+    "ja": "項目数が範囲外です。",
+    "pt-BR": "A quantidade de itens está fora do intervalo.",
+    "ru": "Количество элементов вне допустимого диапазона."
+  },
+  "请输入有效整数。": {
+    "en": "Enter a valid whole number.",
+    "ja": "有効な整数を入力してください。",
+    "pt-BR": "Digite um número inteiro válido.",
+    "ru": "Введите корректное целое число."
+  },
+  "流水线按固定阶段运行：前置拦截（Guard）→ 内容处理（Annotate）→ 本地保存 → 同步发送。调整顺序仅影响同一阶段内的插件先后。": {
+    "en": "The pipeline runs in fixed stages: Guard → Annotate → Local Save → Sync. Reordering only affects plugins within the same stage.",
+    "ja": "パイプラインは固定ステージで実行されます：Guard（事前フィルター）→ Annotate（内容処理）→ ローカル保存 → 同期送信。順序変更は同じステージ内のみに適用されます。",
+    "pt-BR": "O pipeline executa em estágios fixos: Guard → Annotate → Salvamento local → Sincronização. A reordenação afeta apenas plugins do mesmo estágio.",
+    "ru": "Конвейер выполняется по фиксированным этапам: Guard → Annotate → Локальное сохранение → Синхронизация. Порядок влияет только на плагины внутри одного этапа."
+  },
+  "前置拦截顺序（Guard）": {
+    "en": "Guard order",
+    "ja": "事前フィルター順（Guard）",
+    "pt-BR": "Ordem de proteção (Guard)",
+    "ru": "Порядок предфильтрации (Guard)"
+  },
+  "始终先于常规处理器与所有同步后端运行，修改后重启生效。": {
+    "en": "Always runs before standard processors and all sync backends. Takes effect after restart.",
+    "ja": "通常のプロセッサーやすべての同期バックエンドより常に先に実行されます。変更は再起動後に反映されます。",
+    "pt-BR": "Executa sempre antes dos processadores padrão e de todos os backends de sincronização. Entra em vigor após reiniciar.",
+    "ru": "Всегда выполняется перед обычными обработчиками и всеми бэкендами синхронизации. Вступит в силу после перезапуска."
+  },
+  "当前没有已启用的前置拦截插件": {
+    "en": "No enabled Guard plugins",
+    "ja": "有効な事前フィルタープラグインはありません",
+    "pt-BR": "Nenhum plugin Guard ativado",
+    "ru": "Нет включенных плагинов этапа Guard"
+  },
+  "内容处理顺序（Annotate）": {
+    "en": "Processing order (Annotate)",
+    "ja": "内容処理順（Annotate）",
+    "pt-BR": "Ordem de processamento (Annotate)",
+    "ru": "Порядок обработки (Annotate)"
+  },
+  "在前置拦截之后、本地保存之前运行，修改后重启生效。": {
+    "en": "Runs after Guard plugins and before local history is saved. Takes effect after restart.",
+    "ja": "事前フィルターの後、ローカル保存の前に実行されます。変更は再起動後に反映されます。",
+    "pt-BR": "Executa após os plugins Guard e antes de salvar no histórico local. Entra em vigor após reiniciar.",
+    "ru": "Выполняется после плагинов Guard и до локального сохранения. Вступит в силу после перезапуска."
+  },
+  "当前没有已启用的内容处理插件": {
+    "en": "No enabled processing plugins",
+    "ja": "有効な内容処理プラグインはありません",
+    "pt-BR": "Nenhum plugin de processamento ativado",
+    "ru": "Нет включенных плагинов обработки"
+  },
+  "异步富化与预览优先级（Enricher）": {
+    "en": "Enrichment & preview priority (Enricher)",
+    "ja": "非同期エンリッチ・プレビュー優先順位（Enricher）",
+    "pt-BR": "Prioridade de enriquecimento e prévia (Enricher)",
+    "ru": "Приоритет обогащения и предпросмотра (Enricher)"
+  },
+  "在条目保存到本地历史后异步运行，决定预览卡片展示优先级。": {
+    "en": "Runs asynchronously after an item is saved locally and determines preview card priority.",
+    "ja": "項目がローカル履歴に保存された後に非同期で実行され、プレビューカードの表示優先順位を決めます。",
+    "pt-BR": "Executa de forma assíncrona após salvar o item localmente e define a prioridade dos cartões de prévia.",
+    "ru": "Выполняется асинхронно после локального сохранения и определяет приоритет карточек предпросмотра."
+  },
+  "当前没有已启用的异步富化插件": {
+    "en": "No enabled enricher plugins",
+    "ja": "有効なエンリッチプラグインはありません",
+    "pt-BR": "Nenhum plugin de enriquecimento ativado",
+    "ru": "Нет включенных плагинов обогащения"
+  },
+  "同步后端（本地保存后执行）": {
+    "en": "Sync backends (run after local save)",
+    "ja": "同期バックエンド（ローカル保存後に実行）",
+    "pt-BR": "Backends de sincronização (após salvamento local)",
+    "ru": "Бэкенды синхронизации (после локального сохранения)"
+  },
+  "所有同步后端都在拦截与处理完成、本地保存后由引擎统一派发，不参与处理器先后排序。": {
+    "en": "All sync backends are dispatched by the engine after processing and local save complete; they are not affected by processor order.",
+    "ja": "すべての同期バックエンドは、フィルター・処理とローカル保存の完了後にエンジンが一括で送信します。プロセッサーの順序には影響されません。",
+    "pt-BR": "Todos os backends de sincronização são acionados pelo motor após o processamento e o salvamento local; a ordem dos processadores não os afeta.",
+    "ru": "Все бэкенды синхронизации запускаются движком после завершения обработки и локального сохранения и не зависят от порядка обработчиков."
+  },
+  "同步阶段": {
+    "en": "Sync stage",
+    "ja": "同期ステージ",
+    "pt-BR": "Estágio de sincronização",
+    "ru": "Этап синхронизации"
+  },
+  "敏感内容拦截": {
+    "en": "Sensitive Content Guard",
+    "ja": "機密コンテンツ保護",
+    "pt-BR": "Proteção de conteúdo sensível",
+    "ru": "Защита конфиденциального контента"
+  },
+  "自动识别剪贴板中的密钥、密码管理器内容与敏感文件，默认拦截不入库且不同步。": {
+    "en": "Detects keys, password manager copies, and sensitive files locally, keeping them out of history and sync by default.",
+    "ja": "クリップボード内の鍵・パスワード管理アプリの内容・機密ファイルをローカルで検出し、既定で履歴保存と同期を防ぎます。",
+    "pt-BR": "Detecta chaves, itens de gerenciadores de senhas e arquivos sensíveis localmente, mantendo-os fora do histórico e da sincronização por padrão.",
+    "ru": "Локально распознает ключи, данные из менеджеров паролей и конфиденциальные файлы, по умолчанию исключая их из истории и синхронизации."
+  },
+  "启用敏感内容拦截": {
+    "en": "Enable Sensitive Content Guard",
+    "ja": "機密コンテンツ保護を有効にする",
+    "pt-BR": "Ativar Proteção de conteúdo sensível",
+    "ru": "Включить защиту конфиденциального контента"
+  },
+  "拦截策略": {
+    "en": "Interception policy",
+    "ja": "保護ポリシー",
+    "pt-BR": "Política de interceptação",
+    "ru": "Политика перехвата"
+  },
+  "100% 本地检测，零网络访问；绝不在日志、错误或通知中记录剪贴板原文、密钥值或文件名。修改后重启生效。": {
+    "en": "100% local detection with no network access. Clipboard text, secrets, and filenames are never written to logs, errors, or notifications. Takes effect after restart.",
+    "ja": "100% ローカルで検出し、ネットワーク通信は行いません。クリップボードの原文・機密値・ファイル名はログ・エラー・通知に一切記録されません。変更は再起動後に反映されます。",
+    "pt-BR": "Detecção 100% local e sem acesso à rede. Textos da área de transferência, segredos e nomes de arquivos nunca são gravados em logs, erros ou notificações. Entra em vigor após reiniciar.",
+    "ru": "100% локальная проверка без доступа к сети. Текст буфера обмена, секреты и имена файлов никогда не попадают в журналы, ошибки или уведомления. Изменения вступают в силу после перезапуска."
+  },
+  "拦截模式": {
+    "en": "Interception mode",
+    "ja": "保護モード",
+    "pt-BR": "Modo de interceptação",
+    "ru": "Режим перехвата"
+  },
+  "识别到敏感内容时的处理方式。": {
+    "en": "Action taken when sensitive content is detected.",
+    "ja": "機密コンテンツを検出したときの処理方法を選択します。",
+    "pt-BR": "Ação executada quando conteúdo sensível é detectado.",
+    "ru": "Действие при обнаружении конфиденциального содержимого."
+  },
+  "拦截不入库且不同步": {
+    "en": "Block (do not save or sync)",
+    "ja": "保存せず同期もしない",
+    "pt-BR": "Bloquear (não salvar nem sincronizar)",
+    "ru": "Блокировать (не сохранять и не синхронизировать)"
+  },
+  "仅本机保留（禁止同步）": {
+    "en": "Keep locally only (no sync)",
+    "ja": "ローカルのみ保存（同期しない）",
+    "pt-BR": "Manter apenas localmente (sem sincronizar)",
+    "ru": "Хранить только локально (без синхронизации)"
+  },
+  "本机短暂保留后自动过期（禁止同步）": {
+    "en": "Keep locally with auto-expiry (no sync)",
+    "ja": "ローカルに一時保存して自動削除（同期しない）",
+    "pt-BR": "Manter localmente com expiração automática (sem sincronizar)",
+    "ru": "Хранить локально с автоудалением (без синхронизации)"
+  },
+  "自动过期时长（秒）": {
+    "en": "Expiry duration (seconds)",
+    "ja": "自動削除までの時間（秒）",
+    "pt-BR": "Tempo de expiração (segundos)",
+    "ru": "Время автоудаления (сек.)"
+  },
+  "敏感条目在本地历史中保留的秒数（10–86400），回车保存。": {
+    "en": "How long sensitive items remain in local history (10–86400 seconds). Press Enter to save.",
+    "ja": "機密項目をローカル履歴に保持する秒数（10〜86400）です。Enter キーで保存します。",
+    "pt-BR": "Tempo em segundos para manter itens sensíveis no histórico local (10–86400). Pressione Enter para salvar.",
+    "ru": "Срок хранения конфиденциальных записей в локальной истории в секундах (10–86400). Нажмите Enter для сохранения."
+  },
+  "请输入 10 到 86400 之间的整数。": {
+    "en": "Enter a whole number between 10 and 86400.",
+    "ja": "10 から 86400 の間の整数を入力してください。",
+    "pt-BR": "Digite um número inteiro entre 10 e 86400.",
+    "ru": "Введите целое число от 10 до 86400."
+  },
+  "敏感标签": {
+    "en": "Sensitive tag",
+    "ja": "機密タグ",
+    "pt-BR": "Tag de conteúdo sensível",
+    "ru": "Тег конфиденциальности"
+  },
+  "在本地保留模式下为敏感条目添加的标签，回车保存。": {
+    "en": "Tag applied when keeping sensitive items locally. Press Enter to save.",
+    "ja": "ローカル保存モードで機密項目に付与するタグです。Enter キーで保存します。",
+    "pt-BR": "Tag aplicada ao manter itens sensíveis localmente. Pressione Enter para salvar.",
+    "ru": "Тег, добавляемый к конфиденциальным элементам при локальном хранении. Нажмите Enter для сохранения."
+  },
+  "请输入 1 到 64 字节的有效标签名。": {
+    "en": "Enter a valid tag name (1–64 bytes).",
+    "ja": "1〜64 バイトの有効なタグ名を入力してください。",
+    "pt-BR": "Digite um nome de tag válido (1–64 bytes).",
+    "ru": "Введите корректное имя тега (1–64 байта)."
+  },
+  "同时拦截远端接收内容": {
+    "en": "Filter received items",
+    "ja": "受信した項目も保護する",
+    "pt-BR": "Filtrar itens recebidos",
+    "ru": "Фильтровать входящие элементы"
+  },
+  "对从其他设备或外部渠道同步接收的敏感内容同样执行拦截。": {
+    "en": "Also intercept sensitive content received from other devices or external channels.",
+    "ja": "他のデバイスや外部チャネルから受信した機密コンテンツにも同じ保護を適用します。",
+    "pt-BR": "Interceptar também conteúdo sensível recebido de outros dispositivos ou canais externos.",
+    "ru": "Также перехватывать конфиденциальные данные, полученные с других устройств или внешних каналов."
+  },
+  "拦截时显示通知": {
+    "en": "Show notification",
+    "ja": "保護時に通知を表示",
+    "pt-BR": "Mostrar notificação",
+    "ru": "Показывать уведомление"
+  },
+  "拦截时展示仅包含规则类别的简短提示，绝不包含剪贴板原文。": {
+    "en": "Show a short notification naming only the rule category when an item is intercepted. Clipboard text is never included.",
+    "ja": "保護時にルール種別のみを示す短い通知を表示します。クリップボードの原文は含まれません。",
+    "pt-BR": "Exibir uma notificação curta com apenas a categoria da regra ao interceptar um item. O conteúdo nunca é incluído.",
+    "ru": "Показывать краткое уведомление только с категорией правила при перехвате. Текст буфера обмена никогда не включается."
+  },
+  "内置检测规则": {
+    "en": "Built-in rules",
+    "ja": "組み込み検出ルール",
+    "pt-BR": "Regras integradas",
+    "ru": "Встроенные правила"
+  },
+  "私钥文本": {
+    "en": "Private keys",
+    "ja": "秘密鍵",
+    "pt-BR": "Chaves privadas",
+    "ru": "Приватные ключи"
+  },
+  "识别 PEM、OpenSSH、PGP 与 PuTTY 私钥块。": {
+    "en": "Detect PEM, OpenSSH, PGP, and PuTTY private key blocks.",
+    "ja": "PEM・OpenSSH・PGP・PuTTY 形式の秘密鍵ブロックを検出します。",
+    "pt-BR": "Detectar blocos de chaves privadas PEM, OpenSSH, PGP e PuTTY.",
+    "ru": "Распознавать блоки приватных ключей PEM, OpenSSH, PGP и PuTTY."
+  },
+  "API 密钥、令牌与 JWT": {
+    "en": "API keys, tokens & JWT",
+    "ja": "API キー・トークン・JWT",
+    "pt-BR": "Chaves de API, tokens e JWT",
+    "ru": "API-ключи, токены и JWT"
+  },
+  "识别常见云服务与 AI 平台的 API 密钥、Authorization 凭据头以及 JWT。": {
+    "en": "Detect common cloud and AI API keys, Authorization headers, and JWTs.",
+    "ja": "主要なクラウドや AI サービスの API キー、Authorization ヘッダー、JWT を検出します。",
+    "pt-BR": "Detectar chaves de API de serviços de nuvem e IA, cabeçalhos Authorization e JWTs.",
+    "ru": "Распознавать API-ключи облачных и ИИ-сервисов, заголовки Authorization и JWT."
+  },
+  "含密码的连接串": {
+    "en": "Database connection strings",
+    "ja": "パスワード付き接続文字列",
+    "pt-BR": "Strings de conexão com senha",
+    "ru": "Строки подключения с паролем"
+  },
+  "识别包含明文密码的数据库或服务连接 URI。": {
+    "en": "Detect database and service URIs containing embedded passwords.",
+    "ja": "平文パスワードを含むデータベースやサービスの接続 URI を検出します。",
+    "pt-BR": "Detectar URIs de banco de dados ou serviços com senhas incorporadas.",
+    "ru": "Распознавать URI баз данных и сервисов со встроенными паролями."
+  },
+  "密码与密钥键值对": {
+    "en": "Password & secret assignments",
+    "ja": "パスワード・シークレットのキー値",
+    "pt-BR": "Atribuições de senha e segredo",
+    "ru": "Пары ключ-значение с паролями и секретами"
+  },
+  "识别 .env、YAML、JSON 等格式中的 password、secret、api_key 赋值（自动忽略常见占位符）。": {
+    "en": "Detect password, secret, and api_key assignments in .env, YAML, JSON, and similar formats while ignoring common placeholders.",
+    "ja": ".env・YAML・JSON などの password・secret・api_key の割り当てを検出します（一般的なプレースホルダーは除外）。",
+    "pt-BR": "Detectar atribuições de password, secret e api_key em .env, YAML, JSON e formatos semelhantes, ignorando marcadores comuns.",
+    "ru": "Распознавать присваивания password, secret и api_key в .env, YAML, JSON и аналогичных форматах, игнорируя типовые заглушки."
+  },
+  "密码管理器来源应用": {
+    "en": "Password manager apps",
+    "ja": "パスワード管理アプリ",
+    "pt-BR": "Apps gerenciadores de senhas",
+    "ru": "Менеджеры паролей"
+  },
+  "自动拦截来自 1Password、Bitwarden、KeePassXC、Apple 密码/钥匙串等密码管理器的剪贴板内容。": {
+    "en": "Automatically intercept content copied from known password managers such as 1Password, Bitwarden, KeePassXC, and Apple Passwords.",
+    "ja": "1Password・Bitwarden・KeePassXC・Apple パスワードなどのパスワード管理アプリからコピーされた内容を自動的に保護します。",
+    "pt-BR": "Interceptar automaticamente conteúdo copiado de gerenciadores de senhas como 1Password, Bitwarden, KeePassXC e Senhas da Apple.",
+    "ru": "Автоматически перехватывать содержимое, скопированное из менеджеров паролей (1Password, Bitwarden, KeePassXC, Пароли Apple и др.)."
+  },
+  "敏感文件名": {
+    "en": "Sensitive filenames",
+    "ja": "機密ファイル名",
+    "pt-BR": "Nomes de arquivos sensíveis",
+    "ru": "Конфиденциальные имена файлов"
+  },
+  "拦截 .env、id_rsa、*.pem、*.key、*.kdbx 等敏感文件。": {
+    "en": "Intercept copied files matching .env, id_rsa, *.pem, *.key, *.kdbx, and similar sensitive patterns.",
+    "ja": ".env、id_rsa、*.pem、*.key、*.kdbx などの機密ファイルを保護します。",
+    "pt-BR": "Interceptar arquivos copiados como .env, id_rsa, *.pem, *.key e *.kdbx.",
+    "ru": "Перехватывать скопированные файлы .env, id_rsa, *.pem, *.key, *.kdbx и аналогичные."
+  },
+  "最大扫描文本字节数": {
+    "en": "Maximum text scan size (bytes)",
+    "ja": "最大スキャン文字サイズ（バイト）",
+    "pt-BR": "Tamanho máximo de verificação de texto (bytes)",
+    "ru": "Макс. размер сканируемого текста (байт)"
+  },
+  "单条文本内容参与敏感检测的最大前缀字节数（1024–1048576），回车保存。": {
+    "en": "Upper bound of text bytes scanned per clipboard item (1024–1048576). Press Enter to save.",
+    "ja": "1 件のテキスト項目で検出対象とする先頭バイト数の上限（1024〜1048576）です。Enter キーで保存します。",
+    "pt-BR": "Limite superior de bytes de texto analisados por item (1024–1048576). Pressione Enter para salvar.",
+    "ru": "Максимальное число байт начала текста для проверки (1024–1048576). Нажмите Enter для сохранения."
+  },
+  "请输入 1024 到 1048576 之间的整数。": {
+    "en": "Enter a whole number between 1024 and 1048576.",
+    "ja": "1024 から 1048576 の間の整数を入力してください。",
+    "pt-BR": "Digite um número inteiro entre 1024 e 1048576.",
+    "ru": "Введите целое число от 1024 до 1048576."
+  },
+  "应用与自定义规则": {
+    "en": "Apps & custom rules",
+    "ja": "アプリとカスタムルール",
+    "pt-BR": "Apps e regras personalizadas",
+    "ru": "Приложения и свои правила"
+  },
+  "额外拦截应用列表": {
+    "en": "Additional blocked apps",
+    "ja": "追加の保護対象アプリ",
+    "pt-BR": "Apps bloqueados adicionais",
+    "ru": "Дополнительные блокируемые приложения"
+  },
+  "填写应用标识符（Bundle ID / 进程名）或应用名称，来自这些应用的内容将一律被拦截。": {
+    "en": "Always intercept items copied from these app identifiers (Bundle ID / process name) or display names.",
+    "ja": "アプリ識別子（Bundle ID・プロセス名）またはアプリ名を指定すると、そのアプリからのコピーをすべて保護します。",
+    "pt-BR": "Interceptar sempre itens copiados desses identificadores (Bundle ID / processo) ou nomes de aplicativos.",
+    "ru": "Всегда перехватывать элементы из указанных идентификаторов (Bundle ID / имя процесса) или названий приложений."
+  },
+  "白名单应用列表": {
+    "en": "Allowed apps (bypass)",
+    "ja": "除外アプリ（ホワイトリスト）",
+    "pt-BR": "Apps permitidos (ignorar regras)",
+    "ru": "Разрешенные приложения (исключения)"
+  },
+  "来自这些应用的内容将跳过所有敏感检测规则。": {
+    "en": "Skip all sensitivity checks for items copied from these apps.",
+    "ja": "これらのアプリからコピーされた内容は、すべての機密検出ルールをスキップします。",
+    "pt-BR": "Ignorar todas as verificações de conteúdo sensível para itens copiados desses apps.",
+    "ru": "Пропускать все проверки конфиденциальности для содержимого из этих приложений."
+  },
+  "自定义正则表达式": {
+    "en": "Custom regular expressions",
+    "ja": "カスタム正規表現",
+    "pt-BR": "Expressões regulares personalizadas",
+    "ru": "Пользовательские регулярные выражения"
+  },
+  "使用 Go RE2 语法添加额外的敏感文本匹配规则。": {
+    "en": "Additional Go RE2 regular expressions that mark text as sensitive.",
+    "ja": "Go RE2 構文で機密テキストを追加検出する正規表現を指定します。",
+    "pt-BR": "Expressões regulares Go RE2 adicionais para marcar texto como sensível.",
+    "ru": "Дополнительные регулярные выражения Go RE2 для определения конфиденциального текста."
+  },
+  "自定义关键词": {
+    "en": "Custom keywords",
+    "ja": "カスタムキーワード",
+    "pt-BR": "Palavras-chave personalizadas",
+    "ru": "Пользовательские ключевые слова"
+  },
+  "不区分大小写的字面量关键词，命中即视为敏感内容。": {
+    "en": "Case-insensitive literal substrings that mark text as sensitive.",
+    "ja": "大文字・小文字を区別しないキーワードに一致したテキストを機密として扱います。",
+    "pt-BR": "Termos literais sem distinção de maiúsculas/minúsculas que marcam o texto como sensível.",
+    "ru": "Ключевые слова без учета регистра, при совпадении с которыми текст считается конфиденциальным."
+  },
+  "规则格式无效，请检查正则表达式语法或条目长度。": {
+    "en": "Invalid rule format. Check regular expression syntax and entry lengths.",
+    "ja": "ルールの形式が無効です。正規表現の構文や各項目の長さを確認してください。",
+    "pt-BR": "Formato de regra inválido. Verifique a sintaxe das expressões regulares e o tamanho das entradas.",
+    "ru": "Недопустимый формат правил. Проверьте синтаксис регулярных выражений и длину записей."
+  },
+  "匹配示例": {
+    "en": "Examples",
+    "ja": "一致する例",
+    "pt-BR": "Exemplos",
+    "ru": "Примеры"
+  },
+  "查看示例": {
+    "en": "View examples",
+    "ja": "例を表示",
+    "pt-BR": "Ver exemplos",
+    "ru": "Показать примеры"
+  },
+  "重置": {
+    "en": "Reset",
+    "ja": "リセット",
+    "pt-BR": "Redefinir",
+    "ru": "Сбросить"
   }
 }

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/uniclipboard/unic/internal/relayclient"
+	"github.com/uniclipboard/unic/internal/relaycrypto"
 	"github.com/uniclipboard/unic/internal/rendezvous"
 	"github.com/uniclipboard/unic/internal/wire"
 	"github.com/uniclipboard/unic/plugin"
@@ -81,6 +83,7 @@ type Options struct {
 	extraBackends    []syncBackend // fake backends for contract tests
 	noPersistDefault bool          // processed items default to persist=false
 	rendezvous       *rendezvous.Client
+	relayClient      *relayclient.Client
 }
 
 // ResourcePolicy bounds what the engine keeps. Zero fields mean the defaults.
@@ -139,6 +142,17 @@ func (s Settings) validate() *Error {
 		if p, err := url.Parse(u); err != nil || (p.Scheme != "https" && p.Scheme != "http") || p.Host == "" {
 			return newErr(CodeInvalidArgument, "rendezvous_url: must be an http(s) URL")
 		}
+	}
+	if u := strings.TrimSpace(s.Sync.Relay.URL); u != "" {
+		if _, err := relaycrypto.NormalizeRelayOrigin(u); err != nil {
+			return newErr(CodeInvalidArgument, "sync.relay.url: must be a valid http(s) origin")
+		}
+	}
+	if s.Sync.Relay.MaxBytes < 0 || s.Sync.Relay.MaxBytes > wire.MaxTotal {
+		return errf(CodeInvalidArgument, "sync.relay.max_bytes: must be between 0 and %d bytes (4GiB)", int64(wire.MaxTotal))
+	}
+	if len(s.Sync.Relay.AccessKey) > 512 || strings.ContainsAny(s.Sync.Relay.AccessKey, "\r\n\x00") {
+		return newErr(CodeInvalidArgument, "sync.relay.access_key: invalid access key")
 	}
 	for _, p := range s.BackendPolicies {
 		if p.AutoFileMaxBytes < 0 || p.AutoFileMaxBytes > wire.MaxFileBytes {

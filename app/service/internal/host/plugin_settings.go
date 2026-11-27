@@ -90,6 +90,7 @@ func (n *Node) pluginsLocked() []api.PluginInfo {
 			Events:           slices.Clone(s.Manifest.Events),
 			Actions:          actions,
 			Capabilities:     slices.Clone(s.Manifest.Capabilities),
+			ProcessorStage:   s.Manifest.ProcessorStage,
 			TransportKind:    s.Manifest.TransportKind,
 			ExternalChannels: s.Manifest.ExternalChannels,
 			Configured:       wanted,

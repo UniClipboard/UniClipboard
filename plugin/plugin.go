@@ -24,6 +24,22 @@ const (
 	CapEnricher = "enricher"
 )
 
+// Processor stages control coarse execution order inside the processing
+// pipeline. Guard processors always run before annotate processors regardless
+// of plugins.order; plugins.order only orders plugins within the same stage.
+const (
+	ProcessorStageGuard    = "guard"    // pre-processing security/privacy filters
+	ProcessorStageAnnotate = "annotate" // default: tagging, classification, metadata
+)
+
+// EffectiveProcessorStage normalizes an omitted processor stage to "annotate".
+func EffectiveProcessorStage(stage string) string {
+	if stage == "" {
+		return ProcessorStageAnnotate
+	}
+	return stage
+}
+
 // Enricher trigger sources.
 const (
 	EnrichTriggerOnCommit = "on_commit"
@@ -73,6 +89,9 @@ type Spec struct {
 	APIVersion     int    // 1
 	SettingsSHA256 string // SHA-256 of the published static settings schema
 	Capabilities   []string
+	// ProcessorStage selects the processing sub-stage ("guard" or "annotate";
+	// empty defaults to "annotate"). Only valid with CapProcessor.
+	ProcessorStage string
 	// TransportKind is for sync backends only; other plugins leave it empty.
 	TransportKind string
 	Actions       []ActionSpec // only with CapAction

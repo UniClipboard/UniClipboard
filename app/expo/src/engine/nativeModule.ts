@@ -384,7 +384,7 @@ export const unicEngineNative = {
   setTelemetryEnabled: (enabled: boolean) => callJSON<TelemetryState>(() => requireMod().setTelemetryEnabled(enabled)),
   exportRecentDiagnosticLogs: () => callString(() => requireMod().exportRecentDiagnosticLogs()),
   getCapabilities: () => callJSON<Capabilities>(() => requireMod().getCapabilities()),
-  updateSettings: (req: { expected_revision: string; value: EngineSettings }) =>
+  updateSettings: (req: { expected_revision: string; value: EngineSettings; relay_access_key?: string }) =>
     callJSON<SettingsState>(() => requireMod().updateSettings(JSON.stringify(req))),
 
   getFileCacheState: () => callJSON<FileCacheState>(() => requireMod().getFileCacheState()),

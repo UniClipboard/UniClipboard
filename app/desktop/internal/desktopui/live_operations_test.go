@@ -54,6 +54,17 @@ func TestTransferTargetItemStatesAndReceipts(t *testing.T) {
 		t.Fatalf("received item = %+v", received)
 	}
 
+	relayStored := d.transferTargetItem("op1", engine.TargetStatus{
+		BackendID:      engine.BackendTailcat,
+		TargetID:       "dev-mac",
+		State:          engine.TargetSent,
+		ReceiptStage:   engine.ReceiptStageRelayStored,
+		TransportRoute: engine.RouteRelay,
+	})
+	if relayStored.Tone != desktopkit.StatusPositive || relayStored.Status != "已暂存中转" {
+		t.Fatalf("relay stored item = %+v", relayStored)
+	}
+
 	discarded := d.transferTargetItem("op1", engine.TargetStatus{
 		BackendID:    engine.BackendTailcat,
 		TargetID:     "dev-win",
@@ -182,6 +193,19 @@ func TestDeliveryTargetMetaIconsExternalChannelAndRetryability(t *testing.T) {
 	})
 	if mac.Icon != desktopkit.IconDesktop || !mac.Confirmed || mac.Retryable {
 		t.Fatalf("mac delivery item = %+v", mac)
+	}
+
+	relay := d.deliveryTargetItem("op1", engine.TargetStatus{
+		BackendID:      engine.BackendTailcat,
+		TargetKind:     engine.TargetDevice,
+		TargetID:       "dev-mac",
+		PeerID:         "dev-mac",
+		State:          engine.TargetSent,
+		ReceiptStage:   engine.ReceiptStageRelayStored,
+		TransportRoute: engine.RouteRelay,
+	})
+	if relay.Tone != desktopkit.StatusPositive || relay.Confirmed || relay.Status != "已暂存中转" {
+		t.Fatalf("relay delivery item = %+v", relay)
 	}
 
 	wetype := d.deliveryTargetItem("op1", engine.TargetStatus{

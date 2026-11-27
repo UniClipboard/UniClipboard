@@ -1,9 +1,12 @@
 package desktopui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,15 +16,17 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	api "github.com/uniclipboard/unic/internal/localapi"
 	config "github.com/uniclipboard/unic/internal/localconfig"
+	"github.com/uniclipboard/unic/plugin"
 	"github.com/uniclipboard/unic/plugin/settings"
 )
 
 type pluginSettingsForm struct {
-	state   api.PluginSettings
-	schema  settings.Schema
-	values  map[string]any
-	message string
-	ready   bool
+	state       api.PluginSettings
+	schema      settings.Schema
+	values      map[string]any
+	savedValues []byte
+	message     string
+	ready       bool
 }
 
 func (f *pluginSettingsForm) load(state api.PluginSettings) error {
@@ -36,9 +41,21 @@ func (f *pluginSettingsForm) load(state api.PluginSettings) error {
 	if err != nil {
 		return err
 	}
-	f.state, f.schema, f.values, f.ready = state, schema, values, true
+	saved, _ := json.Marshal(values)
+	f.state, f.schema, f.values, f.savedValues, f.ready = state, schema, values, saved, true
 	f.message = ""
 	return nil
+}
+
+func (f *pluginSettingsForm) isDirty() bool {
+	if !f.ready {
+		return false
+	}
+	cur, err := json.Marshal(f.values)
+	if err != nil {
+		return true
+	}
+	return !bytes.Equal(cur, f.savedValues)
 }
 
 func (d *viewState) externalPluginStatus(item api.PluginInfo) (string, desktopkit.StatusTone) {
@@ -131,6 +148,8 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 	case desktopkit.StatusWarning, desktopkit.StatusCritical:
 		statusColor = "orange"
 	}
+	isProcessor := slices.Contains(item.Capabilities, plugin.CapProcessor)
+	isGuard := isProcessor && item.ProcessorStage == plugin.ProcessorStageGuard
 	icon, tone := pluginPresentationIcon(cat.Category, item.Capabilities, item.Icon, cat.Icon)
 	ui.Row(c.Key("external-plugin-header")).Gap(12).AlignItems(ui.Start).Children(func() {
 		pluginIconTile(c.Key("ico"), k, icon, tone, 46)
@@ -140,34 +159,73 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 				if badge != "" {
 					k.Tag(c.Key("badge"), badge, desktopkit.TagProps{Color: "blue"})
 				}
+				if isGuard {
+					k.Tag(c.Key("stage"), d.tr("前置拦截"), desktopkit.TagProps{Color: "purple"})
+				}
 				k.Tag(c.Key("status"), stateText, desktopkit.TagProps{Color: statusColor})
 			})
 			k.Text(c.Key("desc"), desc, secondary)
 		})
 	})
 
-	k.SettingsGroup(c.Key("external-plugin-control"), desktopkit.SettingsGroupProps{}, func() {
+	controlFooter := ""
+	if isGuard {
+		controlFooter = d.tr("此插件运行在前置拦截阶段，始终先于常规处理器与所有同步后端执行。")
+	}
+	k.SettingsGroup(c.Key("external-plugin-control"), desktopkit.SettingsGroupProps{Footer: controlFooter}, func() {
 		if item.LiveStart && item.RunningVersion == "" && !item.NeedsSettings {
 			k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{Label: d.tr("启动")}, nil, func() {
 				if k.Button(c.Key("start"), d.tr("启动"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: l.showBusy()}).Clicked() {
 					d.startExternalPlugin(item.ID)
 				}
 			})
-			return
-		}
-		on := item.Configured
-		description := ""
-		if !item.LiveStart {
-			description = d.tr("退出并重新启动桌面端后生效。")
-		}
-		k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{
-			Label:       d.tr("启用"),
-			Description: description,
-		}, nil, func() {
-			if k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.showBusy()}).Changed() && !l.busy {
-				d.setExternalPluginEnabled(cfg, item.ID, on)
+		} else {
+			on := item.Configured
+			description := ""
+			if !item.LiveStart {
+				description = d.tr("退出并重新启动桌面端后生效。")
 			}
-		})
+			k.SettingsRow(c.Key("external-plugin-enabled"), desktopkit.SettingsRowProps{
+				Label:       d.tr("启用"),
+				Description: description,
+			}, nil, func() {
+				if k.Switch(c, &on, desktopkit.SwitchProps{Label: d.tr("启用"), Disabled: l.showBusy()}).Changed() && !l.busy {
+					d.setExternalPluginEnabled(cfg, item.ID, on)
+				}
+			})
+		}
+		if isProcessor {
+			instance := cfg.Plugins.Instances[item.ID]
+			global := d.tr("继续处理")
+			if cfg.Plugins.OnError == "block_sync" {
+				global = d.tr("禁止同步此条目")
+			}
+			policy := instance.OnError
+			if policy == "" {
+				policy = "inherit"
+			}
+			errDesc := d.tr("当此插件运行出错或超时时，决定是否允许该条剪贴板继续同步。重启后生效。")
+			k.SettingsRow(c.Key("external-plugin-on-error"), desktopkit.SettingsRowProps{
+				Label:       d.tr("处理失败时"),
+				Description: errDesc,
+			}, nil, func() {
+				items := []desktopkit.SelectItem{
+					{Value: "inherit", Label: fmt.Sprintf(d.tr("跟随全局（%s）"), global)},
+					{Value: "continue", Label: d.tr("继续处理")},
+					{Value: "block_sync", Label: d.tr("禁止同步此条目")},
+				}
+				ui.Box(c.Key("on-error-box")).Width(220).Children(func() {
+					if k.Select(c, desktopkit.SelectProps{Label: d.tr("处理失败时"), Value: &policy, Items: items, Disabled: l.showBusy()}).Changed && !l.busy {
+						instance.OnError = policy
+						if policy == "inherit" {
+							instance.OnError = ""
+						}
+						cfg.Plugins.Instances[item.ID] = instance
+						d.saveLiveConfig(cfg)
+					}
+				})
+			})
+		}
 	})
 
 	isSyncBackend := slices.Contains(item.Capabilities, "sync_backend")
@@ -230,27 +288,44 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 		}
 		f := p.form
 		if !f.ready {
-			if k.Button(c.Key("load-plugin-settings"), d.tr("重试"), desktopkit.ButtonProps{Disabled: l.showBusy()}).Clicked() {
-				d.refreshPluginForm(item.ID, f, nil)
-			}
-		} else {
-			valid := true
-			k.SettingsGroup(c.Key("schema-settings"), desktopkit.SettingsGroupProps{Title: d.tr("插件设置")}, func() {
-				valid = d.pluginFormObject(c, k, f, &f.schema, f.values, "")
-			})
-			ui.Row(c).Gap(8).Children(func() {
-				if k.Button(c.Key("reload-plugin-settings"), d.tr("重新加载"), desktopkit.ButtonProps{Disabled: l.showBusy()}).Clicked() {
-					d.refreshPluginForm(item.ID, f, nil)
-				}
-				if k.Button(c.Key("save-plugin-settings"), d.tr("保存"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: !valid || l.showBusy()}).Clicked() && !l.busy {
-					raw, err := json.Marshal(f.values)
-					if err != nil || len(raw) > settings.MaxConfigBytes {
-						f.message = "插件设置超过大小限制。"
-						d.toastError(d.tr(f.message), desktopkit.ToastOptions{ID: toastIDPluginFeedback})
-						return
+			k.SettingsGroup(c.Key("schema-loading"), desktopkit.SettingsGroupProps{Title: d.tr("插件设置")}, func() {
+				k.SettingsRow(c.Key("retry-row"), desktopkit.SettingsRowProps{
+					Label:       d.tr("未能加载插件设置"),
+					Description: d.tr("点击重试以重新读取当前插件配置。"),
+				}, nil, func() {
+					if k.Button(c.Key("load-plugin-settings"), d.tr("重试"), desktopkit.ButtonProps{Disabled: l.showBusy()}).Clicked() {
+						d.refreshPluginForm(item.ID, f, nil)
 					}
-					d.refreshPluginForm(item.ID, f, &api.PluginSettingsEdit{Revision: f.state.Revision, Values: raw})
-				}
+				})
+			})
+		} else {
+			valid := d.pluginFormTopLevel(c, k, f, &f.schema, f.values)
+			dirty := f.isDirty()
+			ui.Row(c.Key("schema-actions")).AlignItems(ui.Center).Justify(ui.SpaceBetween).Gap(12).MinWidth(0).Children(func() {
+				ui.Box(c.Key("status")).Grow(1).MinWidth(0).Children(func() {
+					switch {
+					case !valid:
+						k.Text(c.Key("invalid"), d.tr("请修正无效配置项后再保存。"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneCritical})
+					case f.state.Restart:
+						k.Text(c.Key("restart"), d.tr("配置已保存，退出并重新启动桌面端后生效。"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary})
+					case dirty:
+						k.Text(c.Key("dirty"), d.tr("有未保存的更改。"), desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary})
+					}
+				})
+				ui.Row(c.Key("buttons")).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
+					if k.Button(c.Key("reload-plugin-settings"), d.tr("重新加载"), desktopkit.ButtonProps{Disabled: l.showBusy()}).Clicked() {
+						d.refreshPluginForm(item.ID, f, nil)
+					}
+					if k.Button(c.Key("save-plugin-settings"), d.tr("保存"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Disabled: !valid || l.showBusy()}).Clicked() && !l.busy {
+						raw, err := json.Marshal(f.values)
+						if err != nil || len(raw) > settings.MaxConfigBytes {
+							f.message = "插件设置超过大小限制。"
+							d.toastError(d.tr(f.message), desktopkit.ToastOptions{ID: toastIDPluginFeedback})
+							return
+						}
+						d.refreshPluginForm(item.ID, f, &api.PluginSettingsEdit{Revision: f.state.Revision, Values: raw})
+					}
+				})
 			})
 		}
 	}
@@ -278,6 +353,13 @@ func (d *viewState) externalPluginDetail(c *ui.Context, k desktopkit.Kit, item a
 			{ID: "id", Label: d.tr("插件标识"), Value: item.ID, Monospace: true},
 			{ID: "ver", Label: d.tr("安装版本"), Value: "v" + item.Version, Monospace: true},
 			{ID: "run", Label: d.tr("运行版本"), Value: runningVer, Monospace: true},
+		}
+		if isProcessor {
+			stageLabel := d.tr("常规处理（annotate）")
+			if isGuard {
+				stageLabel = d.tr("前置拦截（guard）")
+			}
+			facts = append(facts, desktopkit.Fact{ID: "stage", Label: d.tr("处理阶段"), Value: stageLabel})
 		}
 		if item.Repository != "" {
 			facts = append(facts, desktopkit.Fact{ID: "repo", Label: d.tr("开源仓库"), Value: item.Repository, Monospace: true})
@@ -380,7 +462,7 @@ func schemaOrder(field *settings.Schema) int {
 	return 0
 }
 
-func (d *viewState) pluginFormObject(c *ui.Context, k desktopkit.Kit, f *pluginSettingsForm, schema *settings.Schema, values map[string]any, parent string) bool {
+func orderedSchemaGroups(schema *settings.Schema, lang string) ([]string, map[string][]string, map[string]settings.Text) {
 	keys := make([]string, 0, len(schema.Properties))
 	for key := range schema.Properties {
 		keys = append(keys, key)
@@ -395,7 +477,6 @@ func (d *viewState) pluginFormObject(c *ui.Context, k desktopkit.Kit, f *pluginS
 		}
 		return strings.Compare(a, b)
 	})
-	lang := d.currentLanguage()
 	texts := make(map[string]settings.Text, len(keys))
 	groups := make(map[string][]string)
 	var names []string
@@ -407,66 +488,248 @@ func (d *viewState) pluginFormObject(c *ui.Context, k desktopkit.Kit, f *pluginS
 		}
 		groups[text.Group] = append(groups[text.Group], key)
 	}
-	// Top-level fields are direct children of the settings card, so they carry
-	// the same inset as a SettingsRow. Nested fields sit inside that inset.
-	inset := func(e ui.Element) ui.Element {
-		if parent == "" {
-			return e.Padding(12, 16)
-		}
-		return e
+	return names, groups, texts
+}
+
+func isBlockSchemaField(field *settings.Schema) bool {
+	if field.WriteOnly {
+		return false
 	}
+	if field.Type == "array" || field.Type == "object" {
+		return true
+	}
+	return field.Type == "string" && field.UI != nil && field.UI.Widget == "textarea"
+}
+
+// pluginFormTopLevel renders each top-level x-unic-ui.group as its own
+// BoardUI SettingsGroup card so multi-group schemas read cleanly.
+func (d *viewState) pluginFormTopLevel(c *ui.Context, k desktopkit.Kit, f *pluginSettingsForm, schema *settings.Schema, values map[string]any) bool {
+	names, groups, texts := orderedSchemaGroups(schema, d.currentLanguage())
 	valid := true
-	for _, group := range names {
-		if group != "" {
-			ui.Box(c.Key("group-"+group)).Padding(12, 16, 0).Children(func() {
-				k.Text(c, group, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Emphasized: true})
-			})
-		}
-		for _, key := range groups[group] {
-			field := schema.Properties[key]
-			text := texts[key]
-			path := parent + "/" + strings.ReplaceAll(strings.ReplaceAll(key, "~", "~0"), "/", "~1")
-			label := text.Title
-			if label == "" {
-				label = key
+	for gi, group := range names {
+		title := group
+		if title == "" {
+			if len(names) == 1 {
+				title = d.tr("插件设置")
+			} else {
+				title = d.tr("常规")
 			}
-			required := slices.Contains(schema.Required, key)
-			value, present := values[key]
-			inset(ui.Column(c.Key(path)).Gap(4).MinWidth(0)).Children(func() {
-				k.Text(c, label, desktopkit.TextProps{Emphasized: true})
-				if text.Description != "" {
-					k.Text(c, text.Description, footnote)
-				}
-				if field.WriteOnly {
-					ok := d.pluginSecretField(c, k, f, field, values, key, path, label, required)
-					valid = valid && ok
-					return
-				}
-				if !required && !present {
-					ui.Row(c.Key("unset")).Gap(8).AlignItems(ui.Center).Children(func() {
-						k.Text(c, d.tr("未设置"), footnote)
-						if k.Button(c.Key("set"), d.tr("设置"), desktopkit.ButtonProps{Variant: desktopkit.Subtle}).Clicked() {
-							values[key] = initialFieldValue(field)
-						}
-					})
-					return
-				}
-				if !present {
-					value = initialFieldValue(field)
-				}
-				updated, ok := d.pluginFormField(c, k, f, field, value, path, label, text.OptionLabels)
-				values[key] = updated
-				if !required {
-					if k.Button(c.Key("unset-btn"), d.tr("移除"), desktopkit.ButtonProps{Variant: desktopkit.Subtle}).Clicked() {
-						delete(values, key)
-						ok = true
-					}
-				}
-				valid = valid && ok
-			})
 		}
+		k.SettingsGroup(c.Key("schema-group-"+strconv.Itoa(gi)), desktopkit.SettingsGroupProps{Title: title}, func() {
+			for _, key := range groups[group] {
+				ok := d.pluginFormProperty(c, k, f, schema, values, key, texts[key], "")
+				valid = valid && ok
+			}
+		})
 	}
 	return valid
+}
+
+// pluginFormNestedObject renders a nested object's properties inside an inset
+// card, keeping group headers subtle without nesting outer SettingsGroups.
+func (d *viewState) pluginFormNestedObject(c *ui.Context, k desktopkit.Kit, f *pluginSettingsForm, schema *settings.Schema, values map[string]any, parent string) bool {
+	names, groups, texts := orderedSchemaGroups(schema, d.currentLanguage())
+	valid := true
+	ui.Column(c.Key("nested-card")).MinWidth(0).Radius(8).Background(deviceInsetBg(k, false)).Border(1, deviceCardBorder(k)).Dividers(1, deviceCardBorder(k)).Clip().Children(func() {
+		for _, group := range names {
+			if group != "" {
+				ui.Box(c.Key("ng-"+group)).Padding(8, 14).Children(func() {
+					k.Text(c, group, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary, Emphasized: true})
+				})
+			}
+			for _, key := range groups[group] {
+				ok := d.pluginFormProperty(c, k, f, schema, values, key, texts[key], parent)
+				valid = valid && ok
+			}
+		}
+	})
+	return valid
+}
+
+func (d *viewState) pluginFormProperty(c *ui.Context, k desktopkit.Kit, f *pluginSettingsForm, parentSchema *settings.Schema, values map[string]any, key string, text settings.Text, parent string) bool {
+	field := parentSchema.Properties[key]
+	path := parent + "/" + strings.ReplaceAll(strings.ReplaceAll(key, "~", "~0"), "/", "~1")
+	label := text.Title
+	if label == "" {
+		label = key
+	}
+	required := slices.Contains(parentSchema.Required, key)
+	value, present := values[key]
+
+	// Optional unset scalar/block fields render as one clean SettingsRow.
+	if !field.WriteOnly && !required && !present {
+		k.SettingsRow(c.Key(path), desktopkit.SettingsRowProps{Label: label, Description: text.Description}, nil, func() {
+			k.Text(c.Key("unset"), d.tr("未设置"), footnote)
+			if k.Button(c.Key("set"), d.tr("设置"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Size: desktopkit.SizeSmall, Disabled: d.live.showBusy()}).Clicked() {
+				values[key] = initialFieldValue(field)
+			}
+		})
+		return true
+	}
+
+	if field.WriteOnly {
+		ok := true
+		k.SettingsRow(c.Key(path), desktopkit.SettingsRowProps{Label: label, Description: text.Description}, nil, func() {
+			ok = d.pluginSecretField(c, k, f, field, values, key, path, label, required)
+		})
+		return ok
+	}
+
+	if !present {
+		value = initialFieldValue(field)
+	}
+
+	if !isBlockSchemaField(field) {
+		ok := true
+		k.SettingsRow(c.Key(path), desktopkit.SettingsRowProps{Label: label, Description: text.Description}, nil, func() {
+			updated, fieldOK := d.pluginInlineControl(c, k, field, value, label, text.OptionLabels)
+			values[key] = updated
+			ok = fieldOK
+			if !required {
+				if k.Button(c.Key("unset-btn"), d.tr("移除"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Size: desktopkit.SizeSmall, Disabled: d.live.showBusy()}).Clicked() {
+					delete(values, key)
+					ok = true
+				}
+			}
+		})
+		return ok
+	}
+
+	// Block fields: textarea, array, nested object.
+	ok := true
+	ui.Column(c.Key(path)).Padding(12, 16).Gap(8).MinWidth(0).Children(func() {
+		switch field.Type {
+		case "array":
+			list, _ := value.([]any)
+			addClicked := false
+			removedOptional := false
+			ui.Row(c.Key("head")).Justify(ui.SpaceBetween).AlignItems(ui.Center).Gap(12).MinWidth(0).Children(func() {
+				ui.Column(c.Key("text")).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					ui.Row(c.Key("label")).Wrap().Gap(6).AlignItems(ui.Center).Children(func() {
+						k.Text(c.Key("l"), label, desktopkit.TextProps{Emphasized: true})
+						if len(list) > 0 {
+							k.Tag(c.Key("count"), fmt.Sprintf(d.tr("%d 项"), len(list)), desktopkit.TagProps{Color: "gray"})
+						}
+					})
+					if text.Description != "" {
+						k.Text(c.Key("d"), text.Description, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary})
+					}
+				})
+				ui.Row(c.Key("actions")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+					atMax := field.MaxItems != nil && len(list) >= *field.MaxItems
+					if k.Button(c.Key("add"), d.tr("添加"), desktopkit.ButtonProps{Icon: desktopkit.IconAdd, Size: desktopkit.SizeSmall, Disabled: d.live.showBusy() || atMax}).Clicked() {
+						addClicked = true
+					}
+					if !required {
+						if k.Button(c.Key("unset-btn"), d.tr("移除"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Size: desktopkit.SizeSmall, Disabled: d.live.showBusy()}).Clicked() {
+							removedOptional = true
+						}
+					}
+				})
+			})
+			if removedOptional {
+				delete(values, key)
+				ok = true
+				return
+			}
+			if addClicked {
+				list = append(list, initialFieldValue(field.Items))
+			}
+			itemsOK := true
+			if len(list) == 0 {
+				k.Text(c.Key("empty"), d.tr("暂无配置项"), footnote)
+			} else {
+				ui.Column(c.Key("items")).Gap(6).MinWidth(0).Children(func() {
+					for i, v := range list {
+						index := strconv.Itoa(i)
+						remove := false
+						ui.Row(c.Key(index)).Gap(8).AlignItems(ui.Center).FillWidth().MinWidth(0).Children(func() {
+							ui.Box(c.Key("ctrl")).Grow(1).MinWidth(0).Children(func() {
+								updated, itemOK := d.pluginArrayItemControl(c.Key("value"), k, field.Items, v, label+" "+index)
+								list[i] = updated
+								itemsOK = itemsOK && itemOK
+							})
+							remove = k.Button(c.Key("remove"), "", desktopkit.ButtonProps{
+								Variant:  desktopkit.Subtle,
+								Icon:     desktopkit.IconDelete,
+								Size:     desktopkit.SizeSmall,
+								Label:    d.tr("删除"),
+								Tooltip:  d.tr("删除"),
+								Disabled: d.live.showBusy(),
+							}).Clicked()
+						})
+						if remove {
+							list = slices.Delete(list, i, i+1)
+							break
+						}
+					}
+				})
+			}
+			values[key] = list
+			arrErr := d.pluginFieldError(field, list)
+			if arrErr != "" {
+				k.Text(c.Key("err"), arrErr, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneCritical})
+			}
+			ok = itemsOK && arrErr == ""
+
+		case "object":
+			removedOptional := false
+			ui.Row(c.Key("head")).Justify(ui.SpaceBetween).AlignItems(ui.Center).Gap(12).MinWidth(0).Children(func() {
+				ui.Column(c.Key("text")).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					k.Text(c.Key("l"), label, desktopkit.TextProps{Emphasized: true})
+					if text.Description != "" {
+						k.Text(c.Key("d"), text.Description, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary})
+					}
+				})
+				if !required {
+					if k.Button(c.Key("unset-btn"), d.tr("移除"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Size: desktopkit.SizeSmall, Disabled: d.live.showBusy()}).Clicked() {
+						removedOptional = true
+					}
+				}
+			})
+			if removedOptional {
+				delete(values, key)
+				ok = true
+				return
+			}
+			child, _ := value.(map[string]any)
+			if child == nil {
+				child = make(map[string]any)
+			}
+			ok = d.pluginFormNestedObject(c, k, f, field, child, path)
+			values[key] = child
+
+		default: // textarea
+			removedOptional := false
+			ui.Row(c.Key("head")).Justify(ui.SpaceBetween).AlignItems(ui.Center).Gap(12).MinWidth(0).Children(func() {
+				ui.Column(c.Key("text")).Grow(1).MinWidth(0).Gap(2).Children(func() {
+					k.Text(c.Key("l"), label, desktopkit.TextProps{Emphasized: true})
+					if text.Description != "" {
+						k.Text(c.Key("d"), text.Description, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary})
+					}
+				})
+				if !required {
+					if k.Button(c.Key("unset-btn"), d.tr("移除"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Size: desktopkit.SizeSmall, Disabled: d.live.showBusy()}).Clicked() {
+						removedOptional = true
+					}
+				}
+			})
+			if removedOptional {
+				delete(values, key)
+				ok = true
+				return
+			}
+			strVal := fmt.Sprint(value)
+			ui.TextArea(c.Key("textarea"), &strVal).Label(label).Disabled(d.live.showBusy()).Height(88).FillWidth()
+			values[key] = strVal
+			fieldErr := d.pluginFieldError(field, strVal)
+			if fieldErr != "" {
+				k.Text(c.Key("err"), fieldErr, desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneCritical})
+			}
+			ok = fieldErr == ""
+		}
+	})
+	return ok
 }
 
 func initialFieldValue(field *settings.Schema) any {
@@ -500,11 +763,17 @@ func (d *viewState) pluginSecretField(c *ui.Context, k desktopkit.Kit, f *plugin
 	if saved && !edited {
 		placeholder = d.tr("已加密保存")
 	}
-	if k.TextField(c.Key("password"), desktopkit.TextFieldProps{Label: label, Value: &text, Placeholder: placeholder, Password: true}).Edited {
-		values[key], edited, value = text, true, text
+	errMsg := ""
+	if edited && value != nil {
+		errMsg = d.pluginFieldError(field, value)
 	}
+	ui.Box(c.Key("pw-box")).Width(220).Children(func() {
+		if k.TextField(c.Key("password"), desktopkit.TextFieldProps{Label: label, Value: &text, Placeholder: placeholder, Password: true, Error: errMsg, Disabled: d.live.showBusy()}).Edited {
+			values[key], edited, value = text, true, text
+		}
+	})
 	if (saved || edited) && !required {
-		if k.Button(c.Key("clear"), d.tr("清除"), desktopkit.ButtonProps{Variant: desktopkit.Subtle}).Clicked() {
+		if k.Button(c.Key("clear"), d.tr("清除"), desktopkit.ButtonProps{Variant: desktopkit.Subtle, Size: desktopkit.SizeSmall, Disabled: d.live.showBusy()}).Clicked() {
 			values[key], edited, value = nil, true, nil
 		}
 	}
@@ -517,37 +786,7 @@ func (d *viewState) pluginSecretField(c *ui.Context, k desktopkit.Kit, f *plugin
 	return settings.ValidateField(field, value) == nil
 }
 
-func (d *viewState) pluginFormField(c *ui.Context, k desktopkit.Kit, f *pluginSettingsForm, field *settings.Schema, value any, path, label string, optionLabels []string) (any, bool) {
-	switch field.Type {
-	case "object":
-		child, _ := value.(map[string]any)
-		if child == nil {
-			child = make(map[string]any)
-		}
-		return child, d.pluginFormObject(c, k, f, field, child, path)
-	case "array":
-		list, _ := value.([]any)
-		valid := true
-		for i, v := range list {
-			index := strconv.Itoa(i)
-			remove := false
-			ui.Row(c.Key(index)).Gap(4).Children(func() {
-				updated, ok := d.pluginFormField(c.Key("value"), k, f, field.Items, v, path+"/"+index, label+" "+index, nil)
-				list[i] = updated
-				valid = valid && ok
-				remove = k.Button(c.Key("remove"), d.tr("删除"), desktopkit.ButtonProps{Variant: desktopkit.Subtle}).Clicked()
-			})
-			if remove {
-				list = slices.Delete(list, i, i+1)
-				break
-			}
-		}
-		if k.Button(c.Key("add"), d.tr("添加"), desktopkit.ButtonProps{Disabled: field.MaxItems != nil && len(list) >= *field.MaxItems}).Clicked() {
-			list = append(list, initialFieldValue(field.Items))
-		}
-		valid = valid && settings.ValidateField(field, list) == nil
-		return list, valid
-	}
+func (d *viewState) pluginInlineControl(c *ui.Context, k desktopkit.Kit, field *settings.Schema, value any, label string, optionLabels []string) (any, bool) {
 	if len(field.Enum) > 0 {
 		data, _ := json.Marshal(value)
 		selected := string(data)
@@ -561,29 +800,67 @@ func (d *viewState) pluginFormField(c *ui.Context, k desktopkit.Kit, f *pluginSe
 			}
 			options = append(options, desktopkit.SelectItem{Value: string(option), Label: name})
 		}
-		k.Select(c.Key("enum"), desktopkit.SelectProps{Label: label, Value: &selected, Items: options})
+		ui.Box(c.Key("enum-box")).Width(240).Children(func() {
+			k.Select(c.Key("enum"), desktopkit.SelectProps{Label: label, Value: &selected, Items: options, Disabled: d.live.showBusy()})
+		})
 		if parsed, err := settings.DecodeValues([]byte(fmt.Sprintf("{\"value\":%s}", selected))); err == nil {
 			value = parsed["value"]
 		}
-	} else if field.Type == "boolean" {
-		checked, _ := value.(bool)
-		k.Switch(c.Key("boolean"), &checked, desktopkit.SwitchProps{Label: label})
-		value = checked
-	} else if field.Type == "integer" || field.Type == "number" {
-		value = d.pluginNumberField(c, k, field, fmt.Sprint(value), label)
-	} else {
-		text := fmt.Sprint(value)
-		if field.UI != nil && field.UI.Widget == "textarea" {
-			ui.TextArea(c.Key("textarea"), &text).Label(label).Disabled(d.live.showBusy()).Height(88).FillWidth()
-		} else {
-			k.TextField(c.Key("input"), desktopkit.TextFieldProps{Label: label, Value: &text, Disabled: d.live.showBusy()})
-		}
-		value = text
+		return value, settings.ValidateField(field, value) == nil
 	}
-	return value, settings.ValidateField(field, value) == nil
+	switch field.Type {
+	case "boolean":
+		checked, _ := value.(bool)
+		k.Switch(c.Key("boolean"), &checked, desktopkit.SwitchProps{Label: label, Disabled: d.live.showBusy()})
+		return checked, true
+	case "integer", "number":
+		num := d.pluginNumberControl(c, k, field, fmt.Sprint(value), label)
+		return num, settings.ValidateField(field, num) == nil
+	default:
+		text := fmt.Sprint(value)
+		errMsg := d.pluginFieldError(field, text)
+		ui.Box(c.Key("input-box")).Width(220).Children(func() {
+			k.TextField(c.Key("input"), desktopkit.TextFieldProps{Label: label, Value: &text, Error: errMsg, Disabled: d.live.showBusy()})
+		})
+		return text, settings.ValidateField(field, text) == nil
+	}
 }
 
-func (d *viewState) pluginNumberField(c *ui.Context, k desktopkit.Kit, field *settings.Schema, text, label string) json.Number {
+func (d *viewState) pluginArrayItemControl(c *ui.Context, k desktopkit.Kit, field *settings.Schema, value any, label string) (any, bool) {
+	if len(field.Enum) > 0 {
+		data, _ := json.Marshal(value)
+		selected := string(data)
+		options := make([]desktopkit.SelectItem, 0, len(field.Enum))
+		for _, option := range field.Enum {
+			name := string(option)
+			if field.Type == "string" {
+				_ = json.Unmarshal(option, &name)
+			}
+			options = append(options, desktopkit.SelectItem{Value: string(option), Label: name})
+		}
+		k.Select(c.Key("enum"), desktopkit.SelectProps{Label: label, Value: &selected, Items: options, Disabled: d.live.showBusy()})
+		if parsed, err := settings.DecodeValues([]byte(fmt.Sprintf("{\"value\":%s}", selected))); err == nil {
+			value = parsed["value"]
+		}
+		return value, settings.ValidateField(field, value) == nil
+	}
+	switch field.Type {
+	case "boolean":
+		checked, _ := value.(bool)
+		k.Switch(c.Key("boolean"), &checked, desktopkit.SwitchProps{Label: label, Disabled: d.live.showBusy()})
+		return checked, true
+	case "integer", "number":
+		num := d.pluginNumberControl(c, k, field, fmt.Sprint(value), label)
+		return num, settings.ValidateField(field, num) == nil
+	default:
+		text := fmt.Sprint(value)
+		errMsg := d.pluginFieldError(field, text)
+		k.TextField(c.Key("input"), desktopkit.TextFieldProps{Label: label, Value: &text, Error: errMsg, Disabled: d.live.showBusy()})
+		return text, settings.ValidateField(field, text) == nil
+	}
+}
+
+func (d *viewState) pluginNumberControl(c *ui.Context, k desktopkit.Kit, field *settings.Schema, text, label string) json.Number {
 	minimum, maximum := -float64(settings.MaxSafeNumber), float64(settings.MaxSafeNumber)
 	if field.Minimum != nil {
 		minimum = *field.Minimum
@@ -591,16 +868,93 @@ func (d *viewState) pluginNumberField(c *ui.Context, k desktopkit.Kit, field *se
 	if field.Maximum != nil {
 		maximum = *field.Maximum
 	}
-	ui.Row(c).AlignItems(ui.Start).Gap(8).Children(func() {
-		hint := ""
-		if settings.ValidateField(field, json.Number(text)) != nil {
-			hint = d.tr("请输入有效数值。")
+	errMsg := d.pluginFieldError(field, json.Number(text))
+	number, parseErr := strconv.ParseFloat(text, 64)
+	validNum := parseErr == nil && errMsg == "" && !math.IsNaN(number) && !math.IsInf(number, 0)
+	formatStep := func(v float64) string {
+		if field.Type == "integer" {
+			return strconv.FormatInt(int64(math.Round(v)), 10)
 		}
-		k.TextField(c.Key("number"), desktopkit.TextFieldProps{Label: label, Value: &text, Error: hint, Disabled: d.live.showBusy()})
-		number, err := strconv.ParseFloat(text, 64)
-		if ui.Stepper(c.Key("stepper"), &number, minimum, maximum, 1).Label(label).Disabled(d.live.showBusy() || err != nil || hint != "").Changed() {
-			text = strconv.FormatFloat(number, 'f', -1, 64)
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	}
+	ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
+		ui.Box(c.Key("num-box")).Width(132).Children(func() {
+			k.TextField(c.Key("number"), desktopkit.TextFieldProps{Label: label, Value: &text, Error: errMsg, Disabled: d.live.showBusy()})
+		})
+		if k.Button(c.Key("dec"), "", desktopkit.ButtonProps{
+			Variant:  desktopkit.Subtle,
+			Icon:     desktopkit.IconRemove,
+			Size:     desktopkit.SizeSmall,
+			Label:    d.tr("减少") + label,
+			Disabled: d.live.showBusy() || !validNum || number-1 < minimum,
+		}).Clicked() && validNum && number-1 >= minimum {
+			text = formatStep(number - 1)
+		}
+		if k.Button(c.Key("inc"), "", desktopkit.ButtonProps{
+			Variant:  desktopkit.Subtle,
+			Icon:     desktopkit.IconAdd,
+			Size:     desktopkit.SizeSmall,
+			Label:    d.tr("增加") + label,
+			Disabled: d.live.showBusy() || !validNum || number+1 > maximum,
+		}).Clicked() && validNum && number+1 <= maximum {
+			text = formatStep(number + 1)
 		}
 	})
 	return json.Number(text)
+}
+
+func (d *viewState) pluginFieldError(field *settings.Schema, value any) string {
+	err := settings.ValidateField(field, value)
+	if err == nil {
+		return ""
+	}
+	var se *settings.Error
+	if !errors.As(err, &se) {
+		return d.tr("配置项格式无效。")
+	}
+	switch se.Code {
+	case "range":
+		if field.Minimum != nil && field.Maximum != nil {
+			return fmt.Sprintf(d.tr("请输入 %g 到 %g 之间的数值。"), *field.Minimum, *field.Maximum)
+		}
+		if field.Minimum != nil {
+			return fmt.Sprintf(d.tr("数值不能小于 %g。"), *field.Minimum)
+		}
+		if field.Maximum != nil {
+			return fmt.Sprintf(d.tr("数值不能大于 %g。"), *field.Maximum)
+		}
+		return d.tr("请输入有效数值。")
+	case "length":
+		if field.MinLength != nil && field.MaxLength != nil {
+			return fmt.Sprintf(d.tr("长度需在 %d 到 %d 个字符之间。"), *field.MinLength, *field.MaxLength)
+		}
+		if field.MinLength != nil {
+			return fmt.Sprintf(d.tr("长度不能少于 %d 个字符。"), *field.MinLength)
+		}
+		if field.MaxLength != nil {
+			return fmt.Sprintf(d.tr("长度不能超过 %d 个字符。"), *field.MaxLength)
+		}
+		return d.tr("内容长度不符合要求。")
+	case "items":
+		if field.MinItems != nil && field.MaxItems != nil {
+			return fmt.Sprintf(d.tr("数量需在 %d 到 %d 项之间。"), *field.MinItems, *field.MaxItems)
+		}
+		if field.MinItems != nil {
+			return fmt.Sprintf(d.tr("至少需要 %d 项。"), *field.MinItems)
+		}
+		if field.MaxItems != nil {
+			return fmt.Sprintf(d.tr("最多允许 %d 项。"), *field.MaxItems)
+		}
+		return d.tr("列表数量不符合要求。")
+	case "type":
+		if field.Type == "integer" {
+			return d.tr("请输入有效整数。")
+		}
+		if field.Type == "number" {
+			return d.tr("请输入有效数值。")
+		}
+		return d.tr("配置项格式无效。")
+	default:
+		return d.tr("配置项格式无效。")
+	}
 }

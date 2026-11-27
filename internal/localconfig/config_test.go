@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -54,6 +55,89 @@ auto_file_max_bytes = "100MB"
 	}
 }
 
+func TestRelayConfigParseAndRedaction(t *testing.T) {
+	c, err := Parse([]byte(`
+[sync.relay]
+enabled = true
+url = "https://relay.example.com/"
+access_key = "super-secret-relay-key"
+max_bytes = "30MB"
+`))
+	if err != nil {
+		t.Fatalf("Parse relay config: %v", err)
+	}
+	s := c.Settings()
+	if !s.Sync.Relay.Enabled || s.Sync.Relay.URL != "https://relay.example.com/" ||
+		s.Sync.Relay.AccessKey != "super-secret-relay-key" || s.Sync.Relay.MaxBytes != 30<<20 {
+		t.Fatalf("unexpected relay settings: %+v", s.Sync.Relay)
+	}
+	// AccessKey must never leak in GET /v1/config JSON or Engine settings JSON.
+	cfgJSON, err := json.Marshal(Static(c).State())
+	if err != nil {
+		t.Fatalf("marshal config state: %v", err)
+	}
+	if strings.Contains(string(cfgJSON), "super-secret-relay-key") {
+		t.Fatalf("relay access_key leaked in config state JSON: %s", cfgJSON)
+	}
+	engJSON, err := json.Marshal(s)
+	if err != nil {
+		t.Fatalf("marshal engine settings: %v", err)
+	}
+	if strings.Contains(string(engJSON), "super-secret-relay-key") {
+		t.Fatalf("relay access_key leaked in engine settings JSON: %s", engJSON)
+	}
+	if !Static(c).State().Config.Sync.Relay.AccessKeySet {
+		t.Fatal("expected AccessKeySet=true in Manager.State()")
+	}
+
+	// Manager.Replace must preserve existing access_key when omitted by callers
+	// round-tripping redacted GET /v1/config snapshots, and clear it when explicitly "".
+	p := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(p, []byte(`
+[sync.relay]
+enabled = true
+url = "https://relay.example.com"
+access_key = "keep-me-secret"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mgr, err := Open(p, t.Logf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := mgr.State()
+	if !st.Config.Sync.Relay.AccessKeySet || st.Config.Sync.Relay.AccessKey != "" {
+		t.Fatalf("expected redacted state with AccessKeySet=true, got %+v", st.Config.Sync.Relay)
+	}
+	// Save an unrelated edit without access_key in TOML: existing key must be preserved.
+	st, err = mgr.Replace(st.Revision, []byte(`
+device_name = "updated"
+[sync.relay]
+enabled = true
+url = "https://relay.example.com"
+`))
+	if err != nil {
+		t.Fatalf("Replace preserving key: %v", err)
+	}
+	if !st.Config.Sync.Relay.AccessKeySet || mgr.Current().Sync.Relay.AccessKey != "keep-me-secret" {
+		t.Fatalf("expected existing access_key preserved, got key=%q set=%v", mgr.Current().Sync.Relay.AccessKey, st.Config.Sync.Relay.AccessKeySet)
+	}
+	// Explicit empty access_key clears it.
+	st, err = mgr.Replace(st.Revision, []byte(`
+device_name = "updated"
+[sync.relay]
+enabled = true
+url = "https://relay.example.com"
+access_key = ""
+`))
+	if err != nil {
+		t.Fatalf("Replace clearing key: %v", err)
+	}
+	if st.Config.Sync.Relay.AccessKeySet || mgr.Current().Sync.Relay.AccessKey != "" {
+		t.Fatalf("expected access_key cleared, got key=%q set=%v", mgr.Current().Sync.Relay.AccessKey, st.Config.Sync.Relay.AccessKeySet)
+	}
+}
+
 func TestParseRejects(t *testing.T) {
 	for name, in := range map[string]string{
 		"unknown key":         `devce_name = "x"`,
@@ -83,6 +167,8 @@ func TestParseRejects(t *testing.T) {
 		"preview on text":     "[plugins.instances.\"builtin.text\".preview]\nlink_preview = false",
 		"preview bad timeout": "[plugins.instances.\"builtin.preview\".preview]\nrequest_timeout_sec = 99",
 		"preview bad domain":  "[plugins.instances.\"builtin.preview\".preview]\nexcluded_domains = [\"bad host\"]",
+		"relay bad url":       "[sync.relay]\nenabled = true\nurl = \"ftp://relay.example\"",
+		"relay over hard cap": "[sync.relay]\nenabled = true\nurl = \"https://relay.example\"\nmax_bytes = \"5GiB\"",
 		"bad quick panel pos": "[desktop]\nquick_panel_position = \"top\"",
 		"bad mirror http":     "[plugins]\nmirror_url = \"http://plugins.example.com\"",
 		"bad mirror creds":    "[plugins]\nmirror_url = \"https://user:pass@plugins.example.com\"",

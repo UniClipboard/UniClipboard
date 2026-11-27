@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { Section, Text as SwiftUIText } from '@expo/ui/swift-ui';
 import { useTranslation } from 'react-i18next';
@@ -6,6 +6,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { IosSheetForm, IosSheetPage } from '@/components/ui';
 import { useEngineStore } from '@/engine/store';
+import { loginCloudForRelayKey } from '@/lib/cloudRelayAuth';
 import { SettingsNavRow, SettingsToggle, statusGreen, statusOrange } from './common';
 import type { IosSettingFieldEdit } from './types';
 
@@ -13,6 +14,7 @@ const DEFAULT_RELAY_MAX_MB = 25;
 
 export function NetworkPage({ onEdit }: { onEdit: (edit: IosSettingFieldEdit) => void }) {
   const { t } = useTranslation();
+  const [cloudLoggingIn, setCloudLoggingIn] = useState(false);
   const state = useEngineStore(
     useShallow((s) => ({
       snapshot: s.snapshot,
@@ -44,6 +46,43 @@ export function NetworkPage({ onEdit }: { onEdit: (edit: IosSettingFieldEdit) =>
         error instanceof Error ? error.message : undefined
       )
     );
+  };
+
+  const handleCloudLogin = () => {
+    if (cloudLoggingIn) return;
+    setCloudLoggingIn(true);
+    void (async () => {
+      try {
+        const cred = await loginCloudForRelayKey({
+          deviceName: settings?.device_name || undefined,
+        });
+        await state.updateSettings(
+          (old) => ({
+            ...old,
+            sync: {
+              ...old.sync,
+              relay: {
+                ...(old.sync.relay ?? { enabled: false }),
+                enabled: true,
+                url: cred.relayUrl === 'https://relay.uniclipboard.app' ? '' : cred.relayUrl,
+              },
+            },
+          }),
+          { relayAccessKey: cred.apiKey }
+        );
+        Alert.alert(
+          t('settings:live.relayCloudLoginSuccessTitle'),
+          t('settings:live.relayCloudLoginSuccessBody')
+        );
+      } catch (error) {
+        Alert.alert(
+          t('settings:live.relayCloudLoginFailed'),
+          error instanceof Error ? error.message : undefined
+        );
+      } finally {
+        setCloudLoggingIn(false);
+      }
+    })();
   };
 
   return (
@@ -190,6 +229,12 @@ export function NetworkPage({ onEdit }: { onEdit: (edit: IosSettingFieldEdit) =>
                     },
                   })
                 }
+              />
+              <SettingsNavRow
+                testID="relay-cloud-login"
+                title={cloudLoggingIn ? t('settings:live.relayCloudLoggingIn') : t('settings:live.relayCloudLogin')}
+                showsChevron={!cloudLoggingIn}
+                onPress={handleCloudLogin}
               />
               <SettingsNavRow
                 testID="relay-access-key"

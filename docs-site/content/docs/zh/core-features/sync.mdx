@@ -40,6 +40,7 @@ flowchart LR
 | `sync.files` | `true` | 是否收发文件（双向生效） |
 | `sync.on_restore` | `false` | 从历史恢复某条内容时，是否再次发送给其他设备 |
 | `sync.directories.automatic` | `false` | 复制文件夹时是否自动准备并发送 |
+| `sync.relay.enabled` | `false` | 对端 P2P 离线时是否启用 0 等待零知识 E2EE 临时中转（登录 Cloud 一键授权后自动开启），见[混合中转与自部署](./hybrid-relay) |
 | `limits.max_file_bytes` | `100MB` | 单个文件可传输的上限；超过的文件仍可进入本机历史 |
 
 每个同步后端还可以单独设置是否传文本、图片、文件，以及自动发送文件的大小阈值（`plugins.instances.<后端>.sync.auto_file_max_bytes`，0 表示不额外限制）。显式发送不受该自动阈值限制。完整配置项见[配置参考](../reference/configuration)。
@@ -88,6 +89,7 @@ Linux 桌面端目前无法区分"再次复制同一个文件夹"，对相同选
 
 ## 相关页面
 
+- [混合中转与自部署](./hybrid-relay)
 - [设备与配对](./devices)
 - [临时传输](./quick-transfer)
 - [历史与搜索](./history-and-search)

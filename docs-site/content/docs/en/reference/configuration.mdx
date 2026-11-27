@@ -86,6 +86,17 @@ Applies to transfers started after the change.
 | `introductions` | `true` | Devices introduce trusted devices to each other; results appear as candidates and still require your approval |
 | `directories.automatic` | `false` | Whether to automatically sync copied folders; when off, copies record a reference only and bundle on manual send |
 
+### `[sync.relay]`
+
+Zero-knowledge end-to-end encrypted temporary HTTP relay settings (completely separate from Tailcat P2P / DERP relays). See [Hybrid Relay & Self-Hosting](../core-features/hybrid-relay).
+
+| Key | Default | Description |
+|---|---|---|
+| `enabled` | `false` | Whether to use zero-wait temporary relay when a peer is offline over P2P; enabled automatically after Cloud sign-in or when configured for self-hosting |
+| `url` | `$UNIC_RELAY_URL`, otherwise `https://relay.uniclipboard.app` | HTTPS origin of the relay service; set to your self-hosted origin to switch |
+| `access_key` | `$UNIC_RELAY_ACCESS_KEY`, empty by default | Official Cloud API key or self-hosted instance access key (`X-Unic-Relay-Key` header); secret field, never echoed or logged |
+| `max_bytes` | `"25MB"` | Maximum payload size per relay transfer; cannot exceed `limits.max_total_bytes` (max 4 GiB) |
+
 ## `[history]`
 
 | Key | Default | Description |

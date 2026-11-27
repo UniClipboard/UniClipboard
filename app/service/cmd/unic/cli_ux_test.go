@@ -86,6 +86,8 @@ func TestClassifyNewCommandsAndHelp(t *testing.T) {
 		{"profile", nil, "profile", reqLocal},
 		{"profile", []string{"list"}, "profile list", reqLocal},
 		{"profile", []string{"path"}, "profile path", reqLocal},
+		{"relay", []string{"login"}, "relay login", reqLocal},
+		{"relay", []string{"--help"}, "relay", reqLocal},
 		{"doctor", nil, "doctor", reqLocal},
 		{"completion", []string{"zsh"}, "completion", reqLocal},
 		{"device", []string{"rename", "abc", "Laptop"}, "device rename", reqService},

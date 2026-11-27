@@ -232,6 +232,11 @@ func dispatch(ctx context.Context, c *api.Client, l leaf, args, left []string) e
 	case l.Name == "profile help":
 		fmt.Print(profileUsage)
 		return nil
+	case l.Name == "relay help":
+		fmt.Print(relayUsage)
+		return nil
+	case strings.HasPrefix(l.Name, "relay "):
+		return runRelayCmd(ctx, strings.TrimPrefix(l.Name, "relay "), left, globalJSON)
 	case strings.HasPrefix(l.Name, "daemon "):
 		return runDaemonCmd(ctx, strings.TrimPrefix(l.Name, "daemon "), left, globalJSON)
 	case l.Name == "profile":

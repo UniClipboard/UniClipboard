@@ -1,26 +1,33 @@
 package desktopui
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
+	"github.com/uniclipboard/unic/internal/cloudauth"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/internal/relayclient"
 	"github.com/uniclipboard/unic/internal/relaycrypto"
 )
 
 type relaySettingsState struct {
-	urlDraft       string
-	urlSynced      string
-	urlErr         string
-	accessKeyDraft string
-	accessKeyErr   string
+	urlDraft         string
+	urlSynced        string
+	urlErr           string
+	accessKeyDraft   string
+	accessKeyErr     string
+	cloudLoginBusy   bool
+	cloudLoginErr    string
+	cloudLoginCancel context.CancelFunc
+	cloudLoginFn     func(context.Context, cloudauth.LoginOptions) (cloudauth.RelayCredential, error)
 }
 
 func (d *viewState) relayReadyCounts() (ready, total int) {
@@ -179,9 +186,46 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 			}
 		})
 
+		k.SettingsRow(c.Key("relay-cloud-login"), desktopkit.SettingsRowProps{
+			Label:       d.tr("UniClipboard Cloud 授权"),
+			Description: d.tr("跳转浏览器登录 UniClipboard Cloud，授权后自动填入官方中转 API Key 并开启混合中转。"),
+			Dim:         syncPaused,
+		}, nil, func() {
+			ui.Row(c.Key("relay-cloud-controls")).Gap(8).AlignItems(ui.Center).Children(func() {
+				if d.relay.cloudLoginBusy {
+					settingsPill(c.Key("relay-cloud-pill"), k, d.tr("等待浏览器授权…"), desktopkit.StatusWarning, true, false)
+					if k.Button(c.Key("relay-cloud-cancel"), d.tr("取消"), desktopkit.ButtonProps{
+						Size: desktopkit.SizeSmall,
+					}).Clicked() {
+						if d.relay.cloudLoginCancel != nil {
+							d.relay.cloudLoginCancel()
+							d.relay.cloudLoginCancel = nil
+						}
+						d.relay.cloudLoginBusy = false
+						d.relay.cloudLoginErr = ""
+					}
+				} else {
+					btnLabel := d.tr("登录 Cloud 获取 API Key")
+					if cfg.Sync.Relay.AccessKeySet {
+						btnLabel = d.tr("重新登录 Cloud 获取 API Key")
+					}
+					if k.Button(c.Key("relay-cloud-btn"), btnLabel, desktopkit.ButtonProps{
+						Size:     desktopkit.SizeSmall,
+						Variant:  desktopkit.Primary,
+						Disabled: l.busy || syncPaused,
+					}).Clicked() {
+						d.startCloudRelayLogin(*cfg)
+					}
+				}
+			})
+		})
+		if d.relay.cloudLoginErr != "" {
+			settingsNoteRow(c.Key("relay-cloud-err"), k, d.relay.cloudLoginErr)
+		}
+
 		k.SettingsRow(c.Key("relay-access-key"), desktopkit.SettingsRowProps{
-			Label:       d.tr("自部署接入密钥"),
-			Description: d.tr("可选，对应服务端 X-Unic-Relay-Key。仅写入不回显，不写入日志或设置备份。"),
+			Label:       d.tr("中转 API Key / 接入密钥"),
+			Description: d.tr("官方中转请使用 Cloud API Key；自部署可填入对应 X-Unic-Relay-Key。仅写入不回显，不入日志或备份。"),
 			Dim:         relayDim,
 		}, nil, func() {
 			ui.Row(c.Key("relay-key-controls")).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -191,9 +235,9 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 					settingsPill(c.Key("relay-key-pill"), k, d.tr("未配置"), desktopkit.StatusNeutral, false, false)
 				}
 				field := k.TextField(c.Key("relay-key-field"), desktopkit.TextFieldProps{
-					Label:       d.tr("自部署接入密钥"),
+					Label:       d.tr("中转 API Key / 接入密钥"),
 					Value:       &d.relay.accessKeyDraft,
-					Placeholder: d.tr("输入新密钥（只写不回显）"),
+					Placeholder: d.tr("输入 Cloud API Key 或自部署密钥（只写不回显）"),
 					Password:    true,
 					Disabled:    l.busy || relayDim,
 					Error:       d.relay.accessKeyErr,
@@ -201,7 +245,7 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 				saveKey := func() {
 					key := strings.TrimSpace(d.relay.accessKeyDraft)
 					if key == "" {
-						d.relay.accessKeyErr = d.tr("请输入接入密钥，或点击清除密钥")
+						d.relay.accessKeyErr = d.tr("请输入 API Key 或接入密钥，或点击清除密钥")
 						return
 					}
 					if len(key) > 512 || strings.ContainsAny(key, "\r\n\x00") {
@@ -240,4 +284,62 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 			settingsNoteRow(c.Key("relay-route-note"), k, d.tr("部分已配对设备尚未交换中转路由，请确保两端配置了相同的中转服务地址并至少完成一次 P2P 连接。"))
 		}
 	})
+}
+
+func (d *viewState) startCloudRelayLogin(curCfg config.Config) {
+	if d.live == nil || d.relay.cloudLoginBusy {
+		return
+	}
+	baseCtx := d.live.ctx
+	if baseCtx == nil {
+		baseCtx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Minute)
+	d.relay.cloudLoginBusy = true
+	d.relay.cloudLoginErr = ""
+	d.relay.cloudLoginCancel = cancel
+
+	loginFn := d.relay.cloudLoginFn
+	if loginFn == nil {
+		loginFn = cloudauth.LoginForRelayKey
+	}
+	deviceName := strings.TrimSpace(curCfg.DeviceName)
+	live := d.live
+	results := live.results
+
+	go func() {
+		defer cancel()
+		cred, err := loginFn(ctx, cloudauth.LoginOptions{
+			DeviceName:  deviceName,
+			OpenBrowser: d.openExternalURL,
+		})
+		post := func() {
+			d.relay.cloudLoginBusy = false
+			d.relay.cloudLoginCancel = nil
+			if err != nil {
+				if ctx.Err() == context.Canceled {
+					return
+				}
+				d.relay.cloudLoginErr = fmt.Sprintf(d.tr("Cloud 授权失败：%v"), err)
+				return
+			}
+			d.relay.cloudLoginErr = ""
+			nextCfg := d.live.config.Config
+			nextCfg.Sync.Relay.Enabled = true
+			if cred.RelayURL == "" || strings.EqualFold(strings.TrimRight(cred.RelayURL, "/"), relayclient.DefaultURL) {
+				nextCfg.Sync.Relay.URL = ""
+			} else if norm, nerr := relaycrypto.NormalizeRelayOrigin(cred.RelayURL); nerr == nil {
+				nextCfg.Sync.Relay.URL = norm
+			}
+			nextCfg.Sync.Relay.AccessKey = cred.APIKey
+			d.relay.urlDraft = nextCfg.Sync.Relay.URL
+			d.relay.urlSynced = nextCfg.Sync.Relay.URL
+			d.saveLiveConfig(nextCfg)
+		}
+		select {
+		case results <- post:
+			live.wake()
+		case <-baseCtx.Done():
+		}
+	}()
 }

@@ -26,7 +26,7 @@ legacy_build_floor = 204
 
 [products.ios]
 version = "3.0.0"
-build_number = 205
+build_number = 206
 targets = ["ios-arm64"]
 application_id = "app.uniclipboard.UniClipboard"
 legacy_build_floor = 204

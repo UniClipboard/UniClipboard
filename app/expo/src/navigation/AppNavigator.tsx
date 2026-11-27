@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   NavigationContainer,
   DefaultTheme,
@@ -22,6 +22,8 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { SendSheetHost } from "@/screens/SendSheetHost";
+import { PairingApprovalHost } from "@/screens/pairing/PairingApprovalHost";
+import { hideLaunchSplash } from "@/utils/splashScreen";
 import type { RootStackParamList, SettingsSubSection } from "./AppNavigator.types";
 export type {
   RootStackParamList,
@@ -30,7 +32,7 @@ export type {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function AppNavigator() {
-  const { theme } = useTheme();
+  const { theme, isThemeReady } = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const base = theme.isDark ? DarkTheme : DefaultTheme;
@@ -38,10 +40,31 @@ export function AppNavigator() {
   const bootStage = useEngineStore((s) => s.bootStage);
   const bootstrap = useEngineStore((s) => s.bootstrap);
   const completeSetupAndEnterMain = useEngineStore((s) => s.completeSetupAndEnterMain);
+  const splashHiddenRef = useRef(false);
 
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
+
+  useEffect(() => {
+    if (splashHiddenRef.current || bootStage === "loading" || !isThemeReady) {
+      return;
+    }
+    let frame1 = 0;
+    let frame2 = 0;
+    frame1 = requestAnimationFrame(() => {
+      frame2 = requestAnimationFrame(() => {
+        if (!splashHiddenRef.current) {
+          splashHiddenRef.current = true;
+          hideLaunchSplash();
+        }
+      });
+    });
+    return () => {
+      cancelAnimationFrame(frame1);
+      cancelAnimationFrame(frame2);
+    };
+  }, [bootStage, isThemeReady]);
 
   if (bootStage === "loading") {
     return (
@@ -151,6 +174,7 @@ export function AppNavigator() {
         </Stack.Navigator>
       </NavigationContainer>
       <SendSheetHost />
+      <PairingApprovalHost />
     </>
   );
 

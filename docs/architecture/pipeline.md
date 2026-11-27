@@ -1,6 +1,8 @@
 ---
 paths:
   - internal/v1migration/
+  - internal/mobilemigration/
+  - bindings/mobile/migration.go
   - engine/directory.go
   - internal/directory
   - internal/localcontent/directory.go
@@ -53,7 +55,7 @@ paths:
   - internal/plugins/builtintext
   - internal/plugins/builtinclassify
   - plugin/tags.go
-verified: ec47690c1b3976f1bb2505d7d9ac510b22c57406
+verified: 21602670c54a73744721a8f425f4e3a090249cd4
 ---
 # Clipboard pipeline and local history
 
@@ -126,6 +128,16 @@ preserves binary bytes and fixed platform guidance. Linux uses the standard
 bounded Secret Service prompt protocol. See the
 [initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization)
 and [credential boundaries](../contracts/history-contract.md#v1-system-credentials-and-process-resilience).
+
+Legacy mobile SQLite import preserves original creation times and its built-in
+`starred` and `pinned` tags. Before importing, the mobile host saves an initial
+history policy with automatic cleanup off and no age limit when no explicit
+destination cleanup policy exists. The old SQLite history export does not
+provide the legacy app's count preference, so the importer does not guess a
+limit. The initial policy also excludes starred and pinned items if cleanup is
+later enabled. An explicit destination policy is left unchanged. This prevents
+first-open eviction; it does not restore entries already removed from a previous
+import, and it does not change clean-install or Desktop policy.
 
 ## Invariants
 

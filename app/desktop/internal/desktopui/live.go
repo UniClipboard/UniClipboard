@@ -36,7 +36,7 @@ type Desktop struct {
 func NewDesktop(ctx context.Context, client *api.Client) *Desktop {
 	d := &viewState{page: "history", theme: "system", layout: "list", nav: desktopkit.NavState{Value: "all"}, settings: desktopkit.NavState{Value: "general"}, deviceList: desktopkit.SourceState{Value: "local"}, gridSize: .4, options: map[string]bool{}, choices: map[string]string{}}
 	ctx, cancel := context.WithCancel(ctx)
-	d.live = &liveState{ctx: ctx, cancel: cancel, client: client, jobs: make(chan func(context.Context) func(), 16), results: make(chan func(), 32), changed: make(chan struct{}, 1), opsChanged: make(chan struct{}, 1), opsDirty: true, recovery: make(chan struct{}, 1), searchSlots: make(chan struct{}, 1), items: map[string]api.HistoryItem{}, details: map[string]entry{}, pending: map[string]api.PendingPeer{}, opsByHistory: map[string]engine.Operation{}, discardedReceives: map[string]struct{}{}}
+	d.live = &liveState{ctx: ctx, cancel: cancel, client: client, jobs: make(chan func(context.Context) func(), 16), results: make(chan func(), 32), changed: make(chan struct{}, 1), opsChanged: make(chan struct{}, 1), opsDirty: true, recovery: make(chan struct{}, 1), searchSlots: make(chan struct{}, 1), items: map[string]api.HistoryItem{}, details: map[string]entry{}, pending: map[string]api.PendingPeer{}, opsByHistory: map[string]engine.Operation{}, discardedReceives: map[string]struct{}{}, pluginInstalls: map[string]*pluginInstallTask{}}
 	context.AfterFunc(ctx, d.live.stopWake)
 	go d.live.work()
 	go d.live.follow()
@@ -162,6 +162,8 @@ type liveState struct {
 	syncBackends                                                                             []api.SyncBackendInfo
 	pairingBackend                                                                           string
 	externalPlugins                                                                          []api.PluginInfo
+	pluginInstalls                                                                           map[string]*pluginInstallTask
+	pluginInstallOrder                                                                       []string
 	marketplace                                                                              api.PluginMarketplace
 	marketplaceLoaded                                                                        bool
 	marketplaceLoading                                                                       bool

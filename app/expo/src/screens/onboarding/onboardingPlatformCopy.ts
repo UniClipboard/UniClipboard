@@ -1,1 +1,1 @@
-export { ONBOARDING_PLATFORM_CONFIG } from './onboardingPlatformCopy.ios';
+export { ONBOARDING_PLATFORM_CONFIG } from './onboardingPlatformCopy.android';

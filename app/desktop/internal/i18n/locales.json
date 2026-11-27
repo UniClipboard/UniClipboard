@@ -9130,5 +9130,125 @@
     "ja": "入力カーソルに追従",
     "pt-BR": "Seguir cursor de texto",
     "ru": "У текстового курсора"
+  },
+  "前往配置": {
+    "en": "Configure",
+    "ja": "設定を開く",
+    "pt-BR": "Configurar",
+    "ru": "Настроить"
+  },
+  "取消安装": {
+    "en": "Cancel Install",
+    "ja": "インストールをキャンセル",
+    "pt-BR": "Cancelar instalação",
+    "ru": "Отменить установку"
+  },
+  "取消更新": {
+    "en": "Cancel Update",
+    "ja": "更新をキャンセル",
+    "pt-BR": "Cancelar atualização",
+    "ru": "Отменить обновление"
+  },
+  "已取消安装「%s」": {
+    "en": "Canceled installing \"%s\"",
+    "ja": "「%s」のインストールをキャンセルしました",
+    "pt-BR": "Instalação de \"%s\" cancelada",
+    "ru": "Установка «%s» отменена"
+  },
+  "已取消更新「%s」": {
+    "en": "Canceled updating \"%s\"",
+    "ja": "「%s」の更新をキャンセルしました",
+    "pt-BR": "Atualização de \"%s\" cancelada",
+    "ru": "Обновление «%s» отменено"
+  },
+  "更新失败：": {
+    "en": "Update failed: ",
+    "ja": "更新に失敗しました：",
+    "pt-BR": "Falha na atualização: ",
+    "ru": "Ошибка обновления: "
+  },
+  "正在取消…": {
+    "en": "Canceling…",
+    "ja": "キャンセル中…",
+    "pt-BR": "Cancelando…",
+    "ru": "Отмена…"
+  },
+  "正在安装": {
+    "en": "Installing",
+    "ja": "インストール中",
+    "pt-BR": "Instalando",
+    "ru": "Установка"
+  },
+  "正在安装「%s」…": {
+    "en": "Installing \"%s\"…",
+    "ja": "「%s」をインストール中…",
+    "pt-BR": "Instalando \"%s\"…",
+    "ru": "Установка «%s»…"
+  },
+  "正在更新": {
+    "en": "Updating",
+    "ja": "更新中",
+    "pt-BR": "Atualizando",
+    "ru": "Обновление"
+  },
+  "正在更新…": {
+    "en": "Updating…",
+    "ja": "更新中…",
+    "pt-BR": "Atualizando…",
+    "ru": "Обновление…"
+  },
+  "正在更新「%s」…": {
+    "en": "Updating \"%s\"…",
+    "ja": "「%s」を更新中…",
+    "pt-BR": "Atualizando \"%s\"…",
+    "ru": "Обновление «%s»…"
+  },
+  "插件市场镜像": {
+    "en": "Plugin Marketplace Mirror",
+    "ja": "プラグインマーケットプレイスミラー",
+    "pt-BR": "Espelho da loja de plugins",
+    "ru": "Зеркало каталога плагинов"
+  },
+  "下载源": {
+    "en": "Download source",
+    "ja": "ダウンロード元",
+    "pt-BR": "Origem de download",
+    "ru": "Источник загрузки"
+  },
+  "用于加速插件市场目录与安装包下载（官方镜像：plugins.uniclipboard.app）；不可达或未收录时自动回退直连 GitHub。立即生效。": {
+    "en": "Accelerates marketplace catalog and plugin downloads (official mirror: plugins.uniclipboard.app). Automatically falls back to GitHub if unreachable or unlisted. Applies immediately.",
+    "ja": "マーケットプレイスの一覧とプラグインのダウンロードを高速化します（公式ミラー: plugins.uniclipboard.app）。接続できない場合や未収録の場合は自動的に GitHub へフォールバックします。すぐに適用されます。",
+    "pt-BR": "Acelera o download do catálogo e dos plugins (espelho oficial: plugins.uniclipboard.app). Volta automaticamente ao GitHub se estiver inacessível ou não listado. Aplica imediatamente.",
+    "ru": "Ускоряет загрузку каталога и плагинов (официальное зеркало: plugins.uniclipboard.app). При недоступности или отсутствии плагина автоматически переходит на GitHub. Применяется сразу."
+  },
+  "直连 GitHub": {
+    "en": "Direct (GitHub)",
+    "ja": "GitHub に直接接続",
+    "pt-BR": "Direto (GitHub)",
+    "ru": "Напрямую (GitHub)"
+  },
+  "官方镜像": {
+    "en": "Official mirror",
+    "ja": "公式ミラー",
+    "pt-BR": "Espelho oficial",
+    "ru": "Официальное зеркало"
+  },
+  "自定义镜像": {
+    "en": "Custom mirror",
+    "ja": "カスタムミラー",
+    "pt-BR": "Espelho personalizado",
+    "ru": "Своё зеркало"
+  },
+  "镜像地址": {
+    "en": "Mirror URL",
+    "ja": "ミラー URL",
+    "pt-BR": "URL do espelho",
+    "ru": "URL зеркала"
+  },
+  "请输入有效的 HTTPS 镜像地址。": {
+    "en": "Enter a valid HTTPS mirror URL.",
+    "ja": "有効な HTTPS ミラー URL を入力してください。",
+    "pt-BR": "Digite uma URL HTTPS válida para o espelho.",
+    "ru": "Введите корректный HTTPS-адрес зеркала."
   }
 }

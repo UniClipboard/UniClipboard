@@ -11,15 +11,16 @@ import (
 )
 
 const (
-	toastIDActionRun      = "action-run"
-	toastIDRestart        = "restart-required"
-	toastIDRestartError   = "restart-error"
-	toastIDConfigInvalid  = "config-invalid"
-	toastIDApplyError     = "config-apply-error"
-	toastIDLiveMessage    = "live-message"
-	toastIDPluginFeedback = "plugin-feedback"
-	toastIDWeTypePair     = "wetype-pair"
-	toastIDPendingDevices = "pending-devices"
+	toastIDActionRun           = "action-run"
+	toastIDRestart             = "restart-required"
+	toastIDRestartError        = "restart-error"
+	toastIDConfigInvalid       = "config-invalid"
+	toastIDApplyError          = "config-apply-error"
+	toastIDLiveMessage         = "live-message"
+	toastIDPluginFeedback      = "plugin-feedback"
+	toastIDPluginInstallPrefix = "plugin-install:"
+	toastIDWeTypePair          = "wetype-pair"
+	toastIDPendingDevices      = "pending-devices"
 )
 
 // ShowToast pushes a notification into the shared BoardUI Toaster on the view thread.
@@ -168,6 +169,9 @@ func (d *viewState) syncStateToasts() {
 
 	// 5. Active inbound receive progress toasts (dismissing discards transfer).
 	d.syncReceiveToasts()
+
+	// 6. Active asynchronous plugin installation/update progress toasts.
+	d.syncPluginInstallToasts()
 }
 
 func (d *viewState) syncPendingDeviceToast() {

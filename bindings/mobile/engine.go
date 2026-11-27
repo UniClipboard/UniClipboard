@@ -102,6 +102,8 @@ func resolveDirPath(path string) (string, error) {
 	}
 }
 
+const mobileSettingsFilename = "mobile-settings.json"
+
 func loadSettingsOrDefault(path string, cfg engineConfigDTO) (engine.Settings, error) {
 	def := engine.DefaultSettings()
 	raw, err := os.ReadFile(path)
@@ -220,7 +222,7 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		}
 	}
 
-	settingsPath := filepath.Join(dataDir, "mobile-settings.json")
+	settingsPath := filepath.Join(dataDir, mobileSettingsFilename)
 	settings, err := loadSettingsOrDefault(settingsPath, cfg)
 	if err != nil {
 		return nil, wrapErr(err)

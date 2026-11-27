@@ -1,12 +1,7 @@
 import { StyleSheet } from 'react-native';
 import { AppHost } from '@/components/ui';
 import { HeaderCircleButton } from '@/screens/settings/ios/common';
-
-export interface OnboardingBackButtonProps {
-  onPress: () => void;
-  disabled?: boolean;
-  label: string;
-}
+import type { OnboardingBackButtonProps } from './OnboardingBackButton.types';
 
 export function OnboardingBackButton({ onPress, disabled, label }: OnboardingBackButtonProps) {
   return (

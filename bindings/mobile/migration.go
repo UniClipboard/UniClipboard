@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -347,6 +348,68 @@ type migrationRunResult struct {
 	Error *mobileError `json:"error,omitempty"`
 }
 
+// initializeLegacyHistoryPolicy runs under the migration probe's data-dir lock.
+// The old SQLite history does not carry the app's count preference. Do not let
+// the new profile interpret the missing preference as consent to age or count
+// eviction on its first normal open. Keep an explicit destination policy intact.
+func initializeLegacyHistoryPolicy(target string) error {
+	path := filepath.Join(target, mobileSettingsFilename)
+	settings := make(map[string]json.RawMessage)
+	history := make(map[string]json.RawMessage)
+	defaults := engine.DefaultSettings().History
+	policy := defaults
+	raw, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		var decoded engine.Settings
+		if json.Unmarshal(raw, &settings) != nil || settings == nil || json.Unmarshal(raw, &decoded) != nil {
+			return errors.New("invalid mobile settings; cannot preserve history policy")
+		}
+		if rawHistory := settings["history"]; len(rawHistory) != 0 {
+			if err := json.Unmarshal(rawHistory, &history); err != nil {
+				return errors.New("invalid mobile history settings")
+			}
+			var automatic *bool
+			if v := history["auto_cleanup"]; len(v) != 0 {
+				if err := json.Unmarshal(v, &automatic); err != nil {
+					return errors.New("invalid mobile history cleanup setting")
+				}
+				if automatic != nil {
+					return nil
+				}
+			}
+			if history == nil {
+				history = make(map[string]json.RawMessage)
+			}
+			if err := json.Unmarshal(rawHistory, &policy); err != nil {
+				return errors.New("invalid mobile history settings")
+			}
+		}
+	case !errors.Is(err, os.ErrNotExist):
+		return err
+	}
+	for _, tag := range []string{"starred", "pinned"} {
+		if !slices.Contains(policy.ExcludedTags, tag) {
+			policy.ExcludedTags = append(policy.ExcludedTags, tag)
+		}
+	}
+	// Install the safety defaults without discarding unrelated or future fields.
+	history["auto_cleanup"] = json.RawMessage("false")
+	if _, ok := history["retention_days"]; !ok {
+		history["retention_days"] = json.RawMessage("0")
+	}
+	tags, err := json.Marshal(policy.ExcludedTags)
+	if err != nil {
+		return err
+	}
+	history["excluded_tags"] = tags
+	settings["history"], err = json.Marshal(history)
+	if err != nil {
+		return err
+	}
+	return saveSettingsAtomic(path, settings)
+}
+
 // Run performs offline v1 or legacy mobile SQLite migration under exclusive DataDir ownership.
 func (m *MigrationSession) Run(token *CancelToken, passphrase []byte, secrets SecretProvider, sink MigrationProgressSink) (string, error) {
 	ctx, cancel := withToken(token)
@@ -398,7 +461,12 @@ func (m *MigrationSession) Run(token *CancelToken, passphrase []byte, secrets Se
 		}
 		return "", wrapErr(err)
 	}
-	if err := probe.Close(context.Background()); err != nil {
+	var policyErr error
+	if sourceKind == sourceKindMobileSQLite {
+		policyErr = initializeLegacyHistoryPolicy(targetDir)
+	}
+	closeErr := probe.Close(context.Background())
+	if err := errors.Join(policyErr, closeErr); err != nil {
 		return "", wrapErr(err)
 	}
 

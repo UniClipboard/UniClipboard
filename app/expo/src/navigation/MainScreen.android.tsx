@@ -24,9 +24,11 @@ import {
   FLOATING_NAV_MARGIN,
 } from '@/components/android/mainNavigationMetrics';
 import { FloatingNavigationClearanceContext } from '@/components/android/floatingNavigationClearance';
+import { useEngineStore } from '@/engine/store';
 import { getLayoutMode } from '@/hooks/useLayoutMode';
 import { useTheme } from '@/hooks/useTheme';
 import { HomeView } from '@/screens/HomeView';
+import { needsDeviceApproval } from '@/screens/pairing/pairingUtils';
 import { SettingsScreen } from '@/screens/SettingsScreen';
 import { DevicesScreen } from '@/screens/DevicesScreen';
 
@@ -122,6 +124,9 @@ export function MainScreen() {
   const { width } = useWindowDimensions();
   const useRail = getLayoutMode(width) === 'expanded';
   const [homeImmersive, setHomeImmersive] = useState(false);
+  const pendingApprovalCount = useEngineStore((s) =>
+    s.mode === 'live' ? s.devices.filter(needsDeviceApproval).length : 0,
+  );
   // 添加菜单展开时胶囊让位于菜单遮罩,但不改首页 inset,FAB 位置不动。FAB 点按即写入
   // 这个 shared value,胶囊在 UI 线程上直接响应,不经 React 重渲
   const homeAddMenuOpen = useSharedValue(false);
@@ -159,7 +164,14 @@ export function MainScreen() {
           />
         )}
       </Tab.Screen>
-      <Tab.Screen name="Devices" options={{ title: t('nav.devices'), headerShown: true }}>
+      <Tab.Screen
+        name="Devices"
+        options={{
+          title: t('nav.devices'),
+          headerShown: true,
+          tabBarBadge: pendingApprovalCount > 0 ? pendingApprovalCount : undefined,
+        }}
+      >
         {({ route }) => <DevicesDestination route={route} navigationBarShown={floatingNavShown} />}
       </Tab.Screen>
       <Tab.Screen name="Preferences" options={{ title: t('nav.settings'), headerShown: true }}>

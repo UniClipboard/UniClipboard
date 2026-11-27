@@ -84,6 +84,11 @@ func TestParseRejects(t *testing.T) {
 		"preview bad timeout": "[plugins.instances.\"builtin.preview\".preview]\nrequest_timeout_sec = 99",
 		"preview bad domain":  "[plugins.instances.\"builtin.preview\".preview]\nexcluded_domains = [\"bad host\"]",
 		"bad quick panel pos": "[desktop]\nquick_panel_position = \"top\"",
+		"bad mirror http":     "[plugins]\nmirror_url = \"http://plugins.example.com\"",
+		"bad mirror creds":    "[plugins]\nmirror_url = \"https://user:pass@plugins.example.com\"",
+		"bad mirror query":    "[plugins]\nmirror_url = \"https://plugins.example.com?a=1\"",
+		"bad mirror fragment": "[plugins]\nmirror_url = \"https://plugins.example.com#frag\"",
+		"bad mirror space":    "[plugins]\nmirror_url = \" https://plugins.uniclipboard.app\"",
 	} {
 		if _, err := Parse([]byte(in)); err == nil {
 			t.Errorf("%s: expected an error", name)
@@ -326,5 +331,27 @@ device_pairing = false
 	}
 	if c2.Desktop.Notifications.DevicePairingEnabled() {
 		t.Fatal("expected device pairing notifications disabled")
+	}
+}
+
+func TestPluginMirrorURLAppliesWithoutRestart(t *testing.T) {
+	for _, mirror := range []string{
+		"",
+		"https://plugins.uniclipboard.app",
+		"https://mirror.example.com/unic-plugins",
+		"http://127.0.0.1:8080",
+	} {
+		c, err := Parse([]byte("[plugins]\nmirror_url = \"" + mirror + "\"\n"))
+		if err != nil {
+			t.Fatalf("parse mirror_url=%q: %v", mirror, err)
+		}
+		if c.Plugins.MirrorURL != mirror {
+			t.Fatalf("mirror_url = %q, want %q", c.Plugins.MirrorURL, mirror)
+		}
+		m := Static(Default())
+		m.cur = c
+		if rr := m.State().RestartRequired; len(rr) != 0 {
+			t.Fatalf("mirror_url=%q must not require restart, got %v", mirror, rr)
+		}
 	}
 }

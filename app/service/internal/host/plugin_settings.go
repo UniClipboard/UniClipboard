@@ -113,7 +113,7 @@ func (n *Node) pluginsLocked() []api.PluginInfo {
 }
 
 func (n *Node) PluginMarketplace(ctx context.Context, refresh bool) (api.PluginMarketplace, error) {
-	return luascripts.FetchMarketplace(ctx, n.luaDir, refresh), nil
+	return luascripts.FetchMarketplaceWithMirror(ctx, n.luaDir, refresh, n.cfg.Current().Plugins.MirrorURL), nil
 }
 
 func (n *Node) InstallPlugin(ctx context.Context, in api.PluginInstallRequest) (api.PluginInfo, error) {
@@ -124,23 +124,31 @@ func (n *Node) InstallPlugin(ctx context.Context, in api.PluginInstallRequest) (
 	if repo == "" {
 		return api.PluginInfo{}, &api.Error{Status: 400, Reason: "invalid_argument", Message: "repository URL is required"}
 	}
-	n.pluginMu.Lock()
-	defer n.pluginMu.Unlock()
-	id, err := luascripts.InstallWithActivation(ctx, n.luaDir, luascripts.InstallOptions{
+	// Download, verify, and build outside n.pluginMu so listing plugins,
+	// reading plugin settings, and refreshing history stay responsive.
+	prep, err := luascripts.PrepareInstall(ctx, n.luaDir, luascripts.InstallOptions{
 		Repository: repo,
 		Ref:        strings.TrimSpace(in.Ref),
 		Path:       strings.TrimSpace(in.Path),
+		MirrorURL:  n.cfg.Current().Plugins.MirrorURL,
 		Build:      in.Build,
 		Replace:    in.Replace,
-	}, func(candidate luascripts.Script, commit func() error) error {
+	})
+	if err != nil {
+		return api.PluginInfo{}, installAPIError(ctx, err)
+	}
+	defer func() { _ = prep.Close() }()
+	if ctx.Err() != nil {
+		return api.PluginInfo{}, installAPIError(ctx, ctx.Err())
+	}
+
+	n.pluginMu.Lock()
+	defer n.pluginMu.Unlock()
+	id, err := prep.Commit(ctx, func(candidate luascripts.Script, commit func() error) error {
 		return n.replaceInstalledPluginLocked(ctx, candidate, commit)
 	})
 	if err != nil {
-		var apiErr *api.Error
-		if errors.As(err, &apiErr) {
-			return api.PluginInfo{}, apiErr
-		}
-		return api.PluginInfo{}, &api.Error{Status: 400, Reason: "install_failed", Message: err.Error()}
+		return api.PluginInfo{}, installAPIError(ctx, err)
 	}
 	if in.Enable {
 		if err := n.setPluginEnabledLocked(id, true); err != nil {
@@ -154,6 +162,20 @@ func (n *Node) InstallPlugin(ctx context.Context, in api.PluginInstallRequest) (
 		}
 	}
 	return api.PluginInfo{ID: id, ImplementationID: id}, nil
+}
+
+func installAPIError(ctx context.Context, err error) error {
+	var apiErr *api.Error
+	if errors.As(err, &apiErr) {
+		return apiErr
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+		return &api.Error{Status: 499, Reason: "cancelled", Message: "plugin installation cancelled"}
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return &api.Error{Status: 504, Reason: "timeout", Message: "plugin installation timed out"}
+	}
+	return &api.Error{Status: 400, Reason: "install_failed", Message: err.Error()}
 }
 
 func (n *Node) UninstallPlugin(_ context.Context, id string) error {

@@ -295,6 +295,10 @@ jobs:
     name: Publish Desktop
     needs: [plan, publish, desktop_build]
     if: ${{ !cancelled() && inputs.version != '' && inputs.channel == 'alpha' && needs.publish.result == 'success' && needs.desktop_build.result == 'success' }}
+    # GitHub validates permissions for the standalone mirror job even when joint mode skips it.
+    permissions:
+      contents: write
+      actions: write
     uses: ./.github/workflows/release-desktop.yml
     with:
       operation: publish
@@ -318,6 +322,9 @@ jobs:
     name: Advance and verify Desktop channel
     needs: [plan, publish, legacy_alpha]
     if: ${{ !cancelled() && inputs.version != '' && needs.plan.result == 'success' && needs.publish.result == 'success' && (inputs.channel == 'stable' || needs.legacy_alpha.result == 'success') }}
+    permissions:
+      contents: write
+      actions: write
     uses: ./.github/workflows/release-desktop.yml
     with:
       operation: promote

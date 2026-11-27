@@ -1,4 +1,4 @@
-export { usePlatformCapabilities } from './usePlatformCapabilities.ios';
+export { usePlatformCapabilities } from './usePlatformCapabilities.android';
 export type {
   CapabilityButtonTone,
   CapabilityIconKind,

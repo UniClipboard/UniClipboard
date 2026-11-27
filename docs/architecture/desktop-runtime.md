@@ -272,6 +272,7 @@ The actual paste owner retains its existing permission checks. See the
 | `history.max_items` | `0` | Limit eligible records; 0 means unlimited. Excluded records do not count. |
 | `history.excluded_tags` | `["favorite"]` | Skip any record with an exact matching tag, including its managed files. An explicit list replaces the default. |
 | `history.max_bytes` | `"4GiB"` | Startup history storage budget; a change requires restart. |
+| `plugins.mirror_url` | Empty | Optional HTTPS mirror base URL (e.g. `https://plugins.uniclipboard.app`) for marketplace catalog and GitHub plugin downloads with automatic direct-GitHub fallback; applies immediately without restart. |
 
 When automatic cleanup is off, Desktop retains the saved age, item-count and excluded-tag rules but disables their controls. The cache-quota control remains enabled. Reenabling cleanup makes the retained rules editable again.
 

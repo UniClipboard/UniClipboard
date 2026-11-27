@@ -66,7 +66,13 @@ func (g githubRepo) prepareGo(ctx context.Context, stage, work, bundle string, m
 		Replace []struct{ New struct{ Version string } }
 	}
 	metadata, err := run("mod", "edit", "-json").Output()
-	if err != nil || json.Unmarshal(metadata, &mod) != nil || mod.Module.Path != m.Module {
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errors.New("plugin go.mod does not match its manifest")
+	}
+	if json.Unmarshal(metadata, &mod) != nil || mod.Module.Path != m.Module {
 		return errors.New("plugin go.mod does not match its manifest")
 	}
 	for _, replacement := range mod.Replace {
@@ -76,9 +82,15 @@ func (g githubRepo) prepareGo(ctx context.Context, stage, work, bundle string, m
 	}
 	version, err := run("version").Output()
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return errors.New("plugin build requires a local Go toolchain")
 	}
 	if err := run("build", "-mod=readonly", "-o", out, m.Package).Run(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return errors.New("plugin source build failed")
 	}
 	pin.Source, pin.Toolchain, pin.ModuleSum = "source", strings.TrimSpace(string(version)), digest(sum)
@@ -86,17 +98,23 @@ func (g githubRepo) prepareGo(ctx context.Context, stage, work, bundle string, m
 }
 
 func (g githubRepo) asset(ctx context.Context, stage string, a Artifact, out string) error {
-	body, err := fetch(ctx, g.location+"/releases/download/"+url.PathEscape(a.Release)+"/"+url.PathEscape(a.Asset), archiveLimit)
+	body, err := g.fetch(ctx, g.location+"/releases/download/"+url.PathEscape(a.Release)+"/"+url.PathEscape(a.Asset), archiveLimit)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = body.Close() }()
 	raw, err := io.ReadAll(body)
-	if err != nil || len(raw) > archiveLimit || digest(raw) != a.SHA256 {
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errors.New("GitHub plugin asset digest or size mismatch")
+	}
+	if len(raw) > archiveLimit || digest(raw) != a.SHA256 {
 		return errors.New("GitHub plugin asset digest or size mismatch")
 	}
 	dest := filepath.Join(stage, "asset")
-	if err := extractTarGzip(bytes.NewReader(raw), dest, false); err != nil {
+	if err := extractTarGzip(ctx, bytes.NewReader(raw), dest, false); err != nil {
 		return err
 	}
 	info, err := os.Stat(filepath.Join(dest, a.Executable))

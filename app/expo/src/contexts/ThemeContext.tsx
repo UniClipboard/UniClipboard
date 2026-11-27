@@ -16,6 +16,7 @@ const THEME_STORAGE_KEY = 'unic.theme-mode';
 interface ThemeContextValue {
   theme: Theme;
   themeMode: ThemeMode;
+  isThemeReady: boolean;
   setThemeMode: (mode: ThemeMode) => Promise<void>;
   toggleTheme: () => Promise<void>;
 }
@@ -38,6 +39,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   const systemColorScheme = systemColorSchemeOverride ?? rnColorScheme;
   const [themeMode, setThemeModeState] = useState<ThemeMode>(initialMode);
   const [theme, setTheme] = useState<Theme>(() => createTheme(initialMode, systemColorScheme));
+  const [isThemeReady, setIsThemeReady] = useState(false);
 
   // 从存储加载主题模式
   useEffect(() => {
@@ -63,6 +65,8 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
       }
     } catch (error) {
       console.warn('Failed to load theme settings:', error);
+    } finally {
+      setIsThemeReady(true);
     }
   };
 
@@ -83,6 +87,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({
   const value: ThemeContextValue = {
     theme,
     themeMode,
+    isThemeReady,
     setThemeMode,
     toggleTheme,
   };

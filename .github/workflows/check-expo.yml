@@ -193,6 +193,7 @@ jobs:
           device=$(xcrun simctl create 'UniClipboard CI' com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro com.apple.CoreSimulator.SimRuntime.iOS-26-5)
           xcrun simctl boot "$device"
           xcrun simctl bootstatus "$device" -b
+          xcrun simctl spawn "$device" defaults write com.apple.Preferences DidShowContinuousPathIntroduction -bool true || true
           if ! node e2e/run.mjs --suite live --platform ios --device "$device" \
             --app "$app"; then
             xcrun simctl spawn "$device" log show --last 5m --info --style compact \
@@ -230,7 +231,7 @@ jobs:
         run: |
           mkdir -p e2e/results
           sudo chmod a+rw /dev/kvm
-          "$ANDROID_HOME/emulator/emulator" -avd unic-ci -port 5554 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > e2e/results/emulator.log 2>&1 &
+          "$ANDROID_HOME/emulator/emulator" -avd unic-ci -port 5554 -memory 4096 -no-window -no-audio -no-boot-anim -no-snapshot -no-metrics -gpu swiftshader_indirect > e2e/results/emulator.log 2>&1 &
           emulator_pid=$!
 
           wait_for_emulator() {
@@ -267,10 +268,15 @@ jobs:
 
           wait_for_emulator
           adb -s emulator-5554 shell wm dismiss-keyguard
+          adb -s emulator-5554 shell settings put global window_animation_scale 0
+          adb -s emulator-5554 shell settings put global transition_animation_scale 0
+          adb -s emulator-5554 shell settings put global animator_duration_scale 0
           if run_live; then exit 0; fi
           record_android_exit first
-          grep -rqE --include=maestro.log 'CommandFailed: Command failed \(host:transport:emulator-5554\): device offline' e2e/results
-          echo 'Maestro lost its ADB connection. Retrying once after the emulator reconnects.'
+          grep -rqE --include='*.log' --include='*.xml' 'CommandFailed: Command failed \(host:transport:emulator-5554\): device offline|DeviceServerDiedException: Device server died' e2e/results
+          echo 'Maestro lost its ADB/gRPC connection. Retrying once after the emulator reconnects.'
+          adb reconnect offline || true
+          sleep 2
           wait_for_emulator
           if run_live; then exit 0; fi
           record_android_exit retry

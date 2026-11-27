@@ -28,7 +28,6 @@ type builtinPluginSettings struct {
 	marketSelected                          string
 	marketTechOpen                          bool
 	detailTechOpen                          bool
-	installingID                            string
 	installNotice                           string
 	installError                            string
 	manualOpen                              bool
@@ -38,6 +37,8 @@ type builtinPluginSettings struct {
 	uninstallID, uninstallName              string
 	rollbackOpen                            bool
 	rollbackID, rollbackName, rollbackVer   string
+	mirrorCustomOpen                        bool
+	mirrorDraft, mirrorSynced, mirrorError  string
 	form                                    *pluginSettingsForm
 	classification                          classificationSettings
 	preview                                 previewSettingsState
@@ -386,12 +387,17 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 								p.marketSelected = pick.ID
 								p.marketTechOpen = false
 							}
-							installing := p.installingID == pick.ID
-							btnLabel := d.tr("立即安装")
-							if installing {
-								btnLabel = d.tr("正在安装…")
-							}
-							if k.Button(c.Key("quick-install-"+pick.ID), btnLabel, desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconDownload, Busy: installing, Disabled: l.showBusy() || p.installingID != ""}).Clicked() {
+							installTask := d.pluginInstallTask(pick.ID)
+							if installTask != nil {
+								cancelLabel := d.tr("取消安装")
+								if installTask.cancelling {
+									cancelLabel = d.tr("正在取消…")
+								}
+								if k.Button(c.Key("quick-install-cancel-"+pick.ID), cancelLabel, desktopkit.ButtonProps{Variant: desktopkit.Subtle, Busy: installTask.cancelling, Disabled: installTask.cancelling}).Clicked() {
+									d.cancelPluginInstall(pick.ID)
+								}
+								k.Button(c.Key("quick-install-"+pick.ID), d.tr("正在安装…"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconDownload, Busy: true, Disabled: true})
+							} else if k.Button(c.Key("quick-install-"+pick.ID), d.tr("立即安装"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Icon: desktopkit.IconDownload}).Clicked() {
 								d.installMarketplacePlugin(api.PluginInstallRequest{
 									Repository: pick.Repository,
 									Ref:        pick.Ref,
@@ -447,9 +453,19 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 							k.Text(c.Key("m"), meta, footnote)
 						})
 						ui.Row(c.Key("ctrl")).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+							updateTask := d.pluginInstallTask(item.ID)
+							updating := updateTask != nil
 							if canUpdate {
-								updating := p.installingID == item.ID
-								if k.Button(c.Key("update-"+item.ID), d.tr("更新"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Busy: updating, Disabled: l.showBusy() || p.installingID != ""}).Clicked() {
+								if updating {
+									cancelLabel := d.tr("取消更新")
+									if updateTask.cancelling {
+										cancelLabel = d.tr("正在取消…")
+									}
+									if k.Button(c.Key("update-cancel-"+item.ID), cancelLabel, desktopkit.ButtonProps{Variant: desktopkit.Subtle, Busy: updateTask.cancelling, Disabled: updateTask.cancelling}).Clicked() {
+										d.cancelPluginInstall(item.ID)
+									}
+									k.Button(c.Key("update-"+item.ID), d.tr("正在更新…"), desktopkit.ButtonProps{Variant: desktopkit.Primary, Busy: true, Disabled: true})
+								} else if k.Button(c.Key("update-"+item.ID), d.tr("更新"), desktopkit.ButtonProps{Variant: desktopkit.Primary}).Clicked() {
 									d.installMarketplacePlugin(api.PluginInstallRequest{
 										Repository: cat.Repository,
 										Ref:        cat.Ref,
@@ -471,14 +487,14 @@ func (d *viewState) builtinPluginList(c *ui.Context, k desktopkit.Kit, cfg *conf
 								p.channelPair = weTypePairing{}
 							}
 							if item.Source != "local" {
-								if k.Button(c.Key("uninstall-"+item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconDelete, Label: d.tr("卸载") + displayName, Tooltip: d.tr("卸载"), Disabled: l.showBusy()}).Clicked() && !l.busy {
+								if k.Button(c.Key("uninstall-"+item.ID), "", desktopkit.ButtonProps{Variant: desktopkit.Subtle, Icon: desktopkit.IconDelete, Label: d.tr("卸载") + displayName, Tooltip: d.tr("卸载"), Disabled: l.showBusy() || updating}).Clicked() && !l.busy && !updating {
 									p.uninstallOpen = true
 									p.uninstallID = item.ID
 									p.uninstallName = displayName
 								}
 							}
 							on := item.Configured
-							if k.Switch(c.Key("enable-"+item.ID), &on, desktopkit.SwitchProps{Label: d.tr("启用") + displayName, Disabled: l.showBusy()}).Changed() && !l.busy {
+							if k.Switch(c.Key("enable-"+item.ID), &on, desktopkit.SwitchProps{Label: d.tr("启用") + displayName, Disabled: l.showBusy() || updating}).Changed() && !l.busy && !updating {
 								d.setExternalPluginEnabled(*cfg, item.ID, on)
 							}
 						})

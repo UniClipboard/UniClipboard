@@ -1,4 +1,4 @@
 {
-  "en": "Unic now makes device pairing easier with QR codes, gives you clearer sync transfer progress and delivery status, and adds faster search with autocomplete and favorites filtering. Windows users can choose where the Quick Panel opens. All paired devices must use v2.",
-  "zh": "Unic 现在支持通过二维码快速配对设备，并提供更清晰的同步进度和送达状态；搜索也新增自动补全和收藏筛选。Windows 用户还可以选择快捷面板的打开位置。所有配对设备必须使用 v2。"
+  "en": "Plugin installations and updates now run in the background with progress notifications and cancellation. You can also choose GitHub, the official marketplace mirror, or a custom HTTPS mirror for plugin downloads. All paired devices must use v2.",
+  "zh": "插件安装和更新现在支持后台进行、进度通知和取消操作；你还可以为插件下载选择 GitHub、官方插件市场镜像或自定义 HTTPS 镜像。所有配对设备必须使用 v2。"
 }

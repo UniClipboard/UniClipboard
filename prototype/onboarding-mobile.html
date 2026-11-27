@@ -1631,12 +1631,10 @@ function renderIntro() {
     </div>
 
     <div class="footer">
-      ${isLast ? `
-        <button class="btn primary" data-act="go-pair">开始配置</button>
-        <button class="btn plain" data-act="skip-all">先进入历史</button>
-      ` : `
-        <button class="btn primary" data-act="next-slide">下一步</button>
-      `}
+      <button class="btn primary" id="intro-primary" data-act="${isLast ? 'go-pair' : 'next-slide'}">${isLast ? '开始配置' : '下一步'}</button>
+      <div class="intro-secondary-slot" id="intro-secondary" style="height:44px;display:flex;align-items:center;transition:opacity .26s cubic-bezier(.2,.8,.2,1),transform .26s cubic-bezier(.2,.8,.2,1);opacity:${isLast ? '1' : '0'};transform:translateY(${isLast ? '0' : '6px'});pointer-events:${isLast ? 'auto' : 'none'}">
+        <button class="btn plain" data-act="skip-all" ${isLast ? '' : 'tabindex="-1"'}>先进入历史</button>
+      </div>
     </div>`;
 }
 
@@ -2606,14 +2604,25 @@ function setSlide(nextIdx) {
     track.classList.remove('dragging');
     track.style.transform = `translateX(-${S.slide * 33.3333}%)`;
     document.querySelectorAll('.dot').forEach((d, idx) => d.classList.toggle('on', idx === S.slide));
-    const footer = $('#screen .footer');
-    if (footer) {
-      footer.innerHTML = S.slide === 2 ? `
-        <button class="btn primary" data-act="go-pair">开始配置</button>
-        <button class="btn plain" data-act="skip-all">先进入历史</button>
-      ` : `
-        <button class="btn primary" data-act="next-slide">下一步</button>
-      `;
+    const isLast = S.slide === 2;
+    const primary = $('#intro-primary');
+    if (primary) {
+      primary.dataset.act = isLast ? 'go-pair' : 'next-slide';
+      primary.textContent = isLast ? '开始配置' : '下一步';
+    }
+    const secondary = $('#intro-secondary');
+    if (secondary) {
+      secondary.style.opacity = isLast ? '1' : '0';
+      secondary.style.transform = isLast ? 'translateY(0)' : 'translateY(6px)';
+      secondary.style.pointerEvents = isLast ? 'auto' : 'none';
+      const secBtn = secondary.querySelector('button');
+      if (secBtn) secBtn.tabIndex = isLast ? 0 : -1;
+    }
+    const navSkip = $('#screen .nav-bar .nav-action');
+    if (navSkip) {
+      navSkip.style.transition = 'opacity .22s ease';
+      navSkip.style.opacity = isLast ? '0' : '1';
+      navSkip.style.pointerEvents = isLast ? 'none' : 'auto';
     }
     renderSpec();
     updateJumpChips();

@@ -9383,6 +9383,24 @@
     "pt-BR": "Digite uma URL HTTPS válida para o espelho.",
     "ru": "Введите корректный HTTPS-адрес зеркала."
   },
+  "渠道": {
+    "en": "Channel",
+    "ja": "チャネル",
+    "pt-BR": "Canal",
+    "ru": "Канал"
+  },
+  "明细": {
+    "en": "Details",
+    "ja": "詳細",
+    "pt-BR": "Detalhes",
+    "ru": "Подробнее"
+  },
+  "收起": {
+    "en": "Hide",
+    "ja": "閉じる",
+    "pt-BR": "Ocultar",
+    "ru": "Свернуть"
+  },
   "前置拦截": {
     "en": "Pre-filter",
     "ja": "事前フィルター",

@@ -862,7 +862,7 @@ func projectHistory(it api.HistoryItem) entry {
 	if it.Origin == "external" || it.Origin == "migration" {
 		source = it.Origin
 	}
-	v := entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: humanBytes(it.TotalBytes), kind: kind, tags: withFavoriteTag(it.Tags, false), pinned: slices.Contains(it.Tags, plugin.TagFavorite), createdAt: it.CreatedAt, syncState: it.SyncState, backendSync: slices.Clone(it.Backends)}
+	v := entry{generatedTitle: true, id: it.ID, title: title, source: source, date: formatDate(it.CreatedAt), size: humanBytes(it.TotalBytes), kind: kind, tags: withFavoriteTag(it.Tags, false), pinned: slices.Contains(it.Tags, plugin.TagFavorite), createdAt: it.CreatedAt, syncState: it.SyncState}
 	if app := it.SourceApplication; app != nil {
 		v.sourceAppName, v.sourceAppID = strings.TrimSpace(app.Name), app.Identifier
 		if v.sourceAppName == "" {

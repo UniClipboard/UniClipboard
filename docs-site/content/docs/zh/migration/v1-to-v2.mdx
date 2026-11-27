@@ -3,7 +3,7 @@ title: 从 v1 迁移到 v2
 description: 用 unic migrate 或桌面首次设置把 UniClipboard v1 的本机历史导入 v2。
 ---
 
-UniClipboard v2 是全新实现，**不能与 v1 互相同步**，也不能直接使用 v1 的数据库、设置或设备身份。迁移只把本机历史离线导入 v2。
+UniClipboard v2 是全新实现，**不能与 v1 互相同步**，也不能直接使用 v1 的数据库、完整设置或设备身份。离线迁移会将本机历史以及部分受支持的界面与基础偏好导入 v2，不迁移设备身份、信任关系以及网络与同步设置。
 
 ## 会迁移什么
 
@@ -14,8 +14,9 @@ UniClipboard v2 是全新实现，**不能与 v1 互相同步**，也不能直�
 | 文件 | 是；复制为 v2 自管的副本，文件夹以 ZIP 形式保留目录结构 |
 | 标签及标签颜色 | 是；内置的链接/图片/文件夹/代码等标签映射为 v2 对应标签 |
 | 创建时间与排序 | 是 |
-| 收藏 | 否，会在报告中列出 |
-| 设置、设备身份、信任关系、网络设置 | 否 |
+| 部分界面与基础偏好（未设置时的设备名、主题、匿名统计、收藏保留排除、标签侧栏布局、支持的快捷键） | 是；保留 v2 中已有覆盖 |
+| 收藏 | 若 v1 数据含持久化收藏标记（`is_favorited`），会迁移为保留标签 `favorite`；无该列的旧格式若含 `favorited` 索引行则记入 `unsupported_tags` 并报告 `partial` |
+| 设备身份、信任关系、网络与同步设置、其余设置 | 否 |
 
 迁移不会修改 v1 的数据。缺失或损坏的内容会在报告中计为部分迁移。
 
@@ -34,10 +35,10 @@ UniClipboard v2 是全新实现，**不能与 v1 互相同步**，也不能直�
 <Steps>
 <Step>
 
-### 预检（不写入目标）
+### 预检（不写入目标，可选）
 
 ```bash
-unic migrate --dry-run --json
+unic migrate --dry-run
 ```
 
 </Step>
@@ -46,17 +47,17 @@ unic migrate --dry-run --json
 ### 导入并校验
 
 ```bash
-unic migrate --json
+unic migrate
 ```
 
-导入过程中会请求系统凭据授权；读取失败时会提示输入 v1 的旧口令（不回显）。
+也可以在交互终端直接运行 `unic init`，检测到 v1 数据时会引导你选择导入历史或全新开始。导入过程中会请求系统凭据授权；读取失败时会显示原因并提示输入 v1 的旧口令（不回显，最多可重试 3 次）。解锁失败或按 `Ctrl+C` 取消不会写入锁死状态，仍可随时运行 `unic init --fresh` 全新开始。
 
 </Step>
 <Step>
 
 ### 检查报告
 
-确认报告和 v2 历史无误后，再启动 `unicd`。
+确认摘要与 v2 历史无误后，再启动 `unicd`（脚本自动化可加 `--json` 输出结构化进度与报告）。
 
 </Step>
 </Steps>
@@ -73,21 +74,20 @@ unic migrate --json
 | `--dry-run` | 只读取并校验，不修改目标 |
 | `--json` | 输出 JSON 进度与最终报告 |
 | `--passphrase-stdin` | 从标准输入读取一行旧口令，用于自动化 |
-| `--initialize-empty` | 本机没有 v1 数据时显式初始化，只能与 `--target`、`--json` 同用 |
+| `--initialize-empty` | 本机没有 v1 数据时显式初始化（脚本向），只能与 `--target`、`--json` 同用 |
 
 <Callout type="error">
 不要把口令写在命令行参数或环境变量里。自动化场景请使用 `--passphrase-stdin`。
 </Callout>
 
-### 没有 v1 数据时
+### 没有 v1 数据或跳过迁移时
 
-命令行每个数据目录首次使用前都必须完成迁移初始化，否则普通命令会以退出码 6（`migration_required`）结束。如果这台电脑从未使用过 v1：
+命令行每个数据目录首次使用前都必须完成初始化，否则普通命令会以退出码 6（`migration_required`）结束。
 
-```bash
-unic migrate --initialize-empty --json
-```
-
-它会检查已知的 v1 位置；若发现 v1 数据或未完成的导入则拒绝执行。这不是“跳过”选项，自定义位置的 v1 数据请用 `--source DIR` 导入。
+- 全新初始化（没有 v1 数据时一步完成；交互终端检测到 v1 时也可选择跳过或导入）：`unic init`
+- 非交互/脚本直接跳过已知 v1 数据全新开始：`unic init --fresh`
+- 放弃已部分导入但未完成的迁移状态：`unic init --fresh --discard-pending`
+- 自动化脚本专用无源检查初始化：`unic migrate --initialize-empty --json`（发现 v1 数据或未完成导入时拒绝）
 
 ## 结果与重试
 

@@ -25,8 +25,8 @@ Commands that wait for another device (`device add`, `dev logs level --for`) kee
 `send` waits for its own send to finish and exits 4 when the content was committed but the send was not fully completed.
 
 See [headless architecture](../../docs/architecture/headless.md) and the [local service contract](../../docs/contracts/local-service-contract.md).
-The `unic migrate` command performs offline history import in-process.
-Run `unic migrate --help` for backup, preflight, import and verification steps.
+The `unic init` command initializes a profile for first use (offering an interactive import/fresh choice when v1 data is detected), and `unic migrate` performs offline v1 history import in-process.
+Run `unic migrate --help` for flags, exit codes, and backup notes.
 Business commands refuse until explicit migration initialization completes for the selected data directory. JSON and noninteractive invocations receive the same actionable refusal (exit 6, `migration_required`). Help and version remain accessible. A partial import remains pending. See the [initialization contract](../../docs/contracts/local-service-contract.md#explicit-cli-migration-initialization).
 
 

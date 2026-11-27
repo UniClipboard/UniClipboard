@@ -227,7 +227,7 @@ func helpForCommand(name string) (string, bool) {
 	case "plugin":
 		return pluginUsage, true
 	case "migrate":
-		return migrationGuide, true
+		return migrateUsage, true
 	case "dev", "dev help":
 		return devUsage, true
 	case "dev logs", "dev logs help":

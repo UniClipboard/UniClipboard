@@ -24,7 +24,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: 8dcbf0d45b84e0b58b7e0232b570b7df7f7b6140
+verified: 04d54f1476942fb328c4e17844477b482b5a4060
 ---
 # Headless service and desktop integration
 
@@ -117,15 +117,20 @@ Exact DTOs, budgets and exit codes are in the [local service contract](../contra
 
 Every CLI data directory requires explicit initialization before business commands
 or starting a daemon. Uninitialized commands refuse with exit 6 (`migration_required`)
-before service acquisition. Run `unic init` to initialize a fresh profile (with
-`unic init --fresh` to explicitly skip detected v1 data, or `unic migrate` to import
-and verify UniClipboard v1 history). `unic migrate --initialize-empty --json` remains
-available as an explicit no-source script path. Pending imports cannot be bypassed.
-Help, version, `init`, `migrate`, `doctor`, `completion`, `profile`, `config path`,
-and `daemon status|stop|logs` remain accessible before initialization. Receipt
-publication and service acquisition share the profile transition lock; acquisition
-rechecks initialization after waiting. Partial, failure, cancellation and dry-run
-never grant permission. Explicit Desktop imports share this gate; welcome/skip
+before service acquisition. Run `unic init` to initialize a fresh profile (when v1 data
+is detected in an interactive terminal, `unic init` offers a 2-choice prompt to import
+v1 history or start fresh; non-interactive callers use `unic init --fresh` or `unic migrate`).
+`unic migrate` imports and verifies UniClipboard v1 history from the default source and
+target when run without arguments; unlock runs read-only before creating `unic.db` or
+writing `pending`, so unlock failure or cancellation never blocks `unic init --fresh`.
+`unic migrate --initialize-empty --json` remains available as an explicit no-source
+script path. Ordinary `--fresh` never bypasses a real pending import; only completing
+`unic migrate` or explicit `unic init --fresh --discard-pending` (with `y/N` confirmation
+on interactive TTY) clears it. Help, version, `init`, `migrate`, `doctor`, `completion`,
+`profile`, `config path`, and `daemon status|stop|logs` remain accessible before
+initialization. Receipt publication and service acquisition share the profile transition
+lock; acquisition rechecks initialization after waiting. Partial, failure, cancellation
+and dry-run never grant permission. Explicit Desktop imports share this gate; welcome/skip
 does not initialize the CLI. Source identity prevents another source from completing
 a pending import. See the [CLI initialization contract](../contracts/local-service-contract.md#explicit-cli-migration-initialization).
 

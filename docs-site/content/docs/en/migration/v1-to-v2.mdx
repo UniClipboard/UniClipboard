@@ -3,7 +3,7 @@ title: Migrating from v1 to v2
 description: Import local history from UniClipboard v1 into v2 using unic migrate or desktop first-install setup.
 ---
 
-UniClipboard v2 is a brand-new implementation. It **cannot sync with v1** and cannot directly use v1 databases, settings, or device identities. Migration only imports local history offline into v2.
+UniClipboard v2 is a brand-new implementation. It **cannot sync with v1** and cannot directly use v1 databases, full settings, or device identities. Offline migration imports local history and selected supported preferences into v2, without migrating device identities, trust relationships, or network/sync settings.
 
 ## What Is Migrated
 
@@ -14,8 +14,9 @@ UniClipboard v2 is a brand-new implementation. It **cannot sync with v1** and ca
 | Files | Yes; copied as v2-managed copies; folders preserve directory structure as ZIP archives |
 | Tags and tag colors | Yes; built-in link/image/folder/code tags are mapped to their v2 equivalents |
 | Creation time and ordering | Yes |
-| Favorites | No; listed in the report |
-| Settings, device identity, trust relationships, network settings | No |
+| Selected preferences (unset device name, theme, analytics toggle, favorite retention exclusion, tag sidebar layout, supported shortcuts) | Yes; existing v2 overrides are preserved |
+| Favorites | Persisted favorites (`is_favorited`) migrate as the reserved `favorite` tag; older schemas without that column count `favorited` index rows under `unsupported_tags` and report `partial` |
+| Device identity, trust relationships, network/sync settings, and other settings | No |
 
 Migration does not modify v1 data. Missing or corrupted items are counted as partial migration in the report.
 
@@ -34,10 +35,10 @@ On a fresh install, launching the v2 desktop app opens the setup wizard, which o
 <Steps>
 <Step>
 
-### Dry run (does not write to target)
+### Dry run (does not write to target, optional)
 
 ```bash
-unic migrate --dry-run --json
+unic migrate --dry-run
 ```
 
 </Step>
@@ -46,17 +47,17 @@ unic migrate --dry-run --json
 ### Import and verify
 
 ```bash
-unic migrate --json
+unic migrate
 ```
 
-During import, the system will request credential access; if reading credentials fails, you will be prompted for your v1 passphrase (input is hidden).
+In an interactive terminal, you can also run `unic init` directly; when v1 data is detected, it offers a choice to import your v1 history or start fresh. During import, the system requests credential access; if reading credentials fails, the reason is shown and you are prompted for your v1 passphrase (hidden input, up to 3 attempts). Unlock failures or `Ctrl+C` cancellations do not lock the profile, so you can still run `unic init --fresh` anytime.
 
 </Step>
 <Step>
 
-### Check the report
+### Check the summary
 
-After verifying the report and v2 history, start `unicd`.
+After verifying the summary and v2 history, start `unicd` (add `--json` for machine-readable progress and reports in scripts).
 
 </Step>
 </Steps>
@@ -73,21 +74,20 @@ The default source is the local v1 desktop data directory (macOS `~/Library/Appl
 | `--dry-run` | Read and verify only without modifying the target |
 | `--json` | Output JSON progress and final report |
 | `--passphrase-stdin` | Read one line of the legacy passphrase from stdin for automation |
-| `--initialize-empty` | Explicitly initialize when no v1 data exists on this machine; can only be used with `--target` and `--json` |
+| `--initialize-empty` | Explicitly initialize when no v1 data exists (scripted); can only be used with `--target` and `--json` |
 
 <Callout type="error">
 Never pass the passphrase in command-line arguments or environment variables. Use `--passphrase-stdin` for automation.
 </Callout>
 
-### When There Is No v1 Data
+### When There Is No v1 Data or Skipping Migration
 
-Each CLI data directory must complete migration initialization before first use; otherwise, regular commands exit with code 6 (`migration_required`). If this machine has never used v1:
+Each CLI data directory must complete initialization before first use; otherwise, regular commands exit with code 6 (`migration_required`).
 
-```bash
-unic migrate --initialize-empty --json
-```
-
-It checks known v1 locations and refuses to run if v1 data or an incomplete import is found. This is not a "skip" flag; for v1 data in a custom location, import it with `--source DIR`.
+- Standard setup (completes immediately when no v1 data exists, or prompts interactively when v1 is found): `unic init`
+- Non-interactive/scripted fresh start skipping detected v1 data: `unic init --fresh`
+- Abandon a partially imported pending migration: `unic init --fresh --discard-pending`
+- Scripted no-source check initialization: `unic migrate --initialize-empty --json` (refuses if v1 data or a pending import exists)
 
 ## Results and Retries
 

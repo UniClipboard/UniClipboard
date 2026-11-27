@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -416,55 +417,229 @@ func (d *viewState) toolbarTransferStatus(c *ui.Context, k desktopkit.Kit) {
 	k.TransferStatus(c.Key("transfer-status"), props)
 }
 
-func (d *viewState) renderDeliverySection(c *ui.Context, k desktopkit.Kit, v *entry, includeBackends bool) {
-	secondary := desktopkit.TextProps{Role: desktopkit.RoleCaption, Tone: desktopkit.ToneSecondary}
+func looksLikePhoneName(name string) bool {
+	low := strings.ToLower(name)
+	for _, kw := range []string{"iphone", "ipad", "android", "pixel", "galaxy", "phone", "手机"} {
+		if strings.Contains(low, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *viewState) deliveryTargetMeta(t engine.TargetStatus) (name string, icon desktopkit.IconName, external bool, retryTarget string) {
+	id := t.TargetID
+	if id == "" {
+		id = string(t.PeerID)
+	}
+	external = t.TargetKind == engine.TargetGroup
+
+	for _, dev := range d.devices {
+		if dev.id == id || dev.deviceID == id {
+			if dev.name != "" {
+				name = dev.name
+			}
+			icon = dev.icon
+			if dev.id != "" && dev.id != "local" {
+				retryTarget = dev.id
+			}
+			break
+		}
+	}
+	for _, ch := range d.channels {
+		if ch.id == id {
+			external = true
+			if name == "" && ch.name != "" {
+				name = ch.name
+			}
+			break
+		}
+	}
+	if d.live != nil {
+		if p, ok := d.live.peers[id]; ok {
+			if p.Kind == "external" {
+				external = true
+			}
+			if name == "" && p.Name != "" {
+				name = p.Name
+			}
+			if !external && retryTarget == "" && p.ID != "" {
+				retryTarget = p.ID
+			}
+		}
+	}
+	if name == "" {
+		if id != "" {
+			name = id
+		} else {
+			name = string(t.BackendID)
+		}
+	}
+	if external {
+		return name, desktopkit.IconLink, true, ""
+	}
+	if retryTarget == "" {
+		if t.PeerID != "" {
+			retryTarget = string(t.PeerID)
+		} else if t.TargetKind == engine.TargetDevice && t.TargetID != "" {
+			retryTarget = t.TargetID
+		}
+	}
+	if icon == "" || icon == desktopkit.IconDesktop {
+		if looksLikePhoneName(name) {
+			icon = desktopkit.IconPhone
+		} else {
+			icon = desktopkit.IconDesktop
+		}
+	}
+	return name, icon, false, retryTarget
+}
+
+func (d *viewState) deliveryTargetItem(idPrefix string, t engine.TargetStatus) desktopkit.DeliveryTargetItem {
+	name, icon, external, retryTarget := d.deliveryTargetMeta(t)
+	sendBusy := d.live != nil && d.live.sendCancel != nil
+	item := desktopkit.DeliveryTargetItem{
+		ID:            idPrefix + ":" + string(t.BackendID) + ":" + t.TargetID,
+		Label:         name,
+		Icon:          icon,
+		External:      external,
+		ChannelLabel:  d.tr("渠道"),
+		RetryLabel:    d.tr("重试"),
+		RetryDisabled: sendBusy,
+	}
+	formatBytes := func(p *engine.TransferProgress) string {
+		if p == nil || p.TotalBytes <= 0 {
+			return ""
+		}
+		return humanBytes(p.BytesSent) + " / " + humanBytes(p.TotalBytes)
+	}
+	switch t.State {
+	case engine.TargetQueued:
+		item.Tone = desktopkit.StatusNeutral
+		item.Status = d.tr("排队中")
+	case engine.TargetSending:
+		item.Tone = desktopkit.StatusInfo
+		item.Active = true
+		if t.ReceiptStage == engine.ReceiptStageLocalWritten {
+			item.Status = d.tr("等待对端确认…")
+			item.Bytes = formatBytes(t.Progress)
+		} else if t.Progress != nil && t.Progress.TotalBytes > 0 {
+			pct := math.Max(0, math.Min(100, float64(t.Progress.BytesSent)*100/float64(t.Progress.TotalBytes)))
+			item.Value = &pct
+			item.Status = fmt.Sprintf("%d%%", int(math.Round(pct)))
+			item.Bytes = formatBytes(t.Progress)
+		} else {
+			item.Status = d.tr("正在传输")
+		}
+	case engine.TargetSent:
+		item.Tone = desktopkit.StatusPositive
+		if t.ReceiptStage == engine.ReceiptStageRemoteReceived {
+			item.Confirmed = true
+			item.Status = d.tr("对端已接收")
+		} else {
+			item.Status = d.tr("已发送")
+		}
+	case engine.TargetDiscarded:
+		item.Tone = desktopkit.StatusWarning
+		item.Status = d.tr("对端未接纳")
+		if retryTarget != "" {
+			item.Retryable = true
+			item.RetryTarget = retryTarget
+		}
+	case engine.TargetSuperseded:
+		item.Tone = desktopkit.StatusNeutral
+		item.Status = d.tr("已被新内容替代")
+	case engine.TargetFailed:
+		item.Tone = desktopkit.StatusCritical
+		if t.ReceiptStage == engine.ReceiptStageLocalWritten {
+			item.Status = d.tr("未收到对端确认")
+			item.Reason = d.tr("本地已写出，但未收到对端确认")
+		} else {
+			item.Status = d.tr("发送失败")
+			item.Reason = targetErrorText(d, t.Error)
+		}
+		if retryTarget != "" {
+			item.Retryable = true
+			item.RetryTarget = retryTarget
+		}
+	default:
+		item.Tone = desktopkit.StatusNeutral
+		item.Status = string(t.State)
+	}
+	return item
+}
+
+func syncStateTone(s string) desktopkit.StatusTone {
+	switch s {
+	case "sent":
+		return desktopkit.StatusPositive
+	case "pending":
+		return desktopkit.StatusInfo
+	case "partial", "interrupted":
+		return desktopkit.StatusWarning
+	case "failed":
+		return desktopkit.StatusCritical
+	default:
+		return desktopkit.StatusNeutral
+	}
+}
+
+func (d *viewState) renderDeliverySection(c *ui.Context, k desktopkit.Kit, v *entry, inDrawer bool) {
 	ui.Column(c).Gap(6).Children(func() {
 		if d.live != nil {
 			if op, ok := d.live.operationForHistory(v.id); ok && len(op.Targets) > 0 {
-				received, active := 0, 0
+				items := make([]desktopkit.DeliveryTargetItem, 0, len(op.Targets))
+				received, active, failed, discarded := 0, 0, 0, 0
 				for _, t := range op.Targets {
+					items = append(items, d.deliveryTargetItem(string(op.ID), t))
 					switch t.State {
 					case engine.TargetSent:
 						received++
 					case engine.TargetQueued, engine.TargetSending:
 						active++
+					case engine.TargetFailed:
+						failed++
+					case engine.TargetDiscarded:
+						discarded++
 					}
 				}
 				summary := fmt.Sprintf(d.tr("已送达 %d/%d 台设备"), received, len(op.Targets))
 				if active > 0 {
 					summary = fmt.Sprintf(d.tr("正在传输到 %d 台设备"), active)
 				}
-				ui.Row(c.Key("head")).Gap(8).AlignItems(ui.Center).Children(func() {
-					k.Text(c, d.tr("送达"), desktopkit.TextProps{Emphasized: true})
-					k.Text(c, summary, desktopkit.TextProps{Role: desktopkit.RoleCallout, Tone: desktopkit.ToneSecondary})
+				headTone := desktopkit.StatusPositive
+				switch {
+				case active > 0:
+					headTone = desktopkit.StatusInfo
+				case failed > 0:
+					headTone = desktopkit.StatusCritical
+				case discarded > 0:
+					headTone = desktopkit.StatusWarning
+				}
+				res := k.DeliveryCard(c.Key("card"), desktopkit.DeliveryCardProps{
+					EntryID:       v.id,
+					ListLabel:     d.tr("送达情况"),
+					Summary:       summary,
+					Tone:          headTone,
+					DefaultOpen:   received < len(op.Targets),
+					ExpandLabel:   d.tr("明细"),
+					CollapseLabel: d.tr("收起"),
+					Compact:       inDrawer,
+					InDrawer:      inDrawer,
+					Items:         items,
 				})
-				ui.Column(c.Key("targets")).Role(ui.RoleList).Label(d.tr("送达情况")).Children(func() {
-					for _, t := range op.Targets {
-						it := d.transferTargetItem(string(op.ID), t)
-						k.TransferItem(c.Key(it.ID), it)
-					}
-				})
-				if includeBackends {
-					for _, backend := range v.backendSync {
-						text := backend.BackendID + " · " + d.tr(syncStateLabel(backend.State)) + " · " + d.tr(backend.Disposition)
-						if backend.ErrorCode != "" {
-							text += " · " + backend.ErrorCode
-						}
-						k.Text(c, text, secondary)
-					}
+				if res.RetryTarget != "" {
+					d.sendTo(res.RetryTarget)
 				}
 				return
 			}
-			k.Text(c, d.tr("同步状态：")+d.tr(syncStateLabel(v.syncState)), secondary)
-			if includeBackends {
-				for _, backend := range v.backendSync {
-					text := backend.BackendID + " · " + d.tr(syncStateLabel(backend.State)) + " · " + d.tr(backend.Disposition)
-					if backend.ErrorCode != "" {
-						text += " · " + backend.ErrorCode
-					}
-					k.Text(c, text, secondary)
-				}
-			}
+			k.DeliveryCard(c.Key("card"), desktopkit.DeliveryCardProps{
+				EntryID:        v.id,
+				InDrawer:       inDrawer,
+				FallbackPrefix: d.tr("同步状态："),
+				FallbackValue:  d.tr(syncStateLabel(v.syncState)),
+				FallbackTone:   syncStateTone(v.syncState),
+			})
 			return
 		}
 		rows := []desktopkit.InsetListRow{}

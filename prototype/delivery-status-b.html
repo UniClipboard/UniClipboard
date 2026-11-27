@@ -1,0 +1,1327 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UniClipboard · 方案 B 深化原型（紧凑错误态 + 零高度抖动）</title>
+<!--
+  BoardUI v2 Interactive Prototype: Proposal B Refinements (B1 / B2 / B3).
+  Fixes:
+    1. Replaces bulky bordered red error callout with ultra-clean, single-line inline error & retry affordances + tooltip details.
+    2. Locks every row to a strict fixed height (40px / 42px) so transitioning across
+       failed <-> queued <-> sending(0-100%) <-> awaiting_ack <-> sent <-> discarded
+       produces 0.0px vertical layout shift.
+-->
+<style>
+:root {
+  --bg-page: #f2f2f5;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f7f7f9;
+  --bg-subtle-hover: #efeff3;
+  --bg-tertiary: #ececf0;
+  --bg-inset: #f4f4f7;
+  --bg-dock: rgba(255, 255, 255, .94);
+
+  --border: #e8e8ec;
+  --border-strong: #dcdce2;
+  --dock-border: rgba(10, 10, 10, .09);
+
+  --text-primary: #111114;
+  --text-secondary: #686870;
+  --text-tertiary: #96969f;
+
+  --accent-50: #eff6ff;
+  --accent-100: #dbeafe;
+  --accent-500: #2b7fff;
+  --accent-600: #155dfc;
+  --accent-wash: rgba(43, 127, 255, .09);
+
+  --ok-bg: #ecfccb;
+  --ok-fg: #3c6300;
+  --ok-dot: #5ea500;
+
+  --warn-bg: #fef3c7;
+  --warn-fg: #9f2d00;
+  --warn-dot: #d97706;
+
+  --err-bg: #ffe4e6;
+  --err-bg-subtle: rgba(231, 0, 11, .045);
+  --err-fg: #c10007;
+  --err-dot: #e7000b;
+
+  --info-bg: #dbeafe;
+  --info-fg: #155dfc;
+  --info-dot: #2b7fff;
+
+  --neutral-pill-bg: #ececf0;
+  --neutral-pill-fg: #52525b;
+
+  --tag-blue-bg: #dbeafe;
+  --tag-blue-fg: #155dfc;
+
+  --tooltip-bg: #18181b;
+  --tooltip-fg: #fafafa;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .04), 0 6px 20px rgba(0, 0, 0, .04);
+  --shadow-dock: 0 8px 24px rgba(0, 0, 0, .10), 0 1px 3px rgba(0, 0, 0, .06);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .05);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+}
+
+[data-theme="dark"] {
+  --bg-page: #0e0e10;
+  --bg-surface: #1d1d20;
+  --bg-subtle: #252529;
+  --bg-subtle-hover: #2d2d33;
+  --bg-tertiary: #2c2c32;
+  --bg-inset: #17171a;
+  --bg-dock: rgba(34, 34, 38, .94);
+
+  --border: rgba(255, 255, 255, .09);
+  --border-strong: rgba(255, 255, 255, .15);
+  --dock-border: rgba(255, 255, 255, .11);
+
+  --text-primary: #f4f4f6;
+  --text-secondary: #9c9ca6;
+  --text-tertiary: #6e6e78;
+
+  --accent-50: rgba(43, 127, 255, .14);
+  --accent-100: rgba(43, 127, 255, .22);
+  --accent-500: #3392ff;
+  --accent-600: #2b7fff;
+  --accent-wash: rgba(51, 146, 255, .14);
+
+  --ok-bg: rgba(94, 165, 0, .20);
+  --ok-fg: #bbf451;
+  --ok-dot: #7ccf00;
+
+  --warn-bg: rgba(217, 119, 6, .22);
+  --warn-fg: #fbbf24;
+  --warn-dot: #f59e0b;
+
+  --err-bg: rgba(231, 0, 11, .20);
+  --err-bg-subtle: rgba(255, 100, 103, .07);
+  --err-fg: #ffa1ad;
+  --err-dot: #ff6467;
+
+  --info-bg: rgba(43, 127, 255, .20);
+  --info-fg: #8ec5ff;
+  --info-dot: #3392ff;
+
+  --neutral-pill-bg: rgba(255, 255, 255, .09);
+  --neutral-pill-fg: #a1a1aa;
+
+  --tag-blue-bg: rgba(43, 127, 255, .20);
+  --tag-blue-fg: #8ec5ff;
+
+  --tooltip-bg: #2e2e34;
+  --tooltip-fg: #f4f4f6;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .28), 0 8px 24px rgba(0, 0, 0, .28);
+  --shadow-dock: 0 10px 28px rgba(0, 0, 0, .55), 0 1px 3px rgba(0, 0, 0, .35);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .25);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+}
+.topbar-inner {
+  max-width: 1360px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--accent-500), var(--accent-600));
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgba(21, 93, 252, .28);
+}
+.brand h1 { margin: 0; font-size: 14.5px; font-weight: 650; letter-spacing: -.01em; }
+.brand p { margin: 0; font-size: 11.5px; color: var(--text-secondary); }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.seg {
+  display: inline-flex;
+  background: var(--bg-tertiary);
+  padding: 2.5px;
+  border-radius: 8px;
+  gap: 2px;
+}
+.seg button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .14s, color .14s;
+}
+.seg button:hover { color: var(--text-primary); }
+.seg button.active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  padding: 5.5px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: background .14s;
+}
+.btn:hover { background: var(--bg-subtle); }
+.btn-primary {
+  background: linear-gradient(180deg, var(--accent-500), var(--accent-600));
+  border-color: transparent;
+  color: #fff;
+}
+.btn-primary:hover { filter: brightness(1.06); background: linear-gradient(180deg, var(--accent-500), var(--accent-600)); }
+
+.main {
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 22px 24px 60px;
+}
+
+.callout-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 15px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  margin-bottom: 18px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.callout-banner strong { color: var(--text-primary); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+@media (max-width: 1180px) {
+  .grid { grid-template-columns: 1fr; }
+}
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.card-head {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.card-head-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.tag-badge {
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--info-fg);
+  background: var(--accent-50);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.height-meter {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+}
+.card-head h2 { margin: 2px 0 0; font-size: 14.5px; font-weight: 650; }
+.card-head p { margin: 0; font-size: 11.5px; color: var(--text-secondary); }
+
+.stage {
+  background: var(--bg-inset);
+  padding: 16px;
+  display: flex;
+  justify-content: center;
+}
+.detail-frame {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  transition: max-width .2s cubic-bezier(.22, 1, .36, 1);
+}
+body[data-width="drawer"] .detail-frame {
+  max-width: 348px;
+  padding: 12px 12px 16px;
+}
+
+.facts-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.fact-card { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 9px; padding: 6px 9px; }
+.fact-k { font-size: 10px; color: var(--text-tertiary); }
+.fact-v { font-size: 11.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.tags-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.tag-pill { font-size: 11px; font-weight: 600; padding: 2.5px 8.5px; border-radius: 999px; background: var(--tag-blue-bg); color: var(--tag-blue-fg); }
+.tag-add { font-size: 11px; color: var(--text-secondary); padding: 2px 4px; }
+
+.dock-preview {
+  align-self: center;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4.5px;
+  border-radius: 999px;
+  background: var(--bg-dock);
+  border: 1px solid var(--dock-border);
+  box-shadow: var(--shadow-dock);
+  opacity: .72;
+  pointer-events: none;
+}
+.dock-primary {
+  background: linear-gradient(180deg, var(--accent-500), var(--accent-600));
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4.5px 11px;
+  border-radius: 999px;
+}
+.dock-sep { width: 1px; height: 15px; background: var(--border-strong); }
+.dock-secondary { font-size: 11.5px; font-weight: 500; padding: 4px 9px 4px 5px; color: var(--text-primary); }
+
+.card-foot {
+  padding: 11px 16px 13px;
+  border-top: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.card-foot b { color: var(--text-primary); font-weight: 600; }
+
+/* Icons & motion */
+.ic { width: 14px; height: 14px; flex-shrink: 0; display: inline-block; vertical-align: middle; }
+.ic-xs { width: 12px; height: 12px; flex-shrink: 0; display: inline-block; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin .95s linear infinite; }
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(260%); }
+}
+
+/* ================================================================
+   SHARED PROPOSAL B SHELL (Strictly fixed header + fixed-height rows)
+   ================================================================ */
+.pb-card {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: visible; /* allow crisp tooltips */
+}
+.pb-inner {
+  border-radius: 9px;
+  overflow: hidden;
+}
+.pb-trigger {
+  width: 100%;
+  height: 50px; /* STRICT FIXED HEADER HEIGHT */
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 7px;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  transition: background .12s;
+}
+.pb-trigger:hover { background: var(--bg-subtle-hover); }
+.pb-trigger-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 20px;
+}
+.pb-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+.pb-state-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.pb-summary-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pb-preview-names {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pb-chevron {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.pb-chevron svg { transition: transform .18s ease; }
+.pb-card.open .pb-chevron svg { transform: rotate(180deg); }
+
+.pb-meter {
+  display: flex;
+  gap: 3px;
+  height: 3.5px;
+  width: 100%;
+}
+.pb-seg {
+  flex: 1;
+  border-radius: 999px;
+  background: var(--border-strong);
+  overflow: hidden;
+  position: relative;
+}
+.pb-seg.ok { background: var(--ok-dot); }
+.pb-seg.sent { background: color-mix(in srgb, var(--ok-dot) 55%, var(--border-strong)); }
+.pb-seg.err { background: var(--err-dot); }
+.pb-seg.warn { background: var(--warn-dot); }
+.pb-seg.info { background: var(--info-bg); }
+.pb-seg.info > span {
+  display: block;
+  height: 100%;
+  background: var(--info-dot);
+  border-radius: 999px;
+  transition: width .22s ease;
+}
+
+.pb-body {
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  display: none;
+}
+.pb-card.open .pb-body { display: block; }
+
+/* STRICT FIXED-HEIGHT ROW: 40px ALWAYS, ZERO LAYOUT SHIFT */
+.pb-row {
+  height: 40px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  overflow: visible;
+}
+.pb-row + .pb-row {
+  border-top: 1px solid var(--border);
+}
+
+.pb-dev-icon {
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+.pb-row.is-err .pb-dev-icon { color: var(--err-dot); }
+.pb-row.is-warn .pb-dev-icon { color: var(--warn-dot); }
+.pb-row.is-info .pb-dev-icon { color: var(--info-dot); }
+
+.pb-name-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  position: relative;
+  z-index: 2;
+}
+.pb-name {
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.channel-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+  padding: 0.5px 5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.pb-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+
+.st-text {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.st-text.ok { color: var(--ok-fg); }
+.st-text.info { color: var(--info-fg); font-weight: 600; }
+.st-text.err { color: var(--err-fg); font-weight: 550; }
+.st-text.warn { color: var(--warn-fg); font-weight: 550; }
+
+.st-bytes {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+body[data-width="drawer"] .st-bytes { display: none; }
+
+/* Compact inline icon-pill retry button (22px tall, fits effortlessly inside 40px row) */
+.retry-pill {
+  height: 22px;
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.retry-pill:hover {
+  background: var(--bg-subtle);
+  border-color: var(--text-tertiary);
+}
+
+.retry-icon-btn {
+  width: 24px;
+  height: 24px;
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.retry-icon-btn:hover {
+  background: var(--bg-subtle-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+/* Hover tooltip for full error reason (zero layout footprint!) */
+.has-tip {
+  position: relative;
+  cursor: default;
+}
+.has-tip.dotted {
+  border-bottom: 1px dashed color-mix(in srgb, currentColor 45%, transparent);
+}
+.has-tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  right: 0;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-fg);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.35;
+  padding: 5px 9px;
+  border-radius: 7px;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .24);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(3px);
+  transition: opacity .14s ease, transform .14s ease;
+  z-index: 30;
+}
+.has-tip:hover::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ================================================================
+   VARIANT B1: Hairline Bottom-Edge Progress (0px layout footprint)
+   ================================================================ */
+.b1-edge-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.5px;
+  background: var(--info-bg);
+  overflow: hidden;
+  pointer-events: none;
+}
+.b1-edge-fill {
+  height: 100%;
+  background: var(--accent-500);
+  transition: width .22s ease;
+}
+.b1-edge-fill.indet {
+  width: 38%;
+  animation: shimmer 1.15s ease-in-out infinite;
+}
+.b1-row.is-err {
+  background: var(--err-bg-subtle);
+}
+
+/* ================================================================
+   VARIANT B2: Soft Row-Fill Progress Sweep + Inline Muted Reason
+   ================================================================ */
+.b2-wash {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1;
+}
+.b2-wash-fill {
+  height: 100%;
+  background: var(--accent-wash);
+  border-right: 1.5px solid color-mix(in srgb, var(--accent-500) 45%, transparent);
+  transition: width .22s ease;
+}
+.b2-wash-fill.indet {
+  width: 100%;
+  border-right: 0;
+  background: linear-gradient(90deg, transparent, var(--accent-wash), transparent);
+  animation: shimmer 1.35s ease-in-out infinite;
+}
+.b2-inline-reason {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body[data-width="drawer"] .b2-inline-reason { display: none; }
+
+/* ================================================================
+   VARIANT B3: Inline Mini Progress Bar + Restrained Status Pill
+   ================================================================ */
+.b3-mini-track {
+  width: 54px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.b3-mini-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-500);
+  transition: width .22s ease;
+}
+.b3-mini-fill.indet {
+  width: 44%;
+  animation: shimmer 1.15s ease-in-out infinite;
+}
+.b3-pill {
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  white-space: nowrap;
+}
+.b3-pill.ok { background: var(--ok-bg); color: var(--ok-fg); }
+.b3-pill.err { background: var(--err-bg); color: var(--err-fg); }
+.b3-pill.warn { background: var(--warn-bg); color: var(--warn-fg); }
+.b3-pill.neutral { background: var(--neutral-pill-bg); color: var(--neutral-pill-fg); }
+
+.b3-retry-link {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--info-fg);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.b3-retry-link:hover { background: var(--accent-50); }
+
+/* Fallback strip */
+.pb-fallback {
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.pb-dot { width: 6.5px; height: 6.5px; border-radius: 50%; display: inline-block; }
+</style>
+</head>
+<body data-width="detail">
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">B</div>
+      <div>
+        <h1>方案 B 深化原型 · 零高度变化 + 紧凑错误态</h1>
+        <p>固定 40px 行高 · 去掉厚重错误框 · 点击「演示全状态流转」或任意「重试」可实时观测组件高度增量（Δ 0px）</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="seg" id="scenario-seg">
+        <button class="active" data-scenario="partial">截图场景（未确认）</button>
+        <button data-scenario="transferring">大文件传输中</button>
+        <button data-scenario="all_done">全部已送达</button>
+        <button data-scenario="errors">超时与未接纳</button>
+        <button data-scenario="fallback">重启回退态</button>
+      </div>
+
+      <button class="btn btn-primary" id="demo-cycle-btn" type="button">▶ 演示全状态流转</button>
+
+      <div class="seg" id="width-seg">
+        <button class="active" data-width="detail">详情页</button>
+        <button data-width="drawer">窄抽屉</button>
+      </div>
+
+      <button class="btn" id="theme-btn" type="button">深色模式</button>
+    </div>
+  </div>
+</header>
+
+<main class="main">
+  <div class="callout-banner">
+    <div>
+      <strong>本轮优化验证目标：</strong>
+      ① 取消行下方的红色边框提示框，错误原因收进单行（或 Hover Tooltip），整行高度严格锁定 <strong>40px</strong>；
+      ② 传输中 / 等待确认 / 排队 / 失败 / 已送达之间任意切换，<strong>组件总高度增量恒为 0px</strong>，下方悬浮 Dock 绝不上下跳动；
+      ③ 重试完成后保持当前展开状态，不会在用户眼皮底下突然自动收起。
+    </div>
+    <button class="btn" id="reset-btn" type="button">重置场景</button>
+  </div>
+
+  <section class="grid">
+    <!-- B1 -->
+    <article class="card">
+      <div class="card-head">
+        <div class="card-head-top">
+          <span class="tag-badge">B1 · 推荐</span>
+          <span class="height-meter" id="meter-b1">高度 --px · Δ 0px</span>
+        </div>
+        <h2>底部发丝进度线 + 行内紧凑重试</h2>
+        <p>传输进度以 2.5px 细线贴合行底边（0 布局占位）；异常项用克制淡红底 + 行内短状态（悬停看完整原因）+ 22px 小重试按钮。</p>
+      </div>
+      <div class="stage">
+        <div class="detail-frame">
+          <div class="facts-row">
+            <div class="fact-card"><div class="fact-k">内容类型</div><div class="fact-v">链接</div></div>
+            <div class="fact-card"><div class="fact-k">规格</div><div class="fact-v">86 B</div></div>
+            <div class="fact-card"><div class="fact-k">来源设备</div><div class="fact-v">本机</div></div>
+          </div>
+          <div class="tags-row">
+            <span class="tag-pill">#链接</span>
+            <span class="tag-pill">#文本</span>
+            <span class="tag-add">+ 添加标签</span>
+          </div>
+          <div id="mount-b1"></div>
+          <div class="dock-preview">
+            <span class="dock-primary">复制 ↵</span>
+            <span class="dock-sep"></span>
+            <span class="dock-secondary">→ 发送到…</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-foot">
+        <div><b>错误态：</b>无独立红框，右侧 <code>未收到确认</code>（虚线下划线提示可悬停看详情）+ <code>重试</code> 按钮</div>
+        <div><b>传输态：</b>底部 2.5px 发丝进度线 + 右侧 <code>42.0/100 MB · 42%</code>，切回正常态 0px 跳变</div>
+      </div>
+    </article>
+
+    <!-- B2 -->
+    <article class="card">
+      <div class="card-head">
+        <div class="card-head-top">
+          <span class="tag-badge">B2 · 沉浸底色</span>
+          <span class="height-meter" id="meter-b2">高度 --px · Δ 0px</span>
+        </div>
+        <h2>整行浅蓝进度扫光 + 图标重试</h2>
+        <p>参考 macOS/Safari 传输行，进度直接用浅蓝底色从左到右铺满整行；宽屏下错误原因淡灰附在设备名旁，右侧仅保留精炼状态与 ↻ 图标。</p>
+      </div>
+      <div class="stage">
+        <div class="detail-frame">
+          <div class="facts-row">
+            <div class="fact-card"><div class="fact-k">内容类型</div><div class="fact-v">链接</div></div>
+            <div class="fact-card"><div class="fact-k">规格</div><div class="fact-v">86 B</div></div>
+            <div class="fact-card"><div class="fact-k">来源设备</div><div class="fact-v">本机</div></div>
+          </div>
+          <div class="tags-row">
+            <span class="tag-pill">#链接</span>
+            <span class="tag-pill">#文本</span>
+            <span class="tag-add">+ 添加标签</span>
+          </div>
+          <div id="mount-b2"></div>
+          <div class="dock-preview">
+            <span class="dock-primary">复制 ↵</span>
+            <span class="dock-sep"></span>
+            <span class="dock-secondary">→ 发送到…</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-foot">
+        <div><b>错误态：</b>设备名旁极淡附注（窄屏自动隐藏、悬停可见）+ 纯图标 <code>↻</code> 重试，视觉最轻</div>
+        <div><b>传输态：</b>整行浅蓝进度底色平滑推进，完全没有额外控件占位</div>
+      </div>
+    </article>
+
+    <!-- B3 -->
+    <article class="card">
+      <div class="card-head">
+        <div class="card-head-top">
+          <span class="tag-badge">B3 · 极简原生 mygo</span>
+          <span class="height-meter" id="meter-b3">高度 --px · Δ 0px</span>
+        </div>
+        <h2>行内微型进度条 + 语义小胶囊</h2>
+        <p>右侧固定槽位：传输中放 54px 内联微型进度条 + 百分比，异常放克制小胶囊（悬停看原因）+ 文本「重试」，无需绝对定位叠层。</p>
+      </div>
+      <div class="stage">
+        <div class="detail-frame">
+          <div class="facts-row">
+            <div class="fact-card"><div class="fact-k">内容类型</div><div class="fact-v">链接</div></div>
+            <div class="fact-card"><div class="fact-k">规格</div><div class="fact-v">86 B</div></div>
+            <div class="fact-card"><div class="fact-k">来源设备</div><div class="fact-v">本机</div></div>
+          </div>
+          <div class="tags-row">
+            <span class="tag-pill">#链接</span>
+            <span class="tag-pill">#文本</span>
+            <span class="tag-add">+ 添加标签</span>
+          </div>
+          <div id="mount-b3"></div>
+          <div class="dock-preview">
+            <span class="dock-primary">复制 ↵</span>
+            <span class="dock-sep"></span>
+            <span class="dock-secondary">→ 发送到…</span>
+          </div>
+        </div>
+      </div>
+      <div class="card-foot">
+        <div><b>错误态：</b>紧凑 20px 状态胶囊（悬停展示原因）+ 轻量蓝色 <code>重试</code> 文字链接</div>
+        <div><b>传输态：</b>行内 54×4px 微进度条 + <code>42%</code>，在 mygo 里最直接（纯 <code>ui.Row</code> 固定 <code>Height(40)</code>）</div>
+      </div>
+    </article>
+  </section>
+</main>
+
+<script>
+const ICONS = {
+  phone: `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.4"/><path d="M10.5 18.5h3"/></svg>`,
+  desktop: `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M8.5 20h7M12 16.5V20"/></svg>`,
+  laptop: `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5A2 2 0 0 1 6.5 4.5h11a2 2 0 0 1 2 2v9h-15v-9Z"/><path d="M2.5 17.5h19l-1 2H3.5l-1-2Z"/></svg>`,
+  channel: `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.9 4.9"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.1a5 5 0 0 0 7.07 7.07L13.1 19"/></svg>`,
+  check: `<svg class="ic-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4 6.4 11.6 12.8 4.8"/></svg>`,
+  send: `<svg class="ic-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12.5 12.5 3.5M6.5 3.5h6v6"/></svg>`,
+  alert: `<svg class="ic-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4.2v4.3M8 11.6h.01"/></svg>`,
+  retry: `<svg class="ic-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.35-3.4"/><path d="M13 3v2.8h-2.8"/></svg>`,
+  chev: `<svg class="ic-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 6.2 3.5 3.6 3.5-3.6"/></svg>`,
+  spinner: `<svg class="ic-xs spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2.2a5.8 5.8 0 0 1 5.8 5.8"/><circle cx="8" cy="8" r="5.8" opacity=".2"/></svg>`,
+  clock: `<svg class="ic-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="5.6"/><path d="M8 5.2v3l2 1.2"/></svg>`,
+};
+
+const BASE_SCENARIOS = {
+  partial: {
+    mode: 'targets',
+    targets: [
+      { id: 'iphone', name: 'iPhone', kind: 'phone', external: false, state: 'failed', status: '未收到确认', shortStatus: '未确认', reason: '本地已写出，但未收到对端确认', retryable: true },
+      { id: 'macmini', name: 'Mac-mini.local', kind: 'desktop', external: false, state: 'sent', receipt: 'remote_received', status: '对端已接收', shortStatus: '已接收' },
+      { id: 'wetype', name: 'WeType', kind: 'channel', external: true, state: 'sent', receipt: 'local_written', status: '已发送', shortStatus: '已发送' },
+    ],
+  },
+  transferring: {
+    mode: 'targets',
+    targets: [
+      { id: 'mbp', name: 'MacBook Pro', kind: 'laptop', external: false, state: 'sending', progress: 42, bytes: '42.0 / 100 MB', status: '42%', shortStatus: '42%' },
+      { id: 'iphone', name: 'iPhone', kind: 'phone', external: false, state: 'awaiting', bytes: '100 / 100 MB', status: '等待确认…', shortStatus: '待确认' },
+      { id: 'wetype', name: 'WeType', kind: 'channel', external: true, state: 'queued', status: '排队中', shortStatus: '排队中' },
+    ],
+  },
+  all_done: {
+    mode: 'targets',
+    targets: [
+      { id: 'macmini', name: 'Mac-mini.local', kind: 'desktop', external: false, state: 'sent', receipt: 'remote_received', status: '对端已接收', shortStatus: '已接收' },
+      { id: 'iphone', name: 'iPhone', kind: 'phone', external: false, state: 'sent', receipt: 'remote_received', status: '对端已接收', shortStatus: '已接收' },
+      { id: 'wetype', name: 'WeType', kind: 'channel', external: true, state: 'sent', receipt: 'local_written', status: '已发送', shortStatus: '已发送' },
+    ],
+  },
+  errors: {
+    mode: 'targets',
+    targets: [
+      { id: 'iphone', name: 'iPhone', kind: 'phone', external: false, state: 'failed', status: '连接超时', shortStatus: '超时', reason: '连接对端超时，请确认设备在线后重试', retryable: true },
+      { id: 'win', name: 'Workstation', kind: 'desktop', external: false, state: 'discarded', status: '对端未接纳', shortStatus: '未接纳', reason: '对端主动放弃接收或被策略拒绝', retryable: true },
+      { id: 'macmini', name: 'Mac-mini.local', kind: 'desktop', external: false, state: 'sent', receipt: 'remote_received', status: '对端已接收', shortStatus: '已接收' },
+    ],
+  },
+  fallback: {
+    mode: 'fallback',
+    syncLabel: '已发送',
+  },
+};
+
+let currentScenario = 'partial';
+let stateData = structuredClone(BASE_SCENARIOS[currentScenario]);
+let openState = { b1: true, b2: true, b3: true };
+let baselineHeight = { b1: null, b2: null, b3: null };
+let timers = [];
+
+function clearTimers() {
+  timers.forEach(t => clearTimeout(t));
+  timers = [];
+}
+
+function loadScenario(key) {
+  clearTimers();
+  currentScenario = key;
+  stateData = structuredClone(BASE_SCENARIOS[key]);
+  const hasAttention = stateData.mode === 'targets' && stateData.targets.some(t => t.state !== 'sent');
+  openState = { b1: hasAttention, b2: hasAttention, b3: hasAttention };
+  baselineHeight = { b1: null, b2: null, b3: null };
+  renderAll();
+}
+
+function summarize(targets) {
+  let received = 0, active = 0, failed = 0, discarded = 0;
+  for (const t of targets) {
+    if (t.state === 'sent') received++;
+    else if (t.state === 'sending' || t.state === 'awaiting' || t.state === 'queued') active++;
+    else if (t.state === 'failed') failed++;
+    else if (t.state === 'discarded') discarded++;
+  }
+  const total = targets.length;
+  if (active > 0) return { tone: 'info', label: `正在传输到 ${active} 台设备` };
+  if (failed > 0) return { tone: 'err', label: `已送达 ${received}/${total} 台设备` };
+  if (discarded > 0) return { tone: 'warn', label: `已送达 ${received}/${total} 台设备` };
+  return { tone: 'ok', label: `已送达 ${received}/${total} 台设备` };
+}
+
+function toneOf(t) {
+  if (t.state === 'sent') return t.receipt === 'remote_received' ? 'ok' : 'neutral';
+  if (t.state === 'sending' || t.state === 'awaiting') return 'info';
+  if (t.state === 'queued') return 'neutral';
+  if (t.state === 'discarded') return 'warn';
+  if (t.state === 'failed') return 'err';
+  return 'neutral';
+}
+
+function runTransitionForTarget(t, startDelay = 0) {
+  const step = (delay, fn) => timers.push(setTimeout(() => { fn(); renderAll(); }, startDelay + delay));
+  step(0, () => {
+    t.state = 'queued';
+    t.progress = 0;
+    t.bytes = '';
+    t.status = '排队中';
+    t.shortStatus = '排队中';
+    t.reason = '';
+    t.retryable = false;
+  });
+  step(380, () => {
+    t.state = 'sending';
+    t.progress = 24;
+    t.bytes = '24.0 / 100 MB';
+    t.status = '24%';
+    t.shortStatus = '24%';
+  });
+  step(880, () => {
+    t.progress = 68;
+    t.bytes = '68.0 / 100 MB';
+    t.status = '68%';
+    t.shortStatus = '68%';
+  });
+  step(1380, () => {
+    t.progress = 96;
+    t.bytes = '96.0 / 100 MB';
+    t.status = '96%';
+    t.shortStatus = '96%';
+  });
+  step(1820, () => {
+    t.state = 'awaiting';
+    t.progress = null;
+    t.bytes = '100 / 100 MB';
+    t.status = '等待确认…';
+    t.shortStatus = '待确认';
+  });
+  step(2480, () => {
+    t.state = 'sent';
+    t.receipt = t.external ? 'local_written' : 'remote_received';
+    t.bytes = '';
+    t.status = t.external ? '已发送' : '对端已接收';
+    t.shortStatus = t.external ? '已发送' : '已接收';
+  });
+}
+
+function triggerRetry(targetId) {
+  if (stateData.mode !== 'targets') return;
+  const t = stateData.targets.find(x => x.id === targetId);
+  if (!t) return;
+  runTransitionForTarget(t, 0);
+}
+
+function demoFullCycle() {
+  clearTimers();
+  currentScenario = 'partial';
+  stateData = structuredClone(BASE_SCENARIOS.partial);
+  openState = { b1: true, b2: true, b3: true };
+  baselineHeight = { b1: null, b2: null, b3: null };
+  document.querySelectorAll('#scenario-seg button').forEach(b => {
+    b.classList.toggle('active', b.dataset.scenario === 'partial');
+  });
+  renderAll();
+  const iphone = stateData.targets[0];
+  runTransitionForTarget(iphone, 550);
+  // After reaching "对端已接收", cycle back to "未收到确认" so user sees both directions stay Δ 0px
+  timers.push(setTimeout(() => {
+    Object.assign(iphone, structuredClone(BASE_SCENARIOS.partial.targets[0]));
+    renderAll();
+  }, 4200));
+}
+
+function renderShell(variantKey, rowsHtml) {
+  if (stateData.mode === 'fallback') {
+    return `
+      <div class="pb-fallback">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="pb-dot" style="background:var(--ok-dot)"></span>
+          <span>同步状态：<strong style="color:var(--text-primary)">${stateData.syncLabel}</strong></span>
+        </div>
+        <span style="font-size:11px;color:var(--text-tertiary)">重启前记录</span>
+      </div>
+    `;
+  }
+  const s = summarize(stateData.targets);
+  const isOpen = openState[variantKey];
+  const stateBg = s.tone === 'ok' ? 'var(--ok-bg)' : s.tone === 'err' ? 'var(--err-bg)' : s.tone === 'warn' ? 'var(--warn-bg)' : 'var(--info-bg)';
+  const stateFg = s.tone === 'ok' ? 'var(--ok-fg)' : s.tone === 'err' ? 'var(--err-fg)' : s.tone === 'warn' ? 'var(--warn-fg)' : 'var(--info-fg)';
+  const headIcon = s.tone === 'ok' ? ICONS.check : s.tone === 'info' ? ICONS.spinner : ICONS.alert;
+  const previewNames = stateData.targets.map(t => t.name).join(' · ');
+
+  const segs = stateData.targets.map(t => {
+    if (t.state === 'sent') return `<div class="pb-seg ${t.receipt === 'remote_received' ? 'ok' : 'sent'}"></div>`;
+    if (t.state === 'failed') return `<div class="pb-seg err"></div>`;
+    if (t.state === 'discarded') return `<div class="pb-seg warn"></div>`;
+    if (t.state === 'sending') return `<div class="pb-seg info"><span style="width:${t.progress}%"></span></div>`;
+    if (t.state === 'awaiting') return `<div class="pb-seg info"><span style="width:88%"></span></div>`;
+    return `<div class="pb-seg"></div>`;
+  }).join('');
+
+  return `
+    <div class="pb-card ${isOpen ? 'open' : ''}" data-card="${variantKey}">
+      <div class="pb-inner">
+        <button class="pb-trigger" data-toggle="${variantKey}" type="button" aria-expanded="${isOpen}">
+          <div class="pb-trigger-top">
+            <div class="pb-summary-left">
+              <span class="pb-state-icon" style="background:${stateBg};color:${stateFg}">${headIcon}</span>
+              <span class="pb-summary-text">${s.label}</span>
+              ${!isOpen ? `<span class="pb-preview-names">${previewNames}</span>` : ''}
+            </div>
+            <span class="pb-chevron">${isOpen ? '收起' : '明细'}${ICONS.chev}</span>
+          </div>
+          <div class="pb-meter">${segs}</div>
+        </button>
+        <div class="pb-body">${rowsHtml}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderB1Rows() {
+  return stateData.targets.map(t => {
+    const tone = toneOf(t);
+    const rowCls = `pb-row b1-row ${tone === 'err' ? 'is-err' : tone === 'warn' ? 'is-warn' : tone === 'info' ? 'is-info' : ''}`;
+    const isActive = t.state === 'sending' || t.state === 'awaiting';
+    const hasReason = Boolean(t.reason);
+
+    return `
+      <div class="${rowCls}">
+        <span class="pb-dev-icon">${ICONS[t.kind]}</span>
+        <div class="pb-name-group">
+          <span class="pb-name">${t.name}</span>
+          ${t.external ? `<span class="channel-tag">渠道</span>` : ''}
+        </div>
+        <div class="pb-right">
+          ${t.bytes && isActive ? `<span class="st-bytes">${t.bytes}</span>` : ''}
+          <span class="st-text ${tone} ${hasReason ? 'has-tip dotted' : ''}" ${hasReason ? `data-tip="${t.reason}"` : ''}>
+            ${t.status}
+          </span>
+          ${t.retryable ? `<button class="retry-pill" data-retry="${t.id}" type="button">${ICONS.retry}重试</button>` : ''}
+        </div>
+        ${isActive ? `
+          <div class="b1-edge-track">
+            <div class="b1-edge-fill ${t.state === 'awaiting' ? 'indet' : ''}" style="${t.state === 'sending' ? `width:${t.progress}%` : ''}"></div>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderB2Rows() {
+  return stateData.targets.map(t => {
+    const tone = toneOf(t);
+    const rowCls = `pb-row ${tone === 'err' ? 'is-err' : tone === 'warn' ? 'is-warn' : tone === 'info' ? 'is-info' : ''}`;
+    const isActive = t.state === 'sending' || t.state === 'awaiting';
+    const hasReason = Boolean(t.reason);
+
+    return `
+      <div class="${rowCls}">
+        ${isActive ? `
+          <div class="b2-wash">
+            <div class="b2-wash-fill ${t.state === 'awaiting' ? 'indet' : ''}" style="${t.state === 'sending' ? `width:${t.progress}%` : ''}"></div>
+          </div>
+        ` : ''}
+        <span class="pb-dev-icon">${ICONS[t.kind]}</span>
+        <div class="pb-name-group">
+          <span class="pb-name">${t.name}</span>
+          ${t.external ? `<span class="channel-tag">渠道</span>` : ''}
+          ${hasReason ? `<span class="b2-inline-reason">· ${t.reason}</span>` : ''}
+        </div>
+        <div class="pb-right">
+          ${isActive ? `<span style="color:var(--info-dot);display:inline-flex">${ICONS.spinner}</span>` : ''}
+          <span class="st-text ${tone} ${hasReason ? 'has-tip' : ''}" ${hasReason ? `data-tip="${t.reason}"` : ''}>
+            ${t.status}
+          </span>
+          ${t.retryable ? `<button class="retry-icon-btn has-tip" data-retry="${t.id}" data-tip="重新发送到 ${t.name}" type="button" aria-label="重试">${ICONS.retry}</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderB3Rows() {
+  return stateData.targets.map(t => {
+    const tone = toneOf(t);
+    const rowCls = `pb-row ${tone === 'err' ? 'is-err' : tone === 'warn' ? 'is-warn' : tone === 'info' ? 'is-info' : ''}`;
+    const isActive = t.state === 'sending' || t.state === 'awaiting';
+    const hasReason = Boolean(t.reason);
+
+    let rightHtml = '';
+    if (isActive) {
+      rightHtml = `
+        <div class="b3-mini-track" title="${t.bytes || t.status}">
+          <div class="b3-mini-fill ${t.state === 'awaiting' ? 'indet' : ''}" style="${t.state === 'sending' ? `width:${t.progress}%` : ''}"></div>
+        </div>
+        <span class="st-text info">${t.shortStatus}</span>
+      `;
+    } else if (t.state === 'failed' || t.state === 'discarded') {
+      rightHtml = `
+        <span class="b3-pill ${tone} ${hasReason ? 'has-tip' : ''}" ${hasReason ? `data-tip="${t.reason}"` : ''}>
+          ${ICONS.alert}${t.shortStatus}
+        </span>
+        ${t.retryable ? `<button class="b3-retry-link" data-retry="${t.id}" type="button">重试</button>` : ''}
+      `;
+    } else if (t.state === 'sent') {
+      rightHtml = `
+        <span class="st-text ${tone === 'ok' ? 'ok' : ''}">${t.status}</span>
+      `;
+    } else {
+      rightHtml = `<span class="st-text">${t.status}</span>`;
+    }
+
+    return `
+      <div class="${rowCls}">
+        <span class="pb-dev-icon">${ICONS[t.kind]}</span>
+        <div class="pb-name-group">
+          <span class="pb-name">${t.name}</span>
+          ${t.external ? `<span class="channel-tag">渠道</span>` : ''}
+        </div>
+        <div class="pb-right">${rightHtml}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function updateHeightMeters() {
+  for (const k of ['b1', 'b2', 'b3']) {
+    const mount = document.getElementById('mount-' + k);
+    const meter = document.getElementById('meter-' + k);
+    if (!mount || !meter) continue;
+    const h = Math.round(mount.getBoundingClientRect().height);
+    if (baselineHeight[k] === null) baselineHeight[k] = h;
+    const delta = h - baselineHeight[k];
+    meter.textContent = `高度 ${h}px · Δ ${delta >= 0 ? '+' : ''}${delta}px`;
+    if (delta === 0) {
+      meter.style.background = 'var(--ok-bg)';
+      meter.style.color = 'var(--ok-fg)';
+    } else {
+      meter.style.background = 'var(--warn-bg)';
+      meter.style.color = 'var(--warn-fg)';
+    }
+  }
+}
+
+function renderAll() {
+  document.getElementById('mount-b1').innerHTML = renderShell('b1', stateData.mode === 'targets' ? renderB1Rows() : '');
+  document.getElementById('mount-b2').innerHTML = renderShell('b2', stateData.mode === 'targets' ? renderB2Rows() : '');
+  document.getElementById('mount-b3').innerHTML = renderShell('b3', stateData.mode === 'targets' ? renderB3Rows() : '');
+
+  document.querySelectorAll('[data-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const k = btn.getAttribute('data-toggle');
+      openState[k] = !openState[k];
+      baselineHeight[k] = null; // user intentionally toggled collapse/expand
+      renderAll();
+    });
+  });
+
+  document.querySelectorAll('[data-retry]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      triggerRetry(btn.getAttribute('data-retry'));
+    });
+  });
+
+  updateHeightMeters();
+}
+
+document.querySelectorAll('#scenario-seg button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#scenario-seg button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadScenario(btn.dataset.scenario);
+  });
+});
+
+document.querySelectorAll('#width-seg button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#width-seg button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.body.dataset.width = btn.dataset.width;
+    baselineHeight = { b1: null, b2: null, b3: null };
+    setTimeout(updateHeightMeters, 220);
+  });
+});
+
+const themeBtn = document.getElementById('theme-btn');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  themeBtn.textContent = dark ? '深色模式' : '浅色模式';
+});
+
+document.getElementById('reset-btn').addEventListener('click', () => loadScenario(currentScenario));
+document.getElementById('demo-cycle-btn').addEventListener('click', demoFullCycle);
+
+renderAll();
+</script>
+</body>
+</html>

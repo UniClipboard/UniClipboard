@@ -1,0 +1,1869 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UniClipboard · 送达状态组件重设计原型（4 方案对比）</title>
+<!--
+  BoardUI v2 Interactive Prototype: History Detail Delivery Section Redesign (4 Proposals).
+  Open directly in any modern browser — zero external dependencies.
+  Aligned with app/desktop/boardui/COLOR-TOKENS.md and app/desktop/internal/desktopui/live_operations.go.
+-->
+<style>
+:root {
+  --bg-page: #f2f2f5;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f7f7f9;
+  --bg-subtle-hover: #efeff3;
+  --bg-tertiary: #ececf0;
+  --bg-inset: #f4f4f7;
+  --bg-dock: rgba(255, 255, 255, .94);
+
+  --border: #e8e8ec;
+  --border-strong: #dcdce2;
+  --dock-border: rgba(10, 10, 10, .09);
+
+  --text-primary: #111114;
+  --text-secondary: #686870;
+  --text-tertiary: #96969f;
+
+  --accent-50: #eff6ff;
+  --accent-100: #dbeafe;
+  --accent-200: #bedbff;
+  --accent-500: #2b7fff;
+  --accent-600: #155dfc;
+
+  --ok-bg: #ecfccb;
+  --ok-bg-soft: #f4fce3;
+  --ok-fg: #3c6300;
+  --ok-dot: #5ea500;
+  --ok-border: #d8f999;
+
+  --warn-bg: #fff3c4;
+  --warn-bg-soft: #fffbeb;
+  --warn-fg: #9f2d00;
+  --warn-dot: #d97706;
+  --warn-border: #fde68a;
+
+  --err-bg: #ffe4e6;
+  --err-bg-soft: #fff5f6;
+  --err-fg: #c10007;
+  --err-fg-muted: #be123c;
+  --err-dot: #e7000b;
+  --err-border: #fecdd3;
+
+  --info-bg: #dbeafe;
+  --info-bg-soft: #eff6ff;
+  --info-fg: #155dfc;
+  --info-dot: #2b7fff;
+  --info-border: #bedbff;
+
+  --neutral-pill-bg: #ececf0;
+  --neutral-pill-fg: #52525b;
+
+  --tag-blue-bg: #dbeafe;
+  --tag-blue-fg: #155dfc;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .04), 0 6px 20px rgba(0, 0, 0, .04);
+  --shadow-dock: 0 8px 24px rgba(0, 0, 0, .10), 0 1px 3px rgba(0, 0, 0, .06);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .05);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Monaco, Consolas, monospace;
+}
+
+[data-theme="dark"] {
+  --bg-page: #0e0e10;
+  --bg-surface: #1d1d20;
+  --bg-subtle: #252529;
+  --bg-subtle-hover: #2d2d33;
+  --bg-tertiary: #2c2c32;
+  --bg-inset: #17171a;
+  --bg-dock: rgba(34, 34, 38, .94);
+
+  --border: rgba(255, 255, 255, .09);
+  --border-strong: rgba(255, 255, 255, .15);
+  --dock-border: rgba(255, 255, 255, .11);
+
+  --text-primary: #f4f4f6;
+  --text-secondary: #9c9ca6;
+  --text-tertiary: #6e6e78;
+
+  --accent-50: rgba(43, 127, 255, .14);
+  --accent-100: rgba(43, 127, 255, .22);
+  --accent-200: rgba(77, 160, 255, .34);
+  --accent-500: #3392ff;
+  --accent-600: #2b7fff;
+
+  --ok-bg: rgba(94, 165, 0, .20);
+  --ok-bg-soft: rgba(94, 165, 0, .10);
+  --ok-fg: #bbf451;
+  --ok-dot: #7ccf00;
+  --ok-border: rgba(124, 207, 0, .28);
+
+  --warn-bg: rgba(217, 119, 6, .22);
+  --warn-bg-soft: rgba(217, 119, 6, .10);
+  --warn-fg: #fbbf24;
+  --warn-dot: #f59e0b;
+  --warn-border: rgba(245, 158, 11, .28);
+
+  --err-bg: rgba(231, 0, 11, .20);
+  --err-bg-soft: rgba(231, 0, 11, .10);
+  --err-fg: #ffa1ad;
+  --err-fg-muted: #fda4af;
+  --err-dot: #ff6467;
+  --err-border: rgba(255, 100, 103, .28);
+
+  --info-bg: rgba(43, 127, 255, .20);
+  --info-bg-soft: rgba(43, 127, 255, .11);
+  --info-fg: #8ec5ff;
+  --info-dot: #3392ff;
+  --info-border: rgba(51, 146, 255, .28);
+
+  --neutral-pill-bg: rgba(255, 255, 255, .09);
+  --neutral-pill-fg: #a1a1aa;
+
+  --tag-blue-bg: rgba(43, 127, 255, .20);
+  --tag-blue-fg: #8ec5ff;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .28), 0 8px 24px rgba(0, 0, 0, .28);
+  --shadow-dock: 0 10px 28px rgba(0, 0, 0, .55), 0 1px 3px rgba(0, 0, 0, .35);
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, .25);
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Sticky workbench header */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: color-mix(in srgb, var(--bg-surface) 88%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 24px;
+}
+.topbar-inner {
+  max-width: 1320px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--accent-500), var(--accent-600));
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgba(21, 93, 252, .3);
+}
+.brand h1 {
+  margin: 0;
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+.brand p {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.seg {
+  display: inline-flex;
+  background: var(--bg-tertiary);
+  padding: 2.5px;
+  border-radius: 8px;
+  gap: 2px;
+}
+.seg button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s, color .15s, box-shadow .15s;
+  white-space: nowrap;
+}
+.seg button:hover {
+  color: var(--text-primary);
+}
+.seg button.active {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-xs);
+}
+
+.btn-ghost {
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5.5px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: background .15s, border-color .15s;
+}
+.btn-ghost:hover {
+  background: var(--bg-subtle);
+}
+
+/* Main workspace */
+.main {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 24px 24px 56px;
+}
+
+.intro-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.intro-bar strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 1040px) {
+  .grid { grid-template-columns: 1fr; }
+}
+
+.proposal-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.proposal-head {
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.proposal-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--accent-600);
+  background: var(--accent-50);
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-bottom: 4px;
+}
+[data-theme="dark"] .proposal-tag { color: var(--info-fg); }
+.proposal-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+.proposal-desc {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.pick-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* Realistic History Detail viewport mockup */
+.stage {
+  background: var(--bg-inset);
+  padding: 18px;
+  display: flex;
+  justify-content: center;
+}
+.detail-frame {
+  width: 100%;
+  max-width: 520px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transition: max-width .22s cubic-bezier(.22, 1, .36, 1);
+  position: relative;
+}
+body[data-width="drawer"] .detail-frame {
+  max-width: 370px;
+  padding: 14px 14px 18px;
+}
+
+/* Mocked context: 3 fact cards + tags */
+.facts-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.fact-card {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 7px 10px;
+}
+.fact-k {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+.fact-v {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.tag-pill {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--tag-blue-bg);
+  color: var(--tag-blue-fg);
+}
+.tag-add {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  padding: 3px 6px;
+}
+
+.dock-preview {
+  align-self: center;
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 999px;
+  background: var(--bg-dock);
+  border: 1px solid var(--dock-border);
+  box-shadow: var(--shadow-dock);
+  opacity: .75;
+  pointer-events: none;
+}
+.dock-primary {
+  background: linear-gradient(180deg, var(--accent-500), var(--accent-600));
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.dock-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border-strong);
+}
+.dock-secondary {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px 5px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Shared SVG icon sizing */
+.ic {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  display: inline-block;
+  vertical-align: middle;
+}
+.ic-sm { width: 13px; height: 13px; }
+.ic-xs { width: 11px; height: 11px; }
+
+/* Shared micro animations */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .45; transform: scale(.86); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+.spin { animation: spin 1s linear infinite; }
+.pulse { animation: pulse-dot 1.4s ease-in-out infinite; }
+
+/* Shared reusable retry button */
+.retry-btn {
+  appearance: none;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background .12s, border-color .12s, color .12s;
+  flex-shrink: 0;
+}
+.retry-btn:hover {
+  background: var(--bg-subtle-hover);
+  border-color: var(--text-tertiary);
+}
+.retry-link {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--accent-600);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 5px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+[data-theme="dark"] .retry-link { color: var(--info-fg); }
+.retry-link:hover { background: var(--accent-50); }
+
+/* Shared status badge pills */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7.5px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.pill-ok { background: var(--ok-bg); color: var(--ok-fg); }
+.pill-info { background: var(--info-bg); color: var(--info-fg); }
+.pill-warn { background: var(--warn-bg); color: var(--warn-fg); }
+.pill-err { background: var(--err-bg); color: var(--err-fg); }
+.pill-neutral { background: var(--neutral-pill-bg); color: var(--neutral-pill-fg); }
+
+.dot {
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-ok { background: var(--ok-dot); }
+.dot-info { background: var(--info-dot); }
+.dot-warn { background: var(--warn-dot); }
+.dot-err { background: var(--err-dot); }
+.dot-neutral { background: var(--text-tertiary); }
+
+.channel-chip {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+  padding: 1px 5.5px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.progress-track {
+  height: 4px;
+  width: 100%;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+}
+.progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-500);
+  transition: width .25s ease;
+}
+.progress-fill.indet {
+  width: 42%;
+  animation: slide-indet 1.2s ease-in-out infinite;
+}
+@keyframes slide-indet {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(260%); }
+}
+
+/* ================================================================
+   PROPOSAL A: Inset Status Card + Device Avatars + Semantic Pills
+   ================================================================ */
+.pa-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pa-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pa-head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pa-title {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+.pa-card {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.pa-row {
+  padding: 9px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pa-row + .pa-row {
+  border-top: 1px solid var(--border);
+}
+.pa-row.is-err {
+  background: var(--err-bg-soft);
+}
+.pa-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.pa-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  display: grid;
+  place-items: center;
+  position: relative;
+  flex-shrink: 0;
+}
+.pa-avatar-dot {
+  position: absolute;
+  right: -2.5px;
+  bottom: -2.5px;
+  width: 8.5px;
+  height: 8.5px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bg-surface);
+}
+.pa-name-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.pa-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.pa-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pa-row.is-done .pa-name {
+  font-weight: 500;
+}
+.pa-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.pa-sub.is-err {
+  color: var(--err-fg-muted);
+}
+.pa-trailing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.pa-progress-box {
+  padding-left: 38px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pa-bytes {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ================================================================
+   PROPOSAL B: Collapsible Summary Strip + Segmented Micro-Bar
+   ================================================================ */
+.pb-card {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.pb-trigger {
+  width: 100%;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  transition: background .12s;
+}
+.pb-trigger:hover {
+  background: var(--bg-subtle-hover);
+}
+.pb-trigger-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pb-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pb-state-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.pb-summary-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.pb-preview-names {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pb-chevron {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.pb-chevron svg {
+  transition: transform .18s ease;
+}
+.pb-card.open .pb-chevron svg {
+  transform: rotate(180deg);
+}
+.pb-meter {
+  display: flex;
+  gap: 3px;
+  height: 4px;
+  width: 100%;
+}
+.pb-seg {
+  flex: 1;
+  border-radius: 999px;
+  background: var(--border-strong);
+  overflow: hidden;
+}
+.pb-seg.ok { background: var(--ok-dot); }
+.pb-seg.sent { background: color-mix(in srgb, var(--ok-dot) 55%, var(--border-strong)); }
+.pb-seg.err { background: var(--err-dot); }
+.pb-seg.warn { background: var(--warn-dot); }
+.pb-seg.info { background: var(--info-bg); position: relative; }
+.pb-seg.info > span {
+  display: block;
+  height: 100%;
+  background: var(--info-dot);
+  border-radius: 999px;
+}
+
+.pb-body {
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  display: none;
+}
+.pb-card.open .pb-body {
+  display: block;
+}
+.pb-row {
+  padding: 9px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pb-row + .pb-row {
+  border-top: 1px solid var(--border);
+}
+.pb-row-top {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.pb-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pb-row-status {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.pb-row-status.err { color: var(--err-fg); font-weight: 600; }
+.pb-row-status.warn { color: var(--warn-fg); font-weight: 600; }
+.pb-row-status.info { color: var(--info-fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pb-row-status.ok { color: var(--ok-fg); }
+.pb-callout {
+  margin-left: 25px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: var(--err-bg-soft);
+  border: 1px solid var(--err-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--err-fg-muted);
+}
+.pb-callout.warn {
+  background: var(--warn-bg-soft);
+  border-color: var(--warn-border);
+  color: var(--warn-fg);
+}
+
+/* ================================================================
+   PROPOSAL C: Compact Target Tiles (Bento Grid matching Fact Cards)
+   ================================================================ */
+.pc-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pc-head-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.pc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+body[data-width="drawer"] .pc-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.pc-tile {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  overflow: hidden;
+  min-width: 0;
+}
+.pc-tile.span-2 {
+  grid-column: span 2;
+}
+.pc-tile.is-err {
+  background: var(--err-bg-soft);
+  border-color: var(--err-border);
+}
+.pc-tile.is-warn {
+  background: var(--warn-bg-soft);
+  border-color: var(--warn-border);
+}
+.pc-tile.is-info {
+  background: var(--info-bg-soft);
+  border-color: var(--info-border);
+}
+.pc-tile-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.pc-tile-dev {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.pc-tile-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-tile-state {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.pc-tile-state .ok { color: var(--ok-fg); font-weight: 550; }
+.pc-tile-state .err { color: var(--err-fg); font-weight: 600; }
+.pc-tile-state .warn { color: var(--warn-fg); font-weight: 600; }
+.pc-tile-state .info { color: var(--info-fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.pc-tile-reason {
+  font-size: 11px;
+  color: var(--err-fg-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pc-tile-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: var(--info-bg);
+}
+.pc-tile-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent-500);
+}
+
+/* ================================================================
+   PROPOSAL D: Exception-First Focus + Delivered Chip Rail
+   ================================================================ */
+.pd-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pd-head-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.pd-count {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.pd-focus-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pd-focus-card {
+  border-radius: 9px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pd-focus-card.is-err {
+  background: var(--err-bg-soft);
+  border-color: var(--err-border);
+}
+.pd-focus-card.is-warn {
+  background: var(--warn-bg-soft);
+  border-color: var(--warn-border);
+}
+.pd-focus-card.is-info {
+  background: var(--info-bg-soft);
+  border-color: var(--info-border);
+}
+.pd-focus-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pd-focus-id {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.pd-focus-name {
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pd-focus-reason {
+  font-size: 11.5px;
+  color: var(--err-fg-muted);
+  padding-left: 22px;
+}
+.pd-focus-card.is-warn .pd-focus-reason { color: var(--warn-fg); }
+.pd-focus-card.is-info .pd-focus-reason { color: var(--text-secondary); }
+
+.pd-done-rail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.pd-done-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-right: 2px;
+}
+.pd-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-primary);
+}
+.pd-chip-meta {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+/* Fallback state box */
+.fallback-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.fallback-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Proposal footer notes */
+.proposal-foot {
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+}
+.proposal-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.proposal-foot b {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* Comparison table */
+.compare-section {
+  margin-top: 28px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.compare-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.compare-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.compare-table th, .compare-table td {
+  padding: 10px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.compare-table th {
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+  font-size: 11.5px;
+}
+.compare-table tr:last-child td { border-bottom: 0; }
+</style>
+</head>
+<body data-width="detail">
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-mark">U</div>
+      <div>
+        <h1>送达状态组件 · 4 套重设计原型</h1>
+        <p>基于 BoardUI v2 语义 Token 与真实 Engine Operation 状态（可切换场景、宽度、明暗主题，并点击「重试」体验交互）</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="seg" id="scenario-seg" role="tablist" aria-label="状态场景">
+        <button class="active" data-scenario="partial">截图场景（2/3·未确认）</button>
+        <button data-scenario="transferring">大文件传输中</button>
+        <button data-scenario="all_done">全部已送达</button>
+        <button data-scenario="errors">超时与未接纳</button>
+        <button data-scenario="fallback">重启后回退态</button>
+      </div>
+
+      <div class="seg" id="width-seg" aria-label="容器宽度">
+        <button class="active" data-width="detail">详情页 520px</button>
+        <button data-width="drawer">抽屉 370px</button>
+      </div>
+
+      <button class="btn-ghost" id="theme-btn" type="button">深色模式</button>
+    </div>
+  </div>
+</header>
+
+<main class="main">
+  <div class="intro-bar">
+    <div>
+      <strong>核心改进点：</strong>
+      ① 替换误用的文件图标，区分设备类型与外部渠道（如 <code>WeType</code>）；
+      ② 收口到与上方属性卡片一致的圆角容器与语义色阶；
+      ③ 异常项就地提供 <strong>重试</strong> 入口，不再让用户折返底部 Dock；
+      ④ 覆盖进度、等待确认、对端已接收、已发送、未接纳、失败与重启回退全状态。
+    </div>
+    <button class="btn-ghost" id="reset-btn" type="button">重置交互状态</button>
+  </div>
+
+  <section class="grid">
+    <!-- Proposal A -->
+    <article class="proposal-card">
+      <div class="proposal-head">
+        <div>
+          <span class="proposal-tag">方案 A · 推荐基准</span>
+          <h2 class="proposal-title">分组卡片 + 设备图标 + 语义胶囊</h2>
+          <p class="proposal-desc">沿用上方属性卡片与 InsetList 的视觉语言，每台设备有独立头像徽章、状态胶囊与就地重试，阅读成本最低。</p>
+        </div>
+        <span class="pick-badge">最均衡</span>
+      </div>
+      <div class="stage">
+        <div class="detail-frame">
+          <div class="facts-row">
+            <div class="fact-card"><div class="fact-k">内容类型</div><div class="fact-v">链接</div></div>
+            <div class="fact-card"><div class="fact-k">规格</div><div class="fact-v">86 B</div></div>
+            <div class="fact-card"><div class="fact-k">来源设备</div><div class="fact-v">本机</div></div>
+          </div>
+          <div class="tags-row">
+            <span class="tag-pill">#链接</span>
+            <span class="tag-pill">#文本</span>
+            <span class="tag-add">+ 添加标签</span>
+          </div>
+          <div id="mount-a"></div>
+          <div class="dock-preview">
+            <span class="dock-primary">复制 ↵</span>
+            <span class="dock-sep"></span>
+            <span class="dock-secondary">→ 发送到…</span>
+          </div>
+        </div>
+      </div>
+      <div class="proposal-foot">
+        <span><b>优点：</b>信息最完整、与现有 BoardUI 风格无缝衔接</span>
+        <span><b>权衡：</b>设备多于 4 台时垂直高度较高</span>
+      </div>
+    </article>
+
+    <!-- Proposal B -->
+    <article class="proposal-card">
+      <div class="proposal-head">
+        <div>
+          <span class="proposal-tag">方案 B · 渐进披露</span>
+          <h2 class="proposal-title">折叠概览条 + 分段微进度条</h2>
+          <p class="proposal-desc">全部送达时默认折叠为单行，异常或传输中自动展开；顶部微进度条用色块映射每台设备状态，点击可随时收起/展开。</p>
+        </div>
+        <span class="pick-badge">最省空间</span>
+      </div>
+      <div class="stage">
+        <div class="detail-frame">
+          <div class="facts-row">
+            <div class="fact-card"><div class="fact-k">内容类型</div><div class="fact-v">链接</div></div>
+            <div class="fact-card"><div class="fact-k">规格</div><div class="fact-v">86 B</div></div>
+            <div class="fact-card"><div class="fact-k">来源设备</div><div class="fact-v">本机</div></div>
+          </div>
+          <div class="tags-row">
+            <span class="tag-pill">#链接</span>
+            <span class="tag-pill">#文本</span>
+            <span class="tag-add">+ 添加标签</span>
+          </div>
+          <div id="mount-b"></div>
+          <div class="dock-preview">
+            <span class="dock-primary">复制 ↵</span>
+            <span class="dock-sep"></span>
+            <span class="dock-secondary">→ 发送到…</span>
+          </div>
+        </div>
+      </div>
+      <div class="proposal-foot">
+        <span><b>优点：</b>健康态极度克制，抽屉窄屏下最不易被底部 Dock 遮挡</span>
+        <span><b>权衡：</b>全部送达时查看明细需多点一次</span>
+      </div>
+    </article>
+
+    <!-- Proposal C -->
+    <article class="proposal-card">
+      <div class="proposal-head">
+        <div>
+          <span class="proposal-tag">方案 C · Bento 网格</span>
+          <h2 class="proposal-title">双列设备状态磁贴（Target Tiles）</h2>
+          <p class="proposal-desc">直接延续上方三列属性卡片的磁贴节奏，将每个设备呈现为紧凑卡片；异常或带进度项自动占满整行以容纳详情与重试。</p>
+        </div>
+        <span class="pick-badge">最统一</span>
+      </div>
+      <div class="stage">
+        <div class="detail-frame">
+          <div class="facts-row">
+            <div class="fact-card"><div class="fact-k">内容类型</div><div class="fact-v">链接</div></div>
+            <div class="fact-card"><div class="fact-k">规格</div><div class="fact-v">86 B</div></div>
+            <div class="fact-card"><div class="fact-k">来源设备</div><div class="fact-v">本机</div></div>
+          </div>
+          <div class="tags-row">
+            <span class="tag-pill">#链接</span>
+            <span class="tag-pill">#文本</span>
+            <span class="tag-add">+ 添加标签</span>
+          </div>
+          <div id="mount-c"></div>
+          <div class="dock-preview">
+            <span class="dock-primary">复制 ↵</span>
+            <span class="dock-sep"></span>
+            <span class="dock-secondary">→ 发送到…</span>
+          </div>
+        </div>
+      </div>
+      <div class="proposal-foot">
+        <span><b>优点：</b>与属性卡片高度同构，2~4 台设备时垂直空间减半</span>
+        <span><b>权衡：</b>超长设备名在 370px 抽屉双列下更容易截断</span>
+      </div>
+    </article>
+
+    <!-- Proposal D -->
+    <article class="proposal-card">
+      <div class="proposal-head">
+        <div>
+          <span class="proposal-tag">方案 D · 异常优先</span>
+          <h2 class="proposal-title">焦点异常卡 + 已送达胶囊流</h2>
+          <p class="proposal-desc">把「需要关注 / 传输中」与「已完成」彻底分层：异常与传输项以完整卡片居中呈现，已送达设备收敛为一排轻量胶囊。</p>
+        </div>
+        <span class="pick-badge">高信噪比</span>
+      </div>
+      <div class="stage">
+        <div class="detail-frame">
+          <div class="facts-row">
+            <div class="fact-card"><div class="fact-k">内容类型</div><div class="fact-v">链接</div></div>
+            <div class="fact-card"><div class="fact-k">规格</div><div class="fact-v">86 B</div></div>
+            <div class="fact-card"><div class="fact-k">来源设备</div><div class="fact-v">本机</div></div>
+          </div>
+          <div class="tags-row">
+            <span class="tag-pill">#链接</span>
+            <span class="tag-pill">#文本</span>
+            <span class="tag-add">+ 添加标签</span>
+          </div>
+          <div id="mount-d"></div>
+          <div class="dock-preview">
+            <span class="dock-primary">复制 ↵</span>
+            <span class="dock-sep"></span>
+            <span class="dock-secondary">→ 发送到…</span>
+          </div>
+        </div>
+      </div>
+      <div class="proposal-foot">
+        <span><b>优点：</b>故障与进度一眼聚焦，5+ 设备扩展性最好</span>
+        <span><b>权衡：</b>设备列表顺序会随状态分组变化，不如固定列表直观</span>
+      </div>
+    </article>
+  </section>
+
+  <section class="compare-section">
+    <div class="compare-head">
+      <h2>方案对比与 mygo / desktopkit 落地评估</h2>
+    </div>
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th style="width: 14%">方案</th>
+          <th style="width: 24%">视觉与交互核心</th>
+          <th style="width: 22%">多设备 / 窄抽屉表现</th>
+          <th style="width: 20%">推荐适用倾向</th>
+          <th style="width: 20%">mygo 实现复杂度</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>方案 A</strong><br>分组状态卡</td>
+          <td>圆角卡片容器 + 设备/渠道图标 + 右侧语义胶囊 + 行内重试</td>
+          <td>清晰稳定；4 台以上需滚动，但单行语义最明确</td>
+          <td>想要「稳妥升级」、零学习成本、与现有详情页无缝融合</td>
+          <td>低（复用 <code>SubtleCardSurface</code> + 图标映射 + 新 <code>DeliveryRow</code>）</td>
+        </tr>
+        <tr>
+          <td><strong>方案 B</strong><br>折叠概览条</td>
+          <td>健康态折叠单行；异常/传输态自动展开 + 分段微进度条</td>
+          <td>极佳；常规浏览几乎不占详情页纵向高度</td>
+          <td>高频浏览纯文本/图片、希望详情页极简克制</td>
+          <td>中（需在 <code>ui.Local</code> 中维护单条展开态 + 分段条绘制）</td>
+        </tr>
+        <tr>
+          <td><strong>方案 C</strong><br>双列磁贴网格</td>
+          <td>与上方 3 列 Fact Card 同构的 2 列磁贴，异常/进度自动跨列</td>
+          <td>2~4 台极紧凑；窄抽屉下长主机名较易省略</td>
+          <td>偏爱 Bento 卡片美学、设备数通常在 2~4 台</td>
+          <td>低-中（<code>ui.Row</code> 两两分组或固定两列布局）</td>
+        </tr>
+        <tr>
+          <td><strong>方案 D</strong><br>异常优先分组</td>
+          <td>异常/传输用高亮焦点卡，已送达收敛为轻量横排胶囊</td>
+          <td>极佳；即使 6~8 台设备也保持低高度和高信噪比</td>
+          <td>经常多端群发、最关心「哪台没收到、立刻重试」</td>
+          <td>低（按状态拆分两个切片渲染即可，无需折叠状态）</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<script>
+const ICONS = {
+  phone: `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.4"/><path d="M10.5 18.5h3"/></svg>`,
+  desktop: `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12.5" rx="2"/><path d="M8.5 20h7M12 16.5V20"/></svg>`,
+  laptop: `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5A2 2 0 0 1 6.5 4.5h11a2 2 0 0 1 2 2v9h-15v-9Z"/><path d="M2.5 17.5h19l-1 2H3.5l-1-2Z"/></svg>`,
+  channel: `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.9 4.9"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.1a5 5 0 0 0 7.07 7.07L13.1 19"/></svg>`,
+  check: `<svg class="ic-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3.2 8.4 6.4 11.6 12.8 4.8"/></svg>`,
+  send: `<svg class="ic-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12.5 12.5 3.5M6.5 3.5h6v6"/></svg>`,
+  alert: `<svg class="ic-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4.2v4.3M8 11.6h.01"/></svg>`,
+  retry: `<svg class="ic-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.35-3.4"/><path d="M13 3v2.8h-2.8"/></svg>`,
+  chev: `<svg class="ic-sm" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 6.2 3.5 3.6 3.5-3.6"/></svg>`,
+  spinner: `<svg class="ic-xs spin" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 2.2a5.8 5.8 0 0 1 5.8 5.8" opacity="1"/><circle cx="8" cy="8" r="5.8" opacity=".2"/></svg>`,
+  clock: `<svg class="ic-xs" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="8" cy="8" r="5.6"/><path d="M8 5.2v3l2 1.2"/></svg>`,
+};
+
+const BASE_SCENARIOS = {
+  partial: {
+    mode: 'targets',
+    targets: [
+      { id: 'iphone', name: 'iPhone', kind: 'phone', external: false, state: 'failed', receipt: 'local_written', status: '未收到对端确认', shortStatus: '未确认', reason: '本地已写出，但未收到对端确认', retryable: true },
+      { id: 'macmini', name: 'Mac-mini.local', kind: 'desktop', external: false, state: 'sent', receipt: 'remote_received', status: '对端已接收', shortStatus: '已接收' },
+      { id: 'wetype', name: 'WeType', kind: 'channel', external: true, state: 'sent', receipt: 'local_written', status: '已发送', shortStatus: '已发送' },
+    ],
+  },
+  transferring: {
+    mode: 'targets',
+    targets: [
+      { id: 'mbp', name: 'MacBook Pro', kind: 'laptop', external: false, state: 'sending', progress: 42, bytes: '42.0 MB / 100.0 MB', status: '42%', shortStatus: '42%' },
+      { id: 'iphone', name: 'iPhone', kind: 'phone', external: false, state: 'awaiting', bytes: '100.0 MB / 100.0 MB', status: '等待对端确认…', shortStatus: '待确认' },
+      { id: 'wetype', name: 'WeType', kind: 'channel', external: true, state: 'queued', status: '排队中', shortStatus: '排队中' },
+    ],
+  },
+  all_done: {
+    mode: 'targets',
+    targets: [
+      { id: 'macmini', name: 'Mac-mini.local', kind: 'desktop', external: false, state: 'sent', receipt: 'remote_received', status: '对端已接收', shortStatus: '已接收' },
+      { id: 'iphone', name: 'iPhone', kind: 'phone', external: false, state: 'sent', receipt: 'remote_received', status: '对端已接收', shortStatus: '已接收' },
+      { id: 'wetype', name: 'WeType', kind: 'channel', external: true, state: 'sent', receipt: 'local_written', status: '已发送', shortStatus: '已发送' },
+    ],
+  },
+  errors: {
+    mode: 'targets',
+    targets: [
+      { id: 'iphone', name: 'iPhone', kind: 'phone', external: false, state: 'failed', status: '发送失败', shortStatus: '失败', reason: '连接超时', retryable: true },
+      { id: 'win', name: 'Workstation', kind: 'desktop', external: false, state: 'discarded', status: '对端未接纳', shortStatus: '未接纳', reason: '对端主动放弃或策略拒绝', retryable: true },
+      { id: 'macmini', name: 'Mac-mini.local', kind: 'desktop', external: false, state: 'sent', receipt: 'remote_received', status: '对端已接收', shortStatus: '已接收' },
+    ],
+  },
+  fallback: {
+    mode: 'fallback',
+    syncState: 'sent',
+    syncLabel: '已发送',
+    hint: '应用重启后不再保留逐设备实时进度，仅显示历史同步结论',
+  },
+};
+
+let currentScenario = 'partial';
+let stateData = structuredClone(BASE_SCENARIOS[currentScenario]);
+let proposalBOpen = true;
+let retryTimers = [];
+
+function clearTimers() {
+  retryTimers.forEach(t => clearTimeout(t));
+  retryTimers = [];
+}
+
+function loadScenario(key) {
+  clearTimers();
+  currentScenario = key;
+  stateData = structuredClone(BASE_SCENARIOS[key]);
+  // Proposal B auto-collapses when all healthy, auto-expands on exception or active transfer
+  if (stateData.mode === 'targets') {
+    const hasAttention = stateData.targets.some(t => t.state !== 'sent');
+    proposalBOpen = hasAttention;
+  } else {
+    proposalBOpen = false;
+  }
+  renderAll();
+}
+
+function summarize(targets) {
+  let received = 0, active = 0, failed = 0, discarded = 0;
+  for (const t of targets) {
+    if (t.state === 'sent') received++;
+    else if (t.state === 'sending' || t.state === 'awaiting' || t.state === 'queued') active++;
+    else if (t.state === 'failed') failed++;
+    else if (t.state === 'discarded') discarded++;
+  }
+  const total = targets.length;
+  if (active > 0) {
+    return { tone: 'info', label: `正在传输到 ${active} 台设备`, pill: `传输中 · ${received}/${total}`, hasRetry: failed + discarded > 0 };
+  }
+  if (failed > 0) {
+    return { tone: 'err', label: `已送达 ${received}/${total} 台设备`, pill: `${failed} 台需确认`, hasRetry: true };
+  }
+  if (discarded > 0) {
+    return { tone: 'warn', label: `已送达 ${received}/${total} 台设备`, pill: `${discarded} 台未接纳`, hasRetry: true };
+  }
+  return { tone: 'ok', label: `已送达 ${received}/${total} 台设备`, pill: `全部送达 ${received}/${total}`, hasRetry: false };
+}
+
+function toneOf(t) {
+  if (t.state === 'sent') return t.receipt === 'remote_received' ? 'ok' : 'neutral';
+  if (t.state === 'sending' || t.state === 'awaiting') return 'info';
+  if (t.state === 'queued') return 'neutral';
+  if (t.state === 'discarded') return 'warn';
+  if (t.state === 'failed') return 'err';
+  return 'neutral';
+}
+
+function triggerRetry(targetId) {
+  if (stateData.mode !== 'targets') return;
+  const targets = targetId === '__all__'
+    ? stateData.targets.filter(t => t.retryable)
+    : stateData.targets.filter(t => t.id === targetId);
+  if (!targets.length) return;
+
+  for (const t of targets) {
+    t.state = 'sending';
+    t.progress = 18;
+    t.bytes = '18 KB / 86 KB';
+    t.status = '18%';
+    t.shortStatus = '18%';
+    t.reason = '';
+    t.retryable = false;
+  }
+  renderAll();
+
+  retryTimers.push(setTimeout(() => {
+    for (const t of targets) {
+      t.progress = 76;
+      t.bytes = '65 KB / 86 KB';
+      t.status = '76%';
+      t.shortStatus = '76%';
+    }
+    renderAll();
+  }, 480));
+
+  retryTimers.push(setTimeout(() => {
+    for (const t of targets) {
+      t.state = 'awaiting';
+      t.progress = null;
+      t.bytes = '86 KB / 86 KB';
+      t.status = '等待对端确认…';
+      t.shortStatus = '待确认';
+    }
+    renderAll();
+  }, 980));
+
+  retryTimers.push(setTimeout(() => {
+    for (const t of targets) {
+      t.state = 'sent';
+      t.receipt = t.external ? 'local_written' : 'remote_received';
+      t.bytes = '';
+      t.status = t.external ? '已发送' : '对端已接收';
+      t.shortStatus = t.external ? '已发送' : '已接收';
+    }
+    renderAll();
+  }, 1580));
+}
+
+function renderFallback() {
+  return `
+    <div class="pa-wrap">
+      <div class="pa-head">
+        <div class="pa-head-left">
+          <span class="pa-title">送达</span>
+        </div>
+      </div>
+      <div class="fallback-box">
+        <div class="fallback-left">
+          <span class="dot dot-ok"></span>
+          <span>同步状态：<strong style="color:var(--text-primary)">${stateData.syncLabel}</strong></span>
+        </div>
+        <span style="font-size:11px;color:var(--text-tertiary)">重启前记录</span>
+      </div>
+    </div>
+  `;
+}
+
+/* ---------------- PROPOSAL A ---------------- */
+function renderA() {
+  if (stateData.mode === 'fallback') return renderFallback();
+  const s = summarize(stateData.targets);
+  const rows = stateData.targets.map(t => {
+    const tone = toneOf(t);
+    const dotClass = tone === 'ok' ? 'dot-ok' : tone === 'err' ? 'dot-err' : tone === 'warn' ? 'dot-warn' : tone === 'info' ? 'dot-info pulse' : 'dot-neutral';
+    const pillClass = tone === 'ok' ? 'pill-ok' : tone === 'err' ? 'pill-err' : tone === 'warn' ? 'pill-warn' : tone === 'info' ? 'pill-info' : 'pill-neutral';
+    const pillIcon = t.state === 'sent' && t.receipt === 'remote_received' ? ICONS.check
+      : t.state === 'sent' ? ICONS.send
+      : t.state === 'sending' || t.state === 'awaiting' ? ICONS.spinner
+      : t.state === 'queued' ? ICONS.clock
+      : ICONS.alert;
+
+    return `
+      <div class="pa-row ${t.state === 'failed' ? 'is-err' : ''} ${t.state === 'sent' ? 'is-done' : ''}">
+        <div class="pa-row-main">
+          <div class="pa-avatar">
+            ${ICONS[t.kind]}
+            <span class="pa-avatar-dot ${dotClass}"></span>
+          </div>
+          <div class="pa-name-col">
+            <div class="pa-name-line">
+              <span class="pa-name">${t.name}</span>
+              ${t.external ? `<span class="channel-chip">外部渠道</span>` : ''}
+            </div>
+            ${t.reason ? `<div class="pa-sub ${t.state === 'failed' ? 'is-err' : ''}">${t.reason}</div>` : ''}
+          </div>
+          <div class="pa-trailing">
+            <span class="pill ${pillClass}">${pillIcon}${t.status}</span>
+            ${t.retryable ? `<button class="retry-btn" data-retry="${t.id}" type="button">${ICONS.retry}重试</button>` : ''}
+          </div>
+        </div>
+        ${(t.state === 'sending' || t.state === 'awaiting') ? `
+          <div class="pa-progress-box">
+            <div class="progress-track">
+              <div class="progress-fill ${t.state === 'awaiting' ? 'indet' : ''}" style="${t.state === 'sending' ? `width:${t.progress}%` : ''}"></div>
+            </div>
+            ${t.bytes ? `<div class="pa-bytes">${t.bytes}</div>` : ''}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="pa-wrap">
+      <div class="pa-head">
+        <div class="pa-head-left">
+          <span class="pa-title">送达</span>
+          <span class="pill pill-${s.tone}">
+            <span class="dot dot-${s.tone} ${s.tone === 'info' ? 'pulse' : ''}"></span>
+            ${s.label}
+          </span>
+        </div>
+        ${s.hasRetry ? `<button class="retry-link" data-retry="__all__" type="button">${ICONS.retry}重试失败</button>` : ''}
+      </div>
+      <div class="pa-card">${rows}</div>
+    </div>
+  `;
+}
+
+/* ---------------- PROPOSAL B ---------------- */
+function renderB() {
+  if (stateData.mode === 'fallback') return renderFallback();
+  const s = summarize(stateData.targets);
+  const stateBg = s.tone === 'ok' ? 'var(--ok-bg)' : s.tone === 'err' ? 'var(--err-bg)' : s.tone === 'warn' ? 'var(--warn-bg)' : 'var(--info-bg)';
+  const stateFg = s.tone === 'ok' ? 'var(--ok-fg)' : s.tone === 'err' ? 'var(--err-fg)' : s.tone === 'warn' ? 'var(--warn-fg)' : 'var(--info-fg)';
+  const headIcon = s.tone === 'ok' ? ICONS.check : s.tone === 'info' ? ICONS.spinner : ICONS.alert;
+  const previewNames = stateData.targets.map(t => t.name).join(' · ');
+
+  const segs = stateData.targets.map(t => {
+    if (t.state === 'sent') return `<div class="pb-seg ${t.receipt === 'remote_received' ? 'ok' : 'sent'}"></div>`;
+    if (t.state === 'failed') return `<div class="pb-seg err"></div>`;
+    if (t.state === 'discarded') return `<div class="pb-seg warn"></div>`;
+    if (t.state === 'sending') return `<div class="pb-seg info"><span style="width:${t.progress}%"></span></div>`;
+    if (t.state === 'awaiting') return `<div class="pb-seg info"><span style="width:88%"></span></div>`;
+    return `<div class="pb-seg"></div>`;
+  }).join('');
+
+  const rows = stateData.targets.map(t => {
+    const tone = toneOf(t);
+    const statusCls = tone === 'err' ? 'err' : tone === 'warn' ? 'warn' : tone === 'info' ? 'info' : tone === 'ok' ? 'ok' : '';
+    const iconColor = tone === 'ok' ? 'var(--ok-dot)' : tone === 'err' ? 'var(--err-dot)' : tone === 'warn' ? 'var(--warn-dot)' : tone === 'info' ? 'var(--info-dot)' : 'var(--text-tertiary)';
+    const leadIcon = t.state === 'sent' && t.receipt === 'remote_received' ? ICONS.check
+      : t.state === 'sent' ? ICONS.send
+      : t.state === 'sending' || t.state === 'awaiting' ? ICONS.spinner
+      : t.state === 'queued' ? ICONS.clock
+      : ICONS.alert;
+
+    return `
+      <div class="pb-row">
+        <div class="pb-row-top">
+          <span style="color:${iconColor};display:inline-flex">${leadIcon}</span>
+          <span class="pb-row-name">${t.name}${t.external ? ` <span class="channel-chip">渠道</span>` : ''}</span>
+          <span class="pb-row-status ${statusCls}">${t.status}</span>
+        </div>
+        ${(t.state === 'sending' || t.state === 'awaiting') ? `
+          <div style="padding-left:20px;display:flex;flex-direction:column;gap:4px">
+            <div class="progress-track">
+              <div class="progress-fill ${t.state === 'awaiting' ? 'indet' : ''}" style="${t.state === 'sending' ? `width:${t.progress}%` : ''}"></div>
+            </div>
+            ${t.bytes ? `<div class="pa-bytes">${t.bytes}</div>` : ''}
+          </div>
+        ` : ''}
+        ${t.reason ? `
+          <div class="pb-callout ${t.state === 'discarded' ? 'warn' : ''}">
+            <span>${t.reason}</span>
+            ${t.retryable ? `<button class="retry-btn" data-retry="${t.id}" type="button">${ICONS.retry}重试</button>` : ''}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="pb-card ${proposalBOpen ? 'open' : ''}">
+      <button class="pb-trigger" id="pb-toggle" type="button" aria-expanded="${proposalBOpen}">
+        <div class="pb-trigger-top">
+          <div class="pb-summary-left">
+            <span class="pb-state-icon" style="background:${stateBg};color:${stateFg}">${headIcon}</span>
+            <span class="pb-summary-text">${s.label}</span>
+            ${!proposalBOpen ? `<span class="pb-preview-names">${previewNames}</span>` : ''}
+          </div>
+          <span class="pb-chevron">${proposalBOpen ? '收起' : '明细'}${ICONS.chev}</span>
+        </div>
+        <div class="pb-meter">${segs}</div>
+      </button>
+      <div class="pb-body">${rows}</div>
+    </div>
+  `;
+}
+
+/* ---------------- PROPOSAL C ---------------- */
+function renderC() {
+  if (stateData.mode === 'fallback') return renderFallback();
+  const s = summarize(stateData.targets);
+
+  const tiles = stateData.targets.map(t => {
+    const tone = toneOf(t);
+    const wide = t.state === 'failed' || t.state === 'discarded' || t.state === 'sending' || t.state === 'awaiting';
+    const tileCls = [
+      'pc-tile',
+      wide ? 'span-2' : '',
+      tone === 'err' ? 'is-err' : tone === 'warn' ? 'is-warn' : tone === 'info' ? 'is-info' : '',
+    ].filter(Boolean).join(' ');
+
+    const dotClass = tone === 'ok' ? 'dot-ok' : tone === 'err' ? 'dot-err' : tone === 'warn' ? 'dot-warn' : tone === 'info' ? 'dot-info pulse' : 'dot-neutral';
+
+    return `
+      <div class="${tileCls}">
+        <div class="pc-tile-top">
+          <div class="pc-tile-dev">
+            <span style="color:var(--text-secondary);display:inline-flex">${ICONS[t.kind]}</span>
+            <span class="pc-tile-name">${t.name}</span>
+            ${t.external ? `<span class="channel-chip">渠道</span>` : ''}
+          </div>
+          <span class="dot ${dotClass}"></span>
+        </div>
+        <div class="pc-tile-state">
+          <span class="${tone}">${t.status}</span>
+          ${t.bytes ? `<span style="font-variant-numeric:tabular-nums">${t.bytes}</span>` : ''}
+        </div>
+        ${t.reason ? `
+          <div class="pc-tile-reason" style="${t.state === 'discarded' ? 'color:var(--warn-fg)' : ''}">
+            <span>${t.reason}</span>
+            ${t.retryable ? `<button class="retry-btn" data-retry="${t.id}" type="button">${ICONS.retry}重发</button>` : ''}
+          </div>
+        ` : ''}
+        ${(t.state === 'sending' || t.state === 'awaiting') ? `
+          <div class="pc-tile-bar"><span class="${t.state === 'awaiting' ? 'indet' : ''}" style="${t.state === 'sending' ? `width:${t.progress}%` : ''}"></span></div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="pc-wrap">
+      <div class="pc-head">
+        <div class="pc-head-left">
+          <span class="pa-title">送达</span>
+          <span class="pd-count">${s.label}</span>
+        </div>
+        ${s.hasRetry ? `<button class="retry-link" data-retry="__all__" type="button">${ICONS.retry}全部重发</button>` : ''}
+      </div>
+      <div class="pc-grid">${tiles}</div>
+    </div>
+  `;
+}
+
+/* ---------------- PROPOSAL D ---------------- */
+function renderD() {
+  if (stateData.mode === 'fallback') return renderFallback();
+  const s = summarize(stateData.targets);
+  const focus = stateData.targets.filter(t => t.state !== 'sent');
+  const done = stateData.targets.filter(t => t.state === 'sent');
+
+  const focusHtml = focus.length ? `
+    <div class="pd-focus-list">
+      ${focus.map(t => {
+        const tone = toneOf(t);
+        const cls = tone === 'err' ? 'is-err' : tone === 'warn' ? 'is-warn' : tone === 'info' ? 'is-info' : '';
+        const pillCls = tone === 'err' ? 'pill-err' : tone === 'warn' ? 'pill-warn' : tone === 'info' ? 'pill-info' : 'pill-neutral';
+        return `
+          <div class="pd-focus-card ${cls}">
+            <div class="pd-focus-top">
+              <div class="pd-focus-id">
+                <span style="color:var(--text-secondary);display:inline-flex">${ICONS[t.kind]}</span>
+                <span class="pd-focus-name">${t.name}</span>
+                <span class="pill ${pillCls}">${t.status}</span>
+              </div>
+              ${t.retryable ? `<button class="retry-btn" data-retry="${t.id}" type="button">${ICONS.retry}重新发送</button>` : ''}
+            </div>
+            ${t.reason ? `<div class="pd-focus-reason">${t.reason}</div>` : ''}
+            ${(t.state === 'sending' || t.state === 'awaiting') ? `
+              <div style="padding-left:22px;display:flex;flex-direction:column;gap:4px">
+                <div class="progress-track">
+                  <div class="progress-fill ${t.state === 'awaiting' ? 'indet' : ''}" style="${t.state === 'sending' ? `width:${t.progress}%` : ''}"></div>
+                </div>
+                ${t.bytes ? `<div class="pa-bytes">${t.bytes}</div>` : ''}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('')}
+    </div>
+  ` : '';
+
+  const doneHtml = done.length ? `
+    <div class="pd-done-rail">
+      <span class="pd-done-label">已完成</span>
+      ${done.map(t => {
+        const isAck = t.receipt === 'remote_received';
+        return `
+          <span class="pd-chip" title="${t.status}">
+            <span style="color:${isAck ? 'var(--ok-dot)' : 'var(--text-tertiary)'};display:inline-flex">${isAck ? ICONS.check : ICONS.send}</span>
+            <span>${t.name}</span>
+            <span class="pd-chip-meta">${t.shortStatus}</span>
+          </span>
+        `;
+      }).join('')}
+    </div>
+  ` : '';
+
+  return `
+    <div class="pd-wrap">
+      <div class="pd-head">
+        <div class="pd-head-left">
+          <span class="pa-title">送达</span>
+          <span class="dot dot-${s.tone} ${s.tone === 'info' ? 'pulse' : ''}"></span>
+          <span class="pd-count">${s.label}</span>
+        </div>
+      </div>
+      ${focusHtml}
+      ${doneHtml}
+    </div>
+  `;
+}
+
+function renderAll() {
+  document.getElementById('mount-a').innerHTML = renderA();
+  document.getElementById('mount-b').innerHTML = renderB();
+  document.getElementById('mount-c').innerHTML = renderC();
+  document.getElementById('mount-d').innerHTML = renderD();
+
+  const pbToggle = document.getElementById('pb-toggle');
+  if (pbToggle) {
+    pbToggle.addEventListener('click', () => {
+      proposalBOpen = !proposalBOpen;
+      renderAll();
+    });
+  }
+  document.querySelectorAll('[data-retry]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      triggerRetry(btn.getAttribute('data-retry'));
+    });
+  });
+}
+
+// Topbar controls
+document.querySelectorAll('#scenario-seg button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#scenario-seg button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadScenario(btn.dataset.scenario);
+  });
+});
+
+document.querySelectorAll('#width-seg button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#width-seg button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.body.dataset.width = btn.dataset.width;
+  });
+});
+
+const themeBtn = document.getElementById('theme-btn');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  document.documentElement.dataset.theme = dark ? 'light' : 'dark';
+  themeBtn.textContent = dark ? '深色模式' : '浅色模式';
+});
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  loadScenario(currentScenario);
+});
+
+renderAll();
+</script>
+</body>
+</html>

@@ -33,6 +33,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 - 改了行为，就在同一次改动里更新对应的架构页或契约，并运行 `go run ./tools/docscheck -bump <页>` 更新 `verified`。
 - 决策实现完成后必须“落地”再归档：结论合并进架构页/契约/本文件“约定”，再移入 `archive/`。流程用 `/maintain-docs`。
 - 代码注释、README、各端 AGENTS.md 只链接架构页与契约，不链接 `archive/`。新决策写进 `docs/decisions/proposed/`，按编号命名并登记到台账。
+- 开发闭环编排：Lody Agent Roles 维护了 `Coordinator`、`Planner`、`Implementer`、`Verifier` 四个角色，完整 S/M/L 通道、交接单、门禁与熔断见 [dev-loop](.agents/skills/dev-loop/SKILL.md)。
 
 ### 进行中的决策（`docs/decisions/proposed/`，落地后移出本表）
 

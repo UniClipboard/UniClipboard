@@ -577,14 +577,17 @@ func sanitizeFlagParseError(cmd string, err error) string {
 	return fmt.Sprintf("invalid flags; run '%s --help' for usage", cmd)
 }
 
+func isASCIIFlagNameByte(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_'
+}
+
 func validFlagName(raw string) (string, bool) {
 	name := strings.TrimPrefix(raw, "-")
 	if len(name) == 0 || len(name) > 32 {
 		return "", false
 	}
 	for i := 0; i < len(name); i++ {
-		c := name[i]
-		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_') {
+		if !isASCIIFlagNameByte(name[i]) {
 			return "", false
 		}
 	}

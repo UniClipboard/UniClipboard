@@ -862,39 +862,55 @@ func TestFlagParseErrorSanitizationInitAndMigrate(t *testing.T) {
 	}{
 		{
 			name: "init --fresh=secret text",
-			run:  func(out, errOut *bytes.Buffer) int { return runInit([]string{"--fresh=" + secretVal}, nil, out, errOut, false) },
+			run: func(out, errOut *bytes.Buffer) int {
+				return runInit([]string{"--fresh=" + secretVal}, nil, out, errOut, false)
+			},
 		},
 		{
 			name: "init --fresh=secret json",
-			run:  func(out, errOut *bytes.Buffer) int { return runInit([]string{"--fresh=" + secretVal, "--json"}, nil, out, errOut, false) },
+			run: func(out, errOut *bytes.Buffer) int {
+				return runInit([]string{"--fresh=" + secretVal, "--json"}, nil, out, errOut, false)
+			},
 			json: true,
 		},
 		{
 			name: "migrate --fresh=secret text",
-			run:  func(out, errOut *bytes.Buffer) int { return runMigration([]string{"--fresh=" + secretVal}, nil, out, errOut) },
+			run: func(out, errOut *bytes.Buffer) int {
+				return runMigration([]string{"--fresh=" + secretVal}, nil, out, errOut)
+			},
 		},
 		{
 			name: "migrate --fresh=secret json",
-			run:  func(out, errOut *bytes.Buffer) int { return runMigration([]string{"--fresh=" + secretVal, "--json"}, nil, out, errOut) },
+			run: func(out, errOut *bytes.Buffer) int {
+				return runMigration([]string{"--fresh=" + secretVal, "--json"}, nil, out, errOut)
+			},
 			json: true,
 		},
 		{
 			name: "migrate --dry-run=secret text",
-			run:  func(out, errOut *bytes.Buffer) int { return runMigration([]string{"--dry-run=" + secretVal}, nil, out, errOut) },
+			run: func(out, errOut *bytes.Buffer) int {
+				return runMigration([]string{"--dry-run=" + secretVal}, nil, out, errOut)
+			},
 		},
 		{
 			name: "migrate --dry-run=secret json",
-			run:  func(out, errOut *bytes.Buffer) int { return runMigration([]string{"--dry-run=" + secretVal, "--json"}, nil, out, errOut) },
+			run: func(out, errOut *bytes.Buffer) int {
+				return runMigration([]string{"--dry-run=" + secretVal, "--json"}, nil, out, errOut)
+			},
 			json: true,
 		},
 		{
 			name: "init --name missing arg json",
-			run:  func(out, errOut *bytes.Buffer) int { return runInit([]string{"--json", "--name"}, nil, out, errOut, false) },
+			run: func(out, errOut *bytes.Buffer) int {
+				return runInit([]string{"--json", "--name"}, nil, out, errOut, false)
+			},
 			json: true,
 		},
 		{
 			name: "migrate --bogus=secret json",
-			run:  func(out, errOut *bytes.Buffer) int { return runMigration([]string{"--bogus=" + secretVal, "--json"}, nil, out, errOut) },
+			run: func(out, errOut *bytes.Buffer) int {
+				return runMigration([]string{"--bogus=" + secretVal, "--json"}, nil, out, errOut)
+			},
 			json: true,
 		},
 	}
@@ -1073,6 +1089,41 @@ func TestMigratePublishFailureOmitsCompleteReportAndPreservesPending(t *testing.
 			st, rerr = climigration.Read(target)
 			if rerr != nil || st.Status != "complete" || st.Outcome != "imported" {
 				t.Fatalf("expected complete after resume, got %+v (%v)", st, rerr)
+			}
+		})
+	}
+}
+
+func TestValidFlagName(t *testing.T) {
+	cases := []struct {
+		name   string
+		raw    string
+		want   string
+		wantOK bool
+	}{
+		{name: "empty", raw: "", wantOK: false},
+		{name: "only leading dash", raw: "-", wantOK: false},
+		{name: "single char", raw: "a", want: "a", wantOK: true},
+		{name: "single char with leading dash", raw: "-A", want: "A", wantOK: true},
+		{name: "digits dash underscore", raw: "-dry_run-2", want: "dry_run-2", wantOK: true},
+		{name: "exact 32 bytes", raw: strings.Repeat("a", 32), want: strings.Repeat("a", 32), wantOK: true},
+		{name: "leading dash plus 32 bytes", raw: "-" + strings.Repeat("b", 32), want: strings.Repeat("b", 32), wantOK: true},
+		{name: "33 bytes rejected", raw: strings.Repeat("a", 33), wantOK: false},
+		{name: "leading dash plus 33 bytes rejected", raw: "-" + strings.Repeat("b", 33), wantOK: false},
+		{name: "slash rejected", raw: "foo/bar", wantOK: false},
+		{name: "equals rejected", raw: "fresh=secret", wantOK: false},
+		{name: "space rejected", raw: "foo bar", wantOK: false},
+		{name: "control char rejected", raw: "foo\nbar", wantOK: false},
+		{name: "nul control char rejected", raw: "foo\x00bar", wantOK: false},
+		{name: "non-ASCII rejected", raw: "标志", wantOK: false},
+		{name: "mixed non-ASCII rejected", raw: "flag-\xff", wantOK: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := validFlagName(tc.raw)
+			if ok != tc.wantOK || got != tc.want {
+				t.Fatalf("validFlagName(%q) = (%q, %v), want (%q, %v)", tc.raw, got, ok, tc.want, tc.wantOK)
 			}
 		})
 	}

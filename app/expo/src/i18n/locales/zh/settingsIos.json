@@ -32,7 +32,7 @@
         "title": "允许完全访问",
         "subtitle": "这样才能显示已同步的内容",
         "path": "键盘 › Unic › 允许完全访问",
-        "readsOnly": "只读取 Unic 已同步的内容",
+        "readsOnly": "仅在打开键盘期间读取与同步剪贴板，不记录按键输入",
         "sendsOnly": "只发送到你空间里的设备",
         "systemWarning": "开启时 iOS 会显示一段通用的提醒。"
       },
@@ -53,6 +53,13 @@
       "switchDescription": "在任意 App 中长按地球键，选择「Unic」。",
       "tryLabel": "在这里试试",
       "tryPlaceholder": "点击这里唤起键盘"
+    },
+    "sync": {
+      "title": "实时同步",
+      "autoCapture": "自动读取并同步剪贴板",
+      "footer": "打开 Unic 键盘期间，自动读取当前系统剪贴板中的文本与图片并发送到你的其他设备；收到的新内容会实时刷新列表并自动写入剪贴板。不记录外部按键输入。",
+      "pastePermissionTitle": "免弹窗读取剪贴板",
+      "pastePermissionSubtitle": "系统设置 › Unic › 从其他 App 粘贴 › 允许"
     },
     "feedback": {
       "title": "按键反馈",

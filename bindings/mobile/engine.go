@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,6 +52,24 @@ type engineConfigDTO struct {
 	DeviceName       string                   `json:"device_name,omitempty"`
 	RendezvousURL    string                   `json:"rendezvous_url,omitempty"`
 	HostCapabilities *engine.HostCapabilities `json:"host_capabilities,omitempty"`
+	ExtensionMode    bool                     `json:"extension_mode,omitempty"`
+}
+
+// ConfigureRuntimeMemory tunes the Go GC target and soft memory limit for
+// memory-constrained host processes such as the iOS Keyboard Extension.
+// Non-positive values leave the corresponding runtime setting unchanged.
+func ConfigureRuntimeMemory(gcPercent int, memLimitMB int) {
+	if gcPercent > 0 {
+		debug.SetGCPercent(gcPercent)
+	}
+	if memLimitMB > 0 {
+		debug.SetMemoryLimit(int64(memLimitMB) * 1024 * 1024)
+	}
+}
+
+// FreeOSMemory forces a garbage collection and returns unused memory to the OS.
+func FreeOSMemory() {
+	debug.FreeOSMemory()
 }
 
 func resolveDirPath(path string) (string, error) {
@@ -225,9 +244,17 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 	if err != nil {
 		return nil, wrapErr(err)
 	}
-	previewer, err := builtinpreview.New(builtinpreview.Settings{})
-	if err != nil {
-		return nil, wrapErr(err)
+	plugins := []engine.PluginInstance{
+		{Plugin: peer, Builtin: true},
+		{Plugin: classifier},
+		{Plugin: builtintext.New()},
+	}
+	if !cfg.ExtensionMode {
+		previewer, err := builtinpreview.New(builtinpreview.Settings{})
+		if err != nil {
+			return nil, wrapErr(err)
+		}
+		plugins = append(plugins, engine.PluginInstance{Plugin: previewer, Builtin: true})
 	}
 
 	diagnostics := newMobileDiagnostics(dataDir)
@@ -241,12 +268,7 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		Diagnostics:      diagnostics.controller.Record,
 		ProductEvents:    diagnostics.controller.ProductEvent,
 		Tracer:           diagnostics.controller,
-		Plugins: []engine.PluginInstance{
-			{Plugin: peer, Builtin: true},
-			{Plugin: classifier},
-			{Plugin: builtintext.New()},
-			{Plugin: previewer, Builtin: true},
-		},
+		Plugins:          plugins,
 	}
 
 	eng, err := engine.New(context.Background(), opts)

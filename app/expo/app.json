@@ -50,6 +50,7 @@
       ],
       "./plugins/withAndroidIncomingShare.js",
       "./plugins/withAndroidSplashScreen.js",
+      "./plugins/withKeyboardUnicCore.js",
       "@bacons/apple-targets",
       "./plugins/withXcode27SceneLifecycle.js",
       "./plugins/withXcode27DeploymentTargets.js",

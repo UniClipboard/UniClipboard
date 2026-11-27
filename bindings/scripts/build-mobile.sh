@@ -65,7 +65,68 @@ if [[ $PLATFORM != android ]]; then
       -o "$IOS_OUT" \
       github.com/uniclipboard/unic/bindings/mobile
   )
-  find "$IOS_OUT" -name "UnicCore" -type f -exec shasum -a 256 {} +
+
+  echo "==> Converting UnicCore.xcframework slices to app-extension-safe dynamic frameworks"
+  DYN_TMP="$(mktemp -d)"
+  trap 'rm -rf "$DYN_TMP"' EXIT
+  cat > "$DYN_TMP/keep.m" <<'EOF'
+#import <Foundation/Foundation.h>
+void UnicCoreDynamicKeep(void) {}
+EOF
+
+  write_fw_plist() {
+    local plist_path="$1"
+    local platform_name="$2"
+    cat > "$plist_path" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleExecutable</key><string>UnicCore</string>
+  <key>CFBundleIdentifier</key><string>app.uniclipboard.UnicCore</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleName</key><string>UnicCore</string>
+  <key>CFBundlePackageType</key><string>FMWK</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleSupportedPlatforms</key><array><string>$platform_name</string></array>
+  <key>MinimumOSVersion</key><string>16.0</string>
+</dict>
+</plist>
+EOF
+  }
+
+  # 1. Physical device slice (ios-arm64)
+  IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+  DEV_FW="$IOS_OUT/ios-arm64/UnicCore.framework"
+  clang -target arm64-apple-ios16.0 -isysroot "$IOS_SDK" -fapplication-extension -dynamiclib \
+    -install_name "@rpath/UnicCore.framework/UnicCore" \
+    -Wl,-force_load,"$DEV_FW/UnicCore" \
+    -framework Foundation -framework Security -framework Network -framework CoreFoundation -lresolv \
+    "$DYN_TMP/keep.m" -o "$DYN_TMP/UnicCore-ios-arm64"
+  mv "$DYN_TMP/UnicCore-ios-arm64" "$DEV_FW/UnicCore"
+  write_fw_plist "$DEV_FW/Info.plist" "iPhoneOS"
+
+  # 2. Simulator slice (ios-arm64_x86_64-simulator)
+  SIM_SDK="$(xcrun --sdk iphonesimulator --show-sdk-path)"
+  SIM_FW="$IOS_OUT/ios-arm64_x86_64-simulator/UnicCore.framework"
+  SIM_ARCHS="$(lipo -archs "$SIM_FW/UnicCore")"
+  SIM_DYLIBS=()
+  for arch in $SIM_ARCHS; do
+    lipo -thin "$arch" "$SIM_FW/UnicCore" -output "$DYN_TMP/static-sim-$arch.a"
+    clang -target "${arch}-apple-ios16.0-simulator" -isysroot "$SIM_SDK" -fapplication-extension -dynamiclib \
+      -install_name "@rpath/UnicCore.framework/UnicCore" \
+      -Wl,-force_load,"$DYN_TMP/static-sim-$arch.a" \
+      -framework Foundation -framework Security -framework Network -framework CoreFoundation -lresolv \
+      "$DYN_TMP/keep.m" -o "$DYN_TMP/UnicCore-sim-$arch"
+    SIM_DYLIBS+=("$DYN_TMP/UnicCore-sim-$arch")
+  done
+  lipo -create "${SIM_DYLIBS[@]}" -output "$DYN_TMP/UnicCore-sim-universal"
+  mv "$DYN_TMP/UnicCore-sim-universal" "$SIM_FW/UnicCore"
+  write_fw_plist "$SIM_FW/Info.plist" "iPhoneSimulator"
+
+  find "$IOS_OUT" -name "UnicCore" -type f -exec file {} + -exec shasum -a 256 {} +
 fi
 
 if [[ $PLATFORM != ios ]]; then

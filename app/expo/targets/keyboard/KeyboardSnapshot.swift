@@ -1,4 +1,6 @@
+import CryptoKit
 import Foundation
+import ImageIO
 import UIKit
 
 enum KeyboardItemKind: String, Codable, Hashable {
@@ -50,15 +52,46 @@ struct KeyboardClipItem: Hashable, Identifiable {
 struct KeyboardPreferences: Equatable, Codable {
   var soundEnabled: Bool
   var hapticEnabled: Bool
+  var autoSyncEnabled: Bool
   var updatedAtMs: Int64
 
   enum CodingKeys: String, CodingKey {
     case soundEnabled = "sound_enabled"
     case hapticEnabled = "haptic_enabled"
+    case autoSyncEnabled = "auto_sync_enabled"
     case updatedAtMs = "updated_at_ms"
   }
 
-  static let defaults = KeyboardPreferences(soundEnabled: true, hapticEnabled: true, updatedAtMs: 0)
+  init(soundEnabled: Bool, hapticEnabled: Bool, autoSyncEnabled: Bool = true, updatedAtMs: Int64) {
+    self.soundEnabled = soundEnabled
+    self.hapticEnabled = hapticEnabled
+    self.autoSyncEnabled = autoSyncEnabled
+    self.updatedAtMs = updatedAtMs
+  }
+
+  init(from decoder: Decoder) throws {
+    let c = try decoder.container(keyedBy: CodingKeys.self)
+    self.soundEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundEnabled) ?? true
+    self.hapticEnabled = try c.decodeIfPresent(Bool.self, forKey: .hapticEnabled) ?? true
+    self.autoSyncEnabled = try c.decodeIfPresent(Bool.self, forKey: .autoSyncEnabled) ?? true
+    self.updatedAtMs = try c.decodeIfPresent(Int64.self, forKey: .updatedAtMs) ?? 0
+  }
+
+  static let defaults = KeyboardPreferences(soundEnabled: true, hapticEnabled: true, autoSyncEnabled: true, updatedAtMs: 0)
+}
+
+struct SharedPasteboardState: Codable {
+  let changeCount: Int
+  let contentSHA256: String
+  let origin: String
+  let updatedAtMs: Int64
+
+  enum CodingKeys: String, CodingKey {
+    case changeCount = "change_count"
+    case contentSHA256 = "content_sha256"
+    case origin
+    case updatedAtMs = "updated_at_ms"
+  }
 }
 
 enum KeyboardSnapshotLoadResult {
@@ -67,8 +100,9 @@ enum KeyboardSnapshotLoadResult {
   case unavailable
 }
 
-/// Read-only App Group store for the iOS Keyboard Extension.
-/// Never links or launches Go Engine (0031 single-engine boundary).
+/// Shared App Group store for the iOS Keyboard Extension.
+/// Holds fast first-paint / degraded-mode snapshots, preferences, cross-process
+/// anti-loopback pasteboard state, and locates the shared Engine DataDir (0035).
 final class KeyboardSnapshotStore {
   private struct RawSnapshot: Codable {
     let version: Int
@@ -160,22 +194,39 @@ final class KeyboardSnapshotStore {
     return cache
   }()
 
-  private var rootURL: URL? {
+  var appGroupContainerURL: URL? {
     guard let extID = Bundle.main.bundleIdentifier, extID.hasSuffix(".Keyboard") else {
       return nil
     }
     let mainID = String(extID.dropLast(".Keyboard".count))
-    return fileManager
-      .containerURL(forSecurityApplicationGroupIdentifier: "group.\(mainID).incoming-share")?
-      .appendingPathComponent("keyboard-bridge", isDirectory: true)
+    return fileManager.containerURL(forSecurityApplicationGroupIdentifier: "group.\(mainID).incoming-share")
+  }
+
+  var sharedEngineDataDir: URL? {
+    appGroupContainerURL?
+      .appendingPathComponent("Library", isDirectory: true)
+      .appendingPathComponent("Application Support", isDirectory: true)
+      .appendingPathComponent("unic-v2", isDirectory: true)
+  }
+
+  var sharedEngineCacheDir: URL? {
+    appGroupContainerURL?
+      .appendingPathComponent("Library", isDirectory: true)
+      .appendingPathComponent("Caches", isDirectory: true)
+      .appendingPathComponent("unic-cache", isDirectory: true)
+  }
+
+  private var rootURL: URL? {
+    appGroupContainerURL?.appendingPathComponent("keyboard-bridge", isDirectory: true)
   }
 
   private var snapshotURL: URL? { rootURL?.appendingPathComponent("snapshot.json") }
   private var preferencesURL: URL? { rootURL?.appendingPathComponent("preferences.json") }
   private var heartbeatURL: URL? { rootURL?.appendingPathComponent("heartbeat.json") }
+  private var pasteboardStateURL: URL? { rootURL?.appendingPathComponent("pasteboard-state.json") }
   private var pinOverridesURL: URL? { rootURL?.appendingPathComponent("pin-overrides.json") }
-  private var thumbnailsDir: URL? { rootURL?.appendingPathComponent("thumbnails", isDirectory: true) }
-  private var imagesDir: URL? { rootURL?.appendingPathComponent("images", isDirectory: true) }
+  var thumbnailsDir: URL? { rootURL?.appendingPathComponent("thumbnails", isDirectory: true) }
+  var imagesDir: URL? { rootURL?.appendingPathComponent("images", isDirectory: true) }
   private var actionsDir: URL? { rootURL?.appendingPathComponent("actions", isDirectory: true) }
 
   func recordHeartbeat(hasFullAccess: Bool) {
@@ -293,6 +344,136 @@ final class KeyboardSnapshotStore {
 
   func clearImageMemoryCache() {
     thumbnailCache.removeAllObjects()
+  }
+
+  // MARK: - Cross-Process Anti-Loopback Pasteboard State
+
+  static func sha256Hex(of data: Data) -> String {
+    let digest = SHA256.hash(data: data)
+    return digest.map { String(format: "%02x", $0) }.joined()
+  }
+
+  static func sha256Hex(ofText text: String) -> String {
+    return sha256Hex(of: Data(text.utf8))
+  }
+
+  func loadPasteboardState() -> SharedPasteboardState? {
+    guard let url = pasteboardStateURL,
+          let data = try? Data(contentsOf: url),
+          let state = try? JSONDecoder().decode(SharedPasteboardState.self, from: data) else {
+      return nil
+    }
+    return state
+  }
+
+  func recordPasteboardState(changeCount: Int, contentSHA256: String, origin: String) {
+    guard let root = rootURL, let url = pasteboardStateURL else { return }
+    let attrs: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+    try? fileManager.createDirectory(at: root, withIntermediateDirectories: true, attributes: attrs)
+    let state = SharedPasteboardState(
+      changeCount: changeCount,
+      contentSHA256: contentSHA256,
+      origin: origin,
+      updatedAtMs: Int64(Date().timeIntervalSince1970 * 1000)
+    )
+    if let data = try? JSONEncoder().encode(state) {
+      try? writeAtomic(data: data, to: url)
+    }
+  }
+
+  func isChangeCountHandled(_ changeCount: Int) -> Bool {
+    guard let state = loadPasteboardState() else { return false }
+    return state.changeCount == changeCount
+  }
+
+  func shouldSuppressCapture(changeCount: Int, contentSHA256: String) -> Bool {
+    guard let state = loadPasteboardState() else { return false }
+    if state.changeCount == changeCount {
+      return true
+    }
+    let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+    if !contentSHA256.isEmpty,
+       state.origin == "applied",
+       state.contentSHA256 == contentSHA256,
+       nowMs - state.updatedAtMs < 60_000 {
+      return true
+    }
+    return false
+  }
+
+  // MARK: - Snapshot Writeback (for Fast First Paint & Degraded Mode)
+
+  func saveSnapshot(
+    items: [KeyboardClipItem],
+    historyRevision: String,
+    selfDeviceName: String,
+    keepThumbs: Set<String>,
+    keepImages: Set<String>
+  ) {
+    guard let root = rootURL, let url = snapshotURL, let thumbs = thumbnailsDir, let imgs = imagesDir else { return }
+    let attrs: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+    for dir in [root, thumbs, imgs] {
+      if !fileManager.fileExists(atPath: dir.path) {
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true, attributes: attrs)
+      }
+    }
+    let rawItems = items.map { item in
+      RawItem(
+        id: item.id,
+        revision: item.revision,
+        kind: item.kind.rawValue,
+        title: item.title,
+        insertText: item.insertText,
+        fullText: item.fullText,
+        subtitle: item.subtitle,
+        domain: item.domain,
+        imageMeta: item.imageMeta,
+        thumbnailFile: item.thumbnailFile,
+        imageFile: item.imageFile,
+        deviceName: item.deviceName,
+        createdAtMs: item.createdAtMs,
+        pinned: item.pinned
+      )
+    }
+    let raw = RawSnapshot(
+      version: 1,
+      generatedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
+      historyRevision: historyRevision,
+      selfDeviceName: selfDeviceName,
+      items: rawItems
+    )
+    if let data = try? JSONEncoder().encode(raw) {
+      try? writeAtomic(data: data, to: url)
+    }
+    pruneOrphans(in: thumbs, keeping: keepThumbs)
+    pruneOrphans(in: imgs, keeping: keepImages)
+  }
+
+  func ensureMediaDirs() {
+    let attrs: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+    for dir in [rootURL, thumbnailsDir, imagesDir].compactMap({ $0 }) {
+      if !fileManager.fileExists(atPath: dir.path) {
+        try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true, attributes: attrs)
+      }
+    }
+  }
+
+  func writeAtomic(data: Data, to url: URL) throws {
+    let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).tmp-\(UUID().uuidString)")
+    try data.write(to: tmp, options: [.atomic])
+    try? fileManager.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication], ofItemAtPath: tmp.path)
+    if fileManager.fileExists(atPath: url.path) {
+      _ = try fileManager.replaceItemAt(url, withItemAt: tmp)
+    } else {
+      try fileManager.moveItem(at: tmp, to: url)
+    }
+  }
+
+  private func pruneOrphans(in dir: URL, keeping: Set<String>) {
+    let entries = (try? fileManager.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+    for url in entries where !keeping.contains(url.lastPathComponent) {
+      try? fileManager.removeItem(at: url)
+    }
   }
 
   private func loadPinOverrides() -> [String: PinOverrideEntry] {

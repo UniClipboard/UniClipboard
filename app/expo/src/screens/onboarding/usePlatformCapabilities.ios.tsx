@@ -37,6 +37,7 @@ const INITIAL_KB: KeyboardExtensionStatus = {
   has_full_access_seen: false,
   sound_enabled: true,
   haptic_enabled: true,
+  auto_sync_enabled: true,
 };
 
 export function usePlatformCapabilities(active: boolean): PlatformCapabilitiesController {

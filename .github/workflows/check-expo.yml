@@ -209,7 +209,7 @@ jobs:
               else
                 echo 'fixture-pasteboard=unavailable'
               fi
-              if container=$(xcrun simctl get_app_container "$device" app.uniclipboard.shell data); then
+              if container=$(xcrun simctl get_app_container "$device" app.uniclipboard.shell group.app.uniclipboard.shell.incoming-share 2>/dev/null || xcrun simctl get_app_container "$device" app.uniclipboard.shell data); then
                 history_db="$container/Library/Application Support/unic-v2/unic.db"
                 if [[ -f "$history_db" ]]; then
                   sqlite3 -readonly "$history_db" \

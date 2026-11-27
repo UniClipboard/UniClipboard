@@ -32,7 +32,7 @@
         "title": "Allow Full Access",
         "subtitle": "So it can show your synced clips",
         "path": "Keyboards › Unic › Allow Full Access",
-        "readsOnly": "Reads only clips Unic has already synced",
+        "readsOnly": "Reads and syncs the clipboard only while open; never logs keystrokes",
         "sendsOnly": "Sends only to devices in your space",
         "systemWarning": "iOS shows a general warning when you turn this on."
       },
@@ -53,6 +53,13 @@
       "switchDescription": "In any app, press and hold the globe key and choose Unic.",
       "tryLabel": "Try it here",
       "tryPlaceholder": "Tap to bring up the keyboard"
+    },
+    "sync": {
+      "title": "Live Sync",
+      "autoCapture": "Auto-sync system clipboard",
+      "footer": "While the Unic keyboard is open, automatically reads text and images from the system clipboard and sends them to your devices. Incoming clips refresh the list and copy to your clipboard. Keystrokes are never logged.",
+      "pastePermissionTitle": "Avoid Paste Prompts",
+      "pastePermissionSubtitle": "Settings › Unic › Paste from Other Apps › Allow"
     },
     "feedback": {
       "title": "Key feedback",

@@ -223,6 +223,10 @@ public final class UnicEngineModule: Module {
   private var lastAppliedChangeCount: Int = -1
   private var isForeground: Bool = true
   private var pasteboardObserver: NSObjectProtocol?
+  private var engineShouldResumeOnForeground: Bool = false
+  private var lastInitDeviceName: String?
+  private var legacyDataMigrated: Bool = false
+  private var bgReleaseTask: UIBackgroundTaskIdentifier = .invalid
 
   private func updateHostCapabilities(_ eng: MobileEngine, foreground: Bool) {
     let caps: [String: Any] = [
@@ -257,6 +261,12 @@ public final class UnicEngineModule: Module {
   }
 
   private func observeCurrentPasteboardChange(_ eng: MobileEngine) throws -> String {
+    let currentChangeCount: Int = DispatchQueue.main.sync { UIPasteboard.general.changeCount }
+    self.lastProbedChangeCount = currentChangeCount
+    if (currentChangeCount == self.lastAppliedChangeCount && self.lastAppliedChangeCount >= 0) ||
+       self.keyboardBridge.isChangeCountHandled(currentChangeCount) {
+      return "{\"skipped\":true,\"reason\":\"self_applied\"}"
+    }
     let pbResult: (Int, String?, UIImage?) = DispatchQueue.main.sync {
       let pb = UIPasteboard.general
       return (pb.changeCount, pb.string, pb.image)
@@ -267,15 +277,24 @@ public final class UnicEngineModule: Module {
       return "{\"skipped\":true,\"reason\":\"self_applied\"}"
     }
     var leaseID: String?
+    var contentHash = ""
     if let text = pbResult.1, !text.isEmpty {
       if text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("unic-pair:") {
         return "{\"skipped\":true,\"reason\":\"empty_or_unsupported\"}"
+      }
+      contentHash = KeyboardBridge.sha256Hex(ofText: text)
+      if self.keyboardBridge.shouldSuppressCapture(changeCount: changeCount, contentSHA256: contentHash) {
+        return "{\"skipped\":true,\"reason\":\"self_applied\"}"
       }
       let hJSON = try callGoString { eng.importText(text, html: "", obsKey: "ios-pb:\(changeCount)", error: $0) }
       if let d = hJSON.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
         leaseID = obj["lease_id"] as? String
       }
     } else if let img = pbResult.2, let png = img.pngData() {
+      contentHash = KeyboardBridge.sha256Hex(of: png)
+      if self.keyboardBridge.shouldSuppressCapture(changeCount: changeCount, contentSHA256: contentHash) {
+        return "{\"skipped\":true,\"reason\":\"self_applied\"}"
+      }
       let hJSON = try callGoString { eng.importBytes("image/png", fileName: "", data: png, error: $0) }
       if let d = hJSON.data(using: .utf8), let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
         leaseID = obj["lease_id"] as? String
@@ -299,6 +318,7 @@ public final class UnicEngineModule: Module {
     let obsJSON = String(data: obsData, encoding: .utf8) ?? "{}"
     let res = try callGoString { eng.observeClipboard(obsJSON, error: $0) }
     self.observationSequence = nextSeq
+    self.keyboardBridge.recordPasteboardState(changeCount: changeCount, contentSHA256: contentHash, origin: "captured")
     return res
   }
 
@@ -317,7 +337,9 @@ public final class UnicEngineModule: Module {
           return (pb.changeCount, pb.hasStrings, pb.hasImages)
         }
         let changeCount = probe.0
-        if changeCount == self.lastAppliedChangeCount || changeCount == self.lastProbedChangeCount {
+        if changeCount == self.lastAppliedChangeCount ||
+           changeCount == self.lastProbedChangeCount ||
+           self.keyboardBridge.isChangeCountHandled(changeCount) {
           return
         }
         self.lastProbedChangeCount = changeCount
@@ -465,11 +487,104 @@ public final class UnicEngineModule: Module {
     return text
   }
 
+  private var sharedAppGroupContainerURL: URL? {
+    guard let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty else { return nil }
+    return FileManager.default.containerURL(
+      forSecurityApplicationGroupIdentifier: "group.\(bundleID).incoming-share"
+    )
+  }
+
+  private func applyExtensionReadableProtection(at rootURL: URL) {
+    let fm = FileManager.default
+    let attrs: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+    try? fm.setAttributes(attrs, ofItemAtPath: rootURL.path)
+    if let enumerator = fm.enumerator(at: rootURL, includingPropertiesForKeys: nil) {
+      for case let itemURL as URL in enumerator {
+        try? fm.setAttributes(attrs, ofItemAtPath: itemURL.path)
+      }
+    }
+  }
+
+  /// One-time migration of existing v2 Engine data from private Application Support
+  /// into the shared App Group container so the iOS Keyboard Extension can share the
+  /// same DataDir via time-sliced exclusive locking (0035).
+  private func migrateLegacyPrivateDataDirIfNeeded(to targetURL: URL) {
+    guard !legacyDataMigrated else { return }
+    legacyDataMigrated = true
+    let fm = FileManager.default
+    let targetDB = targetURL.appendingPathComponent("unic.db")
+    let targetSetup = targetURL.appendingPathComponent("mobile-setup.json")
+    if fm.fileExists(atPath: targetDB.path) || fm.fileExists(atPath: targetSetup.path) {
+      return
+    }
+    guard let privateBase = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+      return
+    }
+    let legacyURL = privateBase.appendingPathComponent("unic-v2", isDirectory: true)
+    let legacyDB = legacyURL.appendingPathComponent("unic.db")
+    let legacySetup = legacyURL.appendingPathComponent("mobile-setup.json")
+    guard fm.fileExists(atPath: legacyDB.path) || fm.fileExists(atPath: legacySetup.path) else {
+      return
+    }
+    let parent = targetURL.deletingLastPathComponent()
+    let attrs: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+    do {
+      try fm.createDirectory(at: parent, withIntermediateDirectories: true, attributes: attrs)
+      let stagingURL = parent.appendingPathComponent(".unic-v2-migrate-\(UUID().uuidString)", isDirectory: true)
+      defer { try? fm.removeItem(at: stagingURL) }
+      try fm.copyItem(at: legacyURL, to: stagingURL)
+      // Remove any transient lock file copied from legacy dir before activating target.
+      try? fm.removeItem(at: stagingURL.appendingPathComponent("unic.lock"))
+      applyExtensionReadableProtection(at: stagingURL)
+      if fm.fileExists(atPath: targetURL.path) {
+        try fm.removeItem(at: targetURL)
+      }
+      try fm.moveItem(at: stagingURL, to: targetURL)
+      // Remove legacy copy only after target DB/setup is verified in place.
+      if fm.fileExists(atPath: targetDB.path) || fm.fileExists(atPath: targetSetup.path) {
+        try? fm.removeItem(at: legacyURL)
+      }
+    } catch {
+      // Preserve legacy directory intact on any migration error.
+    }
+  }
+
   private func dataDirectoryPath() throws -> String {
+    if let raw = launchOverride("UNIC_MOBILE_DATA_DIR") {
+      let url = URL(fileURLWithPath: raw, isDirectory: true)
+      try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+      return url.resolvingSymlinksInPath().path
+    }
+    if let group = sharedAppGroupContainerURL {
+      let fm = FileManager.default
+      let target = group
+        .appendingPathComponent("Library", isDirectory: true)
+        .appendingPathComponent("Application Support", isDirectory: true)
+        .appendingPathComponent("unic-v2", isDirectory: true)
+      migrateLegacyPrivateDataDirIfNeeded(to: target)
+      let attrs: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+      try fm.createDirectory(at: target, withIntermediateDirectories: true, attributes: attrs)
+      return target.resolvingSymlinksInPath().path
+    }
     return try resolveDirectory(overrideEnv: "UNIC_MOBILE_DATA_DIR", fallbackSubdir: "unic-v2", searchPath: .applicationSupportDirectory)
   }
 
   private func cacheDirectoryPath() throws -> String {
+    if let raw = launchOverride("UNIC_MOBILE_CACHE_DIR") {
+      let url = URL(fileURLWithPath: raw, isDirectory: true)
+      try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+      return url.resolvingSymlinksInPath().path
+    }
+    if let group = sharedAppGroupContainerURL {
+      let fm = FileManager.default
+      let target = group
+        .appendingPathComponent("Library", isDirectory: true)
+        .appendingPathComponent("Caches", isDirectory: true)
+        .appendingPathComponent("unic-cache", isDirectory: true)
+      let attrs: [FileAttributeKey: Any] = [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+      try fm.createDirectory(at: target, withIntermediateDirectories: true, attributes: attrs)
+      return target.resolvingSymlinksInPath().path
+    }
     return try resolveDirectory(overrideEnv: "UNIC_MOBILE_CACHE_DIR", fallbackSubdir: "unic-cache", searchPath: .cachesDirectory)
   }
 
@@ -491,14 +606,117 @@ public final class UnicEngineModule: Module {
     return created
   }
 
-  private func requireEngine() throws -> MobileEngine {
-    guard let eng = engine else {
-      throw UnicModuleException("[unic:invalid_state] {\"code\":\"invalid_state\",\"message\":\"engine is not initialized\"}")
+  private func openEngineInternal(deviceName: String?, retryOnInUse: Bool) throws -> String {
+    if let existing = self.engine {
+      return try callGoString { existing.getState($0) }
     }
-    return eng
+    let dataDir = try self.dataDirectoryPath()
+    let cacheDir = try self.cacheDirectoryPath()
+    let resolvedName: String = DispatchQueue.main.sync {
+      let candidate = deviceName?.trimmingCharacters(in: .whitespacesAndNewlines)
+      return (candidate?.isEmpty == false) ? candidate! : UIDevice.current.name
+    }
+    let cfg: [String: Any] = [
+      "data_dir": dataDir,
+      "cache_dir": cacheDir,
+      "device_name": resolvedName,
+      "host_capabilities": [
+        "read_formats": ["text/plain", "text/html", "image/png"],
+        "write_formats": ["text/plain", "text/html", "image/png"],
+        "read_files": true,
+        "write_files": true,
+        "observe": self.isForeground ? "permission_required" : "unavailable",
+        "apply": self.isForeground ? "available" : "unavailable",
+      ],
+    ]
+    let cfgData = try JSONSerialization.data(withJSONObject: cfg)
+    let cfgJSON = String(data: cfgData, encoding: .utf8) ?? "{}"
+
+    var created: MobileEngine?
+    var lastErr: NSError?
+    let maxAttempts = retryOnInUse ? 30 : 1
+    for attempt in 0..<maxAttempts {
+      var newErr: NSError?
+      if let eng = MobileNewEngine(cfgJSON, &newErr) {
+        created = eng
+        break
+      }
+      lastErr = newErr
+      let raw = newErr?.localizedDescription ?? ""
+      if retryOnInUse && raw.contains("\"in_use\"") && attempt + 1 < maxAttempts {
+        Thread.sleep(forTimeInterval: 0.05)
+        continue
+      }
+      break
+    }
+    guard let eng = created else {
+      if let lastErr = lastErr {
+        throw UnicModuleException(formatGoError(lastErr))
+      }
+      throw UnicModuleException("[unic:internal] {\"code\":\"internal\",\"message\":\"new engine failed\"}")
+    }
+    let sink = EngineEventBridge(
+      onEvent: { [weak self] eventJSON in
+        self?.sendEvent("onEngineEvent", ["event": eventJSON])
+        if eventJSON.contains("history") || eventJSON.contains("received") || eventJSON.contains("device") {
+          self?.engineQueue.async {
+            self?.scheduleKeyboardSnapshotPublish(delay: 0.35)
+          }
+        }
+      },
+      onResync: { [weak self] reason in
+        self?.sendEvent("onEngineResync", ["reason": reason])
+        self?.engineQueue.async {
+          self?.scheduleKeyboardSnapshotPublish(delay: 0.35)
+        }
+      }
+    )
+    do {
+      let snapshotJSON = try callGoString { eng.subscribe(sink, error: $0) }
+      try eng.setRuntimeState(self.isForeground ? "active" : "suspended")
+      try eng.start(nil)
+      self.engine = eng
+      self.lastInitDeviceName = resolvedName
+      self.engineShouldResumeOnForeground = true
+      self.observationEpoch = ""
+      self.observationSequence = 0
+      self.lastProbedChangeCount = DispatchQueue.main.sync { UIPasteboard.general.changeCount }
+      self.startNetworkMonitor()
+      self.startPasteboardObserver()
+      if self.keyboardBridge.drainPendingActions(engine: eng) > 0 {
+        self.scheduleKeyboardSnapshotPublish(delay: 0.1)
+      } else {
+        self.scheduleKeyboardSnapshotPublish(delay: 0.25)
+      }
+      let latest = try callGoString { eng.getState($0) }
+      return latest.isEmpty ? snapshotJSON : latest
+    } catch let err as UnicModuleException {
+      try? eng.close(nil)
+      throw err
+    } catch {
+      try? eng.close(nil)
+      throw UnicModuleException(formatGoError(error))
+    }
   }
 
-  private func shutdownEngineInternal() {
+  private func requireEngine() throws -> MobileEngine {
+    if let eng = engine {
+      return eng
+    }
+    if isForeground && engineShouldResumeOnForeground {
+      _ = try openEngineInternal(deviceName: lastInitDeviceName, retryOnInUse: true)
+      self.sendEvent("onEngineResync", ["reason": "reopened"])
+      if let reopened = engine {
+        return reopened
+      }
+    }
+    throw UnicModuleException("[unic:invalid_state] {\"code\":\"invalid_state\",\"message\":\"engine is not initialized\"}")
+  }
+
+  private func shutdownEngineInternal(keepResumeIntent: Bool = false) {
+    if !keepResumeIntent {
+      engineShouldResumeOnForeground = false
+    }
     keyboardSyncWorkItem?.cancel()
     keyboardSyncWorkItem = nil
     if let eng = engine {
@@ -667,6 +885,11 @@ public final class UnicEngineModule: Module {
       guard let self = self else { return }
       self.engineQueue.async {
         self.isForeground = true
+        if self.engine == nil && self.engineShouldResumeOnForeground {
+          if (try? self.openEngineInternal(deviceName: self.lastInitDeviceName, retryOnInUse: true)) != nil {
+            self.sendEvent("onEngineResync", ["reason": "reopened"])
+          }
+        }
         guard let eng = self.engine else { return }
         self.updateHostCapabilities(eng, foreground: true)
         try? eng.setRuntimeState("active")
@@ -682,6 +905,7 @@ public final class UnicEngineModule: Module {
         let changeCount = probe.0
         if self.automaticCapture && changeCount != self.lastProbedChangeCount &&
            changeCount != self.lastAppliedChangeCount &&
+           !self.keyboardBridge.isChangeCountHandled(changeCount) &&
            (probe.1 || probe.2) {
           self.lastProbedChangeCount = changeCount
           self.sendEvent("onClipboardChanged", [
@@ -695,16 +919,35 @@ public final class UnicEngineModule: Module {
 
     OnAppEntersBackground { [weak self] in
       guard let self = self else { return }
+      let taskID = UIApplication.shared.beginBackgroundTask(withName: "unic-engine-release") { [weak self] in
+        guard let self = self else { return }
+        if self.bgReleaseTask != .invalid {
+          UIApplication.shared.endBackgroundTask(self.bgReleaseTask)
+          self.bgReleaseTask = .invalid
+        }
+      }
+      self.bgReleaseTask = taskID
       self.engineQueue.async {
         self.isForeground = false
         self.observationEpoch = ""
         self.observationSequence = 0
-        guard let eng = self.engine else { return }
-        self.keyboardSyncWorkItem?.cancel()
-        self.keyboardSyncWorkItem = nil
-        _ = try? self.keyboardBridge.publishSnapshot(engine: eng)
-        self.updateHostCapabilities(eng, foreground: false)
-        try? eng.setRuntimeState("suspended")
+        self.stopPasteboardObserver()
+        self.stopNetworkMonitor()
+        if let eng = self.engine {
+          self.keyboardSyncWorkItem?.cancel()
+          self.keyboardSyncWorkItem = nil
+          _ = try? self.keyboardBridge.publishSnapshot(engine: eng)
+          self.updateHostCapabilities(eng, foreground: false)
+          // Release unic.lock + SQLite + tailcat cleanly before suspension so
+          // the iOS Keyboard Extension can acquire the shared DataDir without 0xdead10cc.
+          self.shutdownEngineInternal(keepResumeIntent: true)
+        }
+        DispatchQueue.main.async {
+          if self.bgReleaseTask != .invalid {
+            UIApplication.shared.endBackgroundTask(self.bgReleaseTask)
+            self.bgReleaseTask = .invalid
+          }
+        }
       }
     }
 
@@ -836,73 +1079,7 @@ public final class UnicEngineModule: Module {
     // ---- Engine Lifecycle ----
 
     AsyncFunction("initializeEngine") { (deviceName: String?) -> String in
-      if let existing = self.engine {
-        return try callGoString { existing.getState($0) }
-      }
-      let dataDir = try self.dataDirectoryPath()
-      let cacheDir = try self.cacheDirectoryPath()
-      let resolvedName: String = DispatchQueue.main.sync {
-        let candidate = deviceName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (candidate?.isEmpty == false) ? candidate! : UIDevice.current.name
-      }
-      let cfg: [String: Any] = [
-        "data_dir": dataDir,
-        "cache_dir": cacheDir,
-        "device_name": resolvedName,
-        "host_capabilities": [
-          "read_formats": ["text/plain", "text/html", "image/png"],
-          "write_formats": ["text/plain", "text/html", "image/png"],
-          "read_files": true,
-          "write_files": true,
-          "observe": self.isForeground ? "permission_required" : "unavailable",
-          "apply": self.isForeground ? "available" : "unavailable",
-        ],
-      ]
-      let cfgData = try JSONSerialization.data(withJSONObject: cfg)
-      let cfgJSON = String(data: cfgData, encoding: .utf8) ?? "{}"
-      var newErr: NSError?
-      guard let eng = MobileNewEngine(cfgJSON, &newErr) else {
-        if let newErr = newErr {
-          throw UnicModuleException(formatGoError(newErr))
-        }
-        throw UnicModuleException("[unic:internal] {\"code\":\"internal\",\"message\":\"new engine failed\"}")
-      }
-      let sink = EngineEventBridge(
-        onEvent: { [weak self] eventJSON in
-          self?.sendEvent("onEngineEvent", ["event": eventJSON])
-          if eventJSON.contains("history") || eventJSON.contains("received") || eventJSON.contains("device") {
-            self?.engineQueue.async {
-              self?.scheduleKeyboardSnapshotPublish(delay: 0.35)
-            }
-          }
-        },
-        onResync: { [weak self] reason in
-          self?.sendEvent("onEngineResync", ["reason": reason])
-          self?.engineQueue.async {
-            self?.scheduleKeyboardSnapshotPublish(delay: 0.35)
-          }
-        }
-      )
-      do {
-        let snapshotJSON = try callGoString { eng.subscribe(sink, error: $0) }
-        try eng.setRuntimeState(self.isForeground ? "active" : "suspended")
-        try eng.start(nil)
-        self.engine = eng
-        self.observationEpoch = ""
-        self.observationSequence = 0
-        self.lastProbedChangeCount = DispatchQueue.main.sync { UIPasteboard.general.changeCount }
-        self.startNetworkMonitor()
-        self.startPasteboardObserver()
-        self.scheduleKeyboardSnapshotPublish(delay: 0.2)
-        let latest = try callGoString { eng.getState($0) }
-        return latest.isEmpty ? snapshotJSON : latest
-      } catch let err as UnicModuleException {
-        try? eng.close(nil)
-        throw err
-      } catch {
-        try? eng.close(nil)
-        throw UnicModuleException(formatGoError(error))
-      }
+      return try self.openEngineInternal(deviceName: deviceName, retryOnInUse: true)
     }.runOnQueue(engineQueue)
 
     AsyncFunction("shutdownEngine") { () in
@@ -910,7 +1087,7 @@ public final class UnicEngineModule: Module {
       self.stopNetworkMonitor()
       self.observationEpoch = ""
       self.observationSequence = 0
-      self.shutdownEngineInternal()
+      self.shutdownEngineInternal(keepResumeIntent: false)
     }.runOnQueue(engineQueue)
 
     AsyncFunction("listIncomingShares") { () -> String in
@@ -934,9 +1111,13 @@ public final class UnicEngineModule: Module {
       self.keyboardBridge.statusJSON()
     }.runOnQueue(engineQueue)
 
-    AsyncFunction("setKeyboardPreferences") { (soundEnabled: Bool, hapticEnabled: Bool) -> String in
+    AsyncFunction("setKeyboardPreferences") { (soundEnabled: Bool, hapticEnabled: Bool, autoSyncEnabled: Bool?) -> String in
       do {
-        try self.keyboardBridge.savePreferences(soundEnabled: soundEnabled, hapticEnabled: hapticEnabled)
+        try self.keyboardBridge.savePreferences(
+          soundEnabled: soundEnabled,
+          hapticEnabled: hapticEnabled,
+          autoSyncEnabled: autoSyncEnabled
+        )
         return self.keyboardBridge.statusJSON()
       } catch {
         throw UnicModuleException(formatGoError(error))
@@ -1017,19 +1198,29 @@ public final class UnicEngineModule: Module {
       guard expires > Date() else {
         throw UnicModuleException("[unic:expired] {\"code\":\"expired\",\"message\":\"pairing ticket expired\"}")
       }
-      self.lastAppliedChangeCount = DispatchQueue.main.sync {
+      let cc = DispatchQueue.main.sync {
         let clipboard = UIPasteboard.general
         clipboard.setItems([[UTType.utf8PlainText.identifier: text]], options: [.localOnly: true, .expirationDate: expires])
         return clipboard.changeCount
       }
+      self.lastAppliedChangeCount = cc
+      self.lastProbedChangeCount = cc
+      self.keyboardBridge.recordPasteboardState(changeCount: cc, contentSHA256: "", origin: "applied")
     }.runOnQueue(engineQueue)
 
     AsyncFunction("copyPlainText") { (text: String) in
       _ = try self.requireEngine()
-      self.lastAppliedChangeCount = DispatchQueue.main.sync {
+      let cc = DispatchQueue.main.sync {
         UIPasteboard.general.string = text
         return UIPasteboard.general.changeCount
       }
+      self.lastAppliedChangeCount = cc
+      self.lastProbedChangeCount = cc
+      self.keyboardBridge.recordPasteboardState(
+        changeCount: cc,
+        contentSHA256: KeyboardBridge.sha256Hex(ofText: text),
+        origin: "applied"
+      )
     }.runOnQueue(engineQueue)
 
     AsyncFunction("pickAndCommitImage") { (camera: Bool, promise: Promise) in
@@ -1364,6 +1555,7 @@ public final class UnicEngineModule: Module {
         }
 
         var applied = false
+        var appliedHash = ""
         if let imgPart = parts.first(where: { ($0["kind"] as? String) == "representation" && (($0["mime"] as? String)?.hasPrefix("image/") == true) }),
            let partID = imgPart["id"] as? String {
           let cacheDir = try self.cacheDirectoryPath()
@@ -1375,6 +1567,7 @@ public final class UnicEngineModule: Module {
             DispatchQueue.main.sync {
               UIPasteboard.general.image = image
             }
+            appliedHash = KeyboardBridge.sha256Hex(of: imgData)
             applied = true
           }
         } else if let txtPart = parts.first(where: { ($0["kind"] as? String) == "representation" && (($0["mime"] as? String) == "text/plain" || ($0["mime"] as? String) == "text/html") }),
@@ -1387,6 +1580,7 @@ public final class UnicEngineModule: Module {
             DispatchQueue.main.sync {
               UIPasteboard.general.string = text
             }
+            appliedHash = KeyboardBridge.sha256Hex(ofText: text)
             applied = true
           }
         }
@@ -1400,6 +1594,7 @@ public final class UnicEngineModule: Module {
 
         self.lastAppliedChangeCount = afterChangeCount
         self.lastProbedChangeCount = afterChangeCount
+        self.keyboardBridge.recordPasteboardState(changeCount: afterChangeCount, contentSHA256: appliedHash, origin: "applied")
 
         let reportPayload: [String: Any]
         if expectedEpoch.isEmpty {
@@ -1456,6 +1651,7 @@ public final class UnicEngineModule: Module {
 
         let itemJSON = try callGoString { eng.getHistoryItem(historyID, error: $0) }
         var applied = false
+        var appliedHash = ""
         if let itemData = itemJSON.data(using: .utf8),
            let itemObj = try? JSONSerialization.jsonObject(with: itemData) as? [String: Any],
            let kind = itemObj["kind"] as? String,
@@ -1470,6 +1666,7 @@ public final class UnicEngineModule: Module {
             DispatchQueue.main.sync {
               UIPasteboard.general.image = image
             }
+            appliedHash = KeyboardBridge.sha256Hex(of: imgData)
             applied = true
           }
         } else {
@@ -1481,6 +1678,7 @@ public final class UnicEngineModule: Module {
             DispatchQueue.main.sync {
               UIPasteboard.general.string = text
             }
+            appliedHash = KeyboardBridge.sha256Hex(ofText: text)
             applied = true
           }
         }
@@ -1494,6 +1692,7 @@ public final class UnicEngineModule: Module {
 
         self.lastAppliedChangeCount = afterChangeCount
         self.lastProbedChangeCount = afterChangeCount
+        self.keyboardBridge.recordPasteboardState(changeCount: afterChangeCount, contentSHA256: appliedHash, origin: "applied")
 
         let reportPayload: [String: Any]
         if expectedEpoch.isEmpty {

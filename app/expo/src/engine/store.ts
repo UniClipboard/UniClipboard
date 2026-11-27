@@ -414,7 +414,8 @@ async function startLiveEngineAndSubscribe(
     } catch {
       return;
     }
-    if (event.instance_id !== snapshot.instance_id) return;
+    const currentInstanceId = get().snapshot?.instance_id;
+    if (currentInstanceId && event.instance_id !== currentInstanceId) return;
     pendingEvents.add(event.kind);
     if (coalesceTimer !== null) return;
     coalesceTimer = setTimeout(() => {

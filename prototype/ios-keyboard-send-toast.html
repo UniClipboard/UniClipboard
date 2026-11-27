@@ -1,0 +1,1821 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>unic · iOS 键盘多设备发送状态反馈小组件原型（4 套 UI 方案）</title>
+<style>
+  :root {
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", sans-serif;
+    --font-mono: "SF Mono", ui-monospace, Menlo, Monaco, Consolas, monospace;
+
+    /* Workbench */
+    --stage-bg: #eaedf3;
+    --stage-dot: rgba(21, 23, 28, 0.055);
+    --bar-bg: rgba(255, 255, 255, 0.88);
+    --bar-border: rgba(15, 23, 42, 0.09);
+    --bar-text: #15171c;
+    --bar-muted: #5d6676;
+    --bar-faint: #8b94a5;
+    --bar-surface: #f2f4f8;
+    --bar-surface-hover: #e7ebf2;
+    --panel-bg: #ffffff;
+    --panel-shadow: 0 22px 52px -18px rgba(15, 23, 42, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
+
+    /* iOS 26/27 Liquid Glass & Keyboard Tokens */
+    --ios-kb-bg: linear-gradient(180deg, rgba(235, 238, 245, 0.92) 0%, rgba(221, 225, 235, 0.97) 100%);
+    --ios-rail-bg: rgba(255, 255, 255, 0.68);
+    --ios-card: rgba(255, 255, 255, 0.94);
+    --ios-spotlight-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.99) 0%, rgba(246, 248, 253, 0.97) 100%);
+    --ios-spotlight-border: rgba(21, 23, 28, 0.20);
+    --ios-card-border: rgba(0, 0, 0, 0.07);
+    --ios-key-bg: rgba(255, 255, 255, 0.95);
+    --ios-key-muted: rgba(255, 255, 255, 0.58);
+    --ios-key-shadow: 0 1px 0 rgba(0, 0, 0, 0.16), 0 1px 2px rgba(0, 0, 0, 0.05);
+
+    --ios-label: #0b0c0e;
+    --ios-secondary: rgba(60, 60, 67, 0.64);
+    --ios-tertiary: rgba(60, 60, 67, 0.38);
+    --ios-fill: rgba(120, 120, 128, 0.12);
+    --ios-sep: rgba(60, 60, 67, 0.14);
+
+    /* unic v2 Monochrome Ink Accent */
+    --accent: #15171c;
+    --on-accent: #ffffff;
+
+    /* Semantic Tints */
+    --tint-blue: #007aff;
+    --tint-url: #0284c7;
+    --tint-green: #28b446;
+    --tint-amber: #f59e0b;
+    --tint-red: #e5484d;
+
+    /* Glass Surfaces */
+    --glass-surface: rgba(255, 255, 255, 0.88);
+    --glass-border: rgba(15, 23, 42, 0.10);
+    --glass-shadow: 0 10px 28px -8px rgba(15, 23, 42, 0.22), 0 0 0 0.5px rgba(15, 23, 42, 0.08);
+    --pill-dark-bg: rgba(21, 23, 28, 0.92);
+    --pill-dark-fg: #ffffff;
+    --pill-dark-muted: rgba(255, 255, 255, 0.66);
+    --pill-dark-border: rgba(255, 255, 255, 0.12);
+    --pill-dark-surface: rgba(255, 255, 255, 0.10);
+  }
+
+  [data-theme="dark"] {
+    --stage-bg: #0a0b0e;
+    --stage-dot: rgba(255, 255, 255, 0.045);
+    --bar-bg: rgba(18, 20, 25, 0.90);
+    --bar-border: rgba(255, 255, 255, 0.09);
+    --bar-text: #f3f4f8;
+    --bar-muted: #98a2b3;
+    --bar-faint: #646e80;
+    --bar-surface: #1b1e25;
+    --bar-surface-hover: #252933;
+    --panel-bg: #14161b;
+    --panel-shadow: 0 24px 64px -16px rgba(0, 0, 0, 0.75), 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+
+    --ios-kb-bg: linear-gradient(180deg, rgba(31, 32, 38, 0.95) 0%, rgba(20, 21, 25, 0.99) 100%);
+    --ios-rail-bg: rgba(46, 46, 52, 0.68);
+    --ios-card: rgba(42, 43, 49, 0.92);
+    --ios-spotlight-bg: linear-gradient(135deg, rgba(54, 55, 62, 0.97) 0%, rgba(40, 41, 47, 0.97) 100%);
+    --ios-spotlight-border: rgba(244, 242, 238, 0.25);
+    --ios-card-border: rgba(255, 255, 255, 0.10);
+    --ios-key-bg: #3b3b42;
+    --ios-key-muted: rgba(255, 255, 255, 0.13);
+    --ios-key-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+
+    --ios-label: #ffffff;
+    --ios-secondary: rgba(235, 235, 245, 0.64);
+    --ios-tertiary: rgba(235, 235, 245, 0.36);
+    --ios-fill: rgba(120, 120, 128, 0.26);
+    --ios-sep: rgba(255, 255, 255, 0.11);
+
+    --accent: #f4f2ee;
+    --on-accent: #15171c;
+
+    --tint-blue: #0a84ff;
+    --tint-url: #38bdf8;
+    --tint-green: #30d158;
+    --tint-amber: #fbbf24;
+    --tint-red: #ff6961;
+
+    --glass-surface: rgba(38, 40, 46, 0.92);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-shadow: 0 12px 32px -6px rgba(0, 0, 0, 0.62), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+    --pill-dark-bg: rgba(244, 242, 238, 0.94);
+    --pill-dark-fg: #15171c;
+    --pill-dark-muted: rgba(21, 23, 28, 0.62);
+    --pill-dark-border: rgba(21, 23, 28, 0.10);
+    --pill-dark-surface: rgba(21, 23, 28, 0.08);
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: var(--font-sans);
+    background-color: var(--stage-bg);
+    background-image: radial-gradient(var(--stage-dot) 1px, transparent 1px);
+    background-size: 20px 20px;
+    color: var(--bar-text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; border: none; background: none; color: inherit; cursor: pointer; padding: 0; }
+
+  /* ==================== Top Workbench Bar ==================== */
+  .topbar {
+    position: sticky; top: 0; z-index: 80;
+    backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    background: var(--bar-bg);
+    border-bottom: 1px solid var(--bar-border);
+    padding: 10px 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 9px;
+    background: var(--accent); color: var(--on-accent);
+    display: grid; place-items: center;
+    font-weight: 750; font-size: 13px; letter-spacing: -0.02em;
+  }
+  .brand-title { font-size: 14px; font-weight: 700; letter-spacing: -0.015em; }
+  .brand-sub { font-size: 11.5px; color: var(--bar-muted); }
+
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .seg-group {
+    display: inline-flex; align-items: center; gap: 2px;
+    background: var(--bar-surface);
+    padding: 3px; border-radius: 10px;
+    border: 1px solid var(--bar-border);
+  }
+  .seg-btn {
+    padding: 5px 10px; border-radius: 7px;
+    font-size: 12px; font-weight: 550; color: var(--bar-muted);
+    transition: all 0.15s ease; white-space: nowrap;
+  }
+  .seg-btn:hover { color: var(--bar-text); }
+  .seg-btn.active {
+    background: var(--panel-bg); color: var(--bar-text);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+
+  /* ==================== Scenario Bar ==================== */
+  .scenario-bar {
+    max-width: 1440px;
+    margin: 16px auto 0;
+    padding: 0 20px;
+  }
+  .scenario-panel {
+    background: var(--panel-bg);
+    border-radius: 16px;
+    box-shadow: var(--panel-shadow);
+    padding: 14px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    flex-wrap: wrap;
+  }
+  .scenario-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .scenario-label {
+    font-size: 12px; font-weight: 700; color: var(--bar-muted);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    padding-right: 4px;
+  }
+  .sim-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 12px; border-radius: 10px;
+    background: var(--bar-surface); color: var(--bar-text);
+    border: 1px solid var(--bar-border);
+    font-size: 12.5px; font-weight: 600;
+    transition: all 0.15s ease;
+  }
+  .sim-btn:hover { background: var(--bar-surface-hover); transform: translateY(-0.5px); }
+  .sim-btn:active { transform: scale(0.98); }
+  .sim-btn.primary {
+    background: var(--accent); color: var(--on-accent);
+    border-color: transparent;
+  }
+  .sim-btn.primary:hover { opacity: 0.92; }
+  .sim-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: currentColor; opacity: 0.7;
+  }
+  .sim-status {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--bar-muted);
+    font-family: var(--font-mono);
+    background: var(--bar-surface);
+    padding: 6px 10px; border-radius: 9px;
+  }
+  .sim-status .pulse-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--tint-green);
+  }
+  .sim-status.busy .pulse-dot {
+    background: var(--tint-blue);
+    animation: pulse 1.1s infinite ease-in-out;
+  }
+  .sim-status.warn .pulse-dot { background: var(--tint-amber); }
+
+  /* ==================== Problem Callout ==================== */
+  .callout-strip {
+    max-width: 1440px;
+    margin: 12px auto 0;
+    padding: 0 20px;
+  }
+  .callout-box {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+    background: var(--panel-bg);
+    border: 1px solid var(--bar-border);
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 12.5px; color: var(--bar-muted);
+  }
+  .callout-box strong { color: var(--bar-text); }
+  .old-vs-new {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 11.5px;
+  }
+  .tag-bad {
+    background: rgba(229, 72, 77, 0.11); color: var(--tint-red);
+    padding: 3px 8px; border-radius: 99px; font-weight: 600;
+  }
+  .tag-good {
+    background: rgba(40, 180, 70, 0.12); color: var(--tint-green);
+    padding: 3px 8px; border-radius: 99px; font-weight: 600;
+  }
+
+  /* ==================== Main Stage ==================== */
+  .stage {
+    max-width: 1440px;
+    margin: 16px auto 32px;
+    padding: 0 20px;
+  }
+  .grid-4 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 20px;
+  }
+  @media (max-width: 1020px) {
+    .grid-4 { grid-template-columns: 1fr; }
+  }
+  .stage.single-mode .grid-4 {
+    grid-template-columns: minmax(0, 560px) minmax(0, 1fr);
+    align-items: start;
+  }
+  @media (max-width: 980px) {
+    .stage.single-mode .grid-4 { grid-template-columns: 1fr; }
+  }
+
+  .scheme-card {
+    background: var(--panel-bg);
+    border-radius: 22px;
+    box-shadow: var(--panel-shadow);
+    padding: 18px;
+    display: flex; flex-direction: column; gap: 14px;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+    border: 1.5px solid transparent;
+  }
+  .scheme-card.recommended {
+    border-color: rgba(21, 23, 28, 0.18);
+  }
+  [data-theme="dark"] .scheme-card.recommended {
+    border-color: rgba(244, 242, 238, 0.20);
+  }
+  .scheme-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  }
+  .scheme-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .scheme-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 2px 8px; border-radius: 7px;
+    font-size: 11px; font-weight: 700;
+    background: var(--bar-surface); color: var(--bar-text);
+    border: 1px solid var(--bar-border);
+  }
+  .scheme-badge.rec {
+    background: var(--accent); color: var(--on-accent); border-color: transparent;
+  }
+  .scheme-name { font-size: 15.5px; font-weight: 720; letter-spacing: -0.015em; }
+  .scheme-desc { font-size: 12.5px; color: var(--bar-muted); line-height: 1.48; margin-top: 3px; }
+  .scheme-meta-pills {
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .meta-pill {
+    font-size: 11px; font-weight: 550;
+    color: var(--bar-muted);
+    background: var(--bar-surface);
+    padding: 3px 8px; border-radius: 99px;
+  }
+
+  /* ==================== Realistic iPhone Keyboard Frame ==================== */
+  .kb-stage-wrap {
+    display: flex; justify-content: center;
+    padding: 6px 0 2px;
+  }
+  .iphone-kb-shell {
+    width: 393px;
+    max-width: 100%;
+    border-radius: 34px;
+    background: var(--ios-kb-bg);
+    border: 1px solid rgba(15, 23, 42, 0.10);
+    box-shadow: 0 18px 42px -18px rgba(15, 23, 42, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+    padding: 8px 8px 6px;
+    position: relative;
+    overflow: hidden;
+    user-select: none;
+  }
+  [data-theme="dark"] .iphone-kb-shell {
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 22px 48px -14px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .kb-root {
+    display: flex; flex-direction: column; gap: 7px;
+    height: 302px;
+    position: relative;
+  }
+  .kb-body {
+    flex: 1; min-height: 0;
+    display: flex; gap: 7px;
+    position: relative;
+  }
+
+  /* Left 48pt Rail */
+  .kb-rail {
+    width: 48px; flex-shrink: 0;
+    background: var(--ios-rail-bg);
+    backdrop-filter: blur(18px);
+    border-radius: 16px;
+    border: 0.5px solid var(--ios-card-border);
+    padding: 4px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    position: relative; z-index: 10;
+  }
+  .rail-btn {
+    width: 40px; height: 39px; border-radius: 11px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    color: var(--ios-secondary);
+    position: relative;
+    transition: transform 0.12s ease, background 0.15s ease;
+  }
+  .rail-btn:active { transform: scale(0.93); }
+  .rail-btn.active { background: var(--accent); color: var(--on-accent); }
+  .rail-btn svg { width: 15px; height: 15px; stroke-width: 2; }
+  .rail-btn span { font-size: 9px; font-weight: 600; line-height: 1; }
+  .rail-spacer { flex: 1; }
+  .rail-sep { width: 24px; height: 0.5px; background: var(--ios-sep); margin: 1px 0; }
+  .rail-status-dot {
+    position: absolute; top: 5px; right: 5px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--tint-green);
+    border: 1.2px solid var(--ios-card);
+  }
+  .rail-status-dot.syncing { background: var(--tint-blue); animation: pulse 1s infinite; }
+  .rail-status-dot.warn { background: var(--tint-amber); }
+  .rail-status-dot.error { background: var(--tint-red); }
+  .rail-count-badge {
+    position: absolute; top: 2px; right: 2px;
+    min-width: 15px; height: 14px; padding: 0 3.5px;
+    border-radius: 7px;
+    font-size: 8.5px; font-weight: 750; line-height: 14px; text-align: center;
+    background: var(--accent); color: var(--on-accent);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    transition: all 0.2s ease;
+  }
+  .rail-count-badge.ok { background: var(--tint-green); color: #fff; }
+  .rail-count-badge.warn { background: var(--tint-amber); color: #15171c; }
+  .rail-count-badge.busy { background: var(--tint-blue); color: #fff; }
+  .spin { animation: spin 0.9s linear infinite; }
+
+  /* Right Card Canvas */
+  .kb-canvas {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  .kb-list {
+    flex: 1; min-height: 0;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 1px 1px 4px;
+    scrollbar-width: none;
+  }
+  .kb-list::-webkit-scrollbar { display: none; }
+
+  .clip-card {
+    background: var(--ios-card);
+    border-radius: 14px;
+    border: 0.5px solid var(--ios-card-border);
+    padding: 8px 11px 8px 9px;
+    display: flex; flex-direction: column; gap: 6px;
+    transition: transform 0.12s ease, border-color 0.2s ease, background 0.2s ease;
+    cursor: pointer;
+    position: relative;
+  }
+  .clip-card:active { transform: scale(0.985); }
+  .clip-card.latest {
+    background: var(--ios-spotlight-bg);
+    border: 1px solid var(--ios-spotlight-border);
+  }
+  .clip-row {
+    display: flex; align-items: center; gap: 9px; min-width: 0;
+  }
+  .kind-bar {
+    width: 3px; align-self: stretch; min-height: 28px;
+    border-radius: 1.5px; background: var(--tint-blue); flex-shrink: 0;
+  }
+  .kind-bar.url { background: var(--tint-url); }
+  .thumb-box {
+    width: 56px; height: 40px; border-radius: 8px; flex-shrink: 0;
+    background: linear-gradient(135deg, #dce6f7 0%, #c6d5f1 50%, #e5ecf9 100%);
+    border: 0.5px solid rgba(0, 0, 0, 0.08);
+    display: flex; align-items: center; justify-content: center;
+    color: #35528a; font-size: 9px; font-weight: 700;
+    overflow: hidden;
+  }
+  [data-theme="dark"] .thumb-box {
+    background: linear-gradient(135deg, #27324a 0%, #1d2638 100%);
+    color: #93b4f5; border-color: rgba(255, 255, 255, 0.1);
+  }
+  .clip-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .clip-meta {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10px; color: var(--ios-secondary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .badge-latest {
+    background: var(--accent); color: var(--on-accent);
+    font-size: 9px; font-weight: 700; padding: 1.5px 6px; border-radius: 99px;
+    flex-shrink: 0;
+  }
+  .domain-tag { color: var(--tint-url); font-weight: 600; flex-shrink: 0; }
+  .clip-title {
+    font-size: 13px; font-weight: 500; color: var(--ios-label);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.3;
+  }
+  .clip-sub {
+    font-size: 10.5px; color: var(--ios-tertiary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* Bottom Edit Bar */
+  .kb-editbar {
+    height: 38px; flex-shrink: 0;
+    display: flex; align-items: center; gap: 6px;
+    position: relative; z-index: 10;
+  }
+  .kb-key {
+    height: 38px; border-radius: 12px;
+    background: var(--ios-key-bg); color: var(--ios-label);
+    box-shadow: var(--ios-key-shadow);
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+    font-size: 13px; font-weight: 550;
+  }
+  .kb-key.muted { width: 64px; background: var(--ios-key-muted); color: var(--ios-tertiary); box-shadow: none; font-size: 12px; }
+  .kb-key.space { flex: 1; }
+  .kb-key.ret { width: 74px; background: var(--accent); color: var(--on-accent); font-weight: 650; }
+  .kb-key.del { width: 48px; }
+
+  .kb-globe-row {
+    height: 32px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 18px 0;
+    color: var(--ios-secondary);
+  }
+
+  /* ===================================================================== */
+  /* SCHEME A: Coalesced Dynamic Pill (灵动聚合胶囊)                         */
+  /* ===================================================================== */
+  .scheme-a-anchor {
+    position: absolute;
+    left: 58px; right: 6px;
+    bottom: 44px;
+    display: flex; flex-direction: column; align-items: center;
+    z-index: 35;
+    pointer-events: none;
+  }
+  .a-popover {
+    width: 100%; max-width: 296px;
+    background: var(--glass-surface);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: 16px;
+    padding: 10px 11px;
+    margin-bottom: 6px;
+    pointer-events: auto;
+    transform-origin: bottom center;
+    transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.2, 0.9, 0.25, 1);
+  }
+  .a-popover.hidden {
+    opacity: 0; transform: translateY(8px) scale(0.95); pointer-events: none; display: none;
+  }
+  .a-pill {
+    pointer-events: auto;
+    display: inline-flex; align-items: center; gap: 7px;
+    max-width: 100%;
+    padding: 6px 11px 6px 9px;
+    border-radius: 99px;
+    background: var(--pill-dark-bg);
+    color: var(--pill-dark-fg);
+    border: 1px solid var(--pill-dark-border);
+    box-shadow: 0 8px 22px -6px rgba(0, 0, 0, 0.34);
+    backdrop-filter: blur(16px);
+    font-size: 11.5px; font-weight: 600;
+    transition: all 0.24s cubic-bezier(0.2, 0.9, 0.25, 1);
+    cursor: pointer;
+  }
+  .a-pill:active { transform: scale(0.97); }
+  .a-pill.hidden {
+    opacity: 0; transform: translateY(8px) scale(0.92); pointer-events: none;
+  }
+  .a-pill-text {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 185px;
+  }
+  .a-pill-sub {
+    color: var(--pill-dark-muted); font-weight: 500; font-size: 11px;
+    white-space: nowrap;
+  }
+  .a-dot-cluster {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 2px 5px; border-radius: 99px;
+    background: var(--pill-dark-surface);
+  }
+  .mini-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    transition: background 0.25s ease, transform 0.25s ease;
+  }
+  .mini-dot.waiting { background: rgba(156, 163, 175, 0.7); }
+  .mini-dot.sending { background: var(--tint-blue); animation: pulse 0.9s infinite; }
+  .mini-dot.done { background: var(--tint-green); }
+  .mini-dot.offline { background: var(--tint-amber); }
+  .mini-dot.failed { background: var(--tint-red); }
+  .a-pill-chevron {
+    opacity: 0.6; font-size: 10px; transition: transform 0.2s ease;
+  }
+  .a-pill.expanded .a-pill-chevron { transform: rotate(180deg); }
+
+  /* ===================================================================== */
+  /* SCHEME B: Inline Card Sync Strip (卡片内嵌同步细条)                     */
+  /* ===================================================================== */
+  .b-inline-strip {
+    display: flex; flex-direction: column; gap: 6px;
+    padding-top: 6px;
+    border-top: 0.5px solid var(--ios-sep);
+    transition: all 0.22s ease;
+  }
+  .b-inline-strip.hidden { display: none; }
+  .b-strip-top {
+    display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    font-size: 10.5px; color: var(--ios-secondary);
+  }
+  .b-strip-chips {
+    display: flex; align-items: center; gap: 4px; flex-wrap: nowrap;
+    overflow: hidden; flex: 1; min-width: 0;
+  }
+  .b-chip {
+    display: inline-flex; align-items: center; gap: 3.5px;
+    padding: 2px 6px; border-radius: 6px;
+    background: var(--ios-fill);
+    font-size: 10px; font-weight: 580; color: var(--ios-label);
+    white-space: nowrap; flex-shrink: 0;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+  .b-chip.done { background: rgba(40, 180, 70, 0.13); color: var(--tint-green); }
+  .b-chip.sending { background: rgba(0, 122, 255, 0.13); color: var(--tint-blue); }
+  .b-chip.offline { background: rgba(245, 158, 11, 0.14); color: var(--tint-amber); }
+  .b-chip.failed { background: rgba(229, 72, 77, 0.13); color: var(--tint-red); }
+  .b-strip-toggle {
+    font-size: 10px; font-weight: 650; color: var(--ios-secondary);
+    padding: 2px 5px; border-radius: 6px; flex-shrink: 0;
+  }
+  .b-strip-toggle:hover { background: var(--ios-fill); color: var(--ios-label); }
+  .b-quiet-badge {
+    display: inline-flex; align-items: center; gap: 2.5px;
+    padding: 1px 5.5px; border-radius: 99px;
+    font-size: 9.5px; font-weight: 700;
+    background: rgba(40, 180, 70, 0.13); color: var(--tint-green);
+    margin-left: auto; flex-shrink: 0;
+  }
+  .b-quiet-badge.warn { background: rgba(245, 158, 11, 0.16); color: var(--tint-amber); }
+  .b-quiet-badge.hidden { display: none; }
+  .b-progress-track {
+    height: 2px; border-radius: 99px; background: var(--ios-fill); overflow: hidden;
+  }
+  .b-progress-fill {
+    height: 100%; border-radius: 99px; background: var(--tint-blue);
+    transition: width 0.28s ease, background 0.25s ease;
+  }
+  .b-progress-fill.done { background: var(--tint-green); }
+  .b-progress-fill.warn { background: var(--tint-amber); }
+
+  /* ===================================================================== */
+  /* SCHEME C: Top Compact Sync Ribbon (顶部吸顶轻盈状态条)                  */
+  /* ===================================================================== */
+  .c-ribbon-wrap {
+    overflow: hidden;
+    max-height: 0; opacity: 0; margin-bottom: 0;
+    transition: max-height 0.26s cubic-bezier(0.2, 0.9, 0.25, 1), opacity 0.18s ease, margin-bottom 0.22s ease;
+    position: relative; z-index: 25;
+  }
+  .c-ribbon-wrap.visible {
+    max-height: 185px; opacity: 1; margin-bottom: 6px;
+  }
+  .c-ribbon {
+    background: var(--glass-surface);
+    backdrop-filter: blur(18px);
+    border: 0.5px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+  }
+  .c-ribbon-bar {
+    height: 28px;
+    padding: 0 9px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    cursor: pointer;
+    font-size: 11px; font-weight: 600; color: var(--ios-label);
+  }
+  .c-ribbon-left {
+    display: flex; align-items: center; gap: 6px; min-width: 0;
+  }
+  .c-ribbon-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .c-ribbon-right {
+    display: flex; align-items: center; gap: 5px; flex-shrink: 0;
+  }
+  .c-dots { display: inline-flex; align-items: center; gap: 3.5px; }
+  .c-drawer {
+    border-top: 0.5px solid var(--ios-sep);
+    padding: 7px 9px 8px;
+    display: none;
+  }
+  .c-drawer.open { display: block; }
+  .c-progress-edge {
+    height: 2px; background: transparent; width: 100%;
+  }
+  .c-progress-edge-bar {
+    height: 100%; background: var(--tint-blue);
+    transition: width 0.28s ease, background 0.25s ease;
+  }
+  .c-progress-edge-bar.done { background: var(--tint-green); }
+  .c-progress-edge-bar.warn { background: var(--tint-amber); }
+
+  /* ===================================================================== */
+  /* SCHEME D: Rail-Anchored Micro-Flyout & Popover (左侧同步键锚定浮窗)     */
+  /* ===================================================================== */
+  .d-flyout {
+    position: absolute;
+    left: 55px;
+    bottom: 48px;
+    z-index: 35;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+    pointer-events: none;
+  }
+  .d-tag {
+    pointer-events: auto;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    border-radius: 12px 12px 12px 4px;
+    background: var(--glass-surface);
+    backdrop-filter: blur(20px);
+    border: 0.5px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    font-size: 11px; font-weight: 620; color: var(--ios-label);
+    cursor: pointer;
+    transform-origin: bottom left;
+    transition: opacity 0.2s ease, transform 0.22s cubic-bezier(0.2, 0.9, 0.25, 1);
+  }
+  .d-tag.hidden {
+    opacity: 0; transform: translateX(-8px) scale(0.92); pointer-events: none;
+  }
+  .d-popover {
+    pointer-events: auto;
+    width: 266px;
+    background: var(--glass-surface);
+    backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    border-radius: 16px 16px 16px 6px;
+    padding: 10px 11px;
+    transform-origin: bottom left;
+    transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.2, 0.9, 0.25, 1);
+  }
+  .d-popover.hidden { display: none; }
+
+  /* ==================== Shared Per-Device Detail List ==================== */
+  .dev-pop-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 7px; padding-bottom: 6px;
+    border-bottom: 0.5px solid var(--ios-sep);
+  }
+  .dev-pop-title { font-size: 11.5px; font-weight: 700; color: var(--ios-label); }
+  .dev-pop-close {
+    font-size: 10.5px; font-weight: 600; color: var(--ios-secondary);
+    padding: 2px 7px; border-radius: 6px; background: var(--ios-fill);
+  }
+  .dev-rows { display: flex; flex-direction: column; gap: 6px; }
+  .dev-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    font-size: 11px;
+  }
+  .dev-row-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .dev-icon {
+    width: 18px; height: 18px; border-radius: 5px;
+    background: var(--ios-fill); color: var(--ios-secondary);
+    display: grid; place-items: center; flex-shrink: 0; font-size: 10px;
+  }
+  .dev-name {
+    font-weight: 600; color: var(--ios-label);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .dev-row-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .dev-state { font-size: 10.5px; font-weight: 600; }
+  .dev-state.done { color: var(--tint-green); }
+  .dev-state.sending { color: var(--tint-blue); font-family: var(--font-mono); }
+  .dev-state.waiting { color: var(--ios-secondary); }
+  .dev-state.offline { color: var(--tint-amber); }
+  .dev-state.failed { color: var(--tint-red); }
+  .retry-chip {
+    padding: 2px 7px; border-radius: 6px;
+    background: var(--accent); color: var(--on-accent);
+    font-size: 10px; font-weight: 650;
+  }
+  .retry-chip:active { transform: scale(0.95); }
+
+  /* ==================== Single Mode Inspector ==================== */
+  .inspector-panel {
+    display: none;
+    background: var(--panel-bg);
+    border-radius: 22px;
+    box-shadow: var(--panel-shadow);
+    padding: 20px;
+    flex-direction: column; gap: 16px;
+  }
+  .stage.single-mode .inspector-panel { display: flex; }
+  .insp-sec-title {
+    font-size: 12px; font-weight: 700; color: var(--bar-muted);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;
+  }
+  .insp-list {
+    margin: 0; padding-left: 18px;
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 13px; color: var(--bar-text); line-height: 1.5;
+  }
+  .event-log {
+    background: var(--bar-surface);
+    border: 1px solid var(--bar-border);
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--bar-muted);
+    max-height: 190px;
+    overflow-y: auto;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .event-log .ev-line strong { color: var(--bar-text); }
+
+  /* ==================== Comparison Table ==================== */
+  .compare-section {
+    max-width: 1440px;
+    margin: 0 auto 40px;
+    padding: 0 20px;
+  }
+  .compare-card {
+    background: var(--panel-bg);
+    border-radius: 20px;
+    box-shadow: var(--panel-shadow);
+    padding: 18px 20px;
+    overflow-x: auto;
+  }
+  .compare-card h3 {
+    margin: 0 0 12px; font-size: 15px; font-weight: 720;
+  }
+  table.cmp-table {
+    width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 720px;
+  }
+  table.cmp-table th, table.cmp-table td {
+    text-align: left; padding: 10px 12px;
+    border-bottom: 1px solid var(--bar-border);
+    vertical-align: top; line-height: 1.45;
+  }
+  table.cmp-table th {
+    font-size: 11.5px; font-weight: 700; color: var(--bar-muted);
+    background: var(--bar-surface);
+  }
+  table.cmp-table th:first-child { border-radius: 9px 0 0 9px; }
+  table.cmp-table th:last-child { border-radius: 0 9px 9px 0; }
+  table.cmp-table tr:last-child td { border-bottom: none; }
+
+  /* ==================== Animations & Icons ==================== */
+  .spinner-ring {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 1.8px solid currentColor; border-right-color: transparent;
+    display: inline-block; flex-shrink: 0;
+    animation: spin 0.75s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.42; transform: scale(0.84); }
+  }
+  .hidden-card { display: none !important; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">U</div>
+    <div>
+      <div class="brand-title">iOS 键盘扩展 · 多设备发送反馈组件原型</div>
+      <div class="brand-sub">解决多设备异步连接/发送时重复弹出多个 Toast 的问题 · 4 套 UI 方案同屏实时演练</div>
+    </div>
+  </div>
+  <div class="toolbar">
+    <div class="seg-group" id="viewModeGroup">
+      <button class="seg-btn active" data-mode="compare">四方案并排对比</button>
+      <button class="seg-btn" data-mode="single">单方案精测</button>
+    </div>
+    <div class="seg-group" id="singlePickerGroup" style="display:none">
+      <button class="seg-btn active" data-scheme="A">方案 A</button>
+      <button class="seg-btn" data-scheme="B">方案 B</button>
+      <button class="seg-btn" data-scheme="C">方案 C</button>
+      <button class="seg-btn" data-scheme="D">方案 D</button>
+    </div>
+    <div class="seg-group" id="themeGroup">
+      <button class="seg-btn active" data-theme-val="light">浅色</button>
+      <button class="seg-btn" data-theme-val="dark">深色</button>
+    </div>
+  </div>
+</header>
+
+<section class="scenario-bar">
+  <div class="scenario-panel">
+    <div class="scenario-left">
+      <span class="scenario-label">实时模拟场景</span>
+      <button class="sim-btn primary" onclick="runScenario('staggered3')">
+        <span class="sim-dot"></span>3 台设备异步送达
+      </button>
+      <button class="sim-btn" onclick="runScenario('partialFail')">
+        部分离线 / 失败（可重试）
+      </button>
+      <button class="sim-btn" onclick="runScenario('burst')">
+        连续复制 2 条（防刷屏）
+      </button>
+      <button class="sim-btn" onclick="runScenario('many5')">
+        5 台设备并发
+      </button>
+      <button class="sim-btn" onclick="runScenario('singleFast')">
+        单设备秒发
+      </button>
+      <button class="sim-btn" onclick="resetAll()">重置空闲</button>
+    </div>
+    <div class="sim-status" id="simStatus">
+      <span class="pulse-dot"></span>
+      <span id="simStatusText">空闲 · 点按左侧按钮同时驱动 4 套方案</span>
+    </div>
+  </div>
+</section>
+
+<section class="callout-strip">
+  <div class="callout-box">
+    <div>
+      <strong>为什么之前会出现多个 Toast？</strong>
+      刚打开键盘时设备异步建连，每连上 1 台触发一次 <code>refreshPeersAndFlush()</code> 就弹一条 Toast（等待连接 + 设备1送达 + 设备2送达 + 设备3送达 = 连续刷屏 4 次）。
+    </div>
+    <div class="old-vs-new">
+      <span class="tag-bad">旧：1 设备 = 1 Toast（反复重弹闪烁）</span>
+      <span>→</span>
+      <span class="tag-good">新：按 history_id 聚合为单个有状态组件（原地平滑更新 + 可展开明细/重试）</span>
+    </div>
+  </div>
+</section>
+
+<main class="stage" id="mainStage">
+  <div class="grid-4" id="schemeGrid">
+
+    <!-- ==================== SCHEME A ==================== -->
+    <article class="scheme-card recommended" data-card="A">
+      <div class="scheme-head">
+        <div>
+          <div class="scheme-title-row">
+            <span class="scheme-badge rec">方案 A · 推荐</span>
+            <span class="scheme-name">灵动聚合胶囊（Coalesced Dynamic Pill）</span>
+          </div>
+          <div class="scheme-desc">沿用底栏上方居中悬浮位，但全局只保留 1 颗胶囊：多设备异步送达时原地平滑变形（设备点阵逐个变绿、计数滚动），绝不重复弹出；点按胶囊展开逐设备明细与重试。</div>
+        </div>
+      </div>
+      <div class="scheme-meta-pills">
+        <span class="meta-pill">零布局跳动</span>
+        <span class="meta-pill">原地变形不闪烁</span>
+        <span class="meta-pill">不遮挡第 1 条卡片</span>
+        <span class="meta-pill">UIKit 改造成本最低</span>
+      </div>
+      <div class="kb-stage-wrap">
+        <div class="iphone-kb-shell" id="kb-A"></div>
+      </div>
+    </article>
+
+    <!-- ==================== SCHEME B ==================== -->
+    <article class="scheme-card" data-card="B">
+      <div class="scheme-head">
+        <div>
+          <div class="scheme-title-row">
+            <span class="scheme-badge">方案 B</span>
+            <span class="scheme-name">卡片内嵌同步细条（Inline Card Strip）</span>
+          </div>
+          <div class="scheme-desc">取消发送类浮层 Toast，直接将多设备进度以 20pt 细条内嵌在被发送的那条「最新」卡片底部；全部完成后收敛为静默 <code>↑3✓</code> 徽章。连续复制多条时各自独立显示，完全不打架。</div>
+        </div>
+      </div>
+      <div class="scheme-meta-pills">
+        <span class="meta-pill">0 浮层遮挡</span>
+        <span class="meta-pill">状态绑定到具体卡片</span>
+        <span class="meta-pill">连续复制天然隔离</span>
+      </div>
+      <div class="kb-stage-wrap">
+        <div class="iphone-kb-shell" id="kb-B"></div>
+      </div>
+    </article>
+
+    <!-- ==================== SCHEME C ==================== -->
+    <article class="scheme-card" data-card="C">
+      <div class="scheme-head">
+        <div>
+          <div class="scheme-title-row">
+            <span class="scheme-badge">方案 C</span>
+            <span class="scheme-name">顶部吸顶状态条（Top Sync Ribbon）</span>
+          </div>
+          <div class="scheme-desc">在右侧列表最顶部以弹簧动画滑出一条 28pt 磨砂条，左侧汇总进度、右侧多设备状态点阵；点按可抽屉式展开全部设备与单台重试，全部送达后自动折叠收回。</div>
+        </div>
+      </div>
+      <div class="scheme-meta-pills">
+        <span class="meta-pill">多设备状态一眼扫清</span>
+        <span class="meta-pill">不挡底部卡片/编辑栏</span>
+        <span class="meta-pill">适合 3–5 台重度用户</span>
+      </div>
+      <div class="kb-stage-wrap">
+        <div class="iphone-kb-shell" id="kb-C"></div>
+      </div>
+    </article>
+
+    <!-- ==================== SCHEME D ==================== -->
+    <article class="scheme-card" data-card="D">
+      <div class="scheme-head">
+        <div>
+          <div class="scheme-title-row">
+            <span class="scheme-badge">方案 D</span>
+            <span class="scheme-name">左侧同步键锚定微气泡（Rail-Anchored Flyout）</span>
+          </div>
+          <div class="scheme-desc">以左侧工具栏底部「同步」按钮为唯一视觉锚点：图标旋转 + 实时角标（<code>2/3</code> / <code>✓</code> / <code>!</code>），并从按钮右侧短暂滑出窄气泡；点按同步键或气泡随时弹出设备状态浮窗。</div>
+        </div>
+      </div>
+      <div class="scheme-meta-pills">
+        <span class="meta-pill">极度克制零干扰</span>
+        <span class="meta-pill">复用现有同步入口</span>
+        <span class="meta-pill">列表区几乎无遮挡</span>
+      </div>
+      <div class="kb-stage-wrap">
+        <div class="iphone-kb-shell" id="kb-D"></div>
+      </div>
+    </article>
+
+    <!-- Single-mode detail inspector -->
+    <aside class="inspector-panel" id="inspectorPanel">
+      <div>
+        <div class="insp-sec-title">当前方案设计要点</div>
+        <ul class="insp-list" id="inspNotes"></ul>
+      </div>
+      <div>
+        <div class="insp-sec-title">状态聚合规则（底层共用）</div>
+        <ul class="insp-list">
+          <li><strong>按 <code>history_id</code> 合并</strong>：无论几台设备分批连接，同一个剪贴条目永远只对应 1 个活跃发送聚合态 <code>KeyboardSendSession</code>。</li>
+          <li><strong>禁止重复入场动画</strong>：状态从 <code>connecting → sending(1/3) → sending(2/3) → done(3/3)</code> 原地更新，不再反复淡入淡出。</li>
+          <li><strong>连续复制自动切换焦点</strong>：新内容捕获时立即切换到最新 <code>history_id</code>（方案 B 则同时保留旧卡片的完成/进行中状态）。</li>
+          <li><strong>失败/离线不自动消失</strong>：全成功 1.8s 自动收起；存在失败或离线设备时停留更久（或保留角标），允许点按展开单台重试。</li>
+        </ul>
+      </div>
+      <div>
+        <div class="insp-sec-title">实时模拟事件流</div>
+        <div class="event-log" id="eventLog">
+          <div class="ev-line">等待触发模拟场景…</div>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</main>
+
+<section class="compare-section">
+  <div class="compare-card">
+    <h3>4 套 UI 方案横向对比</h3>
+    <table class="cmp-table">
+      <thead>
+        <tr>
+          <th style="width:16%">方案</th>
+          <th style="width:14%">遮挡情况</th>
+          <th style="width:18%">多设备进度可读性</th>
+          <th style="width:18%">连续快速复制表现</th>
+          <th style="width:17%">失败/离线单台重试</th>
+          <th style="width:17%">iOS UIKit 落地成本</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>A · 灵动聚合胶囊</strong><br><span style="color:var(--tint-green);font-weight:600">综合推荐</span></td>
+          <td>低（浮在底栏上方，永不挡 #1 最新卡片）</td>
+          <td>高（点数 + <code>2/3</code> + 当前完成设备名，点击展开明细）</td>
+          <td>原地平滑切换为新一条，零闪烁</td>
+          <td>直接点击胶囊展开浮层，一键单台重试</td>
+          <td><strong>最低</strong>（直接升级现有 <code>toastContainer</code>）</td>
+        </tr>
+        <tr>
+          <td><strong>B · 卡片内嵌细条</strong></td>
+          <td><strong>零遮挡</strong>（无任何悬浮层）</td>
+          <td>中高（卡片底部直接展示 2–3 个设备小芯片，可展开）</td>
+          <td><strong>最佳</strong>（每条卡片独立展示各自发送状态，互不覆盖）</td>
+          <td>点按卡片底部展开明细或长按预览中重试</td>
+          <td>中等（需给 <code>KeyboardListRowCell</code> 增加可折叠底条与自适应高度）</td>
+        </tr>
+        <tr>
+          <td><strong>C · 顶部吸顶状态条</strong></td>
+          <td>无遮挡（列表整体下移 34pt，完成后平滑回弹）</td>
+          <td><strong>最高</strong>（顶部横条宽裕，点阵+进度边线一目了然）</td>
+          <td>顶条原地切换新任务，无抖动</td>
+          <td>点按顶条向下抽屉展开，空间最舒展</td>
+          <td>中等（在 <code>canvasContainer</code> 顶部加动画高度约束）</td>
+        </tr>
+        <tr>
+          <td><strong>D · 左侧同步键锚定</strong></td>
+          <td>极低（仅左下短暂窄标签，其余全收纳到图标角标）</td>
+          <td>中（常态仅角标 <code>2/3</code>，点击同步键看全量明细）</td>
+          <td>图标与角标静默更新，最不打扰打字</td>
+          <td>角标变琥珀 <code>!</code>，点同步键弹出浮窗重试</td>
+          <td>较低（扩展 <code>KeyboardRailView</code> 同步键角标 + 浮窗）</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+// ==================== Shared State ====================
+const INITIAL_CLIPS = [
+  {
+    id: 'clip-1', kind: 'image', title: '图片.png',
+    sub: '942 × 2048 · PNG · 点按复制图片',
+    device: '本机 iPhone', time: '刚刚', thumb: true
+  },
+  {
+    id: 'clip-2', kind: 'text', title: '爸妈你们先吃饭吧',
+    device: 'M02 Physical', time: '2分钟前'
+  },
+  {
+    id: 'clip-3', kind: 'url', domain: 'github.com', title: 'github.com/UniClipboard/UniClipboard',
+    device: 'Mac Studio', time: '12分钟前'
+  },
+  {
+    id: 'clip-4', kind: 'text', title: '已关闭 iOS 26+ UIScrollEdgeEffect 顶部边缘模糊',
+    device: 'Windows PC', time: '1小时前'
+  }
+];
+
+let clips = structuredClone(INITIAL_CLIPS);
+let activeBatch = null; // { id, clipId, clipTitle, phase, devices: [{id, name, icon, state, progress}], lastEventText, autoHideAt }
+let cardBatches = {};   // clipId -> batch snapshot (used by Scheme B to show per-card history)
+let expanded = { A: false, B: false, C: false, D: false };
+let dTagVisible = false;
+let timers = [];
+let viewMode = 'compare';
+let selectedSingle = 'A';
+
+const INSPECTOR_NOTES = {
+  A: [
+    '直接取代现有 KeyboardViewController.toastContainer，复用底栏上方 8pt 黄金区域，永远不遮挡第 1 条卡片。',
+    '多设备发送统一聚合为 1 颗胶囊：waiting → sending（旋转环 + 设备状态点阵 + 2/3）→ done（绿勾 + 已同步至 3 台设备）。',
+    '所有设备陆续送达时胶囊仅原地变更文字与点阵颜色，不重新播放入场动画，彻底消除刷屏感。',
+    '遇到部分失败/离线时胶囊自动常驻 5s 并显示「已同步 2/4 · 点按查看」，点按原地展开逐设备状态卡与单台「重试」。'
+  ],
+  B: [
+    '彻底去掉发送类悬浮 Toast，状态直接生长在刚被捕获的 #1 卡片底部（20pt 内嵌条），对浏览与点按零遮挡。',
+    '支持同时展示 2–3 台设备的彩色微标签（MacBook ✓ · Win 68% · iPad 离线），超出自动折叠为 +N。',
+    '连续快速复制 2 条内容时，两条各自保留自己的同步条，不会后一条把前一条的状态覆盖掉。',
+    '全部送达 1.8s 后底条平滑折叠收回，仅在卡片元信息行右侧留下极简静默徽章「↑3✓」。'
+  ],
+  C: [
+    '在右侧剪贴板画布最顶部插入一条 28pt 磨砂吸顶条，有活跃任务时平滑推下列表，完成后收回。',
+    '拥有最宽的横向空间：左侧放方向图标与汇总文案，右侧放每台设备的独立状态点阵 + 底部 2px 进度细线。',
+    '点按状态条直接向下展开抽屉明细，非常适合同时连接 4–5 台设备的用户。'
+  ],
+  D: [
+    '利用左侧工具栏已有的「同步」按钮作为单一状态入口，最符合 Apple 极简克制的设计理念。',
+    '发送时图标旋转 + 右上角实时数字角标（1/3 → 2/3 → ✓ 或 !），并从同步键右侧滑出轻量气泡标签，1.6s 后收回。',
+    '点按同步键或微气泡可随时拉出锚定浮窗查看逐台设备进度与重试。'
+  ]
+};
+
+// ==================== Helpers ====================
+function clearTimers() {
+  timers.forEach(t => clearTimeout(t));
+  timers = [];
+}
+function later(ms, fn) {
+  const id = setTimeout(fn, ms);
+  timers.push(id);
+  return id;
+}
+function logEvent(msg) {
+  const el = document.getElementById('eventLog');
+  if (!el) return;
+  const now = new Date();
+  const ts = now.toTimeString().slice(0, 8) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+  const div = document.createElement('div');
+  div.className = 'ev-line';
+  div.innerHTML = `<span>[${ts}]</span> <strong>${msg}</strong>`;
+  el.prepend(div);
+  while (el.children.length > 24) el.removeChild(el.lastChild);
+}
+function summarizeBatch(batch) {
+  if (!batch) return null;
+  const total = batch.devices.length;
+  const done = batch.devices.filter(d => d.state === 'done').length;
+  const sending = batch.devices.filter(d => d.state === 'sending').length;
+  const waiting = batch.devices.filter(d => d.state === 'waiting').length;
+  const failed = batch.devices.filter(d => d.state === 'failed').length;
+  const offline = batch.devices.filter(d => d.state === 'offline').length;
+  const active = sending + waiting;
+  const pct = total === 0 ? 0 : Math.round(
+    batch.devices.reduce((acc, d) => acc + (d.state === 'done' ? 100 : (d.state === 'sending' ? d.progress : 0)), 0) / total
+  );
+  let overall = 'idle';
+  if (batch.phase === 'connecting' || (waiting === total && total > 0)) overall = 'connecting';
+  else if (active > 0) overall = 'sending';
+  else if (done === total && total > 0) overall = 'done';
+  else if (failed > 0 || offline > 0) overall = 'partial';
+  return { total, done, sending, waiting, failed, offline, active, pct, overall };
+}
+
+function summaryHeadline(batch, sum) {
+  if (!batch || !sum) return '';
+  if (sum.overall === 'connecting') return '已读取剪贴板 · 正在连接设备…';
+  if (sum.overall === 'sending') {
+    if (sum.total === 1) return `正在发送至 ${batch.devices[0].name}…`;
+    return `正在同步 ${sum.done}/${sum.total}`;
+  }
+  if (sum.overall === 'done') {
+    if (sum.total === 1) return `已发送至 ${batch.devices[0].name}`;
+    return `已同步至 ${sum.total} 台设备`;
+  }
+  if (sum.overall === 'partial') {
+    const issue = sum.failed > 0 ? `${sum.failed} 台失败` : `${sum.offline} 台离线`;
+    return `已同步 ${sum.done}/${sum.total} · ${issue}`;
+  }
+  return '';
+}
+
+function deviceStateLabel(d) {
+  if (d.state === 'done') return '已送达 ✓';
+  if (d.state === 'sending') return d.progress > 0 ? `${d.progress}%` : '发送中…';
+  if (d.state === 'waiting') return '建连中…';
+  if (d.state === 'offline') return '离线';
+  if (d.state === 'failed') return '超时失败';
+  return '';
+}
+
+function deviceRowsHTML(batch, schemeKey) {
+  return `
+    <div class="dev-pop-head">
+      <div class="dev-pop-title">发送明细 · ${escapeHtml(batch.clipTitle)}</div>
+      <button class="dev-pop-close" onclick="toggleExpand('${schemeKey}', false, event)">收起</button>
+    </div>
+    <div class="dev-rows">
+      ${batch.devices.map(d => `
+        <div class="dev-row">
+          <div class="dev-row-left">
+            <span class="dev-icon">${d.icon}</span>
+            <span class="dev-name">${escapeHtml(d.name)}</span>
+          </div>
+          <div class="dev-row-right">
+            <span class="dev-state ${d.state}">${deviceStateLabel(d)}</span>
+            ${(d.state === 'failed' || d.state === 'offline')
+              ? `<button class="retry-chip" onclick="retryDevice('${d.id}', event)">重试</button>`
+              : ''}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderStatusIcon(overall, onDark = false) {
+  if (overall === 'connecting' || overall === 'sending') {
+    return `<span class="spinner-ring" style="color:${onDark ? 'currentColor' : 'var(--tint-blue)'}"></span>`;
+  }
+  if (overall === 'done') {
+    return `<span style="color:var(--tint-green);font-weight:800;font-size:12px;line-height:1">✓</span>`;
+  }
+  if (overall === 'partial') {
+    return `<span style="color:var(--tint-amber);font-weight:800;font-size:12px;line-height:1">!</span>`;
+  }
+  return '';
+}
+
+// ==================== Render Keyboard Shell ====================
+function renderKeyboard(scheme) {
+  const sum = summarizeBatch(activeBatch);
+  const hasVisibleBatch = activeBatch && !activeBatch.dismissed;
+  const isExpanded = expanded[scheme] && activeBatch;
+
+  // Rail sync button indicator (Scheme D uses live badge & count)
+  let railSyncExtra = '';
+  let syncSpin = false;
+  if (scheme === 'D' && activeBatch) {
+    if (sum.overall === 'connecting' || sum.overall === 'sending') {
+      syncSpin = true;
+      railSyncExtra = `<span class="rail-count-badge busy">${sum.done}/${sum.total}</span>`;
+    } else if (sum.overall === 'done') {
+      railSyncExtra = `<span class="rail-count-badge ok">✓</span>`;
+    } else if (sum.overall === 'partial') {
+      railSyncExtra = `<span class="rail-count-badge warn">!</span>`;
+    }
+  } else {
+    const dotClass = !activeBatch ? '' : (sum.overall === 'connecting' || sum.overall === 'sending' ? 'syncing' : (sum.overall === 'partial' ? 'warn' : ''));
+    syncSpin = activeBatch && (sum.overall === 'connecting' || sum.overall === 'sending');
+    railSyncExtra = `<span class="rail-status-dot ${dotClass}"></span>`;
+  }
+
+  // Scheme C top ribbon
+  let schemeCRibbon = '';
+  if (scheme === 'C') {
+    const showC = hasVisibleBatch || isExpanded;
+    const headline = activeBatch ? summaryHeadline(activeBatch, sum) : '';
+    const dots = activeBatch ? activeBatch.devices.map(d => `<span class="mini-dot ${d.state}"></span>`).join('') : '';
+    const barClass = sum ? (sum.overall === 'done' ? 'done' : (sum.overall === 'partial' ? 'warn' : '')) : '';
+    const barW = sum ? (sum.overall === 'connecting' ? 18 : sum.pct) : 0;
+    schemeCRibbon = `
+      <div class="c-ribbon-wrap ${showC ? 'visible' : ''}">
+        <div class="c-ribbon">
+          <div class="c-ribbon-bar" onclick="toggleExpand('C', null, event)">
+            <div class="c-ribbon-left">
+              ${sum ? renderStatusIcon(sum.overall, false) : ''}
+              <span class="c-ribbon-text">${escapeHtml(headline)}</span>
+            </div>
+            <div class="c-ribbon-right">
+              <span class="c-dots">${dots}</span>
+              <span style="font-size:10px;opacity:0.55">${isExpanded ? '▴' : '▾'}</span>
+            </div>
+          </div>
+          <div class="c-progress-edge">
+            <div class="c-progress-edge-bar ${barClass}" style="width:${barW}%"></div>
+          </div>
+          <div class="c-drawer ${isExpanded ? 'open' : ''}">
+            ${activeBatch ? deviceRowsHTML(activeBatch, 'C') : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Cards HTML (Scheme B embeds inline strip inside matching cards)
+  const cardsHTML = clips.map((item, idx) => {
+    const isLatest = idx === 0;
+    const bBatch = scheme === 'B' ? cardBatches[item.id] : null;
+    const bSum = bBatch ? summarizeBatch(bBatch) : null;
+    const showBStrip = bBatch && (!bBatch.quiet || (expanded.B && activeBatch && activeBatch.clipId === item.id));
+    const showBQuiet = bBatch && bBatch.quiet && !(expanded.B && activeBatch && activeBatch.clipId === item.id);
+
+    let bQuietHTML = '';
+    if (showBQuiet && bSum) {
+      const warn = bSum.overall === 'partial';
+      const label = warn ? `↑${bSum.done}/${bSum.total}!` : `↑${bSum.total}✓`;
+      bQuietHTML = `<button class="b-quiet-badge ${warn ? 'warn' : ''}" onclick="toggleExpand('B', true, event)">${label}</button>`;
+    }
+
+    let bInlineHTML = '';
+    if (showBStrip && bSum) {
+      const visibleDevs = bBatch.devices.slice(0, 3);
+      const overflow = bBatch.devices.length - visibleDevs.length;
+      const fillClass = bSum.overall === 'done' ? 'done' : (bSum.overall === 'partial' ? 'warn' : '');
+      const fillW = bSum.overall === 'connecting' ? 16 : bSum.pct;
+      const bExpandedThis = expanded.B && activeBatch && activeBatch.clipId === item.id;
+      bInlineHTML = `
+        <div class="b-inline-strip" onclick="event.stopPropagation()">
+          <div class="b-progress-track"><div class="b-progress-fill ${fillClass}" style="width:${fillW}%"></div></div>
+          <div class="b-strip-top">
+            <div class="b-strip-chips">
+              ${visibleDevs.map(d => {
+                const icon = d.state === 'done' ? '✓' : (d.state === 'sending' ? `${d.progress}%` : (d.state === 'waiting' ? '…' : (d.state === 'offline' ? '离线' : '!')));
+                const shortName = d.name.length > 7 ? d.name.slice(0, 7) + '…' : d.name;
+                return `<span class="b-chip ${d.state}">${escapeHtml(shortName)} ${icon}</span>`;
+              }).join('')}
+              ${overflow > 0 ? `<span class="b-chip">+${overflow}</span>` : ''}
+            </div>
+            <button class="b-strip-toggle" onclick="toggleExpand('B', null, event)">${bExpandedThis ? '收起' : '明细'}</button>
+          </div>
+          ${bExpandedThis ? `<div style="padding-top:4px">${deviceRowsHTML(bBatch, 'B')}</div>` : ''}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="clip-card ${isLatest ? 'latest' : ''}">
+        <div class="clip-row">
+          ${item.thumb
+            ? `<div class="thumb-box">PNG</div>`
+            : `<div class="kind-bar ${item.kind === 'url' ? 'url' : ''}"></div>`}
+          <div class="clip-text">
+            <div class="clip-meta">
+              ${isLatest ? `<span class="badge-latest">最新</span>` : ''}
+              ${item.domain ? `<span class="domain-tag">${escapeHtml(item.domain)}</span>` : ''}
+              <span>${escapeHtml(item.device)} · ${escapeHtml(item.time)}</span>
+              ${bQuietHTML}
+            </div>
+            <div class="clip-title">${escapeHtml(item.title)}</div>
+            ${item.sub ? `<div class="clip-sub">${escapeHtml(item.sub)}</div>` : ''}
+          </div>
+        </div>
+        ${bInlineHTML}
+      </div>
+    `;
+  }).join('');
+
+  // Scheme A Floating Coalesced Pill
+  let schemeAOverlay = '';
+  if (scheme === 'A') {
+    const showA = hasVisibleBatch || isExpanded;
+    const headline = activeBatch ? summaryHeadline(activeBatch, sum) : '';
+    const sub = activeBatch && sum.overall === 'sending' && activeBatch.lastEventText ? `· ${activeBatch.lastEventText}` : '';
+    const dots = activeBatch ? activeBatch.devices.map(d => `<span class="mini-dot ${d.state}"></span>`).join('') : '';
+    schemeAOverlay = `
+      <div class="scheme-a-anchor">
+        <div class="a-popover ${isExpanded ? '' : 'hidden'}">
+          ${activeBatch ? deviceRowsHTML(activeBatch, 'A') : ''}
+        </div>
+        <button class="a-pill ${showA ? '' : 'hidden'} ${isExpanded ? 'expanded' : ''}" onclick="toggleExpand('A', null, event)">
+          ${sum ? renderStatusIcon(sum.overall, true) : ''}
+          <span class="a-pill-text">${escapeHtml(headline)}</span>
+          ${sub ? `<span class="a-pill-sub">${escapeHtml(sub)}</span>` : ''}
+          ${activeBatch && activeBatch.devices.length > 1 ? `<span class="a-dot-cluster">${dots}</span>` : ''}
+          <span class="a-pill-chevron">▴</span>
+        </button>
+      </div>
+    `;
+  }
+
+  // Scheme D Rail-anchored micro-flyout & popover
+  let schemeDOverlay = '';
+  if (scheme === 'D') {
+    const showTag = dTagVisible && activeBatch && !isExpanded;
+    const headline = activeBatch ? summaryHeadline(activeBatch, sum) : '';
+    schemeDOverlay = `
+      <div class="d-flyout">
+        <div class="d-popover ${isExpanded ? '' : 'hidden'}">
+          ${activeBatch ? deviceRowsHTML(activeBatch, 'D') : ''}
+        </div>
+        <button class="d-tag ${showTag ? '' : 'hidden'}" onclick="toggleExpand('D', true, event)">
+          ${sum ? renderStatusIcon(sum.overall, false) : ''}
+          <span>${escapeHtml(headline)}</span>
+          <span style="opacity:0.55;font-size:10px">›</span>
+        </button>
+      </div>
+    `;
+  }
+
+  const syncTapAttr = scheme === 'D' ? `onclick="toggleExpand('D', null, event)"` : `onclick="runScenario('staggered3')"`;
+
+  return `
+    <div class="kb-root">
+      <div class="kb-body">
+        <nav class="kb-rail">
+          <button class="rail-btn active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            <span>全部</span>
+          </button>
+          <button class="rail-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+            <span>置顶</span>
+          </button>
+          <button class="rail-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            <span>链接</span>
+          </button>
+          <button class="rail-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+            <span>图片</span>
+          </button>
+          <div class="rail-spacer"></div>
+          <div class="rail-sep"></div>
+          <button class="rail-btn" ${syncTapAttr} title="${scheme === 'D' ? '点击展开设备同步明细' : '重新触发模拟'}">
+            <svg class="${syncSpin ? 'spin' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>
+            <span>同步</span>
+            ${railSyncExtra}
+          </button>
+        </nav>
+
+        <section class="kb-canvas">
+          ${schemeCRibbon}
+          <div class="kb-list">
+            ${cardsHTML}
+          </div>
+        </section>
+      </div>
+
+      ${schemeAOverlay}
+      ${schemeDOverlay}
+
+      <div class="kb-editbar">
+        <button class="kb-key muted">↶ 撤销</button>
+        <button class="kb-key space">空格</button>
+        <button class="kb-key ret">换行</button>
+        <button class="kb-key del">⌫</button>
+      </div>
+    </div>
+    <div class="kb-globe-row">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4"/></svg>
+    </div>
+  `;
+}
+
+function renderAll() {
+  ['A', 'B', 'C', 'D'].forEach(k => {
+    const el = document.getElementById(`kb-${k}`);
+    if (el) el.innerHTML = renderKeyboard(k);
+  });
+  updateSimStatusBar();
+  renderInspectorNotes();
+}
+
+function updateSimStatusBar() {
+  const bar = document.getElementById('simStatus');
+  const txt = document.getElementById('simStatusText');
+  if (!activeBatch) {
+    bar.className = 'sim-status';
+    txt.textContent = '空闲 · 点按左侧按钮同时驱动 4 套方案';
+    return;
+  }
+  const sum = summarizeBatch(activeBatch);
+  if (sum.overall === 'connecting' || sum.overall === 'sending') {
+    bar.className = 'sim-status busy';
+    txt.textContent = `发送中 · ${sum.done}/${sum.total} 已送达（${sum.pct}%）`;
+  } else if (sum.overall === 'done') {
+    bar.className = 'sim-status';
+    txt.textContent = `全部送达 · ${sum.total}/${sum.total} 台设备（仅 1 次聚合反馈）`;
+  } else {
+    bar.className = 'sim-status warn';
+    txt.textContent = `部分完成 · ${sum.done}/${sum.total} 送达（可点按任意方案重试）`;
+  }
+}
+
+function renderInspectorNotes() {
+  const ul = document.getElementById('inspNotes');
+  if (!ul) return;
+  ul.innerHTML = (INSPECTOR_NOTES[selectedSingle] || []).map(x => `<li>${x}</li>`).join('');
+}
+
+// ==================== Interactions ====================
+function toggleExpand(scheme, forceVal, evt) {
+  if (evt) evt.stopPropagation();
+  if (!activeBatch) return;
+  const next = forceVal === null || forceVal === undefined ? !expanded[scheme] : forceVal;
+  expanded[scheme] = next;
+  if (next) {
+    activeBatch.dismissed = false;
+    if (scheme === 'D') dTagVisible = false;
+  }
+  renderAll();
+}
+
+function retryDevice(devId, evt) {
+  if (evt) evt.stopPropagation();
+  if (!activeBatch) return;
+  const dev = activeBatch.devices.find(d => d.id === devId);
+  if (!dev) return;
+  dev.state = 'sending';
+  dev.progress = 20;
+  activeBatch.dismissed = false;
+  activeBatch.quiet = false;
+  dTagVisible = true;
+  logEvent(`手动重试 → ${dev.name}`);
+  renderAll();
+
+  later(450, () => {
+    dev.progress = 72;
+    renderAll();
+  });
+  later(950, () => {
+    dev.state = 'done';
+    dev.progress = 100;
+    activeBatch.lastEventText = `${dev.name} ✓`;
+    logEvent(`${dev.name} 重试送达 ✓`);
+    renderAll();
+    scheduleAutoSettle();
+  });
+}
+
+function scheduleAutoSettle() {
+  const sum = summarizeBatch(activeBatch);
+  if (!sum) return;
+  if (sum.overall === 'done') {
+    later(1900, () => {
+      if (!activeBatch) return;
+      const curSum = summarizeBatch(activeBatch);
+      if (curSum.overall !== 'done') return;
+      if (!expanded.A && !expanded.C && !expanded.D) {
+        activeBatch.dismissed = true;
+        dTagVisible = false;
+      }
+      if (!expanded.B) {
+        activeBatch.quiet = true;
+      }
+      renderAll();
+    });
+  } else if (sum.overall === 'partial') {
+    later(3200, () => {
+      dTagVisible = false;
+      renderAll();
+    });
+  }
+}
+
+function startBatch(clip, devices) {
+  // Prepend new clip if not already top
+  if (!clips.some(c => c.id === clip.id)) {
+    clips = [clip, ...clips.slice(0, 4)];
+  }
+  activeBatch = {
+    id: 'batch-' + Date.now(),
+    clipId: clip.id,
+    clipTitle: clip.title,
+    phase: 'connecting',
+    devices: devices.map(d => ({ ...d })),
+    lastEventText: '',
+    dismissed: false,
+    quiet: false
+  };
+  cardBatches[clip.id] = activeBatch;
+  dTagVisible = true;
+  renderAll();
+}
+
+function resetAll() {
+  clearTimers();
+  clips = structuredClone(INITIAL_CLIPS);
+  activeBatch = null;
+  cardBatches = {};
+  expanded = { A: false, B: false, C: false, D: false };
+  dTagVisible = false;
+  logEvent('重置为空闲状态');
+  renderAll();
+}
+
+// ==================== Multi-Device Scenarios ====================
+function runScenario(name) {
+  clearTimers();
+  expanded = { A: false, B: false, C: false, D: false };
+
+  if (name === 'staggered3') {
+    const clip = {
+      id: 'clip-live-' + Date.now(),
+      kind: 'image', title: '截图_2026-11-27.png',
+      sub: '1170 × 2532 · PNG · 点按复制图片',
+      device: '本机 iPhone', time: '刚刚', thumb: true
+    };
+    const devs = [
+      { id: 'd1', name: 'MacBook Pro', icon: '💻', state: 'waiting', progress: 0 },
+      { id: 'd2', name: 'Mac Studio', icon: '🖥', state: 'waiting', progress: 0 },
+      { id: 'd3', name: 'Windows PC', icon: '🪟', state: 'waiting', progress: 0 },
+    ];
+    logEvent('捕获剪贴板图片 → 3 台设备等待建连');
+    startBatch(clip, devs);
+
+    later(550, () => {
+      activeBatch.phase = 'sending';
+      activeBatch.devices[0].state = 'sending'; activeBatch.devices[0].progress = 45;
+      activeBatch.devices[1].state = 'sending'; activeBatch.devices[1].progress = 20;
+      activeBatch.lastEventText = 'MacBook Pro 45%';
+      logEvent('MacBook Pro & Mac Studio 已建连，开始传输');
+      renderAll();
+    });
+    later(1050, () => {
+      activeBatch.devices[0].state = 'done'; activeBatch.devices[0].progress = 100;
+      activeBatch.devices[1].progress = 68;
+      activeBatch.devices[2].state = 'sending'; activeBatch.devices[2].progress = 25;
+      activeBatch.lastEventText = 'MacBook Pro ✓';
+      logEvent('MacBook Pro 已回执确认 (1/3) · 原地更新无新 Toast');
+      renderAll();
+    });
+    later(1650, () => {
+      activeBatch.devices[1].state = 'done'; activeBatch.devices[1].progress = 100;
+      activeBatch.devices[2].progress = 78;
+      activeBatch.lastEventText = 'Mac Studio ✓';
+      logEvent('Mac Studio 已回执确认 (2/3) · 原地更新无新 Toast');
+      renderAll();
+    });
+    later(2250, () => {
+      activeBatch.devices[2].state = 'done'; activeBatch.devices[2].progress = 100;
+      activeBatch.lastEventText = '全部完成';
+      logEvent('Windows PC 已回执确认 (3/3) → 1.9s 后优雅收起');
+      renderAll();
+      scheduleAutoSettle();
+    });
+    return;
+  }
+
+  if (name === 'partialFail') {
+    const clip = {
+      id: 'clip-fail-' + Date.now(),
+      kind: 'text', title: '部署令牌与发布说明（需同步到全部工作机）',
+      device: '本机 iPhone', time: '刚刚'
+    };
+    const devs = [
+      { id: 'd1', name: 'MacBook Pro', icon: '💻', state: 'sending', progress: 50 },
+      { id: 'd2', name: 'Mac Studio', icon: '🖥', state: 'sending', progress: 35 },
+      { id: 'd3', name: 'Windows PC', icon: '🪟', state: 'waiting', progress: 0 },
+      { id: 'd4', name: 'iPad Pro', icon: '📱', state: 'waiting', progress: 0 },
+    ];
+    logEvent('捕获文本 → 向 4 台设备发送（模拟部分离线/超时）');
+    startBatch(clip, devs);
+    activeBatch.phase = 'sending';
+    renderAll();
+
+    later(600, () => {
+      activeBatch.devices[0].state = 'done'; activeBatch.devices[0].progress = 100;
+      activeBatch.devices[1].state = 'done'; activeBatch.devices[1].progress = 100;
+      activeBatch.devices[2].state = 'sending'; activeBatch.devices[2].progress = 60;
+      activeBatch.lastEventText = '2 台已送达';
+      logEvent('MacBook Pro & Mac Studio 已送达 (2/4)');
+      renderAll();
+    });
+    later(1350, () => {
+      activeBatch.devices[2].state = 'failed'; activeBatch.devices[2].progress = 0;
+      activeBatch.devices[3].state = 'offline'; activeBatch.devices[3].progress = 0;
+      activeBatch.lastEventText = '点按查看';
+      logEvent('Windows PC 超时失败 · iPad Pro 离线 → 可点按各方案展开并单击重试');
+      renderAll();
+      scheduleAutoSettle();
+    });
+    return;
+  }
+
+  if (name === 'burst') {
+    const clip1 = {
+      id: 'clip-b1-' + Date.now(),
+      kind: 'text', title: '第 1 条复制：验证码 849 201',
+      device: '本机 iPhone', time: '刚刚'
+    };
+    const devs1 = [
+      { id: 'd1', name: 'MacBook Pro', icon: '💻', state: 'sending', progress: 40 },
+      { id: 'd2', name: 'Mac Studio', icon: '🖥', state: 'waiting', progress: 0 },
+    ];
+    logEvent('连续复制第 1 条 → 正在发送');
+    startBatch(clip1, devs1);
+    activeBatch.phase = 'sending';
+    renderAll();
+
+    later(650, () => {
+      devs1[0].state = 'done'; devs1[0].progress = 100;
+      devs1[1].state = 'done'; devs1[1].progress = 100;
+      cardBatches[clip1.id].devices = devs1.map(d => ({ ...d }));
+      cardBatches[clip1.id].quiet = true;
+
+      const clip2 = {
+        id: 'clip-b2-' + Date.now(),
+        kind: 'url', domain: 'docs.uniclipboard.app', title: '第 2 条复制：docs.uniclipboard.app/ios-keyboard',
+        device: '本机 iPhone', time: '刚刚'
+      };
+      const devs2 = [
+        { id: 'd1', name: 'MacBook Pro', icon: '💻', state: 'sending', progress: 35 },
+        { id: 'd2', name: 'Mac Studio', icon: '🖥', state: 'sending', progress: 20 },
+      ];
+      logEvent('0.65s 后迅速复制第 2 条 → 聚合组件无缝接管（不叠加多个 Toast）');
+      startBatch(clip2, devs2);
+      activeBatch.phase = 'sending';
+      renderAll();
+    });
+
+    later(1450, () => {
+      activeBatch.devices[0].state = 'done'; activeBatch.devices[0].progress = 100;
+      activeBatch.devices[1].progress = 80;
+      activeBatch.lastEventText = 'MacBook Pro ✓';
+      renderAll();
+    });
+    later(1950, () => {
+      activeBatch.devices[1].state = 'done'; activeBatch.devices[1].progress = 100;
+      logEvent('第 2 条全部送达（2/2）· 全程无 Toast 堆叠');
+      renderAll();
+      scheduleAutoSettle();
+    });
+    return;
+  }
+
+  if (name === 'many5') {
+    const clip = {
+      id: 'clip-5-' + Date.now(),
+      kind: 'text', title: 'git rebase -i origin/main && go test -race ./...',
+      device: '本机 iPhone', time: '刚刚'
+    };
+    const devs = [
+      { id: 'd1', name: 'MacBook Pro', icon: '💻', state: 'waiting', progress: 0 },
+      { id: 'd2', name: 'Mac Studio', icon: '🖥', state: 'waiting', progress: 0 },
+      { id: 'd3', name: 'Mac mini', icon: '🧊', state: 'waiting', progress: 0 },
+      { id: 'd4', name: 'Windows PC', icon: '🪟', state: 'waiting', progress: 0 },
+      { id: 'd5', name: 'Linux Workstation', icon: '🐧', state: 'waiting', progress: 0 },
+    ];
+    logEvent('5 台设备并发同步压测');
+    startBatch(clip, devs);
+    later(350, () => {
+      activeBatch.phase = 'sending';
+      activeBatch.devices.forEach((d, i) => { d.state = 'sending'; d.progress = 15 + i * 10; });
+      renderAll();
+    });
+    [0, 1, 2, 3, 4].forEach((idx, step) => {
+      later(750 + step * 360, () => {
+        activeBatch.devices[idx].state = 'done';
+        activeBatch.devices[idx].progress = 100;
+        activeBatch.lastEventText = `${activeBatch.devices[idx].name} ✓`;
+        logEvent(`${activeBatch.devices[idx].name} 送达 (${idx + 1}/5)`);
+        renderAll();
+        if (idx === 4) scheduleAutoSettle();
+      });
+    });
+    return;
+  }
+
+  if (name === 'singleFast') {
+    const clip = {
+      id: 'clip-1fast-' + Date.now(),
+      kind: 'text', title: '单设备已在线秒发测试文本',
+      device: '本机 iPhone', time: '刚刚'
+    };
+    const devs = [
+      { id: 'd1', name: 'MacBook Pro', icon: '💻', state: 'sending', progress: 60 },
+    ];
+    logEvent('单台已连设备秒发 → 直接显示设备名');
+    startBatch(clip, devs);
+    activeBatch.phase = 'sending';
+    renderAll();
+    later(420, () => {
+      activeBatch.devices[0].state = 'done'; activeBatch.devices[0].progress = 100;
+      logEvent('MacBook Pro 0.4s 送达 ✓');
+      renderAll();
+      scheduleAutoSettle();
+    });
+  }
+}
+
+// ==================== Workbench Controls ====================
+function updateLayoutVisibility() {
+  const stage = document.getElementById('mainStage');
+  const picker = document.getElementById('singlePickerGroup');
+  if (viewMode === 'single') {
+    stage.classList.add('single-mode');
+    picker.style.display = 'inline-flex';
+    document.querySelectorAll('.scheme-card').forEach(el => {
+      el.classList.toggle('hidden-card', el.dataset.card !== selectedSingle);
+    });
+  } else {
+    stage.classList.remove('single-mode');
+    picker.style.display = 'none';
+    document.querySelectorAll('.scheme-card').forEach(el => el.classList.remove('hidden-card'));
+  }
+  renderInspectorNotes();
+}
+
+document.getElementById('viewModeGroup').addEventListener('click', e => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  viewMode = btn.dataset.mode;
+  document.querySelectorAll('#viewModeGroup .seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+  updateLayoutVisibility();
+});
+
+document.getElementById('singlePickerGroup').addEventListener('click', e => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  selectedSingle = btn.dataset.scheme;
+  document.querySelectorAll('#singlePickerGroup .seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+  updateLayoutVisibility();
+});
+
+document.getElementById('themeGroup').addEventListener('click', e => {
+  const btn = e.target.closest('.seg-btn');
+  if (!btn) return;
+  document.documentElement.setAttribute('data-theme', btn.dataset.themeVal);
+  document.querySelectorAll('#themeGroup .seg-btn').forEach(b => b.classList.toggle('active', b === btn));
+});
+
+// Initial render + kick off a gentle demo on load
+renderAll();
+later(450, () => runScenario('staggered3'));
+</script>
+</body>
+</html>

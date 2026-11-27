@@ -74,7 +74,7 @@ func ResolveCloudURL(explicit string) (string, error) {
 	scheme := strings.ToLower(u.Scheme)
 	host := strings.ToLower(u.Hostname())
 	isLoopback := host == "127.0.0.1" || host == "localhost" || host == "::1"
-	if scheme != "https" && !(scheme == "http" && isLoopback) {
+	if scheme != "https" && (scheme != "http" || !isLoopback) {
 		return "", errors.New("cloud URL must use https (or loopback http for local testing)")
 	}
 	u.Scheme = scheme

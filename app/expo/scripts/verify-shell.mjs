@@ -105,13 +105,18 @@ try {
         throw new Error(
           `Integration import in ${relative(root, file)}: ${specifier}`,
         );
+      const exprText = ts.isCallExpression(node)
+        ? node.expression.getText(source)
+        : "";
+      const allowedShellOp =
+        (file === join(root, "src", "engine", "historyActions.ts") &&
+          exprText === "Linking.openURL") ||
+        (file === join(root, "src", "lib", "cloudRelayAuth.ts") &&
+          (exprText === "Linking.openURL" || exprText === "fetch"));
       if (
         ts.isCallExpression(node) &&
-        !(file === join(root, "src", "engine", "historyActions.ts") &&
-          node.expression.getText(source) === "Linking.openURL") &&
-        /^(fetch|.*\.openURL|.*\.share|.*\.setStringAsync)$/.test(
-          node.expression.getText(source),
-        )
+        !allowedShellOp &&
+        /^(fetch|.*\.openURL|.*\.share|.*\.setStringAsync)$/.test(exprText)
       )
         throw new Error(`System/network operation in ${relative(root, file)}`);
       ts.forEachChild(node, visit);

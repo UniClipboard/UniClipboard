@@ -317,7 +317,7 @@ export const NetworkSection = memo(function NetworkSection({
               title={cloudLoggingIn ? t('settings:live.relayCloudLoggingIn') : t('settings:live.relayCloudLogin')}
               description={t('settings:live.relayCloudLoginDesc')}
               disabled={cloudLoggingIn}
-              trailing={{ chevron: !cloudLoggingIn }}
+              trailing={cloudLoggingIn ? 'none' : 'chevron'}
               onPress={handleCloudLogin}
             />
             <SettingsListRow

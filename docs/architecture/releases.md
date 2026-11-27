@@ -58,7 +58,7 @@ paths:
   - tools/ci
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 5d74b64f79bf9bba6e9e7ba16812bedefea4bcb1
+verified: 04c928a109eb8d8ca218d15418712b4cb63d1c30
 ---
 # Product builds and CLI releases
 
@@ -139,6 +139,10 @@ independently re-verifies ancestry against the workflow run HEAD). This keeps
 `workflow_run.head_branch` on the default branch for npm OIDC and package
 channel dispatch while preventing concurrent merges to `main` from breaking or
 altering an in-flight release.
+
+Reusable Desktop build, delivery, and legacy upgrade workflows use the
+validated `source_sha` from the joint caller. A standalone dispatch that
+supplies `expected_source` must match the dispatched commit.
 
 The Desktop publication and promotion calls grant `actions: write` so GitHub
 can validate the reusable workflow's standalone mirror job. Joint calls skip

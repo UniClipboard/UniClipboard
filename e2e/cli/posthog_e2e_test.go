@@ -105,7 +105,18 @@ func TestPostHog(t *testing.T) {
 		h.cli(t, "history", "action", "@2", "builtin.text/trim", "--request-id", "posthog-once")
 		h.cli(t, "history", "use", "@1", "--request-id", "posthog-restore-once")
 		h.cli(t, "history", "use", "@1", "--request-id", "posthog-restore-once")
-		h.eventually(t, func() bool { return len(h.analytics()) >= before+2 })
+		h.eventually(t, func() bool {
+			actions, restores := 0, 0
+			for _, ev := range h.analytics()[before:] {
+				if ev["event"] == "action_completed" {
+					actions++
+				}
+				if ev["event"] == "history_applied" {
+					restores++
+				}
+			}
+			return actions >= 1 && restores >= 1
+		})
 		time.Sleep(250 * time.Millisecond)
 		actions, restores := 0, 0
 		for _, ev := range h.analytics()[before:] {
@@ -607,6 +618,9 @@ func TestPostHogDesktopReconnect(t *testing.T) {
 				t.Fatal("duplicate ready/reconnect counted as a startup")
 			}
 			call(session, "close", nil)
+		}
+		if h.eventCount("daily_active") != 0 {
+			t.Fatalf("baseline/ready without user usage emitted daily_active=%d", h.eventCount("daily_active"))
 		}
 		h.assertPostHogPrivacy(t)
 		h.mu.Lock()

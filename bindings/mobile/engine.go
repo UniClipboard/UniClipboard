@@ -37,6 +37,7 @@ type Engine struct {
 	settingsPath    string
 	relaySecretPath string
 	cacheDir        string
+	extensionMode   bool
 	settingsMu      sync.Mutex
 	relayURL        string
 	relayAccessKey  string
@@ -359,6 +360,7 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		settingsPath:    settingsPath,
 		relaySecretPath: relaySecretPath,
 		cacheDir:        cacheDir,
+		extensionMode:   cfg.ExtensionMode,
 		relayURL:        settings.Sync.Relay.URL,
 		relayAccessKey:  settings.Sync.Relay.AccessKey,
 		diagnostics:     diagnostics,
@@ -369,7 +371,15 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 func (m *Engine) Start(token *CancelToken) error {
 	ctx, cancel := withToken(token)
 	defer cancel()
-	return wrapErr(m.e.Start(ctx))
+	if err := m.e.Start(ctx); err != nil {
+		return wrapErr(err)
+	}
+	if m.extensionMode {
+		m.diagnostics.controller.EnableProduct("mobile")
+	} else {
+		m.diagnostics.controller.StartProduct("mobile")
+	}
+	return nil
 }
 
 // Stop shuts down networking and waits for active sessions to exit.

@@ -32,13 +32,14 @@ type EventSink interface {
 
 // Engine wraps *engine.Engine behind a gomobile-safe, JSON-typed boundary.
 type Engine struct {
-	e            *engine.Engine
-	dataDir      string
-	settingsPath string
-	cacheDir     string
-	settingsMu   sync.Mutex
-	previewMu    sync.Mutex
-	diagnostics  *mobileDiagnostics
+	e             *engine.Engine
+	dataDir       string
+	settingsPath  string
+	cacheDir      string
+	extensionMode bool
+	settingsMu    sync.Mutex
+	previewMu     sync.Mutex
+	diagnostics   *mobileDiagnostics
 
 	subMu     sync.Mutex
 	sub       *engine.Subscription
@@ -278,11 +279,12 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 	}
 	diagnostics.controller.SetSyncCollector(peer.Collect)
 	return &Engine{
-		e:            eng,
-		dataDir:      dataDir,
-		settingsPath: settingsPath,
-		cacheDir:     cacheDir,
-		diagnostics:  diagnostics,
+		e:             eng,
+		dataDir:       dataDir,
+		settingsPath:  settingsPath,
+		cacheDir:      cacheDir,
+		extensionMode: cfg.ExtensionMode,
+		diagnostics:   diagnostics,
 	}, nil
 }
 
@@ -290,7 +292,15 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 func (m *Engine) Start(token *CancelToken) error {
 	ctx, cancel := withToken(token)
 	defer cancel()
-	return wrapErr(m.e.Start(ctx))
+	if err := m.e.Start(ctx); err != nil {
+		return wrapErr(err)
+	}
+	if m.extensionMode {
+		m.diagnostics.controller.EnableProduct("mobile")
+	} else {
+		m.diagnostics.controller.StartProduct("mobile")
+	}
+	return nil
 }
 
 // Stop shuts down networking and waits for active sessions to exit.

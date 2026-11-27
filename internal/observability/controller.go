@@ -51,9 +51,10 @@ type Controller struct {
 	states         [5]SignalState
 	drops          [5][5]uint64
 	logger         *slog.Logger
-	analytics      *analyticsGeneration
-	analyticsReady bool
-	identityReset  bool
+	analytics        *analyticsGeneration
+	analyticsReady   bool
+	analyticsProduct string
+	identityReset    bool
 }
 
 func New(o Options) *Controller {

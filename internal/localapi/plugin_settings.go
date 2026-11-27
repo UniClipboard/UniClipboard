@@ -30,6 +30,7 @@ type PluginInfo struct {
 	Summary          string                `json:"summary,omitempty"`
 	I18N             map[string]PluginText `json:"i18n,omitempty"`
 	Capabilities     []string              `json:"capabilities"`
+	ProcessorStage   string                `json:"processor_stage,omitempty"`
 	TransportKind    string                `json:"transport_kind,omitempty"`
 	ExternalChannels bool                  `json:"external_channels,omitempty"`
 	ID               string                `json:"id"`

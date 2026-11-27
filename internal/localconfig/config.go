@@ -23,6 +23,7 @@ import (
 	"github.com/uniclipboard/unic/internal/observability"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
+	"github.com/uniclipboard/unic/internal/plugins/builtinsecurity"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
@@ -156,8 +157,20 @@ type DirectorySync struct {
 	Automatic bool `toml:"automatic" json:"automatic"`
 }
 
+// RelaySync configures the optional zero-knowledge E2EE HTTP relay fallback
+// (separate from Tailcat P2P DERP relays). AccessKey is secret and omitted
+// from JSON API responses; AccessKeySet is a non-secret output-only indicator.
+type RelaySync struct {
+	Enabled      bool   `toml:"enabled" json:"enabled"`
+	URL          string `toml:"url" json:"url,omitempty"`
+	AccessKey    string `toml:"access_key,omitempty" json:"-"`
+	AccessKeySet bool   `toml:"-" json:"access_key_set,omitempty"`
+	MaxBytes     Size   `toml:"max_bytes" json:"max_bytes,omitempty"`
+}
+
 type Sync struct {
 	Directories DirectorySync `toml:"directories" json:"directories"`
+	Relay       RelaySync     `toml:"relay" json:"relay"`
 	Automatic   bool          `toml:"automatic" json:"automatic"`
 	OnRestore   bool          `toml:"on_restore" json:"on_restore"`
 	Files       bool          `toml:"files" json:"files"`
@@ -201,6 +214,8 @@ type Instance struct {
 	DisabledDefaultTags []string               `toml:"disabled_default_tags,omitempty" json:"disabled_default_tags,omitempty"`
 	// Preview belongs to the built-in Smart Preview enricher ("builtin.preview").
 	Preview *builtinpreview.Settings `toml:"preview,omitempty" json:"preview,omitempty"`
+	// Security belongs to the built-in Sensitive Content Guard processor ("builtin.security").
+	Security *builtinsecurity.Settings `toml:"security,omitempty" json:"security,omitempty"`
 }
 
 // PluginImplementation resolves a local instance to its installed program.
@@ -250,7 +265,7 @@ func (c Config) ExternalPlugins() []string {
 // fixes at startup, for the plugins that run.
 func (c Config) processorSettingsKey() map[string]Instance {
 	out := map[string]Instance{}
-	ids := append([]string{builtinclassify.ID, builtintext.ID, builtinpreview.ID}, c.ExternalPlugins()...)
+	ids := append([]string{builtinsecurity.ID, builtinclassify.ID, builtintext.ID, builtinpreview.ID}, c.ExternalPlugins()...)
 	for _, id := range ids {
 		oe, cfg := c.ProcessorSettings(id)
 		in := c.Plugins.Instances[id]
@@ -267,6 +282,15 @@ func (c Config) processorSettingsKey() map[string]Instance {
 			norm := s.Normalized()
 			preview = &norm
 		}
+		var sec *builtinsecurity.Settings
+		if id == builtinsecurity.ID {
+			var s builtinsecurity.Settings
+			if in.Security != nil {
+				s = *in.Security
+			}
+			norm := s.Normalized()
+			sec = &norm
+		}
 		out[id] = Instance{
 			Implementation:      in.Implementation,
 			OnError:             oe,
@@ -274,6 +298,7 @@ func (c Config) processorSettingsKey() map[string]Instance {
 			Rules:               in.Rules,
 			DisabledDefaultTags: slices.Sorted(slices.Values(in.DisabledDefaultTags)),
 			Preview:             preview,
+			Security:            sec,
 		}
 	}
 	return out
@@ -322,29 +347,47 @@ func Default() Config {
 // Parse decodes and validates a config file's content. Missing keys keep
 // their defaults; unknown keys are an error.
 func Parse(data []byte) (Config, error) {
+	c, _, err := parseWithMeta(data)
+	return c, err
+}
+
+func parseWithMeta(data []byte) (Config, bool, error) {
 	c := Default()
 	md, err := toml.Decode(string(data), &c)
 	if err != nil {
-		return Config{}, err
+		return Config{}, false, err
 	}
 	if un := md.Undecoded(); len(un) > 0 {
 		keys := make([]string, len(un))
 		for i, k := range un {
 			keys[i] = k.String()
 		}
-		return Config{}, fmt.Errorf("unknown key(s): %s", strings.Join(keys, ", "))
+		return Config{}, false, fmt.Errorf("unknown key(s): %s", strings.Join(keys, ", "))
 	}
-	return c, c.Validate()
+	return c, md.IsDefined("sync", "relay", "access_key"), c.Validate()
 }
 
 // Settings is the configuration as engine settings.
 func (c Config) Settings() engine.Settings {
 	return engine.Settings{
 		DeviceName: c.DeviceName, RendezvousURL: c.RendezvousURL,
-		History:         engine.HistoryCleanupSettings{AutoCleanup: c.History.AutoCleanup, RetentionDays: c.History.RetentionDays, MaxItems: c.History.MaxItems, ExcludedTags: append([]string{}, c.History.ExcludedTags...)},
-		FileCache:       engine.FileCacheSettings{MaxBytes: int64(c.FileCache.MaxBytes)},
-		Limits:          engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
-		Sync:            engine.SyncSettings{Directories: engine.DirectorySyncSettings{Automatic: c.Sync.Directories.Automatic}, Enabled: c.Sync.Enabled, Automatic: c.Sync.Automatic, OnRestore: c.Sync.OnRestore, Files: c.Sync.Files, Introductions: c.Sync.Introductions},
+		History:   engine.HistoryCleanupSettings{AutoCleanup: c.History.AutoCleanup, RetentionDays: c.History.RetentionDays, MaxItems: c.History.MaxItems, ExcludedTags: append([]string{}, c.History.ExcludedTags...)},
+		FileCache: engine.FileCacheSettings{MaxBytes: int64(c.FileCache.MaxBytes)},
+		Limits:    engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
+		Sync: engine.SyncSettings{
+			Directories: engine.DirectorySyncSettings{Automatic: c.Sync.Directories.Automatic},
+			Relay: engine.RelaySyncSettings{
+				Enabled:   c.Sync.Relay.Enabled,
+				URL:       c.Sync.Relay.URL,
+				AccessKey: c.Sync.Relay.AccessKey,
+				MaxBytes:  int64(c.Sync.Relay.MaxBytes),
+			},
+			Enabled:       c.Sync.Enabled,
+			Automatic:     c.Sync.Automatic,
+			OnRestore:     c.Sync.OnRestore,
+			Files:         c.Sync.Files,
+			Introductions: c.Sync.Introductions,
+		},
 		BackendPolicies: c.backendPolicies(),
 	}
 }
@@ -481,6 +524,14 @@ func (c Config) Validate() error {
 				return fmt.Errorf("plugins.instances.%q: %w", id, err)
 			}
 		}
+		if in.Security != nil {
+			if id != builtinsecurity.ID {
+				return fmt.Errorf("plugins.instances.%q: this plugin takes no security settings", id)
+			}
+			if err := in.Security.Validate(); err != nil {
+				return fmt.Errorf("plugins.instances.%q: %w", id, err)
+			}
+		}
 		if in.Config != nil && !lua[id] && !dormantExternalPlugin(id, in) {
 			return fmt.Errorf("plugins.instances.%q: this plugin takes no config", id)
 		}
@@ -496,7 +547,7 @@ func (c Config) Validate() error {
 			if in.OnError != "" {
 				return fmt.Errorf("plugins.instances.%q: a sync backend is not a processor", id)
 			}
-		case builtintext.ID, builtinclassify.ID:
+		case builtintext.ID, builtinclassify.ID, builtinsecurity.ID:
 			if in.Sync != (BackendSync{}) {
 				return fmt.Errorf("plugins.instances.%q: this plugin has no sync settings", id)
 			}
@@ -627,6 +678,14 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # [sync.directories]
 # automatic = false  # copy records references; explicit send prepares the tree
 
+# Optional zero-knowledge E2EE temporary HTTP relay for offline peer fallback
+# (separate from Tailcat P2P DERP relays). Defaults off until configured.
+# [sync.relay]
+# enabled = false
+# url = "https://relay.example.com"  # or $UNIC_RELAY_URL
+# access_key = ""                    # optional self-host X-Unic-Relay-Key (or $UNIC_RELAY_ACCESS_KEY)
+# max_bytes = "25MB"                 # per-transfer relay cap (default 25 MiB, max 4 GiB)
+
 # What the built-in device-to-device sync (builtin.tailcat) sends and accepts.
 # Applies to transfers that start after the change. Uncomment the header too.
 # [plugins.instances."builtin.tailcat".sync]
@@ -636,6 +695,18 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # Files copied automatically above this size are not sent (and neither is the
 # rest of that copy); sending by hand ignores it. 0 = no extra limit.
 # auto_file_max_bytes = "100MB"
+
+# builtin.security ("Sensitive Content Guard") runs in the Guard stage before
+# standard processors and sync backends, detecting private keys, API tokens,
+# password managers, and sensitive files locally. Needs a restart.
+# [plugins.instances."builtin.security"]
+# enabled = true
+# [plugins.instances."builtin.security".security]
+# mode = "block"              # "block", "block_sync", or "expire"
+# expire_seconds = 300        # 10..86400 (used in "expire" mode)
+# tag = "sensitive"           # tag applied in "block_sync" / "expire" mode
+# intercept_received = true   # also inspect items received from remote peers
+# notify = true               # show category-only notification on interception
 
 # builtin.classify adds stable builtin:text/image/files/folder/link tags to new content.
 # Link text also receives builtin:text. It never changes content.

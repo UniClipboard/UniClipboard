@@ -23,6 +23,7 @@ import (
 	"github.com/uniclipboard/unic/internal/observability"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
+	"github.com/uniclipboard/unic/internal/plugins/builtinsecurity"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 	"github.com/uniclipboard/unic/internal/servicelifecycle"
@@ -157,6 +158,19 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	if c.PluginEnabled(string(engine.BackendTailcat)) {
 		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: peer, Builtin: true})
 	}
+	if c.PluginEnabled(builtinsecurity.ID) {
+		onError, _ := c.ProcessorSettings(builtinsecurity.ID)
+		settings := c.Plugins.Instances[builtinsecurity.ID]
+		var secCfg builtinsecurity.Settings
+		if settings.Security != nil {
+			secCfg = *settings.Security
+		}
+		guard, err := builtinsecurity.New(secCfg)
+		if err != nil {
+			return nil, err
+		}
+		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: guard, Builtin: true, OnError: onError})
+	}
 	if c.PluginEnabled(builtinclassify.ID) {
 		onError, _ := c.ProcessorSettings(builtinclassify.ID)
 		settings := c.Plugins.Instances[builtinclassify.ID]
@@ -262,12 +276,23 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	return n, nil
 }
 
-// toSettings maps the configuration file to engine settings. The environment
-// variable that picks the pairing code service is read here, not in the engine.
+// toSettings maps the configuration file to engine settings. Environment
+// overrides for the pairing code and hybrid relay services are read here,
+// not in the engine.
 func toSettings(c config.Config) engine.Settings {
 	s := c.Settings()
 	if s.RendezvousURL == "" {
 		s.RendezvousURL = os.Getenv("UNIC_RENDEZVOUS_URL")
+	}
+	if s.Sync.Relay.URL == "" {
+		if u := strings.TrimSpace(os.Getenv("UNIC_RELAY_URL")); u != "" {
+			s.Sync.Relay.URL = u
+		}
+	}
+	if s.Sync.Relay.AccessKey == "" {
+		if k := strings.TrimSpace(os.Getenv("UNIC_RELAY_ACCESS_KEY")); k != "" {
+			s.Sync.Relay.AccessKey = k
+		}
 	}
 	return s
 }

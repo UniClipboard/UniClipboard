@@ -6,10 +6,12 @@
 package identity
 
 import (
+	"crypto/ecdh"
 	"crypto/ed25519"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/subtle"
 	"encoding/base32"
 	"encoding/base64"
@@ -345,4 +347,30 @@ func VerifyObject(pk []byte, repoBinding []byte, seq, createdMs uint64, content 
 		return ErrBadProof
 	}
 	return nil
+}
+
+// ---- hybrid relay (0036) ----
+
+// RelayX25519Key derives this device's X25519 private key from its Ed25519 seed
+// per RFC 8032 clamping, without exposing the raw Ed25519 private key.
+func (i *Identity) RelayX25519Key() (*ecdh.PrivateKey, error) {
+	h := sha512.Sum512(i.priv.Seed())
+	var scalar [32]byte
+	copy(scalar[:], h[:32])
+	scalar[0] &= 248
+	scalar[31] &= 127
+	scalar[31] |= 64
+	return ecdh.X25519().NewPrivateKey(scalar[:])
+}
+
+// SignRelayEnvelope signs the canonical hybrid-relay envelope payload under the
+// dedicated domain prefix "unic/relay-envelope-sig/v1\0".
+func (i *Identity) SignRelayEnvelope(bodyAndWrappedCEK []byte) []byte {
+	return ed25519.Sign(i.priv, cat([]byte("unic/relay-envelope-sig/v1\x00"), bodyAndWrappedCEK))
+}
+
+// SignRelayAuth signs a canonical hybrid-relay Owner Auth request payload under
+// the dedicated domain prefix "unic/relay-auth/v1\0".
+func (i *Identity) SignRelayAuth(authPayload []byte) []byte {
+	return ed25519.Sign(i.priv, cat([]byte("unic/relay-auth/v1\x00"), authPayload))
 }

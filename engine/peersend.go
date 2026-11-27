@@ -163,7 +163,15 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 		}
 		targets = kept
 	}
-	if len(targets) == 0 {
+	liveSet := make(map[string]bool, len(targets))
+	for _, s := range targets {
+		liveSet[s.peerID] = true
+	}
+	relayPlans, relayErr := b.planRelayFallbacks(v, liveSet)
+	if len(targets) == 0 && len(relayPlans) == 0 {
+		if relayErr != nil {
+			return false, relayErr
+		}
 		return false, nil
 	}
 	type plannedTarget struct {
@@ -197,16 +205,28 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 			clip: b.clipOf(pv),
 		})
 	}
-	if len(planned) == 0 {
+	if len(planned) == 0 && len(relayPlans) == 0 {
+		if relayErr != nil {
+			return false, relayErr
+		}
 		return false, nil
 	}
-	keys := make([]targetKey, len(planned))
+	keys := make([]targetKey, 0, len(planned)+len(relayPlans))
 	ctxSubmission := v.workContext
-	for i, pt := range planned {
-		keys[i] = pt.key
+	for _, pt := range planned {
+		keys = append(keys, pt.key)
+	}
+	for _, rp := range relayPlans {
+		keys = append(keys, rp.key)
 	}
 	if rerr := h.Register(keys); rerr != nil {
 		return false, rerr
+	}
+	for _, pt := range planned {
+		h.ReportRoute(pt.key, RouteP2P)
+	}
+	for _, rp := range relayPlans {
+		h.ReportRoute(rp.key, RouteRelay)
 	}
 	e.mu.Lock()
 	rc := e.sendCtx
@@ -302,6 +322,80 @@ func (b *peerProcBackend) Submit(ctx context.Context, v backendView, h backendHo
 			},
 		}
 		if !b.enqueue(rc, s.peerID, job) {
+			h.Report(k, TargetFailed, errClosed)
+			emitQueue("cancelled")
+		}
+	}
+	for _, rp := range relayPlans {
+		plan := rp
+		k := plan.key
+		queued := time.Now()
+		kind := diagnosticKind(plan.view.set.c)
+		backend := diagnosticBackend(b.id)
+		emitQueue := func(result DiagnosticResult) {
+			code := Code("")
+			if result == "cancelled" {
+				code = CodeCancelled
+			}
+			e.diagnostic(context.Background(), DiagnosticRecord{Stage: "send_queue", Result: result, Code: code, Backend: backend, ContentKind: kind, Duration: time.Since(queued)})
+		}
+		// Immediately kick P2P reconnect in background without blocking relay upload.
+		b.wakePeer(plan.peerID)
+		job := &peerJob{
+			supersede: func() { h.Report(k, TargetSuperseded, nil); emitQueue("superseded") },
+			run: func(sendCtx context.Context) {
+				ctx, stop := context.WithCancel(sendCtx)
+				defer stop()
+				if ctxSubmission != nil {
+					unhook := context.AfterFunc(ctxSubmission, stop)
+					defer unhook()
+				}
+				if ctx.Err() != nil {
+					h.Report(k, TargetFailed, ctx.Err())
+					emitQueue("cancelled")
+					return
+				}
+				emitQueue("started")
+				h.Report(k, TargetSending, nil)
+				h.ReportProgress(k, "", TransferProgress{BytesSent: 0, TotalBytes: plan.view.set.total, PartCount: len(plan.view.set.parts)})
+				started := time.Now()
+				res, err := b.sendViaRelay(ctx, plan, h)
+				var outcome DiagnosticResult
+				var code Code
+				switch {
+				case err == nil:
+					outcome, code = "succeeded", ""
+				case ctx.Err() != nil:
+					outcome, code = "cancelled", CodeCancelled
+				default:
+					e.mu.Lock()
+					fe := e.sendFailure(err)
+					e.mu.Unlock()
+					outcome, code = diagnosticOutcome(fe)
+				}
+				e.diagnostic(ctx, DiagnosticRecord{Stage: "send", Result: outcome, Backend: backend, ContentKind: kind, Code: code, Duration: time.Since(started)})
+				if outcome == "failed" {
+					e.logPipelineFailure(ctx, "send", outcome, backend, kind, code)
+				}
+				if err == nil {
+					if res.route != "" {
+						h.ReportRoute(k, res.route)
+					}
+					state := res.state
+					if state == "" {
+						state = TargetSent
+					}
+					stage := res.receiptStage
+					if stage == "" {
+						stage = ReceiptStageRelayStored
+					}
+					h.ReportReceipt(k, state, stage, nil)
+					return
+				}
+				h.Report(k, TargetFailed, err)
+			},
+		}
+		if !b.enqueue(rc, plan.peerID, job) {
 			h.Report(k, TargetFailed, errClosed)
 			emitQueue("cancelled")
 		}

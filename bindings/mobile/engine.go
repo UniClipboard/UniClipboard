@@ -32,14 +32,17 @@ type EventSink interface {
 
 // Engine wraps *engine.Engine behind a gomobile-safe, JSON-typed boundary.
 type Engine struct {
-	e             *engine.Engine
-	dataDir       string
-	settingsPath  string
-	cacheDir      string
-	extensionMode bool
-	settingsMu    sync.Mutex
-	previewMu     sync.Mutex
-	diagnostics   *mobileDiagnostics
+	e               *engine.Engine
+	dataDir         string
+	settingsPath    string
+	relaySecretPath string
+	cacheDir        string
+	extensionMode   bool
+	settingsMu      sync.Mutex
+	relayURL        string
+	relayAccessKey  string
+	previewMu       sync.Mutex
+	diagnostics     *mobileDiagnostics
 
 	subMu     sync.Mutex
 	sub       *engine.Subscription
@@ -52,6 +55,10 @@ type engineConfigDTO struct {
 	CacheDir         string                   `json:"cache_dir,omitempty"`
 	DeviceName       string                   `json:"device_name,omitempty"`
 	RendezvousURL    string                   `json:"rendezvous_url,omitempty"`
+	RelayEnabled     *bool                    `json:"relay_enabled,omitempty"`
+	RelayURL         string                   `json:"relay_url,omitempty"`
+	RelayAccessKey   string                   `json:"relay_access_key,omitempty"`
+	RelayMaxBytes    int64                    `json:"relay_max_bytes,omitempty"`
 	HostCapabilities *engine.HostCapabilities `json:"host_capabilities,omitempty"`
 	ExtensionMode    bool                     `json:"extension_mode,omitempty"`
 }
@@ -123,6 +130,7 @@ func loadSettingsOrDefault(path string, cfg engineConfigDTO) (engine.Settings, e
 			if saved.RendezvousURL == "" && strings.TrimSpace(cfg.RendezvousURL) != "" {
 				saved.RendezvousURL = strings.TrimSpace(cfg.RendezvousURL)
 			}
+			applyRelayConfigDefaults(&saved, cfg)
 			return saved, nil
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -134,7 +142,71 @@ func loadSettingsOrDefault(path string, cfg engineConfigDTO) (engine.Settings, e
 	if u := strings.TrimSpace(cfg.RendezvousURL); u != "" {
 		def.RendezvousURL = u
 	}
+	applyRelayConfigDefaults(&def, cfg)
 	return def, nil
+}
+
+func applyRelayConfigDefaults(s *engine.Settings, cfg engineConfigDTO) {
+	if s.Sync.Relay.URL == "" {
+		if u := strings.TrimSpace(cfg.RelayURL); u != "" {
+			s.Sync.Relay.URL = u
+		}
+	}
+	if s.Sync.Relay.AccessKey == "" {
+		if k := strings.TrimSpace(cfg.RelayAccessKey); k != "" {
+			s.Sync.Relay.AccessKey = k
+		}
+	}
+	if s.Sync.Relay.MaxBytes == 0 && cfg.RelayMaxBytes > 0 {
+		s.Sync.Relay.MaxBytes = cfg.RelayMaxBytes
+	}
+	if cfg.RelayEnabled != nil && !s.Sync.Relay.Enabled && s.Sync.Relay.URL != "" {
+		s.Sync.Relay.Enabled = *cfg.RelayEnabled
+	}
+}
+
+func loadRelaySecret(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
+}
+
+func saveRelaySecretAtomic(path, key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".mobile-relay-secret-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }()
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if _, err := tmp.WriteString(key); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func saveSettingsAtomic(path string, s any) error {
@@ -224,9 +296,13 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 	}
 
 	settingsPath := filepath.Join(dataDir, mobileSettingsFilename)
+	relaySecretPath := filepath.Join(dataDir, "mobile-relay-secret")
 	settings, err := loadSettingsOrDefault(settingsPath, cfg)
 	if err != nil {
 		return nil, wrapErr(err)
+	}
+	if persistedKey := loadRelaySecret(relaySecretPath); persistedKey != "" {
+		settings.Sync.Relay.AccessKey = persistedKey
 	}
 
 	caps := engine.HostCapabilities{
@@ -279,12 +355,15 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 	}
 	diagnostics.controller.SetSyncCollector(peer.Collect)
 	return &Engine{
-		e:             eng,
-		dataDir:       dataDir,
-		settingsPath:  settingsPath,
-		cacheDir:      cacheDir,
-		extensionMode: cfg.ExtensionMode,
-		diagnostics:   diagnostics,
+		e:               eng,
+		dataDir:         dataDir,
+		settingsPath:    settingsPath,
+		relaySecretPath: relaySecretPath,
+		cacheDir:        cacheDir,
+		extensionMode:   cfg.ExtensionMode,
+		relayURL:        settings.Sync.Relay.URL,
+		relayAccessKey:  settings.Sync.Relay.AccessKey,
+		diagnostics:     diagnostics,
 	}, nil
 }
 
@@ -376,6 +455,8 @@ func (m *Engine) GetCapabilities() (string, error) {
 type updateSettingsDTO struct {
 	ExpectedRevision json.RawMessage `json:"expected_revision"`
 	Value            engine.Settings `json:"value"`
+	// RelayAccessKey is write-only: nil preserves existing key, "" clears it, non-empty updates it.
+	RelayAccessKey *string `json:"relay_access_key,omitempty"`
 }
 
 // UpdateSettings validates, updates, and persists Engine settings.
@@ -390,6 +471,11 @@ func (m *Engine) UpdateSettings(reqJSON string) (string, error) {
 	if err != nil {
 		return "", wrapErr(errors.New("invalid expected_revision"))
 	}
+	if req.RelayAccessKey != nil {
+		req.Value.Sync.Relay.AccessKey = strings.TrimSpace(*req.RelayAccessKey)
+	} else if req.Value.Sync.Relay.AccessKey == "" {
+		req.Value.Sync.Relay.AccessKey = m.relayAccessKey
+	}
 	st, err := m.e.UpdateSettings(context.Background(), engine.UpdateSettingsRequest{
 		ExpectedRevision: rev,
 		Value:            req.Value,
@@ -397,11 +483,37 @@ func (m *Engine) UpdateSettings(reqJSON string) (string, error) {
 	if err != nil {
 		return "", wrapErr(err)
 	}
+	m.relayURL = req.Value.Sync.Relay.URL
+	m.relayAccessKey = req.Value.Sync.Relay.AccessKey
+	if req.RelayAccessKey != nil {
+		if kerr := saveRelaySecretAtomic(m.relaySecretPath, m.relayAccessKey); kerr != nil {
+			return "", wrapErr(kerr)
+		}
+	}
 	if serr := saveSettingsAtomic(m.settingsPath, st.Value); serr != nil {
 		return "", wrapErr(serr)
 	}
 	return marshalJSON(st)
 }
+
+// ActiveSendCount returns the number of in-flight send operations so native
+// iOS/Android hosts can grant a short background drain window before suspending.
+func (m *Engine) ActiveSendCount() int {
+	ops, err := m.e.ListOperations(context.Background())
+	if err != nil {
+		return 0
+	}
+	n := 0
+	for _, op := range ops {
+		if op.Kind == engine.OperationSend && !op.Done() {
+			n++
+		}
+	}
+	return n
+}
+
+// HasActiveSends reports whether any send operation is currently in flight.
+func (m *Engine) HasActiveSends() bool { return m.ActiveSendCount() > 0 }
 
 // Subscribe registers an EventSink and returns the initial State snapshot as JSON.
 func (m *Engine) Subscribe(sink EventSink) (string, error) {

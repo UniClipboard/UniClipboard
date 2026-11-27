@@ -13,15 +13,16 @@ import (
 // engine never reads files. The script's returned table must repeat ID,
 // Version, APIVersion and Capabilities exactly. Lua cannot be a sync backend.
 type LuaPluginSpec struct {
-	ID           string
-	Version      string
-	APIVersion   int
-	Capabilities []string
-	Source       string
-	Config       plugin.Config
-	Disabled     bool
-	Events       []string
-	OnError      string // "continue" (default) or "block_sync"
+	ID             string
+	Version        string
+	APIVersion     int
+	Capabilities   []string
+	ProcessorStage string
+	Source         string
+	Config         plugin.Config
+	Disabled       bool
+	Events         []string
+	OnError        string // "continue" (default) or "block_sync"
 }
 
 // luaInstances turns the specs into plugin instances placed after the Go ones.
@@ -31,7 +32,7 @@ func luaInstances(specs []LuaPluginSpec) ([]PluginInstance, *Error) {
 		if slices.Contains(s.Capabilities, plugin.CapSyncBackend) {
 			return nil, invalidPlugin(s.ID, "Lua cannot be a sync backend")
 		}
-		p, err := luaplugin.New(luaplugin.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, Capabilities: s.Capabilities, Source: s.Source})
+		p, err := luaplugin.New(luaplugin.Spec{ID: s.ID, Version: s.Version, APIVersion: s.APIVersion, Capabilities: s.Capabilities, ProcessorStage: s.ProcessorStage, Source: s.Source})
 		if err != nil {
 			code := CodeInvalidArgument
 			if errors.Is(err, luaplugin.ErrResource) {

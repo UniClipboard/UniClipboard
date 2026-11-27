@@ -65,6 +65,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 | [0033](docs/decisions/proposed/0033-standalone-quick-panel.md) | Standalone Quick Panel | Implemented (`unic-desktop --quick-panel`, `/v1/desktop/panel-apply/*`, macOS on-demand opt-in, Wayland auto-paste via `zwp_virtual_keyboard_v1` / `RemoteDesktop` portal, isolated process/native E2E, 3-OS cross-builds, and checked-in real-VM E2E suite under `app/desktop/e2e/testdata/standalone-quick-panel-real/`); real-VM acceptance passed for N01 (`kwin_wayland` Copy/lease + `niri` auto-paste), N02 (Fedora native X11 `Xvfb` + `Openbox`), N03 (Parallels Windows 11 ARM64), and N04 real `NSPasteboard` 10/10 (Parallels macOS 26.5); interactive KDE/GNOME portal consent and macOS VM Accessibility cross-app paste remain pending. See [execution plan](docs/exec/0033-standalone-quick-panel.md). |
 | [0034](docs/decisions/proposed/0034-sync-transfer-progress-and-receipt-ack.md) | 同步发送进度上报与对端接收完成回执 | 已采纳；`peer_sessions` 新增可选节流 `sync_host.send_progress` 子调用与 `SendResult.receipt_stage`，wire v1 通过 `Hello.caps=["clip_ack"]` 协商 `clip_ack` 接收提交回执（默认 30s 超时、无远端应用确认），Engine 新增 `TargetDiscarded` / `Operation.HistoryID` / `TargetStatus.Progress` / `ListOperations` 与本地服务 `GET /v1/operations` 活跃查询及 Desktop UI 进度展示。 |
 | [0035](docs/decisions/proposed/0035-ios-keyboard-live-sync.md) | iOS 键盘扩展实时同步：自动捕获外发与激活期接收 | 已采纳，待实现；修订 0031 扩展边界，通过共享动态框架 `UnicCoreRuntime.framework` 与 App Group `DataDir` 分时互斥锁（主 App 退后台释放，前台双活降级快照）在键盘激活期间运行 Engine + `builtin.tailcat`，默认开启文本/图片自动捕获外发、建连补发、实时接收刷列表并自动写系统剪贴板及持久化跨进程防回环；真机探针见 [0035 探针回执](docs/exec/0035-ios-keyboard-live-sync-probe.md)。 |
+| [0036](docs/decisions/proposed/0036-hybrid-e2ee-relay-and-p2p-handoff.md) | 混合同步传输：P2P 优先、E2EE 临时 HTTP 中转与分块接力续传 | Phase 0、Phase 1 与 Phase 2 均已实现（`internal/relaycrypto`、确定性向量、`internal/relayserver`、`cmd/unic-relay`、`internal/relayclient`、`wire.RelayProfile`/`RelayHandoffOffer`/`Ack`/`RelayChunkData`、`engine` 混合 0 等待回退、共享 `TransferAssembly`、Level 3 大载荷 P2P 中途恢复位图结算与断线反向回落、`OperationReceive`/`DiscardReceive`、TOML/桌面/移动端适配，与 Tailcat DERP 节点解耦）；Phase 3（官方托管上线与移动端后台真机实测）待实施。 |
 
 ### 接口契约（`docs/contracts/`）
 
@@ -101,6 +102,8 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 - [SDK 扩展类型契约](docs/contracts/sdk-extension-contract.md)：历史/提交/Action DTO、插件及 Lua 装配、可选值/零值、严格配置和错误映射；已落在 `engine/` 与 `plugin/`。
 
 - [可观测性契约](docs/contracts/observability-contract.md): Engine diagnostics, logs, metrics, sampled traces, configuration and lifecycle bounds. See the [0014 receipt](docs/exec/0014-client-observability-otlp.md) and [trace receipt](docs/exec/observability-traces.md).
+
+- [混合中转同步契约](docs/contracts/hybrid-relay-contract.md)：Phase 0–2 已实现（0036），中转数据面已切至 Direct-to-S3 预签名对象存储直传（对齐 `UniClipboard/relay` Hyper Relay API v2）；包含零知识 E2EE 分块信封与确定性向量、预签名直传/直下与 SSRF/凭据剥离约束、P2P 在线优先与 0 等待回退调度、对齐 0034 进度/回执/`Hello.Caps`/`DiscardReceive`，以及 Level 3 大载荷 P2P 中途恢复位图结算、分块接力续传与断线反向回落。
 
 ### 原型
 

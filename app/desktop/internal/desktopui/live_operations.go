@@ -327,9 +327,12 @@ func (d *viewState) transferTargetItem(idPrefix string, t engine.TargetStatus) d
 		}
 	case engine.TargetSent:
 		item.Tone = desktopkit.StatusPositive
-		if t.ReceiptStage == engine.ReceiptStageRemoteReceived {
+		switch t.ReceiptStage {
+		case engine.ReceiptStageRemoteReceived:
 			item.Status = d.tr("对端已接收")
-		} else {
+		case engine.ReceiptStageRelayStored:
+			item.Status = d.tr("已暂存中转")
+		default:
 			item.Status = d.tr("已发送")
 		}
 	case engine.TargetDiscarded:

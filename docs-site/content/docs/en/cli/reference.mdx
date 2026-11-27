@@ -32,7 +32,7 @@ This page is compiled from the command table in the `unic` source. Run `unic hel
 | `3` | Migration partially completed |
 | `4` | Committed but incomplete (send, approval, or wait window did not complete; one-off transfer cancelled or undelivered) |
 | `5` | Command completed, but stopping the temporary `unicd` failed |
-| `6` | Migration initialization required (`migration_required`); run `unic migrate --help` |
+| `6` | Initialization required (`migration_required`); run `unic init` or `unic migrate` |
 
 <Callout type="warn">
 Currently some general syntax errors and ticket type errors return `1` instead of `2`. Do not rely solely on `2` in scripts to detect usage errors.
@@ -171,6 +171,21 @@ unic plugin settings save ID JSON-FILE|-
 
 See [Plugin Marketplace](../plugins/marketplace).
 
+## init
+
+```sh
+unic init [--name NAME] [--fresh [--discard-pending]] [--json]
+```
+
+Requirement: `offline`. Initializes the active profile for first use. In an interactive terminal, if v1 data is detected, prompts to import v1 history or start fresh; non-interactive or `--json` invocations refuse with `source_present`.
+
+| Flag | Description |
+|---|---|
+| `--name NAME` | Set this device's display name in `config.toml` |
+| `--fresh` | Start a fresh empty profile even if v1 data exists |
+| `--discard-pending` | With `--fresh`, abandon an incomplete `pending` migration (preserves existing data; asks `y/N` in interactive TTY) |
+| `--json` | Output result as JSON |
+
 ## migrate
 
 ```sh
@@ -178,7 +193,7 @@ unic migrate [--source DIR] [--target DIR] [--service NAME] [--dry-run] [--passp
 unic migrate --initialize-empty [--target DIR] [--json]
 ```
 
-Requirement: `offline`. Imports in-process without starting networking or clipboard. Prints full migration instructions when run without arguments or with `--help`.
+Requirement: `offline`. Imports in-process without starting networking or clipboard. Runs directly with the default source and target when called without arguments; `-h` / `--help` (and `unic help migrate`) print concise usage guidance.
 
 | Flag | Description |
 |---|---|
@@ -190,7 +205,7 @@ Requirement: `offline`. Imports in-process without starting networking or clipbo
 | `--initialize-empty` | Explicitly initialize when there is no v1 data; can only be combined with `--target` and `--json` |
 | `--json` | Output JSON progress and final report |
 
-Exit codes: `0` completed, `3` partially completed, `1` failed, `2` usage error. Re-running the same command is idempotent to resume or repair. See [Migrate from v1](../migration/v1-to-v2).
+Exit codes: `0` completed, `3` partially completed, `1` failed, `2` usage error. Target creation and `pending` state happen only after unlock succeeds; re-running the same command is idempotent to resume or repair. See [Migrate from v1](../migration/v1-to-v2).
 
 ## dev
 

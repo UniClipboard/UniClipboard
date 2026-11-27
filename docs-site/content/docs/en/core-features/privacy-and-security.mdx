@@ -12,7 +12,7 @@ description: How unic protects device trust, clipboard content, and diagnostic d
 
 ## Handling Secrets
 
-Device addresses, pairing codes, pairing tickets, and Quick Transfer links are treated as secrets:
+Device addresses, pairing codes, pairing tickets, Quick Transfer links, relay delivery tokens, presigned storage URLs, and self-hosted relay access keys are treated as secrets:
 
 - Never written to logs, events, or error messages (errors expose only stable error codes);
 - Never shown in device lists or service status, and only obtainable via explicit export (`unic device addr` or **Generate Ticket** in the GUI);

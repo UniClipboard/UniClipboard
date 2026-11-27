@@ -10,6 +10,9 @@ description: Environment variables read by unic, unicd, and the desktop app, plu
 | `UNIC_HOME` | Data directory (database, config, logs, received files, plugins). Used to run a second instance or an isolated profile |
 | `UNIC_SOCK` | Control socket path; defaults to `$UNIC_HOME/unic.sock` |
 | `UNIC_RENDEZVOUS_URL` | Pairing code service URL; `rendezvous_url` in the config file takes precedence |
+| `UNIC_RELAY_URL` | Hybrid relay HTTPS origin; `sync.relay.url` in the config file takes precedence; see [Hybrid Relay & Self-Hosting](../core-features/hybrid-relay) |
+| `UNIC_RELAY_ACCESS_KEY` | Official Cloud API key or self-hosted hybrid relay access key (`X-Unic-Relay-Key`); `sync.relay.access_key` in the config file takes precedence |
+| `UNIC_CLOUD_URL` | UniClipboard Cloud authorization service origin; defaults to `https://cloud.uniclipboard.app` |
 | `UNIC_PLUGIN_REGISTRY_URL` | Registry URL for the desktop plugin marketplace; set to an empty string to disable network fetches |
 
 For example, to start a second local node on the same machine:

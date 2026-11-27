@@ -7,12 +7,13 @@ description: 常见错误的原因与处理方法。
 
 ## 命令提示 migration_required（退出码 6）
 
-当前数据目录还没有完成迁移初始化。
+当前数据目录还没有完成初始化。
 
-- 有 v1 数据：执行 `unic migrate --dry-run --json` 预检，再执行 `unic migrate --json`。
-- 没有 v1 数据：执行 `unic migrate --initialize-empty --json`。
+- 交互终端一步完成（自动检测 v1 并可选导入或全新开始）：运行 `unic init`。
+- 直接导入 v1 历史：运行 `unic migrate`。
+- 非交互直接跳过已知 v1 数据全新初始化：运行 `unic init --fresh`（若已有未完成的导入需先放弃，改用 `unic init --fresh --discard-pending`）。
 
-预检、部分完成或失败都不会解除锁定，详见 [v1 迁移](../migration/v1-to-v2#结果与重试)。
+预检（`--dry-run`）、部分完成或失败都不会解除锁定，详见 [v1 迁移](../migration/v1-to-v2#结果与重试)。
 
 ## 修改配置后没有生效
 

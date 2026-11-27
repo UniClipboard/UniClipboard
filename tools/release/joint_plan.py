@@ -7,8 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
 import re
+import shutil
 import sys
 import tempfile
+import tomllib
 from urllib.error import HTTPError
 from urllib.parse import quote
 
@@ -450,6 +452,91 @@ def stable_plan(github, source, version, run_id, output):
     return plan
 
 
+def fetch_source_file(github, source_sha, relpath, destination_root, missing=False):
+    data = github.api(
+        "GET",
+        f"{PREFIX}/contents/{relpath}?ref={source_sha}",
+        missing=missing,
+    )
+    if data is None:
+        return None
+    if data.get("encoding") != "base64":
+        raise ValueError(f"unsupported release source encoding for {relpath}")
+    raw = base64.b64decode(data["content"])
+    target = destination_root / relpath
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(raw)
+    return raw
+
+
+def export_source(github, output, version, build_number, source_sha):
+    output = Path(output)
+    output.mkdir(parents=True, exist_ok=True)
+    source_root = output / "source"
+    if source_root.exists() and not source_root.is_dir():
+        raise ValueError("exported source path is not a directory")
+    staging_source = Path(
+        tempfile.mkdtemp(prefix=".source-staging-", dir=output)
+    )
+    backup_source = None
+    try:
+        (staging_source / ".source-commit").write_text(
+            source_sha + "\n", encoding="utf-8"
+        )
+        toml_raw = fetch_source_file(
+            github, source_sha, "release/products.toml", staging_source, missing=True
+        )
+        candidates = [build_number]
+        if toml_raw is not None:
+            desktop_meta = (
+                tomllib.loads(toml_raw.decode("utf-8"))
+                .get("products", {})
+                .get("desktop", {})
+            )
+            toml_build = desktop_meta.get("build_number")
+            if (
+                desktop_meta.get("version") == version
+                and type(toml_build) is int
+                and 1 <= toml_build < build_number
+            ):
+                candidates.append(toml_build)
+        for candidate_build in candidates:
+            en_rel = f"release/changelogs/desktop/v{version}-build.{candidate_build}.md"
+            zh_rel = (
+                f"release/changelogs/desktop/v{version}-build.{candidate_build}.zh.md"
+            )
+            en_raw = fetch_source_file(
+                github, source_sha, en_rel, staging_source, missing=True
+            )
+            zh_raw = fetch_source_file(
+                github, source_sha, zh_rel, staging_source, missing=True
+            )
+            if en_raw is not None or zh_raw is not None:
+                break
+        if source_root.exists():
+            backup_source = Path(
+                tempfile.mkdtemp(prefix=".source-old-", dir=output)
+            )
+            backup_source.rmdir()
+            source_root.rename(backup_source)
+        try:
+            staging_source.rename(source_root)
+        except BaseException:
+            if (
+                backup_source is not None
+                and backup_source.exists()
+                and not source_root.exists()
+            ):
+                backup_source.rename(source_root)
+            raise
+    finally:
+        if staging_source.exists():
+            shutil.rmtree(staging_source, ignore_errors=True)
+        if backup_source is not None and backup_source.exists():
+            shutil.rmtree(backup_source, ignore_errors=True)
+    return source_root
+
+
 def fetch_stable(args, github):
     plan = cli.read_json(args.plan)
     accepted = dict(plan["accepted"])
@@ -471,6 +558,14 @@ def fetch_stable(args, github):
         raise ValueError("unsupported release page template encoding")
     (args.output / "release-template.md").write_bytes(
         base64.b64decode(template["content"])
+    )
+    manifest_data = cli.read_json(manifest)
+    export_source(
+        github,
+        args.output,
+        manifest_data["version"],
+        manifest_data["build_number"],
+        accepted["source_sha"],
     )
 
 

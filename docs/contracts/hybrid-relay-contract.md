@@ -172,16 +172,19 @@ sig          = Ed25519.Sign(sk_sender, "unic/relay-envelope-sig/v1\0" || envelop
 
 服务端校验 `DeriveMailboxID(relay_origin, PubKey) == path.mailbox_id` 且签名有效。
 
-### 3.2a 自部署可选实例准入控制（防公网白嫖）
+### 3.2a 实例准入控制（官方 Cloud API Key 与自部署防白嫖）
 
-自部署 `unic-relay` 实例可独立启用以下任一或两项准入限制（官方公共实例可不启用；均不影响零知识 E2EE 属性）：
+官方托管实例与自部署 `hyper-relay` 实例均支持以下准入控制（不影响零知识 E2EE 属性）：
 
-1. **公钥白名单（`allowed_pubkeys`）**：服务端仅允许白名单内的 `X-Unic-PubKey` 执行 Owner Auth（注册/吊销投递令牌、订阅 SSE、拉取与确认消费）；
-2. **实例接入密钥（`X-Unic-Relay-Key`）**：当服务端启用接入密钥时，Owner Auth 与 `Bearer <delivery_token>` 请求均须携带匹配的 `X-Unic-Relay-Key` Header（常量时间比较）；客户端经 `sync.relay.access_key`（或环境变量 `UNIC_RELAY_ACCESS_KEY`）配置，视为秘密字段，绝不写入日志、事件、状态 DTO 或普通错误。
+1. **公钥白名单（`RELAY_ALLOWED_PUBKEYS`）**：服务端仅允许白名单内的 `X-Unic-PubKey` 执行 Owner Auth（注册/吊销投递令牌、订阅 SSE、拉取与确认消费）；
+2. **接入密钥 / Cloud API Key（`X-Unic-Relay-Key`）**：
+   - **官方托管（`https://relay.uniclipboard.app`）**：用户登录 **UniClipboard Cloud**（`https://cloud.uniclipboard.app`）后，经 OAuth 2.0 PKCE 一键授权自动签发（或在 `/account/api-keys` 手动创建）用户专属 API Key（前缀 `uc_rk_`）。客户端在请求中转控制面时通过 `X-Unic-Relay-Key` 携带；中转服务端仅将 `SHA-256(key)` 发往 Cloud 校验接口（带短 TTL 缓存），绝不透传或记录明文 Key。
+   - **自部署实例**：服务端可配置静态 `RELAY_ACCESS_KEY`（常量时间比较）；未配置 Cloud 校验端点时回落静态密钥模式。
+   - 客户端经 `sync.relay.access_key`（或环境变量 `UNIC_RELAY_ACCESS_KEY`）保存，视为秘密字段，绝不写入日志、事件、状态 DTO、备份或普通错误，且请求对象存储预签名 URL 时严格剥离。
 
-### 3.3 HTTP API（Direct-to-S3 控制面 + 对象存储直传数据面）
+### 3.3 HTTP API（Direct-to-S3 控制面 + 区域路由对象存储直传数据面）
 
-所有控制面端点均基于配置的 `<base_url>`（官方默认 `https://relay.uniclipboard.app`），密文分块字节流**不经过中转服务**，由客户端凭短时效 AWS SigV4 预签名 URL 直连对象存储（Tencent COS / Cloudflare R2 / AWS S3 / Aliyun OSS / MinIO 等）上传与下载：
+所有控制面端点均基于配置的 `<base_url>`（官方全球统一入口 `https://relay.uniclipboard.app`，保证全球设备、出差或切换代理时 `relay_origin` 与 `mailbox_id` 一致），密文分块字节流**不经过中转服务**，由客户端凭短时效 AWS SigV4 预签名 URL 直连对象存储（官方实例按传输来源区域自动路由：**中国大陆直传腾讯云 COS，海外直传 Cloudflare R2**，每笔传输持久化其 `storage_profile` 以确保跨区接收与 ACK/TTL 清理命中同一存储桶；自部署支持任意 S3/COS/R2/OSS/MinIO）：
 
 | 方法与路径 | 鉴权 | 作用 |
 |---|---|---|
@@ -326,9 +329,9 @@ sig          = Ed25519.Sign(sk_sender, "unic/relay-envelope-sig/v1\0" || envelop
 
 | 参数 | 默认值 | 硬上限 / 说明 |
 |---|---|---|
-| `sync.relay.enabled` | `true`（可关闭） | 关闭后零中转网络请求与零额外开销 |
-| `sync.relay.url` | `https://relay.uniclipboard.app` | 支持用户替换为自托管 HTTPS URL（或 `UNIC_RELAY_URL`）；与 Tailcat DERP 配置完全独立 |
-| `sync.relay.access_key` | `""`（可选） | 自部署实例接入密钥（请求头 `X-Unic-Relay-Key`，秘密字段，脱敏不入日志/状态） |
+| `sync.relay.enabled` | `false`（经 Cloud 授权或配置自部署后开启） | 关闭后零中转网络请求与零额外开销；官方中转需先登录 UniClipboard Cloud 获取 API Key 后一键开启 |
+| `sync.relay.url` | `https://relay.uniclipboard.app` | 全球统一官方控制面入口（数据面自动按区域直连国内 COS / 海外 R2）；支持替换为自托管 HTTPS URL（或 `UNIC_RELAY_URL`）；与 Tailcat DERP 完全独立 |
+| `sync.relay.access_key` | `""`（官方需 Cloud API Key；自部署可选） | 随控制面请求 `X-Unic-Relay-Key` 发送（或 `UNIC_RELAY_ACCESS_KEY`）；秘密字段，脱敏不入日志/状态 |
 | `sync.relay.max_bytes` | `25 MiB`（官方默认） | 不得超过 `limits.max_total_bytes`；自托管可调大 |
 | `SINGLE_CHUNK_THRESHOLD` | `2 MiB` | ≤ 2 MiB 走 1-RTT 单块上传 |
 | `DEFAULT_CHUNK_SIZE` | `1 MiB` | 允许范围 `256 KiB .. 4 MiB` |

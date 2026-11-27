@@ -412,38 +412,54 @@ or socket API credential. Direct daemon and Desktop lifecycle policies stay sepa
 `profile`, `config path`, and `daemon status|stop|logs` remain available before initialization.
 A blocked command exits **6** before contacting or starting a service, sync, or clipboard
 adapter. JSON mode writes an error to stderr with `reason: migration_required`,
-`next_command: unic init`, `initialize_command: unic init --json`, and `migrate_command: unic migrate --help`.
+`next_command: unic init`, `initialize_command: unic init --json`, and `migrate_command: unic migrate`.
 Plain text prints the same actionable instructions. No interactive answer or default consent is inferred.
 
-- `unic init [--name NAME] [--fresh] [--json]` is the standard CLI initialization command.
+- `unic init [--name NAME] [--fresh [--discard-pending]] [--json]` is the standard CLI initialization command.
   It validates directory separation, checks default v1 discovery and `UC_PROFILE`, writes
   default `config.toml` if absent (optionally setting `device_name`), probes exclusive offline
   Engine ownership, and publishes `cli-migration.json` (`outcome: no_source`). If a nonempty
-  v1 source is detected, `unic init` refuses with `source_present` and guides the user to
-  `unic migrate` or explicit `unic init --fresh` (`outcome: fresh`). A pending v1 import is
-  never bypassed even with `--fresh`. Repeated `unic init` on an initialized profile is idempotent.
-- `unic migrate --source DIR --json` unlocks, imports, reopens and verifies through
-  the existing v1 importer. Only an error-free `complete` report publishes CLI
-  completion. A partial report exits 3 and keeps the CLI blocked. Failure and
-  cancellation exit 1. Dry-run never changes initialization state.
+  v1 source is detected: in an interactive terminal without `--json` and `--fresh`, `unic init`
+  presents a 2-choice prompt (`[1] Import v1 history (recommended)` / `[2] Start fresh without v1 history`)
+  to run migration or fresh initialization in one step; in non-interactive or `--json` mode,
+  `unic init` refuses with `source_present` and guides the user to `unic migrate` or explicit
+  `unic init --fresh` (`outcome: fresh`). A pending v1 import is never bypassed by ordinary
+  `--fresh`; `unic init --fresh --discard-pending` (requiring `--fresh`, usage exit 2 alone)
+  prompts for `y/N` confirmation in an interactive terminal (or proceeds directly in
+  non-interactive/`--json` mode), holds the profile transition lock, probes exclusive offline
+  Engine ownership to confirm no service is running, and overwrites `cli-migration.json` with
+  `outcome: fresh` without deleting the user data directory. Repeated `unic init` on an initialized profile is idempotent.
+- `unic migrate [--source DIR] [--target DIR] [--service NAME] [--dry-run] [--passphrase-stdin] [--json]`
+  runs directly using default source/target when omitted (while `-h`/`--help` prints the concise
+  help guide), unlocking, importing, reopening and verifying through the existing v1 importer.
+  Only an error-free `complete` report publishes CLI completion. A partial report exits 3 and
+  keeps the CLI blocked. Failure and cancellation exit 1. Dry-run never changes initialization state.
 - `unic migrate --initialize-empty --json` remains supported as an explicit no-source
   completion path for migration scripts; it refuses a nonempty/unreadable v1 source or a
   pending import and accepts only `--target` and `--json`.
-- Missing/invalid source paths fail before creating pending import state. This
-  allows a user who has no v1 data to correct a typo and initialize explicitly.
-  Once a valid source import begins, only completion of that source can clear
-  the pending state. Before unlock it is bound to the key-slot fingerprint;
-  after unlock it is bound to the importer's stable source identity. Moving a
-  source preserves its identity. An unrelated source cannot replace it.
+- Missing/invalid source paths and pre-unlock pending `keyslot_sha256` mismatches fail read-only
+  before requesting credentials. Unlock runs read-only before creating the target directory,
+  `unic.db`, or `pending` state (interactive terminals allow up to 3 passphrase attempts on
+  credential unavailability; failure or cancellation leaves no `pending` state or empty database,
+  so `unic init --fresh` remains available). Once unlock succeeds and a valid source import
+  begins under the profile transition lock, only completion of that source (or explicit
+  `unic init --fresh --discard-pending`) can clear the pending state. Before unlock it is
+  checked against any existing key-slot fingerprint; after unlock it is bound to the importer's
+  stable source identity. Moving a source preserves its identity. An unrelated source cannot replace it.
 - State is scoped to the exact target. Normal commands and migration use the
   same portable/development/`UNIC_HOME` resolver. Path selection is read-only
   until source/target overlap, including symlink overlap, has been rejected.
-- Migration holds the profile transition lock, publishes pending intent before
-  credentials, probes exclusive offline ownership, and never stops a borrowed
-  service. Waiting for the lock and passphrase input can be cancelled. Service
-  acquisition checks completion again under that lock. Import and verification
-  release the target before atomic completion publication. A failed publication
-  leaves pending intent and requires a safe idempotent retry.
+- Migration validates source structure, directory separation and read-only pre-unlock
+  pending state first, unlocks read-only, then holds the profile transition lock, checks
+  pending source identity, probes exclusive offline ownership (never stopping a borrowed
+  service), publishes `pending` bound to `source_id`, and runs import and verification. Waiting
+  for the lock and passphrase input can be cancelled. Service acquisition checks completion
+  again under that lock. Import and verification close the source and hold exclusive Engine
+  ownership across atomic completion publication before emitting the final `complete` report
+  to stdout. A failed publication emits the failure to stderr without printing a `complete`
+  report to stdout, leaves pending intent, and requires a safe idempotent retry.
+- `unic init` and `unic migrate` flag-parse failures (`exit 2`, `reason: invalid_argument`)
+  sanitize raw flag values and emit only validated flag names and usage guidance.
 - Corrupt or unknown state fails closed. Help stays accessible. A fresh explicit
   verified import can repair a corrupt receipt. No skip or environment bypass
   exists. Atomic publication uses a private synchronized temporary file and rename.

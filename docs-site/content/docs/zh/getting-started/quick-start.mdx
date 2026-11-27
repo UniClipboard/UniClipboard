@@ -40,4 +40,4 @@ unic recv 482913                  # 用取件码接收
 unic history list                 # 浏览历史
 ```
 
-`unic` 在需要时会自动启动同目录下的临时 `unicd`，用完后自动停止。首次在新数据目录使用命令行前，需要先运行 `unic migrate`（导入 v1 历史，或用 `--initialize-empty` 初始化空目录）。详见[命令行入门](../cli/getting-started)。
+`unic` 在需要时会自动启动同目录下的临时 `unicd`，用完后自动停止。首次在新数据目录使用命令行前，请先运行 `unic init` 完成初始化（若检测到 v1 数据会引导选择导入或全新开始；也可直接运行 `unic migrate` 导入 v1 历史）。详见[命令行入门](../cli/getting-started)。

@@ -17,7 +17,7 @@ UNIC_HOME=/absolute/private/state unicd
 - 无头环境没有系统剪贴板适配器：`history use`、`history action --apply`、`dev copy`、`dev paste` 不可用；但内容接收不受影响，收到的内容可通过 `unic history` 和 `unic recv list` 读取。
 
 <Callout type="warn">
-使用前必须先对该数据目录完成[首次初始化](./installation#首次初始化)，例如 `UNIC_HOME=/absolute/private/state unic migrate --initialize-empty --json`。
+使用前必须先对该数据目录完成[首次初始化](./installation#首次初始化)，例如 `UNIC_HOME=/absolute/private/state unic init`（或脚本中使用 `unic init --json` / `unic migrate --initialize-empty --json`）。
 </Callout>
 
 ## 用服务管理器托管

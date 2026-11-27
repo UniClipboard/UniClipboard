@@ -6,6 +6,8 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { IosSheetForm, IosSheetPage } from '@/components/ui';
 import { useEngineStore } from '@/engine/store';
+import { cloudUserLabel } from '@/lib/cloudAuth';
+import { useCloudStore } from '@/stores/cloudStore';
 import { SettingsNavRow, SettingsToggle, statusGreen, statusOrange } from './common';
 import type { IosSettingFieldEdit } from './types';
 
@@ -13,6 +15,15 @@ const DEFAULT_RELAY_MAX_MB = 25;
 
 export function NetworkPage({ onEdit }: { onEdit: (edit: IosSettingFieldEdit) => void }) {
   const { t } = useTranslation();
+  const cloud = useCloudStore(
+    useShallow((s) => ({
+      session: s.session,
+      busy: s.busy,
+      hydrate: s.hydrate,
+      signIn: s.signIn,
+      provisionRelay: s.provisionRelay,
+    }))
+  );
   const state = useEngineStore(
     useShallow((s) => ({
       snapshot: s.snapshot,
@@ -23,7 +34,8 @@ export function NetworkPage({ onEdit }: { onEdit: (edit: IosSettingFieldEdit) =>
 
   useEffect(() => {
     void useEngineStore.getState().refreshSnapshot();
-  }, []);
+    void cloud.hydrate();
+  }, [cloud.hydrate]);
 
   const settings = state.snapshot?.settings.value;
   const bindings = state.devices
@@ -44,6 +56,24 @@ export function NetworkPage({ onEdit }: { onEdit: (edit: IosSettingFieldEdit) =>
         error instanceof Error ? error.message : undefined
       )
     );
+  };
+
+  const handleCloudAction = () => {
+    if (cloud.busy) return;
+    const action = cloud.session ? cloud.provisionRelay() : cloud.signIn();
+    void action
+      .then(() =>
+        Alert.alert(
+          t('settings:live.cloudSignInSuccessTitle'),
+          t('settings:live.cloudSignInSuccessBody')
+        )
+      )
+      .catch((error) =>
+        Alert.alert(
+          t('settings:live.cloudSignInFailed'),
+          error instanceof Error ? error.message : undefined
+        )
+      );
   };
 
   return (
@@ -191,6 +221,24 @@ export function NetworkPage({ onEdit }: { onEdit: (edit: IosSettingFieldEdit) =>
                   })
                 }
               />
+              {!relay.url ? (
+                <SettingsNavRow
+                  testID="relay-cloud-login"
+                  title={
+                    cloud.busy
+                      ? t('settings:live.cloudSigningIn')
+                      : cloud.session
+                        ? relay.has_access_key
+                          ? t('settings:live.relayRefreshFromCloud')
+                          : t('settings:live.relayEnableFromCloud')
+                        : t('settings:live.cloudSignIn')
+                  }
+                  value={cloud.session ? cloudUserLabel(cloud.session.user) : undefined}
+                  showsChevron={!cloud.busy}
+                  disabled={cloud.busy}
+                  onPress={handleCloudAction}
+                />
+              ) : null}
               <SettingsNavRow
                 testID="relay-access-key"
                 title={t('settings:live.relayAccessKey')}

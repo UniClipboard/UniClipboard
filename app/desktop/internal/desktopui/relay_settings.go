@@ -19,6 +19,7 @@ type relaySettingsState struct {
 	urlDraft       string
 	urlSynced      string
 	urlErr         string
+	editingKey     bool
 	accessKeyDraft string
 	accessKeyErr   string
 }
@@ -67,7 +68,7 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 			if readyDevices == 0 {
 				tone = desktopkit.StatusWarning
 			}
-			settingsPill(c.Key("relay-status-pill"), k, fmt.Sprintf(d.tr("%d/%d 台设备中转就绪"), readyDevices, totalDevices), tone, true, false)
+			settingsPill(c.Key("relay-status-pill"), k, fmt.Sprintf(d.tr("%d/%d 台已就绪"), readyDevices, totalDevices), tone, true, false)
 		default:
 			settingsPill(c.Key("relay-status-pill"), k, d.tr("已开启"), desktopkit.StatusPositive, true, false)
 		}
@@ -79,7 +80,7 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 	}, func() {
 		k.SettingsRow(c.Key("relay-enabled"), desktopkit.SettingsRowProps{
 			Label:       d.tr("启用混合中转"),
-			Description: d.tr("P2P 在线直连优先；对端离线时 0 等待走零知识端到端加密临时 HTTP 中转。与 Tailcat P2P/DERP 节点相互独立。"),
+			Description: d.tr("设备在线时优先直连，离线时自动加密暂存转发。"),
 			Dim:         syncPaused,
 		}, nil, func() {
 			if k.Switch(c, &cfg.Sync.Relay.Enabled, desktopkit.SwitchProps{
@@ -91,13 +92,13 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 		})
 
 		k.SettingsRow(c.Key("relay-url"), desktopkit.SettingsRowProps{
-			Label:       d.tr("中转服务地址"),
-			Description: d.tr("留空使用官方默认地址；填入自部署 HTTPS 地址并保存即可切换。"),
+			Label:       d.tr("服务地址"),
+			Description: d.tr("留空使用官方服务，也可填写自建地址。"),
 			Dim:         relayDim,
 		}, nil, func() {
 			ui.Row(c.Key("relay-url-controls")).Gap(8).AlignItems(ui.Center).Children(func() {
 				field := k.TextField(c.Key("relay-url-field"), desktopkit.TextFieldProps{
-					Label:       d.tr("中转服务地址"),
+					Label:       d.tr("服务地址"),
 					Value:       &d.relay.urlDraft,
 					Placeholder: relayclient.DefaultURL,
 					Disabled:    l.busy || relayDim,
@@ -108,7 +109,7 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 					if trimmed != "" {
 						norm, err := relaycrypto.NormalizeRelayOrigin(trimmed)
 						if err != nil {
-							d.relay.urlErr = d.tr("请输入有效的 http(s) 中转地址")
+							d.relay.urlErr = d.tr("请输入有效的 http(s) 地址")
 							return
 						}
 						trimmed = norm
@@ -162,12 +163,12 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 		}
 		selectedMB := strconv.Itoa(maxMB)
 		k.SettingsRow(c.Key("relay-max-bytes"), desktopkit.SettingsRowProps{
-			Label:       d.tr("单次中转大小上限"),
-			Description: d.tr("超出上限的内容仅在 P2P 在线时直连传输。"),
+			Label:       d.tr("单次大小上限"),
+			Description: d.tr("超出后仅在设备在线时直连发送。"),
 			Dim:         relayDim,
 		}, nil, func() {
 			if k.Select(c.Key("relay-max-select"), desktopkit.SelectProps{
-				Label:    d.tr("单次中转大小上限"),
+				Label:    d.tr("单次大小上限"),
 				Value:    &selectedMB,
 				Items:    opts,
 				Disabled: l.busy || relayDim,
@@ -179,55 +180,121 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 			}
 		})
 
-		k.SettingsRow(c.Key("relay-access-key"), desktopkit.SettingsRowProps{
-			Label:       d.tr("自部署接入密钥"),
-			Description: d.tr("可选，对应服务端 X-Unic-Relay-Key。仅写入不回显，不写入日志或设置备份。"),
-			Dim:         relayDim,
-		}, nil, func() {
-			ui.Row(c.Key("relay-key-controls")).Gap(8).AlignItems(ui.Center).Children(func() {
-				if cfg.Sync.Relay.AccessKeySet {
-					settingsPill(c.Key("relay-key-pill"), k, d.tr("已配置"), desktopkit.StatusPositive, true, false)
-				} else {
-					settingsPill(c.Key("relay-key-pill"), k, d.tr("未配置"), desktopkit.StatusNeutral, false, false)
-				}
-				field := k.TextField(c.Key("relay-key-field"), desktopkit.TextFieldProps{
-					Label:       d.tr("自部署接入密钥"),
-					Value:       &d.relay.accessKeyDraft,
-					Placeholder: d.tr("输入新密钥（只写不回显）"),
-					Password:    true,
-					Disabled:    l.busy || relayDim,
-					Error:       d.relay.accessKeyErr,
-				})
-				saveKey := func() {
-					key := strings.TrimSpace(d.relay.accessKeyDraft)
-					if key == "" {
-						d.relay.accessKeyErr = d.tr("请输入接入密钥，或点击清除密钥")
-						return
+		d.ensureCloudSessionLoaded()
+		if strings.TrimSpace(cfg.Sync.Relay.URL) == "" {
+			if d.cloud.signedIn {
+				k.SettingsRow(c.Key("relay-cloud-account"), desktopkit.SettingsRowProps{
+					Label:       d.tr("云服务账号"),
+					Description: fmt.Sprintf(d.tr("已登录 %s"), d.cloud.session.User.DisplayLabel()),
+					Dim:         syncPaused,
+				}, nil, func() {
+					btnLabel := d.tr("重新获取密钥")
+					var variant desktopkit.ButtonVariant
+					if !cfg.Sync.Relay.AccessKeySet {
+						btnLabel = d.tr("一键开启")
+						variant = desktopkit.Primary
 					}
-					if len(key) > 512 || strings.ContainsAny(key, "\r\n\x00") {
-						d.relay.accessKeyErr = d.tr("接入密钥格式无效")
-						return
-					}
-					d.relay.accessKeyErr = ""
-					nextCfg := *cfg
-					nextCfg.Sync.Relay.AccessKey = key
-					d.relay.accessKeyDraft = ""
-					d.saveLiveConfig(nextCfg)
-				}
-				if field.Submitted && !l.busy && !relayDim {
-					saveKey()
-				}
-				if k.Button(c.Key("relay-key-save"), d.tr("保存密钥"), desktopkit.ButtonProps{
-					Size:     desktopkit.SizeSmall,
-					Disabled: l.busy || relayDim || strings.TrimSpace(d.relay.accessKeyDraft) == "",
-				}).Clicked() {
-					saveKey()
-				}
-				if cfg.Sync.Relay.AccessKeySet {
-					if k.Button(c.Key("relay-key-clear"), d.tr("清除密钥"), desktopkit.ButtonProps{
+					if k.Button(c.Key("relay-cloud-provision"), btnLabel, desktopkit.ButtonProps{
 						Size:     desktopkit.SizeSmall,
+						Variant:  variant,
+						Disabled: l.busy || syncPaused || d.cloud.busy,
+					}).Clicked() {
+						d.provisionCloudRelay(*cfg)
+					}
+				})
+			} else {
+				k.SettingsRow(c.Key("relay-cloud-account"), desktopkit.SettingsRowProps{
+					Label:       d.tr("云服务账号"),
+					Description: d.tr("官方服务需登录账号后使用。"),
+					Dim:         syncPaused,
+				}, nil, func() {
+					if d.cloud.busy {
+						settingsPill(c.Key("relay-cloud-pill"), k, d.cloud.busyLabel, desktopkit.StatusWarning, true, false)
+					} else if k.Button(c.Key("relay-cloud-login"), d.tr("登录"), desktopkit.ButtonProps{
+						Size:     desktopkit.SizeSmall,
+						Variant:  desktopkit.Primary,
+						Disabled: l.busy || syncPaused,
+					}).Clicked() {
+						d.startCloudLogin(*cfg, true)
+					}
+				})
+			}
+			if d.cloud.err != "" {
+				settingsNoteRow(c.Key("relay-cloud-err"), k, d.cloud.err)
+			}
+		}
+
+		keyLabelExtra := func() {
+			if cfg.Sync.Relay.AccessKeySet {
+				settingsPill(c.Key("relay-key-pill"), k, d.tr("已配置"), desktopkit.StatusPositive, true, false)
+			} else {
+				settingsPill(c.Key("relay-key-pill"), k, d.tr("未配置"), desktopkit.StatusNeutral, false, false)
+			}
+		}
+		keyDesc := d.tr("登录账号后自动填入，自建服务可手动填写。")
+		if d.relay.editingKey {
+			keyDesc = d.tr("输入后按回车或点击保存。")
+		}
+		k.SettingsRow(c.Key("relay-access-key"), desktopkit.SettingsRowProps{
+			Label:       d.tr("接入密钥"),
+			Description: keyDesc,
+			Dim:         relayDim,
+		}, keyLabelExtra, func() {
+			if d.relay.editingKey && !relayDim {
+				ui.Row(c.Key("relay-key-edit")).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Box(c.Key("relay-key-box")).Width(220).Children(func() {
+						field := k.TextField(c.Key("relay-key-field"), desktopkit.TextFieldProps{
+							Label:       d.tr("接入密钥"),
+							Value:       &d.relay.accessKeyDraft,
+							Placeholder: d.tr("输入接入密钥"),
+							Password:    true,
+							Disabled:    l.busy || relayDim,
+							Error:       d.relay.accessKeyErr,
+						})
+						if field.Submitted && !l.busy && !relayDim {
+							d.submitRelayAccessKey(*cfg)
+						}
+					})
+					if k.Button(c.Key("relay-key-save"), d.tr("保存"), desktopkit.ButtonProps{
+						Size:     desktopkit.SizeSmall,
+						Variant:  desktopkit.Primary,
+						Disabled: l.busy || strings.TrimSpace(d.relay.accessKeyDraft) == "",
+					}).Clicked() {
+						d.submitRelayAccessKey(*cfg)
+					}
+					if k.Button(c.Key("relay-key-cancel"), d.tr("取消"), desktopkit.ButtonProps{
+						Size:     desktopkit.SizeSmall,
+						Variant:  desktopkit.Subtle,
+						Disabled: l.busy,
+					}).Clicked() {
+						d.relay.editingKey = false
+						d.relay.accessKeyDraft = ""
+						d.relay.accessKeyErr = ""
+					}
+				})
+				return
+			}
+
+			ui.Row(c.Key("relay-key-actions")).Gap(8).AlignItems(ui.Center).Children(func() {
+				editLabel := d.tr("填写密钥")
+				if cfg.Sync.Relay.AccessKeySet {
+					editLabel = d.tr("更换")
+				}
+				if k.Button(c.Key("relay-key-edit-btn"), editLabel, desktopkit.ButtonProps{
+					Size:     desktopkit.SizeSmall,
+					Disabled: l.busy || relayDim,
+				}).Clicked() {
+					d.relay.editingKey = true
+					d.relay.accessKeyDraft = ""
+					d.relay.accessKeyErr = ""
+				}
+				if cfg.Sync.Relay.AccessKeySet {
+					if k.Button(c.Key("relay-key-clear"), d.tr("清除"), desktopkit.ButtonProps{
+						Size:     desktopkit.SizeSmall,
+						Variant:  desktopkit.Subtle,
 						Disabled: l.busy || relayDim,
 					}).Clicked() {
+						d.relay.editingKey = false
 						d.relay.accessKeyErr = ""
 						d.relay.accessKeyDraft = ""
 						d.clearLiveRelayAccessKey(*cfg, nil)
@@ -237,7 +304,25 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 		})
 
 		if !relayDim && totalDevices > 0 && readyDevices < totalDevices {
-			settingsNoteRow(c.Key("relay-route-note"), k, d.tr("部分已配对设备尚未交换中转路由，请确保两端配置了相同的中转服务地址并至少完成一次 P2P 连接。"))
+			settingsNoteRow(c.Key("relay-route-note"), k, d.tr("部分设备尚未同步配置，双方在线连接一次后自动生效。"))
 		}
 	})
+}
+
+func (d *viewState) submitRelayAccessKey(cfg config.Config) {
+	key := strings.TrimSpace(d.relay.accessKeyDraft)
+	if key == "" {
+		d.relay.accessKeyErr = d.tr("请输入密钥")
+		return
+	}
+	if len(key) > 512 || strings.ContainsAny(key, "\r\n\x00") {
+		d.relay.accessKeyErr = d.tr("密钥格式无效")
+		return
+	}
+	d.relay.accessKeyErr = ""
+	d.relay.editingKey = false
+	nextCfg := cfg
+	nextCfg.Sync.Relay.AccessKey = key
+	d.relay.accessKeyDraft = ""
+	d.saveLiveConfig(nextCfg)
 }

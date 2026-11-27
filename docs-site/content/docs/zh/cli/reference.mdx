@@ -32,7 +32,7 @@ description: unic 全部子命令、别名、参数、JSON 输出与退出码。
 | `3` | 迁移部分完成 |
 | `4` | 已提交但未完成（发送、批准或等待窗口未完成；临时传输被取消或未送达） |
 | `5` | 命令完成，但停止临时 `unicd` 失败 |
-| `6` | 需要先完成迁移初始化（`migration_required`），运行 `unic migrate --help` |
+| `6` | 需要先完成初始化（`migration_required`），运行 `unic init` 或 `unic migrate` |
 
 <Callout type="warn">
 目前部分一般语法错误和票据类型错误返回 `1`，而不是 `2`。脚本中不要只依赖 `2` 判断用法错误。
@@ -171,6 +171,21 @@ unic plugin settings save ID JSON-FILE|-
 
 参见[插件市场](../plugins/marketplace)。
 
+## init
+
+```sh
+unic init [--name NAME] [--fresh [--discard-pending]] [--json]
+```
+
+需求：`offline`。初始化当前配置目录以便首次使用。在交互终端中检测到 v1 数据时，会提示选择导入 v1 历史或全新开始；非交互或 `--json` 下会以 `source_present` 拒绝。
+
+| 参数 | 说明 |
+|---|---|
+| `--name NAME` | 在 `config.toml` 中设置本机显示名称 |
+| `--fresh` | 即使存在 v1 数据也以全新空配置初始化 |
+| `--discard-pending` | 与 `--fresh` 同用，放弃未完成的 `pending` 迁移状态（不删除数据目录，交互终端需二次确认） |
+| `--json` | 输出 JSON 结果 |
+
 ## migrate
 
 ```sh
@@ -178,7 +193,7 @@ unic migrate [--source DIR] [--target DIR] [--service NAME] [--dry-run] [--passp
 unic migrate --initialize-empty [--target DIR] [--json]
 ```
 
-需求：`offline`，在进程内导入，不启动网络或剪贴板。不带参数或 `--help` 时打印完整迁移说明。
+需求：`offline`，在进程内导入，不启动网络或剪贴板。不带参数直接以默认来源与目标执行迁移；`-h` / `--help`（及 `unic help migrate`）打印简明帮助。
 
 | 参数 | 说明 |
 |---|---|
@@ -190,7 +205,7 @@ unic migrate --initialize-empty [--target DIR] [--json]
 | `--initialize-empty` | 没有 v1 数据时显式初始化；只能与 `--target`、`--json` 同用 |
 | `--json` | 输出 JSON 进度与最终报告 |
 
-退出码：`0` 完成，`3` 部分完成，`1` 失败，`2` 用法错误。重复执行是幂等的，重新运行同一命令即可续跑或修复。详见[从 v1 迁移](../migration/v1-to-v2)。
+退出码：`0` 完成，`3` 部分完成，`1` 失败，`2` 用法错误。仅在解锁成功后才会创建目标目录与 `pending` 状态；重复执行是幂等的，重新运行同一命令即可续跑或修复。详见[从 v1 迁移](../migration/v1-to-v2)。
 
 ## dev
 

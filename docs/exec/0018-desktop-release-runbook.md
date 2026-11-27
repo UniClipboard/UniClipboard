@@ -118,9 +118,11 @@ Generate a local review bundle without GitHub writes:
 python3 tools/release/github_desktop.py preview \
   --manifest <catalogue>/release-manifest.json \
   --cli-manifest <locked-cli>/release-manifest.json \
-  --notes release/desktop-notes.json --channel alpha \
+  --notes release/desktop-notes.json --source-root . --channel alpha \
   --previous-tag v1.6.2 --output <new-page-directory>
 ```
+
+`--source-root` defaults to the repository root (reading directly from the immutable `m["source_sha"]` Git tree when present and failing closed if a Git checkout lacks that commit, or reading from an untracked exported directory such as `dist/catalogue/source` atomically staged and stamped with `.source-commit` during joint stable promotion). The page expands the English Markdown items from `release/changelogs/desktop/`, folds the Chinese Markdown items under `<details><summary>中文变更日志</summary>`, and links `Changelog Files` to both `blob/<source_sha>/...` files and `desktop-notes.json`. `release/desktop-notes.json` remains solely the updater summary attachment. For pre-migration published pages whose `source_sha` used the legacy template (such as `desktop/v2.0.0-build.15`), `github_desktop.py update-body` safely updates only the release `body` using the pinned backfill template after preflighting all 32 attachments, re-verifying live state against the run's initial snapshot before every write attempt (avoiding duplicate writes if already applied and refusing to overwrite an operator restore back to legacy, since GitHub REST `PATCH` lacks server-side atomic conditional CAS), and verifying read-back parity, preserving `before.json` and `first-failure.json`.
 
 Use `--development` only for a local preview of unaccepted inputs. The page states that limitation. Inspect `release-notes.md`, `release-page.json` and `SHA256SUMS.txt`. The separate CLI links point to the locked CLI Release; Desktop assets remain private product payloads. Do not copy CLI files into this page under a second identity.
 

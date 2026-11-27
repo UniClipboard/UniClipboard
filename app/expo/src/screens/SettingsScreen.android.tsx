@@ -6,7 +6,7 @@
  * 其下为「通用 / 支持 / 其他」三组带 40dp 圆形图标 + 动态摘要的入口，
  * 主题与语言直接以整行下拉选择呈现，其余设置下沉到 SettingsSub 二级页。
  */
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { Alert, StyleSheet } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -28,8 +28,10 @@ import {
   SUPPORTED_LANGUAGES,
   type LanguagePreference,
 } from '@/i18n/languages';
+import { cloudUserLabel } from '@/lib/cloudAuth';
 import type { RootStackParamList, SettingsSubSection } from '@/navigation/AppNavigator.types';
 import { pushSettingsSub } from '@/navigation/settingsSubNavigation';
+import { useCloudStore } from '@/stores/cloudStore';
 import { MATERIAL_SEED_COLOR } from '@/theme/colors';
 import type { ThemeMode } from '@/theme';
 import { SettingsScreenContent } from './settings/SettingsScreenContent';
@@ -40,6 +42,7 @@ import { SettingsSelectRow } from './settings/android/SettingsSelectRow';
 import { SettingsSwitchRow } from './settings/android/SettingsSwitchRow';
 
 const ICONS = {
+  account: require('../assets/icons/account_circle.xml'),
   autoApply: require('../assets/icons/file_download.xml'),
   autoPush: require('../assets/icons/file_upload.xml'),
   sync: require('../assets/icons/restart_alt.xml'),
@@ -103,6 +106,18 @@ export function SettingsScreen() {
     }))
   );
   const [backgroundStatus, setBackgroundStatus] = useState<BackgroundSyncStatus | null>(null);
+  const cloud = useCloudStore(
+    useShallow((s) => ({
+      session: s.session,
+      busy: s.busy,
+      hydrate: s.hydrate,
+      signIn: s.signIn,
+      signOut: s.signOut,
+    }))
+  );
+  useEffect(() => {
+    void cloud.hydrate();
+  }, [cloud.hydrate]);
 
   useFocusEffect(
     useCallback(() => {
@@ -212,6 +227,64 @@ export function SettingsScreen() {
           }}
           verticalArrangement={{ spacedBy: 16 }}
         >
+          {/* ── UniClipboard Cloud 账号 ── */}
+          <SettingsSectionItem
+            variant="grouped"
+            title={t('settings:live.cloudSection')}
+            footer={t('settings:live.cloudFooter')}
+          >
+            {cloud.session ? (
+              <>
+                <SettingsListRow
+                  key="cloud-account"
+                  testID="cloud-account"
+                  icon={ICONS.account}
+                  title={cloudUserLabel(cloud.session.user)}
+                  description={t('settings:live.cloudSignedIn')}
+                  trailing="none"
+                />
+                <SettingsListRow
+                  key="cloud-sign-out"
+                  testID="cloud-sign-out"
+                  title={t('settings:live.cloudSignOut')}
+                  destructive
+                  disabled={cloud.busy}
+                  trailing="none"
+                  onPress={() => run(cloud.signOut())}
+                />
+              </>
+            ) : (
+              <SettingsListRow
+                key="cloud-sign-in"
+                testID="cloud-sign-in"
+                icon={ICONS.account}
+                title={
+                  cloud.busy ? t('settings:live.cloudSigningIn') : t('settings:live.cloudSignIn')
+                }
+                description={t('settings:live.cloudSignInDesc')}
+                trailing={cloud.busy ? 'none' : 'chevron'}
+                disabled={cloud.busy}
+                onPress={() => {
+                  if (cloud.busy) return;
+                  void cloud
+                    .signIn()
+                    .then(() =>
+                      Alert.alert(
+                        t('settings:live.cloudSignInSuccessTitle'),
+                        t('settings:live.cloudSignInSuccessBody')
+                      )
+                    )
+                    .catch((error) =>
+                      Alert.alert(
+                        t('settings:live.cloudSignInFailed'),
+                        error instanceof Error ? error.message : undefined
+                      )
+                    );
+                }}
+              />
+            )}
+          </SettingsSectionItem>
+
           {/* ── 剪贴板同步（对齐原仓库第一组：双向开关 + 更多同步设置） ── */}
           <SettingsSectionItem
             variant="grouped"

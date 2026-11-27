@@ -16,7 +16,7 @@ import sys
 import tempfile
 import threading
 import tomllib
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 VERSION = "2.0.0"
@@ -64,12 +64,23 @@ def github_fixture(arguments):
         ]
         for file in Path(record["directory"]).iterdir():
             if any(fnmatchcase(file.name, pattern) for pattern in patterns):
-                shutil.copyfile(file, destination / file.name)
+                target = destination / file.name
+                if target.exists():
+                    print(
+                        f"{target} already exists (use --clobber to overwrite file or --skip-existing to skip file)",
+                        file=sys.stderr,
+                    )
+                    raise SystemExit(1)
+                shutil.copyfile(file, target)
         return
     assert arguments[0] == "api", arguments
-    _, _, endpoint = unquote(
-        urlsplit(arguments[1] if arguments[1] != "--paginate" else arguments[-1]).path
-    ).partition("/repos/UniClipboard/UniClipboard/")
+    parsed_url = urlsplit(
+        arguments[1] if arguments[1] != "--paginate" else arguments[-1]
+    )
+    _, _, endpoint = unquote(parsed_url.path).partition(
+        "/repos/UniClipboard/UniClipboard/"
+    )
+    ref = parse_qs(parsed_url.query).get("ref", [""])[0]
     if "--input" in arguments:
         body = json.loads(Path(arguments[arguments.index("--input") + 1]).read_text())
         if endpoint == "git/tags":
@@ -108,11 +119,26 @@ def github_fixture(arguments):
         if tag not in state["releases"]:
             missing()
         result = state["releases"][tag]
-    elif endpoint == "contents/.github/release-notes/desktop.md.tmpl":
-        result = {
-            "encoding": "base64",
-            "content": base64.b64encode(b"Original Alpha page template\n").decode(),
-        }
+    elif endpoint.startswith("contents/"):
+        rel = endpoint.removeprefix("contents/")
+        custom = state.get("contents", {}).get(f"{ref}:{rel}")
+        if custom == 404:
+            missing()
+        elif custom == 503:
+            print("HTTP 503: fixture transient error", file=sys.stderr)
+            raise SystemExit(1)
+        elif custom is not None:
+            result = {
+                "encoding": "base64",
+                "content": base64.b64encode(custom.encode("utf-8")).decode(),
+            }
+        elif endpoint == "contents/.github/release-notes/desktop.md.tmpl":
+            result = {
+                "encoding": "base64",
+                "content": base64.b64encode(b"Original Alpha page template\n").decode(),
+            }
+        else:
+            missing()
     else:
         assert endpoint == "releases", endpoint
         result = [list(state["releases"].values())]
@@ -212,10 +238,10 @@ def acceptance(work, report):
         def planned(path):
             return json.loads((path / "plan.json").read_text())
 
-        def save_release(tag, directory, draft=False):
+        def save_release(tag, directory, draft=False, ref_sha=None):
             state = json.loads(state_path.read_text())
             if not draft:
-                state["refs"][tag] = {"type": "commit", "sha": source}
+                state["refs"][tag] = {"type": "commit", "sha": ref_sha or source}
             state["releases"][tag] = {
                 "tag_name": tag,
                 "draft": draft,
@@ -294,7 +320,8 @@ def acceptance(work, report):
             save_release(f"cli/v{version}", directory, draft)
             return manifest
 
-        def publish_desktop(build, cli_manifest, recorded=True):
+        def publish_desktop(build, cli_manifest, recorded=True, source_sha=None):
+            effective_sha = source_sha or source
             directory = work / f"desktop-{build}"
             directory.mkdir()
             files = []
@@ -324,7 +351,7 @@ def acceptance(work, report):
                     "product": "desktop",
                     "version": VERSION,
                     "build_number": build,
-                    "source_sha": source,
+                    "source_sha": effective_sha,
                     "source_clean": True,
                     "development": False,
                     "cli_manifest_sha256": digest(cli_manifest.read_bytes()),
@@ -352,7 +379,7 @@ def acceptance(work, report):
             )
             (directory / "release-page.json").touch()
             (directory / "SHA256SUMS.txt").touch()
-            save_release(f"desktop/v{VERSION}-build.{build}", directory)
+            save_release(f"desktop/v{VERSION}-build.{build}", directory, ref_sha=effective_sha)
 
             evidence = work / f"acceptance-{build}.json"
             write_json(
@@ -509,6 +536,7 @@ def acceptance(work, report):
         assert (
             destination / "release-template.md"
         ).read_text() == "Original Alpha page template\n"
+        assert (destination / "source").is_dir()
 
         origin["/v1/desktop/stable.json"] = {"version": VERSION, "buildNumber": "25"}
         plan(
@@ -517,6 +545,183 @@ def acceptance(work, report):
             "stable",
             error="joint release cannot downgrade the Desktop channel",
         )
+
+        # Verify fetch-stable atomic source export across first candidate, same-candidate
+        # rerun, candidate switch with 404 on newer build, and transient failure + rerun.
+        sys.path.insert(0, str(ROOT / "tools/release"))
+        import github_desktop as gh_desktop  # noqa: E402
+
+        sha_a = "1" * 40
+        sha_b = "2" * 40
+        ev_a = publish_desktop(115, old_cli, recorded=False, source_sha=sha_a)
+        ev_b = publish_desktop(114, old_cli, recorded=False, source_sha=sha_b)
+
+        cli_build = json.loads(old_cli.read_text())["build_number"]
+
+        def make_fetch_inputs(build, sha, ev_path):
+            m_path = work / f"desktop-{build}" / "release-manifest.json"
+            m_data = json.loads(m_path.read_text())
+            acc_data = json.loads(ev_path.read_text())
+            p_path = work / f"plan-{build}.json"
+            write_json(
+                p_path,
+                {
+                    "accepted": {
+                        "schema": 1,
+                        "version": VERSION,
+                        "build_number": build,
+                        "source_sha": sha,
+                        "cli_manifest_sha256": m_data["cli_manifest_sha256"],
+                        "manifest_sha256": digest(m_path.read_bytes()),
+                        "cli_build": cli_build,
+                        "acceptance": acc_data,
+                    }
+                },
+            )
+            return p_path, m_data
+
+        plan_a, m_a = make_fetch_inputs(115, sha_a, ev_a)
+        plan_b, m_b = make_fetch_inputs(114, sha_b, ev_b)
+
+        state = json.loads(state_path.read_text())
+        state["contents"] = {
+            f"{sha_a}:.github/release-notes/desktop.md.tmpl": "Template A\n",
+            f"{sha_a}:release/products.toml": '[products.desktop]\nversion = "2.0.0"\nbuild_number = 114\n',
+            f"{sha_a}:release/changelogs/desktop/v2.0.0-build.114.md": "## v2.0.0-build.114 (desktop) - 2026-11-27\n\n- Candidate A item.\n",
+            f"{sha_a}:release/changelogs/desktop/v2.0.0-build.114.zh.md": "## v2.0.0-build.114 (desktop) - 2026-11-27\n\n- 候选 A 条目。\n",
+            f"{sha_a}:release/changelogs/desktop/v2.0.0-build.115.md": 404,
+            f"{sha_a}:release/changelogs/desktop/v2.0.0-build.115.zh.md": 404,
+            f"{sha_b}:.github/release-notes/desktop.md.tmpl": "Template B\n",
+            f"{sha_b}:release/products.toml": '[products.desktop]\nversion = "2.0.0"\nbuild_number = 113\n',
+            f"{sha_b}:release/changelogs/desktop/v2.0.0-build.113.md": "## v2.0.0-build.113 (desktop) - 2026-11-26\n\n- Candidate B item.\n",
+            f"{sha_b}:release/changelogs/desktop/v2.0.0-build.113.zh.md": "## v2.0.0-build.113 (desktop) - 2026-11-26\n\n- 候选 B 条目。\n",
+            f"{sha_b}:release/changelogs/desktop/v2.0.0-build.114.md": 404,
+            f"{sha_b}:release/changelogs/desktop/v2.0.0-build.114.zh.md": 404,
+        }
+        write_json(state_path, state)
+
+        # 1. Production fresh-directory fetch-stable across candidate A and candidate B.
+        fresh_a = work / "fresh-export-a"
+        fresh_b = work / "fresh-export-b"
+        for label, dest, p_file, ev_file, expected_sha, expected_build, expected_item in [
+            ("fetch-stable exports candidate A to fresh directory", fresh_a, plan_a, ev_a, sha_a, 114, "Candidate A item."),
+            ("fetch-stable exports candidate B to fresh directory with 404 fallback", fresh_b, plan_b, ev_b, sha_b, 113, "Candidate B item."),
+        ]:
+            invoke(
+                label,
+                "fetch-stable",
+                "--plan",
+                p_file,
+                "--output",
+                dest,
+                "--cli-manifest",
+                old_cli,
+                "--acceptance",
+                ev_file,
+            )
+            assert (dest / "source/.source-commit").read_text().strip() == expected_sha
+            m_loaded = json.loads((dest / "release-manifest.json").read_text())
+            resolved = gh_desktop.resolve_changelog(m_loaded, dest / "source")
+            assert resolved["build_number"] == expected_build
+            assert resolved["en_rel"] == f"release/changelogs/desktop/v2.0.0-build.{expected_build}.md"
+            assert expected_item in resolved["en"]
+
+        # 2. Existing baseline behaviour: non-empty directory rerun of fetch-stable fails
+        # with `already exists` without altering existing files or source export.
+        snapshot_a = {
+            p.relative_to(fresh_a).as_posix(): digest(p.read_bytes())
+            for p in sorted(fresh_a.rglob("*"))
+            if p.is_file()
+        }
+        invoke(
+            "fetch-stable rejects existing files with already exists and preserves directory",
+            "fetch-stable",
+            "--plan",
+            plan_b,
+            "--output",
+            fresh_a,
+            "--cli-manifest",
+            old_cli,
+            "--acceptance",
+            ev_b,
+            error="already exists",
+        )
+        after_snapshot_a = {
+            p.relative_to(fresh_a).as_posix(): digest(p.read_bytes())
+            for p in sorted(fresh_a.rglob("*"))
+            if p.is_file()
+        }
+        assert after_snapshot_a == snapshot_a
+
+        # 3. Direct joint_plan.export_source layer: same-candidate rerun, candidate switch
+        # removing stale build files, 503 failure preserving prior export, and clean retry.
+        def run_export_source(label, dest, version, build, sha, error=None):
+            code = (
+                "import sys; sys.dont_write_bytecode = True; "
+                "sys.path.insert(0, 'tools/release'); import joint_plan as p; "
+                f"p.export_source(p.GitHub(p.API), {str(dest)!r}, {version!r}, {build!r}, {sha!r})"
+            )
+            proc = subprocess.run(
+                [sys.executable, "-c", code],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                timeout=90,
+            )
+            report["checks"].append(
+                {
+                    "name": label,
+                    "arguments": ["export_source", str(build), sha],
+                    "exit_code": proc.returncode,
+                    "stdout": proc.stdout,
+                    "stderr": proc.stderr,
+                }
+            )
+            if error is None:
+                assert proc.returncode == 0, proc.stderr
+            else:
+                assert proc.returncode != 0 and error in proc.stderr, proc.stderr
+            print("PASS " + label, flush=True)
+
+        export_only = work / "source-only"
+        run_export_source("export_source exports candidate A", export_only, VERSION, 115, sha_a)
+        assert (export_only / "source/.source-commit").read_text().strip() == sha_a
+        resolved_a = gh_desktop.resolve_changelog(m_a, export_only / "source")
+        assert resolved_a["build_number"] == 114 and "Candidate A item." in resolved_a["en"]
+
+        run_export_source("export_source reruns same candidate A cleanly", export_only, VERSION, 115, sha_a)
+        assert (export_only / "source/.source-commit").read_text().strip() == sha_a
+
+        run_export_source("export_source replaces stale build 114 when switching to candidate B", export_only, VERSION, 114, sha_b)
+        assert (export_only / "source/.source-commit").read_text().strip() == sha_b
+        assert not (export_only / "source/release/changelogs/desktop/v2.0.0-build.114.md").exists()
+        resolved_b = gh_desktop.resolve_changelog(m_b, export_only / "source")
+        assert resolved_b["build_number"] == 113 and "Candidate B item." in resolved_b["en"]
+
+        run_export_source("export_source seeds candidate A before 503 failure", export_only, VERSION, 115, sha_a)
+        state = json.loads(state_path.read_text())
+        state["contents"][f"{sha_b}:release/products.toml"] = 503
+        write_json(state_path, state)
+        run_export_source(
+            "export_source transient 503 fails without corrupting existing source",
+            export_only,
+            VERSION,
+            114,
+            sha_b,
+            error="GitHub request failed",
+        )
+        assert (export_only / "source/.source-commit").read_text().strip() == sha_a
+        assert not any(p.name.startswith(".source-staging-") for p in export_only.iterdir())
+        assert "Candidate A item." in gh_desktop.resolve_changelog(m_a, export_only / "source")["en"]
+
+        state["contents"][f"{sha_b}:release/products.toml"] = '[products.desktop]\nversion = "2.0.0"\nbuild_number = 113\n'
+        write_json(state_path, state)
+        run_export_source("export_source rerun after 503 cleanly exports candidate B", export_only, VERSION, 114, sha_b)
+        assert (export_only / "source/.source-commit").read_text().strip() == sha_b
+        resolved_after_fail = gh_desktop.resolve_changelog(m_b, export_only / "source")
+        assert resolved_after_fail["build_number"] == 113 and "Candidate B item." in resolved_after_fail["en"]
+
         server.shutdown()
 
 

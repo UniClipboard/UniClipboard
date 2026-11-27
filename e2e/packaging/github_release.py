@@ -99,6 +99,17 @@ try:
         release.save(manifest_path, manifest)
         notes = temp / "notes.json"
         release.save(notes, {"en": "Independent v2 products.", "zh": "V2 notes."})
+        source_root = temp / "source"
+        changelog_dir = source_root / "release/changelogs/desktop"
+        changelog_dir.mkdir(parents=True)
+        (changelog_dir / "v2.0.0-build.1.md").write_text(
+            "## v2.0.0-build.1 (desktop) - 2026-11-27\n\n### Features\n\n- Detailed English item for build 1. (#101)\n",
+            encoding="utf-8",
+        )
+        (changelog_dir / "v2.0.0-build.1.zh.md").write_text(
+            "## v2.0.0-build.1 (desktop) - 2026-11-27\n\n### Features\n\n- 构建 1 的中文详细条目。 (#101)\n",
+            encoding="utf-8",
+        )
         generated = temp / "generated.md"
         generated.write_text(
             "## What changed\nIgnored generated text\n## New Contributors\n* @example contributed.\n",
@@ -131,7 +142,15 @@ try:
             "release": None,
             "assets": {},
             "writes": 0,
+            "patch_attempts": 0,
             "corrupt_upload": False,
+            "patch_failures": [],
+            "patch_payloads": [],
+            "probe_arm_get": False,
+            "probe_arm_body": None,
+            "probe_patch_body": None,
+            "probe_retag": False,
+            "probe_applied": False,
         }
 
         class Server(BaseHTTPRequestHandler):
@@ -167,6 +186,9 @@ try:
                 )
 
             def do_GET(self):
+                if state.get("probe_arm_get") and "/releases/1/assets" in self.path:
+                    state["probe_arm_get"] = False
+                    state["release"]["body"] = state.pop("probe_arm_body", None) or "Concurrent maintainer edit after Release lookup"
                 path = unquote(urlparse(self.path).path)
                 if "/git/ref/tags/" in path:
                     return (
@@ -229,10 +251,22 @@ try:
                 self.send(404, {"message": "Not Found"})
 
             def do_PATCH(self):
-                state["writes"] += 1
-                state["release"].update(
-                    json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                payload = json.loads(
+                    self.rfile.read(int(self.headers["Content-Length"]))
                 )
+                state["writes"] += 1
+                state["patch_attempts"] += 1
+                if state["patch_failures"]:
+                    code = state["patch_failures"].pop(0)
+                    if state.get("probe_patch_body") is not None:
+                        state["release"]["body"] = state.pop("probe_patch_body")
+                    if state.pop("probe_retag", False):
+                        state["release"]["tag_name"] = "desktop/v2.0.0-build.999"
+                    if state.pop("probe_applied", False):
+                        state["release"].update(payload)
+                    return self.send(code, {"message": f"injected {code}"})
+                state["patch_payloads"].append(payload)
+                state["release"].update(payload)
                 self.send(200, self.current())
 
         server = ThreadingHTTPServer(("127.0.0.1", 0), Server)
@@ -254,6 +288,8 @@ try:
                 str(cli_path),
                 "--notes",
                 str(notes),
+                "--source-root",
+                str(source_root),
                 "--output",
                 str(bundle),
                 "--previous-tag",
@@ -303,10 +339,16 @@ try:
             run("preview")
             body = (bundle / "release-notes.md").read_text(encoding="utf-8")
             check(
-                "v1 page sections and independent CLI reference",
+                "v1 page sections, bilingual markdown details, and independent CLI reference",
                 all(
                     x in body
                     for x in [
+                        "Detailed English item for build 1. (#101)",
+                        "<details>\n<summary>中文变更日志</summary>",
+                        "构建 1 的中文详细条目。 (#101)",
+                        f"blob/{'a' * 40}/release/changelogs/desktop/v2.0.0-build.1.md",
+                        f"blob/{'a' * 40}/release/changelogs/desktop/v2.0.0-build.1.zh.md",
+                        "Updater Notes JSON",
                         "App Installation",
                         "CLI Downloads",
                         "Verification",
@@ -314,8 +356,13 @@ try:
                         "@example",
                         "cli/v2.0.0-build.2",
                         "v1.6.2",
+                        manifest["cli_manifest_sha256"],
                     ]
-                ),
+                )
+                and "{{CLI_SHA256}}" not in body
+                and "## v2.0.0-build.1 (desktop)" not in body
+                and "Independent v2 products." not in body
+                and body.count("All paired devices must use v2.") == 1,
             )
             check(
                 "no unsupported mobile links or blanket signing claim",
@@ -456,9 +503,711 @@ try:
                 "modified local payload rejected before writes",
                 state["writes"] == writes,
             )
+            (catalogue / manifest["artifacts"][0]["file"]).write_bytes(
+                ("fixture " + manifest["artifacts"][0]["file"]).encode()
+            )
             shutil.copyfile(bundle / "release-notes.md", out / "release-notes.md")
             shutil.copyfile(
                 bundle / "SHA256SUMS.txt", out / "attachment-SHA256SUMS.txt"
+            )
+
+            def run_custom(argv, passed=True, error=None):
+                p = subprocess.run(
+                    [
+                        sys.executable,
+                        str(ROOT / "tools/release/github_desktop.py"),
+                        *map(str, argv),
+                    ],
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                )
+                if (p.returncode == 0) != passed:
+                    raise AssertionError(p.stdout + p.stderr)
+                if error:
+                    assert error in p.stderr, p.stderr
+                return p
+
+            # Build 14 -> 15 offset using exported source fixture (works in depth=1 CI
+            # checkouts), update-body backfill, concurrent/retry race safety, transient
+            # retry + first-failure preservation, pinned template promotion, and
+            # single-byte tamper rejection.
+            sha_362 = "362d312f8e43f464a10bc19ca899ac7f714b8f73"
+            cat15 = temp / "cat15"
+            cat15.mkdir()
+            manifest15 = dict(manifest, build_number=15, source_sha=sha_362, development=False, source_clean=True)
+            manifest15["artifacts"] = [dict(a) for a in manifest["artifacts"]]
+            for a in manifest15["artifacts"]:
+                shutil.copyfile(catalogue / a["file"], cat15 / a["file"])
+            # Restore original uncorrupted first artifact bytes in cat15
+            first_art = manifest15["artifacts"][0]
+            first_blob = ("fixture " + first_art["file"]).encode()
+            (cat15 / first_art["file"]).write_bytes(first_blob)
+            first_art["sha256"] = hashlib.sha256(first_blob).hexdigest()
+            first_art["size"] = len(first_blob)
+            m15_path = cat15 / "release-manifest.json"
+            release.save(m15_path, manifest15)
+            pub15 = temp / "publication15.json"
+            release.save(
+                pub15,
+                {
+                    "status": "available",
+                    "product": "desktop",
+                    "version": "2.0.0",
+                    "build_number": 15,
+                    "manifest_sha256": release.package.sha(m15_path),
+                    "fixture": True,
+                },
+            )
+            promo15 = temp / "promotion15.json"
+            release.save(
+                promo15,
+                {
+                    "status": "promoted",
+                    "channel": "desktop/stable",
+                    "manifest_sha256": release.package.sha(m15_path),
+                    "fixture": True,
+                },
+            )
+            legacy_tmpl = temp / "legacy.md.tmpl"
+            legacy_tmpl.write_text(
+                (ROOT / ".github/release-notes/desktop.md.tmpl")
+                .read_text(encoding="utf-8")
+                .replace(
+                    "{{CHANGELOG_FILES_SECTION}}",
+                    "**Changelog Files**: [English and Chinese notes]({{NOTES_URL}})",
+                ),
+                encoding="utf-8",
+            )
+            export15 = temp / "export15"
+            (export15 / "release/changelogs/desktop").mkdir(parents=True)
+            (export15 / ".source-commit").write_text(sha_362 + "\n", encoding="utf-8")
+            (export15 / "release/products.toml").write_text(
+                '[products.desktop]\nversion = "2.0.0"\nbuild_number = 14\n',
+                encoding="utf-8",
+            )
+            shutil.copyfile(
+                ROOT / "release/changelogs/desktop/v2.0.0-build.14.md",
+                export15 / "release/changelogs/desktop/v2.0.0-build.14.md",
+            )
+            shutil.copyfile(
+                ROOT / "release/changelogs/desktop/v2.0.0-build.14.zh.md",
+                export15 / "release/changelogs/desktop/v2.0.0-build.14.zh.md",
+            )
+            base15 = [
+                "--manifest",
+                m15_path,
+                "--cli-manifest",
+                cli_path,
+                "--notes",
+                notes,
+                "--source-root",
+                export15,
+                "--fixture",
+                "--api-base",
+                base,
+            ]
+            state.update(
+                tag=None,
+                release=None,
+                assets={},
+                writes=0,
+                patch_attempts=0,
+                corrupt_upload=False,
+                patch_failures=[],
+                patch_payloads=[],
+                probe_arm_get=False,
+                probe_patch_body=None,
+                probe_retag=False,
+                probe_applied=False,
+            )
+            page15 = temp / "page15"
+            run_custom(["draft", *base15, "--template", legacy_tmpl, "--output", page15])
+            run_custom(
+                [
+                    "publish",
+                    *base15,
+                    "--template",
+                    legacy_tmpl,
+                    "--output",
+                    page15,
+                    "--publication",
+                    pub15,
+                ]
+            )
+            check(
+                "legacy build 15 alpha publishes with legacy notes link",
+                "[English and Chinese notes]" in state["release"]["body"],
+            )
+            initial_legacy_body = state["release"]["body"]
+
+            # Concurrent/retry race safety probes on update-body before clean backfill
+            import copy
+
+            race_baseline = copy.deepcopy(state)
+            for kind, status_code in [
+                ("preflight_body_changed", None),
+                ("retry_body_changed", 503),
+                ("retry_target_retagged", 503),
+                ("retry_first_patch_applied", 503),
+                ("patch_404", 404),
+                ("patch_403", 403),
+            ]:
+                state.clear()
+                state.update(copy.deepcopy(race_baseline))
+                if status_code is not None:
+                    state["patch_failures"] = [status_code]
+                if kind == "preflight_body_changed":
+                    state["probe_arm_get"] = True
+                elif kind == "retry_body_changed":
+                    state["probe_patch_body"] = "Concurrent maintainer edit after HTTP 503"
+                elif kind == "retry_target_retagged":
+                    state["probe_retag"] = True
+                elif kind == "retry_first_patch_applied":
+                    state["probe_applied"] = True
+                race_out = temp / ("race-" + kind)
+                race_out.mkdir()
+                expected_ok = kind == "retry_first_patch_applied"
+                run_custom(
+                    [
+                        "update-body",
+                        *base15,
+                        "--channel",
+                        "alpha",
+                        "--output",
+                        race_out,
+                    ],
+                    passed=expected_ok,
+                )
+                attempts = state["patch_attempts"] - race_baseline["patch_attempts"]
+                if kind == "preflight_body_changed":
+                    assert attempts == 0 and state["release"]["body"].startswith("Concurrent maintainer edit")
+                    assert json.loads((race_out / "before.json").read_text())["body"] == race_baseline["release"]["body"]
+                elif kind == "retry_body_changed":
+                    assert attempts == 1 and state["release"]["body"].startswith("Concurrent maintainer edit")
+                elif kind == "retry_target_retagged":
+                    assert attempts == 1 and state["release"]["tag_name"] == "desktop/v2.0.0-build.999"
+                elif kind == "retry_first_patch_applied":
+                    assert attempts == 1 and "(#2427)" in state["release"]["body"]
+                    rcpt = json.loads((race_out / "github-receipt.json").read_text())
+                    assert rcpt["status"] == "updated" and rcpt["already_applied"] is True and rcpt["server_atomic_cas"] is False
+                else:
+                    assert attempts == 1 and state["release"]["body"] == race_baseline["release"]["body"]
+            check("update-body preflight/retry recheck, already-applied readback, and non-retryable 4xx abort pass", True)
+            state.clear()
+            state.update(copy.deepcopy(race_baseline))
+
+            backfill_out = temp / "backfill15"
+            backfill_out.mkdir()
+            state["patch_failures"] = [503]
+            state["patch_payloads"].clear()
+            run_custom(
+                [
+                    "update-body",
+                    *base15,
+                    "--channel",
+                    "alpha",
+                    "--output",
+                    backfill_out,
+                ]
+            )
+            first_failure_bytes = (backfill_out / "first-failure.json").read_bytes()
+            first_failure = json.loads(first_failure_bytes)
+            backfilled_body = state["release"]["body"]
+            check(
+                "update-body retries transient 503, preserves first-failure, sends single-key body PATCH, and extracts 362d312 build.14 markdown",
+                first_failure.get("status_code") == 503
+                and first_failure.get("stage") == "patch"
+                and (backfill_out / "before.json").is_file()
+                and len(state["patch_payloads"]) == 1
+                and list(state["patch_payloads"][0].keys()) == ["body"]
+                and "(#2427)" in backfilled_body
+                and "(#2429)" in backfilled_body
+                and "插件安装和更新现在会在后台进行" in backfilled_body
+                and "<summary>中文变更日志</summary>" in backfilled_body
+                and f"blob/{sha_362}/release/changelogs/desktop/v2.0.0-build.14.md" in backfilled_body
+                and f"blob/{sha_362}/release/changelogs/desktop/v2.0.0-build.14.zh.md" in backfilled_body
+                and "## v2.0.0-build.14 (desktop)" not in backfilled_body
+                and backfilled_body.count("All paired devices must use v2.") == 1
+                and len(state["assets"]) == 32,
+            )
+            writes_before_idempotent = state["writes"]
+            run_custom(
+                [
+                    "update-body",
+                    *base15,
+                    "--channel",
+                    "alpha",
+                    "--output",
+                    backfill_out,
+                ]
+            )
+            check(
+                "idempotent update-body performs no writes and preserves first-failure.json",
+                state["writes"] == writes_before_idempotent
+                and (backfill_out / "first-failure.json").read_bytes() == first_failure_bytes,
+            )
+            # Initial target -> operator restores legacy body during preflight must abort with 0 writes.
+            backfilled_state = copy.deepcopy(state)
+            rollback_out = temp / "rollback15"
+            rollback_out.mkdir()
+            attempts_before_rollback = state["patch_attempts"]
+            state["probe_arm_get"] = True
+            state["probe_arm_body"] = initial_legacy_body
+            run_custom(
+                [
+                    "update-body",
+                    *base15,
+                    "--channel",
+                    "alpha",
+                    "--output",
+                    rollback_out,
+                ],
+                passed=False,
+                error="changed since initial read",
+            )
+            check(
+                "operator restore from target to legacy body aborts with zero writes and preserves restored legacy body",
+                state["patch_attempts"] == attempts_before_rollback
+                and state["release"]["body"] == initial_legacy_body
+                and json.loads((rollback_out / "before.json").read_text())["body"] == backfilled_body,
+            )
+            state.clear()
+            state.update(backfilled_state)
+            # Verify pinned backfill template identity even if main template changes later.
+            modified_main_tmpl = temp / "modified-main.md.tmpl"
+            modified_main_tmpl.write_text(
+                (ROOT / ".github/release-notes/desktop.md.tmpl").read_text(encoding="utf-8")
+                + "\nFuture main template revision.\n",
+                encoding="utf-8",
+            )
+            mod_preview = temp / "mod-preview"
+            run_custom(
+                [
+                    "preview",
+                    *base15,
+                    "--template",
+                    modified_main_tmpl,
+                    "--output",
+                    mod_preview,
+                ]
+            )
+            check(
+                "modified main template changes new releases",
+                "Future main template revision." in (mod_preview / "release-notes.md").read_text(encoding="utf-8"),
+            )
+            run_custom(
+                [
+                    "publish",
+                    *base15,
+                    "--channel",
+                    "stable",
+                    "--template",
+                    legacy_tmpl,
+                    "--output",
+                    temp / "promote15",
+                    "--publication",
+                    pub15,
+                    "--promotion",
+                    promo15,
+                ]
+            )
+            check(
+                "backfilled build 15 promotes to stable using pinned template identity",
+                not state["release"]["prerelease"]
+                and state["release"]["make_latest"] == "true"
+                and "Future main template revision." not in state["release"]["body"]
+                and "## Prerelease Warning" not in state["release"]["body"]
+                and "(#2427)" in state["release"]["body"],
+            )
+            # Single-byte tamper must fail closed.
+            state["release"]["body"] = state["release"]["body"] + " "
+            run_custom(
+                [
+                    "publish",
+                    *base15,
+                    "--channel",
+                    "stable",
+                    "--template",
+                    legacy_tmpl,
+                    "--output",
+                    temp / "tamper15",
+                    "--publication",
+                    pub15,
+                    "--promotion",
+                    promo15,
+                ],
+                passed=False,
+                error="differ from accepted inputs",
+            )
+            check("single-byte tampered backfilled body rejected", True)
+
+            # Unbackfilled legacy alpha promotion compatibility.
+            state.update(
+                tag=None,
+                release=None,
+                assets={},
+                writes=0,
+                corrupt_upload=False,
+                patch_failures=[],
+                patch_payloads=[],
+            )
+            legacy_page = temp / "legacy-only"
+            run_custom(["draft", *base15, "--template", legacy_tmpl, "--output", legacy_page])
+            run_custom(
+                [
+                    "publish",
+                    *base15,
+                    "--template",
+                    legacy_tmpl,
+                    "--output",
+                    legacy_page,
+                    "--publication",
+                    pub15,
+                ]
+            )
+            run_custom(
+                [
+                    "publish",
+                    *base15,
+                    "--channel",
+                    "stable",
+                    "--template",
+                    legacy_tmpl,
+                    "--output",
+                    legacy_page,
+                    "--publication",
+                    pub15,
+                    "--promotion",
+                    promo15,
+                ]
+            )
+            check(
+                "unbackfilled legacy alpha promotes cleanly to legacy stable",
+                not state["release"]["prerelease"]
+                and "[English and Chinese notes]" in state["release"]["body"],
+            )
+
+            # Fail-closed negative checks and single-pass {{WARNINGS}} literal protection.
+            neg_src = temp / "neg-source"
+            neg_dir = neg_src / "release/changelogs/desktop"
+            neg_dir.mkdir(parents=True)
+            # Missing markdown for build 1
+            run_custom(
+                [
+                    "preview",
+                    "--manifest",
+                    manifest_path,
+                    "--cli-manifest",
+                    cli_path,
+                    "--notes",
+                    notes,
+                    "--fixture",
+                    "--api-base",
+                    base,
+                    "--source-root",
+                    neg_src,
+                    "--output",
+                    temp / "neg-missing",
+                ],
+                passed=False,
+                error="bilingual Desktop markdown changelog is required",
+            )
+            # Half-missing (English only)
+            (neg_dir / "v2.0.0-build.1.md").write_text(
+                "## v2.0.0-build.1 (desktop) - 2026-11-27\n\n- Only English.\n",
+                encoding="utf-8",
+            )
+            run_custom(
+                [
+                    "preview",
+                    "--manifest",
+                    manifest_path,
+                    "--cli-manifest",
+                    cli_path,
+                    "--notes",
+                    notes,
+                    "--fixture",
+                    "--api-base",
+                    base,
+                    "--source-root",
+                    neg_src,
+                    "--output",
+                    temp / "neg-half",
+                ],
+                passed=False,
+                error="incomplete bilingual Desktop changelog",
+            )
+            # Placeholder marker rejected
+            (neg_dir / "v2.0.0-build.1.zh.md").write_text(
+                "## v2.0.0-build.1 (desktop) - 2026-11-27\n\n<!-- placeholder -->\n",
+                encoding="utf-8",
+            )
+            run_custom(
+                [
+                    "preview",
+                    "--manifest",
+                    manifest_path,
+                    "--cli-manifest",
+                    cli_path,
+                    "--notes",
+                    notes,
+                    "--fixture",
+                    "--api-base",
+                    base,
+                    "--source-root",
+                    neg_src,
+                    "--output",
+                    temp / "neg-placeholder",
+                ],
+                passed=False,
+                error="contains forbidden marker",
+            )
+            # Wrong heading rejected
+            (neg_dir / "v2.0.0-build.1.zh.md").write_text(
+                "## Wrong heading\n\n- 中文。\n",
+                encoding="utf-8",
+            )
+            run_custom(
+                [
+                    "preview",
+                    "--manifest",
+                    manifest_path,
+                    "--cli-manifest",
+                    cli_path,
+                    "--notes",
+                    notes,
+                    "--fixture",
+                    "--api-base",
+                    base,
+                    "--source-root",
+                    neg_src,
+                    "--output",
+                    temp / "neg-heading",
+                ],
+                passed=False,
+                error="unexpected changelog heading",
+            )
+            # products.toml build > manifest build rejected (no cross-version/future fallback)
+            toml_bad = temp / "bad-toml-src"
+            (toml_bad / "release/changelogs/desktop").mkdir(parents=True)
+            (toml_bad / "release/products.toml").write_text(
+                '[products.desktop]\nversion = "2.0.0"\nbuild_number = 16\n',
+                encoding="utf-8",
+            )
+            (toml_bad / "release/changelogs/desktop/v2.0.0-build.16.md").write_text(
+                "## v2.0.0-build.16 (desktop) - 2026-11-27\n\n- Future item.\n",
+                encoding="utf-8",
+            )
+            (toml_bad / "release/changelogs/desktop/v2.0.0-build.16.zh.md").write_text(
+                "## v2.0.0-build.16 (desktop) - 2026-11-27\n\n- 未来条目。\n",
+                encoding="utf-8",
+            )
+            run_custom(
+                [
+                    "preview",
+                    *base15,
+                    "--source-root",
+                    toml_bad,
+                    "--output",
+                    temp / "neg-future-build",
+                ],
+                passed=False,
+                error="bilingual Desktop markdown changelog is required",
+            )
+            check("fail-closed negative changelog cases rejected", True)
+            # Single-pass literal {{WARNINGS}} in markdown body is not re-expanded
+            lit_src = temp / "lit-src"
+            lit_dir = lit_src / "release/changelogs/desktop"
+            lit_dir.mkdir(parents=True)
+            (lit_dir / "v2.0.0-build.1.md").write_text(
+                "## v2.0.0-build.1 (desktop) - 2026-11-27\n\n- Literal {{WARNINGS}} token stays literal.\n",
+                encoding="utf-8",
+            )
+            (lit_dir / "v2.0.0-build.1.zh.md").write_text(
+                "## v2.0.0-build.1 (desktop) - 2026-11-27\n\n- 保留字面量 {{WARNINGS}}。\n",
+                encoding="utf-8",
+            )
+            lit_out = temp / "lit-out"
+            run_custom(
+                [
+                    "preview",
+                    "--manifest",
+                    manifest_path,
+                    "--cli-manifest",
+                    cli_path,
+                    "--notes",
+                    notes,
+                    "--fixture",
+                    "--api-base",
+                    base,
+                    "--source-root",
+                    lit_src,
+                    "--output",
+                    lit_out,
+                ]
+            )
+            lit_body = (lit_out / "release-notes.md").read_text(encoding="utf-8")
+            check(
+                "single-pass template replacement preserves literal {{WARNINGS}} in changelog body",
+                "Literal {{WARNINGS}} token stays literal." in lit_body
+                and "保留字面量 {{WARNINGS}}。" in lit_body
+                and "## Prerelease Warning" in lit_body,
+            )
+
+            # Git history offset read, shallow checkout missing-object rejection, and
+            # exported source directory nested inside a shallow Git checkout.
+            hist_repo = temp / "hist-repo"
+            (hist_repo / "release/changelogs/desktop").mkdir(parents=True)
+            subprocess.check_call(["git", "init", "-b", "main", str(hist_repo)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.check_call(["git", "-C", str(hist_repo), "config", "user.name", "Test"], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "-C", str(hist_repo), "config", "user.email", "test@example.com"], stdout=subprocess.DEVNULL)
+            (hist_repo / "release/products.toml").write_text(
+                '[products.desktop]\nversion = "2.0.0"\nbuild_number = 14\n',
+                encoding="utf-8",
+            )
+            shutil.copyfile(
+                ROOT / "release/changelogs/desktop/v2.0.0-build.14.md",
+                hist_repo / "release/changelogs/desktop/v2.0.0-build.14.md",
+            )
+            shutil.copyfile(
+                ROOT / "release/changelogs/desktop/v2.0.0-build.14.zh.md",
+                hist_repo / "release/changelogs/desktop/v2.0.0-build.14.zh.md",
+            )
+            subprocess.check_call(["git", "-C", str(hist_repo), "add", "."], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "-C", str(hist_repo), "commit", "-m", "build 14"], stdout=subprocess.DEVNULL)
+            hist_sha = subprocess.check_output(["git", "-C", str(hist_repo), "rev-parse", "HEAD"], text=True).strip()
+            (hist_repo / "release/products.toml").write_text(
+                '[products.desktop]\nversion = "2.0.0"\nbuild_number = 15\n',
+                encoding="utf-8",
+            )
+            (hist_repo / "release/changelogs/desktop/v2.0.0-build.15.md").write_text(
+                "## v2.0.0-build.15 (desktop) - 2026-11-27\n\n- WRONG HEAD ITEM\n",
+                encoding="utf-8",
+            )
+            (hist_repo / "release/changelogs/desktop/v2.0.0-build.15.zh.md").write_text(
+                "## v2.0.0-build.15 (desktop) - 2026-11-27\n\n- 错误工作区条目\n",
+                encoding="utf-8",
+            )
+            subprocess.check_call(["git", "-C", str(hist_repo), "add", "."], stdout=subprocess.DEVNULL)
+            subprocess.check_call(["git", "-C", str(hist_repo), "commit", "-m", "build 15"], stdout=subprocess.DEVNULL)
+
+            hist_cat = temp / "hist-cat"
+            hist_cat.mkdir()
+            hist_manifest = dict(manifest15, source_sha=hist_sha)
+            for a in hist_manifest["artifacts"]:
+                shutil.copyfile(cat15 / a["file"], hist_cat / a["file"])
+            hist_m_path = hist_cat / "release-manifest.json"
+            release.save(hist_m_path, hist_manifest)
+
+            hist_preview = temp / "hist-preview"
+            run_custom(
+                [
+                    "preview",
+                    "--manifest",
+                    hist_m_path,
+                    "--cli-manifest",
+                    cli_path,
+                    "--notes",
+                    notes,
+                    "--source-root",
+                    hist_repo,
+                    "--fixture",
+                    "--api-base",
+                    base,
+                    "--output",
+                    hist_preview,
+                ]
+            )
+            hist_body = (hist_preview / "release-notes.md").read_text(encoding="utf-8")
+            assert "(#2427)" in hist_body and "WRONG HEAD ITEM" not in hist_body
+
+            shallow_repo = temp / "shallow-repo"
+            subprocess.check_call(
+                ["git", "clone", "--depth", "1", "file://" + str(hist_repo), str(shallow_repo)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            run_custom(
+                [
+                    "preview",
+                    "--manifest",
+                    hist_m_path,
+                    "--cli-manifest",
+                    cli_path,
+                    "--notes",
+                    notes,
+                    "--source-root",
+                    shallow_repo,
+                    "--fixture",
+                    "--api-base",
+                    base,
+                    "--output",
+                    temp / "shallow-rejected",
+                ],
+                passed=False,
+                error="is not available in Git checkout",
+            )
+            nested_export = shallow_repo / "dist/catalogue/source"
+            (nested_export / "release/changelogs/desktop").mkdir(parents=True)
+            (nested_export / ".source-commit").write_text(hist_sha + "\n", encoding="utf-8")
+            (nested_export / "release/products.toml").write_text(
+                '[products.desktop]\nversion = "2.0.0"\nbuild_number = 14\n',
+                encoding="utf-8",
+            )
+            shutil.copyfile(
+                ROOT / "release/changelogs/desktop/v2.0.0-build.14.md",
+                nested_export / "release/changelogs/desktop/v2.0.0-build.14.md",
+            )
+            shutil.copyfile(
+                ROOT / "release/changelogs/desktop/v2.0.0-build.14.zh.md",
+                nested_export / "release/changelogs/desktop/v2.0.0-build.14.zh.md",
+            )
+            nested_out = temp / "nested-export-out"
+            run_custom(
+                [
+                    "preview",
+                    "--manifest",
+                    hist_m_path,
+                    "--cli-manifest",
+                    cli_path,
+                    "--notes",
+                    notes,
+                    "--source-root",
+                    nested_export,
+                    "--fixture",
+                    "--api-base",
+                    base,
+                    "--output",
+                    nested_out,
+                ]
+            )
+            nested_body = (nested_out / "release-notes.md").read_text(encoding="utf-8")
+            assert "(#2427)" in nested_body and "WRONG HEAD ITEM" not in nested_body
+            (nested_export / ".source-commit").write_text("b" * 40 + "\n", encoding="utf-8")
+            run_custom(
+                [
+                    "preview",
+                    "--manifest",
+                    hist_m_path,
+                    "--cli-manifest",
+                    cli_path,
+                    "--notes",
+                    notes,
+                    "--source-root",
+                    nested_export,
+                    "--fixture",
+                    "--api-base",
+                    base,
+                    "--output",
+                    temp / "nested-bad-commit",
+                ],
+                passed=False,
+                error="does not match",
+            )
+            check(
+                "git historical build offset read, shallow checkout rejection, and nested exported source dir pass",
+                True,
             )
             report["status"] = "passed"
         finally:

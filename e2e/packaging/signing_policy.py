@@ -176,6 +176,17 @@ try:
         release.save(
             notes, {"en": "Synthetic policy fixture.", "zh": "Synthetic fixture."}
         )
+        source_root = temp / "source"
+        changelog_dir = source_root / "release/changelogs/desktop"
+        changelog_dir.mkdir(parents=True)
+        (changelog_dir / "v2.0.0-build.1.md").write_text(
+            "## v2.0.0-build.1 (desktop) - 2026-11-27\n\n### Features\n\n- Synthetic policy fixture item.\n",
+            encoding="utf-8",
+        )
+        (changelog_dir / "v2.0.0-build.1.zh.md").write_text(
+            "## v2.0.0-build.1 (desktop) - 2026-11-27\n\n### Features\n\n- 合成策略测试条目。\n",
+            encoding="utf-8",
+        )
         for channel in ["alpha", "stable"]:
             page = temp / ("page-" + channel)
             run(
@@ -189,16 +200,18 @@ try:
                     cli_path,
                     "--notes",
                     notes,
+                    "--source-root",
+                    source_root,
                     "--channel",
                     channel,
                     "--output",
                     page,
                 ]
             )
-            assert (
-                "Windows packages are unsigned"
-                in (page / "release-notes.md").read_text()
-            )
+            page_text = (page / "release-notes.md").read_text(encoding="utf-8")
+            assert "Windows packages are unsigned" in page_text
+            assert "Synthetic policy fixture item." in page_text
+            assert "<summary>中文变更日志</summary>" in page_text
             report["checks"].append(channel + " page declares unsigned Windows")
 
         cases = [

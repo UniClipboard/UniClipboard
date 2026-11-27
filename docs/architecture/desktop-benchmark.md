@@ -7,7 +7,7 @@ paths:
   - app/desktop/internal/desktopui/bench_probe.go
   - app/desktop/internal/desktopui/bench_probe_noop.go
   - .github/workflows/desktop-benchmark.yml
-verified: 438a23552fd9e883667029f98e81110c07135e4c
+verified: b1b777fdf83d7eb54aebf56671ab7f586c011136
 ---
 # Win/Mac 桌面资源 Benchmark
 
@@ -37,20 +37,21 @@ verified: 438a23552fd9e883667029f98e81110c07135e4c
 - **全量隔离与剪贴板无损（F1–F12）**：所有运行使用独立临时 `UNIC_HOME` 并强制 `Sync.Enabled=false`；禁止触碰或杀掉用户常规剪贴板或既有非本轮创建的 `unic*` 进程（仅按精确 PID 生命周期清理）；Track A 与 Track B 前后校验系统剪贴板序列号不变（`clipboard_unchanged=true`）。
 - **Parallels VM 状态自动还原与产物核验**：`tools/bench/vm/run_parallels.py` 通过 `prlctl` 探测 VM 初始状态（如 `suspended`/`stopped`/`running`），仅当脚本主动恢复/启动了 VM 时才在结束/异常退出后恢复原状，避免干扰独立任务；宿主机交叉编译的 Track A/B 二进制须经 SHA-256 与 PE 架构校验后拷贝至 Guest 本地路径运行，最终报告输出至 `.build/bench/` 下的 Git 忽略目录。
 - **严谨比较口径**：禁止跨越不同构建轨、不同数据集、不同样本平台或仿真态直接宣布绝对内存回归；`unic-bench compare` 仅对同平台/同配置基线对比相对变化与 `LeakCheck` 斜率阈值，且不在同一基准任务中混入生产代码优化改动。
+- **零外链离线 HTML 可视化看板**：`unic-bench run` 同步生成同目录单文件离线 `report.html` 并纳入 `SHA256SUMS`（`tools/bench/vm/run_parallels.py` 同步回收）；`unic-bench render`（及 `make bench-html` / CI `dashboard` 作业）支持单报告与多平台并列看板渲染及 `--compare`/`--budget` 回归可视化，采用纯 Go 标准库 `html/template` + `embed` 内联 SVG/JS 与严格 CSP（`default-src 'none'`），守住双平台口径隔离、`VirtualQueryEx` `ReservedBytes` 独立展示、安全 JSON 转义与纯 DOM 文本渲染。
 
 ## 代码地图
 
 | 路径 | 职责 |
 |---|---|
-| `tools/bench/cmd/unic-bench/` | CLI 入口，提供 `doctor`、`seed`、`run`、`compare` 四个子命令 |
+| `tools/bench/cmd/unic-bench/` | CLI 入口，提供 `doctor`、`seed`、`run`、`compare`、`render` 五个子命令 |
 | `tools/bench/internal/fixture/` | 确定性合成语料生成（`empty`/`standard`/`soak`）、临时 `UNIC_HOME` 隔离与 PID 级 daemon 管理 |
 | `tools/bench/internal/sampler/` | macOS（`top`/`footprint`）与 Windows（`WorkingSet`/`PrivateWorkingSet`/`PrivateCommit`/`VirtualQueryEx`/Handles/GDI/USER/`debug/pe`）原生采样器及回归统计 |
 | `tools/bench/internal/scenarios/` | 6 大场景状态机编排、`unicd` 启动收敛等待、Track B 自动化驱动与时延/缓存归因聚合 |
-| `tools/bench/internal/report/` | 产出 `report.json`、`report.md`、`comparison.json`/`comparison.md` 与 `SHA256SUMS` |
-| `tools/bench/vm/run_parallels.py`、`test_run_parallels.py` | 宿主机交叉编译（`windows/arm64` 或 `amd64`）、Parallels VM 生命周期管理、Guest 隔离执行与单测 |
+| `tools/bench/internal/report/` | 产出 `report.json`、`report.md`、零外链单文件离线交互看板 `report.html`、`comparison.json`/`comparison.md` 与 `SHA256SUMS`（`render` 支持单/多报告同屏对比及 `--compare`/`--budget` 可视化，严格守住双平台口径隔离与 XSS 转义） |
+| `tools/bench/vm/run_parallels.py`、`test_run_parallels.py` | 宿主机交叉编译（`windows/arm64` 或 `amd64`）、Parallels VM 生命周期管理、Guest 隔离执行、产物回收（含 `report.html`）与单测 |
 | `app/service/cmd/unicd/bench_probe.go` | `//go:build bench_probe` 纯标准库 `runtime/metrics` JSONL 探针（零 UI 依赖） |
 | `app/desktop/cmd/unic-desktop/bench_probe.go`、`app/desktop/internal/desktopui/bench_probe*.go` | `//go:build bench_probe` 桌面 UI `runtime/metrics` + `weak.Pointer` 缓存归因与无探针 noop 桩 |
-| `Makefile`、`.github/workflows/desktop-benchmark.yml` | 本地 `bench-mac` / `bench-win-vm` / `bench-compare` 入口与纯手动（`workflow_dispatch`）跨端 CI Workflow |
+| `Makefile`、`.github/workflows/desktop-benchmark.yml` | 本地 `bench-mac` / `bench-win-vm` / `bench-compare` / `bench-html` 入口与纯手动（`workflow_dispatch`）跨端 CI Workflow（含汇总离线看板 `dashboard` 作业） |
 
 ## 规格与背景
 

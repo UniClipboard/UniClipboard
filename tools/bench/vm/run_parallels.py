@@ -30,6 +30,13 @@ PE_MACHINES = {
     0x014C: "386",
 }
 
+HARVEST_ARTIFACTS = (
+    "report.json",
+    "report.md",
+    "report.html",
+    "SHA256SUMS",
+)
+
 
 class BenchmarkError(RuntimeError):
     """Raised when VM orchestration, binary verification, or cleanup fails."""
@@ -242,6 +249,21 @@ def build_guest_cleanup_ps(guest_root: str) -> str:
     )
 
 
+def build_guest_harvest_ps(guest_out_dir: str, share_out: str) -> str:
+    names_ps = ",".join(ps_quote(name) for name in HARVEST_ARTIFACTS)
+    return (
+        f"$outDir={ps_quote(guest_out_dir)};"
+        f"$shareOut={ps_quote(share_out)};"
+        f"foreach($name in @({names_ps}))"
+        "{"
+        "$src=[IO.Path]::Combine($outDir,$name);"
+        "if(Test-Path -LiteralPath $src){Copy-Item -LiteralPath $src -Destination ([IO.Path]::Combine($shareOut,$name)) -Force}"
+        "};"
+        "$pm=[IO.Path]::Combine($outDir,'probe-metrics');"
+        "if(Test-Path -LiteralPath $pm){Copy-Item -LiteralPath $pm -Destination ([IO.Path]::Combine($shareOut,'probe-metrics')) -Recurse -Force}"
+    )
+
+
 def restore_vm_commands(vm: str, initial_state: str) -> list[list[str]]:
     state = initial_state.strip().lower()
     if state == "suspended":
@@ -417,19 +439,10 @@ def main(argv: list[str] | None = None) -> int:
         )
 
         # Always harvest any artifacts produced before cleanup, even on scenario failure.
-        harvest_ps = (
-            f"$outDir={ps_quote(guest_root + '\\out')};"
-            f"$shareOut={ps_quote(share_out)};"
-            "foreach($name in @('report.json','report.md','SHA256SUMS')){"
-            "$src=[IO.Path]::Combine($outDir,$name);"
-            "if(Test-Path -LiteralPath $src){Copy-Item -LiteralPath $src -Destination ([IO.Path]::Combine($shareOut,$name)) -Force}"
-            "};"
-            "$pm=[IO.Path]::Combine($outDir,'probe-metrics');"
-            "if(Test-Path -LiteralPath $pm){Copy-Item -LiteralPath $pm -Destination ([IO.Path]::Combine($shareOut,'probe-metrics')) -Recurse -Force}"
-        )
+        harvest_ps = build_guest_harvest_ps(guest_root + "\\out", share_out)
         run_prlctl_ps(args.vm, harvest_ps)
 
-        for item in ("report.json", "report.md", "SHA256SUMS"):
+        for item in HARVEST_ARTIFACTS:
             src = share_out_dir / item
             if src.is_file():
                 shutil.copy2(src, output_dir / item)

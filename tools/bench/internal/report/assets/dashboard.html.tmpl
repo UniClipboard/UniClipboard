@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:;">
+  <title>{{.Title}}</title>
+  <style>{{.CSS}}</style>
+</head>
+<body>
+  <header class="topbar" id="top">
+    <div class="topbar-inner">
+      <div class="brand-row">
+        <div class="brand-title-wrap">
+          <h1 id="report-title">{{.Title}}</h1>
+          <span class="badge badge-neutral" id="report-meta-badge">Offline Report</span>
+        </div>
+        <div class="toolbar-actions">
+          <button type="button" class="btn-toggle" id="theme-toggle" aria-label="Toggle color theme">Dark Mode</button>
+        </div>
+      </div>
+
+      <div class="filter-bar" role="region" aria-label="Report filters">
+        <div class="filter-group" id="report-filter-group">
+          <span class="filter-label">Reports</span>
+          <div class="pill-row" id="report-pills"></div>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">Track</span>
+          <div class="pill-row" id="track-pills">
+            <button type="button" class="pill active" data-track="all">All</button>
+            <button type="button" class="pill" data-track="production">production (Track A)</button>
+            <button type="button" class="pill" data-track="interactive">interactive (Track B)</button>
+          </div>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">Dataset</span>
+          <div class="pill-row" id="dataset-pills"></div>
+        </div>
+      </div>
+
+      <nav class="anchor-nav" aria-label="Section navigation">
+        <a href="#overview">Overview</a>
+        <a href="#bg-idle">Background</a>
+        <a href="#fg-interactive">Foreground &amp; Interactive</a>
+        <a href="#close-reclaim">Close &amp; Hide Reclaim</a>
+        <a href="#qp-lifecycle">Quick Panel Lifecycle</a>
+        <a href="#attribution">OS Attribution</a>
+        <a href="#compare" id="nav-compare-link" hidden>Compare &amp; Budget</a>
+        <a href="#boundary">Boundaries &amp; Binaries</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <section id="overview" class="section-block">
+      <div id="anomaly-banner-container"></div>
+      <div id="basis-notice-container"></div>
+      <div id="env-cards-container" class="env-grid"></div>
+      <div id="overview-kpi-container" class="kpi-grid"></div>
+    </section>
+
+    <section id="bg-idle" class="section-block card">
+      <div class="section-head">
+        <div>
+          <h2>1. Background Resident &amp; Lightweight Delta</h2>
+          <p class="section-sub">Steady-state footprint of <code>bg-idle-normal</code> (<code>unicd + tray + quick-panel</code>) vs <code>bg-idle-lightweight</code> (<code>unicd</code> only), with <code>EarlyPeak</code> startup spikes kept separate from steady medians.</p>
+        </div>
+      </div>
+      <div id="bg-idle-content"></div>
+    </section>
+
+    <section id="fg-interactive" class="section-block card">
+      <div class="section-head">
+        <div>
+          <h2>2. Foreground Visible &amp; Deep Interaction</h2>
+          <p class="section-sub">Track A <code>fg-visible-idle</code> and Track B <code>fg-interactive</code> (scroll, grid toggle, search/filter, 2K image preview decode, settings navigation, 15s settle) plus Go runtime &amp; UI cache probe attribution.</p>
+        </div>
+      </div>
+      <div id="fg-interactive-content"></div>
+    </section>
+
+    <section id="close-reclaim" class="section-block card">
+      <div class="section-head">
+        <div>
+          <h2>3. Close Reclaim vs Hide/Minimize Retention</h2>
+          <p class="section-sub"><code>fg-close-reclaim</code> compares <code>pre-open-bg</code>, 5-round <code>open_median_bytes</code> (from <code>derived_metrics</code>), <code>post-close-bg</code>, and <code>pre-hide-visible</code> vs <code>gui-hidden-retained</code> / <code>gui-restored</code>.</p>
+        </div>
+      </div>
+      <div id="close-reclaim-content"></div>
+    </section>
+
+    <section id="qp-lifecycle" class="section-block card">
+      <div class="section-head">
+        <div>
+          <h2>4. Standalone Quick Panel Lifecycle</h2>
+          <p class="section-sub">Cold launch vs prewarmed reuse across Track A &amp; Track B, multi-round warm post-close leak slope regression, IPC-to-ready latencies, and FD/Handle/GDI/USER drift.</p>
+        </div>
+      </div>
+      <div id="qp-lifecycle-content"></div>
+    </section>
+
+    <section id="attribution" class="section-block card">
+      <div class="section-head">
+        <div>
+          <h2>5. Native OS Memory Attribution</h2>
+          <p class="section-sub">macOS <code>footprint -j</code> category breakdown (Top-8 dirty+swapped + Other) vs Windows <code>VirtualQueryEx</code> committed regions (with virtual <code>ReservedBytes</code> kept separate from committed bars).</p>
+        </div>
+      </div>
+      <div class="attr-controls" id="attribution-controls"></div>
+      <div id="attribution-content"></div>
+    </section>
+
+    <section id="compare" class="section-block card" hidden>
+      <div class="section-head">
+        <div>
+          <h2>6. Regression Comparison &amp; Budget Check</h2>
+          <p class="section-sub">Baseline vs Candidate phase memory/CPU deltas, latency P95 deltas, and threshold/budget alerts.</p>
+        </div>
+      </div>
+      <div id="compare-content"></div>
+    </section>
+
+    <section id="boundary" class="section-block card">
+      <div class="section-head">
+        <div>
+          <h2>7. Measurement Boundaries (<code>NOT_RUN</code>) &amp; Binary Fingerprints</h2>
+          <p class="section-sub">Explicit coverage scope boundaries and SHA-256 provenance of binaries under test.</p>
+        </div>
+      </div>
+      <div id="boundary-content"></div>
+    </section>
+  </main>
+
+  <div id="bench-tooltip" class="bench-tooltip" role="tooltip" hidden></div>
+
+  <script id="unic-bench-data" type="application/json">{{.DataJSON}}</script>
+  <script>{{.JS}}</script>
+</body>
+</html>

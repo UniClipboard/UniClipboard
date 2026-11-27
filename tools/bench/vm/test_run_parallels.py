@@ -98,6 +98,15 @@ class TestRunParallels(unittest.TestCase):
         with self.assertRaises(rp.BenchmarkError):
             rp.host_path_to_mac_share(Path("/var/tmp/outside"), home_dir=home)
 
+    def test_harvest_artifacts_include_report_html(self) -> None:
+        self.assertEqual(
+            rp.HARVEST_ARTIFACTS,
+            ("report.json", "report.md", "report.html", "SHA256SUMS"),
+        )
+        ps_harvest = rp.build_guest_harvest_ps(r"C:\Temp\unic-bench-1\out", r"\\Mac\Home\.cache\collected")
+        for item in rp.HARVEST_ARTIFACTS:
+            self.assertIn(f"'{item}'", ps_harvest)
+
 
 if __name__ == "__main__":
     unittest.main()

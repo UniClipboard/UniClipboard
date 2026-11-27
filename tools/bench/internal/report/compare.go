@@ -93,6 +93,9 @@ type PhaseDiff struct {
 	Track            string  `json:"track,omitempty"`
 	Dataset          string  `json:"dataset,omitempty"`
 	Phase            string  `json:"phase"`
+	BaseMissing      bool    `json:"base_missing,omitempty"`
+	CandMissing      bool    `json:"cand_missing,omitempty"`
+	Incompatible     bool    `json:"incompatible,omitempty"`
 	BaseMemMedian    uint64  `json:"base_mem_median"`
 	CandMemMedian    uint64  `json:"cand_mem_median"`
 	MemDeltaPct      float64 `json:"mem_delta_pct"`
@@ -105,23 +108,28 @@ type PhaseDiff struct {
 
 // LatencyDiff captures baseline vs candidate P95 latency for one metric.
 type LatencyDiff struct {
-	Scenario string  `json:"scenario"`
-	Track    string  `json:"track,omitempty"`
-	Dataset  string  `json:"dataset,omitempty"`
-	Metric   string  `json:"metric"`
-	BaseP95  float64 `json:"base_p95_ms"`
-	CandP95  float64 `json:"cand_p95_ms"`
-	DeltaMs  float64 `json:"delta_ms"`
+	Scenario     string  `json:"scenario"`
+	Track        string  `json:"track,omitempty"`
+	Dataset      string  `json:"dataset,omitempty"`
+	Metric       string  `json:"metric"`
+	BaseMissing  bool    `json:"base_missing,omitempty"`
+	CandMissing  bool    `json:"cand_missing,omitempty"`
+	Incompatible bool    `json:"incompatible,omitempty"`
+	BaseP95      float64 `json:"base_p95_ms"`
+	CandP95      float64 `json:"cand_p95_ms"`
+	DeltaMs      float64 `json:"delta_ms"`
 }
 
 // CompareResult holds all diffs and threshold/budget findings.
 type CompareResult struct {
-	BaselineRunID  string           `json:"baseline_run_id"`
-	CandidateRunID string           `json:"candidate_run_id"`
-	Thresholds     Thresholds       `json:"thresholds"`
-	PhaseDiffs     []PhaseDiff      `json:"phase_diffs"`
-	LatencyDiffs   []LatencyDiff    `json:"latency_diffs"`
-	Findings       []CompareFinding `json:"findings"`
+	BaselineRunID         string           `json:"baseline_run_id"`
+	CandidateRunID        string           `json:"candidate_run_id"`
+	Incompatible          bool             `json:"incompatible,omitempty"`
+	IncompatibilityReason string           `json:"incompatibility_reason,omitempty"`
+	Thresholds            Thresholds       `json:"thresholds"`
+	PhaseDiffs            []PhaseDiff      `json:"phase_diffs"`
+	LatencyDiffs          []LatencyDiff    `json:"latency_diffs"`
+	Findings              []CompareFinding `json:"findings"`
 }
 
 // HasRegressions reports whether any regression alert or budget violation occurred.
@@ -149,34 +157,46 @@ func Compare(base, cand *Report, opts CompareOptions) (*CompareResult, error) {
 		th.LeakSlopeBytesPerRound = DefaultThresholds().LeakSlopeBytesPerRound
 	}
 
+	incompatReason := detectCompareMismatchWarning([]*Report{base, cand})
 	res := &CompareResult{
-		BaselineRunID:  base.RunID,
-		CandidateRunID: cand.RunID,
-		Thresholds:     th,
+		BaselineRunID:         base.RunID,
+		CandidateRunID:        cand.RunID,
+		Incompatible:          incompatReason != "",
+		IncompatibilityReason: incompatReason,
+		Thresholds:            th,
 	}
 
-	baseScenarios := make(map[string]ScenarioResult, len(base.Scenarios))
-	for _, sc := range base.Scenarios {
-		baseScenarios[scenarioCompareKey(sc)] = sc
+	baseScenarios := make(map[string]int, len(base.Scenarios))
+	for i, sc := range base.Scenarios {
+		baseScenarios[scenarioCompareKey(sc)] = i
 	}
+	matchedBase := make([]bool, len(base.Scenarios))
 
 	for _, csc := range cand.Scenarios {
-		bsc, hasBase := baseScenarios[scenarioCompareKey(csc)]
+		baseIdx, hasBase := baseScenarios[scenarioCompareKey(csc)]
 		if !hasBase && (csc.Dataset != "" || csc.Track != "") {
-			// Fallback to bare ID when comparing against older single-dataset reports.
-			for _, sc := range base.Scenarios {
-				if sc.ID == csc.ID {
-					bsc, hasBase = sc, true
+			// Fallback to bare ID ONLY when comparing against an older report whose
+			// scenario lacks Dataset and whose Track is compatible (never cross-dataset).
+			for i, sc := range base.Scenarios {
+				if sc.ID == csc.ID && sc.Dataset == "" && (sc.Track == "" || csc.Track == "" || sc.Track == csc.Track) {
+					baseIdx, hasBase = i, true
 					break
 				}
 			}
 		}
+		var bsc ScenarioResult
+		if hasBase {
+			bsc = base.Scenarios[baseIdx]
+			matchedBase[baseIdx] = true
+		}
+		scIncompatible := res.Incompatible || (hasBase && bsc.Track != "" && csc.Track != "" && bsc.Track != csc.Track)
 		basePhases := map[string]int{}
 		if hasBase {
 			for i, ph := range bsc.Phases {
 				basePhases[ph.Phase] = i
 			}
 		}
+		seenBasePhases := make(map[string]bool, len(csc.Phases))
 
 		var budget ScenarioBudget
 		hasBudget := false
@@ -190,43 +210,50 @@ func Compare(base, cand *Report, opts CompareOptions) (*CompareResult, error) {
 			diff.Track = csc.Track
 			diff.Dataset = csc.Dataset
 			diff.Phase = cph.Phase
+			diff.Incompatible = scIncompatible
 			diff.CandMemMedian = cph.SteadyMedianBytes
 			diff.CandCPUPercent = cph.CPUPercentMean
 			diff.CandLeakSlopeBPR = cph.LeakSlopeBytesPerRound
 
-			if idx, ok := basePhases[cph.Phase]; ok {
+			idx, hasBasePhase := basePhases[cph.Phase]
+			if !hasBasePhase {
+				diff.BaseMissing = true
+			} else {
+				seenBasePhases[cph.Phase] = true
 				bph := bsc.Phases[idx]
 				diff.BaseMemMedian = bph.SteadyMedianBytes
 				diff.BaseCPUPercent = bph.CPUPercentMean
 				diff.BaseLeakSlopeBPR = bph.LeakSlopeBytesPerRound
-				diff.MemDeltaPct = relPct(float64(bph.SteadyMedianBytes), float64(cph.SteadyMedianBytes))
-				diff.CPUDeltaPct = relPct(bph.CPUPercentMean, cph.CPUPercentMean)
+				if !scIncompatible {
+					diff.MemDeltaPct = relPct(float64(bph.SteadyMedianBytes), float64(cph.SteadyMedianBytes))
+					diff.CPUDeltaPct = relPct(bph.CPUPercentMean, cph.CPUPercentMean)
 
-				if bph.SteadyMedianBytes > 0 && diff.MemDeltaPct > th.MemoryRelPct {
-					res.Findings = append(res.Findings, CompareFinding{
-						Severity:  SeverityAlert,
-						Scenario:  csc.ID,
-						Phase:     cph.Phase,
-						Metric:    "steady_median_memory",
-						Baseline:  formatBytes(bph.SteadyMedianBytes),
-						Candidate: formatBytes(cph.SteadyMedianBytes),
-						Delta:     fmt.Sprintf("+%.1f%%", diff.MemDeltaPct),
-						Threshold: fmt.Sprintf("+%.1f%%", th.MemoryRelPct),
-						Message:   fmt.Sprintf("steady median memory regressed by +%.1f%% (> +%.1f%%)", diff.MemDeltaPct, th.MemoryRelPct),
-					})
-				}
-				if bph.CPUPercentMean > 0.05 && diff.CPUDeltaPct > th.CPURelPct {
-					res.Findings = append(res.Findings, CompareFinding{
-						Severity:  SeverityAlert,
-						Scenario:  csc.ID,
-						Phase:     cph.Phase,
-						Metric:    "cpu_percent_mean",
-						Baseline:  fmt.Sprintf("%.2f%%", bph.CPUPercentMean),
-						Candidate: fmt.Sprintf("%.2f%%", cph.CPUPercentMean),
-						Delta:     fmt.Sprintf("+%.1f%%", diff.CPUDeltaPct),
-						Threshold: fmt.Sprintf("+%.1f%%", th.CPURelPct),
-						Message:   fmt.Sprintf("CPU utilization regressed by +%.1f%% (> +%.1f%%)", diff.CPUDeltaPct, th.CPURelPct),
-					})
+					if bph.SteadyMedianBytes > 0 && diff.MemDeltaPct > th.MemoryRelPct {
+						res.Findings = append(res.Findings, CompareFinding{
+							Severity:  SeverityAlert,
+							Scenario:  csc.ID,
+							Phase:     cph.Phase,
+							Metric:    "steady_median_memory",
+							Baseline:  formatBytes(bph.SteadyMedianBytes),
+							Candidate: formatBytes(cph.SteadyMedianBytes),
+							Delta:     fmt.Sprintf("+%.1f%%", diff.MemDeltaPct),
+							Threshold: fmt.Sprintf("+%.1f%%", th.MemoryRelPct),
+							Message:   fmt.Sprintf("steady median memory regressed by +%.1f%% (> +%.1f%%)", diff.MemDeltaPct, th.MemoryRelPct),
+						})
+					}
+					if bph.CPUPercentMean > 0.05 && diff.CPUDeltaPct > th.CPURelPct {
+						res.Findings = append(res.Findings, CompareFinding{
+							Severity:  SeverityAlert,
+							Scenario:  csc.ID,
+							Phase:     cph.Phase,
+							Metric:    "cpu_percent_mean",
+							Baseline:  fmt.Sprintf("%.2f%%", bph.CPUPercentMean),
+							Candidate: fmt.Sprintf("%.2f%%", cph.CPUPercentMean),
+							Delta:     fmt.Sprintf("+%.1f%%", diff.CPUDeltaPct),
+							Threshold: fmt.Sprintf("+%.1f%%", th.CPURelPct),
+							Message:   fmt.Sprintf("CPU utilization regressed by +%.1f%% (> +%.1f%%)", diff.CPUDeltaPct, th.CPURelPct),
+						})
+					}
 				}
 			}
 
@@ -304,24 +331,50 @@ func Compare(base, cand *Report, opts CompareOptions) (*CompareResult, error) {
 			res.PhaseDiffs = append(res.PhaseDiffs, diff)
 		}
 
+		// Preserve baseline phases missing from candidate.
+		if hasBase {
+			for _, bph := range bsc.Phases {
+				if seenBasePhases[bph.Phase] {
+					continue
+				}
+				res.PhaseDiffs = append(res.PhaseDiffs, PhaseDiff{
+					Scenario:         bsc.ID,
+					Track:            bsc.Track,
+					Dataset:          bsc.Dataset,
+					Phase:            bph.Phase,
+					CandMissing:      true,
+					Incompatible:     scIncompatible,
+					BaseMemMedian:    bph.SteadyMedianBytes,
+					BaseCPUPercent:   bph.CPUPercentMean,
+					BaseLeakSlopeBPR: bph.LeakSlopeBytesPerRound,
+				})
+			}
+		}
+
 		// Compare scenario-level latencies.
 		latKeys := make([]string, 0, len(csc.Latencies))
 		for k := range csc.Latencies {
 			latKeys = append(latKeys, k)
 		}
 		sort.Strings(latKeys)
+		seenBaseLat := make(map[string]bool, len(latKeys))
 		for _, k := range latKeys {
 			clat := csc.Latencies[k]
 			ld := LatencyDiff{
-				Scenario: csc.ID,
-				Track:    csc.Track,
-				Dataset:  csc.Dataset,
-				Metric:   k,
-				CandP95:  clat.P95Ms,
+				Scenario:     csc.ID,
+				Track:        csc.Track,
+				Dataset:      csc.Dataset,
+				Metric:       k,
+				Incompatible: scIncompatible,
+				CandP95:      clat.P95Ms,
 			}
-			if hasBase {
-				if blat, ok := bsc.Latencies[k]; ok {
-					ld.BaseP95 = blat.P95Ms
+			blat, ok := bsc.Latencies[k]
+			if !hasBase || !ok {
+				ld.BaseMissing = true
+			} else {
+				seenBaseLat[k] = true
+				ld.BaseP95 = blat.P95Ms
+				if !scIncompatible {
 					ld.DeltaMs = clat.P95Ms - blat.P95Ms
 					if ld.DeltaMs > th.LatencyDeltaMs {
 						res.Findings = append(res.Findings, CompareFinding{
@@ -352,6 +405,28 @@ func Compare(base, cand *Report, opts CompareOptions) (*CompareResult, error) {
 			res.LatencyDiffs = append(res.LatencyDiffs, ld)
 		}
 
+		// Preserve baseline latencies missing from candidate.
+		if hasBase && len(bsc.Latencies) > 0 {
+			baseLatKeys := make([]string, 0, len(bsc.Latencies))
+			for k := range bsc.Latencies {
+				if !seenBaseLat[k] {
+					baseLatKeys = append(baseLatKeys, k)
+				}
+			}
+			sort.Strings(baseLatKeys)
+			for _, k := range baseLatKeys {
+				res.LatencyDiffs = append(res.LatencyDiffs, LatencyDiff{
+					Scenario:     bsc.ID,
+					Track:        bsc.Track,
+					Dataset:      bsc.Dataset,
+					Metric:       k,
+					CandMissing:  true,
+					Incompatible: scIncompatible,
+					BaseP95:      bsc.Latencies[k].P95Ms,
+				})
+			}
+		}
+
 		// Scenario-level multi-round leak check.
 		if csc.LeakCheck != nil {
 			slope := csc.LeakCheck.SlopeBytesPerRound
@@ -378,6 +453,45 @@ func Compare(base, cand *Report, opts CompareOptions) (*CompareResult, error) {
 		}
 	}
 
+	// Preserve baseline-only scenarios (missing in candidate) so missing candidate
+	// phases and latencies stay visible with CandMissing=true.
+	for i, bsc := range base.Scenarios {
+		if matchedBase[i] {
+			continue
+		}
+		for _, bph := range bsc.Phases {
+			res.PhaseDiffs = append(res.PhaseDiffs, PhaseDiff{
+				Scenario:         bsc.ID,
+				Track:            bsc.Track,
+				Dataset:          bsc.Dataset,
+				Phase:            bph.Phase,
+				CandMissing:      true,
+				Incompatible:     res.Incompatible,
+				BaseMemMedian:    bph.SteadyMedianBytes,
+				BaseCPUPercent:   bph.CPUPercentMean,
+				BaseLeakSlopeBPR: bph.LeakSlopeBytesPerRound,
+			})
+		}
+		if len(bsc.Latencies) > 0 {
+			latKeys := make([]string, 0, len(bsc.Latencies))
+			for k := range bsc.Latencies {
+				latKeys = append(latKeys, k)
+			}
+			sort.Strings(latKeys)
+			for _, k := range latKeys {
+				res.LatencyDiffs = append(res.LatencyDiffs, LatencyDiff{
+					Scenario:     bsc.ID,
+					Track:        bsc.Track,
+					Dataset:      bsc.Dataset,
+					Metric:       k,
+					CandMissing:  true,
+					Incompatible: res.Incompatible,
+					BaseP95:      bsc.Latencies[k].P95Ms,
+				})
+			}
+		}
+	}
+
 	return res, nil
 }
 
@@ -390,17 +504,32 @@ func RenderCompareMarkdown(res *CompareResult) string {
 	fmt.Fprintf(&b, "# Benchmark Comparison\n\n")
 	fmt.Fprintf(&b, "- **Baseline**: `%s`\n", res.BaselineRunID)
 	fmt.Fprintf(&b, "- **Candidate**: `%s`\n", res.CandidateRunID)
-	fmt.Fprintf(&b, "- **Status**: %s\n\n", map[bool]string{true: "REGRESSION / BUDGET ALERT", false: "OK"}[res.HasRegressions()])
+	fmt.Fprintf(&b, "- **Status**: %s\n", map[bool]string{true: "REGRESSION / BUDGET ALERT", false: "OK"}[res.HasRegressions()])
+	if res.IncompatibilityReason != "" {
+		fmt.Fprintf(&b, "- **Warning**: %s\n", res.IncompatibilityReason)
+	}
+	fmt.Fprintln(&b)
 
 	if len(res.PhaseDiffs) > 0 {
 		fmt.Fprintf(&b, "## Memory & CPU Diff\n\n")
 		fmt.Fprintf(&b, "| Scenario | Track | Dataset | Phase | Base Mem | Cand Mem | Mem Delta | Base CPU | Cand CPU | CPU Delta |\n")
 		fmt.Fprintf(&b, "|---|---|---|---|---:|---:|---:|---:|---:|---:|\n")
 		for _, pd := range res.PhaseDiffs {
-			fmt.Fprintf(&b, "| `%s` | %s | %s | `%s` | %s | %s | %+.1f%% | %.2f%% | %.2f%% | %+.1f%% |\n",
+			baseMem, candMem := formatBytes(pd.BaseMemMedian), formatBytes(pd.CandMemMedian)
+			baseCPU, candCPU := fmt.Sprintf("%.2f%%", pd.BaseCPUPercent), fmt.Sprintf("%.2f%%", pd.CandCPUPercent)
+			memDelta, cpuDelta := fmt.Sprintf("%+.1f%%", pd.MemDeltaPct), fmt.Sprintf("%+.1f%%", pd.CPUDeltaPct)
+			if pd.BaseMissing {
+				baseMem, baseCPU, memDelta, cpuDelta = "-", "-", "-", "-"
+			}
+			if pd.CandMissing {
+				candMem, candCPU, memDelta, cpuDelta = "-", "-", "-", "-"
+			}
+			if pd.Incompatible {
+				memDelta, cpuDelta = "-", "-"
+			}
+			fmt.Fprintf(&b, "| `%s` | %s | %s | `%s` | %s | %s | %s | %s | %s | %s |\n",
 				pd.Scenario, cellOrDash(pd.Track), cellOrDash(pd.Dataset), pd.Phase,
-				formatBytes(pd.BaseMemMedian), formatBytes(pd.CandMemMedian), pd.MemDeltaPct,
-				pd.BaseCPUPercent, pd.CandCPUPercent, pd.CPUDeltaPct,
+				baseMem, candMem, memDelta, baseCPU, candCPU, cpuDelta,
 			)
 		}
 		fmt.Fprintln(&b)
@@ -411,8 +540,19 @@ func RenderCompareMarkdown(res *CompareResult) string {
 		fmt.Fprintf(&b, "| Scenario | Track | Dataset | Metric | Base P95 (ms) | Cand P95 (ms) | Delta (ms) |\n")
 		fmt.Fprintf(&b, "|---|---|---|---|---:|---:|---:|\n")
 		for _, ld := range res.LatencyDiffs {
-			fmt.Fprintf(&b, "| `%s` | %s | %s | `%s` | %.1f | %.1f | %+.1f |\n",
-				ld.Scenario, cellOrDash(ld.Track), cellOrDash(ld.Dataset), ld.Metric, ld.BaseP95, ld.CandP95, ld.DeltaMs)
+			baseP95, candP95 := fmt.Sprintf("%.1f", ld.BaseP95), fmt.Sprintf("%.1f", ld.CandP95)
+			delta := fmt.Sprintf("%+.1f", ld.DeltaMs)
+			if ld.BaseMissing {
+				baseP95, delta = "-", "-"
+			}
+			if ld.CandMissing {
+				candP95, delta = "-", "-"
+			}
+			if ld.Incompatible {
+				delta = "-"
+			}
+			fmt.Fprintf(&b, "| `%s` | %s | %s | `%s` | %s | %s | %s |\n",
+				ld.Scenario, cellOrDash(ld.Track), cellOrDash(ld.Dataset), ld.Metric, baseP95, candP95, delta)
 		}
 		fmt.Fprintln(&b)
 	}

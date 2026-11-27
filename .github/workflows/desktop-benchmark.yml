@@ -162,3 +162,45 @@ jobs:
           path: .build/bench/${{ matrix.target }}
           include-hidden-files: true
           if-no-files-found: warn
+  dashboard:
+    name: Render cross-platform benchmark dashboard
+    needs: benchmark
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: desktop-benchmark-*
+          path: .build/bench-artifacts
+          merge-multiple: false
+      - name: Render merged HTML dashboard
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t reports < <(find .build/bench-artifacts -type f -name 'report.json' | sort)
+          if [[ "${#reports[@]}" -eq 0 ]]; then
+            echo "No report.json artifacts found; skipping dashboard render."
+            exit 0
+          fi
+          mkdir -p .build/bench/dashboard
+          args=(render --out .build/bench/dashboard/index.html --title "Desktop Resource Benchmark Dashboard")
+          for r in "${reports[@]}"; do
+            dir_name="$(basename "$(dirname "$r")")"
+            label="${dir_name#desktop-benchmark-}"
+            args+=(--in "$r" --label "$label")
+          done
+          go run ./tools/bench/cmd/unic-bench "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-benchmark-dashboard
+          path: .build/bench/dashboard
+          include-hidden-files: true
+          if-no-files-found: warn

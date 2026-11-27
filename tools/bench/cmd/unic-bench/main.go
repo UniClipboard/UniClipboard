@@ -22,6 +22,7 @@ Commands:
   doctor    Verify OS tools, native sampling, clipboard sequence, and binary architectures
   seed      Generate deterministic synthetic corpus and optionally seed an isolated profile
   compare   Compare candidate report.json against baseline and optional budget file
+  render    Render one or more report.json files into an offline single-file HTML dashboard
   run       Run desktop resource benchmark scenarios (Slice 2)
 
 Run 'unic-bench <command> --help' for command-specific flags.
@@ -67,6 +68,8 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		err = cmdSeed(ctx, rest, stdout, stderr)
 	case "compare":
 		err = cmdCompare(rest, stdout, stderr)
+	case "render":
+		err = cmdRender(rest, stdout, stderr)
 	case "run":
 		err = cmdRun(ctx, rest, stdout, stderr)
 	default:

@@ -19,7 +19,7 @@ import (
 )
 
 // Run executes the requested benchmark scenarios and writes report.json,
-// report.md, and SHA256SUMS into opts.OutputDir.
+// report.md, report.html, and SHA256SUMS into opts.OutputDir.
 func Run(ctx context.Context, opts Options) (*report.Report, error) {
 	if len(opts.Suite) == 0 {
 		opts.Suite = AllScenarioIDs()
@@ -157,7 +157,13 @@ func Run(ctx context.Context, opts Options) (*report.Report, error) {
 	if err := os.WriteFile(mdPath, []byte(report.RenderMarkdown(rep)), 0o600); err != nil {
 		return nil, err
 	}
-	if _, err := report.WriteSHA256SUMS(opts.OutputDir, "report.json", "report.md"); err != nil {
+	htmlPath := filepath.Join(opts.OutputDir, "report.html")
+	if err := report.WriteHTML(htmlPath, report.HTMLOptions{
+		Reports: []*report.Report{rep},
+	}); err != nil {
+		return nil, err
+	}
+	if _, err := report.WriteSHA256SUMS(opts.OutputDir, "report.json", "report.md", "report.html"); err != nil {
 		return nil, err
 	}
 

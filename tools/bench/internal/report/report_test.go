@@ -195,3 +195,146 @@ func TestComparePassAndRegressions(t *testing.T) {
 		t.Fatalf("expected Track/Dataset in LatencyDiffs, got %+v", resGood.LatencyDiffs)
 	}
 }
+
+func TestCompareIncompatibleAndMissingBaseline(t *testing.T) {
+	mac := sampleReport("mac-base", 80<<20, 1.5, 45.0, 0)
+	win := sampleReport("win-cand", 120<<20, 2.5, 90.0, 0)
+	win.Environment.OS = "windows"
+	budget := &BudgetFile{
+		Scenarios: map[string]ScenarioBudget{
+			"bg-idle-normal": {MaxPrimaryMemoryBytes: 100 << 20},
+		},
+	}
+
+	// 1. Cross-OS comparison must suppress relative deltas and alerts while keeping budget checks.
+	cross, err := Compare(mac, win, CompareOptions{Thresholds: DefaultThresholds(), Budget: budget})
+	if err != nil {
+		t.Fatalf("Compare cross-OS: %v", err)
+	}
+	if !cross.Incompatible || !strings.Contains(cross.IncompatibilityReason, "OS differs") {
+		t.Fatalf("expected Incompatible with OS reason, got %+v", cross)
+	}
+	for _, pd := range cross.PhaseDiffs {
+		if !pd.Incompatible || pd.MemDeltaPct != 0 || pd.CPUDeltaPct != 0 {
+			t.Fatalf("expected zeroed incompatible phase diff, got %+v", pd)
+		}
+	}
+	for _, ld := range cross.LatencyDiffs {
+		if !ld.Incompatible || ld.DeltaMs != 0 {
+			t.Fatalf("expected zeroed incompatible latency diff, got %+v", ld)
+		}
+	}
+	hasBudget := false
+	for _, f := range cross.Findings {
+		if f.Severity == SeverityAlert && (f.Metric == "steady_median_memory" || f.Metric == "cpu_percent_mean") {
+			t.Fatalf("cross-OS comparison must not emit relative ALERT: %+v", f)
+		}
+		if f.Severity == SeverityBudgetExceeded {
+			hasBudget = true
+		}
+	}
+	if !hasBudget {
+		t.Fatal("expected absolute BUDGET_EXCEEDED finding to still be evaluated")
+	}
+
+	// 2. Cross-track comparison must also be marked incompatible.
+	prod := sampleReport("prod", 80<<20, 1.0, 40.0, 0)
+	inter := sampleReport("inter", 160<<20, 2.0, 80.0, 0)
+	inter.Track = "interactive"
+	inter.Scenarios[0].Track = "interactive"
+	trackRes, err := Compare(prod, inter, CompareOptions{Thresholds: DefaultThresholds()})
+	if err != nil {
+		t.Fatalf("Compare cross-track: %v", err)
+	}
+	if !trackRes.Incompatible || !strings.Contains(trackRes.IncompatibilityReason, "track differs") {
+		t.Fatalf("expected track mismatch incompatibility, got %+v", trackRes)
+	}
+	for _, pd := range trackRes.PhaseDiffs {
+		if !pd.Incompatible || pd.MemDeltaPct != 0 {
+			t.Fatalf("expected zeroed cross-track delta, got %+v", pd)
+		}
+	}
+
+	// 3. Missing baseline must mark BaseMissing=true and render "-" in Markdown.
+	emptyBase := &Report{
+		SchemaVersion: SchemaVersion,
+		RunID:         "empty-base",
+		Track:         "production",
+		Environment:   EnvironmentInfo{OS: "darwin", HostArch: "arm64"},
+	}
+	candOnly, err := Compare(emptyBase, prod, CompareOptions{Thresholds: DefaultThresholds()})
+	if err != nil {
+		t.Fatalf("Compare cand-only: %v", err)
+	}
+	if len(candOnly.PhaseDiffs) == 0 || !candOnly.PhaseDiffs[0].BaseMissing {
+		t.Fatalf("expected BaseMissing=true on PhaseDiff, got %+v", candOnly.PhaseDiffs)
+	}
+	if len(candOnly.LatencyDiffs) == 0 || !candOnly.LatencyDiffs[0].BaseMissing {
+		t.Fatalf("expected BaseMissing=true on LatencyDiff, got %+v", candOnly.LatencyDiffs)
+	}
+	md := RenderCompareMarkdown(candOnly)
+	if strings.Contains(md, "| 0 B |") || strings.Contains(md, "| +0.0% |") {
+		t.Fatalf("missing baseline leaked 0 B / +0.0%% into markdown:\n%s", md)
+	}
+
+	// 4. Missing candidate (both whole-scenario missing and partial phase/latency missing)
+	// must emit CandMissing=true and render "-" without false deltas.
+	partialCand := &Report{
+		SchemaVersion: SchemaVersion,
+		RunID:         "partial-cand",
+		Track:         "production",
+		Environment:   EnvironmentInfo{OS: "darwin", HostArch: "arm64"},
+		Scenarios: []ScenarioResult{
+			{ID: "bg-idle-normal", Track: "production", Dataset: "standard", Status: "PASS"},
+		},
+	}
+	missCandWhole, err := Compare(prod, emptyBase, CompareOptions{Thresholds: DefaultThresholds()})
+	if err != nil {
+		t.Fatalf("Compare missCandWhole: %v", err)
+	}
+	if len(missCandWhole.PhaseDiffs) == 0 || !missCandWhole.PhaseDiffs[0].CandMissing {
+		t.Fatalf("expected CandMissing=true on whole-scenario missing PhaseDiff, got %+v", missCandWhole.PhaseDiffs)
+	}
+	if len(missCandWhole.LatencyDiffs) == 0 || !missCandWhole.LatencyDiffs[0].CandMissing {
+		t.Fatalf("expected CandMissing=true on whole-scenario missing LatencyDiff, got %+v", missCandWhole.LatencyDiffs)
+	}
+	missCandPart, err := Compare(prod, partialCand, CompareOptions{Thresholds: DefaultThresholds()})
+	if err != nil {
+		t.Fatalf("Compare missCandPart: %v", err)
+	}
+	if len(missCandPart.PhaseDiffs) == 0 || !missCandPart.PhaseDiffs[0].CandMissing {
+		t.Fatalf("expected CandMissing=true on partial PhaseDiff, got %+v", missCandPart.PhaseDiffs)
+	}
+	if len(missCandPart.LatencyDiffs) == 0 || !missCandPart.LatencyDiffs[0].CandMissing {
+		t.Fatalf("expected CandMissing=true on partial LatencyDiff, got %+v", missCandPart.LatencyDiffs)
+	}
+	missMd := RenderCompareMarkdown(missCandPart)
+	if !strings.Contains(missMd, "| - | - |") {
+		t.Fatalf("expected missing candidate dashes in markdown:\n%s", missMd)
+	}
+
+	// 5. Same-OS, same-track cross-dataset (empty vs standard) must NOT fall back to ID pairing.
+	emptyDS := sampleReport("empty-ds", 80<<20, 1.0, 40.0, 0)
+	emptyDS.Scenarios = emptyDS.Scenarios[:1]
+	emptyDS.Scenarios[0].Dataset = "empty"
+	stdDS := sampleReport("std-ds", 160<<20, 1.0, 40.0, 0)
+	stdDS.Scenarios = stdDS.Scenarios[:1]
+	stdDS.Scenarios[0].Dataset = "standard"
+	crossDS, err := Compare(emptyDS, stdDS, CompareOptions{Thresholds: DefaultThresholds()})
+	if err != nil {
+		t.Fatalf("Compare crossDS: %v", err)
+	}
+	if len(crossDS.PhaseDiffs) != 2 {
+		t.Fatalf("expected 2 separate dataset PhaseDiffs (BaseMissing + CandMissing), got %+v", crossDS.PhaseDiffs)
+	}
+	for _, pd := range crossDS.PhaseDiffs {
+		if pd.MemDeltaPct != 0 || (!pd.BaseMissing && !pd.CandMissing) {
+			t.Fatalf("cross-dataset must not pair or compute MemDeltaPct, got %+v", pd)
+		}
+	}
+	for _, f := range crossDS.Findings {
+		if f.Metric == "steady_median_memory" {
+			t.Fatalf("cross-dataset must not emit steady_median_memory alert: %+v", f)
+		}
+	}
+}

@@ -122,7 +122,7 @@ BENCH_REPS ?= 3
 VM ?= Windows 11
 BENCH_ARCH ?= arm64
 
-.PHONY: bench-mac bench-win-vm bench-compare
+.PHONY: bench-mac bench-win-vm bench-compare bench-html
 bench-mac:
 	go run ./tools/bench/cmd/unic-bench run \
 		--suite "$(BENCH_SUITE)" \
@@ -146,3 +146,31 @@ bench-win-vm:
 bench-compare:
 	test -n "$(BASE)" && test -n "$(CAND)"
 	go run ./tools/bench/cmd/unic-bench compare "$(BASE)" "$(CAND)" $(if $(BUDGET),--budget "$(BUDGET)") $(BENCH_COMPARE_FLAGS)
+
+bench-html:
+	@bash -euo pipefail -c ' \
+		shopt -s nullglob; \
+		if [ -n "$$REPORTS" ]; then \
+			read -r -a files <<< "$$REPORTS"; \
+		else \
+			files=(.build/bench/*/report.json); \
+		fi; \
+		if [ "$${#files[@]}" -eq 0 ]; then \
+			echo "no report.json files found (set REPORTS=... or run bench-mac/bench-win-vm first)" >&2; \
+			exit 1; \
+		fi; \
+		args=(render --out "$${BENCH_HTML_OUT:-.build/bench/dashboard/index.html}"); \
+		if [ -n "$${BENCH_HTML_TITLE:-}" ]; then \
+			args+=(--title "$$BENCH_HTML_TITLE"); \
+		fi; \
+		if [ "$${BENCH_COMPARE:-}" = "1" ] || [ "$${BENCH_COMPARE:-}" = "true" ]; then \
+			args+=(--compare); \
+		fi; \
+		if [ -n "$${BUDGET:-}" ]; then \
+			args+=(--budget "$$BUDGET"); \
+		fi; \
+		for f in "$${files[@]}"; do \
+			args+=(--in "$$f"); \
+		done; \
+		go run ./tools/bench/cmd/unic-bench "$${args[@]}" \
+	'

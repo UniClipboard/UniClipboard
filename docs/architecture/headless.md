@@ -135,12 +135,15 @@ preference and tag presentation settings. See the
 
 ## Offline CLI operations
 
-`unic dev logs export [--output FILE]` reads only retained local log segments and writes
-a private tar.gz with a checksum manifest. It does not use the service socket,
-create an Engine, or require a desktop adapter. It works while unicd is stopped.
-Existing destinations and log symlinks are rejected. Live export is an on-disk
-snapshot and does not flush service queues. The archive never includes configuration,
-credentials, databases or history. See section 12 of the
+`unic dev logs export [--output FILE]` reads retained local log segments and writes
+a private `.zip` diagnostic bundle (`logs/engine/segment-*.jsonl` and `manifest.json`
+with build/platform metadata and per-file SHA-256 digests). It never starts a
+temporary service, creates an Engine, or requires a desktop adapter, and works while
+`unicd` is stopped; when an existing `unicd` socket is already reachable, it performs
+a bounded best-effort read-only query to attach safe runtime/telemetry/log-level
+summaries. Existing destinations and log symlinks are rejected. Live export is an
+on-disk snapshot and does not flush service queues. The archive never includes
+configuration, credentials, databases or history. See section 12 of the
 [observability contract](../contracts/observability-contract.md#12-offline-local-log-export).
 
 ## Invariants

@@ -43,7 +43,7 @@
   },
   "mobileDiagnostics": {
     "telemetry": "Enviar telemetria",
-    "export": "Compartilhar registros anonimizados da sessão",
+    "export": "Exportar pacote de diagnóstico",
     "unavailable": "O envio está indisponível nesta compilação.",
     "empty": "Ainda não há registros de diagnóstico.",
     "failed": "Não foi possível concluir a ação de diagnóstico."
@@ -155,8 +155,8 @@
     "max_total_bytes": "Limite de conteúdo total",
     "cacheLimit": "Limite de cache de arquivos",
     "clearPreviews": "Limpar prévias locais",
-    "sessionLogsSummary": "Logs de diagnóstico anonimizados desta sessão, sem conteúdo do clipboard",
-    "sessionLogsFooter": "Exporta apenas registros de diagnóstico anonimizados da sessão atual, sem conteúdo da área de transferência ou credenciais.",
+    "sessionLogsSummary": "Arquivo ZIP com logs anonimizados do Engine e manifesto, sem conteúdo do clipboard",
+    "sessionLogsFooter": "Exporta um pacote ZIP de diagnóstico com os logs anonimizados retidos do Engine, estado de execução e manifesto de verificação. Conteúdo da área de transferência e credenciais nunca são incluídos.",
     "rendezvous": "URL do serviço de pareamento",
     "default": "Padrão",
     "resetRendezvous": "Restaurar URL de pareamento padrão",

@@ -6665,11 +6665,11 @@
     "pt-BR": "Apenas 26 preferências portáteis",
     "ru": "Только 26 переносимых параметров"
   },
-  "仅导出本机保留的脱敏日志与校验清单（.tar.gz），不含配置、凭据或剪贴板历史。": {
-    "en": "Exports only sanitized local logs and a checksum manifest (.tar.gz). Excludes config, credentials, and clipboard history.",
-    "ja": "ローカルに保持されているサニタイズ済みログとチェックサム一覧（.tar.gz）のみを書き出します。設定・認証情報・クリップボード履歴は含まれません。",
-    "pt-BR": "Exporta apenas logs locais sanitizados e manifesto de soma de verificação (.tar.gz). Não inclui configurações, credenciais ou histórico.",
-    "ru": "Экспортирует только очищенные локальные журналы и манифест контрольных сумм (.tar.gz) без настроек, учётных данных и истории буфера обмена."
+  "仅导出本机保留的脱敏日志、状态摘要与校验清单（.zip），不含配置、凭据或剪贴板历史。": {
+    "en": "Exports only sanitized local logs, a safe status summary, and a checksum manifest (.zip). Excludes config, credentials, and clipboard history.",
+    "ja": "ローカルに保持されているサニタイズ済みログ、状態サマリー、チェックサム一覧（.zip）のみを書き出します。設定・認証情報・クリップボード履歴は含まれません。",
+    "pt-BR": "Exporta apenas logs locais sanitizados, resumo seguro de estado e manifesto de verificação (.zip). Não inclui configurações, credenciais ou histórico.",
+    "ru": "Экспортирует только очищенные локальные журналы, безопасную сводку состояния и манифест контрольных сумм (.zip) без настроек, учётных данных и истории буфера обмена."
   },
   "仅控制常规模式的登录启动；手动点击应用图标始终打开主窗口。": {
     "en": "Applies only to login startup in Normal mode. Manually clicking the app icon always opens the main window.",

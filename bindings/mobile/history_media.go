@@ -200,8 +200,12 @@ func (m *Engine) StageHistoryExport(historyID string, imagesOnly bool) (string, 
 func pruneExpiredExports(root string) {
 	entries, _ := os.ReadDir(root)
 	for _, entry := range entries {
-		if info, err := entry.Info(); err == nil && strings.HasPrefix(entry.Name(), "share-") && time.Since(info.ModTime()) > exportMaxAge {
-			_ = os.RemoveAll(filepath.Join(root, entry.Name()))
+		name := entry.Name()
+		if !strings.HasPrefix(name, "share-") && !strings.HasPrefix(name, "diagnostics-") {
+			continue
+		}
+		if info, err := entry.Info(); err == nil && time.Since(info.ModTime()) > exportMaxAge {
+			_ = os.RemoveAll(filepath.Join(root, name))
 		}
 	}
 }

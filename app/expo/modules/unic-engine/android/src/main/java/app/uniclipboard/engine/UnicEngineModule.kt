@@ -7,6 +7,7 @@ import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
@@ -72,7 +73,11 @@ class UnicEngineModule : Module() {
   private data class ImageRequest(val promise: Promise, val cameraFile: File? = null)
   private data class ExportFile(val source: File, val name: String, val mime: String)
   private data class StagedExport(val directory: File, val files: List<ExportFile>)
-  private data class ExportRequest(val promise: Promise, val staged: StagedExport)
+  private data class ExportRequest(
+    val promise: Promise,
+    val staged: StagedExport,
+    val resultBuilder: ((Boolean) -> Any)? = null,
+  )
 
   private var pendingPickerCommit: (() -> Unit)? = null
   private var pendingImage: ImageRequest? = null
@@ -387,7 +392,11 @@ class UnicEngineModule : Module() {
     stream.use { output -> file.source.inputStream().use { input -> input.copyTo(output) } }
   }
 
-  private fun presentDocumentExport(staged: StagedExport, promise: Promise) {
+  private fun presentDocumentExport(
+    staged: StagedExport,
+    promise: Promise,
+    resultBuilder: ((Boolean) -> Any)? = null,
+  ) {
     mainHandler.post {
       val activity = appContext.currentActivity
       if (activity == null || pendingExport != null) {
@@ -406,7 +415,7 @@ class UnicEngineModule : Module() {
         } else {
           Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
         }
-        pendingExport = ExportRequest(promise, staged)
+        pendingExport = ExportRequest(promise, staged, resultBuilder)
         activity.startActivityForResult(intent, REQ_SAVE_FILES)
       } catch (error: Exception) {
         pendingExport = null
@@ -664,13 +673,13 @@ class UnicEngineModule : Module() {
           val uri = payload.data?.data
           if (payload.resultCode != Activity.RESULT_OK || uri == null) {
             request.staged.directory.deleteRecursively()
-            request.promise.resolve(false)
+            request.promise.resolve(request.resultBuilder?.invoke(false) ?: false)
             return@OnActivityResult
           }
           engineScope.launch {
             try {
               writeDocumentExport(request.staged, uri)
-              request.promise.resolve(true)
+              request.promise.resolve(request.resultBuilder?.invoke(true) ?: true)
             } catch (error: Exception) {
               request.promise.reject(if (error is CodedException) error else moduleException(error))
             } finally {
@@ -915,6 +924,97 @@ class UnicEngineModule : Module() {
     AsyncFunction("exportRecentDiagnosticLogs") { ->
       requireEngine().exportRecentDiagnosticLogs()
     }.runOnQueue(engineScope)
+
+    AsyncFunction("getDiagnosticLogLevelState") { ->
+      val eng = requireEngine()
+      try {
+        eng.diagnosticLogLevelState
+      } catch (error: Exception) {
+        throw moduleException(error)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("setLocalLogLevelOverride") { level: String, durationSeconds: Int, reset: Boolean ->
+      val eng = requireEngine()
+      try {
+        eng.setLocalLogLevelOverride(level, durationSeconds.toLong(), reset)
+      } catch (error: Exception) {
+        throw moduleException(error)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("exportDiagnosticArchive") { action: String, promise: Promise ->
+      engineScope.launch {
+        var stagedDir: File? = null
+        try {
+          val eng = requireEngine()
+          val ctx = appContextOrThrow()
+          val pkgInfo = runCatching {
+            if (Build.VERSION.SDK_INT >= 33) {
+              ctx.packageManager.getPackageInfo(ctx.packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+              @Suppress("DEPRECATION")
+              ctx.packageManager.getPackageInfo(ctx.packageName, 0)
+            }
+          }.getOrNull()
+          val appVersion = pkgInfo?.versionName ?: ""
+          val appBuild = if (pkgInfo != null) {
+            if (Build.VERSION.SDK_INT >= 28) pkgInfo.longVersionCode.toString()
+            else @Suppress("DEPRECATION") pkgInfo.versionCode.toString()
+          } else ""
+          val metaJSON = JSONObject()
+            .put("app_version", appVersion)
+            .put("app_build", appBuild)
+            .put("bundle_id", ctx.packageName)
+            .put("platform", "android")
+            .put("os_version", Build.VERSION.RELEASE ?: "")
+            .toString()
+
+          val payload = JSONObject(eng.exportDiagnosticArchive(metaJSON))
+          val directory = File(payload.getString("directory"))
+          val file = File(payload.getString("path"))
+          val fileName = payload.getString("file_name")
+          val mime = payload.optString("mime", "application/zip")
+          val sizeBytes = payload.optLong("size_bytes", 0L)
+          val logFileCount = payload.optInt("log_file_count", 0)
+          val warnings = payload.optJSONArray("warnings") ?: JSONArray()
+          stagedDir = directory
+          val staged = StagedExport(directory, listOf(ExportFile(file, fileName, mime)))
+
+          val buildResult: (Boolean) -> String = { saved ->
+            JSONObject()
+              .put("saved", saved)
+              .put("file_name", fileName)
+              .put("size_bytes", sizeBytes)
+              .put("log_file_count", logFileCount)
+              .put("warnings", warnings)
+              .toString()
+          }
+
+          if (action == "save") {
+            presentDocumentExport(staged, promise, buildResult)
+          } else {
+            val uri = FileProvider.getUriForFile(ctx, "${ctx.packageName}.unic.fileprovider", file)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+              type = mime
+              putExtra(Intent.EXTRA_STREAM, uri)
+              putExtra(Intent.EXTRA_SUBJECT, fileName)
+              clipData = ClipData.newRawUri("UniClipboard", uri)
+              addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            onMainSync {
+              val activity = appContext.currentActivity
+                ?: throw rawCodeException("invalid_state", "no foreground activity")
+              activity.startActivity(Intent.createChooser(intent, null))
+            }
+            promise.resolve(buildResult(true))
+          }
+        } catch (error: Exception) {
+          stagedDir?.deleteRecursively()
+          promise.reject(if (error is CodedException) error else moduleException(error))
+        }
+      }
+    }
 
     AsyncFunction("getCapabilities") { ->
       try {

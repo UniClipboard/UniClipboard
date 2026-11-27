@@ -1153,6 +1153,112 @@ public final class UnicEngineModule: Module {
       try self.requireEngine().exportRecentDiagnosticLogs()
     }.runOnQueue(engineQueue)
 
+    AsyncFunction("getDiagnosticLogLevelState") { () -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.getDiagnosticLogLevelState($0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("setLocalLogLevelOverride") { (level: String, durationSeconds: Int, reset: Bool) -> String in
+      let eng = try self.requireEngine()
+      return try callGoString {
+        eng.setLocalLogLevelOverride(level, durationSeconds: durationSeconds, reset: reset, error: $0)
+      }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("exportDiagnosticArchive") { (action: String, promise: Promise) in
+      self.engineQueue.async {
+        var stageDirURL: URL?
+        do {
+          let eng = try self.requireEngine()
+          let bundle = Bundle.main
+          let osVersion: String = DispatchQueue.main.sync { UIDevice.current.systemVersion }
+          let meta: [String: String] = [
+            "app_version": (bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "",
+            "app_build": (bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "",
+            "bundle_id": bundle.bundleIdentifier ?? "",
+            "platform": "ios",
+            "os_version": osVersion,
+          ]
+          let metaData = try JSONSerialization.data(withJSONObject: meta)
+          let metaJSON = String(data: metaData, encoding: .utf8) ?? "{}"
+          let archiveJSON = try callGoString { eng.exportDiagnosticArchive(metaJSON, error: $0) }
+          guard let data = archiveJSON.data(using: .utf8),
+                let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let dirPath = payload["directory"] as? String,
+                let filePath = payload["path"] as? String,
+                let fileName = payload["file_name"] as? String else {
+            throw UnicModuleException("[unic:internal] {\"code\":\"internal\",\"message\":\"invalid diagnostic archive payload\"}")
+          }
+          let dirURL = URL(fileURLWithPath: dirPath, isDirectory: true)
+          let fileURL = URL(fileURLWithPath: filePath)
+          stageDirURL = dirURL
+          let sizeBytes = (payload["size_bytes"] as? NSNumber)?.int64Value ?? 0
+          let logFileCount = (payload["log_file_count"] as? NSNumber)?.intValue ?? 0
+          let warnings = (payload["warnings"] as? [String]) ?? []
+
+          let buildResult: (Bool) -> String = { saved in
+            let response: [String: Any] = [
+              "saved": saved,
+              "file_name": fileName,
+              "size_bytes": sizeBytes,
+              "log_file_count": logFileCount,
+              "warnings": warnings,
+            ]
+            guard let encoded = try? JSONSerialization.data(withJSONObject: response),
+                  let text = String(data: encoded, encoding: .utf8) else {
+              return "{\"saved\":\(saved ? "true" : "false"),\"file_name\":\"\",\"size_bytes\":0,\"log_file_count\":0,\"warnings\":[]}"
+            }
+            return text
+          }
+
+          DispatchQueue.main.async {
+            let cleanup = { try? FileManager.default.removeItem(at: dirURL) }
+            guard let presenter = self.presenter() else {
+              cleanup()
+              promise.reject(UnicModuleException("[unic:invalid_state] {\"code\":\"invalid_state\",\"message\":\"no available presenter\"}"))
+              return
+            }
+            if action == "save" {
+              guard self.activePickerCoordinator == nil else {
+                cleanup()
+                promise.reject(UnicModuleException("[unic:invalid_state] {\"code\":\"invalid_state\",\"message\":\"document picker already active\"}"))
+                return
+              }
+              let picker = UIDocumentPickerViewController(forExporting: [fileURL], asCopy: true)
+              let coordinator = DocumentPickerCoordinator { [weak self] urls in
+                self?.activePickerCoordinator = nil
+                cleanup()
+                promise.resolve(buildResult(urls != nil))
+              }
+              self.activePickerCoordinator = coordinator
+              picker.delegate = coordinator
+              presenter.present(picker, animated: true)
+            } else {
+              let sheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+              sheet.popoverPresentationController?.sourceView = presenter.view
+              sheet.popoverPresentationController?.sourceRect = CGRect(
+                x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 1, height: 1
+              )
+              sheet.completionWithItemsHandler = { _, completed, _, error in
+                cleanup()
+                if let error {
+                  promise.reject(UnicModuleException(formatGoError(error)))
+                } else {
+                  promise.resolve(buildResult(completed))
+                }
+              }
+              presenter.present(sheet, animated: true)
+            }
+          }
+        } catch {
+          if let dirURL = stageDirURL {
+            try? FileManager.default.removeItem(at: dirURL)
+          }
+          promise.reject((error as? UnicModuleException) ?? UnicModuleException(formatGoError(error)))
+        }
+      }
+    }
+
     AsyncFunction("getCapabilities") { () -> String in
       let eng = try self.requireEngine()
       return try callGoString { eng.getCapabilities($0) }

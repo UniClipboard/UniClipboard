@@ -54,6 +54,29 @@ type NativeEvents = {
 
 export type TelemetryState = { configured_enabled: boolean; effective_enabled: boolean };
 
+export type DiagnosticLevelInfo = {
+  configured_level: string;
+  effective_level: string;
+  source: "config" | "override" | string;
+  expires_at_ms: number | null;
+  dropped_records: number;
+};
+
+export type DiagnosticLogLevelState = {
+  local: DiagnosticLevelInfo;
+  remote: DiagnosticLevelInfo;
+  telemetry_enabled: boolean;
+  remote_logs_enabled: boolean;
+};
+
+export type DiagnosticArchiveResult = {
+  saved: boolean;
+  file_name: string;
+  size_bytes: number;
+  log_file_count: number;
+  warnings: string[];
+};
+
 declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   openSetupFlow(): Promise<string>;
   getSetupState(): Promise<string>;
@@ -70,6 +93,9 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   getTelemetryState(): Promise<string>;
   setTelemetryEnabled(enabled: boolean): Promise<string>;
   exportRecentDiagnosticLogs(): Promise<string>;
+  getDiagnosticLogLevelState(): Promise<string>;
+  setLocalLogLevelOverride(level: string, durationSeconds: number, reset: boolean): Promise<string>;
+  exportDiagnosticArchive(action: string): Promise<string>;
   getCapabilities(): Promise<string>;
   updateSettings(reqJSON: string): Promise<string>;
   getFileCacheState(): Promise<string>;
@@ -383,6 +409,14 @@ export const unicEngineNative = {
   getTelemetryState: () => callJSON<TelemetryState>(() => requireMod().getTelemetryState()),
   setTelemetryEnabled: (enabled: boolean) => callJSON<TelemetryState>(() => requireMod().setTelemetryEnabled(enabled)),
   exportRecentDiagnosticLogs: () => callString(() => requireMod().exportRecentDiagnosticLogs()),
+  getDiagnosticLogLevelState: () =>
+    callJSON<DiagnosticLogLevelState>(() => requireMod().getDiagnosticLogLevelState()),
+  setLocalLogLevelOverride: (level: string, durationSeconds: number, reset: boolean) =>
+    callJSON<DiagnosticLogLevelState>(() =>
+      requireMod().setLocalLogLevelOverride(level, durationSeconds, reset),
+    ),
+  exportDiagnosticArchive: (action: "share" | "save" = "share") =>
+    callJSON<DiagnosticArchiveResult>(() => requireMod().exportDiagnosticArchive(action)),
   getCapabilities: () => callJSON<Capabilities>(() => requireMod().getCapabilities()),
   updateSettings: (req: { expected_revision: string; value: EngineSettings }) =>
     callJSON<SettingsState>(() => requireMod().updateSettings(JSON.stringify(req))),

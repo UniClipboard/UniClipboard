@@ -660,17 +660,25 @@ that temporary, bounding crash residue and clearing old identity state.
 
 ## 12. Offline local log export
 
-`unic dev logs export [--output FILE]` runs entirely in the CLI. It needs no running
-service, clipboard access or network. The default is a unique UTC-timestamped
-`unic-logs-*.tar.gz` file in the current directory. Success prints its absolute path.
-`--output` selects a file, not a directory. An existing file or symlink is never
-replaced. The destination parent must exist and must not be the managed logs directory.
+`unic dev logs export [--output FILE]` runs in the CLI and never starts a temporary
+service, accesses the system clipboard or uses the network. It works while `unicd` is
+stopped. The default is a unique UTC-timestamped `unic-diagnostics-*.zip` file in the
+current directory. Success prints its absolute path. `--output` selects a file, not a
+directory. An existing file or symlink is never replaced. The destination parent must
+exist and must not be the managed logs directory.
 
-The archive contains only regular `logs/segment-<positive UnixNano>.jsonl` entries
-and `manifest.json`. The manifest has format_version=1, UTC creation time and each
-entry's relative name, byte count and SHA-256. It contains no profile path, config,
-credentials, database, analytics identifier or clipboard data. It copies existing
-sanitized log bytes without adding a second logging policy or exporting remote metrics.
+The ZIP archive contains only regular `logs/engine/segment-<positive UnixNano>.jsonl`
+entries and `manifest.json`. The manifest has `format_version=1`, UTC creation time,
+build/platform identity (`service`: name, version, build number, OS and arch),
+`service_snapshot` (`live` or `offline`), `engine_logs` counts and each log entry's
+relative name, byte count and SHA-256. When an existing `unicd` socket is already
+reachable, the CLI makes a bounded, best-effort read-only query to include safe
+`runtime` counts/capabilities and `diagnostics` (`telemetry`, `log_levels`) summaries;
+if the service is stopped or unreachable, those fields are omitted and export still
+succeeds offline. The archive never contains profile paths, raw config, credentials,
+device names/identities, database, analytics identifier or clipboard data. It copies
+existing sanitized log bytes without adding a second logging policy or exporting
+remote metrics.
 
 The CLI rejects symlinked logs directories, matching symlinks/nonregular entries,
 segments larger than 4 MiB and retained input larger than 20 MiB. Source and output
@@ -682,7 +690,7 @@ Export streams one segment at a time with bounded copy buffers. Each selected fi
 has a fixed length: appends after selection are excluded. Rotation may remove an
 unopened segment, which is skipped; an opened unlinked file remains readable. A
 replaced/truncated/unreadable segment fails the export. On error/cancellation, remove
-only the archive created by this command. Propagate archive/gzip/output close failures.
+only the archive created by this command. Propagate archive/output close failures.
 
 This is a best-effort snapshot of already-written bytes. It does not flush service
 queues or claim an atomic cross-file view; the last JSONL record can be incomplete

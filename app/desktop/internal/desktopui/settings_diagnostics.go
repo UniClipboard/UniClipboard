@@ -323,7 +323,7 @@ func (d *viewState) diagnosticsSettings(c *ui.Context, k desktopkit.Kit, cfg *co
 	k.SettingsGroup(c.Key("diagnostic-files"), desktopkit.SettingsGroupProps{Title: d.tr("诊断文件")}, func() {
 		k.SettingsRow(c.Key("export-row"), desktopkit.SettingsRowProps{
 			Label:       d.tr("导出诊断日志"),
-			Description: d.tr("仅导出本机保留的脱敏日志与校验清单（.tar.gz），不含配置、凭据或剪贴板历史。"),
+			Description: d.tr("仅导出本机保留的脱敏日志、状态摘要与校验清单（.zip），不含配置、凭据或剪贴板历史。"),
 		}, nil, func() {
 			if k.Button(c.Key("export-diagnostic-logs"), d.tr("导出诊断日志"), desktopkit.ButtonProps{
 				Size:     desktopkit.SizeSmall,

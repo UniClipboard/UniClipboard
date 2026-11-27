@@ -2,17 +2,11 @@
 
 <img src="app/desktop/internal/appicons/unic-logo.svg" alt="Unic" width="112" height="112" />
 
-# 一度コピーすれば、どのデバイスでも貼り付け
+# コピーをもっと便利に
 
 <p>
-  <strong>Unic（旧称 UniClipboard）</strong> はテキスト・画像・ファイル・フォルダをデバイス間で直接同期します。<br />
-  エンドツーエンド暗号化。アカウント不要、クラウド不要。
-</p>
-
-<p>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="ダウンロード" src="https://img.shields.io/badge/%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89-2563eb?style=for-the-badge&logo=github&logoColor=white" /></a>
-  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS%20Beta-1f2937?style=for-the-badge&logo=apple&logoColor=white" /></a>
-  <a href="#quick-start"><img alt="はじめる" src="https://img.shields.io/badge/%E3%81%AF%E3%81%98%E3%82%81%E3%82%8B-4b5563?style=for-the-badge" /></a>
+  <strong>Unic（旧称 UniClipboard）</strong> は、Windows・macOS・Linux・iOS・Android・ターミナルに対応したネイティブかつローカルファーストのクリップボード管理＆クロスデバイス同期ツールです。<br />
+  履歴検索、クイックパネル、スマートプレビュー、プラグイン拡張、エンドツーエンド暗号化 P2P 同期をひとつに —— アカウント不要、クラウド不要。
 </p>
 
 <p>
@@ -25,8 +19,6 @@
 
 <p>
   <a href="https://github.com/UniClipboard/UniClipboard/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/UniClipboard/UniClipboard?style=flat-square&color=E5B650&logo=github&label=Stars" /></a>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="ダウンロード数" src="https://img.shields.io/github/downloads/UniClipboard/UniClipboard/total?style=flat-square&color=0EA5E9&label=Downloads" /></a>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="最新リリース" src="https://img.shields.io/github/v/release/UniClipboard/UniClipboard?style=flat-square&include_prereleases&color=0891b2&label=Release" /></a>
   <a href="LICENSE"><img alt="AGPL-3.0 ライセンス" src="https://img.shields.io/badge/License-AGPL--3.0-22c55e?style=flat-square" /></a>
 </p>
 
@@ -53,10 +45,10 @@
 
 ## Unic を選ぶ理由
 
-- **クロスプラットフォーム**：Windows、macOS、Linux、iOS、Android の間で同期。同じ Wi-Fi でも別のネットワークでもつながります。
-- **クラウドを経由しない**：デバイス同士が暗号化された接続で直接つながります。登録不要で、履歴は自分のデバイスにだけ保存されます。
-- **軽量**：バックグラウンド同期サービスはアイドル時に約 14 MB。Windows ではメインウィンドウが約 34–49 MB。閉じるとそのプロセスは終了します。
-- **何でも同期**：テキスト、画像、ファイル、フォルダごと。
+- **同期だけではない、本格的なクリップボードワークスペース**：多くのクリップボード管理アプリは単一 OS や有料クラウドに縛られ、逆に同期ツールには使いやすい履歴検索や貼り付け体験がありません。Unic は 1 台の端末だけでも十分に便利——即座に呼び出せるクイックパネル、ローカル履歴検索、自動タグ付け、リッチなリンクプレビューを備え、複数台をつなげばテキスト・画像・ファイル・フォルダごと Windows、macOS、Linux、iOS、Android、ターミナル間で同一 Wi-Fi でも別ネットワークでもシームレスに同期します。
+- **Electron の重さとは無縁のネイティブ軽量設計**：Go コアとネイティブデスクトップ UI で構築。バックグラウンドサービス（`unicd`）はアイドル時約 14 MB。Windows のメインウィンドウは約 34–49 MB で、**ウィンドウを閉じると UI プロセスが完全に終了**し、余計なメモリを残しません。
+- **口約束ではなく、設計レベルでのプライバシー**：クリップボードにはパスワード、API キー、機密ファイルが入ります。Unic はアカウント登録もクラウド保存も一切不要——フィンガープリント確認のうえ端末同士がエンドツーエンド暗号化で直接つながり、削除したデバイスは即座にアクセスを失い、履歴は自分のデバイスにだけ残ります。
+- **コピー＆ペーストを超えて、ワークフローへ拡張**：自動分類、ページタイトルや説明文からも検索できるスマートリンクプレビュー、元の履歴を書き換えない **Action**（書式除去、テキスト変換、画像やファイルの共有リンク生成）、設定画面からワンクリックで入れられる **Go / Lua プラグイン**、さらに SSH・スクリプト・ペアリング不要の 6 桁コード転送に使える本格的な **CLI（`unic`）** まで揃っています。
 
 <a id="features"></a>
 
@@ -65,34 +57,34 @@
 <table>
   <tr>
     <td>⚡ <strong>クイックパネル</strong></td>
-    <td>どのアプリでも <code>⌘ ⌃ V</code>（Windows / Linux は <code>Ctrl Alt V</code>）で履歴を開き、選んで Enter で貼り付け。</td>
+    <td>どのアプリでも <code>⌘ ⌃ V</code>（Windows / Linux は <code>Ctrl Alt V</code>）で履歴を検索し、<code>Enter</code> で直接貼り付け、<code>Shift+Enter</code> でプレーンテキストとして貼り付け。</td>
   </tr>
   <tr>
-    <td>🔍 <strong>すぐ見つかる</strong></td>
-    <td>キーワード入力、または <code>#タグ</code>・<code>@デバイス</code>・<code>/種類</code> で絞り込み。数か月前のコピーも見つかります。</td>
+    <td>🔍 <strong>すぐ見つかるローカル検索</strong></td>
+    <td>キーワード入力、または <code>#タグ</code>・<code>@デバイス</code>・<code>/種類</code>・お気に入りで絞り込み。数か月前のコピーや、リンクのページタイトル・説明文からも見つかります。</td>
   </tr>
   <tr>
-    <td>🏷️ <strong>自動タグ付け</strong></td>
-    <td>リンク、メール、カラーコード、バージョン番号、UUID、IP アドレスを自動でタグ付け。独自ルールも追加できます。</td>
+    <td>🏷️ <strong>自動タグ付け＆スマートプレビュー</strong></td>
+    <td>リンク、メール、カラーコード、バージョン番号、UUID、IP アドレスを自動でタグ付け（正規表現の独自ルールも追加可能）。コピーしたリンクはプレビューカードで表示されます。</td>
   </tr>
   <tr>
-    <td>📁 <strong>ファイルとフォルダ</strong></td>
-    <td>フォルダを構造ごと送信。全デバイスにも、特定のデバイスにも送れます。</td>
+    <td>🔄 <strong>クロスデバイス同期＆フォルダ転送</strong></td>
+    <td>テキスト、リッチテキスト、画像、ファイル、構造を保ったフォルダごと、ペアリング済みの全デバイスまたは特定の 1 台へ同期。</td>
   </tr>
   <tr>
     <td>📮 <strong>ペアリングなしで送信</strong></td>
-    <td><code>unic send "テキスト"</code> は転送リンクを表示します。利用できる場合は、6 桁の受け取りコードも表示します。受け取りにはどちらも使えます。デバイスの記録は残りません。</td>
+    <td><code>unic send "テキスト"</code> は転送リンクを表示します。利用できる場合は 6 桁の受け取りコードも表示。どちらでも受け取れ、デバイス記録は残りません。</td>
   </tr>
   <tr>
-    <td>🧩 <strong>プラグイン</strong></td>
-    <td>設定からワンクリックでインストール。例：画像やファイルを共有リンクに変換。</td>
+    <td>🧩 <strong>Action とプラグイン</strong></td>
+    <td>元の項目を変えない Action（テキスト変換、書式除去、画像やファイルの共有リンク化）を実行でき、設定から Go / Lua プラグインをワンクリックで追加できます。</td>
   </tr>
   <tr>
     <td>⌨️ <strong>コマンドライン</strong></td>
-    <td><code>unic</code> でターミナル、SSH、スクリプトから送受信や履歴一覧の絞り込みができます。</td>
+    <td><code>unic</code> でターミナル、SSH、スクリプトから送受信、Action の実行、履歴一覧の絞り込みができます。</td>
   </tr>
   <tr>
-    <td>🌍 <strong>多言語</strong></td>
+    <td>🌍 <strong>多言語＆テーマ</strong></td>
     <td>English、简体中文、日本語、Português、Русский。ライト／ダークテーマ対応。</td>
   </tr>
 </table>
@@ -110,13 +102,13 @@
 
 [![Packaging status](https://repology.org/badge/vertical-allrepos/uniclipboard.svg)](https://repology.org/project/uniclipboard/versions)
 
-**2. 2 台目のデバイスを接続**
+**2. そのまま使い始める**
 
-1 台目で **デバイス → デバイスを追加** を開き、6 桁のコードを控えて 2 台目に入力します。両方に同じフィンガープリントが表示されたら、それぞれで **承認** をクリックします。
+普段どおりコピーして、どのアプリからでも `⌘ ⌃ V`（Windows / Linux は `Ctrl Alt V`）でクイックパネルを開き、履歴を検索して貼り付けられます。
 
-**3. コピーする**
+**3. 2 台目のデバイスを接続（任意）**
 
-一方のデバイスで `Ctrl+C`、もう一方で `Ctrl+V`。
+1 台目で **デバイス → デバイスを追加** を開き、6 桁のコードを控えて 2 台目に入力します。両方に同じフィンガープリントが表示されたら、それぞれで **承認** をクリックすると自動同期が始まります。
 
 <a id="cli"></a>
 

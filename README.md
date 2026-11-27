@@ -2,17 +2,11 @@
 
 <img src="app/desktop/internal/appicons/unic-logo.svg" alt="Unic" width="112" height="112" />
 
-# Copy once. Paste on every device.
+# Make every copy more useful.
 
 <p>
-  <strong>Unic (formerly UniClipboard)</strong> syncs text, images, files, and folders directly across your devices.<br />
-  End-to-end encrypted. No account. No cloud.
-</p>
-
-<p>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Download" src="https://img.shields.io/badge/Download-2563eb?style=for-the-badge&logo=github&logoColor=white" /></a>
-  <a href="https://testflight.apple.com/join/nyNQ8dQe"><img alt="iOS Beta" src="https://img.shields.io/badge/iOS%20Beta-1f2937?style=for-the-badge&logo=apple&logoColor=white" /></a>
-  <a href="#quick-start"><img alt="Get started" src="https://img.shields.io/badge/Get%20started-4b5563?style=for-the-badge" /></a>
+  <strong>Unic (formerly UniClipboard)</strong> is a native, local-first clipboard workspace and cross-device sync tool for Windows, macOS, Linux, iOS, Android, and the terminal.<br />
+  Fast history search, Quick Panel, smart previews, plugins, and encrypted P2P sync — no account, no cloud.
 </p>
 
 <p>
@@ -25,8 +19,6 @@
 
 <p>
   <a href="https://github.com/UniClipboard/UniClipboard/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/UniClipboard/UniClipboard?style=flat-square&color=E5B650&logo=github&label=Stars" /></a>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/UniClipboard/UniClipboard/total?style=flat-square&color=0EA5E9&label=Downloads" /></a>
-  <a href="https://github.com/UniClipboard/UniClipboard/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/UniClipboard/UniClipboard?style=flat-square&include_prereleases&color=0891b2&label=Release" /></a>
   <a href="LICENSE"><img alt="AGPL-3.0 License" src="https://img.shields.io/badge/License-AGPL--3.0-22c55e?style=flat-square" /></a>
 </p>
 
@@ -53,10 +45,10 @@
 
 ## Why Unic
 
-- **Cross-platform**: Sync between Windows, macOS, Linux, iOS, and Android, on the same Wi-Fi or across networks.
-- **No cloud**: Devices connect directly over encrypted links. No sign-up. Your history stays on your own devices.
-- **Lightweight**: The background sync service uses about 14 MB of memory when idle. On Windows, the main window uses about 34–49 MB. Close it and its process exits.
-- **Everything syncs**: Text, images, files and whole folders.
+- **More than sync — a complete clipboard workspace**: Most clipboard managers lock you into one OS or a paid cloud, while sync tools give you no real history or quick paste workflow. Unic is built to be worth using even on a single machine — instant Quick Panel, local history search, auto-tagging, and rich link previews — and seamlessly syncs text, images, files, and whole folders across Windows, macOS, Linux, iOS, Android, and terminals over the same Wi-Fi or across networks.
+- **Native speed, not Electron bloat**: Written in Go with a native desktop UI. The background service (`unicd`) idles at ~14 MB of memory; on Windows, the main window uses ~34–49 MB and **exits completely when closed**, leaving zero UI overhead behind.
+- **Private by architecture, not by promise**: Your clipboard carries passwords, API keys, and private files. Unic requires no account and runs no cloud storage — devices connect directly over end-to-end encrypted links after you verify their fingerprints, revoking a device cuts access immediately, and your history stays exclusively on your own devices.
+- **Programmable, not just copy-paste**: Turn every copy into a workflow with built-in auto-classification, Smart Link Previews searchable by webpage title and description, non-destructive **Actions** (strip formatting, transform text, or generate share links), one-click **Go & Lua plugins**, and a full **CLI (`unic`)** for SSH, scripts, and no-pairing 6-digit transfers.
 
 <a id="features"></a>
 
@@ -65,34 +57,34 @@
 <table>
   <tr>
     <td>⚡ <strong>Quick Panel</strong></td>
-    <td>Press <code>⌘ ⌃ V</code> (<code>Ctrl Alt V</code> on Windows / Linux) in any app, pick an item and press Enter to paste it.</td>
+    <td>Press <code>⌘ ⌃ V</code> (<code>Ctrl Alt V</code> on Windows / Linux) in any app to search history, press <code>Enter</code> to paste, or <code>Shift+Enter</code> for plain text.</td>
   </tr>
   <tr>
-    <td>🔍 <strong>Find anything</strong></td>
-    <td>Type a keyword, or filter with <code>#tag</code>, <code>@device</code> or <code>/type</code>. Find what you copied months ago.</td>
+    <td>🔍 <strong>Instant local search</strong></td>
+    <td>Search by keyword or filter with <code>#tag</code>, <code>@device</code>, <code>/type</code>, and favorites. Find what you copied months ago — including links matched by webpage title or description.</td>
   </tr>
   <tr>
-    <td>🏷️ <strong>Auto-tagging</strong></td>
-    <td>Links, emails, colors, version numbers, UUIDs and IP addresses are tagged automatically. Add your own rules.</td>
+    <td>🏷️ <strong>Auto-tagging &amp; smart previews</strong></td>
+    <td>Links, emails, colors, version numbers, UUIDs, and IP addresses are tagged automatically (plus custom regex rules), and copied links render rich preview cards.</td>
   </tr>
   <tr>
-    <td>📁 <strong>Files and folders</strong></td>
-    <td>Send a whole folder with its structure intact, to every device or just one.</td>
+    <td>🔄 <strong>Cross-device sync &amp; folders</strong></td>
+    <td>Sync text, rich text, images, files, and whole folders with directory structure intact — to every paired device or just one.</td>
   </tr>
   <tr>
     <td>📮 <strong>Send without pairing</strong></td>
     <td><code>unic send "text"</code> prints a transfer link and a 6-digit pickup code when available. The receiver can use either. No device record is kept.</td>
   </tr>
   <tr>
-    <td>🧩 <strong>Plugins</strong></td>
-    <td>Install plugins in one click from Settings, for example to turn an image or file into a share link.</td>
+    <td>🧩 <strong>Actions &amp; plugins</strong></td>
+    <td>Run non-destructive Actions (transform text, strip styling, turn images or files into share links) and install Go or Lua plugins in one click from Settings.</td>
   </tr>
   <tr>
     <td>⌨️ <strong>Command line</strong></td>
-    <td>Use <code>unic</code> to send, receive, and filter the history list from a terminal, over SSH, or in scripts.</td>
+    <td>Use <code>unic</code> to send, receive, run Actions, and filter history from a terminal, over SSH, or in scripts.</td>
   </tr>
   <tr>
-    <td>🌍 <strong>Languages</strong></td>
+    <td>🌍 <strong>Languages &amp; themes</strong></td>
     <td>English, 简体中文, 日本語, Português, Русский. Light and dark themes.</td>
   </tr>
 </table>
@@ -110,13 +102,13 @@
 
 [![Packaging status](https://repology.org/badge/vertical-allrepos/uniclipboard.svg)](https://repology.org/project/uniclipboard/versions)
 
-**2. Connect a second device**
+**2. Use it right away**
 
-On the first device, open **Devices → Add device** and note the 6-digit code. Enter it on the second device. When both devices show the same fingerprint, click **Accept** on each.
+Copy as usual, then press `⌘ ⌃ V` (`Ctrl Alt V` on Windows / Linux) in any app to open the Quick Panel, search your history, and paste.
 
-**3. Copy**
+**3. Connect a second device (optional)**
 
-Press `Ctrl+C` on one device, then `Ctrl+V` on the other.
+On the first device, open **Devices → Add device** and note the 6-digit code. Enter it on the second device. When both devices show the same fingerprint, click **Accept** on each — everything you copy now syncs automatically.
 
 <a id="cli"></a>
 

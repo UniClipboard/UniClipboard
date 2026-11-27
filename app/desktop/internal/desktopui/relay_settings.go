@@ -1,33 +1,26 @@
 package desktopui
 
 import (
-	"context"
 	"fmt"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/egoist/mygo/ui"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopkit"
 	"github.com/uniclipboard/unic/engine"
-	"github.com/uniclipboard/unic/internal/cloudauth"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	"github.com/uniclipboard/unic/internal/relayclient"
 	"github.com/uniclipboard/unic/internal/relaycrypto"
 )
 
 type relaySettingsState struct {
-	urlDraft         string
-	urlSynced        string
-	urlErr           string
-	accessKeyDraft   string
-	accessKeyErr     string
-	cloudLoginBusy   bool
-	cloudLoginErr    string
-	cloudLoginCancel context.CancelFunc
-	cloudLoginFn     func(context.Context, cloudauth.LoginOptions) (cloudauth.RelayCredential, error)
+	urlDraft       string
+	urlSynced      string
+	urlErr         string
+	accessKeyDraft string
+	accessKeyErr   string
 }
 
 func (d *viewState) relayReadyCounts() (ready, total int) {
@@ -186,46 +179,51 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 			}
 		})
 
-		k.SettingsRow(c.Key("relay-cloud-login"), desktopkit.SettingsRowProps{
-			Label:       d.tr("UniClipboard Cloud 授权"),
-			Description: d.tr("跳转浏览器登录 UniClipboard Cloud，授权后自动填入官方中转 API Key 并开启混合中转。"),
-			Dim:         syncPaused,
-		}, nil, func() {
-			ui.Row(c.Key("relay-cloud-controls")).Gap(8).AlignItems(ui.Center).Children(func() {
-				if d.relay.cloudLoginBusy {
-					settingsPill(c.Key("relay-cloud-pill"), k, d.tr("等待浏览器授权…"), desktopkit.StatusWarning, true, false)
-					if k.Button(c.Key("relay-cloud-cancel"), d.tr("取消"), desktopkit.ButtonProps{
-						Size: desktopkit.SizeSmall,
+		d.ensureCloudSessionLoaded()
+		if strings.TrimSpace(cfg.Sync.Relay.URL) == "" {
+			if d.cloud.signedIn {
+				k.SettingsRow(c.Key("relay-cloud-account"), desktopkit.SettingsRowProps{
+					Label:       d.tr("UniClipboard Cloud 账号"),
+					Description: fmt.Sprintf(d.tr("已登录 %s，可直接生成或刷新官方中转 API Key。"), d.cloud.session.User.DisplayLabel()),
+					Dim:         syncPaused,
+				}, nil, func() {
+					btnLabel := d.tr("刷新官方中转 API Key")
+					if !cfg.Sync.Relay.AccessKeySet {
+						btnLabel = d.tr("从 Cloud 启用官方中转")
+					}
+					if k.Button(c.Key("relay-cloud-provision"), btnLabel, desktopkit.ButtonProps{
+						Size:     desktopkit.SizeSmall,
+						Variant:  desktopkit.Primary,
+						Disabled: l.busy || syncPaused || d.cloud.busy,
 					}).Clicked() {
-						if d.relay.cloudLoginCancel != nil {
-							d.relay.cloudLoginCancel()
-							d.relay.cloudLoginCancel = nil
-						}
-						d.relay.cloudLoginBusy = false
-						d.relay.cloudLoginErr = ""
+						d.provisionCloudRelay(*cfg)
 					}
-				} else {
-					btnLabel := d.tr("登录 Cloud 获取 API Key")
-					if cfg.Sync.Relay.AccessKeySet {
-						btnLabel = d.tr("重新登录 Cloud 获取 API Key")
-					}
-					if k.Button(c.Key("relay-cloud-btn"), btnLabel, desktopkit.ButtonProps{
+				})
+			} else {
+				k.SettingsRow(c.Key("relay-cloud-account"), desktopkit.SettingsRowProps{
+					Label:       d.tr("UniClipboard Cloud 账号"),
+					Description: d.tr("使用官方中转需先登录 UniClipboard Cloud 账号；登录后将自动配置并开启官方中转。"),
+					Dim:         syncPaused,
+				}, nil, func() {
+					if d.cloud.busy {
+						settingsPill(c.Key("relay-cloud-pill"), k, d.cloud.busyLabel, desktopkit.StatusWarning, true, false)
+					} else if k.Button(c.Key("relay-cloud-login"), d.tr("登录 UniClipboard Cloud"), desktopkit.ButtonProps{
 						Size:     desktopkit.SizeSmall,
 						Variant:  desktopkit.Primary,
 						Disabled: l.busy || syncPaused,
 					}).Clicked() {
-						d.startCloudRelayLogin(*cfg)
+						d.startCloudLogin(*cfg, true)
 					}
-				}
-			})
-		})
-		if d.relay.cloudLoginErr != "" {
-			settingsNoteRow(c.Key("relay-cloud-err"), k, d.relay.cloudLoginErr)
+				})
+			}
+			if d.cloud.err != "" {
+				settingsNoteRow(c.Key("relay-cloud-err"), k, d.cloud.err)
+			}
 		}
 
 		k.SettingsRow(c.Key("relay-access-key"), desktopkit.SettingsRowProps{
 			Label:       d.tr("中转 API Key / 接入密钥"),
-			Description: d.tr("官方中转请使用 Cloud API Key；自部署可填入对应 X-Unic-Relay-Key。仅写入不回显，不入日志或备份。"),
+			Description: d.tr("官方中转由 Cloud 账号自动配置；自部署可手动填入对应 X-Unic-Relay-Key。仅写入不回显。"),
 			Dim:         relayDim,
 		}, nil, func() {
 			ui.Row(c.Key("relay-key-controls")).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -284,62 +282,4 @@ func (d *viewState) relaySettingsGroup(c *ui.Context, k desktopkit.Kit, cfg *con
 			settingsNoteRow(c.Key("relay-route-note"), k, d.tr("部分已配对设备尚未交换中转路由，请确保两端配置了相同的中转服务地址并至少完成一次 P2P 连接。"))
 		}
 	})
-}
-
-func (d *viewState) startCloudRelayLogin(curCfg config.Config) {
-	if d.live == nil || d.relay.cloudLoginBusy {
-		return
-	}
-	baseCtx := d.live.ctx
-	if baseCtx == nil {
-		baseCtx = context.Background()
-	}
-	ctx, cancel := context.WithTimeout(baseCtx, 5*time.Minute)
-	d.relay.cloudLoginBusy = true
-	d.relay.cloudLoginErr = ""
-	d.relay.cloudLoginCancel = cancel
-
-	loginFn := d.relay.cloudLoginFn
-	if loginFn == nil {
-		loginFn = cloudauth.LoginForRelayKey
-	}
-	deviceName := strings.TrimSpace(curCfg.DeviceName)
-	live := d.live
-	results := live.results
-
-	go func() {
-		defer cancel()
-		cred, err := loginFn(ctx, cloudauth.LoginOptions{
-			DeviceName:  deviceName,
-			OpenBrowser: d.openExternalURL,
-		})
-		post := func() {
-			d.relay.cloudLoginBusy = false
-			d.relay.cloudLoginCancel = nil
-			if err != nil {
-				if ctx.Err() == context.Canceled {
-					return
-				}
-				d.relay.cloudLoginErr = fmt.Sprintf(d.tr("Cloud 授权失败：%v"), err)
-				return
-			}
-			d.relay.cloudLoginErr = ""
-			nextCfg := d.live.config.Config
-			nextCfg.Sync.Relay.Enabled = true
-			if cred.RelayURL == "" || strings.EqualFold(strings.TrimRight(cred.RelayURL, "/"), relayclient.DefaultURL) {
-				nextCfg.Sync.Relay.URL = ""
-			} else if norm, nerr := relaycrypto.NormalizeRelayOrigin(cred.RelayURL); nerr == nil {
-				nextCfg.Sync.Relay.URL = norm
-			}
-			nextCfg.Sync.Relay.AccessKey = cred.APIKey
-			d.relay.urlDraft = nextCfg.Sync.Relay.URL
-			d.relay.urlSynced = nextCfg.Sync.Relay.URL
-			d.saveLiveConfig(nextCfg)
-		}
-		select {
-		case results <- post:
-			live.wake()
-		case <-baseCtx.Done():
-		}
-	}()
 }

@@ -2,7 +2,7 @@
  * 高级网络二级页(Android) — M3 Expressive：
  * 顶部状态概览卡（网络运行状态 + Tailcat 连接计数）→ 运行状态只读明细 → 配对服务 URL 配置。
  */
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -23,7 +23,8 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { useEngineStore } from '@/engine/store';
 import { useTheme } from '@/hooks/useTheme';
-import { loginCloudForRelayKey } from '@/lib/cloudRelayAuth';
+import { cloudUserLabel } from '@/lib/cloudAuth';
+import { useCloudStore } from '@/stores/cloudStore';
 import { SettingsSectionItem } from '../SettingsSectionItem';
 import type { AndroidSettingFieldEdit } from './SettingsFieldDialog';
 import { SettingsHeroCard } from './SettingsHeroCard';
@@ -49,7 +50,15 @@ export const NetworkSection = memo(function NetworkSection({
   const { t } = useTranslation();
   const { theme } = useTheme();
   const colors = useMaterialColors();
-  const [cloudLoggingIn, setCloudLoggingIn] = useState(false);
+  const cloud = useCloudStore(
+    useShallow((s) => ({
+      session: s.session,
+      busy: s.busy,
+      hydrate: s.hydrate,
+      signIn: s.signIn,
+      provisionRelay: s.provisionRelay,
+    }))
+  );
   const state = useEngineStore(
     useShallow((s) => ({
       snapshot: s.snapshot,
@@ -61,7 +70,8 @@ export const NetworkSection = memo(function NetworkSection({
   useFocusEffect(
     useCallback(() => {
       void useEngineStore.getState().refreshSnapshot();
-    }, [])
+      void cloud.hydrate();
+    }, [cloud.hydrate])
   );
 
   const run = (promise: Promise<unknown>) => {
@@ -73,41 +83,22 @@ export const NetworkSection = memo(function NetworkSection({
     );
   };
 
-  const handleCloudLogin = () => {
-    if (cloudLoggingIn) return;
-    setCloudLoggingIn(true);
-    void (async () => {
-      try {
-        const cred = await loginCloudForRelayKey({
-          deviceName: state.snapshot?.settings.value.device_name || undefined,
-        });
-        await state.updateSettings(
-          (old) => ({
-            ...old,
-            sync: {
-              ...old.sync,
-              relay: {
-                ...(old.sync.relay ?? { enabled: false }),
-                enabled: true,
-                url: cred.relayUrl === 'https://relay.uniclipboard.app' ? '' : cred.relayUrl,
-              },
-            },
-          }),
-          { relayAccessKey: cred.apiKey }
-        );
+  const handleCloudAction = () => {
+    if (cloud.busy) return;
+    const action = cloud.session ? cloud.provisionRelay() : cloud.signIn();
+    void action
+      .then(() =>
         Alert.alert(
-          t('settings:live.relayCloudLoginSuccessTitle'),
-          t('settings:live.relayCloudLoginSuccessBody')
-        );
-      } catch (error) {
+          t('settings:live.cloudSignInSuccessTitle'),
+          t('settings:live.cloudSignInSuccessBody')
+        )
+      )
+      .catch((error) =>
         Alert.alert(
-          t('settings:live.relayCloudLoginFailed'),
+          t('settings:live.cloudSignInFailed'),
           error instanceof Error ? error.message : undefined
-        );
-      } finally {
-        setCloudLoggingIn(false);
-      }
-    })();
+        )
+      );
   };
 
   const settings = state.snapshot?.settings.value;
@@ -311,15 +302,29 @@ export const NetworkSection = memo(function NetworkSection({
                 );
               }}
             />
-            <SettingsListRow
-              key="relay-cloud-login"
-              testID="relay-cloud-login"
-              title={cloudLoggingIn ? t('settings:live.relayCloudLoggingIn') : t('settings:live.relayCloudLogin')}
-              description={t('settings:live.relayCloudLoginDesc')}
-              disabled={cloudLoggingIn}
-              trailing={cloudLoggingIn ? 'none' : 'chevron'}
-              onPress={handleCloudLogin}
-            />
+            {!relay.url ? (
+              <SettingsListRow
+                key="relay-cloud-login"
+                testID="relay-cloud-login"
+                title={
+                  cloud.busy
+                    ? t('settings:live.cloudSigningIn')
+                    : cloud.session
+                      ? relay.has_access_key
+                        ? t('settings:live.relayRefreshFromCloud')
+                        : t('settings:live.relayEnableFromCloud')
+                      : t('settings:live.cloudSignIn')
+                }
+                description={
+                  cloud.session
+                    ? cloudUserLabel(cloud.session.user)
+                    : t('settings:live.cloudSignInDesc')
+                }
+                disabled={cloud.busy}
+                trailing={cloud.busy ? 'none' : 'chevron'}
+                onPress={handleCloudAction}
+              />
+            ) : null}
             <SettingsListRow
               key="relay-access-key"
               testID="relay-access-key"

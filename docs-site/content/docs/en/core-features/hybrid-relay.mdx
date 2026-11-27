@@ -41,18 +41,25 @@ flowchart LR
 - **Mid-transfer P2P handoff for large payloads**: Payloads larger than 2 MiB are split into 1 MiB independently encrypted chunks. If P2P comes online mid-upload, both devices reconcile received chunks via bitmaps, stream only the remaining chunks over P2P into the same assembly buffer, and clean up cloud chunks once committed. If P2P drops mid-handoff, the transfer seamlessly falls back to HTTP without losing already-received chunks.
 - **Zero-knowledge E2EE**: Reuses existing paired Ed25519 device keys (mapped to X25519) with a fresh per-transfer AES-256-GCM content key (CEK). No account registration or re-pairing is required. Unpairing a device or pausing sync immediately cancels in-flight relay transfers and revokes that peer's delivery token.
 
-## Client Setup & One-Click Cloud Authorization
+## Client Setup & UniClipboard Cloud Sign-In
 
-The official managed relay (`https://relay.uniclipboard.app`) requires a user API key issued by **UniClipboard Cloud** (`https://cloud.uniclipboard.app`). Fresh installs keep Hybrid Relay disabled until you sign in or configure a self-hosted relay.
+The official managed relay (`https://relay.uniclipboard.app`) is one of the hosted capabilities unlocked by signing in to **UniClipboard Cloud** (`https://cloud.uniclipboard.app`). Signing in automatically provisions a user-scoped Relay API key and enables Hybrid Relay, while fresh installs keep it disabled until you sign in or configure a self-hosted relay. Local history and direct P2P sync always work without an account.
 
-### One-Click Sign-In & Auto-Fill API Key (Recommended)
+### One-Click UniClipboard Cloud Sign-In (Recommended)
 
-- **Desktop**: Open **Settings → Sync → Hybrid Relay** and click **Sign in to Cloud for API Key**. After browser consent, the desktop app automatically saves the API key and enables Hybrid Relay.
-- **Mobile (iOS / Android)**: Open **Settings → Network → Hybrid Relay** and tap **Sign in to UniClipboard Cloud for API key**. The browser redirects back into the app and fills the key automatically.
-- **CLI**: Run the command below to complete browser login and save the key into `config.toml` automatically (use `--no-browser` on headless machines, or manage keys at `https://cloud.uniclipboard.app/account/api-keys`):
+- **Desktop**: Open **Settings → General → UniClipboard Cloud** and click **Sign in to UniClipboard Cloud**. After browser consent, the desktop app connects your Cloud account, provisions a Relay API key, and enables Hybrid Relay automatically (you can also manage or refresh the key under **Settings → Sync → Hybrid Relay**).
+- **Mobile (iOS / Android)**: Open **UniClipboard Cloud** at the top of **Settings** and tap **Sign in to UniClipboard Cloud**. The browser redirects back into the app and activates Hybrid Relay automatically (you can also manage it under **Settings → Network → Hybrid Relay**).
+- **CLI**: Manage your Cloud account with `unic cloud` (pass `--no-browser` on headless machines, pass `--no-relay` to sign in without enabling Hybrid Relay, or manage keys manually at `https://cloud.uniclipboard.app/account/api-keys`):
 
 ```bash
-unic relay login
+# Sign in to UniClipboard Cloud and automatically enable official Hybrid Relay
+unic cloud login
+
+# Inspect current Cloud account status
+unic cloud status
+
+# Sign out (clears the linked official relay key by default; pass --keep-relay to keep it)
+unic cloud logout
 ```
 
 ### Config File & CLI

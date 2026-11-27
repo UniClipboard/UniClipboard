@@ -41,18 +41,25 @@ flowchart LR
 - **大载荷中途 P2P 接力续传**：超过 2 MiB 的内容按 1 MiB 独立加密分块；如果上传中途目标设备恢复了 P2P 连接，双方会自动通过位图结算已传分块，剩余分块无缝切至 P2P 续传并在接收端统一组装校验，接收完成后立即清理云端临时对象。若 P2P 中途断开，也可平滑回落 HTTP 补齐。
 - **零知识端到端加密**：直接复用既有设备配对的 Ed25519 身份密钥（映射为 X25519）与随机 AES-256-GCM 内容密钥（CEK），无需账号、无需重新配对。移除设备或暂停同步时，本机立即中止在途中转并吊销该设备的投递令牌。
 
-## 客户端配置与 Cloud 一键授权
+## 客户端配置与 UniClipboard Cloud 登录
 
-官方托管中转服务（`https://relay.uniclipboard.app`）需要通过 **UniClipboard Cloud**（`https://cloud.uniclipboard.app`）登录获取用户专属 **API Key** 授权使用；新安装未授权前默认关闭，避免未认证流量空转。你也可以随时切换为自部署地址，或完全关闭中转。
+官方托管中转服务（`https://relay.uniclipboard.app`）是 **UniClipboard Cloud**（`https://cloud.uniclipboard.app`）账号提供的云能力之一。登录 Cloud 账号后，客户端会自动为本机签发用户专属 **Relay API Key** 并开启官方混合中转；未登录前默认保持关闭，避免未认证流量空转。本地历史与 P2P 直连始终可脱离账号独立使用，你也可以随时切换为自部署地址或关闭中转。
 
-### 一键跳转登录并自动填入 API Key（推荐）
+### 一键登录 UniClipboard Cloud（推荐）
 
-- **桌面端**：打开「设置 → 同步 → 混合中转」，点击 **「登录 Cloud 获取 API Key」**。浏览器完成登录后会自动回调本机，填入 API Key 并开启混合中转。
-- **移动端（iOS / Android）**：打开「设置 → 网络 → 混合中转」，点击 **「登录 UniClipboard Cloud 获取 API Key」**，浏览器授权后自动跳回 App 完成配置。
-- **命令行（CLI）**：运行以下命令即可在浏览器完成授权并自动写入 `config.toml`（无桌面环境可加 `--no-browser` 手动复制链接，或前往 `https://cloud.uniclipboard.app/account/api-keys` 生成后手动配置）：
+- **桌面端**：打开「设置 → 通用 → UniClipboard Cloud」，点击 **「登录 UniClipboard Cloud」**。浏览器完成登录后自动同步账号状态，并自动签发填入 Relay API Key、开启混合中转；也可在「设置 → 同步 → 混合中转」中随时刷新或清除密钥。
+- **移动端（iOS / Android）**：打开「设置」顶部的 **「UniClipboard Cloud」**，点击 **「登录 UniClipboard Cloud」**，浏览器授权后自动跳回 App 并完成中转开通；也可在「设置 → 网络 → 混合中转」内管理。
+- **命令行（CLI）**：使用 `unic cloud` 管理账号登录、查看状态与退出（无桌面环境可加 `--no-browser` 手动复制链接；若只想登录账号暂不开启中转，可加 `--no-relay`；也可前往 `https://cloud.uniclipboard.app/account/api-keys` 手动管理 API Key）：
 
 ```bash
-unic relay login
+# 登录 UniClipboard Cloud 并自动开通官方混合中转
+unic cloud login
+
+# 查看当前登录的 Cloud 账号状态
+unic cloud status
+
+# 退出 Cloud 账号（默认同时清理关联的官方中转密钥，加 --keep-relay 可保留）
+unic cloud logout
 ```
 
 ### 配置文件与命令行

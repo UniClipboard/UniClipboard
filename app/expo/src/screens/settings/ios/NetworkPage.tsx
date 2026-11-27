@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Alert } from 'react-native';
 import { Section, Text as SwiftUIText } from '@expo/ui/swift-ui';
 import { useTranslation } from 'react-i18next';
@@ -6,7 +6,8 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { IosSheetForm, IosSheetPage } from '@/components/ui';
 import { useEngineStore } from '@/engine/store';
-import { loginCloudForRelayKey } from '@/lib/cloudRelayAuth';
+import { cloudUserLabel } from '@/lib/cloudAuth';
+import { useCloudStore } from '@/stores/cloudStore';
 import { SettingsNavRow, SettingsToggle, statusGreen, statusOrange } from './common';
 import type { IosSettingFieldEdit } from './types';
 
@@ -14,7 +15,15 @@ const DEFAULT_RELAY_MAX_MB = 25;
 
 export function NetworkPage({ onEdit }: { onEdit: (edit: IosSettingFieldEdit) => void }) {
   const { t } = useTranslation();
-  const [cloudLoggingIn, setCloudLoggingIn] = useState(false);
+  const cloud = useCloudStore(
+    useShallow((s) => ({
+      session: s.session,
+      busy: s.busy,
+      hydrate: s.hydrate,
+      signIn: s.signIn,
+      provisionRelay: s.provisionRelay,
+    }))
+  );
   const state = useEngineStore(
     useShallow((s) => ({
       snapshot: s.snapshot,
@@ -25,7 +34,8 @@ export function NetworkPage({ onEdit }: { onEdit: (edit: IosSettingFieldEdit) =>
 
   useEffect(() => {
     void useEngineStore.getState().refreshSnapshot();
-  }, []);
+    void cloud.hydrate();
+  }, [cloud.hydrate]);
 
   const settings = state.snapshot?.settings.value;
   const bindings = state.devices
@@ -48,41 +58,22 @@ export function NetworkPage({ onEdit }: { onEdit: (edit: IosSettingFieldEdit) =>
     );
   };
 
-  const handleCloudLogin = () => {
-    if (cloudLoggingIn) return;
-    setCloudLoggingIn(true);
-    void (async () => {
-      try {
-        const cred = await loginCloudForRelayKey({
-          deviceName: settings?.device_name || undefined,
-        });
-        await state.updateSettings(
-          (old) => ({
-            ...old,
-            sync: {
-              ...old.sync,
-              relay: {
-                ...(old.sync.relay ?? { enabled: false }),
-                enabled: true,
-                url: cred.relayUrl === 'https://relay.uniclipboard.app' ? '' : cred.relayUrl,
-              },
-            },
-          }),
-          { relayAccessKey: cred.apiKey }
-        );
+  const handleCloudAction = () => {
+    if (cloud.busy) return;
+    const action = cloud.session ? cloud.provisionRelay() : cloud.signIn();
+    void action
+      .then(() =>
         Alert.alert(
-          t('settings:live.relayCloudLoginSuccessTitle'),
-          t('settings:live.relayCloudLoginSuccessBody')
-        );
-      } catch (error) {
+          t('settings:live.cloudSignInSuccessTitle'),
+          t('settings:live.cloudSignInSuccessBody')
+        )
+      )
+      .catch((error) =>
         Alert.alert(
-          t('settings:live.relayCloudLoginFailed'),
+          t('settings:live.cloudSignInFailed'),
           error instanceof Error ? error.message : undefined
-        );
-      } finally {
-        setCloudLoggingIn(false);
-      }
-    })();
+        )
+      );
   };
 
   return (
@@ -230,12 +221,24 @@ export function NetworkPage({ onEdit }: { onEdit: (edit: IosSettingFieldEdit) =>
                   })
                 }
               />
-              <SettingsNavRow
-                testID="relay-cloud-login"
-                title={cloudLoggingIn ? t('settings:live.relayCloudLoggingIn') : t('settings:live.relayCloudLogin')}
-                showsChevron={!cloudLoggingIn}
-                onPress={handleCloudLogin}
-              />
+              {!relay.url ? (
+                <SettingsNavRow
+                  testID="relay-cloud-login"
+                  title={
+                    cloud.busy
+                      ? t('settings:live.cloudSigningIn')
+                      : cloud.session
+                        ? relay.has_access_key
+                          ? t('settings:live.relayRefreshFromCloud')
+                          : t('settings:live.relayEnableFromCloud')
+                        : t('settings:live.cloudSignIn')
+                  }
+                  value={cloud.session ? cloudUserLabel(cloud.session.user) : undefined}
+                  showsChevron={!cloud.busy}
+                  disabled={cloud.busy}
+                  onPress={handleCloudAction}
+                />
+              ) : null}
               <SettingsNavRow
                 testID="relay-access-key"
                 title={t('settings:live.relayAccessKey')}

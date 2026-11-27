@@ -111,7 +111,7 @@ try {
       const allowedShellOp =
         (file === join(root, "src", "engine", "historyActions.ts") &&
           exprText === "Linking.openURL") ||
-        (file === join(root, "src", "lib", "cloudRelayAuth.ts") &&
+        (file === join(root, "src", "lib", "cloudAuth.ts") &&
           (exprText === "Linking.openURL" || exprText === "fetch"));
       if (
         ts.isCallExpression(node) &&

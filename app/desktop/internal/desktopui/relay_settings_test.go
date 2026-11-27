@@ -2,6 +2,8 @@ package desktopui
 
 import (
 	"context"
+	"net/http"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -54,7 +56,7 @@ func TestRelaySettingsGroupRenderAndInteractions(t *testing.T) {
 	tester.Frame()
 
 	texts := strings.Join(tester.Texts(), " | ")
-	for _, want := range []string{"混合中转", "1/2 台设备中转就绪", "启用混合中转", "中转服务地址", "单次中转大小上限", "UniClipboard Cloud 授权", "中转 API Key / 接入密钥", "已配置", "清除密钥", "恢复默认"} {
+	for _, want := range []string{"混合中转", "1/2 台设备中转就绪", "启用混合中转", "中转服务地址", "单次中转大小上限", "中转 API Key / 接入密钥", "已配置", "清除密钥", "恢复默认"} {
 		if !strings.Contains(texts, want) {
 			t.Fatalf("expected %q in relay settings UI, got: %s", want, texts)
 		}
@@ -93,7 +95,8 @@ func TestRelaySettingsGroupRenderAndInteractions(t *testing.T) {
 	}
 }
 
-func TestRelayCloudLoginAutoFillsKeyAndEnablesRelay(t *testing.T) {
+func TestCloudAccountLoginPersistsSessionAndProvisionsRelay(t *testing.T) {
+	dir := t.TempDir()
 	cfg := config.Default()
 	cfg.DeviceName = "Work Mac"
 
@@ -105,39 +108,49 @@ func TestRelayCloudLoginAutoFillsKeyAndEnablesRelay(t *testing.T) {
 			ctx:     context.Background(),
 			loaded:  true,
 			results: make(chan func(), 8),
-			config:  config.State{Revision: "rev-1", Config: cfg},
+			config:  config.State{Revision: "rev-1", Path: filepath.Join(dir, "config.toml"), Config: cfg},
 		},
-		relay: relaySettingsState{
-			cloudLoginFn: func(_ context.Context, opts cloudauth.LoginOptions) (cloudauth.RelayCredential, error) {
+		cloud: cloudAccountState{
+			loginFn: func(_ context.Context, opts cloudauth.LoginOptions) (cloudauth.Session, error) {
 				if opts.DeviceName != "Work Mac" {
 					t.Errorf("DeviceName = %q, want Work Mac", opts.DeviceName)
 				}
+				return cloudauth.Session{
+					CloudURL:     "https://cloud.uniclipboard.app",
+					AccessToken:  "jwt-test",
+					RefreshToken: "refresh-test",
+					User:         cloudauth.User{Email: "alice@example.com"},
+					SignedInAtMs: 1764200000000,
+				}, nil
+			},
+			createRelayFn: func(_ context.Context, _ *http.Client, sess cloudauth.Session, _ string) (cloudauth.RelayCredential, cloudauth.Session, error) {
+				sess.RelayKeyID = "k1"
+				sess.RelayKeyPrefix = "uc_rk_test1234"
 				return cloudauth.RelayCredential{
 					KeyID:     "k1",
 					KeyPrefix: "uc_rk_test1234",
 					APIKey:    "uc_rk_test1234secretvalue",
 					RelayURL:  "https://relay.uniclipboard.app",
-				}, nil
+				}, sess, nil
 			},
 		},
 	}
 
 	k := desktopkit.Kit{}
-	changed := false
 	tester := ui.NewTester(func(c *ui.Context) {
 		k.Apply(c)
 		ui.Column(c).Children(func() {
-			d.relaySettingsGroup(c, k, &cfg, &changed)
+			d.cloudAccountGroup(c, k, &cfg)
 		})
 	}, 900, 700)
 	tester.Frame()
 
-	if err := tester.Click("登录 Cloud 获取 API Key"); err != nil {
+	if err := tester.Click("登录 UniClipboard Cloud"); err != nil {
 		t.Fatalf("click cloud login: %v", err)
 	}
 	tester.Frame()
-	if !d.relay.cloudLoginBusy {
-		t.Fatal("expected cloudLoginBusy=true while waiting for callback")
+	if !d.cloud.busy {
+		t.Fatal("expected d.cloud.busy=true while waiting for browser sign-in")
 	}
 
 	var fn func()
@@ -146,9 +159,13 @@ func TestRelayCloudLoginAutoFillsKeyAndEnablesRelay(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for cloud login result")
 	}
-	d.live.busy = true // prevent mutate from using nil client while still checking state updates
+	d.live.busy = true // prevent mutate from calling nil client
 	fn()
-	if d.relay.cloudLoginBusy || d.relay.cloudLoginErr != "" {
-		t.Fatalf("expected cloud login state cleared, got busy=%v err=%q", d.relay.cloudLoginBusy, d.relay.cloudLoginErr)
+	if d.cloud.busy || d.cloud.err != "" || !d.cloud.signedIn || d.cloud.session.User.Email != "alice@example.com" {
+		t.Fatalf("unexpected cloud state after login: %+v", d.cloud)
+	}
+	loaded, ok, err := cloudauth.LoadSession(dir)
+	if err != nil || !ok || loaded.User.Email != "alice@example.com" || loaded.RelayKeyID != "k1" {
+		t.Fatalf("expected persisted cloud session, got (%+v, %v, %v)", loaded, ok, err)
 	}
 }

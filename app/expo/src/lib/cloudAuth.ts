@@ -1,7 +1,31 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
 import { Linking } from 'react-native';
 
 export const DEFAULT_CLOUD_URL = 'https://cloud.uniclipboard.app';
+const CLOUD_SESSION_STORAGE_KEY = '@unic/cloud-session-v1';
+const AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+const ACCESS_REFRESH_SKEW_MS = 60 * 1000;
+
+export interface CloudUser {
+  clerkUserId?: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  imageUrl?: string;
+}
+
+export interface CloudSession {
+  cloudUrl: string;
+  accessToken?: string;
+  accessExpiresAtMs?: number;
+  refreshToken: string;
+  deviceName?: string;
+  user: CloudUser;
+  signedInAtMs: number;
+  relayKeyId?: string;
+  relayKeyPrefix?: string;
+}
 
 export interface CloudRelayCredential {
   id: string;
@@ -12,7 +36,12 @@ export interface CloudRelayCredential {
   maxTransferBytes: number;
 }
 
-const AUTH_TIMEOUT_MS = 5 * 60 * 1000;
+export function cloudUserLabel(user?: CloudUser | null): string {
+  const email = user?.email?.trim();
+  if (email) return email;
+  const full = `${user?.firstName?.trim() ?? ''} ${user?.lastName?.trim() ?? ''}`.trim();
+  return full || 'UniClipboard Cloud';
+}
 
 function getRedirectUri(): string {
   const scheme =
@@ -164,10 +193,40 @@ function parseCallbackParams(rawUrl: string): { code?: string; state?: string; e
   };
 }
 
-export async function loginCloudForRelayKey(options?: {
+export async function loadCloudSession(): Promise<CloudSession | null> {
+  try {
+    const raw = await AsyncStorage.getItem(CLOUD_SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CloudSession>;
+    if (!parsed.cloudUrl || !parsed.refreshToken) return null;
+    return {
+      cloudUrl: parsed.cloudUrl,
+      accessToken: parsed.accessToken,
+      accessExpiresAtMs: parsed.accessExpiresAtMs,
+      refreshToken: parsed.refreshToken,
+      deviceName: parsed.deviceName,
+      user: parsed.user ?? {},
+      signedInAtMs: parsed.signedInAtMs ?? Date.now(),
+      relayKeyId: parsed.relayKeyId,
+      relayKeyPrefix: parsed.relayKeyPrefix,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function saveCloudSession(session: CloudSession): Promise<void> {
+  await AsyncStorage.setItem(CLOUD_SESSION_STORAGE_KEY, JSON.stringify(session));
+}
+
+export async function clearCloudSession(): Promise<void> {
+  await AsyncStorage.removeItem(CLOUD_SESSION_STORAGE_KEY);
+}
+
+export async function signInToCloud(options?: {
   cloudUrl?: string;
   deviceName?: string;
-}): Promise<CloudRelayCredential> {
+}): Promise<CloudSession> {
   const baseUrl = (options?.cloudUrl?.trim() || DEFAULT_CLOUD_URL).replace(/\/+$/, '');
   const deviceName = (options?.deviceName?.trim() || 'UniClipboard Mobile').slice(0, 120);
   const redirectUri = getRedirectUri();
@@ -196,11 +255,11 @@ export async function loginCloudForRelayKey(options?: {
       settled = true;
       cleanup();
       if (parsed.error) {
-        reject(new Error(`Cloud authorization canceled or failed (${parsed.error}).`));
+        reject(new Error(`Cloud sign-in canceled or failed (${parsed.error}).`));
         return;
       }
       if (!parsed.code || parsed.state !== state) {
-        reject(new Error('Cloud authorization state verification failed.'));
+        reject(new Error('Cloud sign-in state verification failed.'));
         return;
       }
       resolve(parsed.code);
@@ -211,14 +270,14 @@ export async function loginCloudForRelayKey(options?: {
       if (settled) return;
       settled = true;
       cleanup();
-      reject(new Error('Cloud authorization timed out.'));
+      reject(new Error('Cloud sign-in timed out.'));
     }, AUTH_TIMEOUT_MS);
 
     void Linking.openURL(authUrl).catch((err) => {
       if (settled) return;
       settled = true;
       cleanup();
-      reject(err instanceof Error ? err : new Error('Failed to open browser for Cloud login.'));
+      reject(err instanceof Error ? err : new Error('Failed to open browser for Cloud sign-in.'));
     });
   });
 
@@ -235,25 +294,99 @@ export async function loginCloudForRelayKey(options?: {
   if (!tokenResp.ok) {
     throw new Error(`Cloud token exchange failed (HTTP ${tokenResp.status}).`);
   }
-  const tokenData = (await tokenResp.json()) as { access_token?: string };
+  const tokenData = (await tokenResp.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    user?: CloudUser | null;
+  };
   const accessToken = tokenData.access_token?.trim();
-  if (!accessToken) {
-    throw new Error('Cloud token exchange returned an empty access token.');
+  const refreshToken = tokenData.refresh_token?.trim();
+  if (!accessToken || !refreshToken) {
+    throw new Error('Cloud sign-in returned incomplete session tokens.');
   }
 
-  const keyResp = await fetch(`${baseUrl}/api/relay/v2/api-keys`, {
+  const now = Date.now();
+  const session: CloudSession = {
+    cloudUrl: baseUrl,
+    accessToken,
+    accessExpiresAtMs: tokenData.expires_in ? now + tokenData.expires_in * 1000 : undefined,
+    refreshToken,
+    deviceName,
+    user: tokenData.user ?? {},
+    signedInAtMs: now,
+  };
+  await saveCloudSession(session);
+  return session;
+}
+
+export async function refreshCloudSession(session: CloudSession): Promise<CloudSession> {
+  const resp = await fetch(`${session.cloudUrl}/api/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: session.refreshToken }),
+  });
+  if (!resp.ok) {
+    throw new Error(`Cloud session refresh failed (HTTP ${resp.status}).`);
+  }
+  const data = (await resp.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+  };
+  const accessToken = data.access_token?.trim();
+  if (!accessToken) {
+    throw new Error('Cloud session refresh returned empty access token.');
+  }
+  const updated: CloudSession = {
+    ...session,
+    accessToken,
+    refreshToken: data.refresh_token?.trim() || session.refreshToken,
+    accessExpiresAtMs: data.expires_in ? Date.now() + data.expires_in * 1000 : session.accessExpiresAtMs,
+  };
+  await saveCloudSession(updated);
+  return updated;
+}
+
+async function ensureValidAccessToken(session: CloudSession): Promise<CloudSession> {
+  const expired =
+    !session.accessToken ||
+    (session.accessExpiresAtMs !== undefined &&
+      Date.now() + ACCESS_REFRESH_SKEW_MS >= session.accessExpiresAtMs);
+  return expired ? refreshCloudSession(session) : session;
+}
+
+export async function provisionCloudRelayKey(
+  session: CloudSession,
+  deviceName?: string
+): Promise<{ credential: CloudRelayCredential; session: CloudSession }> {
+  let cur = await ensureValidAccessToken(session);
+  const label = (deviceName?.trim() || cur.deviceName || 'UniClipboard Mobile').slice(0, 120);
+
+  let keyResp = await fetch(`${cur.cloudUrl}/api/relay/v2/api-keys`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${cur.accessToken ?? ''}`,
     },
-    body: JSON.stringify({ name: deviceName }),
+    body: JSON.stringify({ name: label }),
   });
+  if (keyResp.status === 401) {
+    cur = await refreshCloudSession(cur);
+    keyResp = await fetch(`${cur.cloudUrl}/api/relay/v2/api-keys`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cur.accessToken ?? ''}`,
+      },
+      body: JSON.stringify({ name: label }),
+    });
+  }
   if (keyResp.status === 429) {
     throw new Error('Relay API key limit reached. Revoke an unused key in UniClipboard Cloud.');
   }
   if (!keyResp.ok) {
-    throw new Error(`Failed to create Cloud Relay API key (HTTP ${keyResp.status}).`);
+    throw new Error(`Failed to provision Cloud Relay API key (HTTP ${keyResp.status}).`);
   }
   const keyData = (await keyResp.json()) as {
     id?: string;
@@ -268,12 +401,47 @@ export async function loginCloudForRelayKey(options?: {
     throw new Error('Cloud returned an empty Relay API key.');
   }
 
-  return {
+  const credential: CloudRelayCredential = {
     id: keyData.id ?? '',
-    name: keyData.name ?? deviceName,
+    name: keyData.name ?? label,
     keyPrefix: keyData.key_prefix ?? '',
     apiKey,
     relayUrl: keyData.relay_url?.trim() || 'https://relay.uniclipboard.app',
     maxTransferBytes: keyData.max_transfer_bytes ?? 25 * 1024 * 1024,
   };
+  const updated: CloudSession = {
+    ...cur,
+    relayKeyId: credential.id || cur.relayKeyId,
+    relayKeyPrefix: credential.keyPrefix || cur.relayKeyPrefix,
+  };
+  await saveCloudSession(updated);
+  return { credential, session: updated };
+}
+
+export async function signOutFromCloud(session: CloudSession | null): Promise<void> {
+  if (session) {
+    try {
+      if (session.relayKeyId) {
+        const cur = await ensureValidAccessToken(session).catch(() => session);
+        if (cur.accessToken) {
+          await fetch(
+            `${cur.cloudUrl}/api/relay/v2/api-keys/${encodeURIComponent(session.relayKeyId)}`,
+            {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${cur.accessToken}` },
+            }
+          ).catch(() => undefined);
+        }
+      }
+      await fetch(`${session.cloudUrl}/api/auth/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: session.refreshToken }),
+      }).catch(() => undefined);
+    } finally {
+      await clearCloudSession();
+    }
+    return;
+  }
+  await clearCloudSession();
 }

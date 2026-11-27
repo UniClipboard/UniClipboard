@@ -61,6 +61,7 @@ func (d *viewState) liveSettingsContent(c *ui.Context, k desktopkit.Kit) {
 
 	switch d.settings.Value {
 	case "general":
+		d.cloudAccountGroup(c, k, &cfg)
 		group("language-device", d.tr("语言与设备"), func() {
 			d.languageRow(c, k)
 			k.SettingsRow(c.Key("device-name"), desktopkit.SettingsRowProps{

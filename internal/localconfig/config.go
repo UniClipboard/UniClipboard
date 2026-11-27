@@ -679,8 +679,8 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # automatic = false  # copy records references; explicit send prepares the tree
 
 # Optional zero-knowledge E2EE temporary HTTP relay for offline peer fallback
-# (separate from Tailcat P2P DERP relays). Sign in via "unic relay login" (or
-# Desktop/Mobile settings) to obtain a Cloud API key and enable it automatically.
+# (separate from Tailcat P2P DERP relays). Sign in to UniClipboard Cloud via
+# "unic cloud login" (or Desktop/Mobile settings) to enable it automatically.
 # [sync.relay]
 # enabled = false
 # url = "https://relay.uniclipboard.app"  # or $UNIC_RELAY_URL / self-hosted HTTPS URL

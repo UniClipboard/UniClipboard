@@ -51,11 +51,6 @@ func (p *quickPanelState) panel(c *ui.Context) {
 		p.schedulePreview()
 	}
 	p.tick(c)
-	if p.visible && (p.menu != "" || p.previewEntry() != nil) && p.onUpdate != nil {
-		if w, h := p.satelliteSize(); w != p.satelliteWidth || h != p.satelliteHeight {
-			p.onUpdate()
-		}
-	}
 	root := ui.Column(c).Fill().Background(a.background).TextColor(a.foreground).Radius(12).Border(1, a.border).Clip()
 	root.Children(func() {
 		if !p.visible {
@@ -76,6 +71,8 @@ func (p *quickPanelState) panel(c *ui.Context) {
 		qpSlow := p.live != nil && p.live.d.live.showForegroundLoading()
 		qpPending := !p.queryDue.IsZero() || (p.live != nil && p.live.d.live.foregroundLoading)
 		scroll := k.Scroll(c.Key("history-scroll")).Grow(1).MinHeight(0)
+		viewport := scroll.Bounds()
+		p.listViewport = viewport
 		first, last := len(p.rows), -1
 		scroll.Children(func() {
 			body := ui.Column(c).FillWidth().Padding(6)
@@ -106,6 +103,7 @@ func (p *quickPanelState) panel(c *ui.Context) {
 				}
 				switch {
 				case len(p.rows) == 0 && qpPending:
+					p.anchor = ui.Rect{}
 					if qpSlow || !p.queryDue.IsZero() {
 						ui.Row(c.Key("qp-loading")).Padding(24).Gap(8).AlignItems(ui.Center).Children(func() {
 							ui.Spinner(c.Key("spin")).Size(14, 14).TextColor(a.quiet).AccessHidden(true)
@@ -113,6 +111,7 @@ func (p *quickPanelState) panel(c *ui.Context) {
 						})
 					}
 				case len(p.rows) == 0:
+					p.anchor = ui.Rect{}
 					p.emptyView(c, a)
 				case p.kind == "图片":
 					p.imageGrid(c, k, a)
@@ -120,7 +119,6 @@ func (p *quickPanelState) panel(c *ui.Context) {
 				default:
 					for i, e := range p.rows {
 						row := p.resultRow(c.Key(e.id), k, a, i, e, qpPending).Bounds()
-						viewport := scroll.Bounds()
 						if row.H > 0 && viewport.H > 0 && row.Y < viewport.Y+viewport.H && row.Y+row.H > viewport.Y {
 							first, last = min(first, i), i
 						}
@@ -164,6 +162,14 @@ func (p *quickPanelState) panel(c *ui.Context) {
 			b.OnClick(p.openActions)
 		})
 	})
+	if p.visible && (p.menu != "" || p.previewEntry() != nil) && p.onUpdate != nil {
+		scale := zoomScale(p.windowZoom)
+		bounds := p.satelliteAnchorBounds(int(qpPanelWidth*scale), int(qpPanelHeight*scale))
+		if w, h := p.satelliteSize(); w != p.satelliteWidth || h != p.satelliteHeight || bounds != p.satelliteAnchor {
+			p.satelliteAnchor = bounds
+			p.onUpdate()
+		}
+	}
 	// A pending timer can be created by an input action after the prior build.
 	if !p.queryDue.IsZero() {
 		c.After(max(time.Millisecond, p.queryDue.Sub(c.Now())))
@@ -777,8 +783,10 @@ func (p *quickPanelState) resultRow(c *ui.Context, k desktopkit.Kit, a qpPalette
 		p.schedulePreview()
 		p.update()
 	}
-	if (p.keyboard && selected) || (!p.keyboard && p.hovered == i) {
-		p.anchor = b.Bounds()
+	if i == p.activeIndex() && !p.suggestFocused {
+		if rect := p.clampedAnchor(b.Bounds(), p.listViewport); rect.H > 0 {
+			p.anchor = rect
+		}
 	}
 	mods := b.ClickModifiers()
 	b.OnClick(func() { p.selectRow(i); p.restore(true, mods&ui.Shift != 0, false) })
@@ -825,8 +833,10 @@ func (p *quickPanelState) imageGrid(c *ui.Context, k desktopkit.Kit, a qpPalette
 						p.schedulePreview()
 						p.update()
 					}
-					if at == p.selected {
-						p.anchor = b.Bounds()
+					if at == p.activeIndex() {
+						if rect := p.clampedAnchor(b.Bounds(), p.listViewport); rect.H > 0 {
+							p.anchor = rect
+						}
 					}
 					mods := b.ClickModifiers()
 					b.OnClick(func() { p.selectRow(at); p.restore(true, mods&ui.Shift != 0, false) })

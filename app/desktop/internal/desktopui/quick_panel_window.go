@@ -176,6 +176,33 @@ func estimateWrappedTextHeight(width float32, text string, size float32) float32
 	return float32(max(1, lines)) * size * 1.45
 }
 
+func (p *quickPanelState) clampedAnchor(rect, viewport ui.Rect) ui.Rect {
+	if rect.H <= 0 {
+		return ui.Rect{}
+	}
+	if viewport.H > 0 {
+		h := min(rect.H, viewport.H)
+		y := max(viewport.Y, min(rect.Y, viewport.Y+viewport.H-h))
+		rect.Y = y
+		rect.H = h
+	}
+	return rect
+}
+
+func (p *quickPanelState) satelliteAnchorBounds(panelWidth, panelHeight int) mygo.Rectangle {
+	anchor := p.anchor
+	if anchor.H <= 0 {
+		anchor = ui.Rect{Y: 54, W: float32(panelWidth), H: 30}
+	}
+	if p.listViewport.H > 0 {
+		anchor = p.clampedAnchor(anchor, p.listViewport)
+	}
+	h := max(1, min(int(math.Round(float64(anchor.H))), max(1, panelHeight)))
+	maxY := max(0, panelHeight-h)
+	y := max(0, min(int(math.Round(float64(anchor.Y))), maxY))
+	return mygo.Rectangle{X: 0, Y: y, Width: panelWidth, Height: h}
+}
+
 func openQuickWindow(p *quickPanelState, pos *mygo.Point, closed func()) *mygo.Window {
 	p.quit = mygo.App.Quit
 
@@ -204,6 +231,7 @@ func openQuickWindow(p *quickPanelState, pos *mygo.Point, closed func()) *mygo.W
 	var satellite *mygo.Window
 	hideSatellite := func() {
 		p.satelliteWidth, p.satelliteHeight = 0, 0
+		p.satelliteAnchor = mygo.Rectangle{}
 		if satellite != nil {
 			satellite.Hide()
 		}
@@ -216,9 +244,10 @@ func openQuickWindow(p *quickPanelState, pos *mygo.Point, closed func()) *mygo.W
 		}
 		scale := zoomScale(p.windowZoom)
 		panelWidth := int(qpPanelWidth * scale)
+		panelHeight := int(qpPanelHeight * scale)
 		if p.windowZoom != windowZoom {
 			windowZoom = p.windowZoom
-			history.SetContentSize(panelWidth, int(qpPanelHeight*scale))
+			history.SetContentSize(panelWidth, panelHeight)
 		}
 		if p.menu == "" && p.previewEntry() == nil {
 			hideSatellite()
@@ -226,13 +255,10 @@ func openQuickWindow(p *quickPanelState, pos *mygo.Point, closed func()) *mygo.W
 		}
 		width, height := p.satelliteSize()
 		p.satelliteWidth, p.satelliteHeight = width, height
-		anchor := p.anchor
-		if anchor.H <= 0 {
-			anchor = ui.Rect{Y: 54, W: qpPanelWidth, H: 30}
-		}
 		// Use the full parent width so the satellite follows a row vertically
-		// but never overlaps the history panel horizontally.
-		bounds := mygo.Rectangle{X: 0, Y: int(anchor.Y), Width: panelWidth, Height: int(anchor.H)}
+		// within the visible panel bounds and never overlaps horizontally.
+		bounds := p.satelliteAnchorBounds(panelWidth, panelHeight)
+		p.satelliteAnchor = bounds
 		if satellite == nil {
 			satellite = mygo.NewFlyout(mygo.FlyoutOptions{
 				Parent: history, Width: width, Height: height, Hidden: true, Focusable: false,

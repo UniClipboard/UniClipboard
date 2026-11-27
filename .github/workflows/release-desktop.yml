@@ -25,7 +25,7 @@ on:
         description: JSON with darwin, linux and windows receipts for stable promotion
       expected_source:
         type: string
-        description: Expected source SHA for a joint release
+        description: Expected branch HEAD SHA for this manual run
   workflow_call:
     inputs:
       operation:
@@ -96,8 +96,11 @@ jobs:
       DESKTOP_NOTES: ${{ inputs.joint && inputs.channel == 'stable' && 'dist/catalogue/desktop-notes.json' || 'release/desktop-notes.json' }}
       DESKTOP_TEMPLATE: ${{ inputs.joint && inputs.channel == 'stable' && 'dist/catalogue/release-template.md' || '.github/release-notes/desktop.md.tmpl' }}
     steps:
-      - if: inputs.expected_source != '' && inputs.expected_source != github.sha
-        run: exit 1
+      - name: Reject a mismatched manual source
+        if: inputs.source_sha == '' && inputs.expected_source != '' && inputs.expected_source != github.sha
+        run: |
+          echo '::error::The expected source does not match the dispatched commit.'
+          exit 1
       - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.source_sha || github.sha }}

@@ -1,15 +1,15 @@
+import CryptoKit
 import Foundation
 import ImageIO
 import UIKit
 import UnicCore
 import UniformTypeIdentifiers
 
-/// Bridges the main app's single in-process Go Engine to the iOS Keyboard Extension
-/// via a bounded read-only snapshot directory inside the shared App Group container.
-///
-/// The Keyboard Extension never links or starts Go Engine (0031 invariant). It reads
-/// `snapshot.json` and downscaled thumbnails, and queues lightweight user intents
-/// (such as toggling `pinned`) under `actions/` for the main app to reconcile.
+/// Coordinates shared App Group state between the main app and the iOS Keyboard Extension:
+/// - Fast first-paint & degraded-mode snapshot (`snapshot.json` + thumbnails/images)
+/// - Keyboard preferences (`preferences.json`, including `auto_sync_enabled`)
+/// - Cross-process pasteboard anti-loopback state (`pasteboard-state.json`)
+/// - Pending lightweight actions (`actions/`) when keyboard runs in degraded snapshot mode.
 final class KeyboardBridge {
   private static let maxItems = 50
   private static let maxImages = 20
@@ -66,11 +66,42 @@ final class KeyboardBridge {
   struct Preferences: Codable {
     var soundEnabled: Bool
     var hapticEnabled: Bool
+    var autoSyncEnabled: Bool
     var updatedAtMs: Int64
 
     enum CodingKeys: String, CodingKey {
       case soundEnabled = "sound_enabled"
       case hapticEnabled = "haptic_enabled"
+      case autoSyncEnabled = "auto_sync_enabled"
+      case updatedAtMs = "updated_at_ms"
+    }
+
+    init(soundEnabled: Bool, hapticEnabled: Bool, autoSyncEnabled: Bool = true, updatedAtMs: Int64) {
+      self.soundEnabled = soundEnabled
+      self.hapticEnabled = hapticEnabled
+      self.autoSyncEnabled = autoSyncEnabled
+      self.updatedAtMs = updatedAtMs
+    }
+
+    init(from decoder: Decoder) throws {
+      let c = try decoder.container(keyedBy: CodingKeys.self)
+      self.soundEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundEnabled) ?? true
+      self.hapticEnabled = try c.decodeIfPresent(Bool.self, forKey: .hapticEnabled) ?? true
+      self.autoSyncEnabled = try c.decodeIfPresent(Bool.self, forKey: .autoSyncEnabled) ?? true
+      self.updatedAtMs = try c.decodeIfPresent(Int64.self, forKey: .updatedAtMs) ?? 0
+    }
+  }
+
+  struct PasteboardState: Codable {
+    let changeCount: Int
+    let contentSHA256: String
+    let origin: String // "applied" | "captured"
+    let updatedAtMs: Int64
+
+    enum CodingKeys: String, CodingKey {
+      case changeCount = "change_count"
+      case contentSHA256 = "content_sha256"
+      case origin
       case updatedAtMs = "updated_at_ms"
     }
   }
@@ -115,6 +146,7 @@ final class KeyboardBridge {
   private var snapshotURL: URL? { rootURL?.appendingPathComponent("snapshot.json") }
   private var preferencesURL: URL? { rootURL?.appendingPathComponent("preferences.json") }
   private var heartbeatURL: URL? { rootURL?.appendingPathComponent("heartbeat.json") }
+  private var pasteboardStateURL: URL? { rootURL?.appendingPathComponent("pasteboard-state.json") }
   private var thumbnailsDir: URL? { rootURL?.appendingPathComponent("thumbnails", isDirectory: true) }
   private var imagesDir: URL? { rootURL?.appendingPathComponent("images", isDirectory: true) }
   private var actionsDir: URL? { rootURL?.appendingPathComponent("actions", isDirectory: true) }
@@ -154,6 +186,7 @@ final class KeyboardBridge {
       "has_full_access_seen": hasFullAccessSeen,
       "sound_enabled": prefs.soundEnabled,
       "haptic_enabled": prefs.hapticEnabled,
+      "auto_sync_enabled": prefs.autoSyncEnabled,
       "extension_bundle_id": extensionID,
     ]
     if lastSeenAtMs > 0 {
@@ -163,7 +196,7 @@ final class KeyboardBridge {
        let text = String(data: data, encoding: .utf8) {
       return text
     }
-    return "{\"added\":false,\"has_full_access_seen\":false,\"sound_enabled\":true,\"haptic_enabled\":true}"
+    return "{\"added\":false,\"has_full_access_seen\":false,\"sound_enabled\":true,\"haptic_enabled\":true,\"auto_sync_enabled\":true}"
   }
 
   func loadPreferences() -> Preferences {
@@ -172,19 +205,75 @@ final class KeyboardBridge {
        let prefs = try? JSONDecoder().decode(Preferences.self, from: data) {
       return prefs
     }
-    return Preferences(soundEnabled: true, hapticEnabled: true, updatedAtMs: 0)
+    return Preferences(soundEnabled: true, hapticEnabled: true, autoSyncEnabled: true, updatedAtMs: 0)
   }
 
-  func savePreferences(soundEnabled: Bool, hapticEnabled: Bool) throws {
+  func savePreferences(soundEnabled: Bool, hapticEnabled: Bool, autoSyncEnabled: Bool? = nil) throws {
     _ = try ensureDirectories()
     guard let url = preferencesURL else { return }
+    let existing = loadPreferences()
     let prefs = Preferences(
       soundEnabled: soundEnabled,
       hapticEnabled: hapticEnabled,
+      autoSyncEnabled: autoSyncEnabled ?? existing.autoSyncEnabled,
       updatedAtMs: Int64(Date().timeIntervalSince1970 * 1000)
     )
     let data = try JSONEncoder().encode(prefs)
     try writeAtomic(data: data, to: url)
+  }
+
+  // MARK: - Cross-Process Anti-Loopback Pasteboard State
+
+  static func sha256Hex(of data: Data) -> String {
+    let digest = SHA256.hash(data: data)
+    return digest.map { String(format: "%02x", $0) }.joined()
+  }
+
+  static func sha256Hex(ofText text: String) -> String {
+    return sha256Hex(of: Data(text.utf8))
+  }
+
+  func loadPasteboardState() -> PasteboardState? {
+    guard let url = pasteboardStateURL,
+          let data = try? Data(contentsOf: url),
+          let state = try? JSONDecoder().decode(PasteboardState.self, from: data) else {
+      return nil
+    }
+    return state
+  }
+
+  func recordPasteboardState(changeCount: Int, contentSHA256: String, origin: String) {
+    guard let url = pasteboardStateURL else { return }
+    _ = try? ensureDirectories()
+    let state = PasteboardState(
+      changeCount: changeCount,
+      contentSHA256: contentSHA256,
+      origin: origin,
+      updatedAtMs: Int64(Date().timeIntervalSince1970 * 1000)
+    )
+    if let data = try? JSONEncoder().encode(state) {
+      try? writeAtomic(data: data, to: url)
+    }
+  }
+
+  func isChangeCountHandled(_ changeCount: Int) -> Bool {
+    guard let state = loadPasteboardState() else { return false }
+    return state.changeCount == changeCount
+  }
+
+  func shouldSuppressCapture(changeCount: Int, contentSHA256: String) -> Bool {
+    guard let state = loadPasteboardState() else { return false }
+    if state.changeCount == changeCount {
+      return true
+    }
+    let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+    if !contentSHA256.isEmpty,
+       state.origin == "applied",
+       state.contentSHA256 == contentSHA256,
+       nowMs - state.updatedAtMs < 60_000 {
+      return true
+    }
+    return false
   }
 
   // MARK: - Pending Keyboard Actions Reconciliation

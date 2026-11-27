@@ -5,8 +5,11 @@ final class KeyboardViewController: UIInputViewController {
   private enum Section: Hashable { case main }
 
   private let store = KeyboardSnapshotStore()
+  private lazy var engineSession = KeyboardEngineSession(store: store)
   private var strings = KeyboardStrings()
   private var preferences = KeyboardPreferences.defaults
+  private var pasteboardObserver: NSObjectProtocol?
+  private var pasteboardPollTimer: Timer?
 
   private var allItems: [KeyboardClipItem] = []
   private var displayedItems: [KeyboardClipItem] = []
@@ -89,6 +92,7 @@ final class KeyboardViewController: UIInputViewController {
     super.viewDidLoad()
     buildHierarchy()
     wireActions()
+    wireEngineSession()
     updateHeightConstraint()
   }
 
@@ -105,11 +109,24 @@ final class KeyboardViewController: UIInputViewController {
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
     store.recordHeartbeat(hasFullAccess: hasFullAccess)
+    if hasFullAccess {
+      engineSession.start(autoSyncEnabled: preferences.autoSyncEnabled, strings: strings)
+      if preferences.autoSyncEnabled {
+        startPasteboardWatch()
+      }
+    }
+  }
+
+  override func viewWillDisappear(_ animated: Bool) {
+    super.viewWillDisappear(animated)
+    stopPasteboardWatch()
+    engineSession.stop()
   }
 
   override func didReceiveMemoryWarning() {
     super.didReceiveMemoryWarning()
     store.clearImageMemoryCache()
+    engineSession.handleMemoryWarning()
   }
 
   override func textDidChange(_ textInput: (any UITextInput)?) {
@@ -244,8 +261,12 @@ final class KeyboardViewController: UIInputViewController {
       self.triggerFeedback()
       self.syncIndicator = .syncing
       self.renderRail()
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-        self?.reloadFromStore(showToastOnRefresh: true)
+      if self.engineSession.isLive {
+        self.engineSession.manualRefresh()
+      } else {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+          self?.reloadFromStore(showToastOnRefresh: true)
+        }
       }
     }
 
@@ -303,6 +324,58 @@ final class KeyboardViewController: UIInputViewController {
       self.previewOverlay.dismiss()
       self.activateItem(item)
     }
+  }
+
+  private func wireEngineSession() {
+    engineSession.onStateChanged = { [weak self] state in
+      guard let self else { return }
+      switch state {
+      case .connecting:
+        self.syncIndicator = .syncing
+      case .connected, .degraded, .idle:
+        self.syncIndicator = .idle
+      case .error:
+        self.syncIndicator = .error
+      }
+      self.renderRail()
+    }
+    engineSession.onItemsUpdated = { [weak self] items in
+      guard let self, self.hasFullAccess else { return }
+      self.allItems = items
+      self.loadState = items.isEmpty ? .empty : .loaded
+      self.renderChrome()
+      self.applyFilteredItems(scrollToTop: false)
+    }
+    engineSession.onToast = { [weak self] text in
+      self?.showToast(text)
+    }
+  }
+
+  private func startPasteboardWatch() {
+    stopPasteboardWatch()
+    pasteboardObserver = NotificationCenter.default.addObserver(
+      forName: UIPasteboard.changedNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        self?.engineSession.checkClipboardChange()
+      }
+    }
+    pasteboardPollTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
+      Task { @MainActor [weak self] in
+        self?.engineSession.checkClipboardChange()
+      }
+    }
+  }
+
+  private func stopPasteboardWatch() {
+    if let obs = pasteboardObserver {
+      NotificationCenter.default.removeObserver(obs)
+      pasteboardObserver = nil
+    }
+    pasteboardPollTimer?.invalidate()
+    pasteboardPollTimer = nil
   }
 
   // MARK: - Store Loading & Rendering
@@ -445,6 +518,9 @@ final class KeyboardViewController: UIInputViewController {
     if item.kind == .image {
       if let image = store.copyableImage(for: item) {
         UIPasteboard.general.image = image
+        let afterCC = UIPasteboard.general.changeCount
+        let hash = image.pngData().map { KeyboardSnapshotStore.sha256Hex(of: $0) } ?? ""
+        store.recordPasteboardState(changeCount: afterCC, contentSHA256: hash, origin: "applied")
         showToast(strings.toastImageCopied)
       } else {
         showToast(strings.toastImageUnavailable)
@@ -476,11 +552,15 @@ final class KeyboardViewController: UIInputViewController {
     guard let idx = allItems.firstIndex(where: { $0.id == itemID }) else { return }
     allItems[idx].pinned.toggle()
     let updated = allItems[idx]
-    store.enqueuePinChange(historyID: updated.id, pinned: updated.pinned)
     previewOverlay.dismiss()
     renderRail()
     applyFilteredItems(scrollToTop: false)
     showToast(updated.pinned ? strings.toastPinned : strings.toastUnpinned)
+    engineSession.togglePin(historyID: updated.id, pinned: updated.pinned) { [weak self] handled in
+      if !handled {
+        self?.store.enqueuePinChange(historyID: updated.id, pinned: updated.pinned)
+      }
+    }
   }
 
   @objc private func handleCardLongPress(_ gesture: UILongPressGestureRecognizer) {

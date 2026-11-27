@@ -256,6 +256,13 @@ try {
       await command("xcrun", ["simctl", "uninstall", options.device, appId], "ios-sb-uninstall").catch(() => {});
       await command("xcrun", ["simctl", "install", options.device, artifact], "ios-sb-reinstall");
       const container = await command("xcrun", ["simctl", "get_app_container", options.device, appId, "data"], "ios-sb-container");
+      const groupContainer = await command(
+        "xcrun",
+        ["simctl", "get_app_container", options.device, appId, `group.${appId}.incoming-share`],
+        "ios-sb-group-container",
+      ).catch(() => container);
+      const sbTarget = join(groupContainer, "Library/Application Support/unic-v2");
+      rmSync(sbTarget, { recursive: true, force: true });
       cpSync(join(fixtureDir, "ios-sandbox/Documents/SQLite"), join(container, "Documents/SQLite"), { recursive: true });
       cpSync(join(fixtureDir, "ios-sandbox/Documents/clipboards"), join(container, "Documents/clipboards"), { recursive: true });
       mkdirSync(join(container, "Library/Caches"), { recursive: true });
@@ -264,7 +271,6 @@ try {
       await command("xcrun", ["simctl", "launch", options.device, appId], "ios-sb-launch");
       await runMaestroFlow("migration-wait-partial", "ios-sb-wait-partial");
 
-      const sbTarget = join(container, "Library/Application Support/unic-v2");
       const sbPartialCount = await querySQLiteCount(
         join(sbTarget, "unic.db"),
         "SELECT count(*) FROM clip_items;",
@@ -431,6 +437,23 @@ try {
   } else {
     const flows = suite === "live" ? ["live-setup", "live-history", "live-devices-settings"] : ["shell", "search", "selection"];
     for (const name of flows) {
+      if (options.platform === "ios" && name === "live-setup") {
+        const groupContainer = await command(
+          "xcrun",
+          ["simctl", "get_app_container", options.device, appId, `group.${appId}.incoming-share`],
+          "ios-live-group-container",
+        ).catch(() => "");
+        if (groupContainer) {
+          rmSync(join(groupContainer, "Library/Application Support/unic-v2"), {
+            recursive: true,
+            force: true,
+          });
+          rmSync(join(groupContainer, "keyboard-bridge"), {
+            recursive: true,
+            force: true,
+          });
+        }
+      }
       if (options.platform === "android" && (name === "live-setup" || name === "live-devices-settings")) {
         const shell = ["-s", options.device, "shell"];
         if (name === "live-setup") {

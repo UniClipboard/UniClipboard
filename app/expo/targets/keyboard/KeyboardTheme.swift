@@ -176,16 +176,31 @@ struct KeyboardStrings {
   var toastNothingToUndo: String { isChinese ? "暂无可撤销内容" : "Nothing to undo" }
   var toastPinned: String { isChinese ? "已加入置顶" : "Pinned" }
   var toastUnpinned: String { isChinese ? "已取消置顶" : "Unpinned" }
-  var toastSynced: String { isChinese ? "已刷新最新剪贴快照" : "Snapshot refreshed" }
+  var toastSynced: String { isChinese ? "已刷新最新剪贴板" : "Clipboard refreshed" }
+  var toastCapturedAndSynced: String { isChinese ? "已同步当前剪贴板到其他设备" : "Synced clipboard to devices" }
+  var toastCapturedWaitingPeer: String { isChinese ? "已读取剪贴板 · 正在连接设备…" : "Clip saved · Connecting devices…" }
+  var toastImageTooLarge: String { isChinese ? "图片过大，已跳过键盘自动同步" : "Image too large for keyboard sync" }
+  var remoteDeviceFallback: String { isChinese ? "其他设备" : "Other device" }
 
-  var gateTitle: String { isChinese ? "开启「允许完全访问」以读取剪贴板" : "Allow Full Access to View Clips" }
+  func toastReceivedAndCopied(from deviceName: String, isImage: Bool) -> String {
+    if isChinese {
+      return isImage
+        ? "已收到来自 \(deviceName) 的图片并复制到剪贴板"
+        : "已收到来自 \(deviceName) 的内容并复制到剪贴板"
+    }
+    return isImage
+      ? "Image from \(deviceName) copied"
+      : "Clip from \(deviceName) copied"
+  }
+
+  var gateTitle: String { isChinese ? "开启「允许完全访问」以同步剪贴板" : "Allow Full Access to Sync Clips" }
   var gateMessage: String {
     isChinese
-      ? "iOS 要求键盘扩展开启完全访问后，才能读取 Unic 同步到共享容器的剪贴记录。"
-      : "iOS requires Full Access for the keyboard to read clips synced by Unic."
+      ? "iOS 要求键盘扩展开启完全访问后，才能在打开期间读取与实时同步剪贴板内容。"
+      : "iOS requires Full Access for the keyboard to read and sync your clipboard while active."
   }
   var gateChipNoKeylog: String { isChinese ? "不记录外部打字" : "No keystroke logging" }
-  var gateChipLocalSync: String { isChinese ? "仅读取已同步内容" : "Reads synced clips only" }
+  var gateChipLocalSync: String { isChinese ? "仅打开期间同步" : "Syncs only while open" }
   var gateOpenSettings: String { isChinese ? "前往系统设置 ›" : "Open Settings ›" }
 
   var emptyAllTitle: String { isChinese ? "暂无剪贴板记录" : "No Clipboard History" }

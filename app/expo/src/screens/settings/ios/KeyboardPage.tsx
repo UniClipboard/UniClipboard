@@ -37,6 +37,7 @@ const INITIAL_STATUS: KeyboardExtensionStatus = {
   has_full_access_seen: false,
   sound_enabled: true,
   haptic_enabled: true,
+  auto_sync_enabled: true,
 };
 
 /** iOS 键盘扩展引导与按键反馈设置页 */
@@ -65,15 +66,20 @@ export function KeyboardPage() {
     return () => sub.remove();
   }, [refresh]);
 
-  const updateFeedback = useCallback(
-    async (soundEnabled: boolean, hapticEnabled: boolean) => {
+  const updatePreferences = useCallback(
+    async (soundEnabled: boolean, hapticEnabled: boolean, autoSyncEnabled: boolean) => {
       setStatus((prev) => ({
         ...prev,
         sound_enabled: soundEnabled,
         haptic_enabled: hapticEnabled,
+        auto_sync_enabled: autoSyncEnabled,
       }));
       try {
-        const next = await unicEngineNative.setKeyboardPreferences(soundEnabled, hapticEnabled);
+        const next = await unicEngineNative.setKeyboardPreferences(
+          soundEnabled,
+          hapticEnabled,
+          autoSyncEnabled,
+        );
         setStatus(next);
       } catch {
         void refresh();
@@ -216,6 +222,33 @@ export function KeyboardPage() {
         </Section>
 
         <Section
+          header={<SwiftUIText>{t('keyboard.sync.title')}</SwiftUIText>}
+          footer={<SwiftUIText>{t('keyboard.sync.footer')}</SwiftUIText>}
+        >
+          <IconToggleRow
+            testID="keyboard-auto-sync"
+            icon="arrow.triangle.2.circlepath"
+            iconColor={settingsTileColors.green}
+            label={t('keyboard.sync.autoCapture')}
+            isOn={status.auto_sync_enabled}
+            onIsOnChange={(v) =>
+              void updatePreferences(status.sound_enabled, status.haptic_enabled, v)
+            }
+          />
+          <SettingsNavRow
+            testID="keyboard-paste-permission"
+            icon="doc.on.clipboard"
+            iconColor={settingsTileColors.orange}
+            title={t('keyboard.sync.pastePermissionTitle')}
+            subtitle={t('keyboard.sync.pastePermissionSubtitle')}
+            showsChevron={false}
+            onPress={() => {
+              void Linking.openSettings();
+            }}
+          />
+        </Section>
+
+        <Section
           header={<SwiftUIText>{t('keyboard.feedback.title')}</SwiftUIText>}
           footer={<SwiftUIText>{t('keyboard.feedback.footer')}</SwiftUIText>}
         >
@@ -225,7 +258,9 @@ export function KeyboardPage() {
             iconColor={settingsTileColors.blue}
             label={t('keyboard.feedback.sound')}
             isOn={status.sound_enabled}
-            onIsOnChange={(v) => void updateFeedback(v, status.haptic_enabled)}
+            onIsOnChange={(v) =>
+              void updatePreferences(v, status.haptic_enabled, status.auto_sync_enabled)
+            }
           />
           <IconToggleRow
             testID="keyboard-feedback-haptic"
@@ -233,7 +268,9 @@ export function KeyboardPage() {
             iconColor={settingsTileColors.purple}
             label={t('keyboard.feedback.haptic')}
             isOn={status.haptic_enabled}
-            onIsOnChange={(v) => void updateFeedback(status.sound_enabled, v)}
+            onIsOnChange={(v) =>
+              void updatePreferences(status.sound_enabled, v, status.auto_sync_enabled)
+            }
           />
         </Section>
 

@@ -91,7 +91,11 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   listIncomingShares(): Promise<string>;
   saveIncomingShare(id: string): Promise<string>;
   getKeyboardExtensionStatus?(): Promise<string>;
-  setKeyboardPreferences?(soundEnabled: boolean, hapticEnabled: boolean): Promise<string>;
+  setKeyboardPreferences?(
+    soundEnabled: boolean,
+    hapticEnabled: boolean,
+    autoSyncEnabled: boolean,
+  ): Promise<string>;
   syncKeyboardSnapshot?(): Promise<string>;
   copyPlainText(text: string): Promise<void>;
   copyPairingTicket(text: string, expiresAtMs: number): Promise<void>;
@@ -309,21 +313,31 @@ export const unicEngineNative = {
         has_full_access_seen: false,
         sound_enabled: true,
         haptic_enabled: true,
+        auto_sync_enabled: true,
       };
     }
-    return callJSON<KeyboardExtensionStatus>(() => mod.getKeyboardExtensionStatus!());
+    const status = await callJSON<KeyboardExtensionStatus>(() => mod.getKeyboardExtensionStatus!());
+    return {
+      ...status,
+      auto_sync_enabled: status.auto_sync_enabled ?? true,
+    };
   },
   setKeyboardPreferences: async (
     soundEnabled: boolean,
     hapticEnabled: boolean,
+    autoSyncEnabled = true,
   ): Promise<KeyboardExtensionStatus> => {
     const mod = requireMod();
     if (!mod.setKeyboardPreferences) {
       throw new EngineError({ code: "unsupported", message: "keyboard preferences unavailable" });
     }
-    return callJSON<KeyboardExtensionStatus>(() =>
-      mod.setKeyboardPreferences!(soundEnabled, hapticEnabled),
+    const status = await callJSON<KeyboardExtensionStatus>(() =>
+      mod.setKeyboardPreferences!(soundEnabled, hapticEnabled, autoSyncEnabled),
     );
+    return {
+      ...status,
+      auto_sync_enabled: status.auto_sync_enabled ?? autoSyncEnabled,
+    };
   },
   syncKeyboardSnapshot: async (): Promise<{ count: number }> => {
     const mod = nativeMod;

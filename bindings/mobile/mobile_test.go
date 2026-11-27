@@ -1582,3 +1582,68 @@ func TestSetupFlowLegacyMobileExpoSQLiteAutoDetectAndMigration(t *testing.T) {
 		t.Fatalf("expected 2 migrated items, got %d", len(page.Items))
 	}
 }
+
+func TestExtensionModeAndMemoryTuning(t *testing.T) {
+	// Exercise runtime memory tuning helpers without breaking normal GC.
+	ConfigureRuntimeMemory(0, 0)
+	FreeOSMemory()
+
+	dir := t.TempDir()
+	cfgJSON, _ := json.Marshal(map[string]any{
+		"data_dir":       dir,
+		"device_name":    "KeyboardTest",
+		"extension_mode": true,
+	})
+	eng, err := NewEngine(string(cfgJSON))
+	if err != nil {
+		t.Fatalf("NewEngine(extension_mode): %v", err)
+	}
+	defer func() { _ = eng.Close(nil) }()
+
+	if err := eng.Start(nil); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	// Verify commit & history work cleanly in extension mode without builtin.preview.
+	hJSON, err := eng.ImportText("https://example.com/keyboard-probe", "", "kb-obs-1")
+	if err != nil {
+		t.Fatalf("ImportText: %v", err)
+	}
+	var handle struct {
+		LeaseID string `json:"lease_id"`
+	}
+	if err := json.Unmarshal([]byte(hJSON), &handle); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = eng.ReleaseContent(handle.LeaseID) }()
+
+	subReq, _ := json.Marshal(map[string]any{
+		"request_id": "kb-ext-mode-1",
+		"lease_id":   handle.LeaseID,
+	})
+	if _, err := eng.CommitContent(nil, string(subReq)); err != nil {
+		t.Fatalf("CommitContent: %v", err)
+	}
+
+	pageJSON, err := eng.ListHistory(`{"limit":10}`)
+	if err != nil {
+		t.Fatalf("ListHistory: %v", err)
+	}
+	var page engine.HistoryPage
+	if err := json.Unmarshal([]byte(pageJSON), &page); err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("expected 1 history item in extension mode, got %d", len(page.Items))
+	}
+
+	// Verify exclusive lock is released on Close so another Engine instance can open DataDir.
+	if err := eng.Close(nil); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	eng2, err := NewEngine(string(cfgJSON))
+	if err != nil {
+		t.Fatalf("reopen NewEngine after Close: %v", err)
+	}
+	_ = eng2.Close(nil)
+}

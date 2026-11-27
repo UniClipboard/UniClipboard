@@ -43,7 +43,7 @@
   },
   "mobileDiagnostics": {
     "telemetry": "发送遥测数据",
-    "export": "分享本次运行的脱敏日志",
+    "export": "导出诊断包",
     "unavailable": "此构建无法上传遥测数据。",
     "empty": "暂无诊断日志。",
     "failed": "无法完成诊断操作。"
@@ -154,8 +154,8 @@
     "max_total_bytes": "内容总量上限",
     "cacheLimit": "文件缓存配额",
     "clearPreviews": "清理本地预览",
-    "sessionLogsSummary": "本次运行的脱敏诊断日志，不含剪贴板内容",
-    "sessionLogsFooter": "仅导出本次运行中已脱敏的诊断日志记录，不包含任何剪贴板内容或凭据。",
+    "sessionLogsSummary": "包含脱敏 Engine 日志与清单的 ZIP 诊断包，不含剪贴板内容",
+    "sessionLogsFooter": "导出 ZIP 诊断包，包含本机保留的脱敏 Engine 日志、运行状态与校验清单，不包含任何剪贴板内容或凭据。",
     "rendezvous": "配对服务 URL",
     "default": "默认",
     "resetRendezvous": "恢复默认配对服务",

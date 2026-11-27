@@ -43,6 +43,7 @@ type Controller struct {
 	overrides        [2]override
 	closed           bool
 	local            chan []byte
+	localFlush       chan chan struct{}
 	localStop        chan struct{}
 	localDone        chan struct{}
 	logs             *generation
@@ -58,7 +59,7 @@ type Controller struct {
 }
 
 func New(o Options) *Controller {
-	c := &Controller{syncWake: make(chan struct{}, 1), cfg: o.Config, endpoint: o.Config.Telemetry.Endpoint, opts: o, local: make(chan []byte, 1024), localStop: make(chan struct{}), localDone: make(chan struct{})}
+	c := &Controller{syncWake: make(chan struct{}, 1), cfg: o.Config, endpoint: o.Config.Telemetry.Endpoint, opts: o, local: make(chan []byte, 1024), localFlush: make(chan chan struct{}), localStop: make(chan struct{}), localDone: make(chan struct{})}
 	for i := range c.states {
 		c.states[i].State = "disabled"
 	}

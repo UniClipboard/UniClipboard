@@ -44,16 +44,18 @@ Traces default enabled and sample 1% of unique explicit submissions and their co
 Switch changes hot reload and remain effective across restart. Check `unic dev diagnostics telemetry` for actual signal state.
 See the [observability contract](../../docs/contracts/observability-contract.md).
 
-Export retained local logs without a running service:
+Export retained local logs (works with or without a running service):
 
 ```sh
 unic dev logs export
-unic dev logs export --output ./unic-logs.tar.gz
+unic dev logs export --output ./unic-diagnostics.zip
 ```
 
-The private tar.gz contains local JSONL segments and a SHA-256 manifest. Existing
-outputs are not replaced. Live export copies already-written bytes and does not
-flush service queues. See the [observability contract](../../docs/contracts/observability-contract.md#12-offline-local-log-export).
+The private `.zip` bundle contains local JSONL segments (`logs/engine/`), a SHA-256
+manifest with build/platform metadata, and—when an existing `unicd` is already
+running—a best-effort safe runtime/telemetry/log-level summary without ever starting
+a temporary service. Existing outputs are not replaced. Live export copies
+already-written bytes and does not flush service queues. See the [observability contract](../../docs/contracts/observability-contract.md#12-offline-local-log-export).
 
 ## Release identity
 

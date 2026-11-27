@@ -50,7 +50,10 @@ paths:
   - bindings/e2e/mobile-diagnostics
   - bindings/scripts/build-mobile.sh
   - app/expo/src/screens/settings/DiagnosticsSettings.tsx
-verified: 5c0ec8215c90a58b30c7e1df56d4ba78e023c435
+  - app/expo/src/screens/settings/useDiagnosticCapture.ts
+  - app/expo/src/screens/settings/ios/DiagnosticsPage.tsx
+  - app/expo/src/screens/settings/android/DiagnosticsSection.tsx
+verified: 610f19b73f90f0860100d873ccba35fade99b436
 ---
 # Client logs, metrics, traces and product analytics
 
@@ -71,8 +74,15 @@ daily marker without emitting `app_started` on each extension activation. The
 Boolean `mobile-telemetry.json` in the private profile holds the upload
 preference. An absent preference defaults to enabled. An unreadable preference
 disables upload.
-The native settings page shares the recent local worker's redacted JSON records
-from memory through the operating system share sheet. Production binding builds
+The native settings page supports a 10-minute temporary local `debug` log-level
+override (`SetLocalLogLevelOverride`) and exports a redacted `.zip` diagnostic
+bundle (`ExportDiagnosticArchive`) through the operating system share sheet (and
+Android document save). The archive flushes the local log worker within a
+bounded timeout, streams retained on-disk `logs/segment-*.jsonl` files under
+`os.Root` size/symlink limits into `logs/engine/`, and writes `manifest.json`
+with per-file SHA-256 digests plus safe app/runtime/telemetry/log-level state
+(falling back to recent in-memory redacted records with explicit warnings if
+disk logs are unavailable). Production binding builds
 accept the same validated PostHog Cloud host and ingestion-only token as service
 builds. Missing deployment metadata leaves local diagnostics active. Mobile
 emits the shared logs, metrics, product-event, and trace hooks (`unic.submission`,
@@ -137,8 +147,13 @@ include `signal=traces` when metrics are enabled.
 ## Offline log archive
 
 `unic dev logs export [--output FILE]` streams retained local JSONL segments into a
-private tar.gz with a per-entry SHA-256 manifest. It executes in the CLI and needs
-no service connection or system clipboard. It never includes profile configuration,
+private `.zip` diagnostic bundle (`logs/engine/segment-*.jsonl` plus `manifest.json`
+with build/platform identity, per-entry SHA-256 digests and `engine_logs` counts).
+It executes in the CLI, never starts a temporary `unicd`, needs no system clipboard,
+and works while `unicd` is stopped. When an existing `unicd` socket is already
+reachable, it performs a bounded best-effort read-only query to attach safe `runtime`
+counts/capabilities and `diagnostics` (`telemetry`, `log_levels`) summaries; otherwise
+`service_snapshot` is marked `offline`. It never includes profile configuration,
 credentials, databases or history. Rooted source/output handles and exclusive
 creation reject symlinks and existing destinations. Fixed per-file lengths bound
 concurrent appends; vanished unopened segments can be skipped during retention.

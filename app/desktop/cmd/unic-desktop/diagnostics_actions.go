@@ -18,7 +18,7 @@ import (
 
 func bindDesktopDiagnostics(screen *desktopui.Desktop, profile string, language func() string) {
 	screen.SetDiagnosticsActions(func(ctx context.Context) (string, error) {
-		selected, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Title: i18n.Translate(language(), "导出诊断日志"), DefaultPath: "unic-logs-" + time.Now().UTC().Format("20060102T150405") + ".tar.gz"})
+		selected, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Title: i18n.Translate(language(), "导出诊断日志"), DefaultPath: "unic-diagnostics-" + time.Now().UTC().Format("20060102T150405Z") + ".zip"})
 		if err != nil || selected == "" {
 			return "", err
 		}

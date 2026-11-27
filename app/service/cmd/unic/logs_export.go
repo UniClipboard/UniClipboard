@@ -1,8 +1,7 @@
 package main
 
 import (
-	"archive/tar"
-	"compress/gzip"
+	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,38 +13,90 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	api "github.com/uniclipboard/unic/internal/localapi"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
+	"github.com/uniclipboard/unic/internal/observability"
+	"github.com/uniclipboard/unic/internal/releaseinfo"
 )
 
-const logExportUsage = "usage: unic dev logs export [--output FILE]"
-const maxLogSegmentBytes int64 = 4 << 20
-const maxLogExportBytes int64 = 20 << 20
+const (
+	logExportUsage     = "usage: unic dev logs export [--output FILE]"
+	maxLogSegmentBytes = int64(4 << 20)
+	maxLogExportBytes  = int64(20 << 20)
+	liveProbeTimeout   = 500 * time.Millisecond
+)
 
 type selectedLog struct {
 	name     string
 	info     os.FileInfo
 	sequence int64
 }
+
 type exportedLog struct {
 	Name   string `json:"name"`
 	Bytes  int64  `json:"bytes"`
 	SHA256 string `json:"sha256"`
 }
+
+type logArchiveServiceMeta struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	BuildNumber string `json:"build_number,omitempty"`
+	OS          string `json:"os"`
+	Arch        string `json:"arch"`
+}
+
+type logArchiveCapabilities struct {
+	Observe      string   `json:"observe"`
+	Apply        string   `json:"apply"`
+	ReadFiles    bool     `json:"read_files"`
+	WriteFiles   bool     `json:"write_files"`
+	Restrictions []string `json:"restrictions,omitempty"`
+}
+
+type logArchiveRuntime struct {
+	SyncEnabled          *bool                   `json:"sync_enabled,omitempty"`
+	SyncAutomatic        *bool                   `json:"sync_automatic,omitempty"`
+	SyncFiles            *bool                   `json:"sync_files,omitempty"`
+	SyncOnRestore        *bool                   `json:"sync_on_restore,omitempty"`
+	PairedDeviceCount    *int                    `json:"paired_device_count,omitempty"`
+	ConnectedDeviceCount *int                    `json:"connected_device_count,omitempty"`
+	PendingDeviceCount   *int                    `json:"pending_device_count,omitempty"`
+	Capabilities         *logArchiveCapabilities `json:"capabilities,omitempty"`
+}
+
+type logArchiveDiagnostics struct {
+	Telemetry *observability.TelemetryState `json:"telemetry,omitempty"`
+	LogLevels *observability.LogLevelState  `json:"log_levels,omitempty"`
+}
+
+type logArchiveEngineLogs struct {
+	Status          string `json:"status"`
+	DiscoveredFiles int    `json:"discovered_files"`
+	IncludedFiles   int    `json:"included_files"`
+}
+
 type logArchiveManifest struct {
-	FormatVersion int           `json:"format_version"`
-	CreatedAt     time.Time     `json:"created_at"`
-	Files         []exportedLog `json:"files"`
+	FormatVersion   int                    `json:"format_version"`
+	CreatedAt       time.Time              `json:"created_at"`
+	Service         logArchiveServiceMeta  `json:"service"`
+	ServiceSnapshot string                 `json:"service_snapshot"`
+	Runtime         *logArchiveRuntime     `json:"runtime,omitempty"`
+	Diagnostics     *logArchiveDiagnostics `json:"diagnostics,omitempty"`
+	EngineLogs      logArchiveEngineLogs   `json:"engine_logs"`
+	Files           []exportedLog          `json:"files"`
 }
 
 func runLogExport(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("logs export", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	output := flags.String("output", "unic-logs-"+time.Now().UTC().Format("20060102T150405.000000000Z")+".tar.gz", "")
+	output := flags.String("output", "unic-diagnostics-"+time.Now().UTC().Format("20060102T150405.000000000Z")+".zip", "")
 	if err := flags.Parse(args); errors.Is(err, flag.ErrHelp) {
 		fmt.Println(logExportUsage)
 		return nil
@@ -68,7 +119,9 @@ func runLogExport(ctx context.Context, args []string) error {
 }
 
 // exportLocalLogs uses private rooted handles and exclusive creation. It copies
-// only retained on-disk segments; it does not contact or flush the service.
+// only retained on-disk segments; it never starts a temporary service or flushes
+// service queues. If an existing unicd socket is already reachable, it attaches
+// a bounded, best-effort read-only summary to manifest.json.
 func exportLocalLogs(ctx context.Context, profile, output string) (string, error) {
 	base, err := os.OpenRoot(profile)
 	if err != nil {
@@ -192,12 +245,114 @@ func selectLocalLogs(root *os.Root) ([]selectedLog, error) {
 	return selected, nil
 }
 
+// probeLiveDiagnostics performs a bounded, best-effort read-only query against
+// an already-running unicd socket. It never starts a temporary service and
+// never exports device names, identities, paths, config values or secrets.
+func probeLiveDiagnostics(ctx context.Context) (string, *logArchiveRuntime, *logArchiveDiagnostics) {
+	sock, err := paths.Socket()
+	if err != nil || sock == "" {
+		return "offline", nil, nil
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, liveProbeTimeout)
+	defer cancel()
+
+	client := api.NewClient(sock)
+	var rt logArchiveRuntime
+	hasRuntime := false
+
+	if st, err := client.Status(probeCtx); err == nil {
+		paired := 0
+		connected := 0
+		for _, peer := range st.Peers {
+			if peer.Kind == "external" {
+				continue
+			}
+			paired++
+			if peer.Connected {
+				connected++
+			}
+		}
+		pending := len(st.Pending)
+		rt.PairedDeviceCount = &paired
+		rt.ConnectedDeviceCount = &connected
+		rt.PendingDeviceCount = &pending
+		hasRuntime = true
+	}
+	if caps, err := client.Capabilities(probeCtx); err == nil {
+		var restrictions []string
+		if len(caps.Restrictions) > 0 {
+			restrictions = append([]string(nil), caps.Restrictions...)
+		}
+		rt.Capabilities = &logArchiveCapabilities{
+			Observe:      string(caps.Effective.Observe),
+			Apply:        string(caps.Effective.Apply),
+			ReadFiles:    caps.Effective.ReadFiles,
+			WriteFiles:   caps.Effective.WriteFiles,
+			Restrictions: restrictions,
+		}
+		hasRuntime = true
+	}
+	if cfg, err := client.Config(probeCtx); err == nil {
+		enabled := cfg.Config.Sync.Enabled
+		automatic := cfg.Config.Sync.Automatic
+		files := cfg.Config.Sync.Files
+		onRestore := cfg.Config.Sync.OnRestore
+		rt.SyncEnabled = &enabled
+		rt.SyncAutomatic = &automatic
+		rt.SyncFiles = &files
+		rt.SyncOnRestore = &onRestore
+		hasRuntime = true
+	}
+
+	var diag logArchiveDiagnostics
+	hasDiag := false
+	if tel, err := client.Telemetry(probeCtx); err == nil {
+		diag.Telemetry = &tel
+		hasDiag = true
+	}
+	if levels, err := client.LogLevels(probeCtx); err == nil {
+		diag.LogLevels = &levels
+		hasDiag = true
+	}
+
+	if !hasRuntime && !hasDiag {
+		return "offline", nil, nil
+	}
+	var rtPtr *logArchiveRuntime
+	if hasRuntime {
+		rtPtr = &rt
+	}
+	var diagPtr *logArchiveDiagnostics
+	if hasDiag {
+		diagPtr = &diag
+	}
+	return "live", rtPtr, diagPtr
+}
+
 func writeLogArchive(ctx context.Context, out io.Writer, root *os.Root, selected []selectedLog) error {
-	gz := gzip.NewWriter(out)
-	defer func() { _ = gz.Close() }()
-	archive := tar.NewWriter(gz)
+	archive := zip.NewWriter(out)
 	defer func() { _ = archive.Close() }()
-	manifest := logArchiveManifest{FormatVersion: 1, CreatedAt: time.Now().UTC()}
+
+	now := time.Now().UTC()
+	snapshotState, runtimeSummary, diagSummary := probeLiveDiagnostics(ctx)
+	manifest := logArchiveManifest{
+		FormatVersion: 1,
+		CreatedAt:     now,
+		Service: logArchiveServiceMeta{
+			Name:        "unic",
+			Version:     releaseinfo.Version,
+			BuildNumber: releaseinfo.BuildNumber,
+			OS:          runtime.GOOS,
+			Arch:        runtime.GOARCH,
+		},
+		ServiceSnapshot: snapshotState,
+		Runtime:         runtimeSummary,
+		Diagnostics:     diagSummary,
+		EngineLogs: logArchiveEngineLogs{
+			Status:          "included",
+			DiscoveredFiles: len(selected),
+		},
+	}
 	for _, segment := range selected {
 		if err := ctx.Err(); err != nil {
 			return errors.New("log export cancelled")
@@ -213,27 +368,32 @@ func writeLogArchive(ctx context.Context, out io.Writer, root *os.Root, selected
 	if len(manifest.Files) == 0 {
 		return errors.New("local log segments were removed; retry export")
 	}
+	manifest.EngineLogs.IncludedFiles = len(manifest.Files)
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return errors.New("cannot encode log archive manifest")
 	}
 	data = append(data, '\n')
-	if err := archive.WriteHeader(&tar.Header{Name: "manifest.json", Mode: 0600, Typeflag: tar.TypeReg, Size: int64(len(data))}); err != nil {
+	hdr := &zip.FileHeader{
+		Name:     "manifest.json",
+		Method:   zip.Deflate,
+		Modified: now.Truncate(time.Second),
+	}
+	hdr.SetMode(0600)
+	writer, err := archive.CreateHeader(hdr)
+	if err != nil {
 		return errors.New("cannot write log archive manifest")
 	}
-	if _, err := archive.Write(data); err != nil {
+	if _, err := writer.Write(data); err != nil {
 		return errors.New("cannot write log archive manifest")
 	}
 	if err := archive.Close(); err != nil {
 		return errors.New("cannot finish log archive")
 	}
-	if err := gz.Close(); err != nil {
-		return errors.New("cannot finish compressed log archive")
-	}
 	return nil
 }
 
-func copyLogSegment(ctx context.Context, archive *tar.Writer, root *os.Root, segment selectedLog) (*exportedLog, error) {
+func copyLogSegment(ctx context.Context, archive *zip.Writer, root *os.Root, segment selectedLog) (*exportedLog, error) {
 	file, err := root.Open(segment.name)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -249,13 +409,20 @@ func copyLogSegment(ctx context.Context, archive *tar.Writer, root *os.Root, seg
 	if info.Size() < segment.info.Size() {
 		return nil, errors.New("local log segment was truncated; retry export")
 	}
-	name := "logs/" + segment.name
+	name := "logs/engine/" + segment.name
 	size := segment.info.Size()
-	if err := archive.WriteHeader(&tar.Header{Name: name, Mode: 0600, Typeflag: tar.TypeReg, Size: size, ModTime: segment.info.ModTime().UTC().Truncate(time.Second)}); err != nil {
+	hdr := &zip.FileHeader{
+		Name:     name,
+		Method:   zip.Deflate,
+		Modified: segment.info.ModTime().UTC().Truncate(time.Second),
+	}
+	hdr.SetMode(0600)
+	writer, err := archive.CreateHeader(hdr)
+	if err != nil {
 		return nil, errors.New("cannot write log archive")
 	}
 	hash := sha256.New()
-	if _, err := io.CopyN(io.MultiWriter(archive, hash), logSnapshotReader{ctx: ctx, reader: file}, size); err != nil {
+	if _, err := io.CopyN(io.MultiWriter(writer, hash), logSnapshotReader{ctx: ctx, reader: file}, size); err != nil {
 		return nil, errors.New("cannot copy local log segment")
 	}
 	if err := file.Close(); err != nil {

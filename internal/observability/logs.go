@@ -248,6 +248,18 @@ func (c *Controller) localWorker() {
 		size += int64(n)
 		return err
 	}
+	drainQueued := func() {
+		for {
+			select {
+			case b := <-c.local:
+				if err := write(b); err != nil {
+					c.drop(0, 3, 1)
+				}
+			default:
+				return
+			}
+		}
+	}
 	ticker := time.NewTicker(time.Hour)
 	defer ticker.Stop()
 	for {
@@ -256,19 +268,17 @@ func (c *Controller) localWorker() {
 			if err := write(b); err != nil {
 				c.drop(0, 3, 1)
 			}
+		case ack := <-c.localFlush:
+			drainQueued()
+			if f != nil {
+				_ = f.Sync()
+			}
+			close(ack)
 		case <-ticker.C:
 			_ = pruneLogs(root, 0)
 		case <-c.localStop:
-			for {
-				select {
-				case b := <-c.local:
-					if err := write(b); err != nil {
-						c.drop(0, 3, 1)
-					}
-				default:
-					return
-				}
-			}
+			drainQueued()
+			return
 		}
 	}
 }
@@ -296,22 +306,54 @@ func (c *Controller) mirrorLocal(b []byte) {
 	}
 }
 func (c *Controller) drainLocal(_ error) {
+	drainQueued := func() {
+		for {
+			select {
+			case b := <-c.local:
+				c.mirrorLocal(b)
+				c.drop(0, 3, 1)
+			default:
+				return
+			}
+		}
+	}
 	for {
 		select {
 		case b := <-c.local:
 			c.mirrorLocal(b)
 			c.drop(0, 3, 1)
+		case ack := <-c.localFlush:
+			drainQueued()
+			close(ack)
 		case <-c.localStop:
-			for {
-				select {
-				case b := <-c.local:
-					c.mirrorLocal(b)
-					c.drop(0, 3, 1)
-				default:
-					return
-				}
-			}
+			drainQueued()
+			return
 		}
+	}
+}
+
+// FlushLocal waits until already-enqueued local log records are processed by
+// the local worker, up to ctx cancellation. It is reserved for explicit local
+// diagnostic export and must never be called from Engine business callbacks.
+func (c *Controller) FlushLocal(ctx context.Context) bool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ack := make(chan struct{})
+	select {
+	case c.localFlush <- ack:
+	case <-c.localDone:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+	select {
+	case <-ack:
+		return true
+	case <-c.localDone:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 func pruneLogs(root *os.Root, incoming int64) error {

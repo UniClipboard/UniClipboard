@@ -1,9 +1,8 @@
 package desktopui
 
 import (
-	"archive/tar"
+	"archive/zip"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -224,43 +223,47 @@ func scenarioSettingsDiagnostics(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(logs, "segment-999999.jsonl"), []byte("{\"message\":\"synthetic-diagnostic\"}\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	output := filepath.Join(private, "diagnostics.tar.gz")
+	output := filepath.Join(private, "diagnostics.zip")
 	export := exec.CommandContext(ctx, cli, "dev", "logs", "export", "--output", output)
 	export.Env = env
 	if b, err := export.CombinedOutput(); err != nil {
 		t.Fatalf("export: %v %s", err, b)
 	}
-	archive, err := os.Open(output)
+	zr, err := zip.OpenReader(output)
 	if err != nil {
 		t.Fatal(err)
 	}
-	gz, err := gzip.NewReader(archive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tr := tar.NewReader(gz)
 	members := []string{}
-	for {
-		h, err := tr.Next()
-		if err == io.EOF {
-			break
+	var manifestBytes []byte
+	for _, f := range zr.File {
+		if f.Name != "manifest.json" && !strings.HasPrefix(f.Name, "logs/engine/segment-") {
+			t.Fatalf("unsafe archive member %s", f.Name)
 		}
-		if err != nil {
-			t.Fatal(err)
+		if f.Name == "manifest.json" {
+			rc, err := f.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			manifestBytes, err = io.ReadAll(rc)
+			_ = rc.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
-		if h.Name != "manifest.json" && !strings.HasPrefix(h.Name, "logs/segment-") {
-			t.Fatalf("unsafe archive member %s", h.Name)
-		}
-		members = append(members, h.Name)
+		members = append(members, f.Name)
 	}
-	if err = gz.Close(); err != nil {
+	if err = zr.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err = archive.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if len(members) < 2 {
+	if len(members) < 2 || len(manifestBytes) == 0 {
 		t.Fatal("archive missing log/manifest")
+	}
+	var manifest struct {
+		FormatVersion   int    `json:"format_version"`
+		ServiceSnapshot string `json:"service_snapshot"`
+	}
+	if err = json.Unmarshal(manifestBytes, &manifest); err != nil || manifest.FormatVersion != 1 || manifest.ServiceSnapshot != "live" {
+		t.Fatalf("unexpected diagnostic manifest: %s", manifestBytes)
 	}
 	original, err := os.ReadFile(output)
 	if err != nil {

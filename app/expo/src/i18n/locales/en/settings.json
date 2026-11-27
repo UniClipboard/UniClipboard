@@ -43,7 +43,7 @@
   },
   "mobileDiagnostics": {
     "telemetry": "Share telemetry",
-    "export": "Share redacted logs from this session",
+    "export": "Export diagnostic bundle",
     "unavailable": "Upload is unavailable in this build.",
     "empty": "No diagnostic logs yet.",
     "failed": "Could not complete the diagnostic action."
@@ -154,8 +154,8 @@
     "max_total_bytes": "Total content limit",
     "cacheLimit": "File cache quota",
     "clearPreviews": "Clear local previews",
-    "sessionLogsSummary": "Redacted diagnostic logs from this session, without clipboard contents",
-    "sessionLogsFooter": "Exports redacted diagnostic records from the current session only. Clipboard contents and credentials are never included.",
+    "sessionLogsSummary": "ZIP bundle with redacted Engine logs and manifest, without clipboard contents",
+    "sessionLogsFooter": "Exports a ZIP diagnostic bundle containing retained redacted Engine logs, runtime state, and a checksum manifest. Clipboard contents and credentials are never included.",
     "rendezvous": "Rendezvous URL",
     "default": "Default",
     "resetRendezvous": "Use default rendezvous",

@@ -307,11 +307,14 @@ See the [observability contract](observability-contract.md#10-posthog-product-ev
 ## Offline log archive
 
 `unic dev logs export [--output FILE]` reads the selected profile's retained local logs
-without IPC. It works when unicd is stopped. Default output is a UTC-timestamped
-`unic-logs-*.tar.gz` in the current directory. Success prints the absolute path.
-The command never replaces an existing output, follows a log symlink, or includes
-profile configuration, credentials, database or clipboard history. Archive membership,
-size limits, checksums and live-snapshot semantics follow section 12 of the
+and works when `unicd` is stopped (never starting a temporary service). Default output
+is a UTC-timestamped `unic-diagnostics-*.zip` in the current directory. Success prints
+the absolute path. When an existing `unicd` socket is already running and reachable,
+the CLI may perform a bounded best-effort read-only query to include safe runtime,
+telemetry and log-level summaries in `manifest.json`; otherwise those fields are
+omitted. The command never replaces an existing output, follows a log symlink, or
+includes profile configuration, credentials, database or clipboard history. Archive
+membership, size limits, checksums and live-snapshot semantics follow section 12 of the
 [observability contract](observability-contract.md#12-offline-local-log-export).
 
 ## Explicit history search reads

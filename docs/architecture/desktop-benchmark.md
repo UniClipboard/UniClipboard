@@ -7,7 +7,7 @@ paths:
   - app/desktop/internal/desktopui/bench_probe.go
   - app/desktop/internal/desktopui/bench_probe_noop.go
   - .github/workflows/desktop-benchmark.yml
-verified: b1b777fdf83d7eb54aebf56671ab7f586c011136
+verified: e2ef99f6d3511a83634f6e1bcc36541b271b1b19
 ---
 # Win/Mac 桌面资源 Benchmark
 
@@ -37,7 +37,9 @@ verified: b1b777fdf83d7eb54aebf56671ab7f586c011136
 - **全量隔离与剪贴板无损（F1–F12）**：所有运行使用独立临时 `UNIC_HOME` 并强制 `Sync.Enabled=false`；禁止触碰或杀掉用户常规剪贴板或既有非本轮创建的 `unic*` 进程（仅按精确 PID 生命周期清理）；Track A 与 Track B 前后校验系统剪贴板序列号不变（`clipboard_unchanged=true`）。
 - **Parallels VM 状态自动还原与产物核验**：`tools/bench/vm/run_parallels.py` 通过 `prlctl` 探测 VM 初始状态（如 `suspended`/`stopped`/`running`），仅当脚本主动恢复/启动了 VM 时才在结束/异常退出后恢复原状，避免干扰独立任务；宿主机交叉编译的 Track A/B 二进制须经 SHA-256 与 PE 架构校验后拷贝至 Guest 本地路径运行，最终报告输出至 `.build/bench/` 下的 Git 忽略目录。
 - **严谨比较口径**：禁止跨越不同构建轨、不同数据集、不同样本平台或仿真态直接宣布绝对内存回归；`unic-bench compare` 仅对同平台/同配置基线对比相对变化与 `LeakCheck` 斜率阈值，且不在同一基准任务中混入生产代码优化改动。
-- **零外链离线 HTML 可视化看板**：`unic-bench run` 同步生成同目录单文件离线 `report.html` 并纳入 `SHA256SUMS`（`tools/bench/vm/run_parallels.py` 同步回收）；`unic-bench render`（及 `make bench-html` / CI `dashboard` 作业）支持单报告与多平台并列看板渲染及 `--compare`/`--budget` 回归可视化，采用纯 Go 标准库 `html/template` + `embed` 内联 SVG/JS 与严格 CSP（`default-src 'none'`），守住双平台口径隔离、`VirtualQueryEx` `ReservedBytes` 独立展示、安全 JSON 转义与纯 DOM 文本渲染。
+- **零外链离线 HTML 可视化看板与受控 Pages 发布**：
+  - `unic-bench run` 同步生成同目录单文件离线 `report.html` 并纳入 `SHA256SUMS`（`tools/bench/vm/run_parallels.py` 同步回收）；`unic-bench render`（及 `make bench-html` / CI `dashboard` 作业）支持单报告与多平台并列看板渲染及 `--compare`/`--budget` 回归可视化，采用纯 Go 标准库 `html/template` + `embed` 内联 SVG/JS 与严格 CSP（`default-src 'none'`），守住双平台口径隔离、`VirtualQueryEx` `ReservedBytes` 独立展示、安全 JSON 转义与纯 DOM 文本渲染。
+  - `.github/workflows/desktop-benchmark.yml` 支持 Nightly 定时调度（`schedule: 0 19 * * *` UTC）与手动 `workflow_dispatch`（含 `publish_pages` 布尔开关）；`publish` 作业强制门控 `github.repository == 'UniClipboard/UniClipboard' && github.ref == 'refs/heads/main'` 并授予 `contents: write` 与 `pages: write`。`tools/bench/ci/publish_pages.py` 严格 fail-closed 校验 `--summary-out`（禁止落入 `--pages-dir`）、`--dashboard-html`、`--run-id`、`--run-url`、已有 `manifest.json`（强制 `schema_version == 1` 且包含 `runs` 数组）以及保留归档读取路径反符号链接逃逸，并将变更严格隔离于 `gh-pages` 的 `/bench/` 子树（`index.html`、`history.html`、`manifest.json`、`runs/<run_id>/index.html`，保留最近 30 次），绝不修改根目录版本发布文件；推送阶段将 `publish_pages.py`、`git status --porcelain` / `git diff --cached` 隔离校验与 `git commit && git push` 置于最多 3 次重试循环内，遇非快进拒绝执行 `git fetch origin gh-pages && git reset --hard origin/gh-pages && git clean -fd -- bench` 后基于最新远端重新生成并推送（禁止 `rebase` 与 `--force`），推送成功后调用 `POST /repos/{owner}/{repo}/pages/builds` 触发 Legacy GitHub Pages 构建。
 
 ## 代码地图
 
@@ -49,9 +51,10 @@ verified: b1b777fdf83d7eb54aebf56671ab7f586c011136
 | `tools/bench/internal/scenarios/` | 6 大场景状态机编排、`unicd` 启动收敛等待、Track B 自动化驱动与时延/缓存归因聚合 |
 | `tools/bench/internal/report/` | 产出 `report.json`、`report.md`、零外链单文件离线交互看板 `report.html`、`comparison.json`/`comparison.md` 与 `SHA256SUMS`（`render` 支持单/多报告同屏对比及 `--compare`/`--budget` 可视化，严格守住双平台口径隔离与 XSS 转义） |
 | `tools/bench/vm/run_parallels.py`、`test_run_parallels.py` | 宿主机交叉编译（`windows/arm64` 或 `amd64`）、Parallels VM 生命周期管理、Guest 隔离执行、产物回收（含 `report.html`）与单测 |
+| `tools/bench/ci/publish_pages.py`、`test_publish_pages.py` | GitHub Pages `/bench/` 目录纯标准库发布工具（`index.html`、`history.html`、`manifest.json`、30 轮归档裁剪与严格路径/XSS/CSP/git 隔离单测） |
 | `app/service/cmd/unicd/bench_probe.go` | `//go:build bench_probe` 纯标准库 `runtime/metrics` JSONL 探针（零 UI 依赖） |
 | `app/desktop/cmd/unic-desktop/bench_probe.go`、`app/desktop/internal/desktopui/bench_probe*.go` | `//go:build bench_probe` 桌面 UI `runtime/metrics` + `weak.Pointer` 缓存归因与无探针 noop 桩 |
-| `Makefile`、`.github/workflows/desktop-benchmark.yml` | 本地 `bench-mac` / `bench-win-vm` / `bench-compare` / `bench-html` 入口与纯手动（`workflow_dispatch`）跨端 CI Workflow（含汇总离线看板 `dashboard` 作业） |
+| `Makefile`、`.github/workflows/desktop-benchmark.yml` | 本地 `bench-mac` / `bench-win-vm` / `bench-compare` / `bench-html` 入口，以及 Nightly 定时 + 手动跨端 CI Workflow（`prepare`、`benchmark`、`dashboard` 与受控 `publish` 作业） |
 
 ## 规格与背景
 
@@ -61,5 +64,5 @@ verified: b1b777fdf83d7eb54aebf56671ab7f586c011136
 
 ## 缺口
 
-- 物理 `windows/amd64` 与物理 Intel (`darwin/amd64`) 主机基线尚未实机采集（`NOT_RUN`）；`.github/workflows/desktop-benchmark.yml` 已配置 `windows-2025` 与 `macos-15-intel` 手动矩阵待调度验证。
+- 物理 `windows/amd64` 与物理 Intel (`darwin/amd64`) 主机基线尚未实机采集（`NOT_RUN`）；`.github/workflows/desktop-benchmark.yml` 已配置 Nightly 定时与 `workflow_dispatch`（含 `windows-2025`、`macos-15-intel` 与 `publish_pages` 门控）待真实主仓库调度与首轮 GitHub Pages 发布验证。
 - 物理全局热键与显示器首帧光子延迟、24 小时睡眠/唤醒及开启远端同步（`sync.enabled=true`）下的长周期网络资源基准仍不在当前场景覆盖范围内（`NOT_RUN`）。

@@ -32,7 +32,7 @@ JSON 只允许一个顶层对象、有效 UTF-8，拒绝重复键、尾随内容
 
 父端复核程序摘要并启动后，先发 HELLO：协议版本、随机 32 字节 nonce 的小写十六进制、期望 Spec 和可接受上限；插件回 HELLO_ACK，回显 nonce、实际 Spec 和协商上限。在 ACK 前不接受其他帧。 The optional `settings_sha256` binds the expected and actual Spec to the bytes of the published static settings Schema.首次握手硬限制 16 KiB、默认 5 秒超时，失败关闭进程，不用 processor 的 continue 掩盖启动错误。
 
-实际 ID、Version、APIVersion 与安装描述一致，Capabilities 作为集合一致，拒绝重复/未知能力；不能协商获得安装与配置未授予的权限。nonce 仅防止会话串用，不证明二进制来源。重启使用新 nonce、全新 ID 空间与短期句柄，旧响应/句柄一律无效。
+实际 ID、Version、APIVersion 与安装描述一致，Capabilities 作为集合一致，拒绝重复/未知能力；不能协商获得安装与配置未授予的权限。处理器可选的 `processor_stage`（`"guard"` 或 `"annotate"`，省略与 `"annotate"` 等价）同样须与安装清单一致。nonce 仅防止会话串用，不证明二进制来源。重启使用新 nonce、全新 ID 空间与短期句柄，旧响应/句柄一律无效。
 
 协商值由插件取自身支持值与父端报价的较小值，必须符合 Schema 最小值；父端仍可拒绝不足以支持业务的限制。默认报价与硬上限：control 1 MiB、DATA 单帧 64 KiB、单流窗口 1 MiB、会话同时流 32、每端发起的在途 REQUEST 128。所有入站流累计未消费 DATA 预算为 8 MiB，超过则停止发 WINDOW；所有待处理控制载荷累计预算 8 MiB，超过预算的失控对端结束会话，不能无界排队。
 

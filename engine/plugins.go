@@ -237,6 +237,9 @@ func (e *Engine) loadPlugins(ctx context.Context, list []PluginInstance) (err *E
 	if unsupported {
 		return newErr(CodeUnsupported, "sync backend plugins are not supported yet")
 	}
+	slices.SortStableFunc(e.processors, func(a, b *pipelineProcessor) int {
+		return processorStageRank(a.stage) - processorStageRank(b.stage)
+	})
 	e.plugins = started
 	e.syncBackends = append(e.syncBackends, pending...)
 	e.peerProcs = append(e.peerProcs, peers...)
@@ -269,6 +272,8 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 		return invalidPlugin(s.ID, "builtin.tailcat is reserved")
 	case s.ID == "builtin.preview" && !in.Builtin:
 		return invalidPlugin(s.ID, "builtin.preview is reserved")
+	case s.ID == "builtin.security" && !in.Builtin:
+		return invalidPlugin(s.ID, "builtin.security is reserved")
 	case s.APIVersion != 1:
 		return invalidPlugin(s.ID, "unsupported API version")
 	case s.Version == "" || len(s.Version) > 64:
@@ -305,6 +310,14 @@ func validateSpec(s plugin.Spec, in PluginInstance) *Error {
 	}
 	if _, ok := in.Plugin.(plugin.Processor); proc != ok {
 		return invalidPlugin(s.ID, "capability processor does not match the implementation")
+	}
+	switch s.ProcessorStage {
+	case "", plugin.ProcessorStageGuard, plugin.ProcessorStageAnnotate:
+	default:
+		return invalidPlugin(s.ID, "unknown processor stage")
+	}
+	if s.ProcessorStage != "" && !proc {
+		return invalidPlugin(s.ID, "only processors declare a processor stage")
 	}
 	if _, ok := in.Plugin.(plugin.Actor); act != ok {
 		return invalidPlugin(s.ID, "capability action does not match the implementation")
@@ -424,7 +437,7 @@ func (e *Engine) registerPlugin(in PluginInstance, spec plugin.Spec) {
 				}
 			}
 		}
-		e.processors = append(e.processors, newPipelineProcessor(spec.ID, events, in.OnError == "block_sync", func(ctx context.Context, c *processingContext) error {
+		e.processors = append(e.processors, newStagedPipelineProcessor(spec.ID, spec.ProcessorStage, events, in.OnError == "block_sync", func(ctx context.Context, c *processingContext) error {
 			return p.Process(ctx, processView{c})
 		}))
 	}

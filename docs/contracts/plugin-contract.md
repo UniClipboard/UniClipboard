@@ -10,7 +10,7 @@ The [sync integration contract](sync-integration-contract.md) describes planned 
 
 ## 1. 标识、能力与入口
 
-插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。sync_backend 还可声明 `ExternalChannels`（对端是没有 unic 身份的外部渠道，见 0009）与 `RemoteRevocation`（须同时声明 ExternalChannels，并实现 `ChannelLeaver`）；其他插件声明这两项被拒绝。外部渠道后端实现 `ReceiverAware`，Engine 在 Init 之后、Start 之前交给它 `Receiver`，收到的内容经 `Receive(channelID, Received)` 进入 Engine；被拒（渠道停用、策略、空间、重复）时返回错误，后端丢弃且不得重试。External Go processes use the [external-channel RPC profile](sync-backend-contract.md).ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`builtin.tailcat` 保留给发行版内置同步插件。能力为 processor（自动标注）、observer（只读通知）、action（用户主动触发的内容变换）、sync_backend（同步后端）。Lua 首版支持前三项；声明能力还须通过 Engine 校验和配置授权。
+插件描述包含 ID、Version、APIVersion、Capabilities；sync_backend 另声明 TransportKind=peer_sessions/object_store，普通插件不得声明该字段。sync_backend 还可声明 `ExternalChannels`（对端是没有 unic 身份的外部渠道，见 0009）与 `RemoteRevocation`（须同时声明 ExternalChannels，并实现 `ChannelLeaver`）；其他插件声明这两项被拒绝。外部渠道后端实现 `ReceiverAware`，Engine 在 Init 之后、Start 之前交给它 `Receiver`，收到的内容经 `Receive(channelID, Received)` 进入 Engine；被拒（渠道停用、策略、空间、重复）时返回错误，后端丢弃且不得重试。External Go processes use the [external-channel RPC profile](sync-backend-contract.md).ID 匹配 `[a-z][a-z0-9]*(\.[a-z][a-z0-9_-]*)+`，最多 128 字节；版本为语义版本，API 首版为 1。实例内 ID 唯一，`builtin.tailcat`、`builtin.preview` 与 `builtin.security` 保留给发行版内置插件。能力为 processor（自动标注）、observer（只读通知）、action（用户主动触发的内容变换）、sync_backend（同步后端）。Lua 首版支持前三项；声明能力还须通过 Engine 校验和配置授权。
 
 processor 只能改标签、过期、persist、sync，不能改写正文；改写正文只能通过 action，见[Action 契约](clipboard-action-contract.md)。action 能力须在 Spec 中静态声明 `Actions []ActionSpec{ID, Title, Accepts, Placements, PostActions}`：ID 匹配 `[a-z][a-z0-9_-]*`、最多 64 字节且插件内唯一，对外键为 `pluginID/actionID`；Title 为 1..64 字节的纯 UTF-8；Go `Accepts` is a non-empty unique subset of `{text, image, files}`; results remain text. Lua Actions accept text only. `Placements` is a required, non-empty unique subset of `{history.item_menu, history.toolbar, quick_panel}` declaring cross-platform UI entry points. `PostActions` is a required, non-empty unique subset of `{copy, notify, present, select, none}` (`none` exclusive) declaring bounded host follow-up behavior. 首版没有参数。声明了 Actions 却无 action 能力，或反之，均为 invalid_config。
 
@@ -105,7 +105,7 @@ files = true
 auto_file_max_bytes = "100MB"
 ```
 
-Each explicit list accepts an ID once. The host assembles the processing order from the configured lists.顺序作用于同阶段与生命周期，不能把同步提前到处理/commit 之前。未知事件、能力或 API 不兼容均拒绝；核心先验证 Config 的 JSON 结构/限额，插件 Init 严格递归拒绝未知专属配置键（invalid_config），启动失败或热替换保留旧版本，不能在安装时执行程序做校验。配置不能让普通插件取得同步能力。
+Each explicit list accepts an ID once. The host assembles the processing order from the configured lists.顺序作用于同阶段与生命周期，不能把同步提前到处理/commit 之前。处理器可额外在 `spec.toml` 与握手 `Spec` 中声明可选的 `processor_stage`（`"guard"` 或 `"annotate"`，省略等价于 `"annotate"`；仅允许 `processor` 能力声明，Lua 插件表也须匹配同名字段）。Engine 在 Processing 阶段固定先运行所有 `guard` 前置拦截处理器，再运行所有 `annotate` 常规处理器；`plugins.order` 仅决定同一子阶段内的相对先后，确保后安装的敏感内容拦截等 `guard` 插件始终排在先安装的常规处理器及所有同步后端之前。未知事件、能力或 API 不兼容均拒绝；核心先验证 Config 的 JSON 结构/限额，插件 Init 严格递归拒绝未知专属配置键（invalid_config），启动失败或热替换保留旧版本，不能在安装时执行程序做校验。配置不能让普通插件取得同步能力。
 
 发行版默认内置并启用 builtin.tailcat，允许 0..MaxSyncBackends 个后端实例并存（builtin 为独立对象，external 为独立进程），0 为本机历史模式。全局 sync.enabled=false 立即取消所有后端内容发送/接收/远端自动应用及重试，控制连接与配对可保留；本机历史/Action 不受影响。各后端独立类型开关和自动文件阈值由 Engine 统一执行，手动提交仅可越过自动阈值。
 

@@ -513,6 +513,8 @@ func TestPluginMirrorSettingsUI(t *testing.T) {
 	if !tt.HasText("插件市场镜像") || !tt.HasText("下载源") {
 		t.Fatalf("expected mirror group in advanced view, texts=%v", tt.Texts())
 	}
+	tt.Scroll(640, 420, 0, 600)
+	tt.Advance(100 * time.Millisecond)
 	if err := tt.Click("直连 GitHub"); err != nil {
 		t.Fatalf("click 直连 GitHub: %v", err)
 	}

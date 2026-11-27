@@ -23,6 +23,7 @@ import (
 	"github.com/uniclipboard/unic/internal/observability"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
+	"github.com/uniclipboard/unic/internal/plugins/builtinsecurity"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 )
 
@@ -201,6 +202,8 @@ type Instance struct {
 	DisabledDefaultTags []string               `toml:"disabled_default_tags,omitempty" json:"disabled_default_tags,omitempty"`
 	// Preview belongs to the built-in Smart Preview enricher ("builtin.preview").
 	Preview *builtinpreview.Settings `toml:"preview,omitempty" json:"preview,omitempty"`
+	// Security belongs to the built-in Sensitive Content Guard processor ("builtin.security").
+	Security *builtinsecurity.Settings `toml:"security,omitempty" json:"security,omitempty"`
 }
 
 // PluginImplementation resolves a local instance to its installed program.
@@ -250,7 +253,7 @@ func (c Config) ExternalPlugins() []string {
 // fixes at startup, for the plugins that run.
 func (c Config) processorSettingsKey() map[string]Instance {
 	out := map[string]Instance{}
-	ids := append([]string{builtinclassify.ID, builtintext.ID, builtinpreview.ID}, c.ExternalPlugins()...)
+	ids := append([]string{builtinsecurity.ID, builtinclassify.ID, builtintext.ID, builtinpreview.ID}, c.ExternalPlugins()...)
 	for _, id := range ids {
 		oe, cfg := c.ProcessorSettings(id)
 		in := c.Plugins.Instances[id]
@@ -267,6 +270,15 @@ func (c Config) processorSettingsKey() map[string]Instance {
 			norm := s.Normalized()
 			preview = &norm
 		}
+		var sec *builtinsecurity.Settings
+		if id == builtinsecurity.ID {
+			var s builtinsecurity.Settings
+			if in.Security != nil {
+				s = *in.Security
+			}
+			norm := s.Normalized()
+			sec = &norm
+		}
 		out[id] = Instance{
 			Implementation:      in.Implementation,
 			OnError:             oe,
@@ -274,6 +286,7 @@ func (c Config) processorSettingsKey() map[string]Instance {
 			Rules:               in.Rules,
 			DisabledDefaultTags: slices.Sorted(slices.Values(in.DisabledDefaultTags)),
 			Preview:             preview,
+			Security:            sec,
 		}
 	}
 	return out
@@ -481,6 +494,14 @@ func (c Config) Validate() error {
 				return fmt.Errorf("plugins.instances.%q: %w", id, err)
 			}
 		}
+		if in.Security != nil {
+			if id != builtinsecurity.ID {
+				return fmt.Errorf("plugins.instances.%q: this plugin takes no security settings", id)
+			}
+			if err := in.Security.Validate(); err != nil {
+				return fmt.Errorf("plugins.instances.%q: %w", id, err)
+			}
+		}
 		if in.Config != nil && !lua[id] && !dormantExternalPlugin(id, in) {
 			return fmt.Errorf("plugins.instances.%q: this plugin takes no config", id)
 		}
@@ -496,7 +517,7 @@ func (c Config) Validate() error {
 			if in.OnError != "" {
 				return fmt.Errorf("plugins.instances.%q: a sync backend is not a processor", id)
 			}
-		case builtintext.ID, builtinclassify.ID:
+		case builtintext.ID, builtinclassify.ID, builtinsecurity.ID:
 			if in.Sync != (BackendSync{}) {
 				return fmt.Errorf("plugins.instances.%q: this plugin has no sync settings", id)
 			}
@@ -636,6 +657,18 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # Files copied automatically above this size are not sent (and neither is the
 # rest of that copy); sending by hand ignores it. 0 = no extra limit.
 # auto_file_max_bytes = "100MB"
+
+# builtin.security ("Sensitive Content Guard") runs in the Guard stage before
+# standard processors and sync backends, detecting private keys, API tokens,
+# password managers, and sensitive files locally. Needs a restart.
+# [plugins.instances."builtin.security"]
+# enabled = true
+# [plugins.instances."builtin.security".security]
+# mode = "block"              # "block", "block_sync", or "expire"
+# expire_seconds = 300        # 10..86400 (used in "expire" mode)
+# tag = "sensitive"           # tag applied in "block_sync" / "expire" mode
+# intercept_received = true   # also inspect items received from remote peers
+# notify = true               # show category-only notification on interception
 
 # builtin.classify adds stable builtin:text/image/files/folder/link tags to new content.
 # Link text also receives builtin:text. It never changes content.

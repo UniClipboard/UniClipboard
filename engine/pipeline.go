@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/uniclipboard/unic/internal/directory"
+	"github.com/uniclipboard/unic/plugin"
 )
 
 // These are private processing types. RPC/Lua registration, durable commit and
@@ -53,14 +54,33 @@ type pipelinePolicy struct {
 // serializes this instance across all ingress paths without holding Engine.mu.
 type pipelineProcessor struct {
 	id        string
+	stage     string
 	events    []pipelineEvent
 	blockSync bool
 	gate      chan struct{}
 	process   func(context.Context, *processingContext) error
 }
 
+func processorStageRank(stage string) int {
+	if plugin.EffectiveProcessorStage(stage) == plugin.ProcessorStageGuard {
+		return 0
+	}
+	return 1
+}
+
 func newPipelineProcessor(id string, events []pipelineEvent, blockSync bool, fn func(context.Context, *processingContext) error) *pipelineProcessor {
-	return &pipelineProcessor{id: id, events: slices.Clone(events), blockSync: blockSync, gate: make(chan struct{}, 1), process: fn}
+	return newStagedPipelineProcessor(id, plugin.ProcessorStageAnnotate, events, blockSync, fn)
+}
+
+func newStagedPipelineProcessor(id, stage string, events []pipelineEvent, blockSync bool, fn func(context.Context, *processingContext) error) *pipelineProcessor {
+	return &pipelineProcessor{
+		id:        id,
+		stage:     plugin.EffectiveProcessorStage(stage),
+		events:    slices.Clone(events),
+		blockSync: blockSync,
+		gate:      make(chan struct{}, 1),
+		process:   fn,
+	}
 }
 
 // processedContent owns exactly one content reference. Publication/dispatch

@@ -23,6 +23,7 @@ import (
 	"github.com/uniclipboard/unic/internal/observability"
 	"github.com/uniclipboard/unic/internal/plugins/builtinclassify"
 	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
+	"github.com/uniclipboard/unic/internal/plugins/builtinsecurity"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 	"github.com/uniclipboard/unic/internal/servicelifecycle"
@@ -156,6 +157,19 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 	}
 	if c.PluginEnabled(string(engine.BackendTailcat)) {
 		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: peer, Builtin: true})
+	}
+	if c.PluginEnabled(builtinsecurity.ID) {
+		onError, _ := c.ProcessorSettings(builtinsecurity.ID)
+		settings := c.Plugins.Instances[builtinsecurity.ID]
+		var secCfg builtinsecurity.Settings
+		if settings.Security != nil {
+			secCfg = *settings.Security
+		}
+		guard, err := builtinsecurity.New(secCfg)
+		if err != nil {
+			return nil, err
+		}
+		opts.Plugins = append(opts.Plugins, engine.PluginInstance{Plugin: guard, Builtin: true, OnError: onError})
 	}
 	if c.PluginEnabled(builtinclassify.ID) {
 		onError, _ := c.ProcessorSettings(builtinclassify.ID)

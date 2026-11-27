@@ -93,14 +93,20 @@ func (s Settings) EffectiveMaxScanBytes() int {
 	return s.MaxScanBytes
 }
 
-func (s Settings) InterceptReceivedEnabled() bool       { return boolOrDefault(s.InterceptReceived, true) }
-func (s Settings) NotifyEnabled() bool                  { return boolOrDefault(s.Notify, true) }
-func (s Settings) DetectPrivateKeysEnabled() bool       { return boolOrDefault(s.DetectPrivateKeys, true) }
-func (s Settings) DetectTokensAndJWTEnabled() bool      { return boolOrDefault(s.DetectTokensAndJWT, true) }
-func (s Settings) DetectConnectionStringsEnabled() bool { return boolOrDefault(s.DetectConnectionStrings, true) }
-func (s Settings) DetectCredentialsEnabled() bool       { return boolOrDefault(s.DetectCredentials, true) }
-func (s Settings) DetectPasswordManagersEnabled() bool  { return boolOrDefault(s.DetectPasswordManagers, true) }
-func (s Settings) DetectSensitiveFilesEnabled() bool    { return boolOrDefault(s.DetectSensitiveFiles, true) }
+func (s Settings) InterceptReceivedEnabled() bool  { return boolOrDefault(s.InterceptReceived, true) }
+func (s Settings) NotifyEnabled() bool             { return boolOrDefault(s.Notify, true) }
+func (s Settings) DetectPrivateKeysEnabled() bool  { return boolOrDefault(s.DetectPrivateKeys, true) }
+func (s Settings) DetectTokensAndJWTEnabled() bool { return boolOrDefault(s.DetectTokensAndJWT, true) }
+func (s Settings) DetectConnectionStringsEnabled() bool {
+	return boolOrDefault(s.DetectConnectionStrings, true)
+}
+func (s Settings) DetectCredentialsEnabled() bool { return boolOrDefault(s.DetectCredentials, true) }
+func (s Settings) DetectPasswordManagersEnabled() bool {
+	return boolOrDefault(s.DetectPasswordManagers, true)
+}
+func (s Settings) DetectSensitiveFilesEnabled() bool {
+	return boolOrDefault(s.DetectSensitiveFiles, true)
+}
 
 // Validate checks bounds, mode, tag, app entries, and regular expressions.
 func (s Settings) Validate() error {

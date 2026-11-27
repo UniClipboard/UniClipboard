@@ -15,14 +15,6 @@ import (
 	"github.com/uniclipboard/unic/sourceapp"
 )
 
-type spyHost struct {
-	messages []string
-}
-
-func (h *spyHost) Notify(_ context.Context, msg string) {
-	h.messages = append(h.messages, msg)
-}
-
 type fakeSyncBackend struct {
 	id        string
 	submitted bool

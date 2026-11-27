@@ -46,7 +46,7 @@
 ## Why Unic
 
 - **More than sync — a complete clipboard workspace**: Most clipboard managers lock you into one OS or a paid cloud, while sync tools give you no real history or quick paste workflow. Unic is built to be worth using even on a single machine — instant Quick Panel, local history search, auto-tagging, and rich link previews — and seamlessly syncs text, images, files, and whole folders across Windows, macOS, Linux, iOS, Android, and terminals over the same Wi-Fi or across networks.
-- **Native speed, not Electron bloat**: Written in Go with a native desktop UI. The background service (`unicd`) idles at ~14 MB of memory; on Windows, the main window uses ~34–49 MB and **exits completely when closed**, leaving zero UI overhead behind.
+- **Native architecture, no Electron**: Built on a Go core and a native desktop UI — no bundled browser engine. The main window runs as a separate process that exits when closed, and the UI-free background service (`unicd`) can also run standalone on headless machines.
 - **Private by architecture, not by promise**: Your clipboard carries passwords, API keys, and private files. Unic requires no account and runs no cloud storage — devices connect directly over end-to-end encrypted links after you verify their fingerprints, revoking a device cuts access immediately, and your history stays exclusively on your own devices.
 - **Programmable, not just copy-paste**: Turn every copy into a workflow with built-in auto-classification, Smart Link Previews searchable by webpage title and description, non-destructive **Actions** (strip formatting, transform text, or generate share links), one-click **Go & Lua plugins**, and a full **CLI (`unic`)** for SSH, scripts, and no-pairing 6-digit transfers.
 

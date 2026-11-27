@@ -212,9 +212,10 @@ export function SendSheet({
               {trustedDevices.map((dev) => {
                 const selected = selectedDeviceIds.includes(dev.id);
                 const connected = dev.bindings?.some((b) => b.connection === "connected");
+                const relayReady = dev.bindings?.some((b) => b.relay_route_ready);
                 const phase = targetItem && selected ? historySend.phaseFor(dev.id) : "idle";
                 const status = phase === "idle"
-                  ? t(connected ? "share:compose.connected" : "share:compose.offline")
+                  ? t(connected ? "share:compose.connected" : relayReady ? "share:compose.relayReady" : "share:compose.offline")
                   : t(`share:send.targetState.${phase}`);
                 return (
                   <Pressable

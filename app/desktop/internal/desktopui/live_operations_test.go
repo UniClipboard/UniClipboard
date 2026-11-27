@@ -55,6 +55,17 @@ func TestTransferTargetItemStatesAndReceipts(t *testing.T) {
 		t.Fatalf("received item = %+v", received)
 	}
 
+	relayStored := d.transferTargetItem("op1", engine.TargetStatus{
+		BackendID:      engine.BackendTailcat,
+		TargetID:       "dev-mac",
+		State:          engine.TargetSent,
+		ReceiptStage:   engine.ReceiptStageRelayStored,
+		TransportRoute: engine.RouteRelay,
+	})
+	if relayStored.Tone != desktopkit.StatusPositive || relayStored.Status != "已暂存中转" {
+		t.Fatalf("relay stored item = %+v", relayStored)
+	}
+
 	discarded := d.transferTargetItem("op1", engine.TargetStatus{
 		BackendID:    engine.BackendTailcat,
 		TargetID:     "dev-win",

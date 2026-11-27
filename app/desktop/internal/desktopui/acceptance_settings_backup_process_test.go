@@ -146,11 +146,14 @@ func scenarioSettingsBackup(t *testing.T) {
 	cfg.Logging.Level = "warn"
 	cfg.History.RetentionDays = 90
 	cfg.Desktop.Language = "en"
+	cfg.Sync.Relay.Enabled = true
+	cfg.Sync.Relay.URL = "https://relay.private.example"
+	cfg.Sync.Relay.AccessKey = "backup-must-never-include-relay-key"
 	encoded, err := encodePortableSettings(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, excluded := range []string{"device_name", "inbox", "rendezvous_url", "endpoint", "plugins", "launch_at_login", "quick_panel_shortcut", "excluded_tags", "tag_colors"} {
+	for _, excluded := range []string{"device_name", "inbox", "rendezvous_url", "relay", "access_key", "backup-must-never-include-relay-key", "endpoint", "plugins", "launch_at_login", "quick_panel_shortcut", "excluded_tags", "tag_colors"} {
 		if bytes.Contains(encoded, []byte(excluded)) {
 			t.Fatalf("excluded field in backup: %s", excluded)
 		}

@@ -1,0 +1,1696 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UniClipboard · 桌面端混合中转设置原型（BoardUI v2）</title>
+<!--
+  High-fidelity interactive HTML prototype for Desktop Hybrid Relay Settings (0036).
+  Follows BoardUI v2 visual tokens & structure from:
+    - prototype/settings.html, prototype/devices.html, prototype/device-sync-policy.html
+    - app/desktop/internal/desktopui/live_settings.go & live_operations.go
+  Strictly aligns with 0036-hybrid-e2ee-relay-and-p2p-handoff.md & hybrid-relay-contract.md.
+  Open directly in any browser. Zero external dependencies.
+-->
+<style>
+:root {
+  /* BoardUI v2 Light Surface Hierarchy (aligned with prototype/settings.html & desktopkit) */
+  --bg-canvas-outer: #e7e7eb;
+  --bg-sidebar: #f6f6f8;
+  --bg-nav-active: #ffffff;
+  --bg-nav-hover: #ededf0;
+  --bg-workspace: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-subtle: #f7f7f9;
+  --bg-inset: #f2f2f5;
+  --bg-sheet: #ffffff;
+  --bg-tertiary: #ececef;
+
+  --sep: #ececef;
+  --border-sidebar: #e5e5e8;
+  --card-border: #e4e4e8;
+  --border-btn: #dcdce2;
+  --border-hover: #c5c5cd;
+
+  --text-primary: #111114;
+  --text-secondary: #686870;
+  --text-tertiary: #96969e;
+
+  --accent-50: #f0f6ff;
+  --accent-100: #dbeafe;
+  --accent-200: #bfd8ff;
+  --accent-500: #2b7fff;
+  --accent-600: #155dfc;
+
+  /* Semantic status tokens */
+  --ok-bg: #eaf9d0;
+  --ok-fg: #2f5700;
+  --ok-dot: #5ea500;
+  --ok-border: #c5e898;
+  --warn-bg: #fffbeb;
+  --warn-pill-bg: #fef3c7;
+  --warn-fg: #92400e;
+  --warn-border: #fde68a;
+  --warn-dot: #d97706;
+  --info-bg: #eff6ff;
+  --info-fg: #1d4ed8;
+  --info-border: #bfdbfe;
+  --relay-bg: #ecfeff;
+  --relay-fg: #0e7490;
+  --relay-border: #a5f3fc;
+  --relay-dot: #06b6d4;
+  --hybrid-bg: #f3e8ff;
+  --hybrid-fg: #6d28d9;
+  --hybrid-border: #ddd6fe;
+  --hybrid-dot: #8b5cf6;
+  --err-bg: #fff1f2;
+  --err-fg: #be123c;
+  --err-border: #fecdd3;
+  --danger: #d92d20;
+
+  --seg-bg: #ececf0;
+  --seg-sel: #ffffff;
+  --sw-off: #dcdce0;
+  --sw-on-start: #2b7fff;
+  --sw-on-end: #155dfc;
+
+  --shadow-window: 0 24px 64px rgba(0,0,0,.13), 0 0 0 1px rgba(0,0,0,.07);
+  --shadow-card: 0 1px 2px rgba(0,0,0,.03);
+  --shadow-nav: 0 1px 2px rgba(0,0,0,.05), 0 0 0 1px rgba(0,0,0,.04);
+  --shadow-modal: 0 20px 50px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.08);
+  --scrim: rgba(0,0,0,.34);
+}
+
+[data-theme="dark"] {
+  --bg-canvas-outer: #09090b;
+  --bg-sidebar: #161618;
+  --bg-nav-active: rgba(255,255,255,.10);
+  --bg-nav-hover: rgba(255,255,255,.05);
+  --bg-workspace: #1d1d20;
+  --bg-card: #242428;
+  --bg-card-subtle: #1f1f23;
+  --bg-inset: #19191c;
+  --bg-sheet: #232328;
+  --bg-tertiary: #2d2d33;
+
+  --sep: rgba(255,255,255,.075);
+  --border-sidebar: rgba(255,255,255,.08);
+  --card-border: rgba(255,255,255,.09);
+  --border-btn: rgba(255,255,255,.14);
+  --border-hover: rgba(255,255,255,.24);
+
+  --text-primary: #f4f4f6;
+  --text-secondary: #9c9ca6;
+  --text-tertiary: #6e6e78;
+
+  --accent-50: rgba(43,127,255,.14);
+  --accent-100: rgba(43,127,255,.22);
+  --accent-200: rgba(77,160,255,.36);
+  --accent-500: #4da0ff;
+  --accent-600: #3b8eff;
+
+  --ok-bg: rgba(94,165,0,.22);
+  --ok-fg: #a3e635;
+  --ok-dot: #84cc16;
+  --ok-border: rgba(132,204,22,.32);
+  --warn-bg: rgba(217,119,6,.14);
+  --warn-pill-bg: rgba(245,158,11,.20);
+  --warn-fg: #fbbf24;
+  --warn-border: rgba(245,158,11,.32);
+  --warn-dot: #f59e0b;
+  --info-bg: rgba(43,127,255,.14);
+  --info-fg: #7cb8ff;
+  --info-border: rgba(77,160,255,.30);
+  --relay-bg: rgba(6,182,212,.16);
+  --relay-fg: #67e8f9;
+  --relay-border: rgba(34,211,238,.28);
+  --relay-dot: #22d3ee;
+  --hybrid-bg: rgba(139,92,246,.20);
+  --hybrid-fg: #d8b4fe;
+  --hybrid-border: rgba(167,139,250,.32);
+  --hybrid-dot: #a78bfa;
+  --err-bg: rgba(244,63,94,.16);
+  --err-fg: #fda4af;
+  --err-border: rgba(244,63,94,.32);
+  --danger: #f87171;
+
+  --seg-bg: #151518;
+  --seg-sel: #2c2c32;
+  --sw-off: #3a3a42;
+  --sw-on-start: #3b8eff;
+  --sw-on-end: #2563eb;
+
+  --shadow-window: 0 28px 72px rgba(0,0,0,.62), 0 0 0 1px rgba(255,255,255,.09);
+  --shadow-card: 0 1px 2px rgba(0,0,0,.22);
+  --shadow-nav: none;
+  --shadow-modal: 0 24px 60px rgba(0,0,0,.65), 0 0 0 1px rgba(255,255,255,.11);
+  --scrim: rgba(0,0,0,.58);
+}
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg-canvas-outer);
+  color: var(--text-primary);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background .18s ease, color .18s ease;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+svg { display: block; flex: none; }
+a { color: inherit; text-decoration: none; }
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--bg-inset);
+  color: var(--text-primary);
+}
+
+/* ---------------- External Review Control Bar ---------------- */
+.proto-bar {
+  position: sticky; top: 0; z-index: 40;
+  background: color-mix(in srgb, var(--bg-workspace) 92%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border-sidebar);
+  padding: 9px 20px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.proto-row {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.proto-title {
+  font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 7px;
+  margin-right: 4px;
+}
+.proto-badge {
+  font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+  background: var(--accent-50); color: var(--accent-600); border: 1px solid var(--accent-200);
+}
+.proto-grp { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.proto-lbl { font-size: 11.5px; color: var(--text-secondary); margin-right: 3px; }
+.chip {
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.chip:hover { border-color: var(--border-hover); background: var(--bg-card-subtle); }
+.chip.on {
+  background: var(--accent-500);
+  border-color: var(--accent-500);
+  color: #fff;
+  font-weight: 500;
+}
+.proto-sp { flex: 1; }
+
+/* ---------------- Stage & Desktop Window ---------------- */
+.stage {
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: 24px 20px 56px;
+}
+.app-window {
+  width: 1060px; height: 740px;
+  max-width: calc(100vw - 40px);
+  background: var(--bg-workspace);
+  border-radius: 14px;
+  box-shadow: var(--shadow-window);
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  transition: width .2s ease, background .18s ease;
+}
+.app-window.compact { width: 740px; height: 680px; }
+
+/* ---------------- Sidebar (BoardUI SplitView + SidebarNav) ---------------- */
+.sidebar {
+  width: 222px; flex: none;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-sidebar);
+  display: flex; flex-direction: column;
+  user-select: none;
+  transition: transform .2s ease;
+}
+.app-window.compact .sidebar {
+  position: absolute; top: 0; bottom: 0; left: 0; z-index: 20;
+  box-shadow: 12px 0 36px rgba(0,0,0,.18);
+}
+.app-window.compact.sb-hidden .sidebar { transform: translateX(-100%); box-shadow: none; }
+.sb-scrim {
+  display: none; position: absolute; inset: 0; z-index: 15; background: var(--scrim);
+}
+.app-window.compact:not(.sb-hidden) .sb-scrim { display: block; }
+
+.sb-top {
+  height: 46px; padding: 0 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  flex: none;
+}
+.lights { display: flex; gap: 7px; padding-left: 2px; }
+.lights i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.lights i:nth-child(1) { background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; }
+.lights i:nth-child(3) { background: #28c840; }
+
+.sb-scroll {
+  flex: 1; overflow-y: auto; padding: 2px 10px 10px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.sb-sec-lbl {
+  font-size: 11px; font-weight: 600; color: var(--text-tertiary);
+  padding: 10px 10px 4px; letter-spacing: .02em;
+}
+.sb-sec-lbl:first-child { padding-top: 2px; }
+.nav-item {
+  width: 100%; height: 32px; padding: 0 10px;
+  border: 0; background: transparent; border-radius: 8px;
+  display: flex; align-items: center; gap: 9px;
+  font-size: 13px; color: var(--text-primary);
+  text-align: left;
+  transition: background .1s;
+}
+.nav-item:hover { background: var(--bg-nav-hover); }
+.nav-item.on {
+  background: var(--bg-nav-active);
+  box-shadow: var(--shadow-nav);
+  font-weight: 600;
+}
+.nav-item .nav-ic { width: 16px; height: 16px; color: var(--text-secondary); }
+.nav-item.on .nav-ic { color: var(--accent-500); }
+.nav-item .nav-lbl { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav-item .nav-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.nav-item .nav-dot.warn { background: var(--warn-dot); }
+.nav-item .nav-dot.ok { background: var(--ok-dot); }
+.nav-item .nav-dot.err { background: var(--danger); }
+.sb-foot {
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-sidebar);
+  flex: none;
+}
+
+/* ---------------- Main Settings Pane ---------------- */
+.main-pane {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column;
+  background: var(--bg-workspace);
+}
+.pane-header {
+  height: 46px; flex: none;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--sep);
+  display: flex; align-items: center; gap: 10px;
+}
+.pane-title {
+  font-size: 15px; font-weight: 700; margin: 0;
+  display: flex; align-items: center; gap: 8px;
+}
+.pane-sp { flex: 1; }
+.pane-scroll {
+  flex: 1; overflow-y: auto;
+  padding: 22px 28px 44px;
+}
+.pane-scroll::-webkit-scrollbar { width: 8px; }
+.pane-scroll::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 4px; }
+
+.settings-col {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex; flex-direction: column; gap: 22px;
+}
+
+/* ---------------- BoardUI SettingsGroup & SettingsRow ---------------- */
+.s-group { display: flex; flex-direction: column; }
+.s-group-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 0 4px 8px; flex-wrap: wrap;
+}
+.s-group-title {
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  margin: 0; display: flex; align-items: center; gap: 7px;
+}
+.s-group-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.s-group-body {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.s-group-foot {
+  padding: 7px 6px 0;
+  font-size: 11.5px; color: var(--text-tertiary); line-height: 1.55;
+}
+
+.s-row {
+  min-height: 54px;
+  padding: 12px 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.s-row.align-top { align-items: flex-start; }
+.s-row.stack { flex-direction: column; align-items: stretch; gap: 10px; }
+.s-row-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%;
+}
+.s-row + .s-row,
+.s-row + .s-block,
+.s-block + .s-row,
+.s-block + .s-block,
+.s-row + .s-foot-bar,
+.s-block + .s-foot-bar,
+.s-strip + .s-row,
+.s-strip + .s-block,
+.s-row + .s-strip,
+.s-block + .s-strip,
+.s-strip + .s-strip {
+  border-top: 1px solid var(--sep);
+}
+.s-row.dim { opacity: .54; }
+.s-row.dim .s-row-desc { color: var(--text-tertiary); }
+.s-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.s-row-label {
+  font-size: 13px; font-weight: 500; color: var(--text-primary);
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+}
+.s-row-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.48; }
+.s-row-ctl { display: flex; align-items: center; gap: 8px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.s-block { padding: 14px 16px; }
+.s-block.dim { opacity: .54; pointer-events: none; }
+
+.s-foot-bar {
+  padding: 10px 16px;
+  background: var(--bg-card-subtle);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.s-foot-msg { font-size: 12px; color: var(--text-secondary); flex: 1; min-width: 180px; }
+.s-foot-btns { display: flex; align-items: center; gap: 8px; flex: none; margin-left: auto; }
+
+/* Note Row / Calm Strip */
+.s-strip {
+  padding: 9px 16px;
+  font-size: 12px; line-height: 1.48;
+  display: flex; align-items: flex-start; gap: 8px;
+  background: var(--bg-card-subtle);
+  color: var(--text-secondary);
+}
+.s-strip > svg { margin-top: 1px; width: 15px; height: 15px; }
+.s-strip.info { background: var(--info-bg); color: var(--info-fg); }
+.s-strip.warn { background: var(--warn-bg); color: var(--warn-fg); }
+.s-strip.err { background: var(--err-bg); color: var(--err-fg); }
+.s-strip-body { flex: 1; min-width: 0; }
+.s-strip-act { flex: none; margin-left: 8px; }
+
+/* ---------------- BoardUI Controls ---------------- */
+.btn {
+  height: 30px; padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 12.5px; font-weight: 500;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  white-space: nowrap;
+  transition: background .12s, border-color .12s, opacity .12s;
+}
+.btn:hover:not(:disabled) { background: var(--bg-card-subtle); border-color: var(--border-hover); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.sm { height: 27px; padding: 0 10px; font-size: 12px; border-radius: 7px; }
+.btn.xs { height: 24px; padding: 0 8px; font-size: 11.5px; border-radius: 6px; }
+.btn.primary { background: var(--accent-500); border-color: var(--accent-500); color: #fff; }
+.btn.primary:hover:not(:disabled) { background: var(--accent-600); border-color: var(--accent-600); }
+.btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.btn.danger-soft { background: var(--err-bg); border-color: var(--err-border); color: var(--err-fg); }
+.btn.danger-soft:hover:not(:disabled) { filter: brightness(.97); }
+.btn.subtle { border-color: transparent; background: transparent; color: var(--text-secondary); }
+.btn.subtle:hover:not(:disabled) { background: var(--bg-nav-hover); color: var(--text-primary); }
+.btn.icon-only { width: 28px; height: 28px; padding: 0; }
+
+.select {
+  height: 30px; padding: 0 28px 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-btn);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  outline: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  cursor: pointer;
+}
+.select:hover:not(:disabled) { border-color: var(--border-hover); }
+.select:focus { border-color: var(--accent-500); box-shadow: 0 0 0 3px var(--accent-50); }
+.select:disabled { opacity: .45; cursor: not-allowed; }
+
+.text-input {
+  height: 31px; padding: 0 10px; min-width: 220px;
+  border-radius: 8px; border: 1px solid var(--border-btn);
+  background: var(--bg-card); color: var(--text-primary);
+  font-size: 12.5px; outline: none;
+  transition: border-color .12s, box-shadow .12s;
+}
+.text-input.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 12px; }
+.text-input:focus { border-color: var(--accent-500); box-shadow: 0 0 0 3px var(--accent-50); }
+.text-input.invalid { border-color: var(--danger); box-shadow: 0 0 0 3px var(--err-bg); }
+.text-input:disabled { opacity: .5; background: var(--bg-card-subtle); cursor: not-allowed; }
+
+.seg {
+  display: inline-flex; gap: 3px; padding: 3px;
+  background: var(--seg-bg); border: 1px solid var(--card-border); border-radius: 9px;
+}
+.seg-opt {
+  height: 25px; padding: 0 11px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--text-secondary);
+  font-size: 12px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 5px;
+  transition: background .12s, color .12s;
+}
+.seg-opt.on {
+  background: var(--seg-sel); color: var(--text-primary); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+.seg-opt:disabled { opacity: .45; cursor: not-allowed; }
+
+/* BoardUI Switch */
+.switch {
+  width: 36px; height: 21px; border-radius: 11px; border: 0; padding: 2px;
+  background: var(--sw-off); position: relative; flex: none;
+  transition: background .16s ease;
+}
+.switch::after {
+  content: ""; display: block; width: 17px; height: 17px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.22);
+  transform: translateX(0); transition: transform .16s cubic-bezier(.32,.72,0,1);
+}
+.switch.on { background: linear-gradient(180deg, var(--sw-on-start), var(--sw-on-end)); }
+.switch.on::after { transform: translateX(15px); }
+.switch:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Semantic Pills */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 21px; padding: 0 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+  background: var(--bg-tertiary); color: var(--text-secondary);
+}
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-tertiary); }
+.pill.ok { background: var(--ok-bg); color: var(--ok-fg); }
+.pill.ok .dot { background: var(--ok-dot); }
+.pill.warn { background: var(--warn-pill-bg); color: var(--warn-fg); }
+.pill.warn .dot { background: var(--warn-dot); }
+.pill.info { background: var(--info-bg); color: var(--info-fg); }
+.pill.info .dot { background: var(--accent-500); }
+.pill.relay { background: var(--relay-bg); color: var(--relay-fg); }
+.pill.relay .dot { background: var(--relay-dot); }
+.pill.hybrid { background: var(--hybrid-bg); color: var(--hybrid-fg); }
+.pill.hybrid .dot { background: var(--hybrid-dot); }
+.pill.err { background: var(--err-bg); color: var(--err-fg); }
+.pill.err .dot { background: var(--danger); }
+.pill.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 500; }
+
+/* ---------------- Relay Endpoint & Secret Inline Boxes ---------------- */
+.url-editor {
+  display: flex; align-items: center; gap: 8px; width: 100%; flex-wrap: wrap;
+}
+.url-editor .text-input { flex: 1; min-width: 240px; }
+.url-readonly {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 11px; border-radius: 9px;
+  background: var(--bg-card-subtle); border: 1px solid var(--card-border);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px;
+  color: var(--text-primary);
+}
+.field-err {
+  display: flex; align-items: flex-start; gap: 6px;
+  font-size: 12px; color: var(--err-fg);
+  background: var(--err-bg); border: 1px solid var(--err-border);
+  padding: 7px 10px; border-radius: 8px; line-height: 1.45;
+}
+.field-err svg { width: 14px; height: 14px; margin-top: 2px; }
+.field-hint {
+  font-size: 11.5px; color: var(--text-tertiary); line-height: 1.45;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+}
+
+.secret-editor {
+  background: var(--bg-card-subtle);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.secret-input-wrap {
+  display: flex; align-items: center; gap: 6px;
+}
+.secret-input-wrap .text-input { flex: 1; }
+
+/* ---------------- Device Routing Readiness List ---------------- */
+.route-list {
+  display: flex; flex-direction: column;
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-card-subtle);
+}
+.route-item {
+  padding: 10px 12px;
+  display: flex; align-items: center; gap: 11px;
+  background: var(--bg-card);
+}
+.route-item + .route-item { border-top: 1px solid var(--sep); }
+.route-item.mismatch { background: color-mix(in srgb, var(--warn-bg) 55%, var(--bg-card)); }
+.dev-ic {
+  width: 30px; height: 30px; border-radius: 8px;
+  background: var(--bg-inset); color: var(--text-secondary);
+  display: grid; place-items: center; flex: none;
+}
+.dev-ic svg { width: 16px; height: 16px; }
+.route-body { flex: 1; min-width: 0; }
+.route-name {
+  font-size: 12.5px; font-weight: 600; color: var(--text-primary);
+  display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+}
+.route-sub {
+  font-size: 11.5px; color: var(--text-secondary); margin-top: 2px; line-height: 1.4;
+}
+.route-sub.err-txt { color: var(--warn-fg); }
+
+/* ---------------- Receipt Semantics Comparison Card ---------------- */
+.receipt-card {
+  background: var(--bg-card);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.receipt-row {
+  padding: 12px 16px;
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.receipt-row + .receipt-row { border-top: 1px solid var(--sep); }
+.rc-badge-ic {
+  width: 30px; height: 30px; border-radius: 9px; flex: none;
+  display: grid; place-items: center; margin-top: 1px;
+}
+.rc-badge-ic.ok { background: var(--ok-bg); color: var(--ok-fg); }
+.rc-badge-ic.relay { background: var(--relay-bg); color: var(--relay-fg); }
+.rc-badge-ic.hybrid { background: var(--hybrid-bg); color: var(--hybrid-fg); }
+.rc-badge-ic svg { width: 16px; height: 16px; }
+.rc-main { flex: 1; min-width: 0; }
+.rc-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+}
+.rc-dev { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+.rc-desc { font-size: 12px; color: var(--text-secondary); margin-top: 3px; line-height: 1.45; }
+.rc-prog-wrap { margin-top: 8px; display: flex; flex-direction: column; gap: 5px; }
+.rc-bar {
+  height: 7px; border-radius: 999px; background: var(--bg-tertiary);
+  overflow: hidden; display: flex;
+}
+.rc-seg-http { background: var(--relay-dot); height: 100%; transition: width .25s ease; }
+.rc-seg-p2p { background: var(--accent-500); height: 100%; transition: width .25s ease; }
+.rc-prog-meta {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums;
+}
+.rc-legend { display: inline-flex; align-items: center; gap: 10px; }
+.rc-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.rc-legend i { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+
+/* Collapsible secondary rows in Sync Behavior */
+.collapse-toggle {
+  width: 100%; border: 0; border-top: 1px solid var(--sep);
+  background: var(--bg-card-subtle); color: var(--text-secondary);
+  padding: 8px 16px; font-size: 12px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.collapse-toggle:hover { color: var(--text-primary); }
+
+/* ---------------- Modal (BoardUI AlertDialog) & Toast ---------------- */
+.modal-scrim {
+  position: absolute; inset: 0; z-index: 50;
+  background: var(--scrim);
+  display: grid; place-items: center; padding: 20px;
+}
+.modal {
+  width: 420px; max-width: 100%;
+  background: var(--bg-sheet);
+  border-radius: 14px;
+  box-shadow: var(--shadow-modal);
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.modal h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.modal p { margin: 0; font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+
+.toast {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%) translateY(8px);
+  z-index: 60;
+  background: var(--text-primary); color: var(--bg-workspace);
+  padding: 7px 14px; border-radius: 9px; font-size: 12px; font-weight: 500;
+  box-shadow: 0 8px 24px rgba(0,0,0,.22);
+  opacity: 0; pointer-events: none; transition: opacity .18s, transform .18s;
+  white-space: nowrap; max-width: 90%; overflow: hidden; text-overflow: ellipsis;
+}
+.toast.show { opacity: .95; transform: translateX(-50%) translateY(0); }
+
+/* ---------------- Review Notes Drawer ---------------- */
+.review-backdrop {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(0,0,0,.38);
+  display: flex; justify-content: flex-end;
+}
+.review-drawer {
+  width: 480px; max-width: 94vw; height: 100%;
+  background: var(--bg-workspace);
+  border-left: 1px solid var(--border-sidebar);
+  box-shadow: -12px 0 40px rgba(0,0,0,.22);
+  display: flex; flex-direction: column;
+}
+.review-head {
+  padding: 16px 20px; border-bottom: 1px solid var(--sep);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.review-head h3 { margin: 0; font-size: 15px; }
+.review-body {
+  flex: 1; overflow-y: auto; padding: 18px 20px 32px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.rv-card {
+  border: 1px solid var(--card-border); border-radius: 11px;
+  background: var(--bg-card-subtle); padding: 13px 15px;
+}
+.rv-card h4 { margin: 0 0 7px; font-size: 13px; }
+.rv-card ul { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 12.5px; line-height: 1.62; }
+.rv-card li b { color: var(--text-primary); }
+</style>
+</head>
+<body>
+
+<!-- External Review Control Bar (outside desktop window) -->
+<div class="proto-bar">
+  <div class="proto-row">
+    <div class="proto-title">
+      UniClipboard · 混合中转设置原型
+      <span class="proto-badge">桌面端 · BoardUI v2</span>
+    </div>
+    <div class="proto-grp">
+      <span class="proto-lbl">场景预设</span>
+      <button class="chip" data-preset="official">1. 官方默认已开启</button>
+      <button class="chip" data-preset="selfhost">2. 自部署模式</button>
+      <button class="chip" data-preset="disabled">3. 已关闭中转</button>
+      <button class="chip" data-preset="syncPaused">4. 同步总开关已暂停</button>
+      <button class="chip" data-preset="edgeErrors">5. 异常 / 边界态</button>
+    </div>
+  </div>
+  <div class="proto-row">
+    <div class="proto-grp">
+      <span class="proto-lbl">主题</span>
+      <button class="chip" data-theme-btn="light">浅色</button>
+      <button class="chip" data-theme-btn="dark">深色</button>
+    </div>
+    <div class="proto-grp">
+      <span class="proto-lbl">窗口宽度</span>
+      <button class="chip" data-vp="standard">标准 1060px</button>
+      <button class="chip" data-vp="compact">紧凑 740px</button>
+    </div>
+    <div class="proto-sp"></div>
+    <a class="chip" href="relay-settings-mobile.html" title="打开移动端（iOS + Android）混合中转设置原型">查看移动端原型（iOS / Android）→</a>
+    <button class="btn sm primary" id="openReviewBtn">交互与契约说明</button>
+  </div>
+</div>
+
+<!-- Stage -->
+<div class="stage">
+  <div class="app-window" id="appWin"></div>
+</div>
+
+<div id="reviewRoot"></div>
+
+<script>
+const OFFICIAL_URL = 'https://relay.uniclipboard.app';
+
+const IC = {
+  settings: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  sun: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>',
+  list: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>',
+  sync: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-15.5-6.3L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 15.5 6.3L21 16"/><path d="M16 16h5v5"/></svg>',
+  database: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg>',
+  activity: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
+  puzzle: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4.5v11L12 22l-8-4.5v-11L12 2z"/><path d="M12 22V12M20 6.5L12 12 4 6.5"/></svg>',
+  info: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>',
+  back: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
+  sidebar: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/></svg>',
+  warn: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+  shield: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v6c0 4.6 3.2 7.8 7.5 9 4.3-1.2 7.5-4.4 7.5-9V6z"/><path d="m9 12 2 2 4-4"/></svg>',
+  lock: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+  key: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/></svg>',
+  cloud: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 11a4 4 0 0 1-.5 8z"/></svg>',
+  cloudCheck: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19H7a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 11a4 4 0 0 1-.5 8z"/><path d="m9.5 14 1.8 1.8 3.6-3.8"/></svg>',
+  checkCircle: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.4 2.4 4.8-5.2"/></svg>',
+  bolt: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/></svg>',
+  phone: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M11 18h2"/></svg>',
+  desktop: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+  tablet: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="3" width="14" height="18" rx="2.2"/><path d="M11 17.5h2"/></svg>',
+  eye: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 12s3.8-6.5 10-6.5S22 12 22 12s-3.8 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></svg>',
+  eyeOff: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3l18 18M10.6 10.6a2.6 2.6 0 0 0 3.6 3.6M9.9 5.6A10.7 10.7 0 0 1 12 5.5c6.2 0 10 6.5 10 6.5a17 17 0 0 1-3.3 4M6.6 6.7A16.7 16.7 0 0 0 2 12s3.8 6.5 10 6.5a10 10 0 0 0 4.3-.9"/></svg>',
+  chev: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>',
+  refresh: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8"/><path d="M21 3v5h-5"/></svg>',
+};
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+}
+
+function validateRelayUrl(raw) {
+  const v = (raw || '').trim();
+  if (!v) return { ok: false, msg: '请输入合法的 HTTPS 中转服务 URL，或切换回官方默认服务。' };
+  let u;
+  try { u = new URL(v); } catch {
+    return { ok: false, msg: 'URL 格式无效。请输入完整地址，例如 https://relay.example.com。' };
+  }
+  if (u.protocol !== 'https:') {
+    return { ok: false, msg: '仅允许使用 HTTPS 协议（已拦截明文 HTTP），以防凭据与元数据在传输层暴露。' };
+  }
+  const h = u.hostname.toLowerCase();
+  if (
+    h === 'localhost' ||
+    h.endsWith('.local') ||
+    /^127\./.test(h) ||
+    /^10\./.test(h) ||
+    /^192\.168\./.test(h) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(h) ||
+    h === '::1' || h === '[::1]'
+  ) {
+    return { ok: false, msg: '基于 SSRF 防护，生产环境拒绝指向本机环回或私网 IP 的中转端点；请使用公网可解析 HTTPS 域名。' };
+  }
+  return { ok: true, normalized: u.origin + u.pathname.replace(/\/+$/, '') };
+}
+
+function makePresetState(preset) {
+  const base = {
+    preset,
+    theme: document.documentElement.dataset.theme || 'light',
+    viewport: 'standard',
+    sbHidden: false,
+    reviewOpen: false,
+    syncMoreOpen: false,
+
+    // Sync config
+    syncEnabled: true,
+    syncAutomatic: true,
+    syncOnRestore: false,
+    syncFiles: true,
+    syncDirAuto: false,
+    maxFileMB: 100,
+
+    // Hybrid Relay config
+    relayEnabled: true,
+    relayMode: 'official', // 'official' | 'selfhost'
+    relayUrlSaved: OFFICIAL_URL,
+    relayUrlDraft: '',
+    relayUrlError: '',
+    relayMaxMB: 25,
+    accessKeyConfigured: false,
+    secretEditorOpen: false,
+    secretDraft: '',
+    secretVisible: false,
+    clearKeyConfirmOpen: false,
+
+    // Oversize edge demo banner
+    oversizeDemo: false,
+
+    // Paired devices routing readiness
+    devices: [
+      { id: 'd1', name: 'Mark 的 iPhone 16 Pro', kind: 'phone', p2p: 'offline', relayState: 'ready', endpoint: OFFICIAL_URL },
+      { id: 'd2', name: '办公室 Mac Studio', kind: 'desktop', p2p: 'connected', relayState: 'ready', endpoint: OFFICIAL_URL },
+      { id: 'd3', name: 'iPad Pro', kind: 'tablet', p2p: 'offline', relayState: 'pending_p2p', endpoint: '' },
+    ],
+
+    // Interactive Level 3 Hybrid handoff card state: 'handoff' | 'completed' | 'fallback'
+    hybridDemoState: 'handoff',
+
+    toast: '',
+    toastTimer: null,
+  };
+
+  if (preset === 'selfhost') {
+    const custom = 'https://relay.home.example.com';
+    base.relayMode = 'selfhost';
+    base.relayUrlSaved = custom;
+    base.relayUrlDraft = custom;
+    base.relayMaxMB = 100;
+    base.accessKeyConfigured = true;
+    base.devices = [
+      { id: 'd1', name: 'Mark 的 iPhone 16 Pro', kind: 'phone', p2p: 'offline', relayState: 'ready', endpoint: custom },
+      { id: 'd2', name: '办公室 Mac Studio', kind: 'desktop', p2p: 'connected', relayState: 'ready', endpoint: custom },
+      { id: 'd3', name: 'iPad Pro', kind: 'tablet', p2p: 'connected', relayState: 'ready', endpoint: custom },
+    ];
+  } else if (preset === 'disabled') {
+    base.relayEnabled = false;
+  } else if (preset === 'syncPaused') {
+    base.syncEnabled = false;
+  } else if (preset === 'edgeErrors') {
+    base.relayMode = 'selfhost';
+    base.relayUrlSaved = 'https://relay.team.example.com';
+    base.relayUrlDraft = 'http://192.168.1.10:8080';
+    base.relayUrlError = validateRelayUrl(base.relayUrlDraft).msg;
+    base.relayMaxMB = 25;
+    base.maxFileMB = 500;
+    base.oversizeDemo = true;
+    base.devices = [
+      { id: 'd1', name: 'Mark 的 iPhone 16 Pro', kind: 'phone', p2p: 'offline', relayState: 'ready', endpoint: 'https://relay.team.example.com' },
+      { id: 'd2', name: '家用 Linux 工作站', kind: 'desktop', p2p: 'connected', relayState: 'mismatch', endpoint: 'https://relay.uniclipboard.app' },
+      { id: 'd3', name: 'iPad Pro', kind: 'tablet', p2p: 'offline', relayState: 'pending_p2p', endpoint: '' },
+    ];
+  }
+  return base;
+}
+
+let S = makePresetState('official');
+
+function showToast(msg) {
+  S.toast = msg;
+  const el = document.getElementById('toastEl');
+  if (el) { el.textContent = msg; el.classList.add('show'); }
+  clearTimeout(S.toastTimer);
+  S.toastTimer = setTimeout(() => {
+    S.toast = '';
+    const t = document.getElementById('toastEl');
+    if (t) t.classList.remove('show');
+  }, 2500);
+}
+
+function setTheme(theme) {
+  S.theme = theme;
+  document.documentElement.dataset.theme = theme;
+  syncProtoBar();
+}
+
+function setViewport(vp) {
+  S.viewport = vp;
+  S.sbHidden = vp === 'compact';
+  render();
+}
+
+function loadPreset(name) {
+  const prevTheme = S.theme;
+  const prevVP = S.viewport;
+  S = makePresetState(name);
+  S.theme = prevTheme;
+  S.viewport = prevVP;
+  S.sbHidden = prevVP === 'compact';
+  document.documentElement.dataset.theme = prevTheme;
+  render();
+}
+
+function toggleSyncMaster() {
+  S.syncEnabled = !S.syncEnabled;
+  showToast(S.syncEnabled ? '已启用同步，混合中转已恢复' : '已暂停同步总开关，所有在途中转与 SSE 连接已中止');
+  render();
+}
+
+function toggleRelayEnabled() {
+  if (!S.syncEnabled) return;
+  S.relayEnabled = !S.relayEnabled;
+  showToast(S.relayEnabled ? '已启用混合中转（P2P 优先，离线 0 等待回退）' : '已关闭混合中转，仅使用 P2P 直连');
+  render();
+}
+
+function switchRelayMode(mode) {
+  if (!S.syncEnabled || !S.relayEnabled) return;
+  S.relayMode = mode;
+  S.relayUrlError = '';
+  S.secretEditorOpen = false;
+  if (mode === 'official') {
+    S.relayUrlSaved = OFFICIAL_URL;
+    if (S.relayMaxMB > 25) S.relayMaxMB = 25;
+    S.devices = S.devices.map(d => d.relayState === 'mismatch'
+      ? { ...d, relayState: 'ready', endpoint: OFFICIAL_URL }
+      : d.relayState === 'ready' ? { ...d, endpoint: OFFICIAL_URL } : d
+    );
+    showToast('已切换为官方默认中转服务（25 MB 上限）');
+  } else {
+    if (!S.relayUrlDraft || S.relayUrlDraft === OFFICIAL_URL) {
+      S.relayUrlDraft = 'https://relay.home.example.com';
+    }
+    showToast('已切换为自部署模式，请填写自托管 HTTPS URL');
+  }
+  render();
+}
+
+function onUrlInput(val) {
+  S.relayUrlDraft = val;
+  if (S.relayUrlError) {
+    const res = validateRelayUrl(val);
+    S.relayUrlError = res.ok ? '' : res.msg;
+    const errEl = document.getElementById('urlErrBox');
+    const inpEl = document.getElementById('urlInput');
+    if (inpEl) inpEl.classList.toggle('invalid', !!S.relayUrlError);
+    if (errEl) {
+      if (S.relayUrlError) {
+        errEl.style.display = 'flex';
+        errEl.querySelector('span').textContent = S.relayUrlError;
+      } else {
+        errEl.style.display = 'none';
+      }
+    }
+  }
+}
+
+function saveRelayUrl() {
+  const res = validateRelayUrl(S.relayUrlDraft);
+  if (!res.ok) {
+    S.relayUrlError = res.msg;
+    render();
+    return;
+  }
+  S.relayUrlError = '';
+  S.relayUrlSaved = res.normalized;
+  S.relayUrlDraft = res.normalized;
+  // Re-evaluate device mismatch against saved URL
+  S.devices = S.devices.map(d => {
+    if (d.relayState === 'pending_p2p') return d;
+    if (d.endpoint && d.endpoint !== S.relayUrlSaved) {
+      return { ...d, relayState: 'mismatch' };
+    }
+    return { ...d, relayState: 'ready', endpoint: S.relayUrlSaved };
+  });
+  showToast('自部署中转地址已保存，将通过已认证 P2P 会话重新同步路由');
+  render();
+}
+
+function restoreOfficialUrl() {
+  switchRelayMode('official');
+}
+
+function changeRelayMaxMB(val) {
+  S.relayMaxMB = Number(val);
+  showToast(`单次中转大小上限已设为 ${S.relayMaxMB} MB`);
+  render();
+}
+
+function changeMaxFileMB(val) {
+  S.maxFileMB = Number(val);
+  showToast(`单文件传输上限已设为 ${S.maxFileMB} MB`);
+  render();
+}
+
+function openSecretEditor() {
+  S.secretEditorOpen = true;
+  S.secretDraft = '';
+  S.secretVisible = false;
+  render();
+  setTimeout(() => {
+    const el = document.getElementById('secretDraftInput');
+    if (el) el.focus();
+  }, 20);
+}
+
+function saveSecretKey() {
+  const v = S.secretDraft.trim();
+  if (!v) {
+    showToast('请输入新的接入密钥后再保存');
+    return;
+  }
+  S.accessKeyConfigured = true;
+  S.secretDraft = '';
+  S.secretVisible = false;
+  S.secretEditorOpen = false;
+  showToast('接入密钥已安全写入受保护存储（只写不回显）');
+  render();
+}
+
+function confirmClearSecretKey() {
+  S.clearKeyConfirmOpen = true;
+  render();
+}
+
+function clearSecretKey() {
+  S.accessKeyConfigured = false;
+  S.clearKeyConfirmOpen = false;
+  S.secretEditorOpen = false;
+  S.secretDraft = '';
+  showToast('已清除自部署接入密钥');
+  render();
+}
+
+function alignMismatchedDevice(id) {
+  S.devices = S.devices.map(d => d.id === id ? { ...d, relayState: 'ready', endpoint: S.relayUrlSaved } : d);
+  showToast('已模拟该设备对齐至本机中转端点，路由现已就绪');
+  render();
+}
+
+function getRelaySummary() {
+  const total = S.devices.length;
+  const ready = S.devices.filter(d => d.relayState === 'ready').length;
+  const mismatch = S.devices.filter(d => d.relayState === 'mismatch').length;
+  if (!S.syncEnabled) return { cls: '', text: '同步已暂停', dot: '' };
+  if (!S.relayEnabled) return { cls: '', text: '仅 P2P 直连', dot: '' };
+  if (S.relayUrlError) return { cls: 'err', text: '地址校验未通过', dot: 'err' };
+  if (mismatch > 0) return { cls: 'warn', text: `${ready}/${total} 台就绪 · ${mismatch} 台端点不一致`, dot: 'warn' };
+  return { cls: 'ok', text: `${ready}/${total} 台设备中转就绪`, dot: 'ok' };
+}
+
+function syncProtoBar() {
+  document.querySelectorAll('[data-preset]').forEach(btn => {
+    btn.classList.toggle('on', btn.dataset.preset === S.preset);
+  });
+  document.querySelectorAll('[data-theme-btn]').forEach(btn => {
+    btn.classList.toggle('on', btn.dataset.themeBtn === S.theme);
+  });
+  document.querySelectorAll('[data-vp]').forEach(btn => {
+    btn.classList.toggle('on', btn.dataset.vp === S.viewport);
+  });
+}
+
+function renderSidebar(summary) {
+  const sections = [
+    {
+      title: '常规与体验',
+      items: [
+        { id: 'general', label: '通用', icon: 'settings' },
+        { id: 'appearance', label: '外观', icon: 'sun' },
+        { id: 'quickPanel', label: '快捷面板', icon: 'list' },
+      ],
+    },
+    {
+      title: '同步与数据',
+      items: [
+        { id: 'sync', label: '同步', icon: 'sync', active: true, dot: summary.dot },
+        { id: 'storage', label: '存储与备份', icon: 'database' },
+        { id: 'plugins', label: '插件', icon: 'puzzle' },
+      ],
+    },
+    {
+      title: '排错与系统',
+      items: [
+        { id: 'diagnostics', label: '诊断与隐私', icon: 'activity' },
+        { id: 'about', label: '关于', icon: 'info' },
+      ],
+    },
+  ];
+  return `
+    <aside class="sidebar">
+      <div class="sb-top">
+        <div class="lights"><i></i><i></i><i></i></div>
+        ${S.viewport === 'compact' ? `<button class="btn icon-only subtle" onclick="S.sbHidden=true;render()" title="收起侧栏">${IC.sidebar}</button>` : ''}
+      </div>
+      <div class="sb-scroll">
+        ${sections.map(sec => `
+          <div class="sb-sec-lbl">${sec.title}</div>
+          ${sec.items.map(it => `
+            <button class="nav-item ${it.active ? 'on' : ''}" onclick="${it.active ? '' : `showToast('本原型聚焦「设置 → 同步 → 混合中转」；其余页面参见 settings.html')`}">
+              <span class="nav-ic">${IC[it.icon]}</span>
+              <span class="nav-lbl">${it.label}</span>
+              ${it.dot ? `<span class="nav-dot ${it.dot}"></span>` : ''}
+            </button>
+          `).join('')}
+        `).join('')}
+      </div>
+      <div class="sb-foot">
+        <button class="nav-item" onclick="showToast('返回主历史窗口')">
+          <span class="nav-ic">${IC.back}</span>
+          <span class="nav-lbl">返回历史记录</span>
+        </button>
+      </div>
+    </aside>
+    <div class="sb-scrim" onclick="S.sbHidden=true;render()"></div>
+  `;
+}
+
+function renderSyncBehaviorGroup() {
+  const dim = !S.syncEnabled;
+  return `
+    <section class="s-group">
+      <div class="s-group-head">
+        <h3 class="s-group-title">同步行为</h3>
+        <div class="s-group-actions">
+          <span class="pill ${S.syncEnabled ? 'ok' : ''}">
+            <span class="dot"></span>${S.syncEnabled ? '同步服务运行中' : '同步已暂停'}
+          </span>
+        </div>
+      </div>
+      <div class="s-group-body">
+        <div class="s-row">
+          <div class="s-row-text">
+            <div class="s-row-label">启用同步</div>
+            <div class="s-row-desc">控制所有同步后端与混合中转的发送与接收。关闭后立即中止在途传输。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="switch ${S.syncEnabled ? 'on' : ''}" role="switch" aria-checked="${S.syncEnabled}" onclick="toggleSyncMaster()"></button>
+          </div>
+        </div>
+        ${dim ? `
+          <div class="s-strip warn">
+            ${IC.warn}
+            <div class="s-strip-body">同步总开关已暂停：P2P 会话、混合中转上传及 SSE 订阅均已停止并触发撤销屏障，以下偏好设置已保留。</div>
+          </div>
+        ` : ''}
+        <div class="s-row ${dim ? 'dim' : ''}">
+          <div class="s-row-text">
+            <div class="s-row-label">自动同步</div>
+            <div class="s-row-desc">复制内容后自动发送给已授权设备（在线直连 P2P，离线按需回退中转）。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="switch ${S.syncAutomatic ? 'on' : ''}" ${dim ? 'disabled' : ''} onclick="S.syncAutomatic=!S.syncAutomatic;showToast('自动同步设置已保存');render()"></button>
+          </div>
+        </div>
+        <div class="s-row ${dim ? 'dim' : ''}">
+          <div class="s-row-text">
+            <div class="s-row-label">同步文件</div>
+            <div class="s-row-desc">允许在设备之间发送和接收文件。</div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="switch ${S.syncFiles ? 'on' : ''}" ${dim ? 'disabled' : ''} onclick="S.syncFiles=!S.syncFiles;showToast('文件同步设置已保存');render()"></button>
+          </div>
+        </div>
+        ${S.syncMoreOpen ? `
+          <div class="s-row ${dim ? 'dim' : ''}">
+            <div class="s-row-text">
+              <div class="s-row-label">使用历史时同步</div>
+              <div class="s-row-desc">再次应用本机历史条目后发送一次。</div>
+            </div>
+            <div class="s-row-ctl">
+              <button class="switch ${S.syncOnRestore ? 'on' : ''}" ${dim ? 'disabled' : ''} onclick="S.syncOnRestore=!S.syncOnRestore;showToast('设置已保存');render()"></button>
+            </div>
+          </div>
+          <div class="s-row ${dim ? 'dim' : ''}">
+            <div class="s-row-text">
+              <div class="s-row-label">自动同步目录</div>
+              <div class="s-row-desc">默认关闭。开启后，每次复制目录都会扫描并发送。</div>
+            </div>
+            <div class="s-row-ctl">
+              <button class="switch ${S.syncDirAuto ? 'on' : ''}" ${dim ? 'disabled' : ''} onclick="S.syncDirAuto=!S.syncDirAuto;showToast('设置已保存');render()"></button>
+            </div>
+          </div>
+        ` : ''}
+        <button class="collapse-toggle" onclick="S.syncMoreOpen=!S.syncMoreOpen;render()">
+          <span>${S.syncMoreOpen ? '收起其余同步选项' : '展开其余同步选项（使用历史时同步、自动同步目录）'}</span>
+          <span style="transform:${S.syncMoreOpen ? 'rotate(180deg)' : 'none'};transition:transform .15s">${IC.chev}</span>
+        </button>
+      </div>
+    </section>
+  `;
+}
+
+function renderHybridRelayGroup(summary) {
+  const masterOff = !S.syncEnabled;
+  const relayOff = !S.relayEnabled;
+  const controlsDim = masterOff || relayOff;
+  const isOfficial = S.relayMode === 'official';
+  const hasMismatch = S.devices.some(d => d.relayState === 'mismatch');
+  const oversizeHint = S.oversizeDemo || (S.maxFileMB > S.relayMaxMB);
+
+  return `
+    <section class="s-group">
+      <div class="s-group-head">
+        <h3 class="s-group-title">
+          混合中转
+          <span class="pill relay" style="height:19px;font-size:10.5px">零知识 E2EE</span>
+        </h3>
+        <div class="s-group-actions">
+          <span class="pill ${summary.cls}"><span class="dot"></span>${esc(summary.text)}</span>
+        </div>
+      </div>
+
+      <div class="s-group-body">
+        ${masterOff ? `
+          <div class="s-strip">
+            ${IC.info}
+            <div class="s-strip-body">由于上方「启用同步」已关闭，混合中转已联动暂停；重新启用同步后将自动恢复。</div>
+          </div>
+        ` : ''}
+
+        <!-- 1. Enable Hybrid Relay Switch -->
+        <div class="s-row ${masterOff ? 'dim' : ''}">
+          <div class="s-row-text">
+            <div class="s-row-label">启用混合中转</div>
+            <div class="s-row-desc">
+              目标设备 P2P 在线时优先直连，零中转流量；目标离线时 0 等待走零知识端到端加密（E2EE）临时 HTTP 中转，大载荷在 P2P 恢复后自动结算接力续传。
+            </div>
+          </div>
+          <div class="s-row-ctl">
+            <button class="switch ${S.relayEnabled ? 'on' : ''}" role="switch" aria-checked="${S.relayEnabled}" ${masterOff ? 'disabled' : ''} onclick="toggleRelayEnabled()"></button>
+          </div>
+        </div>
+
+        ${!masterOff && relayOff ? `
+          <div class="s-strip">
+            ${IC.info}
+            <div class="s-strip-body">已关闭混合中转：当前仅使用 Tailcat P2P 直连同步，不会发起任何 HTTP 中转请求，也不产生额外暂存或网络开销。</div>
+          </div>
+        ` : ''}
+
+        <!-- 2. Service Source & Endpoint URL -->
+        <div class="s-row stack ${controlsDim ? 'dim' : ''}">
+          <div class="s-row-top">
+            <div class="s-row-text">
+              <div class="s-row-label">中转服务来源</div>
+              <div class="s-row-desc">
+                支持官方托管（默认）或自部署 <code>unic-relay</code> / Workers 实例；与 Tailcat P2P/DERP 中继节点相互独立。
+              </div>
+            </div>
+            <div class="s-row-ctl">
+              <div class="seg" role="tablist" aria-label="中转服务来源">
+                <button class="seg-opt ${isOfficial ? 'on' : ''}" ${controlsDim ? 'disabled' : ''} onclick="switchRelayMode('official')">官方默认</button>
+                <button class="seg-opt ${!isOfficial ? 'on' : ''}" ${controlsDim ? 'disabled' : ''} onclick="switchRelayMode('selfhost')">自部署</button>
+              </div>
+            </div>
+          </div>
+
+          ${isOfficial ? `
+            <div class="url-readonly">
+              <span>${OFFICIAL_URL}</span>
+              <span class="pill ok" style="height:20px"><span class="dot"></span>官方托管 · 10 分钟 TTL，领取即删</span>
+            </div>
+          ` : `
+            <div class="url-editor">
+              <input
+                id="urlInput"
+                class="text-input mono ${S.relayUrlError ? 'invalid' : ''}"
+                type="url"
+                value="${esc(S.relayUrlDraft)}"
+                placeholder="https://relay.example.com"
+                ${controlsDim ? 'disabled' : ''}
+                oninput="onUrlInput(this.value)"
+                onkeydown="if(event.key==='Enter') saveRelayUrl()"
+              >
+              <button class="btn sm primary" ${controlsDim ? 'disabled' : ''} onclick="saveRelayUrl()">保存地址</button>
+              <button class="btn sm" ${controlsDim ? 'disabled' : ''} onclick="restoreOfficialUrl()">恢复官方默认</button>
+            </div>
+            <div id="urlErrBox" class="field-err" style="display:${S.relayUrlError ? 'flex' : 'none'}">
+              ${IC.warn}
+              <span>${esc(S.relayUrlError)}</span>
+            </div>
+            <div class="field-hint">
+              <span>当前生效：<code>${esc(S.relayUrlSaved)}</code></span>
+              <span>· 仅允许公网 HTTPS，多设备配置为同一地址即可自动互通。</span>
+            </div>
+          `}
+        </div>
+
+        <!-- 3. Single Relay Max Size -->
+        <div class="s-row ${controlsDim ? 'dim' : ''}">
+          <div class="s-row-text">
+            <div class="s-row-label">
+              单次中转大小上限
+              ${isOfficial && S.relayMaxMB > 25 ? '<span class="pill warn">受官方 25 MB 服务端上限约束</span>' : ''}
+            </div>
+            <div class="s-row-desc">
+              ≤ 2 MB 走单块 1-RTT 快路径；超过此上限的内容仅通过 P2P 直连发送，离线时不经中转。
+            </div>
+          </div>
+          <div class="s-row-ctl">
+            <select class="select" ${controlsDim ? 'disabled' : ''} onchange="changeRelayMaxMB(this.value)">
+              ${[10, 25, 50, 100, 250].map(mb => `
+                <option value="${mb}" ${S.relayMaxMB === mb ? 'selected' : ''}>${mb} MB${mb === 25 ? '（默认）' : ''}</option>
+              `).join('')}
+            </select>
+          </div>
+        </div>
+
+        ${!controlsDim && oversizeHint ? `
+          <div class="s-strip ${S.oversizeDemo ? 'warn' : 'info'}">
+            ${S.oversizeDemo ? IC.warn : IC.info}
+            <div class="s-strip-body">
+              ${S.oversizeDemo
+                ? `超限仅走 P2P：当前单文件传输上限为 <b>${S.maxFileMB} MB</b>，而中转上限为 <b>${S.relayMaxMB} MB</b>。当发送 48 MB 视频且目标设备 P2P 离线时，Engine 会直接返回 <code>relay_size_exceeded</code>（不走中转，也不后台无限排队）。`
+                : `提示：下方单文件传输上限（${S.maxFileMB} MB）高于中转上限（${S.relayMaxMB} MB）。超过 ${S.relayMaxMB} MB 的文件将在目标 P2P 在线时直连传输，离线时不会走中转。`
+              }
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- 4. Self-Hosted Access Key (Write-Only, Never Echoed) -->
+        <div class="s-row stack ${controlsDim ? 'dim' : ''}">
+          <div class="s-row-top">
+            <div class="s-row-text">
+              <div class="s-row-label">
+                自部署接入密钥
+                <span class="pill mono" style="height:19px;font-size:10.5px">X-Unic-Relay-Key</span>
+                <span class="pill ${S.accessKeyConfigured ? 'ok' : ''}">
+                  <span class="dot"></span>${S.accessKeyConfigured ? '已配置' : '未配置'}
+                </span>
+              </div>
+              <div class="s-row-desc">
+                ${isOfficial
+                  ? '官方托管实例无需接入密钥；切换至自部署模式且服务端启用公网准入保护时可配置。'
+                  : '严格只写不回显，保存后不再展示明文；绝不写入诊断日志、状态事件或设置备份导出。'
+                }
+              </div>
+            </div>
+            <div class="s-row-ctl">
+              ${!isOfficial ? `
+                <button class="btn sm" ${controlsDim ? 'disabled' : ''} onclick="openSecretEditor()">
+                  ${IC.key} ${S.accessKeyConfigured ? '更换密钥…' : '设置密钥…'}
+                </button>
+                ${S.accessKeyConfigured ? `
+                  <button class="btn sm danger-soft" ${controlsDim ? 'disabled' : ''} onclick="confirmClearSecretKey()">清除密钥</button>
+                ` : ''}
+              ` : `
+                <button class="btn sm" disabled title="切换至自部署模式后可用">${IC.key} 仅自部署可用</button>
+              `}
+            </div>
+          </div>
+
+          ${!controlsDim && !isOfficial && S.secretEditorOpen ? `
+            <div class="secret-editor">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <span style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px">
+                  ${IC.lock} ${S.accessKeyConfigured ? '录入新的自部署接入密钥（将覆盖旧密钥）' : '录入自部署接入密钥'}
+                </span>
+                <span style="font-size:11px;color:var(--text-tertiary)">不回显历史值</span>
+              </div>
+              <div class="secret-input-wrap">
+                <input
+                  id="secretDraftInput"
+                  class="text-input mono"
+                  type="${S.secretVisible ? 'text' : 'password'}"
+                  value="${esc(S.secretDraft)}"
+                  placeholder="粘贴服务端配置的 X-Unic-Relay-Key"
+                  autocomplete="off"
+                  oninput="S.secretDraft=this.value"
+                  onkeydown="if(event.key==='Enter') saveSecretKey()"
+                >
+                <button class="btn icon-only" title="${S.secretVisible ? '隐藏输入' : '临时显示本次输入'}" onclick="S.secretVisible=!S.secretVisible;render()">
+                  ${S.secretVisible ? IC.eyeOff : IC.eye}
+                </button>
+                <button class="btn sm primary" onclick="saveSecretKey()">保存密钥</button>
+                <button class="btn sm" onclick="S.secretEditorOpen=false;S.secretDraft='';render()">取消</button>
+              </div>
+              <div class="field-hint">
+                ${IC.shield}
+                <span>写入系统受保护密钥存储后即清空输入框；导出配置备份与诊断日志时将自动排除此字段。</span>
+              </div>
+            </div>
+          ` : ''}
+        </div>
+
+        <!-- 5. Paired Devices Relay Route Readiness -->
+        <div class="s-block ${controlsDim ? 'dim' : ''}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;flex-wrap:wrap">
+            <div>
+              <div style="font-size:13px;font-weight:500;color:var(--text-primary)">已配对设备中转路由</div>
+              <div style="font-size:11.5px;color:var(--text-secondary);margin-top:1px">
+                P2P 建连时自动交换 <code>relay_profile</code> 与专属可吊销投递令牌，无需二次配对。
+              </div>
+            </div>
+            <button class="btn xs subtle" onclick="showToast('已向离线设备发送非阻塞 P2P 唤醒提示（WakePeer）')">${IC.refresh} 刷新路由状态</button>
+          </div>
+
+          <div class="route-list">
+            ${S.devices.map(dev => {
+              const p2pBadge = dev.p2p === 'connected'
+                ? '<span class="pill ok" style="height:18px;font-size:10.5px"><span class="dot"></span>P2P 已直连</span>'
+                : '<span class="pill" style="height:18px;font-size:10.5px"><span class="dot"></span>P2P 离线</span>';
+
+              let relayPill = '';
+              let desc = '';
+              let extraAction = '';
+              if (dev.relayState === 'ready') {
+                relayPill = '<span class="pill relay"><span class="dot"></span>中转就绪</span>';
+                desc = dev.p2p === 'connected'
+                  ? '当前在线直接走 P2P（零中转）；断线时可 0 等待无缝回退中转。'
+                  : '已持有有效投递令牌与中转路由，发送内容时可 0 等待立即加密中转。';
+              } else if (dev.relayState === 'pending_p2p') {
+                relayPill = '<span class="pill"><span class="dot"></span>待首次 P2P 交换路由</span>';
+                desc = '尚未在活跃 P2P 会话上交换过路由配置；两台设备下次直连后自动完成，无需重新配对。';
+              } else {
+                relayPill = '<span class="pill warn"><span class="dot"></span>中转端点不一致</span>';
+                desc = `对端声明端点为 ${dev.endpoint}，与本机（${S.relayUrlSaved}）不匹配；基于 SSRF 防护已拒绝中转连接，请将两端改为同一地址。`;
+                extraAction = `<button class="btn xs" onclick="alignMismatchedDevice('${dev.id}')">模拟两端对齐</button>`;
+              }
+
+              return `
+                <div class="route-item ${dev.relayState === 'mismatch' ? 'mismatch' : ''}">
+                  <div class="dev-ic">${IC[dev.kind]}</div>
+                  <div class="route-body">
+                    <div class="route-name">
+                      <span>${esc(dev.name)}</span>
+                      ${p2pBadge}
+                    </div>
+                    <div class="route-sub ${dev.relayState === 'mismatch' ? 'err-txt' : ''}">${esc(desc)}</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;flex:none">
+                    ${extraAction}
+                    ${relayPill}
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+
+          ${hasMismatch && !controlsDim ? `
+            <div class="field-err" style="margin-top:10px;background:var(--warn-bg);border-color:var(--warn-border);color:var(--warn-fg)">
+              ${IC.warn}
+              <span>检测到 1 台设备的中转端点与本机不一致。为防止 SSRF，客户端绝不盲连对端自报的陌生域名，该设备当前仅通过 P2P 直连同步。</span>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+
+      <div class="s-group-foot">
+        零知识安全边界：外层信封由本机 Ed25519 私钥签名，正文、文件名、MIME 与来源应用均以一次性 AES-256-GCM 密文分块封装，中转服务器无法解密也无法伪造来源；解除配对时立即吊销对应投递令牌。
+      </div>
+    </section>
+  `;
+}
+
+function renderFileTransferGroup() {
+  const dim = !S.syncEnabled;
+  return `
+    <section class="s-group">
+      <div class="s-group-head"><h3 class="s-group-title">文件传输</h3></div>
+      <div class="s-group-body">
+        <div class="s-row ${dim ? 'dim' : ''}">
+          <div class="s-row-text">
+            <div class="s-row-label">单文件传输上限</div>
+            <div class="s-row-desc">双向限制单个文件的最大传输大小（适用于 P2P 直连；离线中转另受上方单次中转上限约束）。</div>
+          </div>
+          <div class="s-row-ctl">
+            <select class="select" ${dim ? 'disabled' : ''} onchange="changeMaxFileMB(this.value)">
+              ${[10, 50, 100, 500].map(mb => `<option value="${mb}" ${S.maxFileMB === mb ? 'selected' : ''}>${mb} MB</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderReceiptComparisonCard() {
+  const hs = S.hybridDemoState;
+  const httpPct = hs === 'handoff' ? 33 : hs === 'completed' ? 33 : 58;
+  const p2pPct = hs === 'handoff' ? 42 : hs === 'completed' ? 67 : 17;
+  const hybridPill = hs === 'handoff'
+    ? '<span class="pill hybrid"><span class="dot"></span>混合接力中 · P2P 续传</span>'
+    : hs === 'completed'
+      ? '<span class="pill ok"><span class="dot"></span>对端已接收</span>'
+      : '<span class="pill relay"><span class="dot"></span>已回落 HTTP 补齐</span>';
+
+  const hybridDesc = hs === 'handoff'
+    ? '大载荷先经 HTTP 0 等待上传前 4 块；第 3 秒 P2P 恢复后经位图结算，剩余 8 块直接切至 P2P 零重传续传（<code>TransportRoute="hybrid"</code>）。'
+    : hs === 'completed'
+      ? '双通道分块已在对端共享 <code>TransferAssembly</code> 验签拼装并单次入库，云端临时分块已 <code>ACK/DELETE</code> 清理，并经 <code>clip_ack</code> 精确升级为「对端已接收」。'
+      : 'P2P 接力中途意外断开：对端已落盘分块全部保留，发送端自动按 <code>have_bitmap</code> 回落 HTTP 补齐剩余 25%，完成后呈「已暂存中转」。';
+
+  return `
+    <section class="s-group">
+      <div class="s-group-head">
+        <h3 class="s-group-title">传输回执语义对比（评审预览 · 对齐 0034 / 0036）</h3>
+        <div class="s-group-actions">
+          <span style="font-size:11px;color:var(--text-tertiary)">清晰区分「对端已接收」与「已暂存中转」</span>
+        </div>
+      </div>
+
+      <div class="receipt-card">
+        <!-- 1. Peer Received -->
+        <div class="receipt-row">
+          <div class="rc-badge-ic ok">${IC.checkCircle}</div>
+          <div class="rc-main">
+            <div class="rc-top">
+              <div class="rc-dev">
+                办公室 Mac Studio
+                <span class="pill mono" style="height:18px;font-size:10px">route: p2p</span>
+              </div>
+              <span class="pill ok"><span class="dot"></span>对端已接收</span>
+            </div>
+            <div class="rc-desc">
+              <code>ReceiptStage="remote_received"</code> · 对端经已认证 P2P 会话完整落盘并回传 <code>clip_ack</code> 确认，真实表示对方设备已收到。
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Relay Stored -->
+        <div class="receipt-row">
+          <div class="rc-badge-ic relay">${IC.cloudCheck}</div>
+          <div class="rc-main">
+            <div class="rc-top">
+              <div class="rc-dev">
+                Mark 的 iPhone 16 Pro
+                <span class="pill mono" style="height:18px;font-size:10px">route: relay</span>
+              </div>
+              <span class="pill relay"><span class="dot"></span>已暂存中转</span>
+            </div>
+            <div class="rc-desc">
+              <code>ReceiptStage="relay_stored"</code> · 密文已上传并由中转服务确认暂存（10 分钟有效，领取即删），<b>等待对方上线领取，绝不伪装为对方已收到或已写入剪贴板</b>。
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Hybrid Handoff (Interactive) -->
+        <div class="receipt-row">
+          <div class="rc-badge-ic ${hs === 'completed' ? 'ok' : hs === 'fallback' ? 'relay' : 'hybrid'}">
+            ${hs === 'completed' ? IC.checkCircle : hs === 'fallback' ? IC.cloud : IC.bolt}
+          </div>
+          <div class="rc-main">
+            <div class="rc-top">
+              <div class="rc-dev">
+                iPad Pro · 演示视频.mov (24 MB)
+                <span class="pill mono" style="height:18px;font-size:10px">route: hybrid</span>
+              </div>
+              ${hybridPill}
+            </div>
+            <div class="rc-desc">${hybridDesc}</div>
+            <div class="rc-prog-wrap">
+              <div class="rc-bar" aria-label="分块接力进度">
+                <div class="rc-seg-http" style="width:${httpPct}%"></div>
+                <div class="rc-seg-p2p" style="width:${p2pPct}%"></div>
+              </div>
+              <div class="rc-prog-meta">
+                <div class="rc-legend">
+                  <span><i style="background:var(--relay-dot)"></i>HTTP 中转 ${hs === 'fallback' ? '7/12 块' : '4/12 块'}</span>
+                  <span><i style="background:var(--accent-500)"></i>P2P 接力 ${hs === 'completed' ? '8/12 块' : hs === 'fallback' ? '2/12 块 (已断)' : '5/12 块'}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <span>${hs === 'completed' ? '100% · 24.0 / 24.0 MB' : '75% · 18.0 / 24.0 MB'}</span>
+                  <button class="btn xs" onclick="S.hybridDemoState = S.hybridDemoState==='handoff' ? 'completed' : S.hybridDemoState==='completed' ? 'fallback' : 'handoff'; render()">
+                    ${hs === 'handoff' ? '模拟接力完成' : hs === 'completed' ? '模拟 P2P 断线回落' : '重置接力演示'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderModal() {
+  if (!S.clearKeyConfirmOpen) return '';
+  return `
+    <div class="modal-scrim" onclick="if(event.target===this){S.clearKeyConfirmOpen=false;render()}">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clearKeyTitle">
+        <h3 id="clearKeyTitle">清除自部署接入密钥？</h3>
+        <p>清除后，客户端请求自部署中转服务时将不再附带 <code>X-Unic-Relay-Key</code>。若服务端开启了接入密钥准入控制，离线中转将返回鉴权拒绝直到重新配置密钥。</p>
+        <div class="modal-actions">
+          <button class="btn sm" onclick="S.clearKeyConfirmOpen=false;render()">取消</button>
+          <button class="btn sm danger" onclick="clearSecretKey()">确认清除</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderReviewDrawer() {
+  const root = document.getElementById('reviewRoot');
+  if (!S.reviewOpen) { root.innerHTML = ''; return; }
+  root.innerHTML = `
+    <div class="review-backdrop" onclick="if(event.target===this){S.reviewOpen=false;renderReviewDrawer()}">
+      <div class="review-drawer">
+        <div class="review-head">
+          <h3>桌面端混合中转设置 · 设计与契约对照</h3>
+          <button class="btn sm" onclick="S.reviewOpen=false;renderReviewDrawer()">关闭</button>
+        </div>
+        <div class="review-body">
+          <div class="rv-card">
+            <h4>信息架构归属（设置 → 同步）</h4>
+            <ul>
+              <li>遵循 <code>app/desktop/internal/desktopui/live_settings.go</code>：在「同步行为」与「文件传输」之间插入「混合中转」<code>SettingsGroup</code>，无需新增一级导航项。</li>
+              <li>「启用同步」总开关关闭时，整个混合中转组自动置灰、停用交互并展示柔和提示条，同时保留用户配置。</li>
+            </ul>
+          </div>
+          <div class="rv-card">
+            <h4>安全与只写边界（0036 §3 / §6）</h4>
+            <ul>
+              <li><b>两类独立中继明确区分</b>：明确标注混合 HTTP 中转（<code>unic-relay</code>）与 Tailcat P2P/DERP 节点相互独立、互不耦合。</li>
+              <li><b>接入密钥严格只写不回显</b>：界面仅展示「已配置 / 未配置」胶囊；点击「设置/更换密钥」仅提供空白掩码输入框，且注明绝不进入日志、状态事件与设置备份。</li>
+              <li><b>SSRF 与端点校验</b>：自部署 URL 实时拒绝明文 <code>http://</code> 与本机/私网地址；当某已配对设备声明不同端点时，在路由明细中显式标示「中转端点不一致」并说明已拒绝连接。</li>
+            </ul>
+          </div>
+          <div class="rv-card">
+            <h4>回执语义诚实性（对齐 0034）</h4>
+            <ul>
+              <li><code>remote_received</code> 使用实心正绿对勾「对端已接收」。</li>
+              <li><code>relay_stored</code> 使用独立青蓝云盾胶囊「已暂存中转」，明确标注等待对方领取，绝不伪装为对方已收到。</li>
+              <li><code>hybrid</code> 接力进度条拆色展示 HTTP 已传块与 P2P 接力块，并可点击模拟「接力完成升级 <code>clip_ack</code>」与「P2P 中途断线反向回落 HTTP」。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function render() {
+  syncProtoBar();
+  const win = document.getElementById('appWin');
+  win.className = `app-window ${S.viewport === 'compact' ? 'compact' : ''} ${S.sbHidden ? 'sb-hidden' : ''}`;
+  const summary = getRelaySummary();
+
+  win.innerHTML = `
+    ${renderSidebar(summary)}
+    <main class="main-pane">
+      <header class="pane-header">
+        ${S.viewport === 'compact' ? `<button class="btn icon-only subtle" onclick="S.sbHidden=false;render()" title="展开侧栏">${IC.sidebar}</button>` : ''}
+        <h1 class="pane-title">同步</h1>
+        <span class="pill ${summary.cls}"><span class="dot"></span>${esc(summary.text)}</span>
+        <div class="pane-sp"></div>
+        <span style="font-size:11.5px;color:var(--text-tertiary)">配置保存即热生效</span>
+      </header>
+
+      <div class="pane-scroll">
+        <div class="settings-col">
+          ${renderSyncBehaviorGroup()}
+          ${renderHybridRelayGroup(summary)}
+          ${renderFileTransferGroup()}
+          ${renderReceiptComparisonCard()}
+        </div>
+      </div>
+    </main>
+    ${renderModal()}
+    <div id="toastEl" class="toast ${S.toast ? 'show' : ''}">${esc(S.toast)}</div>
+  `;
+  renderReviewDrawer();
+}
+
+// Wire top prototype bar controls
+document.querySelectorAll('[data-preset]').forEach(btn => {
+  btn.addEventListener('click', () => loadPreset(btn.dataset.preset));
+});
+document.querySelectorAll('[data-theme-btn]').forEach(btn => {
+  btn.addEventListener('click', () => setTheme(btn.dataset.themeBtn));
+});
+document.querySelectorAll('[data-vp]').forEach(btn => {
+  btn.addEventListener('click', () => setViewport(btn.dataset.vp));
+});
+document.getElementById('openReviewBtn').addEventListener('click', () => {
+  S.reviewOpen = true;
+  renderReviewDrawer();
+});
+
+render();
+</script>
+</body>
+</html>

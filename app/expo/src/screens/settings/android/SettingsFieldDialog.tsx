@@ -9,6 +9,7 @@ export interface AndroidSettingFieldEdit {
   value: string;
   placeholder?: string;
   numeric?: boolean;
+  secure?: boolean;
   save: (value: string) => Promise<void>;
 }
 
@@ -72,6 +73,7 @@ function SettingsFieldDialogInner({
             editable={!saving}
             autoCorrect={false}
             autoCapitalize="none"
+            secureTextEntry={Boolean(edit.secure)}
             keyboardType={edit.numeric ? 'number-pad' : 'default'}
             onSubmitEditing={() => void save()}
             style={[

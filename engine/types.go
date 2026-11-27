@@ -51,8 +51,19 @@ type DirectorySyncSettings struct {
 	Automatic bool `json:"automatic"`
 }
 
+// RelaySyncSettings configures the optional zero-knowledge E2EE HTTP relay
+// fallback used when a target peer's P2P session is offline (0036).
+type RelaySyncSettings struct {
+	Enabled      bool   `json:"enabled"`
+	URL          string `json:"url,omitempty"`
+	AccessKey    string `json:"-"`                        // secret: never serialized in State snapshots
+	HasAccessKey bool   `json:"has_access_key,omitempty"` // output-only indicator set in State snapshots
+	MaxBytes     int64  `json:"max_bytes,omitempty"`      // 0: default 25 MiB
+}
+
 type SyncSettings struct {
 	Directories DirectorySyncSettings `json:"directories"`
+	Relay       RelaySyncSettings     `json:"relay"`
 	Enabled     bool                  `json:"enabled"`
 	Automatic   bool                  `json:"automatic"`
 	OnRestore   bool                  `json:"on_restore"`
@@ -327,8 +338,18 @@ type ReceiptStage string
 
 const (
 	ReceiptStageLocalWritten    ReceiptStage = "local_written"
+	ReceiptStageRelayStored     ReceiptStage = "relay_stored"
 	ReceiptStageRemoteReceived  ReceiptStage = "remote_received"
 	ReceiptStageRemoteDiscarded ReceiptStage = "remote_discarded"
+)
+
+// TransportRoute identifies which transport path carried a target transfer.
+type TransportRoute string
+
+const (
+	RouteP2P    TransportRoute = "p2p"
+	RouteRelay  TransportRoute = "relay"
+	RouteHybrid TransportRoute = "hybrid"
 )
 
 // TransferProgress is the in-memory byte/part progress of one target transfer.
@@ -371,14 +392,15 @@ type ReceiveOperation struct {
 
 // TargetStatus is the progress towards one device.
 type TargetStatus struct {
-	BackendID    PluginID          `json:"backend_id,omitempty"`
-	TargetKind   SyncTargetKind    `json:"target_kind,omitempty"`
-	TargetID     string            `json:"target_id,omitempty"` // opaque; for a device the DeviceID
-	PeerID       DeviceID          `json:"peer_id,omitempty"`   // devices only, kept for older clients
-	State        TargetState       `json:"state"`
-	ReceiptStage ReceiptStage      `json:"receipt_stage,omitempty"`
-	Progress     *TransferProgress `json:"progress,omitempty"`
-	Error        *Error            `json:"error,omitempty"`
+	BackendID      PluginID          `json:"backend_id,omitempty"`
+	TargetKind     SyncTargetKind    `json:"target_kind,omitempty"`
+	TargetID       string            `json:"target_id,omitempty"` // opaque; for a device the DeviceID
+	PeerID         DeviceID          `json:"peer_id,omitempty"`   // devices only, kept for older clients
+	State          TargetState       `json:"state"`
+	TransportRoute TransportRoute    `json:"transport_route,omitempty"`
+	ReceiptStage   ReceiptStage      `json:"receipt_stage,omitempty"`
+	Progress       *TransferProgress `json:"progress,omitempty"`
+	Error          *Error            `json:"error,omitempty"`
 }
 
 // Outcome summarizes a finished send.

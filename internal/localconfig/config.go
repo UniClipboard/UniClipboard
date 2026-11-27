@@ -156,8 +156,20 @@ type DirectorySync struct {
 	Automatic bool `toml:"automatic" json:"automatic"`
 }
 
+// RelaySync configures the optional zero-knowledge E2EE HTTP relay fallback
+// (separate from Tailcat P2P DERP relays). AccessKey is secret and omitted
+// from JSON API responses; AccessKeySet is a non-secret output-only indicator.
+type RelaySync struct {
+	Enabled      bool   `toml:"enabled" json:"enabled"`
+	URL          string `toml:"url" json:"url,omitempty"`
+	AccessKey    string `toml:"access_key,omitempty" json:"-"`
+	AccessKeySet bool   `toml:"-" json:"access_key_set,omitempty"`
+	MaxBytes     Size   `toml:"max_bytes" json:"max_bytes,omitempty"`
+}
+
 type Sync struct {
 	Directories DirectorySync `toml:"directories" json:"directories"`
+	Relay       RelaySync     `toml:"relay" json:"relay"`
 	Automatic   bool          `toml:"automatic" json:"automatic"`
 	OnRestore   bool          `toml:"on_restore" json:"on_restore"`
 	Files       bool          `toml:"files" json:"files"`
@@ -322,29 +334,47 @@ func Default() Config {
 // Parse decodes and validates a config file's content. Missing keys keep
 // their defaults; unknown keys are an error.
 func Parse(data []byte) (Config, error) {
+	c, _, err := parseWithMeta(data)
+	return c, err
+}
+
+func parseWithMeta(data []byte) (Config, bool, error) {
 	c := Default()
 	md, err := toml.Decode(string(data), &c)
 	if err != nil {
-		return Config{}, err
+		return Config{}, false, err
 	}
 	if un := md.Undecoded(); len(un) > 0 {
 		keys := make([]string, len(un))
 		for i, k := range un {
 			keys[i] = k.String()
 		}
-		return Config{}, fmt.Errorf("unknown key(s): %s", strings.Join(keys, ", "))
+		return Config{}, false, fmt.Errorf("unknown key(s): %s", strings.Join(keys, ", "))
 	}
-	return c, c.Validate()
+	return c, md.IsDefined("sync", "relay", "access_key"), c.Validate()
 }
 
 // Settings is the configuration as engine settings.
 func (c Config) Settings() engine.Settings {
 	return engine.Settings{
 		DeviceName: c.DeviceName, RendezvousURL: c.RendezvousURL,
-		History:         engine.HistoryCleanupSettings{AutoCleanup: c.History.AutoCleanup, RetentionDays: c.History.RetentionDays, MaxItems: c.History.MaxItems, ExcludedTags: append([]string{}, c.History.ExcludedTags...)},
-		FileCache:       engine.FileCacheSettings{MaxBytes: int64(c.FileCache.MaxBytes)},
-		Limits:          engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
-		Sync:            engine.SyncSettings{Directories: engine.DirectorySyncSettings{Automatic: c.Sync.Directories.Automatic}, Enabled: c.Sync.Enabled, Automatic: c.Sync.Automatic, OnRestore: c.Sync.OnRestore, Files: c.Sync.Files, Introductions: c.Sync.Introductions},
+		History:   engine.HistoryCleanupSettings{AutoCleanup: c.History.AutoCleanup, RetentionDays: c.History.RetentionDays, MaxItems: c.History.MaxItems, ExcludedTags: append([]string{}, c.History.ExcludedTags...)},
+		FileCache: engine.FileCacheSettings{MaxBytes: int64(c.FileCache.MaxBytes)},
+		Limits:    engine.Limits{MaxFileBytes: int64(c.Limits.MaxFileBytes), MaxTotalBytes: int64(c.Limits.MaxTotalBytes)},
+		Sync: engine.SyncSettings{
+			Directories: engine.DirectorySyncSettings{Automatic: c.Sync.Directories.Automatic},
+			Relay: engine.RelaySyncSettings{
+				Enabled:   c.Sync.Relay.Enabled,
+				URL:       c.Sync.Relay.URL,
+				AccessKey: c.Sync.Relay.AccessKey,
+				MaxBytes:  int64(c.Sync.Relay.MaxBytes),
+			},
+			Enabled:       c.Sync.Enabled,
+			Automatic:     c.Sync.Automatic,
+			OnRestore:     c.Sync.OnRestore,
+			Files:         c.Sync.Files,
+			Introductions: c.Sync.Introductions,
+		},
 		BackendPolicies: c.backendPolicies(),
 	}
 }
@@ -626,6 +656,14 @@ const Template = `# unic configuration. Saving this file applies it at once.
 
 # [sync.directories]
 # automatic = false  # copy records references; explicit send prepares the tree
+
+# Optional zero-knowledge E2EE temporary HTTP relay for offline peer fallback
+# (separate from Tailcat P2P DERP relays). Defaults off until configured.
+# [sync.relay]
+# enabled = false
+# url = "https://relay.example.com"  # or $UNIC_RELAY_URL
+# access_key = ""                    # optional self-host X-Unic-Relay-Key (or $UNIC_RELAY_ACCESS_KEY)
+# max_bytes = "25MB"                 # per-transfer relay cap (default 25 MiB, max 4 GiB)
 
 # What the built-in device-to-device sync (builtin.tailcat) sends and accepts.
 # Applies to transfers that start after the change. Uncomment the header too.

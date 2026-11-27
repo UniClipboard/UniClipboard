@@ -545,15 +545,17 @@ function SendTargetRow({
   const { theme } = useTheme();
   const [width, setWidth] = useState(0);
   const connected = device.bindings?.some((b) => b.connection === 'connected');
+  const relayReady = device.bindings?.some((b) => b.relay_route_ready);
   const displayName = device.name || device.reported_name || device.id.slice(0, 8);
 
   const statusText = phase === 'idle'
-    ? t(connected ? 'share:compose.connected' : 'share:compose.offline')
+    ? t(connected ? 'share:compose.connected' : relayReady ? 'share:compose.relayReady' : 'share:compose.offline')
     : t(`share:send.targetState.${phase}`);
 
-  const fillFraction = phase === 'success' || phase === 'failed' ? 1 : 0;
+  const isSucceeded = phase === 'success' || phase === 'relay_stored';
+  const fillFraction = isSucceeded || phase === 'failed' ? 1 : 0;
   const fillColor =
-    phase === 'success'
+    isSucceeded
       ? theme.colors.successContainer
       : phase === 'failed'
         ? theme.colors.warningContainer
@@ -600,11 +602,11 @@ function SendTargetRow({
             </SwiftUIText>
           </VStack>
           <Spacer />
-          {phase === 'success' ? (
+          {isSucceeded ? (
             <Image systemName="checkmark.circle.fill" size={22} color={theme.colors.success} />
           ) : phase === 'failed' ? (
             <Image systemName="exclamationmark.circle" size={22} color={theme.colors.warning} />
-          ) : phase === 'sending' ? (
+          ) : phase === 'sending' || phase === 'confirming' ? (
             <ProgressView />
           ) : (
             <Image

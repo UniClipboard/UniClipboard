@@ -3,6 +3,7 @@ module github.com/uniclipboard/unic
 go 1.27.3
 
 require (
+	filippo.io/edwards25519 v1.2.0
 	github.com/BurntSushi/toml v1.6.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/creack/pty v1.1.24
@@ -46,7 +47,6 @@ require (
 )
 
 require (
-	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect

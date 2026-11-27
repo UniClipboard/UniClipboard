@@ -53,6 +53,7 @@
       "preparing": "Preparando…",
       "sending": "Enviando",
       "confirming": "Aguardando confirmação…",
+      "relay_stored": "Armazenado no relay",
       "success": "Enviado",
       "failed": "Falha no envio",
       "unconfirmed": "Entrega não confirmada"
@@ -71,6 +72,7 @@
     "textHint": "Digite o texto a salvar ou enviar…",
     "targets": "Escolha os dispositivos. Sem seleção, os destinos seguem as configurações de sincronização.",
     "connected": "Conectado",
+    "relayReady": "Pronto via relay",
     "offline": "Offline ou conectando",
     "noTargets": "Não há dispositivos pareados. O conteúdo será salvo neste dispositivo.",
     "commitText": "Salvar e enviar texto",

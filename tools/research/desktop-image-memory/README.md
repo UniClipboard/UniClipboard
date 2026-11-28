@@ -1,5 +1,7 @@
 # Desktop image memory implementation replay
 
+> **Archived research harness notice**: Superseded for ongoing baseline regression and cross-platform measurement by the formal benchmark suite in [`tools/bench/`](../../bench/cmd/unic-bench/main.go) (`unic-bench` and `make bench-mac` / `make bench-win-vm`). See [Desktop resource benchmark architecture](../../../docs/architecture/desktop-benchmark.md) and keep this directory only for historical replay traceability.
+
 The immutable application baseline is `173d362036ae4a746878306915c85bcdf7468751`.
 The approved implementation is local commit `ea91a8f66938`. The retained patches build
 baseline, admission-only, streaming-only and combined variants; preparation rejects

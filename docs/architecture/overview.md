@@ -18,6 +18,7 @@ paths:
   - app/mac/Sources
   - .github/workflows
   - e2e/cli
+  - tools/bench
   - tools/docscheck
 verified: 26e04f619674e630b19d0d89803fef5d836c651c
 ---
@@ -34,7 +35,7 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 - `engine.Settings.Validate` validates Engine business settings. `internal/localconfig.Config.Validate` validates host settings and calls it. Engine does not parse TOML or watch configuration files.
 - `app/mac/` 是独立的 Swift Package，保留 SwiftUI 界面与插件设置表单的实验代码，尚未连接 daemon；该客户端路线已取消，停止推进服务接入，现有实验画面不作为最终界面规格。`app/expo/` owns the shared Expo 57 application for Android and iOS, embedding the Go Engine in-process via [`bindings/mobile/`](../../bindings/mobile/engine.go) and the Expo Local Module `app/expo/modules/unic-engine` (with an explicit `"unavailable"` shell fallback when the native module is absent in JS-only runs). `app/android/` and `app/ios/` retain platform guidance only. Every application directory has its own README and AGENTS.md.
 - Before starting the Engine, the Android host registers a Java network interface provider through the mobile binding. Tailcat reads a fresh interface snapshot from this provider because the Android app sandbox restricts Go's direct interface enumeration.
-- CI runs path-scoped workflows so each PR only executes affected checks (see [PR check trigger boundaries](releases.md#pr-check-trigger-boundaries)). `pr-checks.yml` classifies changed files via `tools/ci/pr_changes.py` to gate lint/formatting, race tests + builds, production headless E2E, and Desktop E2E shards independently; `repo-docs-check.yml` validates repository docs (`go run ./tools/docscheck`), `docs-check.yml` validates `docs-site/`, `release-checks.yml` validates release metadata/notes/tooling, and `check-expo.yml` checks mobile TypeScript, Expo prebuild, native bundles and live simulator/emulator flows.
+- CI runs path-scoped workflows so each PR only executes affected checks (see [PR check trigger boundaries](releases.md#pr-check-trigger-boundaries)). `pr-checks.yml` classifies changed files via `tools/ci/pr_changes.py` to gate lint/formatting, race tests + builds, production headless E2E, and Desktop E2E shards independently; `repo-docs-check.yml` validates repository docs (`go run ./tools/docscheck`), `docs-check.yml` validates `docs-site/`, `release-checks.yml` validates release metadata/notes/tooling, `check-expo.yml` checks mobile TypeScript, Expo prebuild, native bundles and live simulator/emulator flows, and `desktop-benchmark.yml` provides manual-only (`workflow_dispatch`) Win/Mac resource benchmarking across four macOS and Windows runners (see [Win/Mac 桌面资源 Benchmark](desktop-benchmark.md)).
 - Desktop PR CI runs six duration-balanced shards covering all isolated cases, with a thirty-minute limit per job. Ubuntu package bootstrap has a separate five-minute step limit, uses the official HTTPS archive for direct sources and the runner's file-backed mirror list, and bounds APT connection/data waits and retries. See the [Desktop E2E contract](../contracts/desktop-e2e-contract.md).
 
 ## 不变量
@@ -69,12 +70,13 @@ unic 使用 monorepo：平台无关的 Go 核心位于根目录，各端宿主�
 | `app/android/`、`app/ios/` | Platform integration guidance; no separate application projects |
 | `e2e/cli/`、`tools/docscheck/` | CLI 多进程端到端验证与文档检查 |
 | `e2e/real/` | Node-configured real-machine CLI testing over local processes and SSH; see [architecture](real-machine-testing.md) |
+| `tools/bench/` | Win/Mac 桌面资源 Benchmark 工具链（`unic-bench` 与 Parallels VM 编排）；see [architecture](desktop-benchmark.md) |
 
 ## 规格与背景
 
 - SDK 边界：[Engine 公共契约](../contracts/engine-contract.md)、[SDK 扩展类型契约](../contracts/sdk-extension-contract.md)。
 - 宿主装配：[后端迁移契约](../contracts/backend-migration-contract.md)。
-- 业务地图：[流水线与本机历史](pipeline.md)、[设备身份、信任与配对](identity-and-trust.md)。
+- 业务地图：[流水线与本机历史](pipeline.md)、[设备身份、信任与配对](identity-and-trust.md)、[Win/Mac 桌面资源 Benchmark](desktop-benchmark.md)。
 - 应用说明：[桌面](../../app/desktop/README.md)、[macOS 预览](../../app/mac/README.md)、[Expo](../../app/expo/README.md)、[Android](../../app/android/README.md)、[iOS](../../app/ios/README.md)。
 
 ## Desktop layout demo

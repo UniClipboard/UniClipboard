@@ -151,6 +151,7 @@ func (q *quickLive) poll(p *quickPanelState) {
 	if p.queryDue.IsZero() && !l.loading && !time.Now().Before(l.pageRetry) && l.cursor != "" && (p.selected >= len(p.rows)-8 || p.hovered >= len(p.rows)-8) {
 		l.loadHistory(d, true)
 	}
+	benchNotifyView(d)
 }
 func (p *quickPanelState) quickImageSize(e qpEntry) (float32, float32) {
 	if p.live != nil {

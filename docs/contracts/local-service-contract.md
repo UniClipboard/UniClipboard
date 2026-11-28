@@ -400,6 +400,31 @@ Desktop applies the saved value to mygo's shared theme source in each native
 role, including startup/setup before the normal history view exists. The
 service stores the value without importing or initializing a graphical host.
 
+## Hybrid relay host status projection
+
+Local HTTP v1 `GET /v1/config` and `PUT /v1/config` responses project two
+output-only redacted boolean indicators under `config.sync.relay`:
+`access_key_set` (true when a persisted `sync.relay.access_key` exists in
+`config.toml`) and the optional `env_access_key_set` (true when a non-empty
+`UNIC_RELAY_ACCESS_KEY` is present in the running service host process
+environment; omitted when false, attached dynamically via `ConfigState` and
+`AfterConfigReplace`). Neither field reveals any credential value, and
+neither may be written to `config.toml`; `PUT /v1/config` TOML payloads that
+attempt to set `sync.relay.env_access_key_set` are rejected with HTTP 400 while
+retaining the existing configuration revision. Omitting `sync.relay.access_key`
+in a service-backed `PUT /v1/config` TOML save (`localconfig.Manager.Replace`,
+used by Desktop UI, `unic config set`, and `unic config apply`) preserves an
+existing persisted key only while the canonicalized `sync.relay.url` remains
+unchanged; changing `sync.relay.url` without supplying a new `access_key` clears
+the previous key atomically so an old origin's credential cannot be sent to a new
+origin, whereas an `apply` file that still carries an `access_key` line sends
+it as explicit input. Direct on-disk edits reloaded via `Reload()` bypass
+`Replace` and parse the file verbatim, retaining any remaining `access_key`
+line. Host `UNIC_RELAY_ACCESS_KEY` fallback stays independent of `config.toml`
+URL switches. Newer clients decoding older
+service responses where `env_access_key_set` is omitted must default it to `false`
+and never infer service fallback credentials from the client's own environment.
+
 ## Explicit CLI migration initialization
 
 The CLI requires explicit initialization for each resolved data directory before any

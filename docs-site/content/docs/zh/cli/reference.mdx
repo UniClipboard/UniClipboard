@@ -141,11 +141,27 @@ unic config path
 ```
 
 - `config`：输出当前生效的设置（TOML）与文件路径；若最近一次编辑无效，会提示错误并显示上一份有效设置；列出需要重启 `unicd` 才生效的项。`--json` 输出完整状态。需求 `service`。
-- `config set`：修改一个键，值按 TOML 语法解析，例如 `unic config set sync.directories.automatic true`。
-- `config apply`：用文件替换整个配置。
+- `config set`：从脱敏快照经 `PUT /v1/config` 修改单个键，值按 TOML 语法解析，例如 `unic config set sync.directories.automatic true`（更换 `sync.relay.url` 时会自动省略并清除先前的 `sync.relay.access_key`）。
+- `config apply`：从文件经 `PUT /v1/config` 替换配置（换址且文件省略 `sync.relay.access_key` 时清除旧密钥；文件若仍带 `access_key` 行则作为显式输入保存）。仅直接编辑磁盘 `config.toml` 文件才走 `Reload()` 原文解析。
 - `config path`：只打印配置文件路径，不连接服务（`local`）。
 
 键与默认值见[配置参考](../reference/configuration)。
+
+## cloud
+
+```sh
+unic cloud login [--cloud-url URL] [--no-browser] [--no-relay] [--json]
+unic cloud status [--json]
+unic cloud logout [--keep-relay] [--json]
+```
+
+需求：`local`（直接读写当前配置目录的 `cloud-session.json` 与 `config.toml`；`--json` 绝不输出原始 Token 或托管凭证）。
+
+- `login`：完成浏览器 OAuth 2.0 + PKCE 登录（`--no-browser` 不拉起浏览器只打印链接，但 `unic` 本机仍监听 `127.0.0.1` 回环回调，登录浏览器须能访问该回环端口），写入 `cloud-session.json`（`0600`），且仅在已保存 TOML `sync.relay.url` 为空（不参考 `unicd` 的 `UNIC_RELAY_URL`）且未传 `--no-relay` 时签发 `uc_dc_...` 设备凭证并开启 `sync.relay.enabled`（不会自动打开全局 `sync.enabled`）。
+- `status`：查看当前 Cloud 账号登录状态、是否需要重新授权及托管凭证前缀（不含秘密）。
+- `logout`：存在活跃会话时，先使用 10 秒有界请求上下文尽力向云端吊销设备凭证与会话（10 秒仅限远端请求上下文而非整个命令耗时；仅当云端成功处理时才更新 Cloud D1，下游 `UniClipboard/relay` 正向校验缓存默认 60 秒且可配置），随后即使远端吊销失败仍会尝试删除本机 `cloud-session.json` 并在删档成功后清空会话快照（本机锁、读取或删除仍可能失败；不承诺立即清除、固定总耗时或离线必成功）。本机清理成功后，在未传 `--keep-relay`、已保存 `config.toml` 无非空 `sync.relay.url` / `sync.relay.access_key` 且 CLI 自身进程无 `UNIC_RELAY_ACCESS_KEY` 时关闭官方 `sync.relay.enabled`（`--keep-relay` 仅跳过 CLI 写入；运行中的 `unicd` 会按自身宿主 `UNIC_RELAY_URL` 与 `UNIC_RELAY_ACCESS_KEY` 单独判断，无后备时仍会关闭官方中转；绝不误删手工 `sync.relay.access_key` 或关闭自建 `sync.relay.url`）。
+
+详见[混合中转与自部署](../core-features/hybrid-relay)。
 
 ## plugin
 

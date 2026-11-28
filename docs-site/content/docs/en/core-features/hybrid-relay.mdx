@@ -43,34 +43,43 @@ flowchart LR
 
 ## Client Setup & UniClipboard Cloud Sign-In
 
-The official managed relay (`https://relay.uniclipboard.app`) is one of the hosted capabilities unlocked by signing in to **UniClipboard Cloud** (`https://cloud.uniclipboard.app`). Signing in automatically provisions a user-scoped Relay API key and enables Hybrid Relay, while fresh installs keep it disabled until you sign in or configure a self-hosted relay. Local history and direct P2P sync always work without an account.
+The official managed relay (`https://relay.uniclipboard.app`, or an authorized Cloud-hosted HTTPS origin) is one of the hosted capabilities unlocked by signing in to **UniClipboard Cloud** (`https://cloud.uniclipboard.app`). Signing in automatically mints and silently rotates short/medium-lived scoped **managed device credentials** (`uc_dc_...`) stored in owner-only `cloud-session.json` (`0600`) and enables Hybrid Relay automatically, while fresh installs keep it disabled until you sign in or configure a self-hosted relay. Local history and direct P2P sync always work without an account.
 
 ### One-Click UniClipboard Cloud Sign-In (Recommended)
 
-- **Desktop**: Open **Settings → Cloud Services** and click **Sign in**. After browser consent, the desktop app connects your account and enables official Hybrid Relay automatically; fine-tune options under **Settings → Sync → Hybrid Relay**.
-- **Mobile (iOS / Android)**: Open **Cloud Services** at the top of **Settings** and tap **Sign in**. The browser redirects back into the app and activates Hybrid Relay automatically; manage options under **Settings → Network → Hybrid Relay**.
-- **CLI**: Manage your Cloud account with `unic cloud` (pass `--no-browser` on headless machines, pass `--no-relay` to sign in without enabling Hybrid Relay, or manage keys manually at `https://cloud.uniclipboard.app/account/api-keys`):
+In official mode (**Server URL** / `sync.relay.url` left empty), Desktop and Mobile **hide all manual access-key controls**—you never need to copy, clear, or refetch a key:
+
+- **Desktop**: Open **Settings → Cloud Services** and click **Sign in** (or toggle **Enable Hybrid Relay** under **Settings → Sync → Hybrid Relay**). Fine-tune the per-transfer size cap or switch to a custom server URL under **Settings → Sync → Hybrid Relay**.
+- **Mobile (iOS / Android)**: Open **Cloud Services** at the top of **Settings** and tap **Sign in**, then manage Hybrid Relay under **Settings → Advanced network → Hybrid Relay**.
+- **CLI**: Manage your Cloud account with `unic cloud` (pass `--no-browser` to print the URL—note the signing-in browser must still reach the local `127.0.0.1` loopback callback on the host running `unic`, e.g. via SSH port forwarding—or `--no-relay` to skip enabling `sync.relay.enabled` when saved TOML `sync.relay.url` is empty; login checks saved `sync.relay.url`, not `unicd`'s `UNIC_RELAY_URL`, and never turns on global `sync.enabled` if it is off):
 
 ```bash
-# Sign in to UniClipboard Cloud and automatically enable official Hybrid Relay
+# Sign in to UniClipboard Cloud and automatically enable official Hybrid Relay (when saved sync.relay.url is empty)
 unic cloud login
 
 # Inspect current Cloud account status
 unic cloud status
 
-# Sign out (clears the linked official relay key by default; pass --keep-relay to keep it)
+# Sign out (best-effort remote revocation first, then attempts local cloud-session.json removal even if remote fails;
+# --keep-relay skips only the CLI write—unicd evaluates its own host UNIC_RELAY_URL / UNIC_RELAY_ACCESS_KEY and may still disable official relay)
 unic cloud logout
 ```
 
-### Config File & CLI
+<Callout>
+When an active session exists, client sign-out first attempts best-effort remote revocation under a bounded request context (updating Cloud D1 only when the server processes the request; revoking a device at `https://cloud.uniclipboard.app/account/devices` updates D1 directly on the server), then still attempts to delete local `cloud-session.json` and clear the in-memory session snapshot even if remote revocation fails. Local lock or file operations can still fail, so immediate cleanup, a fixed total timeout, or guaranteed offline success is not promised (the snapshot is cleared only after `cloud-session.json` removal succeeds). Revocation invalidates only that device session's managed credential (`uc_dc_...`) and never affects other signed-in devices, manual API keys (`uc_ak_...`), or self-hosted configurations. Downstream `UniClipboard/relay` instances consult a configurable positive verification cache (60 seconds default in `d51e721`).
+</Callout>
 
-Edit `$UNIC_HOME/config.toml` (takes effect on save) or run `unic config set`:
+### Manual API Keys (Headless / Scripts), Config File & CLI
+
+For headless servers or automation without browser sign-in, create a scoped manual **API Key** (`uc_ak_...` with the `relay` scope) at `https://cloud.uniclipboard.app/account/api-keys` and supply it via `sync.relay.access_key` or `UNIC_RELAY_ACCESS_KEY` (legacy unscoped `uc_rk_` keys are not accepted). For a self-hosted `UniClipboard/relay` instance, set `sync.relay.url` (entering a custom **Server URL** in Desktop or Mobile reveals the write-only **Access key** controls for that server).
+
+Edit `$UNIC_HOME/config.toml` (hot-reloaded on save) or run `unic config set` / `unic config apply`:
 
 ```toml
 [sync.relay]
 enabled = true
-url = "https://relay.example.com"  # leave empty for official default or $UNIC_RELAY_URL
-access_key = ""                    # official Cloud API key or self-hosted X-Unic-Relay-Key
+url = ""                           # leave empty for official mode (or set custom https://... / $UNIC_RELAY_URL)
+access_key = ""                    # optional manual Cloud API key (uc_ak_...) or self-hosted X-Unic-Relay-Key
 max_bytes = "25MB"                 # per-transfer relay cap (up to 4GiB)
 ```
 
@@ -83,10 +92,10 @@ unic config set sync.relay.url '"https://relay.example.com"'
 unic config set sync.relay.max_bytes '"100MB"'
 ```
 
-You can also provide defaults through `UNIC_RELAY_URL`, `UNIC_RELAY_ACCESS_KEY`, and `UNIC_CLOUD_URL` (explicit values in `config.toml` take precedence). See [Environment Variables](../reference/environment).
+You can also provide defaults through `UNIC_RELAY_URL` and `UNIC_RELAY_ACCESS_KEY` on the `unicd` host, plus `UNIC_CLOUD_URL` for `unic cloud` (`--cloud-url` overrides `UNIC_CLOUD_URL`; there is **no** `cloud_url` key in `config.toml`, and host `UNIC_RELAY_ACCESS_KEY` fallback stays active independently across config edits). Both `unic config set` and `unic config apply` save through the revision-checked `PUT /v1/config` service path: `unic config set` and Desktop Settings build from the redacted service snapshot (`access_key` omitted), so changing `sync.relay.url` drops any previous persisted `sync.relay.access_key`; `unic config apply <file>` clears a previous key if `access_key` is omitted on URL change, **or treats any `access_key = "..."` line present in `<file>` as explicit input**. Only **direct on-disk edits** to `config.toml` bypass `PUT /v1/config` and reload verbatim—when editing `config.toml` directly to switch URLs, always clear (`access_key = ""` or remove the line) or replace `access_key` in the same edit. Cloud-managed device credentials (`uc_dc_...`) stay in `cloud-session.json`, bind strictly to their authorized official origin, and never enter `config.toml`. See [Environment Variables](../reference/environment).
 
 <Callout type="warn">
-For SSRF protection, clients only accept valid public HTTPS relay URLs and never automatically connect to unknown domains or private IP addresses reported by a peer. When self-hosting, configure the **same relay URL** on all devices that should sync with each other, and let them connect over P2P at least once to exchange delivery routes.
+URL validation distinguishes three sources: **Cloud-advertised official relay URLs** strictly require `https://` (plain HTTP is rejected); **explicitly configured self-hosted `sync.relay.url` / `UNIC_RELAY_URL`** entries accept canonical `https://` or `http://` and may target a private network (loopback HTTP is used by local test/simulator fixtures; use HTTPS on public networks); and **peer-advertised `relay_profile` addresses** require a trusted peer device and an exact match with this device's current canonical relay target—unknown or mismatched peer origins are rejected. When self-hosting, configure the **same relay URL** on all devices that should sync with each other, and let them connect over P2P at least once to exchange delivery routes.
 </Callout>
 
 ## Preparing Object Storage
@@ -271,7 +280,7 @@ Publicly reachable self-hosted instances support two **zero-knowledge-compatible
 
 - **Server**: Set a high-entropy random secret (for example `openssl rand -base64 32`) in `.env` (Docker) or via `wrangler secret put RELAY_ACCESS_KEY` (Cloudflare).
 - **Enforcement**: Every control-plane request (both Owner Auth and sender `Bearer` requests) must include a matching `X-Unic-Relay-Key` header verified in constant time; missing or invalid keys receive `401`.
-- **Client**: Enter it in Desktop/Mobile Settings under **Self-Hosted Access Key**, set `sync.relay.access_key` in `config.toml`, or pass `UNIC_RELAY_ACCESS_KEY`.
+- **Client**: Enter a custom **Server URL** in Desktop or Mobile settings to reveal the write-only **Access key** field, set `sync.relay.access_key` in `config.toml`, or pass `UNIC_RELAY_ACCESS_KEY` on the service host. (Official Cloud users sign in instead of entering keys.)
 - **Secret isolation**: When uploading or downloading chunks directly against presigned object storage URLs, clients strictly **strip** `X-Unic-Relay-Key` and all `X-Unic-*` headers, and never write keys or presigned URLs to logs or backups.
 
 ### 2. Device Public-Key Allowlist (`RELAY_ALLOWED_PUBKEYS`)

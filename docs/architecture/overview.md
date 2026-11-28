@@ -19,7 +19,7 @@ paths:
   - .github/workflows
   - e2e/cli
   - tools/docscheck
-verified: 26e04f619674e630b19d0d89803fef5d836c651c
+verified: a91344483afa0af3fc187106445ca58a34df92b7
 ---
 # 仓库布局与依赖边界
 
@@ -231,11 +231,35 @@ loaded (JS-only/shell runs), `useEngineStore` explicitly enters `mode: "unavaila
 and retains the in-memory `src/shell` presentation with explicit unavailable notices.
 
 Live settings use the Engine's revision-checked settings API. The mobile
-binding saves the effective Engine settings in the profile. The host stores
-automatic clipboard detection and automatic application separately. Android
-observes clipboard changes only while the app can read the clipboard. iOS
-offers an explicit read after detecting a change. Storage settings report
-Engine file-cache usage and clear only the host's image previews.
+binding saves user-facing Engine settings in `mobile-settings.json` and manual
+self-hosted relay keys separately in owner-only `mobile-relay-secret` (mode
+`0600`, target-bound `{"target", "access_key"}` JSON). Each file is replaced
+independently via temp-file write/sync/rename; if persistence fails on
+`UpdateSettings`, the binding attempts best-effort restoration of the prior
+secret file and in-memory Engine settings state (ignoring restore errors). On
+startup, `loadRelaySecretForTarget` admits a persisted key only when its
+recorded canonical target matches the loaded `sync.relay.url`; unattributed
+legacy records, target mismatches, or malformed records are rejected and
+attempted to be removed (healing `has_access_key`) before Engine starts. The
+binding also manages UniClipboard Cloud PKCE session exchange,
+`cloud-session.json` persistence, scoped relay device credential rotation,
+HTTPS-only advertised `relay_url` binding, non-blocking admission via
+`engine.Options.RelayAuth`, and authoritative revocation inside the in-process Go
+runtime shared with headless background services and the iOS Keyboard Extension.
+Browser PKCE login in JS hands only temporary authorization parameters to the
+Go binding and receives secret-free status snapshots without retaining tokens or
+relay keys in JS storage, while official relay settings hide manual key
+controls and self-hosted URLs keep write-only key entry (separate from Cloud web
+`/account/api-keys` and `/account/devices` acceptance). Emulator/simulator UI
+and cold-start checks over preset interrupted disk states pass, whereas live
+mid-write `SIGKILL` crash injection, exhaustive filesystem error recovery,
+native browser PKCE callback redirects, signed App Group / Keyboard Extension
+handoff, Android background renewal, and physical-device two-peer sync remain
+separate unverified boundaries. The host stores automatic clipboard detection
+and automatic application separately. Android observes clipboard changes only
+while the app can read the clipboard. iOS offers an explicit read after
+detecting a change. Storage settings report Engine file-cache usage and clear
+only the host's image previews.
 
 The history views obtain file names through short-lived content leases. The
 native hosts import camera and photo selections as PNG representations. The

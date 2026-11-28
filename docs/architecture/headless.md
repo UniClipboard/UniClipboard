@@ -4,6 +4,8 @@ paths:
   - app/desktop/cmd/unic-desktop
   - internal/localapi
   - internal/localconfig
+  - internal/cloudauth
+  - internal/relayclient
   - internal/localpaths
   - internal/releaseinfo
   - internal/servicelifecycle
@@ -24,7 +26,7 @@ paths:
   - e2e/cli
   - e2e/webinterop
   - tools/package
-verified: 04d54f1476942fb328c4e17844477b482b5a4060
+verified: a91344483afa0af3fc187106445ca58a34df92b7
 ---
 # Headless service and desktop integration
 
@@ -78,7 +80,7 @@ A manual no-argument Desktop launch always opens or activates the GUI. In normal
 
 ## Command surface and temporary transfer
 
-The CLI is organized by user intent with grouped top-level help, uniform per-command `-h`/`--help`, and global flags `-p`/`--profile NAME` and `--json`. `unic init` initializes a profile for first use. `unic daemon start|stop|restart|status|logs` manages a standalone background `unicd`. `unic status` probes the active profile read-only without launching a temporary service. `unic send` (`s`) and `unic recv` (`r`) move content. `unic history` (`h`) browses it. `unic device` holds pairing, trust, renaming, and suggestions. `unic channel` manages external clipboard channels. `unic profile`, `unic doctor`, `unic completion`, `unic config`, `unic plugin`, `unic migrate`, and `unic dev` provide profile, diagnostic, shell-completion, and management operations. Old command names are removed without aliases.
+The CLI is organized by user intent with grouped top-level help, uniform per-command `-h`/`--help`, and global flags `-p`/`--profile NAME` and `--json`. `unic init` initializes a profile for first use. `unic daemon start|stop|restart|status|logs` manages a standalone background `unicd`. `unic status` probes the active profile read-only without launching a temporary service. `unic send` (`s`) and `unic recv` (`r`) move content. `unic history` (`h`) browses it. `unic device` holds pairing, trust, renaming, and suggestions. `unic channel` manages external clipboard channels. `unic cloud` manages UniClipboard Cloud account sign-in (`login`/`status`/`logout`). `unic profile`, `unic doctor`, `unic completion`, `unic config`, `unic plugin`, `unic migrate`, and `unic dev` provide profile, diagnostic, shell-completion, and management operations. Old command names are removed without aliases.
 
 `send --to all|DEVICE` goes through the normal sync path. `CommitRequest.DeviceIDs` limits the send to named paired devices; unknown, repeated or empty selections are `invalid_argument`. Only peer-session backends honor it.
 
@@ -292,3 +294,7 @@ instance a named local channel. The service owns channel identity and the
 revision-checked pause, resume, and removal commands. An installed process can
 check current channel authorization with the plugin RPC before serving a
 published representation. See the [local service contract](../contracts/local-service-contract.md#local-external-channel-registration).
+
+## Cloud authentication and managed relay credentials
+
+`unic cloud login`, `unic cloud status`, and `unic cloud logout` manage the profile's UniClipboard Cloud OAuth session in owner-only `cloud-session.json` (`0600`) without writing managed relay credentials into `config.toml`. `unic cloud login --no-browser` prints the sign-in URL instead of opening the browser, but `unic` still listens on a local loopback callback on the host executing `unic` (so the signing-in browser must be able to reach that loopback listener); automatic relay enablement checks only the saved TOML `sync.relay.url == ""` (not `unicd`'s `UNIC_RELAY_URL`) and turns on `sync.relay.enabled` without enabling global `sync.enabled`. `unic cloud logout` first attempts best-effort remote revocation under a 10s request context when an active session exists (10s bounds the remote calls only; updating Cloud D1 only when Cloud processes the request) and still attempts to remove local `cloud-session.json` even if remote revocation fails, clearing the in-memory snapshot only after file removal succeeds (local lock/read/delete operations can still fail); `--keep-relay` skips only the CLI's write of `sync.relay.enabled = false` (after checking saved TOML `sync.relay.*` fields and the CLI process's `UNIC_RELAY_ACCESS_KEY`), whereas `unicd` evaluates service-host `UNIC_RELAY_URL` and `UNIC_RELAY_ACCESS_KEY` alongside `config.toml` and may still disable official `sync.relay.enabled` once the session file disappears. `unicd` bridges `internal/cloudauth.Manager` to `engine.Options.RelayAuth`, watching `cloud-session.json`, accepting only canonical `https://` relay URLs from authenticated Cloud credential issuance (binding each `uc_dc_` credential strictly to that origin without storing it in `config.toml` and restricting static fallback credentials to explicit `sync.relay.url` / `UNIC_RELAY_URL` targets or the fixed default official entry), proactively rotating `uc_dc_` device credentials at or after `rotate_after_ms` (before expiry under normal conditions) under a cross-process lock (`cloud-session.lock`), persisting rotated single-use refresh tokens before credential issuance, enforcing a 30s per-key cooldown on relay `401` retries, and projecting sanitized host env availability via `GET` / `PUT /v1/config` (`env_access_key_set`). Authoritative Cloud revocation (`401 invalid_grant` / `session_revoked`) transitions the session to `reauth_required` with all local secrets cleared and disables official relay only when no manual or env fallback key is configured (note downstream `UniClipboard/relay` `d51e721` consults a configurable positive verification cache defaulting to 60s). See the [hybrid relay contract](../contracts/hybrid-relay-contract.md#32a-%E5%AE%9E%E4%BE%8B%E5%87%86%E5%85%A5%E6%8E%A7%E5%88%B6%E5%AE%98%E6%96%B9-cloud-api-key-%E4%B8%8E%E8%87%AA%E9%83%A8%E7%BD%B2%E9%98%B2%E7%99%BD%E5%AB%96), [local service contract](../contracts/local-service-contract.md#hybrid-relay-host-status-projection), and [engine contract](../contracts/engine-contract.md#dynamic-relay-admission-credentials-optionsrelayauth).

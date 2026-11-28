@@ -20,6 +20,8 @@ paths:
   - app/desktop/internal/quickpanel
   - app/desktop/cmd/unic-desktop
   - internal/localconfig
+  - internal/cloudauth
+  - internal/relayclient
   - internal/desktopkeys
   - internal/desktopupdate
   - internal/pairnotice
@@ -48,7 +50,7 @@ paths:
   - engine/peerproc.go
   - engine/receive.go
   - internal/store/file_cache.go
-verified: 48f126f28eb2ac1e573520a45aec7923d2f38a39
+verified: a91344483afa0af3fc187106445ca58a34df92b7
 ---
 # Desktop configuration and received files
 
@@ -197,8 +199,27 @@ The [Desktop source application receipt](../exec/desktop-source-application.md) 
 
 Settings organizes active categories into three grouped sidebar sections:
 General & Experience (`general`, `appearance`, `shortcuts`, `quickPanel`, `notifications`), Sync & Data
-(`sync`, `storage`, `plugins`), and Diagnostics & System (`diagnostics`,
+(`cloud`, `sync`, `storage`, `plugins`), and Diagnostics & System (`diagnostics`,
 `about`), removing unimplemented placeholder categories from the navigation.
+
+Settings > Cloud and Settings > Sync > Hybrid Relay separate managed Cloud sign-in
+from self-hosted relay keys: when `sync.relay.url` is empty (official hosted relay),
+the UI hides the `sync.relay.access_key` input, replacement/clear buttons, and any
+key-refetch control, highlighting only Cloud sign-in state (`active`, signed out,
+`reauth_required`, or a non-secret manual/env fallback note derived strictly from the
+service host's redacted `GET /v1/config` / `PUT /v1/config` `access_key_set` and
+`env_access_key_set` flags rather than the Desktop process environment), the hybrid
+relay enable toggle (which provisions a managed credential or starts sign-in when
+needed), and the custom server URL field. Older daemon responses omitting `env_access_key_set`
+default to `false`. Even when Cloud provisions a non-default HTTPS official relay origin
+inside `cloud-session.json` (plain HTTP advertised URLs are rejected), `sync.relay.url`
+stays empty in `config.toml` while the service injects the managed HTTPS origin into
+Engine in memory and binds each credential strictly to its origin. Entering a custom `sync.relay.url` reveals the write-only access key controls
+exclusively for that self-hosted server and hides the Cloud account row. Managed
+device credentials remain isolated in `cloud-session.json` and are never shown or
+written into `config.toml`; visual disabled/busy states across both `liveState` and
+`cloudAccountState` follow the `120ms` `showBusy()` threshold while write handlers
+guard concurrency via `busy`.
 
 Settings > Notifications exposes `desktop.notifications.enabled` and `desktop.notifications.device_pairing` (both defaulting on and applying immediately without a restart), passive system notification status reading, an explicit test notification trigger, and an Open System Settings action. When pending device or sync-path approval requests exist, the GUI highlights the Manage Devices sidebar entry with a red numeric badge (and a red dot on the collapsed sidebar toggle and compact navigation rail), updates the Dock/app badge count, shows a dismissible actionable guidance toast with a direct jump to fingerprint verification when viewing other pages, and surfaces a top tray menu shortcut.
 
@@ -264,6 +285,10 @@ The actual paste owner retains its existing permission checks. See the
 | `sync.on_restore` | `false` | After a successful explicit history restore, dispatch the restored content once. |
 | `sync.directories.automatic` | `false` | Prepare and send directory copies automatically; explicit send remains available. |
 | `sync.files` | `true` | Permit file sends and receives, subject to each backend's policy. |
+| `sync.relay.enabled` | `false` | Enable hybrid Direct-to-S3 relay fallback when devices are offline. |
+| `sync.relay.url` | Empty | Empty uses the official hosted relay via Cloud session credentials; non-empty targets a self-hosted server and clears an omitted previous `access_key` on URL changes. |
+| `sync.relay.access_key` | Empty | Write-only manual scoped Cloud API key (`uc_ak_...`) or self-hosted `X-Unic-Relay-Key`; hidden in official UI when `url` is empty, cleared on URL change when omitted, and never returned in status or backups. |
+| `sync.relay.max_bytes` | `"25MB"` | Per-transfer relay payload cap; larger items transfer only over direct P2P. |
 | `inbox` | Empty | Empty selects the default file cache. An absolute custom directory selects user-managed receives after restart. |
 | `limits.max_file_bytes` | `"100MB"` | Bound each file transfer in both directions. The boundary is inclusive. |
 | `file_cache.max_bytes` | `"500MB"` | Bound default-cache file bytes and pending file reservations. |

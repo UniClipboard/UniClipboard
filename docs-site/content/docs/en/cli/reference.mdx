@@ -141,11 +141,27 @@ unic config path
 ```
 
 - `config`: print the active settings (TOML) and file path; if the last edit was invalid, reports the error and shows the last valid settings; lists keys that require restarting `unicd`. `--json` outputs full status. Requirement: `service`.
-- `config set`: update a single key; value is parsed as TOML, e.g. `unic config set sync.directories.automatic true`.
-- `config apply`: replace the entire configuration from a file.
+- `config set`: update a single key from the redacted snapshot via `PUT /v1/config`; value is parsed as TOML, e.g. `unic config set sync.directories.automatic true` (changing `sync.relay.url` omits and clears any prior saved `sync.relay.access_key`).
+- `config apply`: replace the configuration from a file via `PUT /v1/config` (omitting `sync.relay.access_key` on URL change clears the prior key; any `access_key` line present in the file is saved explicitly). Only direct on-disk `config.toml` edits reload verbatim (`Reload()`).
 - `config path`: print the config file path only, without connecting to the service (`local`).
 
 See [Configuration Reference](../reference/configuration) for keys and defaults.
+
+## cloud
+
+```sh
+unic cloud login [--cloud-url URL] [--no-browser] [--no-relay] [--json]
+unic cloud status [--json]
+unic cloud logout [--keep-relay] [--json]
+```
+
+Requirement: `local` (reads and updates `cloud-session.json` and `config.toml` directly; `--json` never prints raw tokens or managed credentials).
+
+- `login`: completes browser OAuth 2.0 + PKCE sign-in (`--no-browser` prints the URL without launching a browser, while `unic` still runs a local `127.0.0.1` loopback callback that the browser must be able to reach), saves `cloud-session.json` (`0600`), and—only when saved TOML `sync.relay.url` is empty (ignoring `unicd`'s `UNIC_RELAY_URL`) and `--no-relay` is omitted—provisions a `uc_dc_...` device credential and sets `sync.relay.enabled = true` (without enabling global `sync.enabled`).
+- `status`: prints the active Cloud account, whether re-authentication is required, and the managed credential prefix (no secrets).
+- `logout`: when an active session exists, first attempts best-effort remote credential/session revocation under a 10s request context (10s bounds the remote calls only, not total command duration; Cloud D1 updates only when Cloud processes the request, and downstream `UniClipboard/relay` uses a configurable positive verify cache defaulting to 60s), then attempts to remove local `cloud-session.json` and clear the session snapshot even if the remote attempt fails (local lock, read, or delete errors can still fail the command; the snapshot is cleared only after file removal succeeds). After local cleanup succeeds, disables official `sync.relay.enabled` unless `--keep-relay` is passed, `config.toml` has a non-empty `sync.relay.url` / `sync.relay.access_key`, or the CLI process has `UNIC_RELAY_ACCESS_KEY` (`--keep-relay` only skips the CLI's write—a running `unicd` evaluates its own host `UNIC_RELAY_URL` and `UNIC_RELAY_ACCESS_KEY` independently and may still disable official relay once `cloud-session.json` is deleted; never deletes `sync.relay.access_key` or disables self-hosted `sync.relay.url`).
+
+See [Hybrid Relay & Self-Hosting](../core-features/hybrid-relay).
 
 ## plugin
 

@@ -92,9 +92,9 @@ Zero-knowledge end-to-end encrypted temporary HTTP relay settings (completely se
 
 | Key | Default | Description |
 |---|---|---|
-| `enabled` | `false` | Whether to use zero-wait temporary relay when a peer is offline over P2P; enabled automatically after Cloud sign-in or when configured for self-hosting |
-| `url` | `$UNIC_RELAY_URL`, otherwise `https://relay.uniclipboard.app` | HTTPS origin of the relay service; set to your self-hosted origin to switch |
-| `access_key` | `$UNIC_RELAY_ACCESS_KEY`, empty by default | Official Cloud API key or self-hosted instance access key (`X-Unic-Relay-Key` header); secret field, never echoed or logged |
+| `enabled` | `false` | Whether to use zero-wait temporary relay when a peer is offline over P2P; enabled automatically after `unic cloud login` (only when saved TOML `url` is empty and `--no-relay` is not passed; does not toggle `sync.enabled`) or when configured for self-hosting |
+| `url` | `""` (empty) | Empty uses `$UNIC_RELAY_URL` on `unicd` if set, otherwise official hosted mode (`https://relay.uniclipboard.app` or a strict `https://` Cloud-advertised origin kept in memory). Explicit self-hosted URLs (`NormalizeRelayOrigin`) accept canonical `https://` or `http://` and may target a private network (loopback HTTP for local testing; HTTPS recommended publicly). Changing `url` via `PUT /v1/config` (`unic config set`, Desktop UI, or `unic config apply`) drops an omitted previous `access_key`, whereas an `apply` file containing an `access_key` line supplies it explicitly and direct on-disk `config.toml` edits trigger `Reload()` verbatim (clear or replace `access_key` in the same save). `UNIC_RELAY_ACCESS_KEY` env fallback stays independent; `UNIC_CLOUD_URL` has no TOML key |
+| `access_key` | `$UNIC_RELAY_ACCESS_KEY`, empty by default | Write-only manual scoped Cloud API key (`uc_ak_...`, with `relay` scope) or self-hosted `X-Unic-Relay-Key`; never stores Cloud-managed `uc_dc_...` device credentials (which stay in `cloud-session.json`), hidden in official UI when `url` is empty, incompatible with legacy unscoped keys, and never echoed or logged |
 | `max_bytes` | `"25MB"` | Maximum payload size per relay transfer; cannot exceed `limits.max_total_bytes` (max 4 GiB) |
 
 ## `[history]`

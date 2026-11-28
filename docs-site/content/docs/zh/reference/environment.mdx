@@ -10,9 +10,9 @@ description: unic、unicd 与桌面端读取的环境变量，以及默认数据
 | `UNIC_HOME` | 数据目录（数据库、配置、日志、接收文件、插件）。用于运行第二个实例或隔离的配置 |
 | `UNIC_SOCK` | 控制套接字路径，默认 `$UNIC_HOME/unic.sock` |
 | `UNIC_RENDEZVOUS_URL` | 配对码服务地址；配置文件中的 `rendezvous_url` 优先 |
-| `UNIC_RELAY_URL` | 混合中转服务 HTTPS 地址；配置文件中的 `sync.relay.url` 优先，详见[混合中转与自部署](../core-features/hybrid-relay) |
-| `UNIC_RELAY_ACCESS_KEY` | 官方 Cloud API Key 或自部署混合中转接入密钥（`X-Unic-Relay-Key`）；配置文件中的 `sync.relay.access_key` 优先 |
-| `UNIC_CLOUD_URL` | UniClipboard Cloud 授权服务地址，默认 `https://cloud.uniclipboard.app` |
+| `UNIC_RELAY_URL` | `unicd` 读取的显式混合中转服务源地址（支持 `https://` 或用于本地/私网的 `http://`，公网部署应使用 HTTPS）；`config.toml` 中的 `sync.relay.url` 优先于 `UNIC_RELAY_URL`，两者均覆盖 Cloud 下发的源地址（后者严格要求 `https://`）。仅由 `unicd` 评估，`unic cloud` 按已保存的 TOML `sync.relay.url` 判断，详见[混合中转与自部署](../core-features/hybrid-relay) |
+| `UNIC_RELAY_ACCESS_KEY` | 独立的手工带 `relay` 权限 Cloud API Key（`uc_ak_...`）或自部署 `X-Unic-Relay-Key` 后备环境变量；同源下 `config.toml` 中的 `sync.relay.access_key` 优先；`unicd` 仅读取自身宿主环境（桌面 GUI 不读自身环境，且绝不向非默认 Cloud 声明源发送静态后备密钥），`unic cloud logout` 则单独检查 CLI 自身进程环境变量 |
+| `UNIC_CLOUD_URL` | `unic cloud` 使用的 UniClipboard Cloud 授权服务地址（无 `config.toml` 对应项，可用 `--cloud-url` 覆盖），默认 `https://cloud.uniclipboard.app` |
 | `UNIC_PLUGIN_REGISTRY_URL` | 桌面插件市场的注册表地址；设为空字符串时不联网获取 |
 
 例如在同一台电脑上启动第二个本地节点：

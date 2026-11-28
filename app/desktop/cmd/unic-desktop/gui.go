@@ -193,6 +193,8 @@ func runGUI(settings *config.Manager) error {
 	if _, err = launchDesktopRole(context.Background(), dir, socket, desktopprocess.Tray, "--background"); err != nil {
 		return err
 	}
+	reporter := startRoleResourceReporter(ctx, "gui", socket, settings, "foreground")
+	defer reporter.Close()
 	configureNativeRole(dir, settings.Current().Desktop.ColorMode)
 	defer session.close()
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
@@ -285,6 +287,8 @@ func runGUI(settings *config.Manager) error {
 			mygo.App.Dock.Show()
 		}
 		g.win = mygo.NewWindow(opts)
+		g.win.OnShow(func() { reporter.SetAppState("foreground") })
+		g.win.OnHide(func() { reporter.SetAppState("background") })
 		switch runtime.GOOS {
 		case "windows":
 			_ = g.win.SetIcon(appicons.WindowsPNG)
@@ -307,6 +311,7 @@ func runGUI(settings *config.Manager) error {
 		close(ready)
 		settings.OnChange = func(_, current config.Config, err error) {
 			if err == nil {
+				reporter.SetEnabled(current.Telemetry.Enabled && current.Telemetry.Metrics.Enabled)
 				mygo.RunOnMain(func() {
 					mygo.Theme.SetSource(mygo.ThemeSource(current.Desktop.ColorMode))
 					if session.setup != nil {

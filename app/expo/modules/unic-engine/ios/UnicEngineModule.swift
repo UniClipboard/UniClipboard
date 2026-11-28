@@ -206,6 +206,8 @@ private final class MediaPickerCoordinator: NSObject, UIImagePickerControllerDel
 public final class UnicEngineModule: Module {
   private let engineQueue = DispatchQueue(label: "app.uniclipboard.engine", qos: .userInitiated)
   private let keyboardBridge = KeyboardBridge()
+  private let resourceCollector = ResourcePowerCollector()
+  private let metricKitSubscriber = MetricKitSubscriber()
   private var keyboardSyncWorkItem: DispatchWorkItem?
   private var engine: MobileEngine?
   private var setupSession: MobileMigrationSession?
@@ -720,9 +722,19 @@ public final class UnicEngineModule: Module {
     )
     do {
       let snapshotJSON = try callGoString { eng.subscribe(sink, error: $0) }
+      eng.setHostResourceProvider(self.resourceCollector)
       try eng.setRuntimeState(self.isForeground ? "active" : "suspended")
       try eng.start(nil)
       self.engine = eng
+      self.resourceCollector.notifyLifecycleTransition(appState: self.isForeground ? "foreground" : "background", engine: nil)
+      var telemetryEnabled = true
+      if let tJSON = try? callGoString({ eng.getTelemetryState($0) }),
+         let tData = tJSON.data(using: .utf8),
+         let tObj = try? JSONSerialization.jsonObject(with: tData) as? [String: Any],
+         let cfgEnabled = tObj["configured_enabled"] as? Bool {
+        telemetryEnabled = cfgEnabled
+      }
+      self.metricKitSubscriber.attach(engine: eng, queue: self.engineQueue, cacheDir: cacheDir, telemetryEnabled: telemetryEnabled)
       self.lastInitDeviceName = resolvedName
       self.engineShouldResumeOnForeground = true
       self.observationEpoch = ""
@@ -766,10 +778,13 @@ public final class UnicEngineModule: Module {
     }
     keyboardSyncWorkItem?.cancel()
     keyboardSyncWorkItem = nil
+    metricKitSubscriber.detachEngine()
     if let eng = engine {
+      try? eng.flushResourceSample()
       try? eng.close(nil)
       engine = nil
     }
+    resourceCollector.resetOnSuspension()
   }
 
   private func scheduleKeyboardSnapshotPublish(delay: TimeInterval = 0.35) {
@@ -939,6 +954,7 @@ public final class UnicEngineModule: Module {
           }
         }
         guard let eng = self.engine else { return }
+        self.resourceCollector.notifyLifecycleTransition(appState: "foreground", engine: eng)
         self.startNetworkMonitor()
         self.startPasteboardObserver()
         self.updateHostCapabilities(eng, foreground: true)
@@ -983,6 +999,7 @@ public final class UnicEngineModule: Module {
         self.endBackgroundTaskLocked()
         self.bgTaskID = granted
         self.isForeground = false
+        self.resourceCollector.notifyLifecycleTransition(appState: "background", engine: self.engine)
         self.observationEpoch = ""
         self.observationSequence = 0
         self.stopPasteboardObserver()
@@ -1011,6 +1028,7 @@ public final class UnicEngineModule: Module {
       self.engineQueue.sync {
         self.endBackgroundTaskLocked()
         self.shutdownEngineInternal()
+        self.metricKitSubscriber.detachAndUnregister()
       }
     }
 
@@ -1198,7 +1216,13 @@ public final class UnicEngineModule: Module {
 
     AsyncFunction("setTelemetryEnabled") { (enabled: Bool) -> String in
       let eng = try self.requireEngine()
-      return try callGoString { eng.setTelemetryEnabled(enabled, error: $0) }
+      if !enabled {
+        self.metricKitSubscriber.setTelemetryEnabled(false)
+        return try callGoString { eng.setTelemetryEnabled(false, error: $0) }
+      }
+      let result = try callGoString { eng.setTelemetryEnabled(true, error: $0) }
+      self.metricKitSubscriber.setTelemetryEnabled(true)
+      return result
     }.runOnQueue(engineQueue)
 
     AsyncFunction("exportRecentDiagnosticLogs") { () -> String in

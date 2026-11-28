@@ -64,6 +64,7 @@ internal class ShizukuClipboardController(
   private val stateLock = Any()
 
   @Volatile private var clipboardService: IClipboardUserService? = null
+  @Volatile private var serviceConnected = false
   @Volatile private var connectionLatch = CountDownLatch(1)
   @Volatile private var binding = false
   @Volatile private var bindingStartedAtMs = 0L
@@ -72,6 +73,8 @@ internal class ShizukuClipboardController(
   @Volatile private var monitoringDesired = false
   @Volatile private var screenInteractive = true
   @Volatile private var appInForeground = true
+  @Volatile private var cachedHasPermission = false
+  @Volatile private var cachedBgRestricted = false
   @Volatile private var listenersRegistered = false
 
   private var lastStamp = ""
@@ -94,6 +97,7 @@ internal class ShizukuClipboardController(
         binding = false
         bindingStartedAtMs = 0L
         clipboardService = iface
+        serviceConnected = iface != null
         reconnectBackoffMs = INITIAL_RECONNECT_BACKOFF_MS
         connectionLatch.countDown()
       }
@@ -115,6 +119,7 @@ internal class ShizukuClipboardController(
         binding = false
         bindingStartedAtMs = 0L
         clipboardService = null
+        serviceConnected = false
       }
       onStateChanged("disconnected")
       if (monitoringDesired) {
@@ -126,6 +131,7 @@ internal class ShizukuClipboardController(
   private val permissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, result ->
     if (requestCode == REQUEST_CODE_PERMISSION) {
       val granted = result == PackageManager.PERMISSION_GRANTED
+      cachedHasPermission = granted
       if (granted) {
         workerHandler.post { bindUserServiceInternal() }
       }
@@ -146,9 +152,11 @@ internal class ShizukuClipboardController(
   private val binderDeadListener = Shizuku.OnBinderDeadListener {
     synchronized(stateLock) {
       clipboardService = null
+      serviceConnected = false
       binding = false
       bindingStartedAtMs = 0L
     }
+    cachedHasPermission = false
     onStateChanged("unavailable")
   }
 
@@ -186,9 +194,11 @@ internal class ShizukuClipboardController(
         Log.w(TAG, "Shizuku user service binder died; rebinding")
         synchronized(stateLock) {
           clipboardService = null
+          serviceConnected = false
           binding = false
           bindingStartedAtMs = 0L
         }
+        onStateChanged("disconnected")
         scheduleReconnect()
       } catch (error: Exception) {
         Log.w(TAG, "Shizuku poll error: ${error.javaClass.simpleName}")
@@ -217,26 +227,35 @@ internal class ShizukuClipboardController(
     false
   }
 
-  fun hasPermission(): Boolean = try {
-    isAvailable() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-  } catch (_: Exception) {
-    false
-  }
-
-  fun isBackgroundClipboardRestricted(): Boolean {
-    return try {
-      val developmentMiui =
-        Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true) &&
-          Build.VERSION.INCREMENTAL.endsWith(".DEV", ignoreCase = true)
-      if (!developmentMiui) return false
-      Settings.Secure.getInt(
-        appContext.contentResolver,
-        "mi_lab_ai_clipboard_enable",
-        1,
-      ) == 1
+  fun hasPermission(): Boolean {
+    val granted = try {
+      isAvailable() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
     } catch (_: Exception) {
       false
     }
+    cachedHasPermission = granted
+    return granted
+  }
+
+  fun isBackgroundClipboardRestricted(): Boolean {
+    val restricted = try {
+      val developmentMiui =
+        Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true) &&
+          Build.VERSION.INCREMENTAL.endsWith(".DEV", ignoreCase = true)
+      if (!developmentMiui) {
+        false
+      } else {
+        Settings.Secure.getInt(
+          appContext.contentResolver,
+          "mi_lab_ai_clipboard_enable",
+          1,
+        ) == 1
+      }
+    } catch (_: Exception) {
+      false
+    }
+    cachedBgRestricted = restricted
+    return restricted
   }
 
   fun requestPermission(): Boolean {
@@ -286,6 +305,8 @@ internal class ShizukuClipboardController(
     registerListeners()
     monitoringDesired = true
     workerHandler.post {
+      isBackgroundClipboardRestricted()
+      hasPermission()
       val service = ensureConnectedInternal()
       if (service != null) {
         seedBaselineFromService(service)
@@ -317,7 +338,10 @@ internal class ShizukuClipboardController(
           seedBaselineFromService(service)
         }
       } catch (_: DeadObjectException) {
-        synchronized(stateLock) { clipboardService = null }
+        synchronized(stateLock) {
+          clipboardService = null
+          serviceConnected = false
+        }
       } catch (_: Exception) {
       } finally {
         latch.countDown()
@@ -365,6 +389,12 @@ internal class ShizukuClipboardController(
 
   private fun shouldRunPollTick(): Boolean =
     monitoringDesired && screenInteractive && !appInForeground
+
+  fun isMonitoringActive(): Boolean =
+    shouldRunPollTick() &&
+      !cachedBgRestricted &&
+      cachedHasPermission &&
+      serviceConnected
 
   private fun reconcilePollLoop(immediate: Boolean) {
     workerHandler.removeCallbacks(pollRunnable)
@@ -438,6 +468,7 @@ internal class ShizukuClipboardController(
     val active = synchronized(stateLock) {
       val wasBound = clipboardService != null || binding
       clipboardService = null
+      serviceConnected = false
       binding = false
       bindingStartedAtMs = 0L
       wasBound

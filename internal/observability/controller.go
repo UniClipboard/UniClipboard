@@ -29,10 +29,12 @@ type Options struct {
 	TraceInterval     time.Duration
 }
 type Controller struct {
-	syncEpoch        uint64
-	syncWake         chan struct{}
-	syncCollector    func(uint64) ([]syncdiag.Record, bool)
-	failures         [5][7]uint64
+	syncEpoch         uint64
+	syncWake          chan struct{}
+	syncCollector     func(uint64) ([]syncdiag.Record, bool)
+	resourceCollector func(uint64) ([]ResourceSample, []PowerSample)
+	resCollectorSeq   uint64
+	failures          [5][7]uint64
 	effective        bool
 	lastLocalError   time.Time
 	control          sync.Mutex
@@ -223,9 +225,13 @@ func (c *Controller) Apply(cfg Config) {
 				if i == 2 {
 					c.mu.Lock()
 					f := c.syncCollector
+					rf := c.resourceCollector
 					c.mu.Unlock()
 					if f != nil {
 						safeSyncCollect(f, 0)
+					}
+					if rf != nil {
+						safeResourceCollect(rf, 0)
 					}
 				}
 			}

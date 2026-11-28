@@ -302,6 +302,7 @@ Registration may carry a 16-character alphanumeric `launch_id` for a pending Des
 The adapter never receives the analytics identifier or ingestion token.
 Action, send, pairing and explicit history-application events come from authoritative Engine completions, not activity notifications.
 `GET /v1/diagnostics/telemetry` includes analytics health and pending/loss counters, with no identity or credential values.
+`POST /v1/diagnostics/resource-sample` accepts bounded (<= 1 KiB) anonymous resource samples from Desktop roles (`tray`, `gui`, `quick_panel`) using strict flat JSON validation with no unknown or duplicate keys. When metrics upload is disabled, the endpoint discards the sample and returns HTTP `204`. When the service is shutting down, it returns HTTP `503` (`unavailable`). Malformed JSON, unknown/duplicate fields, oversized payloads, or invalid enum/numeric bounds return HTTP `400` (`invalid_argument`).
 See the [observability contract](observability-contract.md#10-posthog-product-events).
 
 ## Offline log archive

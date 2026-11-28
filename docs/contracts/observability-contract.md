@@ -104,7 +104,7 @@ Engine 取消只能沿既有生命周期传播；诊断不得额外取消已接�
 
 发送 succeeded 只表示现有发送契约证明的成功。它不证明远端接收、远端应用或用户粘贴。
 接收 succeeded 只表示本机接收发布完成。应用 succeeded 只表示宿主报告系统写入成功。
-Connection and session observations follow section 11. CPU, RSS and scheduler wakeups remain external acceptance measurements.
+Connection and session observations follow section 11. Host process resource and mobile power telemetry follow section 14.
 
 ## 3. Metrics 规格
 
@@ -120,6 +120,8 @@ OTLP 单位采用下表的值。计数为非负单调 Counter，耗时为显式�
 | `unic.pipeline.errors` | Counter | `{error}` | `stage`、`backend`、`code` | 仅 failed/rejected；每条加 1 |
 | `unic.observability.dropped` | Counter | `{record}` | `signal`、`reason` | 本节定义的本机丢弃数变化量；允许远程导出自身丢失 |
 | `unic.observability.export_failures` | Counter | `{export}` | `signal`、`code` | 一次完整导出调用最终失败时加 1，不按内部重试次数加 |
+
+Resource and mobile power instruments (`unic.resource.*`, `unic.power.*`) share this scope and are defined in section 14.
 
 Histogram 边界固定为 `0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60` 秒。
 大于 60 秒的值进入最后的正无穷桶。耗时不加原始大小、目标数或业务 ID 标签。
@@ -742,3 +744,51 @@ The worker exports at batch capacity or every five seconds. The official HTTP ex
 Local `TelemetryState.traces` uses the same SignalState schema as logs/metrics. It reports process-total dropped records, finite failures and current admission. Health metrics include the `traces` signal without changing existing signal values.
 
 Disable closes admission, cancels in-flight export, discards queued/batched spans and waits for cleanup. Re-enable creates a new Provider/queue; old contexts (including retained receipt trace contexts) cannot enter it. Shutdown flushes concurrently with logs, metrics and analytics within the existing shared two-second budget. No disk backlog is created.
+
+## 14. Host process resource and mobile power telemetry
+
+Host process resource and mobile power metrics share instrumentation scope `unic.observability` (version `1`), the 1024-series cardinality cap per instrument, no exemplars, the 4-key Resource allowlist (`service.name`, `service.version`, `os.type`, `host.arch`), PostHog `/i` Delta temporality, pathless Collector Cumulative temporality, and the existing 60-second metrics collection and export cadence. No new OTel dependencies or OS probes enter public `engine/`.
+
+### 14.1 Control, aggregation and disable semantics
+
+- Desktop and service processes (`unicd`, `tray`, `gui`, `quick_panel`) reuse `telemetry.enabled && telemetry.metrics.enabled`. `unicd` remains the sole OTLP exporter (`service.name=unicd`). Desktop roles submit bounded (<= 1 KiB) samples over the owner-only local socket route `POST /v1/diagnostics/resource-sample` and stop all timers when metrics are disabled. `unicd --cli-temporary` skips resource sampling.
+- Mobile (`unic-mobile`) reuses `<DataDir>/mobile-telemetry.json`.
+- Metrics disable/re-enable resets sampling epoch baselines so disabled-period CPU, context switches, wakeups, network bytes, or battery intervals are never replayed.
+- Invalid enum values or out-of-range numbers increment `unic.observability.dropped` (`signal=metrics`, `reason=invalid_record`) and create no new label series.
+- **Event timestamping and C1 backpressure discard**: Visibility, lifecycle, and Android background-mode callbacks record monotonic/elapsed timestamps synchronously in memory without executing OS probes, blocking locks, or IPC. OS cumulative counters (`cpu.time`, `window.time`, `cpu.utilization`, `wakeups`, `context_switches`, `network.bytes`) cannot be split across multiple states in `[t_base, t_probe]`: zero relevant state transitions attribute cleanly to the baseline state; a single relevant transition (`S_base -> S_next` at `t_ev`) attributes to `S_base` only when `prevDur = t_ev - t_base > 0` and probe dequeue spill `t_probe - t_ev <= max(25ms, min(250ms, 0.10 * prevDur))`. Multi-transition windows, transition-queue overflows, or spills above threshold are discarded silently on the host side while re-anchoring baseline to `S(t_probe)`, adding no new enum values and emitting no synthetic failures to `unic.resource.probe_status`.
+- **Android background residency and `background_screen_off` sleep rules**: Pure wall-clock `unic.power.bg_mode.time` is segmented piecewise across consecutive timestamped transitions using `elapsedRealtime`; queue overflow or non-monotonic gaps (`> 180s`) discard the damaged residency slice and re-anchor. Cumulative CPU and UID network counters evaluate purity orthogonally across `(app_state, power_source)` (unaffected by `bg_mode` switches). Under `foreground` and `background`, `(elapsedDelta - uptimeDelta) > 10s` triggers `sleep_jumped=true`; under `background_screen_off`, normal standby CPU deep sleep (`elapsedDelta > uptimeDelta`, `elapsedDelta <= 180s`, `uptimeDelta >= 0`) does not trigger `sleep_jumped`, and standby residency/window uses `elapsedDelta`.
+- **iOS MetricKit consent generation and B1 durable boundary**: `MetricKitSubscriber.didReceive` binds `(telemetryEnabled, entryGeneration)` synchronously on entry before parsing or async dispatch. Disabling increments `telemetryGeneration`, unregisters `MXMetricManager`, and deletes `pending-metrickit.json` so earlier-generation payloads are dropped even across rapid disable/re-enable. Accepted reports are atomically persisted to `pending-metrickit.json` prior to `engineQueue` dispatch; Go `RecordMetricKit`/`SubmitMetricKitPayload` explicitly returns ingestion errors when closed/full/disabled/invalid; successful Go admission atomically records a privacy-safe SHA-256 content digest (`beginMs|endMs|latestApplicationVersion|includesMultipleApplicationVersions|canonicalSortedMetrics`) into `seen-metrickit-ids.json` before removing that item from `pending-metrickit.json` (at-least-once across crashes prior to `seen` persistence; downstream OTLP HTTP upload stays best-effort per Section 1 #9). `seen-metrickit-ids.json` stays bounded (64 hashes) across disable to prevent historical OS re-delivery double counting.
+
+### 14.2 Enumerations
+
+- `process_role`: `service` | `tray` | `gui` | `quick_panel` | `mobile_app` | `ios_keyboard`
+- `app_state`: `foreground` | `background` | `background_screen_off` | `suspended`
+- `power_source`: `battery` | `plugged` | `unknown`
+
+### 14.3 Instrument catalog
+
+| Instrument | Type | Unit | Allowed labels (max series) | Measurement and boundaries |
+|---|---|---|---|---|
+| `unic.resource.cpu.time` | Counter | `s` | `process_role`, `app_state`, `power_source` (<= 72) | Process user+system CPU seconds (`getrusage(RUSAGE_SELF)` on macOS/Linux/iOS; `GetProcessTimes` on Windows; `Process.getElapsedCpuTime()` on Android) |
+| `unic.resource.window.time` | Counter | `s` | `process_role`, `app_state`, `power_source` (<= 72) | Active monotonic observation window seconds (sleep-jump windows handled separately) |
+| `unic.resource.cpu.utilization` | Histogram | `1` | `process_role`, `app_state`, `power_source` (<= 72) | Window `cpu_delta / active_wall_delta` recorded only when `active_wall_delta >= 10s` (`>= 5s` for `ios_keyboard`) and no sleep jump occurred. Boundaries: `0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 4` |
+| `unic.resource.memory.footprint` | Histogram | `By` | `process_role`, `app_state` (<= 24) | OS-native memory ledger (`ri_phys_footprint` on macOS; `task_info(TASK_VM_INFO).phys_footprint` on iOS; `K32GetProcessMemoryInfo.PrivateUsage` on Windows; `Debug.MemoryInfo.totalPss` with `VmRSS` fallback on Android; `/proc/self/smaps_rollup` `Pss` with `VmRSS` fallback on Linux). Boundaries (MiB): `4, 8, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384, 512, 1024` MiB |
+| `unic.resource.memory.go_heap` | Histogram | `By` | `process_role`, `app_state` (<= 24) | Go `runtime/metrics` `/memory/classes/heap/objects:bytes` + `/memory/classes/heap/unused:bytes` (no STW). Boundaries (MiB): `1, 2, 4, 8, 16, 32, 64, 128, 256, 512` MiB |
+| `unic.power.network.bytes` | Counter | `By` | `direction`, `app_state` (<= 8) | Android aggregate UID bytes (`TrafficStats.getUidTxBytes`/`getUidRxBytes`; `direction` in `{tx, rx}`). Transport breakdown is not guessed or duplicated. Omitted when `TrafficStats.UNSUPPORTED` |
+| `unic.power.ios_metrickit.cpu.time` | Counter | `s` | none (1) | iOS main app `MXMetricPayload.cpuMetrics.cumulativeCPUTime` |
+| `unic.power.ios_metrickit.network.bytes` | Counter | `By` | `direction`, `transport` (<= 4) | iOS main app `MXMetricPayload.networkTransferMetrics` (`direction` in `{tx, rx}`, `transport` in `{wifi, cellular}`) |
+| `unic.power.ios_metrickit.memory.peak` | Histogram | `By` | none (1) | iOS main app `MXMetricPayload.memoryMetrics.peakMemoryUsage` (same byte boundaries as `memory.footprint`) |
+| `unic.power.ios_metrickit.app_time` | Counter | `s` | `state` (<= 2) | iOS main app `MXMetricPayload.applicationTimeMetrics` (`state` in `{foreground, background}`) |
+| `unic.power.wakeups` | Counter | `{wakeup}` | `process_role`, `app_state` (<= 24) | macOS-only kernel interrupt wakeups (`proc_pid_rusage(RUSAGE_INFO_V0).ri_interrupt_wkups`) |
+| `unic.power.context_switches` | Counter | `{switch}` | `process_role`, `app_state` (<= 24) | Linux and Android process voluntary context switches (`/proc/self/status` `voluntary_ctxt_switches`). Never named or aggregated as hardware wakeups |
+| `unic.power.bg_mode.time` | Counter | `s` | `mode`, `screen_state`, `multicast_lock` (<= 16) | Android background mode residency (`mode` in `{fgs_idle, overlay_polling, overlay_event, shizuku}`, `screen_state` in `{on, off}`, `multicast_lock` in `{true, false}`) |
+| `unic.power.thermal.time` | Counter | `s` | `app_state`, `level`, `power_source` (<= 48) | System thermal state (`level` in `{nominal, fair, serious, critical}`) on iOS `ProcessInfo.thermalState` and Android API 29+ `PowerManager.currentThermalStatus`. System-level reading (not app-exclusive) |
+| `unic.power.system_battery.drain_rate` | Histogram | `{percent}/h` | `app_state`, `low_power_mode` (<= 6) | **Android-only** system-wide discharge rate recorded **only** while an active BroadcastReceiver (`ACTION_BATTERY_CHANGED`, `ACTION_POWER_SAVE_MODE_CHANGED`) observes continuous `unplugged` (`power_source=battery`) windows `>= 10 min` (`>= 600s`) without unknown power source, observation gaps (`> 180s`), battery percentage increases, sleep jumps, or `app_state`/`low_power_mode` changes (retried cleanly on 60s ticks without claiming prior unmonitored intervals). **iOS does not emit `system_battery.drain_rate`** (`battery_probe_status="unsupported"`, retaining `power_source` tag, CPU, memory, thermal, and MetricKit 24h summaries). Boundaries: `0, 0.5, 1, 2, 3, 5, 8, 12, 20, 35, 60` |
+| `unic.resource.probe_status` | Counter | `{sample}` | `process_role`, `probe`, `status` (<= 42) | Incremented when `probe` (`cpu`, `memory`, `wakeups`, `context_switches`, `network`, `thermal`, `battery`) is `unsupported` or `error`; missing probes are never zero-filled |
+
+### 14.4 Platform safety and thread rules
+
+- No runtime additions to `AndroidManifest.xml` permissions or private iOS/macOS frameworks.
+- iOS Keyboard Extension uses only extension-safe APIs (`getrusage`, `task_info(TASK_VM_INFO)`, `ProcessInfo`) and never accesses `UIApplication.shared` or `MXMetricManager`.
+- Native collector callbacks never block synchronously on the UI main thread (`DispatchQueue.main.sync` / `onMainSync`); UIKit/Broadcast state is asynchronously cached behind locks.
+- Go heap inspection uses non-STW `runtime/metrics` rather than `runtime.ReadMemStats`.

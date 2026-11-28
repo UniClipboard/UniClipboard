@@ -43,6 +43,7 @@ import java.util.concurrent.TimeUnit
 internal class OverlayClipboardController(
   private val appContext: Context,
   private val onBackgroundClipCaptured: (AndroidClipSnapshot) -> Unit,
+  private val onMonitorStateChanged: (() -> Unit)? = null,
 ) {
   companion object {
     private const val TAG = "UnicOverlayClip"
@@ -84,6 +85,8 @@ internal class OverlayClipboardController(
   @Volatile private var pollingDesired = false
   @Volatile private var screenInteractive = true
   @Volatile private var appInForeground = true
+  @Volatile private var cachedOverlayPermission = false
+  @Volatile private var cachedReadLogsPermission = false
   private var pollReadInFlight = false
 
   private val pollRunnable = object : Runnable {
@@ -125,19 +128,23 @@ internal class OverlayClipboardController(
   }
 
   fun hasOverlayPermission(): Boolean {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+    val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
       Settings.canDrawOverlays(appContext)
     } else {
       true
     }
+    cachedOverlayPermission = granted
+    return granted
   }
 
   fun hasReadLogsPermission(): Boolean {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       appContext.checkSelfPermission(Manifest.permission.READ_LOGS) == PackageManager.PERMISSION_GRANTED
     } else {
       true
     }
+    cachedReadLogsPermission = granted
+    return granted
   }
 
   fun requestOverlayPermission(): Boolean {
@@ -189,6 +196,7 @@ internal class OverlayClipboardController(
   }
 
   fun startPolling() {
+    hasOverlayPermission()
     pollingDesired = true
     mainHandler.post { reconcilePollingLoop(immediate = true) }
   }
@@ -206,6 +214,7 @@ internal class OverlayClipboardController(
 
   fun startEventMonitor() {
     if (eventMonitorDesired && logcatThread?.isAlive == true) return
+    hasOverlayPermission()
     eventMonitorDesired = true
     if (!hasReadLogsPermission()) {
       Log.i(TAG, "READ_LOGS not granted yet; event monitor waiting")
@@ -215,8 +224,12 @@ internal class OverlayClipboardController(
   }
 
   fun stopEventMonitor() {
+    val wasActive = isEventMonitorActive()
     eventMonitorDesired = false
     stopLogcatSupervisor()
+    if (wasActive) {
+      onMonitorStateChanged?.invoke()
+    }
     mainHandler.post {
       mainHandler.removeCallbacks(logcatTriggerRunnable)
       burstStartElapsedMs = 0L
@@ -227,9 +240,13 @@ internal class OverlayClipboardController(
   }
 
   fun stopAll() {
+    val wasActive = isPollingActive() || isEventMonitorActive()
     pollingDesired = false
     eventMonitorDesired = false
     stopLogcatSupervisor()
+    if (wasActive) {
+      onMonitorStateChanged?.invoke()
+    }
     mainHandler.post {
       mainHandler.removeCallbacks(pollRunnable)
       mainHandler.removeCallbacks(logcatTriggerRunnable)
@@ -297,6 +314,17 @@ internal class OverlayClipboardController(
 
   private fun shouldRunPollTick(): Boolean =
     pollingDesired && !appInForeground && screenInteractive && hasOverlayPermission()
+
+  fun isPollingActive(): Boolean =
+    pollingDesired && !appInForeground && screenInteractive && cachedOverlayPermission
+
+  fun isEventMonitorActive(): Boolean =
+    eventMonitorDesired &&
+      !stopLogcat &&
+      !appInForeground &&
+      cachedOverlayPermission &&
+      cachedReadLogsPermission &&
+      logcatProcess != null
 
   private fun reconcilePollingLoop(immediate: Boolean = false) {
     mainHandler.removeCallbacks(pollRunnable)
@@ -632,6 +660,7 @@ internal class OverlayClipboardController(
             .redirectErrorStream(true)
             .start()
           logcatProcess = proc
+          onMonitorStateChanged?.invoke()
           Log.i(TAG, "logcat event supervisor started")
 
           BufferedReader(InputStreamReader(proc.inputStream)).use { reader ->
@@ -652,7 +681,10 @@ internal class OverlayClipboardController(
           }
         } finally {
           destroyProcessQuietly(proc)
-          if (logcatProcess === proc) logcatProcess = null
+          if (logcatProcess === proc) {
+            logcatProcess = null
+            onMonitorStateChanged?.invoke()
+          }
         }
 
         if (stopLogcat || !eventMonitorDesired) break

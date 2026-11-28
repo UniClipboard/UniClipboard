@@ -17,4 +17,5 @@ func TestDesktopAcceptance(t *testing.T) {
 	t.Run("first-install-setup", scenarioFirstInstallSetup)
 	t.Run("production-boundary", scenarioProductionBoundary)
 	t.Run("standalone-quick-panel-lifecycle", scenarioStandaloneQuickPanelLifecycle)
+	t.Run("resource-telemetry", scenarioResourceTelemetry)
 }

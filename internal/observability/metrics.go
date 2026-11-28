@@ -60,16 +60,32 @@ func validRecord(r *engine.DiagnosticRecord) bool {
 }
 
 type instruments struct {
-	syncCounts   map[string]metric.Int64Counter
-	syncTimes    map[string]metric.Float64Histogram
-	exposure     metric.Float64Counter
-	operations   metric.Int64Counter
-	duration     metric.Float64Histogram
-	errors       metric.Int64Counter
-	dropped      metric.Int64Counter
-	failures     metric.Int64Counter
-	lastDrops    [5][5]uint64
-	lastFailures [5][7]uint64
+	syncCounts         map[string]metric.Int64Counter
+	syncTimes          map[string]metric.Float64Histogram
+	exposure           metric.Float64Counter
+	operations         metric.Int64Counter
+	duration           metric.Float64Histogram
+	errors             metric.Int64Counter
+	dropped            metric.Int64Counter
+	failures           metric.Int64Counter
+	resCPU             metric.Float64Counter
+	resWindow          metric.Float64Counter
+	resCPUUtil         metric.Float64Histogram
+	resMemory          metric.Float64Histogram
+	resGoHeap          metric.Float64Histogram
+	resProbeStatus     metric.Int64Counter
+	pwrNetwork         metric.Int64Counter
+	pwrWakeups         metric.Int64Counter
+	pwrContextSwitches metric.Int64Counter
+	pwrBgMode          metric.Float64Counter
+	pwrThermal         metric.Float64Counter
+	pwrDrainRate       metric.Float64Histogram
+	mkCPU              metric.Float64Counter
+	mkNetwork          metric.Int64Counter
+	mkMemoryPeak       metric.Float64Histogram
+	mkAppTime          metric.Float64Counter
+	lastDrops          [5][5]uint64
+	lastFailures       [5][7]uint64
 }
 
 func (g *generation) initMetrics() error {
@@ -103,7 +119,10 @@ func (g *generation) initMetrics() error {
 	if err != nil {
 		return err
 	}
-	return g.initSyncMetrics()
+	if err := g.initSyncMetrics(); err != nil {
+		return err
+	}
+	return g.initResourceMetrics()
 }
 func (g *generation) recordMetric(r engine.DiagnosticRecord) {
 	ctx := context.Background()

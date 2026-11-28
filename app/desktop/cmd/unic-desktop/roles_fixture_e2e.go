@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
@@ -27,6 +28,9 @@ func init() {
 	if os.Getenv("UNIC_DESKTOP_E2E_PROCESS_FIXTURE") == "1" {
 		runRole = runProcessFixture
 		capturePublicTarget = func() panelActivation { return panelActivation{Error: "target"} }
+	}
+	if d, err := time.ParseDuration(os.Getenv("UNIC_DESKTOP_E2E_RESOURCE_INTERVAL")); err == nil && d > 0 {
+		resourceReportInterval = d
 	}
 }
 func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error {
@@ -55,6 +59,14 @@ func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error
 		}
 		defer func() { _ = owner.Close() }()
 		defer r.close()
+		reporter := startRoleResourceReporter(ctx, "tray", socket, settings, "background")
+		defer reporter.Close()
+		settings.OnChange = func(_, current config.Config, err error) {
+			if err == nil {
+				reporter.SetEnabled(current.Telemetry.Enabled && current.Telemetry.Metrics.Enabled)
+			}
+		}
+		go func() { _ = settings.Watch(ctx) }()
 		r.mu.Lock()
 		r.state.Shortcut = shortcutStatus{Requested: settings.Current().Desktop.QuickPanelShortcut}
 		r.mu.Unlock()
@@ -76,6 +88,22 @@ func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error
 	}
 	var mu sync.Mutex
 	visible := role == desktopprocess.GUI
+	initialState := "background"
+	if visible {
+		initialState = "foreground"
+	}
+	roleName := string(role)
+	if role == desktopprocess.QuickPanel {
+		roleName = "quick_panel"
+	}
+	reporter := startRoleResourceReporter(ctx, roleName, socket, settings, initialState)
+	defer reporter.Close()
+	settings.OnChange = func(_, current config.Config, err error) {
+		if err == nil {
+			reporter.SetEnabled(current.Telemetry.Enabled && current.Telemetry.Metrics.Enabled)
+		}
+	}
+	go func() { _ = settings.Watch(ctx) }()
 	userClosed := false
 	var panelBoard *clipboardintegration.PanelClipboard
 	var panelWrites atomic.Int64
@@ -127,14 +155,17 @@ func runProcessFixture(role desktopprocess.Role, settings *config.Manager) error
 			_ = json.Unmarshal(raw, &act)
 			if role == desktopprocess.QuickPanel && visible && act.Action == panelActionToggle {
 				visible = false
+				reporter.SetAppState("background")
 				return nil, nil
 			}
 			visible = true
+			reporter.SetAppState("foreground")
 			return nil, nil
 		case "focus", "favorites":
 			return nil, nil
 		case "close":
 			visible = false
+			reporter.SetAppState("background")
 			if role == desktopprocess.GUI {
 				userClosed = true
 				return desktopprocess.ReplyAfter(nil, cancel), nil

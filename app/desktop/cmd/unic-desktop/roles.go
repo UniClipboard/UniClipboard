@@ -17,6 +17,7 @@ import (
 	"github.com/uniclipboard/unic/app/desktop/internal/desktopprocess"
 	"github.com/uniclipboard/unic/app/desktop/internal/lifecycle"
 	"github.com/uniclipboard/unic/app/desktop/internal/quickpanel"
+	"github.com/uniclipboard/unic/app/desktop/internal/resourcereport"
 	"github.com/uniclipboard/unic/app/desktop/internal/setupflow"
 	"github.com/uniclipboard/unic/internal/clipboardintegration"
 	api "github.com/uniclipboard/unic/internal/localapi"
@@ -26,6 +27,17 @@ import (
 
 // Each role enters this function in a separate operating-system process.
 var runRole = runNativeRole
+var resourceReportInterval time.Duration
+
+func startRoleResourceReporter(ctx context.Context, role, socket string, settings *config.Manager, initial string) *resourcereport.Reporter {
+	return resourcereport.New(ctx, resourcereport.Options{
+		Role:     role,
+		Socket:   socket,
+		Settings: settings,
+		Interval: resourceReportInterval,
+		Initial:  initial,
+	})
+}
 
 // The isolated desktop automation fixture can substitute a directory adapter.
 var useDaemonClipboard = true

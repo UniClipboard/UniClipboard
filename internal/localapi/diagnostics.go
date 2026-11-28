@@ -22,3 +22,6 @@ func (c *Client) Telemetry(ctx context.Context) (v observability.TelemetryState,
 	err = c.do(ctx, "GET", "/v1/diagnostics/telemetry", nil, &v)
 	return
 }
+func (c *Client) SendResourceSample(ctx context.Context, sample observability.ResourceSample) error {
+	return c.do(ctx, "POST", "/v1/diagnostics/resource-sample", sample, nil)
+}

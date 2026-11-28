@@ -1,0 +1,11 @@
+# Case: Desktop role resource telemetry and disable barrier
+# Mode: process
+# Purpose: Verify unicd and Desktop tray, gui and quick_panel processes emit bounded resource metrics to the single unicd OTLP exporter and stop IPC when disabled.
+# Steps:
+#   Start a local TLS OTLP metrics receiver, an isolated unicd, and Desktop tray, gui and quick_panel role processes; wait for all four process roles in OTLP metrics; disable telemetry.metrics.enabled and verify zero subsequent sample or OTLP requests; re-enable telemetry.metrics.enabled and confirm all four roles resume reporting with fresh baselines.
+# Expected:
+#   All four process roles (service, tray, gui, quick_panel) appear in decoded OTLP metrics with valid CPU, window, memory and Go heap data, disabling metrics halts desktop resource-sample IPC and OTLP exports, and re-enabling resumes reporting across all roles.
+# Forbidden:
+#   Direct OTLP export from unic-desktop, leaked paths or secrets, negative deltas, or resource IPC after telemetry.metrics.enabled=false.
+
+acceptance startup resource-telemetry

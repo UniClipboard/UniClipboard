@@ -75,6 +75,7 @@ final class KeyboardEngineSession {
 
   private let store: KeyboardSnapshotStore
   private let queue = DispatchQueue(label: "app.uniclipboard.keyboard.engine", qos: .userInitiated)
+  private let resourceCollector = KeyboardResourceCollector()
   private let liveLock = NSLock()
   private var _isLive = false
   private var engine: MobileEngine?
@@ -228,15 +229,18 @@ final class KeyboardEngineSession {
       var subErr: NSError?
       _ = eng.subscribe(sink, error: &subErr)
       if subErr != nil {
+        self.resourceCollector.resetOnSuspension()
         try? eng.close(nil)
         self.emitState(.error)
         return
       }
 
       do {
+        eng.setHostResourceProvider(self.resourceCollector)
         try eng.setRuntimeState("active")
         try eng.start(nil)
       } catch {
+        self.resourceCollector.resetOnSuspension()
         try? eng.close(nil)
         self.emitState(.error)
         return
@@ -278,10 +282,13 @@ final class KeyboardEngineSession {
             keepImages: self.lastKeepImages
           )
         }
+        try? eng.flushResourceSample()
+        self.resourceCollector.resetOnSuspension()
         try? eng.close(nil)
         self.engine = nil
         self.setLive(false)
       }
+      self.resourceCollector.resetOnSuspension()
       self.emitState(.idle)
     }
   }

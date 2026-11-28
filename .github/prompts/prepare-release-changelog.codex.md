@@ -11,6 +11,7 @@ Generate the end-user changelog for Unic {{PLATFORM}} {{IDENTITY}} ({{CHANNEL}})
 - Prerelease: {{IS_PRERELEASE}}
 - Release date: {{RELEASE_DATE}}
 - Is Desktop release: {{IS_DESKTOP}}
+- Has structured summary notes JSON: {{HAS_NOTES_JSON}}
 
 ## Scope rules
 
@@ -44,9 +45,9 @@ Generate the end-user changelog for Unic {{PLATFORM}} {{IDENTITY}} ({{CHANNEL}})
    `## {{IDENTITY}} ({{PLATFORM}}) - {{RELEASE_DATE}}`
 2. Update `{{CHANGELOG_ZH}}` in Simplified Chinese, keeping the exact first line heading:
    `## {{IDENTITY}} ({{PLATFORM}}) - {{RELEASE_DATE}}`
-3. If `{{IS_DESKTOP}}` is `true`, ALSO update `{{DESKTOP_NOTES_PATH}}` (`release/desktop-notes.json`):
+3. If `{{HAS_NOTES_JSON}}` is `true`, ALSO update `{{NOTES_JSON_PATH}}`:
    - Valid JSON object with exact keys `"en"` and `"zh"`.
-   - Each value is a concise, user-friendly plain-text summary (1-4 sentences, no raw HTML comments `<!--`) covering the key user-visible highlights from this release, ending with `All paired devices must use v2.` (English) and `所有配对设备必须使用 v2。` (Chinese).
-   - Never include `<!--` anywhere in `release/desktop-notes.json` because the updater feed uses `<!-- zh -->` as an internal separator.
-4. Only modify `{{CHANGELOG_EN}}`, `{{CHANGELOG_ZH}}`, and (when `{{IS_DESKTOP}}` is `true`) `release/desktop-notes.json`. Do not edit `release/products.toml` or any other file.
+   - Each value is a concise, user-friendly plain-text summary (1-4 sentences, no raw HTML comments `<!--`) covering the key user-visible highlights from this release, ending with `{{NOTES_END_EN}}` (English) and `{{NOTES_END_ZH}}` (Chinese).
+   - Never include `<!--` anywhere in `{{NOTES_JSON_PATH}}` because the updater feed uses `<!-- zh -->` as an internal separator.
+4. Only modify `{{CHANGELOG_EN}}`, `{{CHANGELOG_ZH}}`, and (when `{{HAS_NOTES_JSON}}` is `true`) `{{NOTES_JSON_PATH}}`. Do not edit `release/products.toml` or any other file.
 5. Remove all HTML comments (`<!-- ... -->`) before finishing.

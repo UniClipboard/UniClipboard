@@ -36,6 +36,29 @@ PLACEHOLDER_MARKERS = (
     "No CLI artifacts found for this release.",
 )
 MAX_DESKTOP_NOTE_CHARS = 4000
+NOTES_CONFIG = {
+    "desktop": {
+        "path": "release/desktop-notes.json",
+        "placeholder_en": "<!-- Replace with concise English release notes for Desktop users. -->",
+        "placeholder_zh": "<!-- 替换为面向桌面端用户的简洁中文更新说明。 -->",
+        "end_en": "All paired devices must use v2.",
+        "end_zh": "所有配对设备必须使用 v2。",
+    },
+    "mobile": {
+        "path": "release/android-notes.json",
+        "placeholder_en": "<!-- Replace with concise English release notes for Android/Mobile users. -->",
+        "placeholder_zh": "<!-- 替换为面向移动端用户的简洁中文更新说明。 -->",
+        "end_en": "All paired devices must use v2/v3.",
+        "end_zh": "所有配对设备需使用 v2/v3。",
+    },
+    "android": {
+        "path": "release/android-notes.json",
+        "placeholder_en": "<!-- Replace with concise English release notes for Android users. -->",
+        "placeholder_zh": "<!-- 替换为面向 Android 用户的简洁中文更新说明。 -->",
+        "end_en": "All paired devices must use v2/v3.",
+        "end_zh": "所有配对设备需使用 v2/v3。",
+    },
+}
 
 
 def parse_version(raw):
@@ -387,6 +410,9 @@ def cmd_plan(args):
         "desktop_notes": "release/desktop-notes.json"
         if args.platform == "desktop"
         else "",
+        "android_notes": "release/android-notes.json"
+        if args.platform in ("mobile", "android")
+        else "",
         "needs_acceptance": "true" if needs_acceptance else "false",
     }
 
@@ -516,15 +542,16 @@ def cmd_init_changelog(args):
                 "utf-8"
             )
         )
-    if args.platform == "desktop":
-        notes_path = root / "release" / "desktop-notes.json"
+    notes_cfg = NOTES_CONFIG.get(args.platform)
+    if notes_cfg:
+        notes_path = root / notes_cfg["path"]
         notes_path.parent.mkdir(parents=True, exist_ok=True)
         notes_path.write_bytes(
             (
                 json.dumps(
                     {
-                        "en": "<!-- Replace with concise English release notes for Desktop users. -->",
-                        "zh": "<!-- 替换为面向桌面端用户的简洁中文更新说明。 -->",
+                        "en": notes_cfg["placeholder_en"],
+                        "zh": notes_cfg["placeholder_zh"],
                     },
                     ensure_ascii=False,
                     indent=2,
@@ -551,25 +578,29 @@ def assert_finalized_markdown(path, version, build_number, platform):
         raise ValueError(f"changelog file {path} has no content")
 
 
-def assert_finalized_desktop_notes(path):
+def assert_finalized_notes_json(path):
     if not path.is_file():
-        raise ValueError(f"missing desktop notes file: {path}")
+        raise ValueError(f"missing notes file: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or set(data.keys()) != {"en", "zh"}:
-        raise ValueError("release/desktop-notes.json must contain exact keys 'en' and 'zh'")
+        raise ValueError(f"{path} must contain exact keys 'en' and 'zh'")
     for lang in ("en", "zh"):
         text = data[lang]
         if not isinstance(text, str) or not text.strip():
-            raise ValueError(f"release/desktop-notes.json '{lang}' must be a non-empty string")
+            raise ValueError(f"{path} '{lang}' must be a non-empty string")
         if len(text) > MAX_DESKTOP_NOTE_CHARS:
             raise ValueError(
-                f"release/desktop-notes.json '{lang}' exceeds {MAX_DESKTOP_NOTE_CHARS} characters"
+                f"{path} '{lang}' exceeds {MAX_DESKTOP_NOTE_CHARS} characters"
             )
         for marker in PLACEHOLDER_MARKERS:
             if marker in text:
                 raise ValueError(
-                    f"release/desktop-notes.json '{lang}' contains forbidden marker {marker!r}"
+                    f"{path} '{lang}' contains forbidden marker {marker!r}"
                 )
+
+
+def assert_finalized_desktop_notes(path):
+    assert_finalized_notes_json(path)
 
 
 def cmd_validate_changelog(args):
@@ -579,8 +610,9 @@ def cmd_validate_changelog(args):
     en_rel, zh_rel = changelog_paths(args.platform, version, build_number)
     assert_finalized_markdown(root / en_rel, version, build_number, args.platform)
     assert_finalized_markdown(root / zh_rel, version, build_number, args.platform)
-    if args.platform == "desktop":
-        assert_finalized_desktop_notes(root / "release" / "desktop-notes.json")
+    notes_cfg = NOTES_CONFIG.get(args.platform)
+    if notes_cfg:
+        assert_finalized_notes_json(root / notes_cfg["path"])
 
 
 def cmd_render_prompt(args):
@@ -596,6 +628,7 @@ def cmd_render_prompt(args):
         "android": "Android app (`app/expo/` Android behavior, mobile sync, Android migration and sharing).",
         "ios": "iOS app (`app/expo/` iOS behavior, Share Extension, Keyboard Extension, mobile sync, iOS migration).",
     }
+    notes_cfg = NOTES_CONFIG.get(args.platform)
     replacements = {
         "{{PLATFORM}}": args.platform,
         "{{PLATFORM_SCOPE}}": scope_hints[args.platform],
@@ -614,6 +647,12 @@ def cmd_render_prompt(args):
         "{{DESKTOP_NOTES_PATH}}": "release/desktop-notes.json"
         if args.platform == "desktop"
         else "(not applicable for this platform)",
+        "{{HAS_NOTES_JSON}}": "true" if notes_cfg else "false",
+        "{{NOTES_JSON_PATH}}": notes_cfg["path"]
+        if notes_cfg
+        else "(not applicable for this platform)",
+        "{{NOTES_END_EN}}": notes_cfg["end_en"] if notes_cfg else "",
+        "{{NOTES_END_ZH}}": notes_cfg["end_zh"] if notes_cfg else "",
     }
     rendered = template
     for token, value in replacements.items():
@@ -652,11 +691,11 @@ def dispatch_plan(platform, channel):
         ]
     if platform == "mobile":
         return [
-            {"workflow": "release-android.yml", "publish": True, "track": track},
+            {"workflow": "release-android.yml", "channel": channel, "publish": True, "play_track": track},
             {"workflow": "release-ios.yml", "publish": True},
         ]
     if platform == "android":
-        return [{"workflow": "release-android.yml", "publish": True, "track": track}]
+        return [{"workflow": "release-android.yml", "channel": channel, "publish": True, "play_track": track}]
     if platform == "ios":
         return [{"workflow": "release-ios.yml", "publish": True}]
     raise ValueError(f"unsupported platform: {platform}")
@@ -712,8 +751,9 @@ def cmd_parse_branch(args):
         en_rel, zh_rel = changelog_paths(platform, version, build_number)
         assert_finalized_markdown(root / en_rel, version, build_number, platform)
         assert_finalized_markdown(root / zh_rel, version, build_number, platform)
-        if platform == "desktop":
-            assert_finalized_desktop_notes(root / "release" / "desktop-notes.json")
+        notes_cfg = NOTES_CONFIG.get(platform)
+        if notes_cfg:
+            assert_finalized_notes_json(root / notes_cfg["path"])
 
     dispatches = dispatch_plan(info["platform"], info["channel"])
     track = "production" if info["channel"] == "stable" else "internal"

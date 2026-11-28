@@ -62,6 +62,7 @@ jobs:
       changelog_en: ${{ steps.plan.outputs.changelog_en }}
       changelog_zh: ${{ steps.plan.outputs.changelog_zh }}
       desktop_notes: ${{ steps.plan.outputs.desktop_notes }}
+      android_notes: ${{ steps.plan.outputs.android_notes }}
       needs_acceptance: ${{ steps.plan.outputs.needs_acceptance }}
     steps:
       - name: Checkout repository
@@ -148,6 +149,8 @@ jobs:
           git add release/products.toml release/changelogs/
           if [ "$PLATFORM" = "desktop" ]; then
             git add release/desktop-notes.json
+          elif [ "$PLATFORM" = "mobile" ] || [ "$PLATFORM" = "android" ]; then
+            git add release/android-notes.json
           fi
           git commit -m "chore(release): prepare ${PLATFORM} ${CHANNEL} ${IDENTITY}"
 
@@ -251,6 +254,8 @@ jobs:
           allowed=("$CHANGELOG_EN" "$CHANGELOG_ZH")
           if [ "$PLATFORM" = "desktop" ]; then
             allowed+=("release/desktop-notes.json")
+          elif [ "$PLATFORM" = "mobile" ] || [ "$PLATFORM" = "android" ]; then
+            allowed+=("release/android-notes.json")
           fi
           while IFS= read -r changed; do
             [ -z "$changed" ] && continue
@@ -283,6 +288,8 @@ jobs:
           git add release/changelogs/
           if [ "$PLATFORM" = "desktop" ]; then
             git add release/desktop-notes.json
+          elif [ "$PLATFORM" = "mobile" ] || [ "$PLATFORM" = "android" ]; then
+            git add release/android-notes.json
           fi
           git diff --cached --quiet || git commit -m "docs(release): finalize changelog for ${PLATFORM} ${IDENTITY}"
 
@@ -315,6 +322,7 @@ jobs:
       CHANGELOG_EN: ${{ needs.prepare.outputs.changelog_en }}
       CHANGELOG_ZH: ${{ needs.prepare.outputs.changelog_zh }}
       DESKTOP_NOTES: ${{ needs.prepare.outputs.desktop_notes }}
+      ANDROID_NOTES: ${{ needs.prepare.outputs.android_notes }}
       PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
       NEEDS_ACCEPTANCE: ${{ needs.prepare.outputs.needs_acceptance }}
     steps:
@@ -366,11 +374,11 @@ jobs:
               ;;
             mobile)
               TRACK=$([ "$CHANNEL" = "stable" ] && echo "production" || echo "internal")
-              TRIGGER_DESC="Dispatches **Android Store candidate** (\`release-android.yml\`, \`publish=true\`, \`track=${TRACK}\`) and **iOS Store candidate** (\`release-ios.yml\`, \`publish=true\`)."
+              TRIGGER_DESC="Dispatches **Android Store candidate** (\`release-android.yml\`, \`channel=${CHANNEL}\`, \`publish=true\`, \`play_track=${TRACK}\`) and **iOS Store candidate** (\`release-ios.yml\`, \`publish=true\`)."
               ;;
             android)
               TRACK=$([ "$CHANNEL" = "stable" ] && echo "production" || echo "internal")
-              TRIGGER_DESC="Dispatches **Android Store candidate** (\`release-android.yml\`, \`publish=true\`, \`track=${TRACK}\`)."
+              TRIGGER_DESC="Dispatches **Android Store candidate** (\`release-android.yml\`, \`channel=${CHANNEL}\`, \`publish=true\`, \`play_track=${TRACK}\`)."
               ;;
             ios)
               TRIGGER_DESC="Dispatches **iOS Store candidate** (\`release-ios.yml\`, \`publish=true\`)."
@@ -382,9 +390,11 @@ jobs:
             ACCEPTANCE_NOTE=$'\n> [!WARNING]\n> No accepted Alpha build record (`joint-release/accepted/v'"${VERSION}"'-build.*`) was found yet. Run **Record Desktop native acceptance** before merging this PR so Stable promotion succeeds.\n'
           fi
 
-          DESKTOP_NOTES_LINE=""
+          NOTES_LINE=""
           if [ -n "$DESKTOP_NOTES" ]; then
-            DESKTOP_NOTES_LINE="- Updated bilingual updater and release notes in \`${DESKTOP_NOTES}\`"
+            NOTES_LINE="- Updated bilingual updater and release notes in \`${DESKTOP_NOTES}\`"
+          elif [ -n "$ANDROID_NOTES" ]; then
+            NOTES_LINE="- Updated bilingual updater and release notes in \`${ANDROID_NOTES}\`"
           fi
 
           {
@@ -396,7 +406,7 @@ jobs:
           ### Changes
           - Updated \`release/products.toml\` for \`${PLATFORM}\` (\`${IDENTITY}\`)
           - Generated changelog at \`${CHANGELOG_EN}\` and \`${CHANGELOG_ZH}\`
-          ${DESKTOP_NOTES_LINE}
+          ${NOTES_LINE}
 
           ### Changelog Preview (English)
 

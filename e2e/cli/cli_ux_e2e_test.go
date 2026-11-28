@@ -91,9 +91,15 @@ func TestCLIUXInitProfileDaemonDoctor(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("doctor before init failed: %d %s %s", code, out, stderr)
 	}
+	if code == 2 {
+		t.Fatalf("unreachable")
+	}
 	code, _, stderr = run("--profile", "work", "status", "--json")
-	if code != 6 || !strings.Contains(stderr, `"next_command":"unic init"`) {
-		t.Fatalf("uninitialized status should exit 6 with unic init hint: %d %s", code, stderr)
+	if code != 6 || !strings.Contains(stderr, `"next_command":"unic init"`) || !strings.Contains(stderr, `"migrate_command":"unic migrate"`) {
+		t.Fatalf("uninitialized status should exit 6 with unic init/migrate hint: %d %s", code, stderr)
+	}
+	if code, _, _ := run("init", "--discard-pending"); code != 2 {
+		t.Fatalf("init --discard-pending without --fresh should exit 2, got %d", code)
 	}
 
 	// 3. Initialize named profile with post-command --profile flag and --name.
@@ -143,14 +149,40 @@ func TestCLIUXInitProfileDaemonDoctor(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, _, stderr = run("-p", "fresh1", "init", "--json")
-	if code == 0 || !strings.Contains(stderr, `"source_present"`) {
-		t.Fatalf("init should refuse when v1 exists without --fresh: %d %s", code, stderr)
+	if code == 0 || !strings.Contains(stderr, `"source_present"`) || strings.Contains(stderr, v1Dir) {
+		t.Fatalf("init should refuse source_present without leaking v1Dir path %q: %d %s", v1Dir, code, stderr)
 	}
 	code, out, stderr = run("-p", "fresh1", "init", "--fresh", "--json")
 	if code != 0 || !strings.Contains(out, `"outcome":"fresh"`) {
 		t.Fatalf("init --fresh failed: %d %s %s", code, out, stderr)
 	}
 	_ = os.RemoveAll(v1Dir)
+
+	// Invalid/unreadable config.toml when running `init --name` omits absolute path from JSON error.
+	code, out, stderr = run("-p", "cfgbad", "init", "--fresh", "--json")
+	if code != 0 {
+		t.Fatalf("cfgbad init failed: %d %s %s", code, out, stderr)
+	}
+	var cfgBadResp struct {
+		Directory string `json:"directory"`
+		Config    string `json:"config"`
+	}
+	if err := json.Unmarshal([]byte(out), &cfgBadResp); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(cfgBadResp.Config); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(cfgBadResp.Config, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	code, out, stderr = run("-p", "cfgbad", "init", "--name", "BadCfg", "--json")
+	if code != 1 || out != "" || !strings.Contains(stderr, `"config_unavailable"`) {
+		t.Fatalf("expected config_unavailable JSON on stderr, got code=%d out=%q err=%q", code, out, stderr)
+	}
+	if strings.Contains(stderr, cfgBadResp.Config) || strings.Contains(stderr, cfgBadResp.Directory) {
+		t.Fatalf("config_unavailable JSON leaked absolute path: %s", stderr)
+	}
 
 	// 5. unic status while stopped returns quickly and does NOT start a temporary unicd.
 	code, out, stderr = run("-p", "work", "status", "--json")

@@ -36,7 +36,7 @@ func Read(dir string) (State, error) {
 	var state State
 	if json.Unmarshal(raw, &state) != nil || (state.Status != "pending" && state.Status != "complete") ||
 		(state.Status == "complete" && state.Outcome != "imported" && state.Outcome != "no_source" && state.Outcome != "fresh") {
-		return State{}, errors.New("invalid CLI initialization state; run `unic init` or `unic migrate --help`")
+		return State{}, errors.New("invalid CLI initialization state; run `unic init` or `unic migrate`")
 	}
 	return state, nil
 }
@@ -93,20 +93,29 @@ func Write(dir string, state State) error {
 // ErrSourceMismatch prevents another source from completing a pending import.
 var ErrSourceMismatch = errors.New("complete the pending source before importing a different source")
 
-// Begin records a real CLI or Desktop import before credentials. Callers must
-// validate directory separation and hold the shared profile transition lock.
-func Begin(dir, source string) (State, error) {
+// KeyslotSHA256 computes the hex SHA-256 digest of source/vault/keyslot.json without modifying state.
+func KeyslotSHA256(source string) (string, error) {
 	f, err := os.Open(filepath.Join(source, "vault", "keyslot.json"))
 	if err != nil {
-		return State{}, errors.New("cannot read the v1 key slot")
+		return "", errors.New("cannot read the v1 key slot")
 	}
 	raw, err := io.ReadAll(io.LimitReader(f, (8<<20)+1))
 	closeErr := f.Close()
 	if err != nil || closeErr != nil || len(raw) > 8<<20 {
-		return State{}, errors.New("cannot read the v1 key slot")
+		return "", errors.New("cannot read the v1 key slot")
 	}
 	sum := sha256.Sum256(raw)
-	pending := State{Status: "pending", KeyslotSHA256: hex.EncodeToString(sum[:])}
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// Begin records a real CLI or Desktop import before credentials. Callers must
+// validate directory separation and hold the shared profile transition lock.
+func Begin(dir, source string) (State, error) {
+	sum, err := KeyslotSHA256(source)
+	if err != nil {
+		return State{}, err
+	}
+	pending := State{Status: "pending", KeyslotSHA256: sum}
 	previous, readErr := Read(dir)
 	if readErr == nil && previous.Status == "pending" {
 		if previous.SourceID == "" && previous.KeyslotSHA256 != pending.KeyslotSHA256 {

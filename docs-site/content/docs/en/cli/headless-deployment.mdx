@@ -17,7 +17,7 @@ UNIC_HOME=/absolute/private/state unicd
 - Headless environments have no system clipboard adapter: `history use`, `history action --apply`, `dev copy`, and `dev paste` are unavailable; receiving content is unaffected and received items can be read with `unic history` and `unic recv list`.
 
 <Callout type="warn">
-You must complete [initial setup](./installation#initial-setup) on the data directory before use, e.g. `UNIC_HOME=/absolute/private/state unic migrate --initialize-empty --json`.
+You must complete [initial setup](./installation#initial-setup) on the data directory before use, e.g. `UNIC_HOME=/absolute/private/state unic init` (or `unic init --json` / `unic migrate --initialize-empty --json` in scripts).
 </Callout>
 
 ## Managing with a Service Manager

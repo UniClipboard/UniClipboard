@@ -86,6 +86,17 @@ unic config apply ./my-config.toml    # 用整个文件替换配置
 | `introductions` | `true` | 设备间互相引荐已信任的设备，结果只作为候选，仍需你确认 |
 | `directories.automatic` | `false` | 复制文件夹时是否自动同步；关闭时复制只记录引用，手动发送时才打包 |
 
+### `[sync.relay]`
+
+零知识端到端加密临时 HTTP 中转配置（与 Tailcat P2P / DERP 中继节点相互独立），详情见[混合中转与自部署](../core-features/hybrid-relay)。
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `enabled` | `false` | 是否在目标 P2P 离线时启用 0 等待临时中转；通过 Cloud 一键登录或手动配置自部署后开启 |
+| `url` | `$UNIC_RELAY_URL`，否则 `https://relay.uniclipboard.app` | 中转服务 HTTPS 地址；填入自部署地址即可切换 |
+| `access_key` | `$UNIC_RELAY_ACCESS_KEY`，默认为空 | 官方 Cloud API Key 或自部署实例接入密钥（HTTP Header `X-Unic-Relay-Key`），秘密字段，不回显、不入日志与设置备份 |
+| `max_bytes` | `"25MB"` | 单次中转载荷上限，不得超过 `limits.max_total_bytes`（最大 4 GiB） |
+
 ## `[history]`
 
 | 键 | 默认值 | 说明 |

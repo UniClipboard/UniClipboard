@@ -72,29 +72,30 @@ v2 的数据目录与 v1 完全独立，替换程序不会自动导入 v1 数据
 
 ## 首次初始化
 
-每个数据目录在第一次使用前都必须显式完成迁移初始化，否则业务命令会以退出码 `6`（原因 `migration_required`）拒绝执行。帮助、版本与 `migrate` 本身不受限制。
+每个数据目录在第一次使用前都必须显式完成初始化，否则业务命令会以退出码 `6`（原因 `migration_required`）拒绝执行。帮助、版本、`init` 与 `migrate` 本身不受限制。
 
 <Steps>
 <Step>
 
-阅读迁移说明：
+运行初始化向导（没有 v1 数据时直接完成；交互终端中检测到 v1 数据时会提示选择导入或全新开始）：
 
 ```sh
-unic migrate --help
+unic init
 ```
 
 </Step>
 <Step>
 
-有 v1 历史需要导入时，按说明运行 `unic migrate`（参见 [从 v1 迁移](../migration/v1-to-v2)）。没有 v1 数据时，显式初始化空目录：
+如需直接导入 v1 历史（参见 [从 v1 迁移](../migration/v1-to-v2)），或跳过已知 v1 数据全新开始：
 
 ```sh
-unic migrate --initialize-empty --json
+unic migrate           # 直接导入默认 v1 数据
+unic init --fresh      # 非交互跳过已知 v1 数据
 ```
 
 </Step>
 </Steps>
 
-部分导入、失败、取消或 `--dry-run` 都不会完成初始化；存在未完成的导入时也不能使用 `--initialize-empty`。在桌面版中完成的导入同样满足该要求，但桌面版欢迎页上的“跳过”不会为 CLI 完成初始化。
+自动化脚本也可使用 `unic init --json` 或 `unic migrate --initialize-empty --json`。部分导入、失败、取消或 `--dry-run` 都不会完成初始化；存在真实部分导入形成的 `pending` 状态时，需重跑 `unic migrate` 完成，或显式运行 `unic init --fresh --discard-pending` 放弃。在桌面版中完成的导入同样满足该要求，但桌面版欢迎页上的“跳过”不会为 CLI 完成初始化。
 
 下一步：[CLI 快速上手](./getting-started)。

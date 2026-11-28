@@ -95,6 +95,7 @@ jobs:
     env:
       DESKTOP_NOTES: ${{ inputs.joint && inputs.channel == 'stable' && 'dist/catalogue/desktop-notes.json' || 'release/desktop-notes.json' }}
       DESKTOP_TEMPLATE: ${{ inputs.joint && inputs.channel == 'stable' && 'dist/catalogue/release-template.md' || '.github/release-notes/desktop.md.tmpl' }}
+      DESKTOP_SOURCE_ROOT: ${{ inputs.joint && inputs.channel == 'stable' && 'dist/catalogue/source' || '.' }}
     steps:
       - name: Reject a mismatched manual source
         if: inputs.source_sha == '' && inputs.expected_source != '' && inputs.expected_source != github.sha
@@ -189,7 +190,7 @@ jobs:
                   print('::warning::GitHub-generated contributors are unavailable; explicit changelog remains.')
           Path('dist/generated-notes.md').write_text(body, encoding='utf-8')
           PYNOTES
-          python3 tools/release/github_desktop.py draft --manifest dist/catalogue/release-manifest.json --cli-manifest dist/cli-input/release-manifest.json --notes release/desktop-notes.json --output dist/github-page --channel "$CHANNEL" --previous-tag "$PREVIOUS_TAG" --generated-notes dist/generated-notes.md
+          python3 tools/release/github_desktop.py draft --manifest dist/catalogue/release-manifest.json --cli-manifest dist/cli-input/release-manifest.json --notes release/desktop-notes.json --source-root "$DESKTOP_SOURCE_ROOT" --output dist/github-page --channel "$CHANNEL" --previous-tag "$PREVIOUS_TAG" --generated-notes dist/generated-notes.md
       - name: Publish immutable packages and register numbered build
         if: inputs.operation == 'publish'
         env:
@@ -244,7 +245,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PREVIOUS_TAG: ${{ inputs.previous_tag }}
-        run: python3 tools/release/github_desktop.py publish --manifest dist/catalogue/release-manifest.json --cli-manifest dist/cli-input/release-manifest.json --notes release/desktop-notes.json --output dist/github-page --channel alpha --previous-tag "$PREVIOUS_TAG" --generated-notes dist/generated-notes.md --publication dist/publication.json
+        run: python3 tools/release/github_desktop.py publish --manifest dist/catalogue/release-manifest.json --cli-manifest dist/cli-input/release-manifest.json --notes release/desktop-notes.json --source-root "$DESKTOP_SOURCE_ROOT" --output dist/github-page --channel alpha --previous-tag "$PREVIOUS_TAG" --generated-notes dist/generated-notes.md --publication dist/publication.json
       - name: Publish promoted page after verified channel read-back
         if: inputs.operation == 'promote'
         env:
@@ -252,7 +253,7 @@ jobs:
           CHANNEL: ${{ inputs.channel }}
           PREVIOUS_TAG: ${{ inputs.previous_tag }}
         run: |
-          python3 tools/release/github_desktop.py publish --manifest dist/catalogue/release-manifest.json --cli-manifest dist/cli-input/release-manifest.json --notes "$DESKTOP_NOTES" --template "$DESKTOP_TEMPLATE" --output dist/github-page --channel "$CHANNEL" --previous-tag "$PREVIOUS_TAG" --publication dist/publication.json --promotion dist/promotion.json
+          python3 tools/release/github_desktop.py publish --manifest dist/catalogue/release-manifest.json --cli-manifest dist/cli-input/release-manifest.json --notes "$DESKTOP_NOTES" --template "$DESKTOP_TEMPLATE" --source-root "$DESKTOP_SOURCE_ROOT" --output dist/github-page --channel "$CHANNEL" --previous-tag "$PREVIOUS_TAG" --publication dist/publication.json --promotion dist/promotion.json
       - name: Record published GitHub Release tag
         id: published_tag
         if: inputs.operation == 'promote' || (inputs.operation == 'publish' && inputs.channel == 'alpha')

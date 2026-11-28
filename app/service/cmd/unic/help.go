@@ -204,6 +204,8 @@ func helpForCommand(name string) (string, bool) {
 		return daemonUsage, true
 	case "profile", "profile help":
 		return profileUsage, true
+	case "cloud", "cloud help", "cloud login", "cloud status", "cloud logout":
+		return cloudUsage, true
 	case "doctor":
 		return doctorUsage, true
 	case "completion":
@@ -225,7 +227,7 @@ func helpForCommand(name string) (string, bool) {
 	case "plugin":
 		return pluginUsage, true
 	case "migrate":
-		return migrationGuide, true
+		return migrateUsage, true
 	case "dev", "dev help":
 		return devUsage, true
 	case "dev logs", "dev logs help":

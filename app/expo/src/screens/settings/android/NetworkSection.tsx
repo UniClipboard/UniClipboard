@@ -23,6 +23,8 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { useEngineStore } from '@/engine/store';
 import { useTheme } from '@/hooks/useTheme';
+import { cloudUserLabel } from '@/lib/cloudAuth';
+import { useCloudStore } from '@/stores/cloudStore';
 import { SettingsSectionItem } from '../SettingsSectionItem';
 import type { AndroidSettingFieldEdit } from './SettingsFieldDialog';
 import { SettingsHeroCard } from './SettingsHeroCard';
@@ -48,6 +50,15 @@ export const NetworkSection = memo(function NetworkSection({
   const { t } = useTranslation();
   const { theme } = useTheme();
   const colors = useMaterialColors();
+  const cloud = useCloudStore(
+    useShallow((s) => ({
+      session: s.session,
+      busy: s.busy,
+      hydrate: s.hydrate,
+      signIn: s.signIn,
+      provisionRelay: s.provisionRelay,
+    }))
+  );
   const state = useEngineStore(
     useShallow((s) => ({
       snapshot: s.snapshot,
@@ -59,7 +70,8 @@ export const NetworkSection = memo(function NetworkSection({
   useFocusEffect(
     useCallback(() => {
       void useEngineStore.getState().refreshSnapshot();
-    }, [])
+      void cloud.hydrate();
+    }, [cloud.hydrate])
   );
 
   const run = (promise: Promise<unknown>) => {
@@ -69,6 +81,24 @@ export const NetworkSection = memo(function NetworkSection({
         error instanceof Error ? error.message : undefined
       )
     );
+  };
+
+  const handleCloudAction = () => {
+    if (cloud.busy) return;
+    const action = cloud.session ? cloud.provisionRelay() : cloud.signIn();
+    void action
+      .then(() =>
+        Alert.alert(
+          t('settings:live.cloudSignInSuccessTitle'),
+          t('settings:live.cloudSignInSuccessBody')
+        )
+      )
+      .catch((error) =>
+        Alert.alert(
+          t('settings:live.cloudSignInFailed'),
+          error instanceof Error ? error.message : undefined
+        )
+      );
   };
 
   const settings = state.snapshot?.settings.value;
@@ -272,6 +302,29 @@ export const NetworkSection = memo(function NetworkSection({
                 );
               }}
             />
+            {!relay.url ? (
+              <SettingsListRow
+                key="relay-cloud-login"
+                testID="relay-cloud-login"
+                title={
+                  cloud.busy
+                    ? t('settings:live.cloudSigningIn')
+                    : cloud.session
+                      ? relay.has_access_key
+                        ? t('settings:live.relayRefreshFromCloud')
+                        : t('settings:live.relayEnableFromCloud')
+                      : t('settings:live.cloudSignIn')
+                }
+                description={
+                  cloud.session
+                    ? cloudUserLabel(cloud.session.user)
+                    : t('settings:live.cloudSignInDesc')
+                }
+                disabled={cloud.busy}
+                trailing={cloud.busy ? 'none' : 'chevron'}
+                onPress={handleCloudAction}
+              />
+            ) : null}
             <SettingsListRow
               key="relay-access-key"
               testID="relay-access-key"

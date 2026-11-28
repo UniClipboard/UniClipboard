@@ -123,7 +123,7 @@ func run(args []string) int {
 	}
 
 	if l.Name == "init" {
-		return runInit(left, os.Stdout, os.Stderr, globalJSON)
+		return runInit(left, os.Stdin, os.Stdout, os.Stderr, globalJSON)
 	}
 	if l.Name == "migrate" {
 		if globalJSON && !jsonRequested(rest) {
@@ -232,6 +232,11 @@ func dispatch(ctx context.Context, c *api.Client, l leaf, args, left []string) e
 	case l.Name == "profile help":
 		fmt.Print(profileUsage)
 		return nil
+	case l.Name == "cloud help":
+		fmt.Print(cloudUsage)
+		return nil
+	case strings.HasPrefix(l.Name, "cloud "):
+		return runCloudCmd(ctx, strings.TrimPrefix(l.Name, "cloud "), left, globalJSON)
 	case strings.HasPrefix(l.Name, "daemon "):
 		return runDaemonCmd(ctx, strings.TrimPrefix(l.Name, "daemon "), left, globalJSON)
 	case l.Name == "profile":
@@ -266,7 +271,7 @@ func report(args []string, err error) int {
 				"reason":             "migration_required",
 				"next_command":       "unic init",
 				"initialize_command": "unic init --json",
-				"migrate_command":    "unic migrate --help",
+				"migrate_command":    "unic migrate",
 			})
 		} else {
 			fmt.Fprintln(os.Stderr, errorLine(required.Error()))

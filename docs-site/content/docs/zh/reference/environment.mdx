@@ -10,6 +10,9 @@ description: unic、unicd 与桌面端读取的环境变量，以及默认数据
 | `UNIC_HOME` | 数据目录（数据库、配置、日志、接收文件、插件）。用于运行第二个实例或隔离的配置 |
 | `UNIC_SOCK` | 控制套接字路径，默认 `$UNIC_HOME/unic.sock` |
 | `UNIC_RENDEZVOUS_URL` | 配对码服务地址；配置文件中的 `rendezvous_url` 优先 |
+| `UNIC_RELAY_URL` | 混合中转服务 HTTPS 地址；配置文件中的 `sync.relay.url` 优先，详见[混合中转与自部署](../core-features/hybrid-relay) |
+| `UNIC_RELAY_ACCESS_KEY` | 官方 Cloud API Key 或自部署混合中转接入密钥（`X-Unic-Relay-Key`）；配置文件中的 `sync.relay.access_key` 优先 |
+| `UNIC_CLOUD_URL` | UniClipboard Cloud 授权服务地址，默认 `https://cloud.uniclipboard.app` |
 | `UNIC_PLUGIN_REGISTRY_URL` | 桌面插件市场的注册表地址；设为空字符串时不联网获取 |
 
 例如在同一台电脑上启动第二个本地节点：

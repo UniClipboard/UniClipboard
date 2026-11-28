@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { Alert, Linking } from "react-native";
 import { nativeApplicationVersion } from "expo-application";
@@ -8,8 +8,10 @@ import { useEngineStore } from "@/engine/store";
 import type { EngineSettings } from "@/engine/types";
 import { useTheme } from "@/hooks/useTheme";
 import { useAppLanguage } from "@/i18n/useAppLanguage";
+import { cloudUserLabel } from "@/lib/cloudAuth";
 import type { SettingsSubSection } from "@/navigation/AppNavigator.types";
 import type { ShellGroup, ShellRow } from "@/shell/settings";
+import { useCloudStore } from "@/stores/cloudStore";
 import { useMessageStore } from "@/stores/messageStore";
 import { formatFileSize } from "@/utils";
 
@@ -39,6 +41,16 @@ export function useLiveSettingGroups(
   })));
   const { themeMode, setThemeMode } = useTheme();
   const { preference, setLanguage } = useAppLanguage();
+  const cloud = useCloudStore(useShallow((s) => ({
+    session: s.session,
+    busy: s.busy,
+    hydrate: s.hydrate,
+    signIn: s.signIn,
+    signOut: s.signOut,
+  })));
+  useEffect(() => {
+    void cloud.hydrate();
+  }, [cloud.hydrate]);
   const settings = state.snapshot?.settings.value;
   const background = useBackgroundSyncGroups(page === "background");
 
@@ -82,6 +94,43 @@ export function useLiveSettingGroups(
     ({ id, title, onPress: () => open(id) });
 
   if (page === "root") return [
+    {
+      title: t("settings:live.cloudSection"),
+      footer: t("settings:live.cloudFooter"),
+      rows: cloud.session
+        ? [
+            {
+              id: "cloud-account",
+              title: cloudUserLabel(cloud.session.user),
+              value: t("settings:live.cloudSignedIn"),
+            },
+            {
+              id: "cloud-sign-out",
+              title: t("settings:live.cloudSignOut"),
+              onPress: () => run(cloud.signOut()),
+            },
+          ]
+        : [
+            {
+              id: "cloud-sign-in",
+              title: cloud.busy ? t("settings:live.cloudSigningIn") : t("settings:live.cloudSignIn"),
+              description: t("settings:live.cloudSignInDesc"),
+              onPress: () => {
+                if (cloud.busy) return;
+                void cloud
+                  .signIn()
+                  .then(() => Alert.alert(
+                    t("settings:live.cloudSignInSuccessTitle"),
+                    t("settings:live.cloudSignInSuccessBody"),
+                  ))
+                  .catch((error) => Alert.alert(
+                    t("settings:live.cloudSignInFailed"),
+                    error instanceof Error ? error.message : undefined,
+                  ));
+              },
+            },
+          ],
+    },
     { rows: [
       nav("sync"),
       nav("history"),

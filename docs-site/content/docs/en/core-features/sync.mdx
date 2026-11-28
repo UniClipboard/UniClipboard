@@ -40,6 +40,7 @@ Change these in the desktop Settings UI, or write them to `config.toml` with `un
 | `sync.files` | `true` | Whether to send and receive files (applies in both directions) |
 | `sync.on_restore` | `false` | Whether restoring an item from history sends it to other devices again |
 | `sync.directories.automatic` | `false` | Whether copying a folder automatically prepares and sends it |
+| `sync.relay.enabled` | `false` | Whether to use zero-wait zero-knowledge E2EE temporary relay when a peer is offline over P2P (enabled automatically after Cloud sign-in); see [Hybrid Relay & Self-Hosting](./hybrid-relay) |
 | `limits.max_file_bytes` | `100MB` | Maximum size per transferred file; larger files can still enter local history |
 
 Each sync backend can also independently configure whether to transfer text, images, and files, as well as an auto-send file size threshold (`plugins.instances.<backend>.sync.auto_file_max_bytes`, where `0` means no extra limit). Explicit sends are not subject to this auto-send threshold. See [Configuration Reference](../reference/configuration) for all options.
@@ -88,6 +89,7 @@ The Linux desktop app currently cannot distinguish "copying the same folder agai
 
 ## Related Pages
 
+- [Hybrid Relay & Self-Hosting](./hybrid-relay)
 - [Devices & Pairing](./devices)
 - [Quick Transfer](./quick-transfer)
 - [History & Search](./history-and-search)

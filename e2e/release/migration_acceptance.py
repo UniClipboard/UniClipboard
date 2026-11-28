@@ -127,7 +127,7 @@ def accept_migration(root, installed, temp, env, execute, check, report):
                 "migration guide explains the required explicit initialization",
                 "--initialize-empty" in guide.stdout
                 and "migration_required" in guide.stdout
-                and "unic migrate --json" in guide.stdout,
+                and "unic init --fresh" in guide.stdout,
             )
             value, notice = terminal(["--version", "--json"])
             check(
@@ -164,15 +164,20 @@ def accept_migration(root, installed, temp, env, execute, check, report):
             env.pop("UC_PROFILE")
         else:
             report["not_run"].append("Windows terminal informational version acceptance")
-        for args in [[], ["--help"]]:
-            guide = execute([cli, "migrate", *args])
-            check(
-                "offline migration guide " + ("help" if args else "default"),
-                "--passphrase-stdin" in guide.stdout
-                and "pair them again" in guide.stdout
-                and "--initialize-empty" in guide.stdout
-                and not Path(env["UNIC_HOME"]).exists(),
-            )
+        guide = execute([cli, "migrate", "--help"])
+        check(
+            "offline migration guide help",
+            "--passphrase-stdin" in guide.stdout
+            and "pair devices again" in guide.stdout
+            and "--initialize-empty" in guide.stdout
+            and not Path(env["UNIC_HOME"]).exists(),
+        )
+        bare_missing = execute([cli, "migrate"], expected=1)
+        check(
+            "bare migrate without v1 source fails cleanly without creating target",
+            "unic init" in bare_missing.stderr
+            and not Path(env["UNIC_HOME"]).exists(),
+        )
 
         # Use canonical private paths, not macOS's symlinked /var temp root.
         with tempfile.TemporaryDirectory(

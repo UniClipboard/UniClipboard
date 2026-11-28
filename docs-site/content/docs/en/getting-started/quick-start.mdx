@@ -40,4 +40,4 @@ unic recv 482913                  # Receive using the transfer code
 unic history list                 # Browse history
 ```
 
-`unic` automatically starts a temporary `unicd` from the same directory when needed and stops it afterward. Before using the CLI in a new data directory for the first time, run `unic migrate` (to import v1 history, or pass `--initialize-empty` to initialize an empty directory). See [CLI Getting Started](../cli/getting-started) for details.
+`unic` automatically starts a temporary `unicd` from the same directory when needed and stops it afterward. Before using the CLI in a new data directory for the first time, run `unic init` (if v1 data is detected, it prompts to import or start fresh; or run `unic migrate` directly to import v1 history). See [CLI Getting Started](../cli/getting-started) for details.

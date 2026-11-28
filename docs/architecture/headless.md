@@ -7,6 +7,7 @@ paths:
   - internal/cloudauth
   - internal/relayclient
   - internal/localpaths
+  - internal/logarchive
   - internal/releaseinfo
   - internal/servicelifecycle
   - internal/servicelaunch
@@ -129,7 +130,7 @@ writing `pending`, so unlock failure or cancellation never blocks `unic init --f
 script path. Ordinary `--fresh` never bypasses a real pending import; only completing
 `unic migrate` or explicit `unic init --fresh --discard-pending` (with `y/N` confirmation
 on interactive TTY) clears it. Help, version, `init`, `migrate`, `doctor`, `completion`,
-`profile`, `config path`, and `daemon status|stop|logs` remain accessible before
+`profile`, `config path`, `daemon status|stop|logs`, and `dev logs export` remain accessible before
 initialization. Receipt publication and service acquisition share the profile transition
 lock; acquisition rechecks initialization after waiting. Partial, failure, cancellation
 and dry-run never grant permission. Explicit Desktop imports share this gate; welcome/skip

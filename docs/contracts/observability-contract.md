@@ -663,19 +663,24 @@ that temporary, bounding crash residue and clearing old identity state.
 
 ## 12. Offline local log export
 
-`unic dev logs export [--output FILE]` runs in the CLI and never starts a temporary
-service, accesses the system clipboard or uses the network. It works while `unicd` is
-stopped. The default is a unique UTC-timestamped `unic-diagnostics-*.zip` file in the
-current directory. Success prints its absolute path. `--output` selects a file, not a
-directory. An existing file or symlink is never replaced. The destination parent must
-exist and must not be the managed logs directory.
+`unic dev logs export [--output FILE]` and Desktop diagnostic export call the
+same internal Go implementation. The CLI command works before initialization
+and while `unicd` is stopped. Desktop passes the active profile and the selected
+file from the native save dialog. The shared exporter can produce an offline
+archive and never starts a temporary service or accesses the system clipboard.
+The CLI defaults to a unique UTC-timestamped
+`unic-diagnostics-*.zip` file in the current directory and prints its absolute
+path on success. `--output` selects a file, not a directory. An existing file or
+symlink is never replaced. The destination parent must exist and must not be the
+managed logs directory.
 
 The ZIP archive contains only regular `logs/engine/segment-<positive UnixNano>.jsonl`
 entries and `manifest.json`. The manifest has `format_version=1`, UTC creation time,
-build/platform identity (`service`: name, version, build number, OS and arch),
+exporter build/platform identity (`service`: name, version, build number, OS and arch),
 `service_snapshot` (`live` or `offline`), `engine_logs` counts and each log entry's
-relative name, byte count and SHA-256. When an existing `unicd` socket is already
-reachable, the CLI makes a bounded, best-effort read-only query to include safe
+relative name, byte count and SHA-256. The exporter name is `unic` for CLI
+archives and `unic-desktop` for Desktop archives. When an existing `unicd` socket
+is reachable, the exporter makes a bounded, best-effort read-only query to include safe
 `runtime` counts/capabilities and `diagnostics` (`telemetry`, `log_levels`) summaries;
 if the service is stopped or unreachable, those fields are omitted and export still
 succeeds offline. The archive never contains profile paths, raw config, credentials,
@@ -683,7 +688,7 @@ device names/identities, database, analytics identifier or clipboard data. It co
 existing sanitized log bytes without adding a second logging policy or exporting
 remote metrics.
 
-The CLI rejects symlinked logs directories, matching symlinks/nonregular entries,
+The exporter rejects symlinked logs directories, matching symlinks/nonregular entries,
 segments larger than 4 MiB and retained input larger than 20 MiB. Source and output
 operations use rooted handles; opened source identity must match its selected regular
 file. Missing/empty logs fail without creating an archive. Unrelated files are ignored.

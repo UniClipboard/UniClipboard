@@ -40,6 +40,8 @@ paths:
   - app/service/cmd/unic/cli.go
   - app/service/cmd/unic/main.go
   - app/service/cmd/unic/logs_export.go
+  - app/desktop/cmd/unic-desktop/diagnostics_actions.go
+  - internal/logarchive
   - e2e/cli/logs_export_e2e_test.go
   - app/service/cmd/unic/requirements.go
   - app/service/cmd/unic/session.go
@@ -158,12 +160,13 @@ include `signal=traces` when metrics are enabled.
 
 ## Offline log archive
 
-`unic dev logs export [--output FILE]` streams retained local JSONL segments into a
+Desktop diagnostic export and `unic dev logs export [--output FILE]` call the
+`internal/logarchive` Go package directly. It streams retained local JSONL segments into a
 private `.zip` diagnostic bundle (`logs/engine/segment-*.jsonl` plus `manifest.json`
 with build/platform identity, per-entry SHA-256 digests and `engine_logs` counts).
-It executes in the CLI, never starts a temporary `unicd`, needs no system clipboard,
-and works while `unicd` is stopped. When an existing `unicd` socket is already
-reachable, it performs a bounded best-effort read-only query to attach safe `runtime`
+The CLI command works before initialization and while `unicd` is stopped. The
+shared exporter never starts a temporary service or accesses the system clipboard.
+When an existing `unicd` socket is reachable, it performs a bounded best-effort read-only query to attach safe `runtime`
 counts/capabilities and `diagnostics` (`telemetry`, `log_levels`) summaries; otherwise
 `service_snapshot` is marked `offline`. It never includes profile configuration,
 credentials, databases or history. Rooted source/output handles and exclusive

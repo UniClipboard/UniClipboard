@@ -60,6 +60,40 @@ func TestLogsExport(t *testing.T) {
 		}
 	}
 	line := []byte("{\"level\":\"INFO\",\"msg\":\"engine.started\"}\n")
+	for _, state := range []string{"missing", "pending"} {
+		run("initialization-"+state, func(t *testing.T, dir, home string) {
+			receipt := filepath.Join(home, "cli-migration.json")
+			if state == "pending" {
+				write(t, receipt, []byte(`{"status":"pending"}`))
+			} else if err := os.Remove(receipt); err != nil {
+				t.Fatal(err)
+			}
+			write(t, filepath.Join(home, "logs", "segment-1.jsonl"), line)
+			out := filepath.Join(dir, "before initialization.zip")
+			stdout, err := logsExportCLI(t, executable, dir, home, "dev", "logs", "export", "--output", out)
+			if err != nil || strings.TrimSpace(stdout) != out {
+				t.Fatalf("export with %s initialization receipt: %v: %s", state, err, stdout)
+			}
+			entries := readLogArchive(t, out)
+			assertLogManifest(t, entries, "offline")
+			if len(entries) != 2 || !bytes.Equal(entries["logs/engine/segment-1.jsonl"], line) {
+				t.Fatal("archive did not contain exactly the selected log and manifest")
+			}
+			stdout, err = logsExportCLI(t, executable, dir, home, "history", "list")
+			exit, ok := err.(*exec.ExitError)
+			if !ok || exit.ExitCode() != 6 || !strings.Contains(stdout, "profile is not initialized yet") {
+				t.Fatalf("history did not require initialization: %v: %s", err, stdout)
+			}
+			data, err := os.ReadFile(receipt)
+			if state == "pending" {
+				if err != nil || string(data) != `{"status":"pending"}` {
+					t.Fatal("export changed the pending CLI migration receipt")
+				}
+			} else if !os.IsNotExist(err) {
+				t.Fatal("export created a CLI migration receipt")
+			}
+		})
+	}
 	run("offline-private-archive", func(t *testing.T, dir, home string) {
 		for _, name := range []string{"segment-11.jsonl", "segment-22.jsonl"} {
 			write(t, filepath.Join(home, "logs", name), line)
@@ -514,7 +548,7 @@ func logsExportSources(t *testing.T) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "--", "go.mod", "go.sum", "Makefile", "app/service/cmd/unic", "e2e/cli/logs_export_e2e_test.go").Output()
+	out, err := exec.Command("git", "-C", root, "ls-files", "--cached", "--others", "--exclude-standard", "--", "go.mod", "go.sum", "Makefile", "app/service/cmd/unic", "internal/logarchive", "e2e/cli/logs_export_e2e_test.go").Output()
 	if err != nil {
 		t.Fatal(err)
 	}

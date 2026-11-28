@@ -119,7 +119,7 @@ func (s *desktopSession) start() {
 			ctx, cancel := context.WithCancel(s.ctx)
 			screen := desktopui.NewDesktop(ctx, s.g.c)
 			bindStorageActions(screen, s.dir)
-			bindDesktopDiagnostics(screen, s.dir, func() string { return s.settings.Current().Desktop.Language })
+			bindDesktopDiagnostics(screen, s.dir, s.g.c, func() string { return s.settings.Current().Desktop.Language })
 			bindBackupActions(screen, func() string { return s.settings.Current().Desktop.Language })
 			bindDesktopShortcutPermissions(screen)
 			bindDesktopNotifications(screen, s.dir)

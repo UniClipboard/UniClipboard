@@ -334,6 +334,119 @@ class PrepareReleaseScriptTests(unittest.TestCase):
         self.assertEqual(out["build_number"], 206)
         self.assertEqual(out["branch"], "release/mobile-alpha-v2.6.0-build.206")
         self.assertEqual(out["previous_tag"], "android/v2.5.0-build.205")
+        self.assertEqual(out["android_notes"], "release/android-notes.json")
+
+    def test_mobile_changelog_and_android_notes_lifecycle(self):
+        self.run_cli(
+            "bump",
+            "--platform",
+            "mobile",
+            "--channel",
+            "alpha",
+            "--version",
+            "3.0.0",
+            "--build-number",
+            "207",
+            "--metadata",
+            str(self.repo / "release/products.toml"),
+        )
+        self.run_cli(
+            "init-changelog",
+            "--platform",
+            "mobile",
+            "--version",
+            "3.0.0",
+            "--build-number",
+            "207",
+            "--date",
+            "2026-11-28",
+            "--repo-root",
+            str(self.repo),
+        )
+        # Skeleton android-notes.json must fail validation until placeholders are replaced.
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.run_cli(
+                "validate-changelog",
+                "--platform",
+                "mobile",
+                "--version",
+                "3.0.0",
+                "--build-number",
+                "207",
+                "--repo-root",
+                str(self.repo),
+            )
+
+        prompt_out = self.tmp / "mobile-prompt.md"
+        self.run_cli(
+            "render-prompt",
+            "--template",
+            str(PROMPT_TEMPLATE),
+            "--platform",
+            "mobile",
+            "--channel",
+            "alpha",
+            "--version",
+            "3.0.0",
+            "--build-number",
+            "207",
+            "--previous-tag",
+            "android/v3.0.0-build.206",
+            "--previous-version",
+            "3.0.0-build.206",
+            "--range-expression",
+            "android/v3.0.0-build.206..HEAD",
+            "--date",
+            "2026-11-28",
+            "--output",
+            str(prompt_out),
+        )
+        prompt_text = prompt_out.read_text(encoding="utf-8")
+        self.assertNotIn("{{", prompt_text)
+        self.assertIn("release/android-notes.json", prompt_text)
+
+        (self.repo / "release/changelogs/mobile/v3.0.0-build.207.md").write_text(
+            "## v3.0.0-build.207 (mobile) - 2026-11-28\n\n### Features\n\n- Sign in with UniClipboard Cloud (#2445)\n",
+            encoding="utf-8",
+        )
+        (self.repo / "release/changelogs/mobile/v3.0.0-build.207.zh.md").write_text(
+            "## v3.0.0-build.207 (mobile) - 2026-11-28\n\n### Features\n\n- 支持登录 UniClipboard Cloud (#2445)\n",
+            encoding="utf-8",
+        )
+        (self.repo / "release/android-notes.json").write_text(
+            json.dumps(
+                {
+                    "en": "UniClipboard Mobile v3 alpha (build 207). Adds Cloud login. All paired devices must use v2/v3.",
+                    "zh": "UniClipboard 移动端 v3 Alpha（build 207）。新增云账号登录。所有配对设备需使用 v2/v3。",
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        self.run_cli(
+            "validate-changelog",
+            "--platform",
+            "mobile",
+            "--version",
+            "3.0.0",
+            "--build-number",
+            "207",
+            "--repo-root",
+            str(self.repo),
+        )
+        parsed = json.loads(
+            self.run_cli(
+                "parse-branch",
+                "--branch",
+                "release/mobile-alpha-v3.0.0-build.207",
+                "--validate-repo",
+                "--repo-root",
+                str(self.repo),
+            )
+        )
+        self.assertEqual(parsed["workflows"], "release-android.yml,release-ios.yml")
 
     def test_bump_preserves_lf_comments_and_unrelated_sections(self):
         meta_path = self.repo / "release/products.toml"
@@ -702,21 +815,21 @@ printf '%s\\n' "$*" >> {json.dumps(str(log_file))}
             (
                 {"PLATFORM": "mobile", "CHANNEL": "alpha", "VERSION": "2.5.0", "ANDROID_TRACK": "internal"},
                 [
-                    "workflow run release-android.yml --repo example/repo --ref main -f publish=true -f track=internal",
+                    "workflow run release-android.yml --repo example/repo --ref main -f channel=alpha -f publish=true -f play_track=internal",
                     "workflow run release-ios.yml --repo example/repo --ref main -f publish=true",
                 ],
             ),
             (
                 {"PLATFORM": "mobile", "CHANNEL": "stable", "VERSION": "2.5.0", "ANDROID_TRACK": "production"},
                 [
-                    "workflow run release-android.yml --repo example/repo --ref main -f publish=true -f track=production",
+                    "workflow run release-android.yml --repo example/repo --ref main -f channel=stable -f publish=true -f play_track=production",
                     "workflow run release-ios.yml --repo example/repo --ref main -f publish=true",
                 ],
             ),
             (
                 {"PLATFORM": "android", "CHANNEL": "stable", "VERSION": "2.5.0", "ANDROID_TRACK": "production"},
                 [
-                    "workflow run release-android.yml --repo example/repo --ref main -f publish=true -f track=production"
+                    "workflow run release-android.yml --repo example/repo --ref main -f channel=stable -f publish=true -f play_track=production"
                 ],
             ),
             (

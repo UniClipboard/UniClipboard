@@ -77,8 +77,9 @@ jobs:
               gh workflow run release-android.yml \
                 --repo "$GITHUB_REPOSITORY" \
                 --ref "$BASE_REF" \
+                -f channel="$CHANNEL" \
                 -f publish=true \
-                -f track="$ANDROID_TRACK"
+                -f play_track="$ANDROID_TRACK"
               gh workflow run release-ios.yml \
                 --repo "$GITHUB_REPOSITORY" \
                 --ref "$BASE_REF" \
@@ -88,8 +89,9 @@ jobs:
               gh workflow run release-android.yml \
                 --repo "$GITHUB_REPOSITORY" \
                 --ref "$BASE_REF" \
+                -f channel="$CHANNEL" \
                 -f publish=true \
-                -f track="$ANDROID_TRACK"
+                -f play_track="$ANDROID_TRACK"
               ;;
             ios)
               gh workflow run release-ios.yml \

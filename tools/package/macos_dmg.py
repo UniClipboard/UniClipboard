@@ -39,14 +39,25 @@ MAC_EPOCH_OFFSET = 2082844800
 
 
 def _run(args, **kwargs):
-    return subprocess.run(
-        [str(x) for x in args],
-        check=True,
+    cmd = [str(x) for x in args]
+    res = subprocess.run(
+        cmd,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         **kwargs,
     )
+    if res.returncode != 0:
+        parts = []
+        if res.stderr and res.stderr.strip():
+            parts.append(f"stderr: {res.stderr.strip()}")
+        if res.stdout and res.stdout.strip():
+            parts.append(f"stdout: {res.stdout.strip()}")
+        detail = f" ({'; '.join(parts)})" if parts else ""
+        raise RuntimeError(
+            f"command {cmd!r} failed with exit code {res.returncode}{detail}"
+        )
+    return res
 
 
 def _sha256(path: Path) -> str:
@@ -526,6 +537,20 @@ def _busy_holders(device: str | Path, mountpoint: Path | None) -> str:
     return f"; busy holders: {', '.join(holders)}"
 
 
+def _verify_detach_target(device: str | Path, image_path: Path | None) -> bool:
+    """Ensure device is still attached and bound to image_path before side effects."""
+    if image_path is None:
+        return True
+    attached, bound = _attached_state(device, image_path=image_path)
+    if not attached:
+        return False
+    if not bound:
+        raise RuntimeError(
+            f"refusing to detach DMG device {device}: device is not bound to {image_path}"
+        )
+    return True
+
+
 def _detach(
     device: str | Path,
     *,
@@ -533,7 +558,10 @@ def _detach(
     mountpoint: Path | None = None,
 ):
     graceful_attempts = 15
+    res: subprocess.CompletedProcess[str] | None = None
     for attempt in range(graceful_attempts):
+        if not _verify_detach_target(device, image_path):
+            return
         res = subprocess.run(
             ["hdiutil", "detach", str(device)],
             capture_output=True,
@@ -548,23 +576,22 @@ def _detach(
         if attempt < graceful_attempts - 1:
             time.sleep(0.5 if attempt < 6 else 1.0)
 
-    attached, bound = _attached_state(device, image_path=image_path)
-    if not attached:
+    if not _verify_detach_target(device, image_path):
         return
-    if image_path is not None and not bound:
-        raise RuntimeError(
-            f"refusing to force-detach DMG device {device}: device is not bound to {image_path}"
-        )
 
     force_backoffs = (1.0, 1.0, 2.0, 2.0, 3.0, 3.0)
     last_res = res
     for attempt, delay in enumerate(force_backoffs):
+        if not _verify_detach_target(device, image_path):
+            return
         if str(device).startswith("/dev/disk"):
             subprocess.run(
                 ["diskutil", "unmountDisk", "force", str(device)],
                 capture_output=True,
                 text=True,
             )
+            if not _verify_detach_target(device, image_path):
+                return
         last_res = subprocess.run(
             ["hdiutil", "detach", "-force", str(device)],
             capture_output=True,
@@ -572,16 +599,12 @@ def _detach(
         )
         if last_res.returncode == 0:
             return
-        attached, bound = _attached_state(device, image_path=image_path)
-        if not attached:
+        if not _verify_detach_target(device, image_path):
             return
-        if image_path is not None and not bound:
-            raise RuntimeError(
-                f"refusing to force-detach DMG device {device}: device is not bound to {image_path}"
-            )
         if attempt < len(force_backoffs) - 1:
             time.sleep(delay)
 
+    assert last_res is not None
     detail = last_res.stderr.strip() or last_res.stdout.strip()
     holders = _busy_holders(device, mountpoint)
     raise RuntimeError(
@@ -644,7 +667,6 @@ def build_dmg(
             [
                 "hdiutil",
                 "create",
-                "-quiet",
                 "-fs",
                 "HFS+",
                 "-fsargs",
@@ -761,7 +783,6 @@ def build_dmg(
             [
                 "hdiutil",
                 "convert",
-                "-quiet",
                 rw_dmg,
                 "-format",
                 DMG_FORMAT,

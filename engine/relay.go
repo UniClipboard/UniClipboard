@@ -1765,11 +1765,20 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 						default:
 							cleanupAck()
 							ackCh, sessDone, cleanupAck, hasAck = hb.RegisterRelayClipAckWaiter(plan.peerID, plan.clip.ID)
-							if !hasAck {
-								continue
-							}
 						}
 					default:
+					}
+				} else {
+					// Initial RegisterRelayClipAckWaiter hit a brief session-replacement
+					// gap (sessions[peerID] == nil/done) while the offer succeeded on the
+					// newly established session; bind the clip_ack waiter now.
+					ackCh, sessDone, cleanupAck, hasAck = hb.RegisterRelayClipAckWaiter(plan.peerID, plan.clip.ID)
+				}
+				if !hasAck {
+					conn, _, ackCap := hb.PeerHandoffCaps(plan.peerID)
+					if !conn || ackCap {
+						cleanupAck()
+						continue
 					}
 				}
 				switches++
@@ -1896,8 +1905,13 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 						return relaySendResult{}, newErr(CodeUnavailable, "peer failed to commit handoff transfer")
 					}
 				case <-sessDone:
-					// P2P dropped before clip_ack arrived; fall back to HTTP for unconfirmed chunks so zero bytes are lost.
+					// P2P dropped before clip_ack arrived; drain any already-buffered ack
+					// before falling back to HTTP for unconfirmed chunks.
 					ackTimer.Stop()
+					if done, res, rerr := checkEarlyAck(); done {
+						cleanupAck()
+						return res, rerr
+					}
 					cleanupAck()
 					continue
 				case <-ctx.Done():

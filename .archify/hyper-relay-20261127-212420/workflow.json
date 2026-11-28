@@ -1,0 +1,309 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Hyper 混合传输流程 · 逐目标选路",
+    "locale": "zh-CN",
+    "output": ".archify/hyper-relay-20261127-212420/workflow.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/UniClipboard/UniClipboard.git",
+      "revision": "73a6baf1d8a2ddf9848d2fde520e25af9cab6953"
+    }
+  },
+  "lanes": [
+    {
+      "id": "engine",
+      "label": "Engine 选路"
+    },
+    {
+      "id": "transfer",
+      "label": "发送路径"
+    },
+    {
+      "id": "stop",
+      "label": "跳过或失败",
+      "variant": "exception"
+    }
+  ],
+  "mainPath": [
+    "start",
+    "live",
+    "eligible",
+    "http",
+    "handoff"
+  ],
+  "nodes": [
+    {
+      "lane": "engine",
+      "col": 0,
+      "id": "start",
+      "type": "backend",
+      "label": "检查同步",
+      "sublabel": "运行与全局开关",
+      "explanation": "Engine 已运行、请求未取消且全局同步开启时，继续检查该目标。",
+      "sources": [
+        {
+          "path": "engine/peersend.go",
+          "line": 142,
+          "end_line": 156
+        }
+      ]
+    },
+    {
+      "lane": "engine",
+      "col": 1,
+      "id": "live",
+      "type": "security",
+      "label": "有有效会话？",
+      "sublabel": "会话与信任版本",
+      "explanation": "会话须已连接、尚未结束，且信任版本与当前记录一致。有会话时优先走 Tailcat，自动同步仍受内容策略约束。自动同步策略过滤全部内容时，跳过该目标。",
+      "sources": [
+        {
+          "path": "engine/peersend.go",
+          "line": 90,
+          "end_line": 110
+        },
+        {
+          "path": "engine/peersend.go",
+          "line": 156,
+          "end_line": 200
+        }
+      ]
+    },
+    {
+      "lane": "engine",
+      "col": 2,
+      "id": "eligible",
+      "type": "security",
+      "label": "允许 HTTP 中转？",
+      "sublabel": "授权、路由、大小",
+      "explanation": "检查中转启用、设备信任、该后端关联与同步开关、有效信箱路由和投递资料。按内容策略生成发送视图后，以本机和对端中转上限中较小的值检查大小。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 1341,
+          "end_line": 1405
+        }
+      ]
+    },
+    {
+      "lane": "transfer",
+      "col": 1,
+      "id": "p2p",
+      "type": "backend",
+      "label": "Tailcat 发送",
+      "sublabel": "直连或 DERP",
+      "explanation": "用现有会话发送。发送任务执行时仍受授权和同步策略限制。",
+      "sources": [
+        {
+          "path": "engine/peersend.go",
+          "line": 185,
+          "end_line": 206
+        },
+        {
+          "path": "engine/peersend.go",
+          "line": 248,
+          "end_line": 283
+        },
+        {
+          "path": "internal/tcnet/tcnet.go",
+          "line": 1,
+          "end_line": 3
+        }
+      ]
+    },
+    {
+      "lane": "transfer",
+      "col": 3,
+      "id": "http",
+      "type": "cloud",
+      "label": "HTTP 中转",
+      "sublabel": "直传密文，异步重连",
+      "explanation": "异步唤醒 P2P 重连，不等待重连结果。发送端复查授权和开关，创建传输，向对象存储直传密文后向控制面提交分块。",
+      "sources": [
+        {
+          "path": "engine/peersend.go",
+          "line": 329,
+          "end_line": 344
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1440,
+          "end_line": 1466
+        },
+        {
+          "path": "internal/relayclient/client.go",
+          "line": 591,
+          "end_line": 618
+        }
+      ]
+    },
+    {
+      "lane": "transfer",
+      "col": 4,
+      "id": "handoff",
+      "type": "backend",
+      "label": "P2P 接力",
+      "sublabel": "按所需位图发送",
+      "explanation": "有效会话已恢复并协商 relay_handoff，剩余至少 2 块且至少 2 MiB，已接受接力少于 3 次时才尝试。无接力条件时继续 HTTP。对端接受后，发送端按所需位图走 P2P。临时拒绝时继续经 HTTP 上传。因放弃、策略、限额或授权被拒时结束发送。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 36,
+          "end_line": 39
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1643,
+          "end_line": 1730
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1842,
+          "end_line": 1866
+        }
+      ]
+    },
+    {
+      "lane": "transfer",
+      "col": 5,
+      "id": "store",
+      "type": "database",
+      "label": "中转已存储",
+      "sublabel": "relay_stored",
+      "explanation": "单块传输或多块传输到此时，发送端已覆盖本轮所需分块。纯 HTTP 时，全部中转分块已提交。接收端可以在另一时间下载与提交。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 1587,
+          "end_line": 1595
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1611,
+          "end_line": 1618
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1669,
+          "end_line": 1676
+        }
+      ]
+    },
+    {
+      "lane": "stop",
+      "col": 2,
+      "id": "stop",
+      "type": "external",
+      "label": "本目标未发送",
+      "sublabel": "跳过或返回错误",
+      "explanation": "无有效会话且中转关闭、路由无效或策略不允许时，该目标不进入中转。显式发送超出中转大小限制会返回限额错误。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 1341,
+          "end_line": 1395
+        },
+        {
+          "path": "engine/peersend.go",
+          "line": 166,
+          "end_line": 175
+        }
+      ]
+    },
+    {
+      "lane": "stop",
+      "col": 0,
+      "id": "sync-off",
+      "type": "external",
+      "label": "停止调度",
+      "sublabel": "取消 / 同步暂停",
+      "explanation": "请求取消、Engine 未运行或全局同步暂停时返回相应错误。",
+      "sources": [
+        {
+          "path": "engine/peersend.go",
+          "line": 142,
+          "end_line": 155
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "start-live",
+      "from": "start",
+      "to": "live",
+      "label": "可同步",
+      "variant": "emphasis"
+    },
+    {
+      "id": "start-stop",
+      "from": "start",
+      "to": "sync-off",
+      "label": "不可同步",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "live-p2p",
+      "from": "live",
+      "to": "p2p",
+      "label": "有",
+      "variant": "emphasis",
+      "role": "branch"
+    },
+    {
+      "id": "live-eligible",
+      "from": "live",
+      "to": "eligible",
+      "label": "无",
+      "variant": "emphasis"
+    },
+    {
+      "id": "eligible-stop",
+      "from": "eligible",
+      "to": "stop",
+      "label": "否",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "eligible-http",
+      "from": "eligible",
+      "to": "http",
+      "label": "是",
+      "variant": "emphasis"
+    },
+    {
+      "id": "http-handoff",
+      "from": "http",
+      "to": "handoff",
+      "label": "接力获准",
+      "variant": "emphasis"
+    },
+    {
+      "id": "http-store",
+      "from": "http",
+      "to": "store",
+      "label": "经 HTTP 收尾",
+      "role": "branch"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "已有会话",
+      "items": [
+        "Tailcat 会话可以承载直连或 DERP 隧道。对同一目标，发送端先选有效会话。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "接力后的选路",
+      "items": [
+        "接力期间断线时，发送端重新计算尚未由中转或对端位图确认的分块，再决定继续接力或回到 HTTP。"
+      ]
+    }
+  ]
+}

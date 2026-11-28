@@ -7,6 +7,12 @@ The protocol uses HTTP over the existing owner-only Unix socket, including AF_UN
 There is no TCP control listener. Socket access grants same-user control; an adapter session is a concurrency mechanism.
 Protocol version remains 1.
 
+### Desktop runtime dependencies
+
+Desktop runtime code must never invoke `unic` to perform a Desktop operation. This rule applies to every Desktop role on every supported platform. It covers bundled and standalone copies, aliases such as `uniclip`, and calls through a shell, wrapper, or helper process.
+
+Share in-process logic through internal Go packages. Use the documented local service protocol for operations owned by `unicd`. Keep command-line arguments, CLI initialization checks, and CLI exit codes at the CLI entry point.
+
 ## Headless operations
 
 | Method and path | Request | Result |
@@ -318,6 +324,8 @@ includes profile configuration, credentials, database or clipboard history. Arch
 membership, size limits, checksums and live-snapshot semantics follow section 12 of the
 [observability contract](observability-contract.md#12-offline-local-log-export).
 
+Desktop diagnostic export and the CLI command call the same internal Go implementation. Both can export retained logs before CLI initialization and while a migration receipt is pending.
+
 ## Explicit history search reads
 
 The shared client exposes three POST routes through the service-owned Engine:
@@ -435,7 +443,7 @@ never substitutes for this receipt. A verified explicit Desktop import publishes
 or socket API credential. Direct daemon and Desktop lifecycle policies stay separate.
 
 `help`, per-command `-h`/`--help`, version, `init`, `migrate`, `doctor`, `completion`,
-`profile`, `config path`, and `daemon status|stop|logs` remain available before initialization.
+`profile`, `config path`, `daemon status|stop|logs`, and `dev logs export` remain available before initialization.
 A blocked command exits **6** before contacting or starting a service, sync, or clipboard
 adapter. JSON mode writes an error to stderr with `reason: migration_required`,
 `next_command: unic init`, `initialize_command: unic init --json`, and `migrate_command: unic migrate`.

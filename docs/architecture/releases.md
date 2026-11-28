@@ -58,7 +58,7 @@ paths:
   - tools/ci
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 0c64ee28d5fa97ec7dde0d419b9e0637e26d9783
+verified: 1c3658edb79cf2fe60f4ff34991e2d1ea18092e4
 ---
 # Product builds and CLI releases
 
@@ -100,6 +100,13 @@ availability on App Store Connect before archiving when `publish` is enabled,
 exports the signed IPA and dSYMs, and optionally uploads the IPA to App Store
 Connect for TestFlight testing. TestFlight availability, submission for review,
 and Store publication have their own acceptance states.
+
+Android release jobs restore Gradle dependencies and task outputs through
+`setup-gradle`. Both APK and AAB builds enable Gradle's task-output cache. Only
+`main` writes Gradle cache entries. iOS release jobs on `main` cache the Xcode
+compilation store by runner architecture, Xcode build version, and the Expo
+lockfile. Xcode applies a 1 GiB compiler cache limit and logs compiler cache hits.
+Each release builds, signs, and verifies its own candidate.
 
 The production variant retains `app.uniclipboard.android` and
 `app.uniclipboard.UniClipboard` from the preceding mobile product. The

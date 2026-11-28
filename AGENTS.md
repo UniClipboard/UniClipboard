@@ -134,6 +134,7 @@ monorepo：平台无关的 Go 核心在根（`engine/` 是公开 SDK，`internal
 - The built-in peer-session wire stays at version 1. Pair devices again after upgrading them to v2. Use the documented migration to retain v1 history. See the [v1 migration boundary](docs/architecture/releases.md#v1-upgrade-notice-and-migration).
 
 - Release programs: `unic` and `unicd` must have no transitive UI dependency. `unic-desktop` owns graphical integration. See [headless architecture](docs/architecture/headless.md).
+- Desktop runtime must never invoke `unic` to perform a Desktop operation. Use shared Go packages for in-process logic and the local service protocol for `unicd` operations. See [Desktop runtime dependencies](docs/contracts/local-service-contract.md#desktop-runtime-dependencies).
 
 - Client telemetry defaults enabled. The config.toml master and per-signal switches can disable it. Ship only the ingestion-only project token; analytics uses an independent random profile identifier. See the [observability contract](docs/contracts/observability-contract.md).
 

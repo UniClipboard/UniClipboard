@@ -1,0 +1,374 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Hyper 混合传输状态 · 发送端",
+    "locale": "zh-CN",
+    "output": ".archify/hyper-relay-20261127-212420/lifecycle.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/UniClipboard/UniClipboard.git",
+      "revision": "73a6baf1d8a2ddf9848d2fde520e25af9cab6953"
+    }
+  },
+  "mainPath": [
+    "queued",
+    "http",
+    "p2p",
+    "waiting",
+    "received"
+  ],
+  "states": [
+    {
+      "id": "queued",
+      "type": "start",
+      "label": "中转待发送",
+      "sublabel": "已选定目标",
+      "explanation": "目标已符合回退条件，发送任务入队。后端异步唤醒 P2P 重连。任务开始时重新核对授权、同步开关和限额。",
+      "sources": [
+        {
+          "path": "engine/peersend.go",
+          "line": 329,
+          "end_line": 362
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1440,
+          "end_line": 1466
+        }
+      ]
+    },
+    {
+      "id": "http",
+      "type": "active",
+      "label": "HTTP 上传",
+      "sublabel": "分块直传与提交",
+      "explanation": "开启或恢复中转发送。每块直传后向控制面提交。发送端记录已提交位图；接力断线后排除中转已提交或对端已确认的分块。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 1587,
+          "end_line": 1618
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1842,
+          "end_line": 1866
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1879,
+          "end_line": 1918
+        }
+      ]
+    },
+    {
+      "id": "p2p",
+      "type": "active",
+      "label": "P2P 接力",
+      "sublabel": "按需发送密文分块",
+      "explanation": "接收端接受接力后，发送端合并对端已收位图，并按对端所需位图推送密文分块。断线时保留接收端已有分块。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 1678,
+          "end_line": 1730
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1731,
+          "end_line": 1776
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 595,
+          "end_line": 614
+        }
+      ]
+    },
+    {
+      "id": "waiting",
+      "type": "waiting",
+      "label": "等待接收回执",
+      "sublabel": "已协商 clip_ack",
+      "explanation": "写入阶段完成后等待 clip_ack。当前超时为 30 秒。会话断开时重新进入选路循环。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 36,
+          "end_line": 39
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1800,
+          "end_line": 1837
+        }
+      ]
+    },
+    {
+      "id": "received",
+      "type": "success",
+      "label": "对端已接收",
+      "sublabel": "remote_received",
+      "explanation": "发送端收到 clip_ack(received)。对端已完成接收处理；系统剪贴板应用由宿主另行执行。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 1216,
+          "end_line": 1222
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1731,
+          "end_line": 1745
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1811,
+          "end_line": 1824
+        }
+      ]
+    },
+    {
+      "id": "stored",
+      "type": "success",
+      "label": "中转已存储",
+      "sublabel": "relay_stored",
+      "explanation": "所有分块已由中转提交或已被对端位图覆盖。纯中转时，这一回执表示密文已托管，供接收端下载。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 1587,
+          "end_line": 1595
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1611,
+          "end_line": 1618
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1669,
+          "end_line": 1676
+        }
+      ]
+    },
+    {
+      "id": "written",
+      "type": "neutral",
+      "label": "本端已写完",
+      "sublabel": "local_written",
+      "explanation": "P2P 接力完成写入，但该会话没有协商接收回执。发送端以本端写入状态结束。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 1779,
+          "end_line": 1803
+        }
+      ]
+    },
+    {
+      "id": "discarded",
+      "type": "neutral",
+      "label": "对端已放弃",
+      "sublabel": "remote_discarded",
+      "explanation": "收到 clip_ack(discarded)，或对端因放弃、策略、限额或授权拒绝接力。收到终止结果后，发送端尽力清理中转对象。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 1693,
+          "end_line": 1700
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1225,
+          "end_line": 1240
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1815,
+          "end_line": 1823
+        }
+      ]
+    },
+    {
+      "id": "failed",
+      "type": "failure",
+      "label": "发送失败",
+      "sublabel": "TargetFailed",
+      "explanation": "HTTP 上传失败、取消、显式接收失败或接收回执超时可结束发送任务。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 1815,
+          "end_line": 1837
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1907,
+          "end_line": 1918
+        },
+        {
+          "path": "engine/peersend.go",
+          "line": 380,
+          "end_line": 395
+        }
+      ]
+    },
+    {
+      "id": "superseded",
+      "type": "neutral",
+      "label": "排队任务被替换",
+      "sublabel": "TargetSuperseded",
+      "sources": [
+        {
+          "path": "engine/peersend.go",
+          "line": 342,
+          "end_line": 350
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "id": "queued-http",
+      "from": "queued",
+      "to": "http",
+      "label": "开始上传"
+    },
+    {
+      "id": "http-p2p",
+      "from": "http",
+      "to": "p2p",
+      "label": "接力获准",
+      "variant": "emphasis"
+    },
+    {
+      "id": "p2p-wait",
+      "from": "p2p",
+      "to": "waiting",
+      "label": "等待回执",
+      "variant": "emphasis"
+    },
+    {
+      "id": "wait-received",
+      "from": "waiting",
+      "to": "received",
+      "label": "received",
+      "variant": "emphasis"
+    },
+    {
+      "id": "p2p-http",
+      "from": "p2p",
+      "to": "http",
+      "label": "发送中断线",
+      "variant": "dashed"
+    },
+    {
+      "id": "wait-http",
+      "from": "waiting",
+      "to": "http",
+      "label": "等待中断线",
+      "variant": "dashed"
+    },
+    {
+      "id": "http-stored",
+      "from": "http",
+      "to": "stored",
+      "label": "分块已覆盖"
+    },
+    {
+      "id": "p2p-written",
+      "from": "p2p",
+      "to": "written",
+      "label": "未协商回执"
+    },
+    {
+      "id": "p2p-received",
+      "from": "p2p",
+      "to": "received",
+      "label": "提前收到回执",
+      "variant": "emphasis"
+    },
+    {
+      "id": "http-discarded",
+      "from": "http",
+      "to": "discarded",
+      "label": "接力被终止",
+      "variant": "security"
+    },
+    {
+      "id": "p2p-discarded",
+      "from": "p2p",
+      "to": "discarded",
+      "label": "discarded",
+      "variant": "security"
+    },
+    {
+      "id": "wait-discarded",
+      "from": "waiting",
+      "to": "discarded",
+      "label": "discarded",
+      "variant": "security"
+    },
+    {
+      "id": "http-failed",
+      "from": "http",
+      "to": "failed",
+      "label": "发送失败",
+      "variant": "security"
+    },
+    {
+      "id": "p2p-failed",
+      "from": "p2p",
+      "to": "failed",
+      "label": "发送失败",
+      "variant": "security"
+    },
+    {
+      "id": "wait-failed",
+      "from": "waiting",
+      "to": "failed",
+      "label": "发送失败",
+      "variant": "security"
+    },
+    {
+      "id": "queue-replaced",
+      "from": "queued",
+      "to": "superseded",
+      "label": "被替换"
+    },
+    {
+      "id": "queue-failed",
+      "from": "queued",
+      "to": "failed",
+      "label": "发送失败",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "断线回退",
+      "items": [
+        "HTTP 上传、P2P 接力和等待回执是发送过程中的阶段。发送端以独立回执字段记录结果。",
+        "发送中或等待回执时断线，发送端重新检查接力条件。未恢复会话时，发送端经 HTTP 上传尚未确认的分块。接收端保留已收分块并按位图去重。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "接收端主动放弃",
+      "items": [
+        "接收端停止下载，清理未发布的暂存内容，尽力删除中转对象。已接力时尝试发送 clip_ack(discarded)。"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "发送失败的原因",
+      "items": [
+        "启动时重新校验授权、开关和限额。授权撤销、同步暂停或限额不符会结束任务。HTTP 上传失败也会结束任务。",
+        "P2P 接力期间可收到提前回报的失败状态。进入等待后，接收失败、取消或 30 秒超时可结束任务。"
+      ]
+    }
+  ]
+}

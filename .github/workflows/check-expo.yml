@@ -111,6 +111,7 @@ jobs:
             app/expo/dist/android/
 
   native:
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:

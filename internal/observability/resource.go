@@ -239,7 +239,9 @@ func (c *Controller) RecordDesktopResourceSample(r ResourceSample) error {
 	if g == nil {
 		return nil
 	}
-	g.enqueueResource(metricRecord{resource: &r})
+	// Bounded drop on queue_full is recorded by enqueueResource; disabled/inactive
+	// drops remain silent per local-service-contract (HTTP 204).
+	_ = g.enqueueResource(metricRecord{resource: &r})
 	return nil
 }
 
@@ -255,7 +257,8 @@ func (c *Controller) RecordResourceSample(r ResourceSample) {
 		c.drop(2, 2, 1)
 		return
 	}
-	g.enqueueResource(metricRecord{resource: &r})
+	// Bounded drop on queue_full is recorded inside enqueueResource.
+	_ = g.enqueueResource(metricRecord{resource: &r})
 }
 
 // RecordPowerSample admits a validated mobile power sample into the active metrics generation.
@@ -270,7 +273,8 @@ func (c *Controller) RecordPowerSample(p PowerSample) {
 		c.drop(2, 2, 1)
 		return
 	}
-	g.enqueueResource(metricRecord{power: &p})
+	// Bounded drop on queue_full is recorded inside enqueueResource.
+	_ = g.enqueueResource(metricRecord{power: &p})
 }
 
 // RecordMetricKit admits a validated 24-hour iOS MetricKit summary into the active metrics generation.

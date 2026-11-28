@@ -298,14 +298,6 @@ func TestResourceObservability(t *testing.T) {
 	})
 }
 
-func resourceServiceWin(fn func() (map[string]*resourceRoleSummary, map[string]uint64)) float64 {
-	s, _ := fn()
-	if svc := s["service"]; svc != nil {
-		return svc.WindowSeconds
-	}
-	return 0
-}
-
 func resourceAttrVal(attrs []*commonpb.KeyValue, key string) string {
 	for _, a := range attrs {
 		if a.Key == key {

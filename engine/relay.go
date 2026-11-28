@@ -36,6 +36,8 @@ const (
 	handoffMinRemainingBytes  = 2 << 20 // 2 MiB (contract §5.1)
 	handoffMinRemainingChunks = 2
 	maxHandoffSwitches        = 3
+	maxHandoffOfferRetries    = 2
+	handoffOfferReplaceGrace  = 100 * time.Millisecond
 	handoffClipAckTimeout     = 30 * time.Second
 	maxCompletedAssemblies    = 256
 )
@@ -1661,6 +1663,7 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 		return relaySendResult{}, err
 	}
 
+	offerRetries := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			deleteOnAbort()
@@ -1676,7 +1679,14 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 		}
 
 		// Branch A: Attempt Level 3 P2P handoff settlement if peer is connected with CapRelayHandoff.
+		transientOfferReject := false
 		if canHandoff(len(remIdx), remBytes) {
+			// Drain any stale peer-up token so wakeCh only reflects transitions
+			// arriving during or after this handoff offer attempt.
+			select {
+			case <-wakeCh:
+			default:
+			}
 			ackCh, sessDone, cleanupAck, hasAck := hb.RegisterRelayClipAckWaiter(plan.peerID, plan.clip.ID)
 			offerAck, oerr := hb.SendRelayHandoffOffer(ctx, plan.peerID, plugin.RelayHandoffOffer{
 				TransferID:          plan.clip.ID,
@@ -1689,7 +1699,41 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 					deleteOnAbort()
 					return relaySendResult{}, ctxErr(ctx.Err())
 				}
-				// P2P flapped during offer; fall through to HTTP batch below.
+				// P2P flapped during offer (e.g. simultaneous-dial session replacement).
+				// Give an incoming replacement session a brief event-driven window
+				// before restarting another HTTP batch.
+				if offerRetries < maxHandoffOfferRetries {
+					offerRetries++
+					if canHandoff(len(remIdx), remBytes) {
+						continue
+					}
+					graceTimer := time.NewTimer(handoffOfferReplaceGrace)
+					recovered := false
+					for waiting := true; waiting; {
+						if canHandoff(len(remIdx), remBytes) {
+							recovered = true
+							break
+						}
+						select {
+						case <-wakeCh:
+							if canHandoff(len(remIdx), remBytes) {
+								recovered = true
+								waiting = false
+							}
+						case <-ctx.Done():
+							graceTimer.Stop()
+							deleteOnAbort()
+							return relaySendResult{}, ctxErr(ctx.Err())
+						case <-graceTimer.C:
+							recovered = canHandoff(len(remIdx), remBytes)
+							waiting = false
+						}
+					}
+					graceTimer.Stop()
+					if recovered {
+						continue
+					}
+				}
 			} else if !offerAck.Accept {
 				cleanupAck()
 				switch offerAck.Reason {
@@ -1698,7 +1742,36 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 					return relaySendResult{state: TargetDiscarded, receiptStage: ReceiptStageRemoteDiscarded, route: RouteHybrid}, nil
 				}
 				// Transient receiver rejection (e.g. unavailable/resource_exhausted): fall through to HTTP.
+				transientOfferReject = true
 			} else {
+				// If the session used for RegisterRelayClipAckWaiter was replaced before
+				// SendRelayHandoffOffer ran, re-bind the waiter to the live session.
+				if hasAck {
+					select {
+					case <-sessDone:
+						select {
+						case status := <-ackCh:
+							cleanupAck()
+							switch status {
+							case wire.ClipAckReceived:
+								return relaySendResult{state: TargetSent, receiptStage: ReceiptStageRemoteReceived, route: RouteHybrid}, nil
+							case wire.ClipAckDiscarded:
+								deleteOnAbort()
+								return relaySendResult{state: TargetDiscarded, receiptStage: ReceiptStageRemoteDiscarded, route: RouteHybrid}, nil
+							default:
+								deleteOnAbort()
+								return relaySendResult{}, newErr(CodeUnavailable, "peer failed to receive handoff transfer")
+							}
+						default:
+							cleanupAck()
+							ackCh, sessDone, cleanupAck, hasAck = hb.RegisterRelayClipAckWaiter(plan.peerID, plan.clip.ID)
+							if !hasAck {
+								continue
+							}
+						}
+					default:
+					}
+				}
 				switches++
 				usedHybrid = true
 				h.ReportRoute(plan.key, RouteHybrid)
@@ -1835,6 +1908,21 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 				case <-ackTimer.C:
 					cleanupAck()
 					return relaySendResult{}, newErr(CodeTimeout, "timed out waiting for peer handoff confirmation")
+				}
+			}
+		}
+
+		// Before launching HTTP workers, check if a fresh peer-up arrived or P2P
+		// became ready during state transition so workers don't race ahead of monWG.
+		if !transientOfferReject && hb != nil && switches < maxHandoffSwitches && offerRetries < maxHandoffOfferRetries {
+			select {
+			case <-wakeCh:
+				if canHandoff(len(remIdx), remBytes) {
+					continue
+				}
+			default:
+				if canHandoff(len(remIdx), remBytes) {
+					continue
 				}
 			}
 		}

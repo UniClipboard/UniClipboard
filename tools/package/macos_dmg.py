@@ -8,6 +8,7 @@ import hashlib
 import os
 from pathlib import Path
 import plistlib
+import re
 import shutil
 import struct
 import subprocess
@@ -423,8 +424,116 @@ def parse_ds_store(raw: bytes) -> dict[tuple[str, bytes], tuple[bytes, object]]:
     return result
 
 
-def _detach(device: str | Path):
-    for _ in range(12):
+def _extract_whole_disk(entities: list[dict]) -> str | None:
+    """Return the whole-disk /dev/diskN device from hdiutil system-entities."""
+    for entry in entities:
+        dev = str(entry.get("dev-entry") or "")
+        if re.fullmatch(r"/dev/disk\d+", dev):
+            return dev
+    for entry in entities:
+        dev = str(entry.get("dev-entry") or "")
+        m = re.fullmatch(r"(/dev/disk\d+)s\d+", dev)
+        if m:
+            return m.group(1)
+    for entry in entities:
+        if "mount-point" in entry and entry.get("dev-entry"):
+            return str(entry["dev-entry"])
+    return None
+
+
+def _attached_state(device: str | Path, *, image_path: Path | None = None) -> tuple[bool, bool]:
+    """Check via `hdiutil info -plist` whether device is attached and bound to image_path."""
+    res = subprocess.run(
+        ["hdiutil", "info", "-plist"],
+        capture_output=True,
+        text=True,
+    )
+    if res.returncode != 0:
+        # Fail closed on binding verification when hdiutil info cannot be read.
+        return True, image_path is None
+    try:
+        info = plistlib.loads(res.stdout.encode("utf-8"))
+    except Exception:
+        return True, image_path is None
+
+    dev_str = str(device)
+    dev_real = os.path.realpath(dev_str) if not dev_str.startswith("/dev/") else dev_str
+    want_img = os.path.realpath(image_path) if image_path is not None else None
+
+    for img in info.get("images", []):
+        entities = img.get("system-entities", [])
+        matched = False
+        for entry in entities:
+            entry_dev = str(entry.get("dev-entry") or "")
+            entry_mnt = str(entry.get("mount-point") or "")
+            if entry_dev == dev_str or entry_dev.startswith(dev_str + "s"):
+                matched = True
+                break
+            if not dev_str.startswith("/dev/") and entry_mnt and os.path.realpath(entry_mnt) == dev_real:
+                matched = True
+                break
+        if not matched:
+            continue
+        if want_img is None:
+            return True, True
+        img_raw = img.get("image-path")
+        if isinstance(img_raw, str) and img_raw and os.path.realpath(img_raw) == want_img:
+            return True, True
+        return True, False
+
+    return False, False
+
+
+def _is_already_detached_error(res: subprocess.CompletedProcess[str]) -> bool:
+    text = f"{res.stderr}\n{res.stdout}".lower()
+    return (
+        "no such file or directory" in text
+        or "couldn't find" in text
+        or "not found" in text
+    )
+
+
+def _busy_holders(device: str | Path, mountpoint: Path | None) -> str:
+    """Return bounded command(pid) summary for processes holding the DMG mount or device."""
+    target = mountpoint if mountpoint is not None else device
+    try:
+        res = subprocess.run(
+            ["lsof", "-Fp", "-Fc", "--", str(target)],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return ""
+    if res.returncode != 0 and not res.stdout:
+        return ""
+    holders: list[str] = []
+    seen: set[str] = set()
+    cur_pid = ""
+    for line in res.stdout.splitlines():
+        if line.startswith("p"):
+            cur_pid = line[1:].strip()
+        elif line.startswith("c") and cur_pid:
+            cmd = line[1:].strip() or "unknown"
+            item = f"{cmd}({cur_pid})"
+            if item not in seen:
+                seen.add(item)
+                holders.append(item)
+                if len(holders) >= 8:
+                    break
+            cur_pid = ""
+    if not holders:
+        return ""
+    return f"; busy holders: {', '.join(holders)}"
+
+
+def _detach(
+    device: str | Path,
+    *,
+    image_path: Path | None = None,
+    mountpoint: Path | None = None,
+):
+    graceful_attempts = 15
+    for attempt in range(graceful_attempts):
         res = subprocess.run(
             ["hdiutil", "detach", str(device)],
             capture_output=True,
@@ -432,17 +541,52 @@ def _detach(device: str | Path):
         )
         if res.returncode == 0:
             return
-        time.sleep(0.5)
-    res = subprocess.run(
-        ["hdiutil", "detach", "-force", str(device)],
-        capture_output=True,
-        text=True,
-    )
-    if res.returncode != 0:
-        detail = res.stderr.strip() or res.stdout.strip()
+        if _is_already_detached_error(res):
+            attached, _ = _attached_state(device, image_path=image_path)
+            if not attached:
+                return
+        if attempt < graceful_attempts - 1:
+            time.sleep(0.5 if attempt < 6 else 1.0)
+
+    attached, bound = _attached_state(device, image_path=image_path)
+    if not attached:
+        return
+    if image_path is not None and not bound:
         raise RuntimeError(
-            f"failed to detach DMG device {device} (exit {res.returncode}): {detail}"
+            f"refusing to force-detach DMG device {device}: device is not bound to {image_path}"
         )
+
+    force_backoffs = (1.0, 1.0, 2.0, 2.0, 3.0, 3.0)
+    last_res = res
+    for attempt, delay in enumerate(force_backoffs):
+        if str(device).startswith("/dev/disk"):
+            subprocess.run(
+                ["diskutil", "unmountDisk", "force", str(device)],
+                capture_output=True,
+                text=True,
+            )
+        last_res = subprocess.run(
+            ["hdiutil", "detach", "-force", str(device)],
+            capture_output=True,
+            text=True,
+        )
+        if last_res.returncode == 0:
+            return
+        attached, bound = _attached_state(device, image_path=image_path)
+        if not attached:
+            return
+        if image_path is not None and not bound:
+            raise RuntimeError(
+                f"refusing to force-detach DMG device {device}: device is not bound to {image_path}"
+            )
+        if attempt < len(force_backoffs) - 1:
+            time.sleep(delay)
+
+    detail = last_res.stderr.strip() or last_res.stdout.strip()
+    holders = _busy_holders(device, mountpoint)
+    raise RuntimeError(
+        f"failed to detach DMG device {device} (exit {last_res.returncode}): {detail}{holders}"
+    )
 
 
 def _set_file_attr(attr: str, path: Path):
@@ -488,6 +632,9 @@ def build_dmg(
         shutil.copyfile(background, bg_dir / "background.tiff")
         shutil.copyfile(volume_icon, staging / ".VolumeIcon.icns")
         (staging / ".metadata_never_index").write_bytes(b"")
+        fsevents_staged = staging / ".fseventsd"
+        fsevents_staged.mkdir(exist_ok=True)
+        (fsevents_staged / "no_log").write_bytes(b"")
 
         # Reserve space on HFS+ for the real .DS_Store and .fseventsd/no_log before sizing.
         (staging / ".DS_Store").write_bytes(b"\x00" * 65536)
@@ -528,16 +675,16 @@ def build_dmg(
                 rw_dmg,
             ]
         )
-        device = mountpoint
+        device: str | Path = mountpoint
         try:
             entities = plistlib.loads(attachment.stdout.encode())["system-entities"]
-            device = next(
-                entry["dev-entry"] for entry in entities if "mount-point" in entry
-            )
+            device = _extract_whole_disk(entities) or mountpoint
 
             fsevents = mountpoint / ".fseventsd"
             fsevents.mkdir(exist_ok=True)
-            (fsevents / "no_log").write_bytes(b"")
+            no_log = fsevents / "no_log"
+            if not no_log.exists():
+                no_log.write_bytes(b"")
 
             mounted_bg = mountpoint / BACKGROUND_REL
             _set_file_attr("V", mountpoint / ".background")
@@ -608,7 +755,7 @@ def build_dmg(
             (mountpoint / ".DS_Store").write_bytes(ds_bytes)
             os.sync()
         finally:
-            _detach(device)
+            _detach(device, image_path=rw_dmg, mountpoint=mountpoint)
 
         _run(
             [
@@ -647,11 +794,11 @@ def verify_dmg(
     with tempfile.TemporaryDirectory(prefix="unic-dmg-verify-") as tmp:
         mnt = Path(tmp) / "mnt"
         mnt.mkdir()
-        _run(
+        attachment = _run(
             [
                 "hdiutil",
                 "attach",
-                "-quiet",
+                "-plist",
                 "-readonly",
                 "-nobrowse",
                 "-noverify",
@@ -660,7 +807,10 @@ def verify_dmg(
                 dmg_path,
             ]
         )
+        device: str | Path = mnt
         try:
+            entities = plistlib.loads(attachment.stdout.encode()).get("system-entities", [])
+            device = _extract_whole_disk(entities) or mnt
             app_dir = mnt / expected_app_name
             if not app_dir.is_dir():
                 raise ValueError(f"missing {expected_app_name} in DMG root")
@@ -716,4 +866,4 @@ def verify_dmg(
                 "volume_icon_sha256": _sha256(mounted_icon),
             }
         finally:
-            _detach(mnt)
+            _detach(device, image_path=dmg_path, mountpoint=mnt)

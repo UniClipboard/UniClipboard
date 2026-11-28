@@ -33,15 +33,15 @@ type EventSink interface {
 
 // Engine wraps *engine.Engine behind a gomobile-safe, JSON-typed boundary.
 type Engine struct {
-	e               *engine.Engine
-	dataDir         string
-	settingsPath    string
-	relaySecretPath string
-	cacheDir        string
-	extensionMode   bool
-	settingsMu      sync.Mutex
-	relayURL        string
-	relayAccessKey  string
+	e                 *engine.Engine
+	dataDir           string
+	settingsPath      string
+	relaySecretPath   string
+	cacheDir          string
+	extensionMode     bool
+	settingsMu        sync.Mutex
+	relayURL          string
+	relayAccessKey    string
 	previewMu         sync.Mutex
 	diagnostics       *mobileDiagnostics
 	resourceMu        sync.RWMutex

@@ -20,6 +20,8 @@ import (
 	"github.com/uniclipboard/unic/engine"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
 	"github.com/uniclipboard/unic/internal/relayserver"
+	"github.com/uniclipboard/unic/plugin"
+	"github.com/uniclipboard/unic/plugin/rpc"
 )
 
 // toggleTransport wraps a loopback TCP transport with a switch to simulate P2P
@@ -160,7 +162,7 @@ func (t *toggleTransport) SetBlocked(on bool) {
 	}
 }
 
-func startRelayTestEngine(t *testing.T, name, relayURL string, relayEnabled bool, relayMaxBytes int64, tr *toggleTransport) *engine.Engine {
+func startRelayTestEngineWithPlugin(t *testing.T, name, relayURL string, relayEnabled bool, relayMaxBytes int64, p plugin.Plugin) *engine.Engine {
 	t.Helper()
 	settings := engine.DefaultSettings()
 	settings.DeviceName = name
@@ -177,7 +179,7 @@ func startRelayTestEngine(t *testing.T, name, relayURL string, relayEnabled bool
 		DataDir:  dir,
 		Settings: settings,
 		Plugins: []engine.PluginInstance{
-			{Plugin: tailcat.NewOn(tr), Builtin: true},
+			{Plugin: p, Builtin: true},
 		},
 	})
 	if err != nil {
@@ -189,6 +191,11 @@ func startRelayTestEngine(t *testing.T, name, relayURL string, relayEnabled bool
 	}
 	t.Cleanup(func() { _ = eng.Close(context.Background()) })
 	return eng
+}
+
+func startRelayTestEngine(t *testing.T, name, relayURL string, relayEnabled bool, relayMaxBytes int64, tr *toggleTransport) *engine.Engine {
+	t.Helper()
+	return startRelayTestEngineWithPlugin(t, name, relayURL, relayEnabled, relayMaxBytes, tailcat.NewOn(tr))
 }
 
 func waitUntil(t *testing.T, timeout time.Duration, desc string, cond func() bool) {
@@ -1185,6 +1192,225 @@ func TestHybridRelayMidHandoffDiscardStopsSender(t *testing.T) {
 			t.Fatalf("discarded handoff file unexpectedly committed to history: %+v", it)
 		}
 	}
+}
+
+type handoffFlapPlugin struct {
+	*tailcat.Plugin
+	mu               sync.Mutex
+	onPeerUp         func(peerID string, handoffCap, clipAckCap bool)
+	failFirstOffer   atomic.Bool
+	offerFlapping    atomic.Bool
+	staleAckOnce     atomic.Bool
+	offerCalls       atomic.Int32
+	replacementDelay time.Duration
+}
+
+func (p *handoffFlapPlugin) SetRelayHandoffCallbacks(
+	onOffer func(peerID string, offer plugin.RelayHandoffOffer) plugin.RelayHandoffAck,
+	onChunk func(peerID, transferID string, index int, ciphertext []byte),
+	onPeerConnected func(peerID string, handoffCap, clipAckCap bool),
+	onPeerDisconnected func(peerID string),
+) {
+	p.mu.Lock()
+	p.onPeerUp = onPeerConnected
+	p.mu.Unlock()
+	p.Plugin.SetRelayHandoffCallbacks(onOffer, onChunk, onPeerConnected, onPeerDisconnected)
+}
+
+func (p *handoffFlapPlugin) PeerHandoffCaps(peerID string) (connected, handoffCap, clipAckCap bool) {
+	if p.offerFlapping.Load() {
+		return false, false, false
+	}
+	return p.Plugin.PeerHandoffCaps(peerID)
+}
+
+func (p *handoffFlapPlugin) RegisterRelayClipAckWaiter(peerID, transferID string) (<-chan string, <-chan struct{}, func(), bool) {
+	if !p.failFirstOffer.Load() && p.staleAckOnce.Swap(false) {
+		staleCh := make(chan string)
+		closedDone := make(chan struct{})
+		close(closedDone)
+		return staleCh, closedDone, func() {}, true
+	}
+	return p.Plugin.RegisterRelayClipAckWaiter(peerID, transferID)
+}
+
+func (p *handoffFlapPlugin) SendRelayHandoffOffer(ctx context.Context, peerID string, offer plugin.RelayHandoffOffer) (plugin.RelayHandoffAck, error) {
+	p.offerCalls.Add(1)
+	if p.failFirstOffer.Swap(false) {
+		p.offerFlapping.Store(true)
+		p.mu.Lock()
+		up := p.onPeerUp
+		p.mu.Unlock()
+		delay := p.replacementDelay
+		go func() {
+			if delay > 0 {
+				time.Sleep(delay)
+			}
+			p.offerFlapping.Store(false)
+			if up != nil {
+				up(peerID, true, true)
+			}
+		}()
+		return plugin.RelayHandoffAck{}, rpc.NewError(rpc.CodeUnavailable)
+	}
+	return p.Plugin.SendRelayHandoffOffer(ctx, peerID, offer)
+}
+
+// TestHybridRelayOfferFlapReplacementAvoidsExtraHTTPBatch verifies that when an
+// initial P2P handoff offer fails due to simultaneous-dial session replacement,
+// sendViaRelay waits briefly for the replacement peer-up signal instead of
+// launching another HTTP upload batch.
+func TestHybridRelayOfferFlapReplacementAvoidsExtraHTTPBatch(t *testing.T) {
+	ctx := context.Background()
+	srv := relayserver.New(relayserver.Config{MaxTransferBytes: 20 << 20})
+
+	var httpPutChunks atomic.Int32
+	chunk2Gate := make(chan struct{})
+	chunk2Reached := make(chan struct{})
+	var gateOnce sync.Once
+	var releaseOnce sync.Once
+	releaseGate := func() { releaseOnce.Do(func() { close(chunk2Gate) }) }
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.HasPrefix(r.URL.Path, "/_s3/") {
+			if httpPutChunks.Add(1) >= 3 {
+				gateOnce.Do(func() { close(chunk2Reached) })
+				select {
+				case <-chunk2Gate:
+				case <-r.Context().Done():
+					return
+				}
+			}
+		}
+		srv.ServeHTTP(w, r)
+	})
+	ts := httptest.NewServer(handler)
+	defer func() {
+		releaseGate()
+		srv.Close()
+		ts.Close()
+	}()
+
+	trA, trB := newToggleTransport(), newToggleTransport()
+	flapA := &handoffFlapPlugin{
+		Plugin:           tailcat.NewOn(trA),
+		replacementDelay: 15 * time.Millisecond,
+	}
+	a := startRelayTestEngineWithPlugin(t, "PhoneOfferFlap", ts.URL, true, 20<<20, flapA)
+	b := startRelayTestEngine(t, "MacOfferFlap", ts.URL, true, 20<<20, trB)
+	aID, bID := pairAndConnect(t, a, b)
+
+	waitUntil(t, 5*time.Second, "relay route ready", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].RelayRouteReady {
+				return true
+			}
+		}
+		return false
+	})
+
+	trA.SetBlocked(true)
+	trB.SetBlocked(true)
+	waitUntil(t, 5*time.Second, "p2p offline", func() bool {
+		ds, _ := a.ListDevices(ctx)
+		for _, d := range ds {
+			if d.ID == bID && len(d.Bindings) > 0 && d.Bindings[0].Connection != engine.Connected {
+				return true
+			}
+		}
+		return false
+	})
+
+	payload := bytes.Repeat([]byte("offer-flap-replacement-chunked-012345678"), (8<<20)/40)
+	wantHash := sha256.Sum256(payload)
+	tmpFile := filepath.Join(t.TempDir(), "offerflap8m.bin")
+	if err := os.WriteFile(tmpFile, payload, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := a.ImportContent(ctx, engine.ContentInput{
+		Files: []engine.FileInput{{Name: "offerflap8m.bin", Size: int64(len(payload)), Source: &memFileSource{path: tmpFile, size: int64(len(payload))}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := a.CommitContent(ctx, engine.CommitRequest{
+		RequestID: "req-offer-flap",
+		LeaseID:   lease.LeaseID,
+		DeviceIDs: []engine.DeviceID{engine.DeviceID(bID)},
+	})
+	if err != nil || res.SyncDisposition != engine.SyncQueued {
+		t.Fatalf("CommitContent: res=%+v err=%v", res, err)
+	}
+
+	select {
+	case <-chunk2Reached:
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for HTTP relay upload to start")
+	}
+
+	// Simulate simultaneous-dial session replacement on the first handoff offer.
+	flapA.failFirstOffer.Store(true)
+	flapA.staleAckOnce.Store(true)
+	trA.SetBlocked(false)
+	trB.SetBlocked(false)
+	_ = a.NotifyNetworkChanged(ctx)
+	_ = b.NotifyNetworkChanged(ctx)
+
+	waitUntil(t, 15*time.Second, "hybrid handoff completes with remote_received after offer flap", func() bool {
+		op, err := a.GetOperation(ctx, res.OperationID)
+		if err != nil || !op.Done() || len(op.Targets) != 1 {
+			return false
+		}
+		tg := op.Targets[0]
+		return tg.State == engine.TargetSent &&
+			tg.TransportRoute == engine.RouteHybrid &&
+			tg.ReceiptStage == engine.ReceiptStageRemoteReceived
+	})
+	releaseGate()
+
+	if puts := httpPutChunks.Load(); puts >= 8 {
+		t.Fatalf("expected replacement grace to prevent second HTTP batch, got %d HTTP PUTs", puts)
+	}
+	if calls := flapA.offerCalls.Load(); calls != 2 {
+		t.Fatalf("expected exactly 2 handoff offers (1 flapped + 1 re-bound), got %d", calls)
+	}
+
+	waitUntil(t, 5*time.Second, "Mac committed handoff file", func() bool {
+		page, err := b.ListHistory(ctx, engine.ListHistoryRequest{Limit: 10})
+		if err != nil {
+			return false
+		}
+		matches := 0
+		for _, it := range page.Items {
+			if it.Kind == engine.HistoryFiles && it.Origin.DeviceID == engine.DeviceID(aID) {
+				matches++
+				ret, rerr := b.RetainHistoryContent(ctx, it.ID)
+				if rerr != nil || len(ret.Content.Parts) == 0 {
+					continue
+				}
+				rc, oerr := b.ReadContent(ctx, ret.LeaseID, ret.Content.Parts[0].ID)
+				if oerr != nil {
+					_ = b.ReleaseContent(ctx, ret.LeaseID)
+					continue
+				}
+				got, _ := io.ReadAll(rc)
+				_ = rc.Close()
+				_ = b.ReleaseContent(ctx, ret.LeaseID)
+				if sha256.Sum256(got) != wantHash {
+					t.Fatalf("handoff file SHA-256 mismatch")
+				}
+			}
+		}
+		if matches > 1 {
+			t.Fatalf("duplicate history items committed: %d", matches)
+		}
+		return matches == 1
+	})
+
+	waitUntil(t, 5*time.Second, "relay server cleaned handoff transfer", func() bool {
+		return srv.ActiveTransferCount() == 0
+	})
 }
 
 type memFileSource struct {

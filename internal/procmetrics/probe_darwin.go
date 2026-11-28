@@ -15,17 +15,17 @@ import (
 const rusageInfoV0 = 0
 
 type rusageInfoV0Data struct {
-	UUID               [16]byte
-	UserTime           uint64
-	SystemTime         uint64
-	PkgIdleWkups       uint64
-	InterruptWkups     uint64
-	Pageins            uint64
-	WiredSize          uint64
-	ResidentSize       uint64
-	PhysFootprint      uint64
-	ProcStartAbstime   uint64
-	ProcExitAbstime    uint64
+	UUID             [16]byte
+	UserTime         uint64
+	SystemTime       uint64
+	PkgIdleWkups     uint64
+	InterruptWkups   uint64
+	Pageins          uint64
+	WiredSize        uint64
+	ResidentSize     uint64
+	PhysFootprint    uint64
+	ProcStartAbstime uint64
+	ProcExitAbstime  uint64
 }
 
 type machTimebaseInfoData struct {
@@ -73,9 +73,9 @@ func darwinBootElapsed() time.Duration {
 
 func readPlatformSnapshot() Snapshot {
 	snap := Snapshot{
-		Monotonic:    time.Now(),
-		BootElapsed:  darwinBootElapsed(),
-		GoHeapBytes:  GoHeapBytes(),
+		Monotonic:   time.Now(),
+		BootElapsed: darwinBootElapsed(),
+		GoHeapBytes: GoHeapBytes(),
 	}
 
 	var ru unix.Rusage

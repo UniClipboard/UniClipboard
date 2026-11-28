@@ -10198,5 +10198,41 @@
     "ja": "キーを入力してください",
     "pt-BR": "Digite uma chave",
     "ru": "Введите ключ"
+  },
+  "需重新登录": {
+    "en": "Sign in again",
+    "ja": "再ログインが必要",
+    "pt-BR": "Entre novamente",
+    "ru": "Требуется повторный вход"
+  },
+  "重新登录": {
+    "en": "Sign in again",
+    "ja": "再ログイン",
+    "pt-BR": "Entrar novamente",
+    "ru": "Войти снова"
+  },
+  "登录已失效，请重新登录。": {
+    "en": "Session expired or revoked. Sign in again.",
+    "ja": "セッションが無効になりました。再度ログインしてください。",
+    "pt-BR": "Sessão expirada ou revogada. Entre novamente.",
+    "ru": "Сессия недействительна. Войдите снова."
+  },
+  "登录已失效，请重新登录以恢复官方服务。": {
+    "en": "Session expired or revoked. Sign in again to restore official services.",
+    "ja": "セッションが無効になりました。公式サービスを再開するには再ログインしてください。",
+    "pt-BR": "Sessão expirada ou revogada. Entre novamente para restaurar os serviços oficiais.",
+    "ru": "Сессия недействительна. Войдите снова, чтобы восстановить официальные сервисы."
+  },
+  "当前使用手动配置的接入密钥，也可登录云账号。": {
+    "en": "Using a manually configured access key. You can also sign in to your cloud account.",
+    "ja": "手動設定のアクセスキーを使用中です。クラウドアカウントにログインすることもできます。",
+    "pt-BR": "Usando uma chave de acesso configurada manualmente. Você também pode entrar na conta.",
+    "ru": "Используется заданный вручную ключ доступа. Вы также можете войти в облачный аккаунт."
+  },
+  "用于自建中转服务鉴权（仅写入不回显）。": {
+    "en": "Authenticates with a self-hosted relay server (write-only).",
+    "ja": "セルフホストのリレーサーバー認証に使用します（書き込み専用）。",
+    "pt-BR": "Autentica em um servidor de relay próprio (somente gravação).",
+    "ru": "Для аутентификации на своём сервере ретрансляции (только запись)."
   }
 }

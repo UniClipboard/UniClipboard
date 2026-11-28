@@ -119,6 +119,13 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 			fail(w, code, err)
 			return
 		}
+		if hook, ok := b.(interface {
+			AfterConfigReplace(context.Context) (config.State, bool)
+		}); ok {
+			if nextState, updated := hook.AfterConfigReplace(r.Context()); updated {
+				state = nextState
+			}
+		}
 		reply(w, 200, state)
 	})
 	mux.HandleFunc("GET /v1/file-cache", func(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +143,12 @@ func Handler(b api.Backend, cfg *config.Manager) http.Handler {
 		fail(w, 501, errors.New("file cache unavailable"))
 	})
 	mux.HandleFunc("GET /v1/config", func(w http.ResponseWriter, r *http.Request) {
+		if source, ok := b.(interface {
+			ConfigState(context.Context) config.State
+		}); ok {
+			reply(w, 200, source.ConfigState(r.Context()))
+			return
+		}
 		reply(w, 200, cfg.State())
 	})
 

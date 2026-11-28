@@ -78,12 +78,34 @@ type Options struct {
 	// PluginNotify shows a plugin's short message to the user. It must not
 	// block. Nil: messages are dropped.
 	PluginNotify func(plugin PluginID, message string)
+	// RelayAuth supplies dynamic X-Unic-Relay-Key credentials (e.g. Cloud-managed
+	// device credentials) for an active relay origin without persisting secrets
+	// into config.toml or Engine settings.
+	RelayAuth RelayAuthProvider
 
 	// Test seams, reachable from this package's tests only.
 	extraBackends    []syncBackend // fake backends for contract tests
 	noPersistDefault bool          // processed items default to persist=false
 	rendezvous       *rendezvous.Client
 	relayClient      *relayclient.Client
+}
+
+// RelayAuthProvider supplies dynamic control-plane credentials and handles
+// relay HTTP 401 unauthorized responses for a single canonical relay origin.
+//
+// AccessKey makes a single atomic credential + admission decision per request:
+//   - (key, true) with key != "": present this host-resolved credential
+//     (Cloud-managed or live manual/env fallback);
+//   - ("", true): send unauthenticated without X-Unic-Relay-Key on a permitted
+//     key-free self-hosted origin (never falling back to a client-creation snapshot);
+//   - ("", false): protected, disabled, stale, or mismatched origin denied;
+//     control-plane and SSE requests to it must not be sent.
+//
+// Implementations must not block AccessKey and must never return credentials
+// issued for a different origin.
+type RelayAuthProvider interface {
+	AccessKey(origin string) (key string, allow bool)
+	OnUnauthorized(ctx context.Context, origin, rejectedKey string) bool
 }
 
 // ResourcePolicy bounds what the engine keeps. Zero fields mean the defaults.

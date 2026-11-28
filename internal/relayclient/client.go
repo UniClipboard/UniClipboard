@@ -49,8 +49,18 @@ func (e *Error) Error() string {
 
 // Config configures a Direct-to-S3 Relay HTTP client.
 type Config struct {
-	BaseURL              string
-	AccessKey            string
+	BaseURL string
+	// AccessKey is an optional static X-Unic-Relay-Key fallback (from
+	// config.toml or UNIC_RELAY_ACCESS_KEY).
+	AccessKey string
+	// AccessKeyProvider, when non-nil, dynamically supplies X-Unic-Relay-Key and
+	// admission decisions on control-plane requests. Returning allow=false
+	// blocks sending the request when a protected origin has no usable credential.
+	AccessKeyProvider func() (key string, allow bool)
+	// OnAuthFailure, when non-nil, is invoked when a control-plane or SSE
+	// request receives HTTP 401. It receives the rejected X-Unic-Relay-Key value
+	// and returns true if credentials were rotated and the request may retry once.
+	OnAuthFailure        func(ctx context.Context, rejectedKey string) bool
 	HTTPClient           *http.Client
 	SSEClient            *http.Client
 	StorageClient        *http.Client
@@ -62,6 +72,8 @@ type Config struct {
 type Client struct {
 	origin            string
 	accessKey         string
+	accessKeyProvider func() (string, bool)
+	onAuthFailure     func(context.Context, string) bool
 	allowLoopback     bool
 	httpCli           *http.Client
 	sseCli            *http.Client
@@ -96,17 +108,135 @@ func New(cfg Config) (*Client, error) {
 	allowLoopback := cfg.AllowLoopbackStorage || isLoopbackOrigin(origin)
 
 	c := &Client{
-		origin:          origin,
-		accessKey:       cfg.AccessKey,
-		allowLoopback:   allowLoopback,
-		httpCli:         httpCli,
-		sseCli:          sseCli,
-		storageOverride: cfg.StorageClient,
-		now:             now,
+		origin:            origin,
+		accessKey:         cfg.AccessKey,
+		accessKeyProvider: cfg.AccessKeyProvider,
+		onAuthFailure:     cfg.OnAuthFailure,
+		allowLoopback:     allowLoopback,
+		storageOverride:   cfg.StorageClient,
+		now:               now,
 	}
+	c.httpCli = c.withControlRedirectGuard(httpCli, defaultRequestTimeout)
+	c.sseCli = c.withControlRedirectGuard(sseCli, 0)
 	c.directStorageCli = c.newStorageHTTPClient(false)
 	c.proxiedStorageCli = c.newStorageHTTPClient(true)
 	return c, nil
+}
+
+type controlAttemptCtxKey struct{}
+
+type controlAttemptState struct {
+	hasRetryReject bool
+	retryRejectKey string
+	presented      string
+}
+
+var (
+	errAdmissionDenied  = errors.New("relay admission denied")
+	errRetryNotEligible = errors.New("relay auth retry not eligible")
+)
+
+type controlAuthTransport struct {
+	client *Client
+	base   http.RoundTripper
+}
+
+func (t *controlAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	cloned := req.Clone(req.Context())
+	if cloned.URL == nil || !t.client.sameBoundOrigin(cloned.URL) {
+		stripRelayHeaders(cloned.Header)
+		return nil, &Error{Code: "origin_mismatch"}
+	}
+	key, allow := t.client.resolveAccessKey()
+	if !allow {
+		cloned.Header.Del("X-Unic-Relay-Key")
+		return nil, errAdmissionDenied
+	}
+	key = strings.TrimSpace(key)
+	if st, _ := req.Context().Value(controlAttemptCtxKey{}).(*controlAttemptState); st != nil {
+		if st.hasRetryReject && (key == "" || key == st.retryRejectKey) {
+			cloned.Header.Del("X-Unic-Relay-Key")
+			return nil, errRetryNotEligible
+		}
+		st.presented = key
+	}
+	if key != "" {
+		cloned.Header.Set("X-Unic-Relay-Key", key)
+	} else {
+		cloned.Header.Del("X-Unic-Relay-Key")
+	}
+	base := t.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	return base.RoundTrip(cloned)
+}
+
+func (c *Client) withControlRedirectGuard(src *http.Client, defaultTimeout time.Duration) *http.Client {
+	var cli http.Client
+	if src != nil {
+		cli = *src
+	} else if defaultTimeout > 0 {
+		cli.Timeout = defaultTimeout
+	}
+	cli.Transport = &controlAuthTransport{
+		client: c,
+		base:   cli.Transport,
+	}
+	prevCheck := cli.CheckRedirect
+	cli.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 3 {
+			stripRelayHeaders(req.Header)
+			return &Error{Code: "origin_mismatch"}
+		}
+		if req.URL == nil || !c.sameBoundOrigin(req.URL) {
+			stripRelayHeaders(req.Header)
+			return &Error{Code: "origin_mismatch"}
+		}
+		if prevCheck != nil {
+			if err := prevCheck(req, via); err != nil {
+				stripRelayHeaders(req.Header)
+				return err
+			}
+		}
+		return nil
+	}
+	return &cli
+}
+
+func (c *Client) sameBoundOrigin(u *url.URL) bool {
+	if u == nil {
+		return false
+	}
+	base, err := url.Parse(c.origin)
+	if err != nil {
+		return false
+	}
+	if canonicalSchemeHostPort(u) != canonicalSchemeHostPort(base) {
+		return false
+	}
+	basePath := strings.TrimRight(base.EscapedPath(), "/")
+	if basePath == "" {
+		return true
+	}
+	reqPath := u.EscapedPath()
+	return reqPath == basePath || strings.HasPrefix(reqPath, basePath+"/")
+}
+
+func canonicalSchemeHostPort(u *url.URL) string {
+	scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+	host := strings.ToLower(strings.TrimSpace(u.Hostname()))
+	port := u.Port()
+	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
+		port = ""
+	}
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if port != "" {
+		return scheme + "://" + host + ":" + port
+	}
+	return scheme + "://" + host
 }
 
 // Origin returns the canonical relay origin.
@@ -170,10 +300,15 @@ type SSEEvent struct {
 	ExpiresAtMs     int64                 `json:"expires_at_ms,omitempty"`
 }
 
-func (c *Client) applyAccessKey(req *http.Request) {
-	if c.accessKey != "" {
-		req.Header.Set("X-Unic-Relay-Key", c.accessKey)
+func (c *Client) resolveAccessKey() (string, bool) {
+	if c.accessKeyProvider != nil {
+		k, allow := c.accessKeyProvider()
+		if !allow {
+			return "", false
+		}
+		return strings.TrimSpace(k), true
 	}
+	return strings.TrimSpace(c.accessKey), true
 }
 
 func (c *Client) signOwnerRequest(req *http.Request, owner relaycrypto.Signer, body []byte) error {
@@ -207,16 +342,75 @@ func mapHTTPStatus(status int) error {
 	}
 }
 
+func (c *Client) mapControlSendError(ctx context.Context, err error) error {
+	if errors.Is(err, errAdmissionDenied) {
+		return &Error{Code: "unavailable"}
+	}
+	var re *Error
+	if errors.As(err, &re) {
+		return re
+	}
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return &Error{Code: "unavailable"}
+}
+
 func (c *Client) do(req *http.Request) (*http.Response, error) {
-	c.applyAccessKey(req)
+	attempt := &controlAttemptState{}
+	req = req.WithContext(context.WithValue(req.Context(), controlAttemptCtxKey{}, attempt))
 	resp, err := c.httpCli.Do(req)
 	if err != nil {
-		if req.Context().Err() != nil {
-			return nil, req.Context().Err()
+		return nil, c.mapControlSendError(req.Context(), err)
+	}
+	if resp.StatusCode == http.StatusUnauthorized && c.onAuthFailure != nil && (req.Body == nil || req.GetBody != nil) {
+		rotated := c.onAuthFailure(req.Context(), attempt.presented)
+		if !rotated {
+			if _, allow := c.resolveAccessKey(); !allow {
+				_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+				_ = resp.Body.Close()
+				return nil, &Error{Code: "unavailable"}
+			}
+			return resp, nil
 		}
-		return nil, &Error{Code: "unavailable"}
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+		resp.Body = http.NoBody
+
+		retryAttempt := &controlAttemptState{
+			hasRetryReject: true,
+			retryRejectKey: attempt.presented,
+		}
+		retryCtx := context.WithValue(req.Context(), controlAttemptCtxKey{}, retryAttempt)
+		retryReq, rerr := cloneRequestForRetry(req.WithContext(retryCtx))
+		if rerr != nil {
+			if _, allow := c.resolveAccessKey(); !allow {
+				return nil, &Error{Code: "unavailable"}
+			}
+			return resp, nil
+		}
+		resp2, err2 := c.httpCli.Do(retryReq)
+		if err2 != nil {
+			if errors.Is(err2, errRetryNotEligible) {
+				return resp, nil
+			}
+			return nil, c.mapControlSendError(req.Context(), err2)
+		}
+		return resp2, nil
 	}
 	return resp, nil
+}
+
+func cloneRequestForRetry(req *http.Request) (*http.Request, error) {
+	cp := req.Clone(req.Context())
+	if req.GetBody != nil {
+		body, err := req.GetBody()
+		if err != nil {
+			return nil, err
+		}
+		cp.Body = body
+	}
+	return cp, nil
 }
 
 // ---- Direct object storage SSRF guard & credential stripping ----
@@ -780,24 +974,51 @@ func (c *Client) DeleteTransferAsSender(ctx context.Context, mailboxID, delivery
 // ends, or onEvent returns a non-nil error.
 func (c *Client) SubscribeEvents(ctx context.Context, owner relaycrypto.Signer, mailboxID, lastEventID string, onEvent func(SSEEvent) error) error {
 	path := fmt.Sprintf("/v1/relay/mailboxes/%s/events", mailboxID)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.origin+path, nil)
+	openStream := func(attempt *controlAttemptState) (*http.Response, error) {
+		attemptCtx := context.WithValue(ctx, controlAttemptCtxKey{}, attempt)
+		req, err := http.NewRequestWithContext(attemptCtx, http.MethodGet, c.origin+path, nil)
+		if err != nil {
+			return nil, &Error{Code: "invalid_argument"}
+		}
+		req.Header.Set("Accept", "text/event-stream")
+		if lastEventID != "" {
+			req.Header.Set("Last-Event-ID", lastEventID)
+		}
+		if err := c.signOwnerRequest(req, owner, nil); err != nil {
+			return nil, err
+		}
+		resp, err := c.sseCli.Do(req)
+		if err != nil {
+			if errors.Is(err, errRetryNotEligible) {
+				return nil, mapHTTPStatus(http.StatusUnauthorized)
+			}
+			return nil, c.mapControlSendError(ctx, err)
+		}
+		return resp, nil
+	}
+	attempt := &controlAttemptState{}
+	resp, err := openStream(attempt)
 	if err != nil {
-		return &Error{Code: "invalid_argument"}
-	}
-	req.Header.Set("Accept", "text/event-stream")
-	if lastEventID != "" {
-		req.Header.Set("Last-Event-ID", lastEventID)
-	}
-	if err := c.signOwnerRequest(req, owner, nil); err != nil {
 		return err
 	}
-	c.applyAccessKey(req)
-	resp, err := c.sseCli.Do(req)
-	if err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
+	if resp.StatusCode == http.StatusUnauthorized && c.onAuthFailure != nil {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+		_ = resp.Body.Close()
+		rotated := c.onAuthFailure(ctx, attempt.presented)
+		if !rotated {
+			if _, allow := c.resolveAccessKey(); !allow {
+				return &Error{Code: "unavailable"}
+			}
+			return mapHTTPStatus(http.StatusUnauthorized)
 		}
-		return &Error{Code: "unavailable"}
+		retryAttempt := &controlAttemptState{
+			hasRetryReject: true,
+			retryRejectKey: attempt.presented,
+		}
+		resp, err = openStream(retryAttempt)
+		if err != nil {
+			return err
+		}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {

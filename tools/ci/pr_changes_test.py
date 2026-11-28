@@ -228,6 +228,37 @@ class PrChangesClassifierTests(unittest.TestCase):
             ["sheet-motion"],
         )
 
+    def test_extra_desktop_e2e_cases_parses_environment_whitespace(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="unic-pr-changes-") as tmp:
+            root = Path(tmp)
+            cases_dir = root / "app/desktop/e2e/cases"
+            cases_dir.mkdir(parents=True)
+            (cases_dir / "guest-spaces.txtar").write_text(
+                "# Case: Guest\n# Mode: native\n# Environment:  disposable-guest \n\nstart\n",
+                encoding="utf-8",
+            )
+            (cases_dir / "guest-multiline.txtar").write_text(
+                "# Case: Guest\n# Mode: native\n# Environment:\n#   owned-window-guest\n\nstart\n",
+                encoding="utf-8",
+            )
+            (cases_dir / "isolated-case.txtar").write_text(
+                "# Case: Isolated\n# Mode: view\n# Environment:  isolated \n\nacceptance desktopui isolated-case\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                pr_changes.extra_desktop_e2e_cases(
+                    [
+                        "app/desktop/e2e/cases/guest-spaces.txtar",
+                        "app/desktop/e2e/cases/guest-multiline.txtar",
+                        "app/desktop/e2e/cases/isolated-case.txtar",
+                    ],
+                    repo_root=root,
+                ),
+                ["isolated-case"],
+            )
+
     def test_desktop_e2e_smoke_suite_selection_and_sharding(self):
         e2e_dir = str(ROOT / "app/desktop/e2e")
         if e2e_dir not in sys.path:

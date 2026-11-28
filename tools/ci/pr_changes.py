@@ -99,6 +99,35 @@ DESKTOP_E2E_EXCLUDED_INTERNAL = (
 )
 
 
+DESKTOP_E2E_HEADER_FIELDS = (
+    "Case",
+    "Mode",
+    "Purpose",
+    "Steps",
+    "Expected",
+    "Forbidden",
+    "Environment",
+)
+
+
+def _desktop_e2e_case_environment(text: str) -> str:
+    """Parse the leading # header of a Desktop E2E .txtar using run.py's rules."""
+    env_parts: list[str] = []
+    current: str | None = None
+    for line in text.splitlines():
+        if not line.startswith("#"):
+            break
+        content = line[1:].strip()
+        name, sep, value = content.partition(":")
+        if sep and name in DESKTOP_E2E_HEADER_FIELDS:
+            current = name
+            if name == "Environment" and value.strip():
+                env_parts.append(value.strip())
+        elif current == "Environment" and content:
+            env_parts.append(content)
+    return " ".join(env_parts) if env_parts else "isolated"
+
+
 def extra_desktop_e2e_cases(paths: list[str], repo_root: Path = ROOT) -> list[str]:
     """Return sorted isolated Desktop E2E case IDs whose .txtar files changed."""
     prefix = "app/desktop/e2e/cases/"
@@ -112,8 +141,7 @@ def extra_desktop_e2e_cases(paths: list[str], repo_root: Path = ROOT) -> list[st
         case_file = repo_root / path
         if not case_file.is_file():
             continue
-        text = case_file.read_text(encoding="utf-8")
-        if "# Environment: disposable-guest\n" in text or "# Environment: owned-window-guest\n" in text:
+        if _desktop_e2e_case_environment(case_file.read_text(encoding="utf-8")) != "isolated":
             continue
         found.add(case_file.stem)
     return sorted(found)

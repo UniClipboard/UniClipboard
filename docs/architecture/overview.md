@@ -248,7 +248,9 @@ binding also manages UniClipboard Cloud PKCE session exchange,
 HTTPS-only advertised `relay_url` binding, non-blocking admission via
 `engine.Options.RelayAuth`, and authoritative revocation inside the in-process Go
 runtime shared with headless background services and the iOS Keyboard Extension.
-Browser PKCE login in JS hands only temporary authorization parameters to the
+Mobile browser sign-in uses Expo Crypto's native random generator for the PKCE
+verifier and OAuth state, and its native SHA-256 digest for the S256 challenge.
+The JS login flow hands only temporary authorization parameters to the
 Go binding and receives secret-free status snapshots without retaining tokens or
 relay keys in JS storage, while official relay settings hide manual key
 controls and self-hosted URLs keep write-only key entry (separate from Cloud web

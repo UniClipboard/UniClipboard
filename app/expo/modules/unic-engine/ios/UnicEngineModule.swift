@@ -233,6 +233,18 @@ public final class UnicEngineModule: Module {
   private static let bgDrainMaxSeconds: TimeInterval = 25
   private static let bgDrainPollSeconds: TimeInterval = 0.35
 
+  private struct PendingCloudLogin {
+    let request: String
+    let promise: Promise
+    let deadline: DispatchTime
+    let timeout: DispatchWorkItem
+  }
+
+  private var pendingCloudLogin: PendingCloudLogin?
+  private static let cloudLoginForegroundWaitSeconds: TimeInterval = 10
+  private static let cloudLoginForegroundTimeoutError =
+    "[unic:timeout] {\"code\":\"timeout\",\"message\":\"timed out waiting for the app to return to the foreground\"}"
+
   private func endBackgroundTaskLocked() {
     self.bgDrainWorkItem?.cancel()
     self.bgDrainWorkItem = nil
@@ -772,9 +784,31 @@ public final class UnicEngineModule: Module {
     throw UnicModuleException("[unic:invalid_state] {\"code\":\"invalid_state\",\"message\":\"engine is not initialized\"}")
   }
 
+  private func finishCloudLogin(_ request: String, using eng: MobileEngine, promise: Promise) throws {
+    promise.resolve(try callGoString { eng.finishCloudLogin(request, error: $0) })
+  }
+
+  private func settlePendingCloudLogin(_ result: Result<MobileEngine, Error>) {
+    guard let pending = self.pendingCloudLogin else { return }
+    self.pendingCloudLogin = nil
+    pending.timeout.cancel()
+    do {
+      let eng = try result.get()
+      guard DispatchTime.now() < pending.deadline else {
+        throw UnicModuleException(Self.cloudLoginForegroundTimeoutError)
+      }
+      try self.finishCloudLogin(pending.request, using: eng, promise: pending.promise)
+    } catch {
+      pending.promise.reject((error as? UnicModuleException) ?? UnicModuleException(formatGoError(error)))
+    }
+  }
+
   private func shutdownEngineInternal(keepResumeIntent: Bool = false) {
     if !keepResumeIntent {
       engineShouldResumeOnForeground = false
+      self.settlePendingCloudLogin(.failure(
+        UnicModuleException("[unic:invalid_state] {\"code\":\"invalid_state\",\"message\":\"engine was shut down during cloud sign-in\"}")
+      ))
     }
     keyboardSyncWorkItem?.cancel()
     keyboardSyncWorkItem = nil
@@ -948,12 +982,13 @@ public final class UnicEngineModule: Module {
       self.engineQueue.async {
         self.isForeground = true
         self.endBackgroundTaskLocked()
-        if self.engine == nil && self.engineShouldResumeOnForeground {
-          if (try? self.openEngineInternal(deviceName: self.lastInitDeviceName, retryOnInUse: true)) != nil {
-            self.sendEvent("onEngineResync", ["reason": "reopened"])
-          }
+        let eng: MobileEngine
+        do {
+          eng = try self.requireEngine()
+        } catch {
+          self.settlePendingCloudLogin(.failure(error))
+          return
         }
-        guard let eng = self.engine else { return }
         self.resourceCollector.notifyLifecycleTransition(appState: "foreground", engine: eng)
         self.startNetworkMonitor()
         self.startPasteboardObserver()
@@ -980,6 +1015,7 @@ public final class UnicEngineModule: Module {
             "hasImages": probe.2,
           ])
         }
+        self.settlePendingCloudLogin(.success(eng))
       }
     }
 
@@ -1350,9 +1386,22 @@ public final class UnicEngineModule: Module {
       return try callGoString { eng.getCloudStatus($0) }
     }.runOnQueue(engineQueue)
 
-    AsyncFunction("finishCloudLogin") { (reqJSON: String) -> String in
+    AsyncFunction("finishCloudLogin") { [self] (reqJSON: String, promise: Promise) throws in
+      guard self.pendingCloudLogin == nil else {
+        throw UnicModuleException("[unic:invalid_state] {\"code\":\"invalid_state\",\"message\":\"cloud sign-in is already waiting for the app to return to the foreground\"}")
+      }
+      if !self.isForeground && self.engineShouldResumeOnForeground {
+        // The browser callback can arrive before the foreground lifecycle event.
+        let deadline = DispatchTime.now() + Self.cloudLoginForegroundWaitSeconds
+        let timeout = DispatchWorkItem { [weak self] in
+          self?.settlePendingCloudLogin(.failure(UnicModuleException(Self.cloudLoginForegroundTimeoutError)))
+        }
+        self.pendingCloudLogin = PendingCloudLogin(request: reqJSON, promise: promise, deadline: deadline, timeout: timeout)
+        self.engineQueue.asyncAfter(deadline: deadline, execute: timeout)
+        return
+      }
       let eng = try self.requireEngine()
-      return try callGoString { eng.finishCloudLogin(reqJSON, error: $0) }
+      try self.finishCloudLogin(reqJSON, using: eng, promise: promise)
     }.runOnQueue(engineQueue)
 
     AsyncFunction("ensureCloudRelay") { () -> String in

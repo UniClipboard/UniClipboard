@@ -58,7 +58,7 @@ paths:
   - tools/ci
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 8b93ca56291c71a562a49a9d20bfe6b355f62cd7
+verified: 0c64ee28d5fa97ec7dde0d419b9e0637e26d9783
 ---
 # Product builds and CLI releases
 
@@ -71,8 +71,10 @@ Use the [product manifest](../../release/products.toml) for the build numbers co
 ### Mobile candidates
 
 **Mobile build and acceptance** runs the mobile binding and Engine boundary
-checks, transitively native Release builds, and the live Engine Maestro suite.
-It saves native receipts separately from the Expo bundle verification.
+checks and Expo bundle verification on matching pull requests. Matching pushes
+to `main`, scheduled runs, and manual dispatches also build the native iOS and
+Android apps and run the live and migration Maestro suites. Native receipts and
+Expo bundle verification artifacts are uploaded separately.
 
 The **Android release** workflow builds a signed `arm64-v8a` production APK
 (zipaligned and signed with `apksigner` using APK Signature Scheme v3 key
@@ -370,7 +372,7 @@ Every PR-triggered workflow declares explicit path filters so unrelated changes 
 | PR checks | `.github/workflows/pr-checks.yml` | Root Go module code, Desktop E2E harness/cases, Go lint/build config, `desktop-e2e-nightly.yml` and `tools/ci/**`. Its `changes` job (`tools/ci/pr_changes.py`) gates `lint`, `test`, `headless` and two-shard Desktop E2E smoke (`SUITE=smoke` plus any modified isolated `cases/*.txtar`) independently; `merge_group` and `workflow_dispatch` run all jobs. Full six-shard Desktop E2E and six-target native acceptance run nightly (and on demand) in `.github/workflows/desktop-e2e-nightly.yml`. |
 | Build CLI | `.github/workflows/build-cli.yml` | Headless CLI/service/core Go code, `e2e/headless/**` and CLI release/packaging scripts. `workflow_dispatch` and `workflow_call` stay unfiltered. |
 | Package process acceptance | `.github/workflows/package-acceptance.yml` | Desktop packaging, installers, updaters, app icons/license assets, Desktop release-note template and Desktop packaging/release workflows (excluding `release/**` and mobile/prepare-release scripts). |
-| Mobile build and acceptance | `.github/workflows/check-expo.yml` | `app/expo/**`, `bindings/**` and core Go packages transitively imported by `bindings/` (excluding desktop/service-only `internal/*` packages and `release/products.toml`). |
+| Mobile build and acceptance | `.github/workflows/check-expo.yml` | `app/expo/**`, `bindings/**` and core Go packages transitively imported by `bindings/` (excluding desktop/service-only `internal/*` packages and `release/products.toml`). PRs run binding, Engine boundary, and Expo bundle checks. Native compilation and simulator/emulator acceptance run on matching pushes to `main`, on schedule, and on manual dispatch. |
 | Nix flake check | `.github/workflows/check-nix.yml` | `flake.nix`, `nix/**`, `go.mod`, `go.sum`, `packaging/linux/**`, Desktop icons/assets and workflow changes. |
 | Docs Check (`docs-site`) | `.github/workflows/docs-check.yml` | `docs-site/**` and workflow changes. |
 | Repo docs check | `.github/workflows/repo-docs-check.yml` | Repository Markdown docs (`docs/**`, `AGENTS.md`, `README*.md`, `CONTRIBUTING.md`, `SECURITY.md`) and `tools/docscheck/**`, running `go run ./tools/docscheck`. |

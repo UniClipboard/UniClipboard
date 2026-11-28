@@ -65,7 +65,7 @@ paths:
   - app/expo/src/screens/settings/useDiagnosticCapture.ts
   - app/expo/src/screens/settings/ios/DiagnosticsPage.tsx
   - app/expo/src/screens/settings/android/DiagnosticsSection.tsx
-verified: 65c64aa6e083753c235539360ce50aa9668bf147
+verified: d159f5632b95acb523948cc0a5ed22817e319d53
 ---
 # Client logs, metrics, traces and product analytics
 

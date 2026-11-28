@@ -184,10 +184,17 @@ func (p *quickPanelState) tick(c *ui.Context) {
 	}
 	if !p.previewDue.IsZero() {
 		if !p.now.Before(p.previewDue) {
+			prevPreview := p.previewID
 			p.previewDue = time.Time{}
 			p.previewID = p.pendingPreview
 			p.expanded = p.previewID != ""
 			p.update()
+			if p.previewID != prevPreview {
+				c.Invalidate()
+				if p.live != nil {
+					p.live.poll(p)
+				}
+			}
 		} else {
 			c.After(p.previewDue.Sub(p.now))
 		}

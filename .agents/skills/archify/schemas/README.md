@@ -1,0 +1,269 @@
+# Archify JSON IR Schemas
+
+Each typed renderer consumes a JSON intermediate representation (IR) validated
+against one of the schemas in this folder before any layout work happens.
+
+## Files
+
+| Schema | Governs | Structural arrays |
+|--------|---------|-------------------|
+| `workflow.schema.json` | `diagram_type: "workflow"` | `lanes`, `phases`, `groups`, `mainPath`, `nodes`, `edges` |
+| `sequence.schema.json` | `diagram_type: "sequence"` | `participants`, `segments`, `messages`, `activations` |
+| `dataflow.schema.json` | `diagram_type: "dataflow"` | `stages`, `nodes`, `flows` |
+| `lifecycle.schema.json` | `diagram_type: "lifecycle"` | `mainPath`, `states`, `transitions` |
+| `architecture.schema.json` | `diagram_type: "architecture"` | `components`, `boundaries`, `connections` |
+| `erd.schema.json` | `diagram_type: "erd"` | `entities`, `relationships` |
+| `tree.schema.json` | `diagram_type: "tree"` | `nodes` (each with one `parent`) |
+| `class.schema.json` | `diagram_type: "class"` | `types`, `relationships` |
+| `timeline.schema.json` | `diagram_type: "timeline"` | `events` (`lanes` optional) |
+| `waterfall.schema.json` | `diagram_type: "waterfall"` | `spans` (each with optional `parent`) |
+| `common.schema.json` | shared `$defs` only (no top-level document) | — |
+
+Every diagram schema requires `schema_version`, `diagram_type`, `meta` (with
+`title` and a durable portable `output`), and its structural arrays — except `segments`, `activations`, ERD and class
+`relationships`, and `cards`, which are optional — and sets `additionalProperties: false` at every
+level, so unknown fields are rejected rather than silently ignored.
+
+Every `meta` object also accepts `animation: "trace"` for opt-in SVG/CSS motion
+in generated HTML. Omit it, or set `"none"`, for the default static output.
+It also accepts `locale`, any well-formed language tag (schema pattern
+`^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$`). The field selects the fixed Viewer UI,
+renderer-owned default legend and accessibility copy, document-title suffix,
+and `<html lang>` value; it does not translate authored strings. The bundled
+catalogs enrolled in `locales/manifest.json` (`en`, `zh-CN`, `zh-TW`, `es`, `ko`, `ar`, `ru`) are
+selected by tag, case-insensitively; region and script variants are distinct
+tags. Any other tag needs a matching `translations` object (see below) or the
+renderer falls back to English and discloses it.
+Omitting `locale` preserves legacy behavior and resolves to English.
+Malformed locale tags fail schema validation instead of being guessed or
+silently rewritten.
+
+`meta.translations` is an optional per-key override, as data: an object mapping
+canonical message keys (`locales/en.json`) to translated strings whose
+`{placeholder}` tokens match the English source. Each message resolves as:
+valid `translations` value → bundled catalog for `locale` → English. An
+unrecognized key or mismatched placeholders never replaces a valid
+lower-priority message and fails no render; `validate`/`render`/`deliver`
+report rejected entries and the final resolved coverage to stderr.
+`visual_preset` accepts `classic` (the stable default), `signal-flow` (luminous
+motion-forward presentation), `blueprint` (high-contrast engineering review),
+or `editorial` (warm publication-style design review and documentation).
+Presets change only viewer styling; they do not alter semantic IDs or geometry.
+Every diagram page, and the Explainer footer, ends with a quiet line linking to email
+feedback, GitHub Issues and the GitHub repository (star). Set `meta.feedback_links: false`
+to omit it, for example in a client-facing document; Explainer shorthand uses
+`@meta feedback_links=false`. The line never appears in SVG, image or video exports.
+Sequence `meta` additionally accepts `column_fit`. The default `spread` applies whether or not `meta.viewBox` is supplied.
+Explicit `fixed` keeps the historical 108px column gap and 86px participant
+boxes. `spread` derives column distance and box width from the viewBox, with
+at least a 16px gutter between participant cards, which turns a
+wide canvas into column distance and label room rather than empty space on the
+right. Lane order, IDs, and message semantics are unchanged either way.
+
+`meta.views` is retired. The schemas still accept the old guided-view shape so
+existing files keep validating, but renderers ignore it; do not author it.
+
+### Legend presentation contract
+
+Every `meta` object accepts the same optional legend shape without changing
+the schema version already selected for that renderer:
+
+```json
+"legend": {
+  "mode": "auto",
+  "entries": {
+    "security": { "label": "restricted data", "visible": true }
+  }
+}
+```
+
+`mode` is `auto` (the default), `all`, or `hidden`. `auto` includes only kinds
+present in typed IR; `all` includes the renderer's full stable catalog;
+`hidden` removes the complete legend and takes precedence over entry overrides.
+Architecture documents that omit an explicit `viewBox` size that automatic
+viewBox from the same measured resolved legend footprint used for final SVG
+layout. Across all renderers, legacy documents that omit `meta.legend` use a
+compatibility-safe implicit `auto`: if the resolved legend cannot fit an
+explicit authored viewBox without overlap, Archify omits the complete legend
+instead of turning a previously valid schema-v1 document into a hard failure.
+Once an author adds `meta.legend` (including explicit `mode: "auto"`), the
+layout is intentional and unfit labels or bands fail with a path-prefixed
+diagnostic. An entry may set a non-empty, bounded `label`, boolean `visible`,
+or both.
+`visible: false` removes a resolved entry and `visible: true` forces a supported
+but unused kind into the visual legend. Unknown kinds and properties fail
+strict validation.
+
+Supported keys are renderer-owned:
+
+| Renderer | `meta.legend.entries` keys |
+|---|---|
+| Architecture | `frontend`, `backend`, `database`, `cloud`, `security`, `messagebus`, `external` |
+| Workflow | `frontend`, `backend`, `security`, `messagebus`, `database`, `cloud`, `external` |
+| Sequence | `emphasis`, `return`, `security`, `dashed`, `default` |
+| Dataflow | `emphasis`, `security`, `dashed`, `database`, `default` |
+| Lifecycle | `start`, `active`, `waiting`, `decision`, `success`, `failure`, `neutral`, `external` |
+| ERD | `pk`, `fk`, `uk`, `one`, `many`, `optional` |
+| Class | `dependency`, `association`, `inheritance`, `realization`, `composition`, `aggregation` |
+
+Labels are presentation only: they do not rename the stable kind, change
+nodes/relationships, or create Semantic Lens edge facts. Sequence message and
+Dataflow flow-variant entries are visual keys. Component/state entries backed
+by exact compiled node facts receive the interactive Semantic Legend bridge;
+this includes Dataflow `database` when a real `nodes[].type: "database"` fact
+exists.
+
+Every relationship collection (`connections`, `edges`, `messages`, `flows`, and
+`transitions`) accepts an optional author-controlled `id` using the shared ID
+pattern. The renderer keeps its source-order runtime key separately, while the
+authored ID enables a stable `#relation=<id>` viewer link that survives array
+reordering. ID-less documents remain valid and their relationship pins stay
+local to the current page.
+
+Every semantic node collection (`components`, `nodes`, `participants`, and
+`states`) also accepts one optional `brand`: either a canonical string returned
+by `archify brands --json`, or a digest-pinned `{ "url", "sha256" }` object
+returned by `archify brands capture <url> --json`. Known IDs and known-brand
+domains use the bundled vector catalogue. Unknown URLs must be captured in that
+explicit command before authoring; render and validate never perform an
+unpinned network capture. Unsafe, unavailable, changed, or unsupported content
+fails closed with a brand diagnostic. Omitted `brand` preserves the prior
+output.
+
+## schema_version policy
+
+Workflow supports schema versions 1 and 2. Version 1 remains the fixed-layout
+compatibility contract; version 2 opts into the readable workflow compiler and
+can be produced explicitly with `archify migrate workflow ... --to-schema 2`.
+Lifecycle accepts only version 3, an automatic main-path layout (see the
+[lifecycle renderer](../renderers/lifecycle/README.md)).
+The other three diagram schemas keep `schema_version` pinned to `1`; they have
+no schema-version migration command. For any of the five diagram types, repair
+a legacy missing or nonportable `meta.output` in the source and run `validate`.
+For a workflow v1-to-v2 migration specifically, `migrate workflow` also accepts
+`--output reports/diagram.html` to put that portable value in the separate v2
+destination without changing the legacy source.
+
+Workflow also accepts optional `semanticChecks`. `allowedRoots` and
+`allowedTerminals` close the set of intentional graph sources and sinks;
+`requiredEdges` requires exact authored relationships; and `requiredPaths`
+requires directed reachability while allowing intermediate nodes. The compiler
+evaluates these facts before layout and returns typed `workflow/*` diagnostics.
+The field is additive and geometry-neutral: omitting it preserves existing
+workflow behavior and including a satisfied contract does not change SVG or
+layout-receipt bytes.
+
+A file that validates today must keep validating and rendering within its
+declared version throughout the 2.x release line. The explicitly reviewed
+portable-output hardening is the one exception: older v1 documents that omit
+`meta.output` must add a portable POSIX-relative `.html` path (for example,
+`reports/diagram.html`); ordinary explicit CLI output arguments do not replace
+this durable authored value. The workflow-only v1-to-v2 migration command may
+instead receive that value explicitly as `--output reports/diagram.html`; it
+writes the value only to its separate validated destination. Additive viewer,
+accessibility, and presentation improvements may enhance generated HTML, but
+they must not reinterpret authored IR or turn a previously valid profile-less
+v1 file into a new hard layout failure. Breaking IR changes require a new
+version; additive, backwards-compatible fields do not.
+
+## Shared definitions (common.schema.json)
+
+The five diagram schemas reference `common.schema.json#/$defs/...`:
+
+- `id` — element identifiers, pattern `^[a-zA-Z][a-zA-Z0-9_-]*$`
+- `point` — an `[x, y]` pair of numbers (used by `via` and `labelAt`)
+- `componentType` — `frontend`, `backend`, `database`, `cloud`, `security`,
+  `messagebus`, `external`
+- `locale` — a well-formed renderer locale tag (bundled catalogs are listed in
+  `locales/manifest.json`; any other tag needs a matching `translations` object)
+- `translations` — canonical message key → translated string, layered over the
+  bundled catalog for `locale`, then English
+- `portableOutputPath` — the portable POSIX-relative `.html` path used by
+  `meta.output`; see the two output-path boundaries in the
+  [delivery contract](../references/delivery-contract.md#output-path-contracts)
+- `brandMark` — one optional built-in brand ID or explicit HTTP(S) site URL
+- `variant` — `default`, `emphasis`, `security`, `dashed` (sequence messages
+  extend this list locally with `return`)
+- `legendMode` and `legendEntry` — the shared strict mode and label/visibility
+  override shapes used by each renderer-owned key map
+- `guidedViews` — the retired `meta.views` shape, still accepted and ignored
+- `cards` — the summary-card blocks rendered below the SVG
+- `drilldowns` / `href` / `parentHref` — cross-HTML navigation. Targets are
+  same-directory `*.html` files (optional `?` / `#`). `href` on a node is sugar
+  for a one-entry `drilldowns` list (label defaults to the node label);
+  `drilldowns` wins if both are present. Passport lists all targets. One child:
+  native SVG `<a>` + visible mark, click follows the link, Alt-click focuses.
+  Several children: click focuses; Ctrl/double-click opens the first. Child
+  diagrams may set `meta.parentHref` for Back (runtime also accepts `?from=`).
+
+Lifecycle state `type` is mode-specific (`start`/`active`/`waiting`/...) and
+stays in `lifecycle.schema.json`.
+
+The JSON Schema definition is the portable contract's structurally expressible
+preflight. The shipped generated validator wrapper and CLI additionally enforce
+byte-based component limits and the complete runtime path contract; consumers
+that need the same cross-platform acceptance boundary should use that wrapper.
+
+## Runtime validation
+
+At development time, `scripts/generate-validators.mjs` compiles all five
+schemas with ajv's draft 2020-12 standalone generator using `strict: true` and
+`allErrors: true`. The generated `renderers/shared/generated-validators.mjs`
+is committed and shipped with the skill, so runtime validation has no npm or
+network dependency. `renderers/shared/validator.mjs` applies the matching
+standalone validator before the renderer's own layout checks.
+The shared loader then checks cross-collection facts that JSON Schema cannot
+express cleanly here: duplicate view IDs, duplicate focus IDs, focus IDs that do
+not exist in the diagram's semantic collection, and duplicate authored
+relationship IDs within the mode's relationship collection.
+
+All five modes support opt-in, revision-pinned repository evidence.
+`meta.repository` names the repository URL and full commit SHA, with optional
+`provider` (`github`, `gitee`, or `gitlab`) and `link_mode` (`web` or `local-only`; see the
+authoring contract); a node may carry one to three `sources` with repo-relative POSIX paths, optional line
+ranges, and optional labels. Sources are authored on the mode's own node
+collection — Architecture `components`, Workflow and Data Flow `nodes`,
+Sequence `participants`, Lifecycle `states` — and the verified payload is keyed
+by node id. Shape is schema-checked, then the renderer requires
+`--repo-root`: the local Git origin must match, and Git must prove the commit,
+blobs, and requested lines. Verified evidence is embedded outside the canonical
+SVG for the Semantic Passport and Node Finder; ordinary documents and visual
+exports carry no repository evidence.
+
+## Visual quality and engineering truth
+
+`meta.quality_profile` and `meta.engineering_profile` answer different
+questions. `quality_profile` is available in all five modes and controls how
+strictly Archify judges composition. `engineering_profile` is an optional
+Architecture-only semantic contract; omitting it preserves the ordinary v1
+behavior.
+
+The first engineering profile is `deployment-ownership`. Enable it only when
+the user wants a fail-closed deployment review and the source facts are known.
+It requires every non-external component to name an owner in `tag` and belong
+to exactly one `region`; the document must contain both `region` and
+`security-group` boundaries; every `database` must be inside a
+`security-group`; each security group must contain members from one shared
+region; and every connection whose region or security-group membership changes
+must name the real crossing mechanism in `label`.
+
+The profile validates only authored IR. It does not discover infrastructure,
+infer owners, or prove that a diagram matches a live environment. If a fact is
+unknown, leave the profile unset or obtain the fact instead of inventing it.
+
+`npm test` runs the generator in check mode and fails when the committed
+validators drift from their schemas.
+
+## Error format
+
+Schema violations exit non-zero. Each ajv error is reported on its own line as
+the instance path — annotated with the nearest enclosing element's `id` or
+`label` — followed by the message and parameters:
+
+```text
+workflow schema validation failed:
+  /nodes/3 (id/label: "router") must NOT have additional properties {"additionalProperty":"colour"}
+```
+
+Schemas catch shape errors (types, enums, ranges, unknown fields); geometry
+problems such as overlaps and label collisions are the renderers' job.

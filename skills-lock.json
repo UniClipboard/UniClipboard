@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "skills": {
+    "archify": {
+      "source": "archify.si",
+      "sourceUrl": "https://archify.si",
+      "sourceType": "well-known",
+      "computedHash": "1d42254f9bb871cf7d231e7a621c62eb255d2fc10e39518443924f273a570e5b",
+      "wellKnownDigest": "sha256:a608b1be181d14219ccfbbccfbfd1012feb4f2618c14ba4139721ece2cdee478"
+    },
+    "archify-pr": {
+      "source": "archify.si",
+      "sourceUrl": "https://archify.si",
+      "sourceType": "well-known",
+      "computedHash": "cf807eab69cb635473e3eb1980dd74cd446d6377a8205d143aca280ed827f917",
+      "wellKnownDigest": "sha256:49fb45625f6feee8fefcb6956930a847d13e3e9483debd1bff935bc8ba80d607"
+    }
+  }
+}

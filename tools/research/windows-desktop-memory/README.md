@@ -1,5 +1,7 @@
 # Windows Desktop memory research harness
 
+> **Archived research harness notice**: Superseded for ongoing baseline regression and cross-platform measurement by the formal benchmark suite in [`tools/bench/`](../../bench/cmd/unic-bench/main.go) (`unic-bench` and `make bench-mac` / `make bench-win-vm`). See [Desktop resource benchmark architecture](../../../docs/architecture/desktop-benchmark.md) and keep this directory only for historical replay traceability.
+
 This is an opt-in research harness. It never applies a production optimization.
 It measures real Windows Desktop/service processes with synthetic data, using the
 repository's existing `desktop_e2e` clipboard isolation. Diagnostic builds are

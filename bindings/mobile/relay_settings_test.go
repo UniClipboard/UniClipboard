@@ -183,13 +183,13 @@ func TestMobileCloudSessionManagedRelayNonDefaultOriginAndLogout(t *testing.T) {
 				_ = idx
 				w.WriteHeader(http.StatusCreated)
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"id":               "dc-mob-1",
-					"name":             "TestPhone",
-					"key_prefix":       "uk_live_mob1",
-					"credential":       "uk_live_mob1_secret_credential_1",
-					"relay_url":        advertisedRelay,
-					"expires_at_ms":    time.Now().Add(time.Hour).UnixMilli(),
-					"rotate_after_ms":  time.Now().Add(30 * time.Minute).UnixMilli(),
+					"id":              "dc-mob-1",
+					"name":            "TestPhone",
+					"key_prefix":      "uk_live_mob1",
+					"credential":      "uk_live_mob1_secret_credential_1",
+					"relay_url":       advertisedRelay,
+					"expires_at_ms":   time.Now().Add(time.Hour).UnixMilli(),
+					"rotate_after_ms": time.Now().Add(30 * time.Minute).UnixMilli(),
 				})
 			case http.MethodDelete:
 				deleteCalled.Add(1)

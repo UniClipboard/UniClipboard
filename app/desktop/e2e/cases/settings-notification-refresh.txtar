@@ -1,0 +1,8 @@
+# Case: Stable notification permission refresh
+# Mode: view
+# Purpose: Verify the production notification settings layout while permission reads and host actions are pending and after they complete.
+# Steps: Open Notifications at wide and narrow widths. Hold the initial read, a passive background read, a manual read, and slow system-settings/test-notification calls at the host boundary. Repeat activation, return unchanged and changed permissions, inject a read error, and then return an unsupported status.
+# Expected: Initial fast reads do not flash unknown status. Passive background reads leave the rendered frame unchanged. Manual reads and explicit host actions show delayed feedback in place after 120 ms without moving action bounds or flickering unrelated controls. Open System Settings uses primary emphasis only while permission is denied. Failed reads retain the last result and allow retry.
+# Forbidden: Native window launch, OS permission or notification calls, system clipboard access and personal configuration.
+
+acceptance desktopui settings-notification-refresh

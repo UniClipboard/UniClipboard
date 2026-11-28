@@ -20,7 +20,7 @@ paths:
   - e2e/cli
   - tools/bench
   - tools/docscheck
-verified: 6c50e2d0ae1c4b5024d0c0ae765926558730c538
+verified: e001eca47e364d66529a543a532133b68014021b
 ---
 # 仓库布局与依赖边界
 
@@ -120,6 +120,8 @@ Selected single-image files use the same image frame and Quick Look as image rec
 Refresh preserves loaded page depth. Query changes discard results for obsolete filters.
 `live_devices.go` binds existing pairing, approval, candidate and removal operations.
 `live_settings.go` binds the existing General, Sync and Storage settings; the persistent tray owns native login registration.
+
+Notification settings place the permission status pill and a subtle refresh action in the group header, with dedicated settings rows for opening OS notification settings and sending a test notification. Initial reads withhold the unknown badge below 120 ms, and subsequent reads keep the last permission result visible during reads and after read errors. Passive reads leave the controls unchanged while pending. Manual refresh and explicit host actions guard re-entry immediately and show in-place busy feedback after 120 ms while preserving button bounds. Opening system settings uses primary emphasis only while permission is denied. Test notification delivery and opening system settings require explicit actions.
 
 ### Desktop languages
 

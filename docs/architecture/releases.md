@@ -58,7 +58,7 @@ paths:
   - tools/ci
   - app/expo/app.config.js
   - app/expo/plugins/withUnsignedAndroidRelease.js
-verified: 967ce2e66303653b7aa565a4978a36c36f8d0d96
+verified: bd9b36330ec06433f490de74b4c61645db71f7c7
 ---
 # Product builds and CLI releases
 

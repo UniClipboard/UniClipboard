@@ -25,7 +25,7 @@ ARCHIFY_TEST_TYPESCRIPT_SDK=/path/to/typescript node --test test/ts-official-*.t
 
 ## 固定实源样本
 
-[`ts-real-repo-probe.mjs`](../test/ts-real-repo-probe.mjs) 每个样本运行 5 个冷进程。时间只量提取，内存为 maxRSS；五次不足以承诺稳定性能。Fastify 固定为 [v4.29.1 / 2d85fee1](https://github.com/fastify/fastify/tree/2d85fee1d317208e0f9c7c9103c4ebb30d7c35e6)，Vue core 固定为 [cbd95955](https://github.com/vuejs/core/tree/cbd95955a5362b44060908f6e28ad447c3031b8a)。仅分析所列子树。
+`test/ts-real-repo-probe.mjs`（上游 Archify 仓库测试脚本，未随本 skill 打包）每个样本运行 5 个冷进程。时间只量提取，内存为 maxRSS；五次不足以承诺稳定性能。Fastify 固定为 [v4.29.1 / 2d85fee1](https://github.com/fastify/fastify/tree/2d85fee1d317208e0f9c7c9103c4ebb30d7c35e6)，Vue core 固定为 [cbd95955](https://github.com/vuejs/core/tree/cbd95955a5362b44060908f6e28ad447c3031b8a)。仅分析所列子树。
 
 | 输入 | SDK | 文件 / 已解析导入 / 已归属调用 | 提取 ms p50 / p95 | RSS MiB p50 / p95 |
 | --- | --- | --- | --- | --- |

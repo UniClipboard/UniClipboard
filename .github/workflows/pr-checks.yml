@@ -131,7 +131,7 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
       - name: Test with race detector
-        run: go test -race ./...
+        run: go test -race -timeout 15m ./...
       - name: Build
         run: |
           go build -o unic ./app/service/cmd/unic

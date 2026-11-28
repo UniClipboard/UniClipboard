@@ -74,7 +74,7 @@ node /tmp/ts-pattern-acceptance/node_modules/typescript/lib/tsc.js --project /tm
 node archify/modules/code-analysis/test/ts-real-project-acceptance.mjs /tmp/ts-pattern-acceptance /tmp/ts-pattern-evidence
 ```
 
-验收器为 [ts-real-project-acceptance.mjs](../test/ts-real-project-acceptance.mjs)，输出 acceptance.json、archify-raw-facts.json、tsserver-projects.json。[本次机器摘要](TS-REAL-PROJECT-ACCEPTANCE.json)保存实际运行身份、检查结果、源码/运行器哈希及原始证据文件的字节数和 SHA-256。完整 JSON 保存逐项结果、所有未知调用的官方候选和重复提取摘要。status passed 仅适用于声明的 acceptanceScope；coverageGates.completeDefinitionNavigation 为 gap-observed。
+验收器为 `test/ts-real-project-acceptance.mjs`（上游 Archify 仓库测试目录，未随本 skill 打包），输出 acceptance.json、archify-raw-facts.json、tsserver-projects.json。[本次机器摘要](TS-REAL-PROJECT-ACCEPTANCE.json)保存实际运行身份、检查结果、源码/运行器哈希及原始证据文件的字节数和 SHA-256。完整 JSON 保存逐项结果、所有未知调用的官方候选和重复提取摘要。status passed 仅适用于声明的 acceptanceScope；coverageGates.completeDefinitionNavigation 为 gap-observed。
 
 本轮已修正生产分析器，保持 js-ts-lexical-v6 的保守调用语义，以 adapterRevision 28 标记覆盖变化。相关回归 112/112；真实 5.6.3、5.9.3、6.0.3 的官方对照各 83/83，新增了完整成员与共享函数目标断言。消融删除转发一致性检查，会生成与已保存归属方导入边不一致的调用路径，因此已恢复该检查。
 

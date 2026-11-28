@@ -248,9 +248,17 @@ A plain fence (```` ```bash title="Run the tests" ````) is a literal snippet wit
 
 ## Inline links and sources
 
-`**bold**`, inline code and safe HTTP(S) links are supported. `[Redis](node:cache-read.redis)` and `[path](route:cache-read.api~redis)` open the native Viewer at existing targets. `[details](block:next)` jumps within the page.
+`**bold**`, inline code and safe HTTP(S) links are supported. Custom Archify target and citation link forms:
 
-`[reference text](source:docs)` renders the text followed by a numbered superscript; `[](source:docs)` renders only the superscript. Numbers follow first appearance; uncited sources follow in declaration order. The footer lists titles with URLs or repository positions.
+```md
+[Redis](node:cache-read.redis)
+[path](route:cache-read.api~redis)
+[details](block:next)
+[reference text](source:docs)
+[](source:docs)
+```
+
+`node:` and `route:` open the native Viewer at existing targets, `block:` jumps within the page, and `source:` renders a numbered superscript (with text followed by superscript, or superscript alone; numbers follow first appearance and uncited sources follow in declaration order). The footer lists titles with URLs or repository positions.
 
 ```md
 @source router title="Request handler" path=src/router.js lines=10:30
@@ -273,7 +281,13 @@ When two examples need to start side by side below the conclusion, use `@answer 
 node archify/bin/archify.mjs finalize explainer candidate.archify.md answer.html --json
 ```
 
-After a pass, keep the reply readable on its own: the conclusion in one to three lines, then, as the last line, a Markdown link to the page with a descriptive title in the user's language, such as `[查看测试报告](/abs/path/test-report.html)`. Do not list gates, and do not replace the link with a directory, a log or `--open`. The same reply shape applies whether the page was requested or made by the proactive or always-on mode in the Skill's Choose the artifact section. When finalize does not pass and repair stops, answer in text, say the page was not produced, and give no page link.
+After a pass, keep the reply readable on its own: the conclusion in one to three lines, then, as the last line, a Markdown link to the page with a descriptive title in the user's language:
+
+```md
+[查看测试报告](/abs/path/test-report.html)
+```
+
+Do not list gates, and do not replace the link with a directory, a log or `--open`. The same reply shape applies whether the page was requested or made by the proactive or always-on mode in the Skill's Choose the artifact section. When finalize does not pass and repair stops, answer in text, say the page was not produced, and give no page link.
 
 Link form: use the absolute local path as the Markdown link target, wrapped in `<...>` when it contains spaces, not `file://`. Hosts differ. A desktop or IDE chat that renders local Markdown links can open the page on click; a terminal interface may show it as styled text that does not open on click; for example, Codex CLI hyperlinks web URLs but not local files (openai/codex#25934, openai/codex#22585). Keep the absolute path so the page can still be opened by hand, and do not tell the user a link is clickable or was opened in a host where you have not seen that happen.
 

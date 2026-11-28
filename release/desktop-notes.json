@@ -1,4 +1,4 @@
 {
-  "en": "Plugin installations and updates now run in the background with progress notifications and cancellation. You can also choose GitHub, the official marketplace mirror, or a custom HTTPS mirror for plugin downloads. All paired devices must use v2.",
-  "zh": "插件安装和更新现在支持后台进行、进度通知和取消操作；你还可以为插件下载选择 GitHub、官方插件市场镜像或自定义 HTTPS 镜像。所有配对设备必须使用 v2。"
+  "en": "Desktop now supports Cloud sign-in and official hybrid relay for encrypted delivery when paired devices are offline. It also adds Sensitive Content Guard, clearer delivery progress, safer first-run v1 migration choices, and several Quick Panel and diagnostics improvements. All paired devices must use v2.",
+  "zh": "桌面端现支持登录 Cloud，并通过官方混合中转在配对设备离线时加密传送内容；同时新增敏感内容防护、更加清晰的传送进度、更安全的首次 v1 迁移选择，以及 Quick Panel 和诊断导出的改进。所有配对设备必须使用 v2。"
 }

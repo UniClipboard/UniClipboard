@@ -1,0 +1,364 @@
+# Workflow Renderer
+
+Render `diagram_type: "workflow"` JSON files into the standard Archify HTML
+template.
+
+```bash
+node archify/renderers/workflow/render-workflow.mjs input.workflow.json output.html
+```
+
+The renderer validates input against `archify/schemas/workflow.schema.json`
+with the bundled standalone validator. No dependency installation is required.
+
+If `output.html` is omitted, the renderer uses the required `meta.output` value
+from the JSON file.
+
+After rendering, run the artifact checker:
+
+```bash
+node archify/scripts/check-render-output.mjs output.html
+```
+
+It catches final-SVG issues that are easiest to see in a browser: non-finite
+SVG values, accidental two-point diagonal arrows, and arrows crossing the
+legend.
+
+## Input
+
+Workflow JSON files must set:
+
+```json
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Agent Tool Call Workflow",
+    "output": "agent-tool-call.html"
+  },
+  "lanes": [],
+  "phases": [],
+  "groups": [],
+  "mainPath": [],
+  "nodes": [],
+  "edges": [],
+  "cards": []
+}
+```
+
+Use `schema_version: 2` for new workflows. Its readable layout compiler treats
+every `col` as a logical rank in `0..5` and derives geometry from the measured
+document. `schema_version: 1` remains the fixed legacy contract for existing
+sources; valid v1 output is preserved byte-for-byte and never silently
+reinterpreted as v2.
+
+Omit `meta.viewBox` for the common v2 case so the compiler can use intrinsic
+measured bounds. In v1, the omitted width remains fixed at 720 and height is
+derived from lane count. A complete worked example lives at
+`archify/examples/agent-tool-call.workflow.json`; its `schema_version` selects
+the applicable contract.
+
+The schema lives at:
+
+```text
+archify/schemas/workflow.schema.json
+```
+
+## Migration and layout receipt
+
+Migrate an existing v1 source into a separate v2 file:
+
+```bash
+node archify/bin/archify.mjs migrate workflow old.json new.json --to-schema 2 --json
+```
+
+Running the command again with its schema-v2 output as the new source is an
+idempotent verification pass: the destination bytes and geometry stay unchanged.
+
+If a legacy v1 source is blocked solely because `meta.output` is missing or no
+longer portable, supply its replacement for the separate v2 destination:
+
+```bash
+node archify/bin/archify.mjs migrate workflow old.json new.json --to-schema 2 --output reports/workflow.html --json
+```
+
+`--output` must itself be a portable POSIX-relative `.html` path. It updates
+only the verified destination candidate; the source bytes remain unchanged and
+all non-output schema and compiler diagnostics still block migration.
+
+The command never overwrites the source by default. It maps absolute
+`via[*][0]`, `labelAt[0]`, and `channelX` values from legacy to solved rank
+space, preserves y coordinates unless a reported vertical constraint needs
+author input, expands an explicit viewBox only for an unambiguous containment
+repair, and writes the destination only after v2 compilation and artifact
+checks pass. Ambiguous explicit pins fail without producing the destination.
+
+Migration preserves `semanticChecks` and validates those requirements against the
+complete authored topology. Temporary layout planning may omit routed edges,
+but authors do not need to remove or relax their contracts to use migration.
+The complete migrated document must still satisfy every authored requirement.
+
+Inspect the stable author-facing v2 plan with:
+
+```bash
+node archify/bin/archify.mjs validate workflow input.workflow.json --layout-json
+```
+
+The receipt reports the selected contract, measured `viewBox` and
+`requiredViewBox`, solved columns, nodes, edges, labels, and causal diagnostics.
+It deliberately omits solver iterations and candidate scores. A complete plan
+rejected by a late layout, canvas, or text check also includes this geometry with
+`ok: false`; validation still exits non-zero and writes no HTML. Its `viewBox`
+is the attempted frame at rejection, while `requiredViewBox` is the measured
+footprint of that same rejected plan. Labels use their anchor coordinates,
+not the top-left corner of the label mask. Early or incomplete failures retain
+only the contract and causal diagnostics. Failed geometry is repair evidence,
+not acceptance; migration failure reports may also gain measured canvas evidence
+without accepting the rejected plan.
+
+## Legend
+
+The default legend derives component kinds from `nodes[].type`. Supported
+`meta.legend.entries` keys, in stable order, are `frontend`, `backend`,
+`security`, `messagebus`, `database`, `cloud`, and `external`. Labels and
+visibility may be overridden through the shared legend contract; only kinds
+backed by rendered nodes receive Semantic Legend controls.
+
+## Layout contracts
+
+### Fixed v1
+
+| Constant | Value |
+|----------|-------|
+| viewBox | default `[720, auto]` — auto height = 52 + lanes×104 + (lanes−1)×20 + 124 |
+| Lane frame | x 40, width 640, height 104, gap 20; first lane top at y 52 |
+| Lane title strip | top 30px of each lane; node boxes must stay below it |
+| Column centers (`col` 0–5) | x = 88, 220, 300, 430, 500, 625 |
+| Phase headers | Optional `phases[]` render above the first lane, spanning `fromCol..toCol` |
+| Lane groups | Optional `groups[]` frame parallel work or branch work inside one lane |
+| Exception lanes | Set `lane.variant: "exception"` for retry, denial, fallback, or failure paths |
+| Main path lint | Optional `mainPath[]` checks that happy-path steps have matching edges and do not move backward |
+| Default node | 92×52 (height 68 when `tag` is set) |
+| Node spacing | ≥8px between nodes in the same lane |
+| Edge length | straight segments must span ≥28px |
+| Legend row | y = lane bottom + 44; viewBox height must be ≥ legend y + 18 |
+
+Column-center gaps are 132 / 80 / 130 / 70 / 125 px: columns 1↔2 (80px) and
+3↔4 (70px) cannot both hold default-width 92px nodes in the same lane. Such an
+invalid v1 source receives one causal `workflow/column-capacity` diagnostic and
+a verified migration-to-v2 repair; v1 never falls through to adaptive layout.
+
+### Readable v2
+
+| Invariant | Contract |
+|----------|----------|
+| Logical columns | `col` is an integer in `0..5`; pixel centers are measured output |
+| Adjacent-rank baseline | 120px center distance before document-specific constraints |
+| Same-lane node clearance | ≥8px when vertical node intervals overlap |
+| Facing direct edge | clear gap ≥`max(28px, measured label mask width + 8px)` |
+| Automatic route rhythm | direct segment ≥28px; endpoint stub ≥8px; interior turn segment ≥16px |
+| Implicit viewBox | intrinsic content bounds plus contract padding |
+| Explicit viewBox | containment capacity; too-small input reports exact `requiredViewBox` and contributors |
+| Lane measurement | A same-column vertical stack (two or more distinct `yOffset` values) opts an implicit, unpinned workflow into per-lane measurement. Explicit `meta.viewBox`, `via`, `labelAt`, `channelX`, or `channelY`, and workflows without a stack retain shared-height v2 geometry for compatibility. |
+| Automatic vertical chain | In one lane and column, a single directed chain with no canvas or route controls can omit every `yOffset`. Layout follows edge order and measures each gap. |
+
+Unpinned v2 drafts reserve 32px between overlapping same-lane nodes for routes,
+and omitted node widths may grow from 92px to 200px to fit their text. Documents
+with an explicit `meta.viewBox` or absolute `via`, `labelAt`, `channelX`, or
+`channelY` pins retain the existing width defaults and 8px rank-clearance
+constraint, in both compilation and migration planning. Authored widths remain
+authoritative.
+
+Automatic showcase canvases check sublabels against the desktop reading floor
+without enlarging text beyond its existing 8px slot. If the canvas cannot keep
+that slot readable, `workflow/sublabel-readability` reports the required font
+and canvas width. Standard quality and explicit canvases retain their previous
+text-fitting behavior and the existing composition/browser quality checks.
+
+The compiler applies constraints only to actual related or overlapping
+same-lane nodes, so a wide node in an unrelated lane does not expand every
+rank. Legacy centers are a soft preference after correctness constraints, not
+a geometry promise. Phase and group frames derive from the solved rank bands.
+Automatic routes are normalized once and the same final scene drives
+validation and SVG serialization. Long automatic labels compare direct-gutter
+growth with a legal channel instead of widening every downstream rank. Measured
+multi-row legends participate in intrinsic height and explicit viewBox
+capacity.
+
+For an implicit horizontal workflow with multiple lanes and unused trailing
+columns, the compiler can fit the lane frames and canvas to the measured scene
+after routing. Nodes, routes, labels, and legend placement keep their positions.
+An outside-right route or a wide lane heading can preserve the full width.
+
+### Vertical workflows
+
+For a top-to-bottom chain, place every step in the same lane and column and
+link consecutive steps with directed edges. Omit all `yOffset` values, the
+canvas size and route controls. The compiler follows the edges, measures
+each node's height and leaves space for the arrow shafts, arrowheads and edge
+labels. A group can enclose the chain when the steps run inside a shared
+container.
+
+Use `col: 0` for the default centered stack. In a chain with no phase headers
+and groups confined to that column, the lane fits the node and label widths
+and allows the legend to wrap. The compiler keeps the established width when
+centering around a long heading or legend would make the canvas wider. A
+higher `col` retains the authored rank.
+Short authored gaps that require a labeled detour retain the full routing width.
+
+```json
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": { "title": "stack", "output": "stack.html" },
+  "lanes": [{ "id": "cage", "label": "one cage" }],
+  "groups": [{ "id": "g", "label": "cage", "lane": "cage", "fromCol": 0, "toCol": 0 }],
+  "nodes": [
+    { "id": "a", "lane": "cage", "col": 0, "type": "security", "label": "Stage A" },
+    { "id": "b", "lane": "cage", "col": 0, "type": "security", "label": "Stage B", "tag": "check" },
+    { "id": "c", "lane": "cage", "col": 0, "type": "security", "label": "Stage C" }
+  ],
+  "edges": [
+    { "from": "a", "to": "b" },
+    { "from": "b", "to": "c" }
+  ]
+}
+```
+
+If the chain already has increasing `yOffset` values, the compiler fits
+the lane to the stack and preserves the distances between steps. For
+`workflow/vertical-stack-clearance`, the reported border-to-border gaps are
+too short for straight arrows. Omit every `yOffset` to let the compiler
+measure spacing, or adjust the offsets to leave each connection's reported
+`requiredGapPx` between node borders after accounting for each node's height.
+Labeled connections can need more space to keep the arrowhead clear of the label. Branching workflows and workflows with explicit canvas
+or route controls retain their established placement behavior.
+
+An implicit readable-v2 vertical stack whose measured lane height exceeds the
+104px baseline declares `data-reader-fit="width-first"`, as does any implicit
+readable-v2 canvas that would otherwise overflow the 1440×900 desktop page at
+full width. The desktop Viewer uses
+available reading width and normal page scrolling to keep tall stages readable,
+with the existing 1.5× automatic enlargement cap. This changes only displayed
+size: canonical SVG geometry and explicit `meta.viewBox` workflows retain their
+authored contracts. Embed, Present, and print retain their existing fitting modes.
+`visual-check` still checks readability, horizontal containment, and clipping;
+the declaration does not weaken node or route validation.
+
+Authored `via`, `labelAt`, `channelX`, and `channelY` are absolute hard pins in
+v2; an infeasible pin returns `workflow/explicit-pin-conflict` rather than being
+silently moved. `fromSide` and `toSide` remain direction constraints. A route
+preset restricts the automatic candidate family but is not itself an absolute
+coordinate pin. When either endpoint side is omitted, the v2 compiler chooses
+a feasible side; an authored side restricts that endpoint to the named port.
+An infeasible preset returns `workflow/route-preset-conflict` with the actual
+rejected `evidence.invariant`. For node clearance it also identifies the node,
+segment, endpoint role, and required clearance. Use that obstacle to revise
+the connected placement or route constraints, then revalidate; minimum segment
+lengths alone do not establish a clear path. Concrete alternatives for
+`workflow/route-preset-conflict` are checked by replanning the complete workflow
+at the active quality profile.
+
+## Design Rules
+
+- Use lanes for ownership or runtime boundaries.
+- Use phase headers for high-level story beats such as Intake, Plan, Execute, and Report.
+- Use groups for parallel checks, branch handling, or bounded work within a lane; every group must contain at least one node.
+- For sequential stages stacked inside one container, use the [vertical workflow recipe](#vertical-workflows). In other layouts, `yOffset` is relative to the center of the lane's content area.
+- Use `lane.variant: "exception"` for human wait, denial, retry, fallback, and failure lanes instead of mixing those paths into the happy path.
+- Set `mainPath` when the diagram has a clear happy path; the renderer validates that consecutive ids have matching edges and move left-to-right.
+- Place nodes with lane IDs and `col` indexes in `0..5`, not raw SVG coordinates.
+- Preserve semantic edge labels. Readable v2 allocates measured label clearance;
+  when a label does not fit, repair the reported capacity or route constraint
+  instead of deleting meaning.
+- Use labels for decisions, approvals, protocols, async traces, return paths,
+  and any other relationship meaning not fully implied by its endpoints.
+- Prefer route presets — `drop` (bend between lanes; `bias` 0–1 picks where),
+  `outside-right`, `return-left`, `bottom-channel`, and `up-channel` — before
+  using raw `via` points. `straight` and the default `auto` cover the rest.
+- Keep workflow examples compact enough to render well in narrow chat/browser
+  previews.
+
+### Optional semantic checks
+
+Layout validation cannot infer domain truth from labels or cards. When source
+evidence establishes roots, terminals, mandatory direct relationships, or
+mandatory directed reachability, encode those facts in `semanticChecks`:
+
+```json
+"semanticChecks": {
+  "allowedRoots": ["request", "resource_catalog"],
+  "allowedTerminals": ["reply", "audit_log"],
+  "requiredEdges": [
+    { "from": "dispatch", "to": "dispatch_ledger" }
+  ],
+  "requiredPaths": [
+    { "from": "event_ledger", "to": "runtime_host" }
+  ]
+}
+```
+
+When `allowedRoots` or `allowedTerminals` is present, it is the complete allow
+list for zero-incoming or zero-outgoing nodes respectively. `requiredEdges`
+requires one exact authored direction; `requiredPaths` permits intermediate
+nodes but follows authored edge direction. These checks run before layout, do
+not alter SVG or receipt bytes, and must not be weakened merely to resolve a
+route or composition diagnostic. Omit fields whose domain facts are unknown.
+
+Schema violations exit non-zero with path-prefixed messages annotated with the
+element's id or label. The renderer additionally fails when it can detect
+layout problems, including node overlap, nodes outside their lanes, invalid
+phase/group column ranges, empty groups, broken `mainPath` steps, unknown edge
+targets, labels colliding with nodes or other labels, labels wider than their
+node, legends outside the viewBox, or straight arrows that are too short to
+read cleanly. The shared Clean Flow Gate also rejects edges crossing unrelated
+nodes with 2px clearance; lanes, phases, and groups remain intentional
+pass-through containers. Text width is estimated CJK-aware: fullwidth glyphs
+count as two units.
+
+Diagnostics are causal: a rank-capacity failure suppresses derivative short
+edge, endpoint-direction, and label-overlap findings. `supportedFixes[]` can
+contain concrete edits checked by the compiler's fix search or general repair
+guidance from shared composition checks. General guidance is not a verified
+edit. After any edit, rerun the complete `finalize` command. A diagnostic never
+proposes removing a semantic label when label presence does not cause the
+failed invariant.
+
+Set `meta.quality_profile` to `showcase` for polished delivery. Unrelated proper
+X crossings then fail with `composition/proper-crossing`; default `standard`
+keeps them as artifact-receipt warnings. Collinear lane corridors are outside
+the proper-X rule, but a separate gate warns in `standard` and fails in
+`showcase` when unrelated edges overlap for at least 8px. V1 keeps its authored
+shared-endpoint contract. V2 also checks shared endpoints, including explicitly
+controlled routes: long or mixed-style trunks, counterflow, proper interior X
+crossings and overlapping independent arrowheads are not exempt. Pins are
+preserved, not silently repaired; unresolved v2 corridor/arrowhead collisions
+warn in `standard` and fail in `showcase`.
+
+V2 permits a same-direction shared terminal stub of at most 24 SVG units only
+when both relationships share the actual source or target port, effective
+variant, stroke width and role. A nonterminal overlap is never such a stub;
+forward-collinear waypoints do not split a long trunk into permitted pieces.
+Compatible short merges may share their terminal arrowhead. Automatic routes
+consider separate ports, reserve absolute routes at contested nodes, and prefer
+clear paths over shorter ambiguous ones. Crowded automatic corridors can use a
+bounded local adjustment without moving nodes or changing explicit coordinates.
+
+The SVG carries `data-layout-contract="readable-v2"` and each edge's role so
+artifact checks apply the same classification to actual visible path geometry,
+not stale composition-point metadata. These internal output attributes do not
+add authoring schema fields. Other diagram types retain their existing rules.
+V2 proper-crossing diagnostics retain the relationship IDs, intersection point,
+and supported fixes in both compiler/layout-JSON receipts and final HTML checks;
+`standard` reports warnings while `showcase` rejects the crossing. Both analyses
+merge forward-collinear waypoints without rewriting authored paths; real bends
+and reversals remain endpoint touches rather than being merged into an X.
+
+The older per-edge `data-composition-routing="workflow-v2-auto"` marker remains
+for compatibility with first-round exported HTML that has no root layout
+contract and with older artifact checkers. Marker-only artifacts retain their
+narrower automatic-pair crossing/counterflow policy; the root `readable-v2`
+contract is authoritative when present and also checks explicit routes. Do not
+remove the marker-only path as dead code without retiring that export format.
+Showcase also
+rejects any route segment below 8px and any interior turn segment below 16px;
+ordinary 8–15px endpoint stubs remain valid for fixed lane gaps.

@@ -1,0 +1,298 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Hyper 混合传输时序 · HTTP 中转转 P2P",
+    "locale": "zh-CN",
+    "output": ".archify/hyper-relay-20261127-212420/sequence.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/UniClipboard/UniClipboard.git",
+      "revision": "73a6baf1d8a2ddf9848d2fde520e25af9cab6953"
+    }
+  },
+  "participants": [
+    {
+      "id": "sender",
+      "type": "backend",
+      "label": "发送端 Engine",
+      "sublabel": "封装并发送密文",
+      "explanation": "无有效会话时使用已经交换的中转资料。发送端为目标加密分块，创建中转传输，同时尝试恢复 P2P 会话。",
+      "sources": [
+        {
+          "path": "engine/peersend.go",
+          "line": 329,
+          "end_line": 344
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1528,
+          "end_line": 1568
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1643,
+          "end_line": 1776
+        }
+      ]
+    },
+    {
+      "id": "relay",
+      "type": "cloud",
+      "label": "Hyper Relay",
+      "sublabel": "授权和通知",
+      "explanation": "控制面公告传输、签发预签名 URL。发送端提交分块后，控制面检查对象并通知接收端。",
+      "sources": [
+        {
+          "path": "docs/contracts/hybrid-relay-contract.md",
+          "line": 189,
+          "end_line": 203
+        },
+        {
+          "path": "internal/relayclient/client.go",
+          "line": 591,
+          "end_line": 618
+        }
+      ]
+    },
+    {
+      "id": "storage",
+      "type": "database",
+      "label": "S3 兼容存储",
+      "sublabel": "临时密文对象",
+      "explanation": "发送端直接 PUT 密文，接收端直接 GET 密文。控制面负责对象检查和清理。",
+      "sources": [
+        {
+          "path": "internal/relayclient/client.go",
+          "line": 547,
+          "end_line": 575
+        },
+        {
+          "path": "internal/relayclient/client.go",
+          "line": 676,
+          "end_line": 712
+        },
+        {
+          "path": "docs/contracts/hybrid-relay-contract.md",
+          "line": 196,
+          "end_line": 203
+        }
+      ]
+    },
+    {
+      "id": "receiver",
+      "type": "backend",
+      "label": "接收端 Engine",
+      "sublabel": "共享接收组装器",
+      "explanation": "接收端订阅 SSE。HTTP 与 P2P 的密文分块进入同一组装器。接收端以已收位图去重，验证、解密并提交内容。",
+      "sources": [
+        {
+          "path": "engine/relay.go",
+          "line": 401,
+          "end_line": 419
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 712,
+          "end_line": 811
+        },
+        {
+          "path": "engine/relay.go",
+          "line": 1159,
+          "end_line": 1222
+        }
+      ]
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 312,
+      "label": "创建中转传输"
+    },
+    {
+      "from": 320,
+      "to": 684,
+      "label": "HTTP 上传和下载"
+    },
+    {
+      "from": 692,
+      "to": 1084,
+      "label": "P2P 接力和接收回执"
+    }
+  ],
+  "messages": [
+    {
+      "id": "subscribe",
+      "from": "receiver",
+      "to": "relay",
+      "y": 169,
+      "label": "订阅 SSE",
+      "variant": "dashed"
+    },
+    {
+      "id": "create",
+      "from": "sender",
+      "to": "relay",
+      "y": 207,
+      "label": "创建传输 · 签名信封",
+      "variant": "emphasis"
+    },
+    {
+      "id": "announce",
+      "from": "relay",
+      "to": "receiver",
+      "y": 245,
+      "label": "transfer_announced",
+      "variant": "dashed"
+    },
+    {
+      "id": "put-grant",
+      "from": "relay",
+      "to": "sender",
+      "y": 283,
+      "label": "预签名 PUT 授权",
+      "variant": "return"
+    },
+    {
+      "id": "put",
+      "from": "sender",
+      "to": "storage",
+      "y": 339,
+      "label": "直传密文分块 · PUT",
+      "variant": "emphasis"
+    },
+    {
+      "id": "put-confirmed",
+      "from": "storage",
+      "to": "sender",
+      "y": 377,
+      "label": "对象写入成功",
+      "variant": "return"
+    },
+    {
+      "id": "commit",
+      "from": "sender",
+      "to": "relay",
+      "y": 415,
+      "label": "提交分块 · commit",
+      "variant": "default"
+    },
+    {
+      "id": "head",
+      "from": "relay",
+      "to": "storage",
+      "y": 453,
+      "label": "检查对象 · HeadObject",
+      "variant": "default"
+    },
+    {
+      "id": "ready",
+      "from": "relay",
+      "to": "receiver",
+      "y": 491,
+      "label": "chunk_ready",
+      "variant": "dashed"
+    },
+    {
+      "id": "get-grant",
+      "from": "receiver",
+      "to": "relay",
+      "y": 529,
+      "label": "请求下载授权",
+      "variant": "default"
+    },
+    {
+      "id": "get-url",
+      "from": "relay",
+      "to": "receiver",
+      "y": 567,
+      "label": "预签名 GET 授权",
+      "variant": "return"
+    },
+    {
+      "id": "get",
+      "from": "receiver",
+      "to": "storage",
+      "y": 605,
+      "label": "直取密文分块 · GET",
+      "variant": "default"
+    },
+    {
+      "id": "ciphertext-return",
+      "from": "storage",
+      "to": "receiver",
+      "y": 643,
+      "label": "返回密文分块",
+      "variant": "return"
+    },
+    {
+      "id": "offer",
+      "from": "sender",
+      "to": "receiver",
+      "y": 714,
+      "label": "relay_handoff_offer",
+      "variant": "emphasis",
+      "note": "P2P 会话恢复并满足接力条件。发送端附上已提交到中转的分块位图。"
+    },
+    {
+      "id": "offer-ack",
+      "from": "receiver",
+      "to": "sender",
+      "y": 789,
+      "label": "relay_handoff_ack",
+      "variant": "return",
+      "note": "接收端返回已收位图和希望由 P2P 发送的分块位图。"
+    },
+    {
+      "id": "p2p-data",
+      "from": "sender",
+      "to": "receiver",
+      "y": 862,
+      "label": "relay_chunk_data · 推送所需块",
+      "variant": "emphasis"
+    },
+    {
+      "id": "consume",
+      "from": "receiver",
+      "to": "relay",
+      "y": 905,
+      "label": "HTTP ACK · 请求清理",
+      "variant": "default",
+      "note": "接收端收齐并校验分块，完成接收提交，再向控制面发送消费确认。"
+    },
+    {
+      "id": "delete-object",
+      "from": "relay",
+      "to": "storage",
+      "y": 992,
+      "label": "清理密文对象",
+      "variant": "default"
+    },
+    {
+      "id": "clip-ack",
+      "from": "receiver",
+      "to": "sender",
+      "y": 1034,
+      "label": "clip_ack(received)",
+      "variant": "return"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "示例前提",
+      "items": [
+        "两台设备已经配对并交换中转资料。发送时没有有效 P2P 会话；接收端能访问 Hyper Relay。",
+        "图中选取一个经 HTTP 下载的分块，以及接力成功的分支。两端已协商 relay_handoff 和 clip_ack。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "两种确认",
+      "items": [
+        "HTTP ACK 通知中转控制面清理临时对象。clip_ack(received) 经 P2P 回给发送端，表示对端完成接收。"
+      ]
+    }
+  ]
+}

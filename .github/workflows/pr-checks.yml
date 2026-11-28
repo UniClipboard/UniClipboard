@@ -23,6 +23,7 @@ on:
       - 'tools/release/update-sign/**'
       - 'tools/ci/**'
       - '.github/workflows/pr-checks.yml'
+      - '.github/workflows/desktop-e2e-nightly.yml'
       - '!**/README*.md'
       - '!**/AGENTS.md'
   push:
@@ -48,6 +49,7 @@ on:
       - 'tools/release/update-sign/**'
       - 'tools/ci/**'
       - '.github/workflows/pr-checks.yml'
+      - '.github/workflows/desktop-e2e-nightly.yml'
       - '!**/README*.md'
       - '!**/AGENTS.md'
   merge_group:
@@ -57,7 +59,7 @@ permissions:
   contents: read
 
 env:
-  DESKTOP_E2E_SHARDS: 6
+  DESKTOP_E2E_SMOKE_SHARDS: 2
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -73,6 +75,7 @@ jobs:
       test: ${{ steps.classify.outputs.test }}
       headless: ${{ steps.classify.outputs.headless }}
       desktop_e2e: ${{ steps.classify.outputs.desktop_e2e }}
+      desktop_e2e_extra_cases: ${{ steps.classify.outputs.desktop_e2e_extra_cases }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -167,15 +170,15 @@ jobs:
           include-hidden-files: true
 
   desktop-e2e:
-    name: Desktop E2E and visual evidence (${{ matrix.shard }})
+    name: Desktop E2E smoke (${{ matrix.shard }})
     needs: changes
     if: needs.changes.outputs.desktop_e2e == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -191,60 +194,27 @@ jobs:
           if [ -f /etc/apt/apt-mirrors.txt ]; then
             printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
           fi
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y ffmpeg xvfb xauth dbus-x11 libgtk-3-0t64 libayatana-appindicator3-1 fonts-noto-cjk
-      - name: Execute the canonical Desktop suite
-        run: xvfb-run -a -s '-screen 0 1600x1000x24' make desktop-e2e SHARD="${{ matrix.shard }}/$DESKTOP_E2E_SHARDS"
+          for attempt in 1 2; do
+            if sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update && \
+               sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y \
+                 ffmpeg xvfb xauth dbus-x11 libgtk-3-0t64 libayatana-appindicator3-1 fonts-noto-cjk; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 2 ]; then
+              exit 1
+            fi
+            echo "::warning::APT dependency bootstrap failed on attempt $attempt; retrying after 10s"
+            sleep 10
+          done
+      - name: Execute the Desktop smoke suite
+        env:
+          INCLUDE_CASES: ${{ needs.changes.outputs.desktop_e2e_extra_cases }}
+        run: xvfb-run -a -s '-screen 0 1600x1000x24' make desktop-e2e SUITE=smoke SHARD="${{ matrix.shard }}/$DESKTOP_E2E_SMOKE_SHARDS" INCLUDE_CASES="$INCLUDE_CASES"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: desktop-e2e-evidence-${{ matrix.shard }}
+          name: desktop-e2e-smoke-evidence-${{ matrix.shard }}
           path: .build/desktop-e2e
           include-hidden-files: true
-          retention-days: 7
-          overwrite: true
-      - name: Collect Desktop E2E timings
-        if: ${{ !cancelled() }}
-        run: |
-          shopt -s nullglob
-          manifests=(.build/desktop-e2e/*/manifest.json)
-          if (( ${#manifests[@]} == 1 )); then
-            python3 -B app/desktop/e2e/timing.py collect "${manifests[0]}" timing.json
-          fi
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with:
-          name: desktop-e2e-timing-${{ matrix.shard }}
-          path: timing.json
-          if-no-files-found: ignore
-          retention-days: 7
-          overwrite: true
-
-  desktop-e2e-timing:
-    name: Desktop E2E timing report
-    needs: [changes, desktop-e2e]
-    if: ${{ !cancelled() && needs.changes.outputs.desktop_e2e == 'true' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v5
-        with:
-          pattern: desktop-e2e-timing-[1-6]
-          path: desktop-timings
-      - name: Report the slowest cases and shards
-        env:
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          MATRIX_RESULT: ${{ needs.desktop-e2e.result }}
-        run: |
-          python3 -B app/desktop/e2e/timing.py report "$DESKTOP_E2E_SHARDS" desktop-timings "$GITHUB_SHA" "$RUN_URL" >> "$GITHUB_STEP_SUMMARY"
-          if [[ "$MATRIX_RESULT" == success ]]; then
-            test -f desktop-timings/timings.json
-          fi
-      - uses: actions/upload-artifact@v4
-        with:
-          name: desktop-e2e-timing-baseline
-          path: desktop-timings/timings.json
-          if-no-files-found: ignore
           retention-days: 7
           overwrite: true

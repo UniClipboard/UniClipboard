@@ -1,0 +1,140 @@
+name: Desktop E2E nightly
+
+on:
+  schedule:
+    # Nightly at 20:00 UTC (04:00 Asia/Shanghai), staggered after desktop-benchmark.yml
+    - cron: '0 20 * * *'
+  workflow_dispatch:
+    inputs:
+      include_native_matrix:
+        description: Also run 6-target Win/macOS/Linux native acceptance
+        type: boolean
+        required: false
+        default: true
+  workflow_call:
+    inputs:
+      source_sha:
+        type: string
+        required: false
+        default: ''
+      include_native_matrix:
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  DESKTOP_E2E_SHARDS: 6
+
+concurrency:
+  group: desktop-e2e-nightly-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  desktop-e2e:
+    name: Desktop E2E full (${{ matrix.shard }})
+    if: ${{ github.event_name != 'schedule' || github.repository == 'UniClipboard/UniClipboard' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Install native display and recording dependencies
+        timeout-minutes: 5
+        run: |
+          # Regional EC2 package stalls must not consume the Desktop test budget.
+          sudo sed -i -E \
+            's@https?://([a-z0-9-]+\.)?ec2\.archive\.ubuntu\.com/ubuntu@https://archive.ubuntu.com/ubuntu@g' \
+            /etc/apt/sources.list.d/ubuntu.sources
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt
+          fi
+          for attempt in 1 2; do
+            if sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update && \
+               sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y \
+                 ffmpeg xvfb xauth dbus-x11 libgtk-3-0t64 libayatana-appindicator3-1 fonts-noto-cjk; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 2 ]; then
+              exit 1
+            fi
+            echo "::warning::APT dependency bootstrap failed on attempt $attempt; retrying after 10s"
+            sleep 10
+          done
+      - name: Execute the canonical Desktop suite
+        run: xvfb-run -a -s '-screen 0 1600x1000x24' make desktop-e2e SHARD="${{ matrix.shard }}/$DESKTOP_E2E_SHARDS"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-e2e-evidence-${{ matrix.shard }}
+          path: .build/desktop-e2e
+          include-hidden-files: true
+          retention-days: 14
+          overwrite: true
+      - name: Collect Desktop E2E timings
+        if: ${{ !cancelled() }}
+        run: |
+          shopt -s nullglob
+          manifests=(.build/desktop-e2e/*/manifest.json)
+          if (( ${#manifests[@]} == 1 )); then
+            python3 -B app/desktop/e2e/timing.py collect "${manifests[0]}" timing.json
+          fi
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: desktop-e2e-timing-${{ matrix.shard }}
+          path: timing.json
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
+
+  desktop-e2e-timing:
+    name: Desktop E2E timing report
+    needs: desktop-e2e
+    if: ${{ !cancelled() && (github.event_name != 'schedule' || github.repository == 'UniClipboard/UniClipboard') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: desktop-e2e-timing-[1-6]
+          path: desktop-timings
+      - name: Report the slowest cases and shards
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MATRIX_RESULT: ${{ needs.desktop-e2e.result }}
+        run: |
+          TARGET_SHA="$(git rev-parse HEAD)"
+          python3 -B app/desktop/e2e/timing.py report "$DESKTOP_E2E_SHARDS" desktop-timings "$TARGET_SHA" "$RUN_URL" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$MATRIX_RESULT" == success ]]; then
+            test -f desktop-timings/timings.json
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-e2e-timing-baseline
+          path: desktop-timings/timings.json
+          if-no-files-found: ignore
+          retention-days: 14
+          overwrite: true
+
+  native-desktop-acceptance:
+    name: Cross-platform native acceptance
+    if: ${{ (github.event_name == 'schedule' && github.repository == 'UniClipboard/UniClipboard') || (github.event_name != 'schedule' && inputs.include_native_matrix) }}
+    uses: ./.github/workflows/native-desktop-acceptance.yml
+    with:
+      source_sha: ${{ inputs.source_sha || github.sha }}

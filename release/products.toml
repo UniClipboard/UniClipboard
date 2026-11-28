@@ -19,14 +19,14 @@ update_public_key = "4/pGKRfV8KGneAnMEci+DnpdrnoFLM5uVhDq0Kp/pvk="
 
 [products.android]
 version = "3.0.0"
-build_number = 207
+build_number = 208
 targets = ["android-apk-arm64", "android-aab"]
 application_id = "app.uniclipboard.android"
 legacy_build_floor = 204
 
 [products.ios]
 version = "3.0.0"
-build_number = 207
+build_number = 208
 targets = ["ios-arm64"]
 application_id = "app.uniclipboard.UniClipboard"
 legacy_build_floor = 204

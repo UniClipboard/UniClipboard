@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +24,7 @@ import (
 	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
 	"github.com/uniclipboard/unic/internal/plugins/builtinsecurity"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
+	"github.com/uniclipboard/unic/internal/relaycrypto"
 )
 
 const debounce = 150 * time.Millisecond
@@ -233,15 +235,18 @@ func (m *Manager) Replace(revision string, raw []byte) (State, error) {
 	}
 	m.mu.RLock()
 	same := bytes.Equal(disk, m.raw)
+	existingRelayURL := m.cur.Sync.Relay.URL
 	existingRelayKey := m.cur.Sync.Relay.AccessKey
 	m.mu.RUnlock()
 	if !same {
 		return State{}, ErrConflict
 	}
 	// Preserve existing secret relay access_key when omitted by callers that
-	// round-trip redacted GET /v1/config snapshots (e.g. Desktop settings UI).
-	// Explicit `access_key = ""` in TOML clears it; non-empty updates it.
-	if !hasRelayKey && existingRelayKey != "" {
+	// round-trip redacted GET /v1/config snapshots (e.g. Desktop settings UI),
+	// ONLY when sync.relay.url remained unchanged. Switching relay origins
+	// clears an omitted access_key so an old server's key is never sent to
+	// the new origin. Explicit `access_key = ""` in TOML also clears it.
+	if !hasRelayKey && existingRelayKey != "" && relayURLUnchanged(existingRelayURL, c.Sync.Relay.URL) {
 		c.Sync.Relay.AccessKey = existingRelayKey
 		var buf bytes.Buffer
 		if encErr := toml.NewEncoder(&buf).Encode(c); encErr != nil {
@@ -365,4 +370,19 @@ func (m *Manager) Watch(ctx context.Context) error {
 			m.logf("config: watch: %v", err)
 		}
 	}
+}
+
+func relayURLUnchanged(prevURL, nextURL string) bool {
+	return canonicalRelayConfigURL(prevURL) == canonicalRelayConfigURL(nextURL)
+}
+
+func canonicalRelayConfigURL(raw string) string {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return ""
+	}
+	if norm, err := relaycrypto.NormalizeRelayOrigin(s); err == nil {
+		return norm
+	}
+	return strings.TrimRight(strings.ToLower(s), "/")
 }

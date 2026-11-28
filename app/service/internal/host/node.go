@@ -67,6 +67,7 @@ type Node struct {
 	diagnostics   *observability.Controller
 	e             *engine.Engine
 	cfg           *config.Manager
+	cloudRelay    *cloudRelayController
 	hub           hub
 	clip          desktop
 	adapter       adapterState
@@ -129,7 +130,8 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		}
 		serviceInfo = func() servicelifecycle.Instance { return defaultInst }
 	}
-	n := &Node{peer: peer, dataDir: o.Dir, customNet: o.Transport != nil, serviceInfo: serviceInfo}
+	n := &Node{peer: peer, cfg: o.Settings, dataDir: o.Dir, customNet: o.Transport != nil, serviceInfo: serviceInfo}
+	n.cloudRelay = newCloudRelayController(n, o.Dir, o.Settings)
 	obsOpts.Changed = func() { n.hub.emit(api.Event{Kind: "diagnostics"}) }
 	diagnostics := observability.New(obsOpts)
 	n.diagnostics = diagnostics
@@ -148,6 +150,7 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		StoreReceivedDirectory: receivedDirectoryWriter(c.Inbox, o.Dir),
 		DeferFileCleanup:       false,
 		Settings:               toSettings(c),
+		RelayAuth:              n.cloudRelay,
 		HostCapabilities: engine.HostCapabilities{
 			Observe: engine.AbilityUnavailable, Apply: engine.AbilityUnavailable,
 		},
@@ -302,6 +305,12 @@ func toSettings(c config.Config) engine.Settings {
 
 // Start brings up networking and local state/event maintenance.
 func (n *Node) Start(ctx context.Context) error {
+	if n.cloudRelay != nil {
+		n.cloudRelay.reconcileSync(ctx, true)
+		if err := n.pushSettings(ctx); err != nil {
+			return err
+		}
+	}
 	if err := n.e.Start(ctx); err != nil {
 		return err
 	}
@@ -314,7 +323,7 @@ func (n *Node) Start(ctx context.Context) error {
 			n.logf("plugin installation cleanup failed")
 		}
 	}
-	n.wg.Add(2)
+	n.wg.Add(4)
 	if n.luaDir != "" && len(n.lua) > 0 {
 		n.wg.Add(1)
 		go func() { defer n.wg.Done(); n.watchLua(runCtx) }()
@@ -322,6 +331,8 @@ func (n *Node) Start(ctx context.Context) error {
 
 	go func() { defer n.wg.Done(); n.pumpEvents(runCtx) }()
 	go func() { defer n.wg.Done(); n.adapter.watch(runCtx) }()
+	go func() { defer n.wg.Done(); n.cloudRelay.watchSessionFile(runCtx) }()
+	go func() { defer n.wg.Done(); n.cloudRelay.runRotationLoop(runCtx) }()
 	if runner, ok := n.clip.(interface{ Run(context.Context) }); ok {
 		n.wg.Add(1)
 		go func() { defer n.wg.Done(); runner.Run(runCtx) }()
@@ -371,8 +382,12 @@ func (n *Node) ConfigChanged(err error) {
 }
 
 func (n *Node) pushSettings(ctx context.Context) error {
-	want := toSettings(n.cfg.Current())
 	for i := 0; i < 5; i++ {
+		configured := n.cfg.Current()
+		want := toSettings(configured)
+		if n.cloudRelay != nil {
+			n.cloudRelay.applyRelayGuard(configured, &want)
+		}
 		st, err := n.e.GetState(ctx)
 		if err != nil {
 			return err
@@ -380,7 +395,6 @@ func (n *Node) pushSettings(ctx context.Context) error {
 		// Assembly changes apply after restart. Policies still target the running
 		// instances, including a backend whose disable is pending restart.
 		policies := make(map[engine.PluginID]engine.BackendSyncPolicy)
-		configured := n.cfg.Current()
 		for id := range st.Settings.Value.BackendPolicies {
 			policies[id] = configured.BackendPolicy(string(id))
 		}
@@ -873,7 +887,34 @@ var _ = strings.TrimSpace
 func (n *Node) applyConfiguration() error {
 	n.diagnostics.Apply(n.cfg.Current().Observability())
 	n.diagnostics.Logger().Info("config.reloaded")
-	return n.pushSettings(context.Background())
+	if n.cloudRelay != nil {
+		n.cloudRelay.reconcileSync(context.Background(), false)
+	}
+	err := n.pushSettings(context.Background())
+	if n.cloudRelay != nil {
+		n.cloudRelay.notify()
+	}
+	return err
+}
+
+func (n *Node) decorateConfigState(st config.State) config.State {
+	st.Config.Sync.Relay.EnvAccessKeySet = strings.TrimSpace(os.Getenv("UNIC_RELAY_ACCESS_KEY")) != ""
+	return st
+}
+
+// ConfigState returns the service's redacted configuration state together with
+// sanitized host-process fallback indicators.
+func (n *Node) ConfigState(context.Context) config.State {
+	return n.decorateConfigState(n.cfg.State())
+}
+
+// AfterConfigReplace reconciles official relay enablement on disk once
+// config.Manager.Replace releases its file lock.
+func (n *Node) AfterConfigReplace(ctx context.Context) (config.State, bool) {
+	if n.cloudRelay != nil {
+		n.cloudRelay.reconcileAfterSave(ctx)
+	}
+	return n.decorateConfigState(n.cfg.State()), true
 }
 
 // Diagnostics is the host-owned controller, also used by the nonvisual E2E entry.

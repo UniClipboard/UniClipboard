@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,13 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
-
 	"github.com/uniclipboard/unic/internal/cloudauth"
 	config "github.com/uniclipboard/unic/internal/localconfig"
 	paths "github.com/uniclipboard/unic/internal/localpaths"
 	"github.com/uniclipboard/unic/internal/relayclient"
-	"github.com/uniclipboard/unic/internal/relaycrypto"
 )
 
 const cloudUsage = `Sign in to UniClipboard Cloud and manage Cloud-backed features (such as Hybrid Relay).
@@ -36,7 +32,7 @@ Flags:
   --no-browser          Print the sign-in URL instead of launching the system browser (login)
   --no-relay            Sign in to Cloud without automatically enabling Hybrid Relay (login)
   --keep-relay          Keep local Hybrid Relay settings after signing out (logout)
-  --json                Output result as JSON (never includes raw tokens or API keys)
+  --json                Output result as JSON (never includes raw tokens or credentials)
   -h, --help            Show this help
 
 Examples:
@@ -46,19 +42,21 @@ Examples:
 `
 
 type cloudCmdDeps struct {
-	loginFn       func(context.Context, cloudauth.LoginOptions) (cloudauth.Session, error)
-	createRelayFn func(context.Context, *http.Client, cloudauth.Session, string) (cloudauth.RelayCredential, cloudauth.Session, error)
-	revokeRelayFn func(context.Context, *http.Client, cloudauth.Session, string) error
-	logoutFn      func(context.Context, *http.Client, cloudauth.Session) error
+	loginFn    func(context.Context, cloudauth.LoginOptions) (cloudauth.Session, error)
+	httpClient *http.Client
 }
 
 func defaultCloudDeps() cloudCmdDeps {
 	return cloudCmdDeps{
-		loginFn:       cloudauth.Login,
-		createRelayFn: cloudauth.CreateRelayAPIKey,
-		revokeRelayFn: cloudauth.RevokeRelayAPIKey,
-		logoutFn:      cloudauth.Logout,
+		loginFn: cloudauth.Login,
 	}
+}
+
+func (d cloudCmdDeps) newManager(dir, deviceName string) *cloudauth.Manager {
+	return cloudauth.NewManager(dir, cloudauth.ManagerOptions{
+		HTTPClient: d.httpClient,
+		DeviceName: func() string { return deviceName },
+	})
 }
 
 func runCloudCmd(ctx context.Context, sub string, args []string, asJSON bool) error {
@@ -104,12 +102,11 @@ func runCloudLogin(ctx context.Context, args []string, stdout, stderr io.Writer,
 		return err
 	}
 	cfgPath := filepath.Join(dir, "config.toml")
-	mgr, err := config.Open(cfgPath, nil)
+	cfgMgr, err := config.Open(cfgPath, nil)
 	if err != nil {
 		return err
 	}
-	cur := mgr.Current()
-	st := mgr.State()
+	cur := cfgMgr.Current()
 
 	loginCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
@@ -117,6 +114,7 @@ func runCloudLogin(ctx context.Context, args []string, stdout, stderr io.Writer,
 	sess, err := deps.loginFn(loginCtx, cloudauth.LoginOptions{
 		CloudURL:   cloudURL,
 		DeviceName: cur.DeviceName,
+		HTTPClient: deps.httpClient,
 		OpenBrowser: func(authURL string) error {
 			if noBrowser {
 				_, _ = fmt.Fprintf(stderr, "Open this URL in your browser to sign in to UniClipboard Cloud:\n  %s\n", authURL)
@@ -136,53 +134,66 @@ func runCloudLogin(ctx context.Context, args []string, stdout, stderr io.Writer,
 		return err
 	}
 
-	relayEnabled := false
-	relayURL := ""
-	if !noRelay {
-		cred, updated, rerr := deps.createRelayFn(loginCtx, nil, sess, cur.DeviceName)
-		if rerr != nil {
-			_ = cloudauth.SaveSession(dir, sess)
-			return rerr
-		}
-		sess = updated
-		next := cur
-		next.Sync.Relay.Enabled = true
-		next.Sync.Relay.AccessKey = cred.APIKey
-		if cred.RelayURL == "" || strings.EqualFold(strings.TrimRight(cred.RelayURL, "/"), relayclient.DefaultURL) {
-			next.Sync.Relay.URL = ""
-			relayURL = relayclient.DefaultURL
-		} else if norm, nerr := relaycrypto.NormalizeRelayOrigin(cred.RelayURL); nerr == nil {
-			next.Sync.Relay.URL = norm
-			relayURL = norm
-		}
-		var buf bytes.Buffer
-		if err := toml.NewEncoder(&buf).Encode(next); err != nil {
-			return err
-		}
-		if _, err := mgr.Replace(st.Revision, buf.Bytes()); err != nil {
-			return err
-		}
-		relayEnabled = true
-	}
-
-	if err := cloudauth.SaveSession(dir, sess); err != nil {
+	authMgr := deps.newManager(dir, cur.DeviceName)
+	if sess, err = authMgr.SetSession(sess); err != nil {
 		return err
 	}
 
+	relayEnabled := cur.Sync.Enabled && cur.Sync.Relay.Enabled
+	relayURL := strings.TrimSpace(cur.Sync.Relay.URL)
+	var cred cloudauth.DeviceCredential
+	if !noRelay && strings.TrimSpace(cur.Sync.Relay.URL) == "" {
+		cred, sess, err = authMgr.EnsureDeviceCredential(loginCtx)
+		if err != nil {
+			return err
+		}
+		if raw, serr := config.Set(cur, "sync.relay.enabled", "true"); serr == nil {
+			for attempt := 0; attempt < 3; attempt++ {
+				st := cfgMgr.State()
+				if _, rerr := cfgMgr.Replace(st.Revision, raw); rerr == nil {
+					relayEnabled = true
+					break
+				} else if rerr != config.ErrConflict {
+					return rerr
+				}
+				_ = cfgMgr.Reload()
+				raw, err = config.Set(cfgMgr.Current(), "sync.relay.enabled", "true")
+				if err != nil {
+					return err
+				}
+			}
+		} else {
+			return serr
+		}
+		if cred.RelayURL != "" {
+			if norm, nerr := cloudauth.NormalizeAdvertisedRelayURL(cred.RelayURL); nerr == nil && norm != "" {
+				relayURL = norm
+			} else {
+				relayURL = relayclient.DefaultURL
+			}
+		} else {
+			relayURL = relayclient.DefaultURL
+		}
+	}
+
+	status := sess.Status(true)
 	if asJSON {
 		return json.NewEncoder(stdout).Encode(map[string]any{
-			"signed_in":        true,
-			"cloud_url":        sess.CloudURL,
-			"account":          sess.User.DisplayLabel(),
-			"relay_enabled":    relayEnabled,
-			"relay_url":        relayURL,
-			"relay_key_prefix": sess.RelayKeyPrefix,
+			"signed_in":                  status.SignedIn,
+			"state":                      status.State,
+			"cloud_url":                  status.CloudURL,
+			"account":                    status.Account,
+			"relay_enabled":              relayEnabled,
+			"relay_url":                  relayURL,
+			"credential_prefix":          status.CredentialPrefix,
+			"credential_expires_at_ms":   status.CredentialExpiresAtMs,
+			"credential_rotate_after_ms": status.CredentialRotateAfterMs,
 		})
 	}
-	if relayEnabled {
-		_, _ = fmt.Fprintf(stdout, "Signed in to UniClipboard Cloud as %s. Hybrid Relay enabled (%s).\n", sess.User.DisplayLabel(), relayURL)
+	if !noRelay && strings.TrimSpace(cur.Sync.Relay.URL) == "" && relayEnabled {
+		_, _ = fmt.Fprintf(stdout, "Signed in to UniClipboard Cloud as %s. Hybrid Relay enabled (%s).\n", status.Account, relayURL)
 	} else {
-		_, _ = fmt.Fprintf(stdout, "Signed in to UniClipboard Cloud as %s.\n", sess.User.DisplayLabel())
+		_, _ = fmt.Fprintf(stdout, "Signed in to UniClipboard Cloud as %s.\n", status.Account)
 	}
 	return nil
 }
@@ -199,27 +210,23 @@ func runCloudStatus(args []string, stdout io.Writer, asJSON bool) error {
 	if err != nil {
 		return err
 	}
-	sess, ok, err := cloudauth.LoadSession(dir)
+	status, err := cloudauth.NewManager(dir, cloudauth.ManagerOptions{}).Status()
 	if err != nil {
 		return err
 	}
 	if asJSON {
-		out := map[string]any{"signed_in": ok}
-		if ok {
-			out["cloud_url"] = sess.CloudURL
-			out["account"] = sess.User.DisplayLabel()
-			out["relay_key_prefix"] = sess.RelayKeyPrefix
-			out["signed_in_at_ms"] = sess.SignedInAtMs
+		return json.NewEncoder(stdout).Encode(status)
+	}
+	switch status.State {
+	case cloudauth.SessionStateReauthRequired:
+		_, _ = fmt.Fprintf(stdout, "UniClipboard Cloud session for %s (%s) expired or was revoked. Run `unic cloud login` to sign in again.\n", status.Account, status.CloudURL)
+	case cloudauth.SessionStateActive:
+		_, _ = fmt.Fprintf(stdout, "Signed in to UniClipboard Cloud (%s) as %s\n", status.CloudURL, status.Account)
+		if status.CredentialPrefix != "" {
+			_, _ = fmt.Fprintf(stdout, "Managed relay credential: %s\n", status.CredentialPrefix)
 		}
-		return json.NewEncoder(stdout).Encode(out)
-	}
-	if !ok {
+	default:
 		_, _ = fmt.Fprintln(stdout, "Not signed in to UniClipboard Cloud. Run `unic cloud login` to sign in.")
-		return nil
-	}
-	_, _ = fmt.Fprintf(stdout, "Signed in to UniClipboard Cloud (%s) as %s\n", sess.CloudURL, sess.User.DisplayLabel())
-	if sess.RelayKeyPrefix != "" {
-		_, _ = fmt.Fprintf(stdout, "Hybrid Relay key: %s\n", sess.RelayKeyPrefix)
 	}
 	return nil
 }
@@ -240,33 +247,32 @@ func runCloudLogout(ctx context.Context, args []string, stdout io.Writer, asJSON
 	if err != nil {
 		return err
 	}
-	sess, ok, err := cloudauth.LoadSession(dir)
-	if err != nil {
+	revCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := deps.newManager(dir, "").Logout(revCtx); err != nil {
 		return err
 	}
-	if ok {
-		revCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		if !keepRelay && sess.RelayKeyID != "" {
-			_ = deps.revokeRelayFn(revCtx, nil, sess, sess.RelayKeyID)
-		}
-		_ = deps.logoutFn(revCtx, nil, sess)
-		if err := cloudauth.DeleteSession(dir); err != nil {
-			return err
-		}
-	}
-	if !keepRelay {
+	if !keepRelay && strings.TrimSpace(os.Getenv("UNIC_RELAY_ACCESS_KEY")) == "" {
 		cfgPath := filepath.Join(dir, "config.toml")
 		if mgr, oerr := config.Open(cfgPath, nil); oerr == nil {
-			cur := mgr.Current()
-			st := mgr.State()
-			if cur.Sync.Relay.URL == "" && (cur.Sync.Relay.Enabled || cur.Sync.Relay.AccessKey != "") {
-				next := cur
-				next.Sync.Relay.Enabled = false
-				next.Sync.Relay.AccessKey = ""
-				if raw, serr := config.Set(next, "sync.relay.access_key", `""`); serr == nil {
-					_, _ = mgr.Replace(st.Revision, raw)
+			for attempt := 0; attempt < 3; attempt++ {
+				cur := mgr.Current()
+				st := mgr.State()
+				// Disable only official Cloud-managed relay when no manual fallback key exists.
+				// Never delete user manual sync.relay.access_key or disable self-hosted relays.
+				if strings.TrimSpace(cur.Sync.Relay.URL) != "" ||
+					strings.TrimSpace(cur.Sync.Relay.AccessKey) != "" ||
+					!cur.Sync.Relay.Enabled {
+					break
 				}
+				raw, serr := config.Set(cur, "sync.relay.enabled", "false")
+				if serr != nil {
+					break
+				}
+				if _, rerr := mgr.Replace(st.Revision, raw); rerr == nil || rerr != config.ErrConflict {
+					break
+				}
+				_ = mgr.Reload()
 			}
 		}
 	}

@@ -43,6 +43,7 @@ func TestDesktopAcceptance(t *testing.T) {
 	t.Run("settings-diagnostics", scenarioSettingsDiagnostics)
 	t.Run("settings-storage", scenarioSettingsStorageProcess)
 	t.Run("settings-appearance", scenarioSettingsAppearance)
+	t.Run("settings-cloud-relay", scenarioSettingsCloudRelay)
 	t.Run("settings-backup", scenarioSettingsBackup)
 	t.Run("settings-shortcuts", scenarioSettingsShortcuts)
 	t.Run("wetype-pairing", scenarioWeTypePairing)

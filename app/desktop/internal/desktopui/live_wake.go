@@ -62,6 +62,12 @@ func (l *liveState) scheduleWake(d *viewState) {
 			due = showAt
 		}
 	}
+	if d.cloud.busy && !d.cloud.busySince.IsZero() {
+		showAt := d.cloud.busySince.Add(foregroundLoadingIndicatorDelay)
+		if time.Now().Before(showAt) && (due.IsZero() || showAt.Before(due)) {
+			due = showAt
+		}
+	}
 	if d.page == "devices" && d.deviceTask == "invite" && d.inviteMode != "ticket" && !l.busy && l.code.ExpiresAtMs > 0 {
 		expires := time.UnixMilli(l.code.ExpiresAtMs)
 		if due.IsZero() || expires.Before(due) {

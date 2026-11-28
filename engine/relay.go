@@ -63,6 +63,7 @@ type relayCoordinator struct {
 	assemblies map[string]*relayAssembly
 	completed  map[string]int64 // asmKey -> unix ms committed
 	peerUpWake map[string]map[chan struct{}]struct{}
+	authWake   chan struct{}
 }
 
 type relayAssembly struct {
@@ -107,6 +108,19 @@ func newRelayCoordinator(e *Engine) *relayCoordinator {
 		assemblies: map[string]*relayAssembly{},
 		completed:  map[string]int64{},
 		peerUpWake: map[string]map[chan struct{}]struct{}{},
+		authWake:   make(chan struct{}, 1),
+	}
+}
+
+// NotifyRelayAuthChanged wakes the relay SSE/catch-up backoff loop immediately
+// after host-managed relay credentials appear or change outside config.toml.
+func (e *Engine) NotifyRelayAuthChanged() {
+	if e == nil || e.relay == nil {
+		return
+	}
+	select {
+	case e.relay.authWake <- struct{}{}:
+	default:
 	}
 }
 
@@ -156,8 +170,29 @@ func (r *relayCoordinator) reconcile() {
 	if r.e.opts.relayClient != nil && (rawURL == "" || rawURL == r.e.opts.relayClient.Origin()) {
 		cli = r.e.opts.relayClient
 	} else {
+		target := strings.TrimSpace(rawURL)
+		if target == "" {
+			target = relayclient.DefaultURL
+		}
+		normOrigin, oerr := relaycrypto.NormalizeRelayOrigin(target)
+		if oerr != nil {
+			r.stop()
+			return
+		}
+		rcfg := relayclient.Config{
+			BaseURL: normOrigin,
+		}
+		if auth := r.e.opts.RelayAuth; auth != nil {
+			// Host provider owns live key/admission decisions; keep snapshot AccessKey empty.
+			rcfg.AccessKeyProvider = func() (string, bool) { return auth.AccessKey(normOrigin) }
+			rcfg.OnAuthFailure = func(ctx context.Context, rejectedKey string) bool {
+				return auth.OnUnauthorized(ctx, normOrigin, rejectedKey)
+			}
+		} else {
+			rcfg.AccessKey = accessKey
+		}
 		var err error
-		cli, err = relayclient.New(relayclient.Config{BaseURL: rawURL, AccessKey: accessKey})
+		cli, err = relayclient.New(rcfg)
 		if err != nil {
 			r.stop()
 			return
@@ -432,6 +467,10 @@ func (r *relayCoordinator) runLoop(ctx context.Context, cli *relayclient.Client,
 		case <-ctx.Done():
 			t.Stop()
 			return
+		case <-r.authWake:
+			t.Stop()
+			backoff = relayReconnectMinBackoff
+			continue
 		case <-t.C:
 		}
 		if backoff < relayReconnectMaxBackoff {

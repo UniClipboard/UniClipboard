@@ -92,9 +92,9 @@ unic config apply ./my-config.toml    # 用整个文件替换配置
 
 | 键 | 默认值 | 说明 |
 |---|---|---|
-| `enabled` | `false` | 是否在目标 P2P 离线时启用 0 等待临时中转；通过 Cloud 一键登录或手动配置自部署后开启 |
-| `url` | `$UNIC_RELAY_URL`，否则 `https://relay.uniclipboard.app` | 中转服务 HTTPS 地址；填入自部署地址即可切换 |
-| `access_key` | `$UNIC_RELAY_ACCESS_KEY`，默认为空 | 官方 Cloud API Key 或自部署实例接入密钥（HTTP Header `X-Unic-Relay-Key`），秘密字段，不回显、不入日志与设置备份 |
+| `enabled` | `false` | 是否在目标 P2P 离线时启用 0 等待临时中转；在已保存 TOML `url` 为空且未传 `--no-relay` 时随 `unic cloud login` / 界面登录自动开启（不会改变全局 `sync.enabled`），或由自部署配置启用 |
+| `url` | `""`（空） | 留空时若 `unicd` 设置了 `$UNIC_RELAY_URL` 则使用它，否则进入官方托管模式（`https://relay.uniclipboard.app` 或仅接受严格 `https://` 的 Cloud 授权中转源，只保留于内存不写盘）。显式自部署地址（`NormalizeRelayOrigin`）支持规范的 `https://` 或 `http://` 并允许私网地址（本地测试可用回环 HTTP，公网推荐 HTTPS）。经 `PUT /v1/config`（`unic config set`、桌面端或 `unic config apply`）换址且省略 `access_key` 时会丢弃旧密钥，但 `apply` 文件若含 `access_key` 行会作为显式输入保存；直接手改磁盘 `config.toml` 则走 `Reload()` 原文重载（需在同一保存中清空或替换旧 `access_key` 行）。宿主 `UNIC_RELAY_ACCESS_KEY` 独立生效；`config.toml` 不提供 `UNIC_CLOUD_URL` 对应键 |
+| `access_key` | `$UNIC_RELAY_ACCESS_KEY`，默认为空 | 只写字段，用于手工创建的带 `relay` 权限 Cloud API Key（`uc_ak_...`）或自部署实例接入密钥（`X-Unic-Relay-Key`）；绝不存放官方托管设备凭证（`uc_dc_...` 保存在 `cloud-session.json`），官方模式下在桌面端与移动端界面隐藏，不兼容无作用域旧版密钥，且不回显、不入日志与设置备份 |
 | `max_bytes` | `"25MB"` | 单次中转载荷上限，不得超过 `limits.max_total_bytes`（最大 4 GiB） |
 
 ## `[history]`

@@ -43,34 +43,43 @@ flowchart LR
 
 ## 客户端配置与 UniClipboard Cloud 登录
 
-官方托管中转服务（`https://relay.uniclipboard.app`）是 **UniClipboard Cloud**（`https://cloud.uniclipboard.app`）账号提供的云能力之一。登录 Cloud 账号后，客户端会自动为本机签发用户专属 **Relay API Key** 并开启官方混合中转；未登录前默认保持关闭，避免未认证流量空转。本地历史与 P2P 直连始终可脱离账号独立使用，你也可以随时切换为自部署地址或关闭中转。
+官方托管中转服务（`https://relay.uniclipboard.app` 或经授权的 Cloud HTTPS 中转源）是 **UniClipboard Cloud**（`https://cloud.uniclipboard.app`）账号提供的云能力之一。登录 Cloud 账号后，客户端会在仅本机属主可读的 `cloud-session.json`（权限 `0600`）中自动签发并静默轮换短中效、带作用域的**托管设备凭证**（`uc_dc_...`）并开启官方混合中转；未登录或未配置自部署前默认保持关闭，避免未认证流量空转。本地历史与 P2P 直连始终可脱离账号独立使用，你也可以随时切换为自部署地址或关闭中转。
 
 ### 一键登录 UniClipboard Cloud（推荐）
 
-- **桌面端**：打开「设置 → 云服务」，点击 **「登录」**。浏览器完成登录后自动连接账号并开启官方混合中转；也可在「设置 → 同步 → 混合中转」中调整地址、上限或密钥。
-- **移动端（iOS / Android）**：打开「设置」顶部的 **「云服务」**，点击 **「登录账号」**，浏览器授权后自动跳回 App 并开启中转；也可在「设置 → 网络 → 混合中转」内管理。
-- **命令行（CLI）**：使用 `unic cloud` 管理账号登录、查看状态与退出（无桌面环境可加 `--no-browser` 手动复制链接；若只想登录账号暂不开启中转，可加 `--no-relay`；也可前往 `https://cloud.uniclipboard.app/account/api-keys` 手动管理 API Key）：
+在官方模式（**服务地址** / `sync.relay.url` 留空）下，桌面端与移动端会**完全隐藏接入密钥控件**，无需手工复制、清除或重新获取密钥：
+
+- **桌面端**：打开「设置 → 云服务」，点击 **「登录」**（或在「设置 → 同步 → 混合中转」直接开启）。也可在「设置 → 同步 → 混合中转」中调整单次大小上限或切换为自建地址。
+- **移动端（iOS / Android）**：打开「设置」顶部的 **「云服务」**，点击 **「登录账号」**；随后可在「设置 → 高级网络 → 混合中转」中开关或配置自建地址。
+- **命令行（CLI）**：使用 `unic cloud` 管理账号登录、查看状态与退出（`--no-browser` 仅打印登录链接，浏览器仍需能访问运行 `unic` 的主机上的 `127.0.0.1` 回环回调端口，例如通过 SSH 端口转发；若只想登录账号暂不在官方模式下自动开启 `sync.relay.enabled`，可加 `--no-relay`。CLI 按配置文件已保存的 `sync.relay.url` 判断，不受 `unicd` 的 `UNIC_RELAY_URL` 影响，且不会打开全局 `sync.enabled`）：
 
 ```bash
-# 登录 UniClipboard Cloud 并自动开通官方混合中转
+# 登录 UniClipboard Cloud 并自动开通官方混合中转（仅已保存 sync.relay.url 为空时）
 unic cloud login
 
 # 查看当前登录的 Cloud 账号状态
 unic cloud status
 
-# 退出 Cloud 账号（默认同时清理关联的官方中转密钥，加 --keep-relay 可保留）
+# 退出 Cloud 账号（先在有界请求内尽力吊销远端，远端失败后仍尝试清理本机 cloud-session.json；
+# --keep-relay 仅跳过 CLI 写 config.toml，unicd 会按自身宿主 UNIC_RELAY_URL / UNIC_RELAY_ACCESS_KEY 判断并仍可关闭官方中转）
 unic cloud logout
 ```
 
-### 配置文件与命令行
+<Callout>
+存在活跃会话时，客户端退出登录会先按有界请求上下文尽力向云端请求吊销设备凭证与会话（仅当服务端成功处理吊销请求时才更新 Cloud D1；在 `https://cloud.uniclipboard.app/account/devices` 主动吊销则会直接在服务端更新 D1），随后即使远端吊销失败或离线，仍会尝试删除本机 `cloud-session.json` 并仅在删档成功后清空内存会话快照（本机锁或文件读写/删除本身仍可能失败，不承诺立即清除、固定总耗时或离线必成功）。吊销只会使该台设备的托管凭证（`uc_dc_...`）失效，同一账号下的其余设备、手工创建的 API Key（`uc_ak_...`）以及自部署配置均不受影响。下游 `UniClipboard/relay` 实例使用可配置的正向校验缓存（`d51e721` 默认 60 秒）。
+</Callout>
 
-编辑 `$UNIC_HOME/config.toml`（保存即生效），或使用 `unic config set`：
+### 手工 API Key（无头服务器 / 脚本）、配置文件与命令行
+
+如果需要在无浏览器交互的无头服务器或自动化脚本中使用官方中转，可前往 `https://cloud.uniclipboard.app/account/api-keys` 创建带 `relay` 权限的 **API Key**（`uc_ak_...`），写入 `sync.relay.access_key` 或服务宿主环境变量 `UNIC_RELAY_ACCESS_KEY`（不支持无 `scopes` 的旧版 `uc_rk_` 密钥，请重新生成）。若部署了自己的 `UniClipboard/relay` 实例，请设置 `sync.relay.url`（在桌面端或移动端填写自建**服务地址**后，界面会显示只写的**接入密钥**设置项）。
+
+编辑 `$UNIC_HOME/config.toml`（保存即重载生效），或使用 `unic config set` / `unic config apply`：
 
 ```toml
 [sync.relay]
 enabled = true
-url = "https://relay.example.com"  # 留空使用官方默认地址或 $UNIC_RELAY_URL
-access_key = ""                    # 官方 Cloud API Key 或自部署 X-Unic-Relay-Key
+url = ""                           # 留空为官方模式（也可填写自建 https://... 或使用 $UNIC_RELAY_URL）
+access_key = ""                    # 可选：手工 Cloud API Key（uc_ak_...）或自部署 X-Unic-Relay-Key
 max_bytes = "25MB"                 # 单次中转上限，最大不超过 4GiB
 ```
 
@@ -83,10 +92,10 @@ unic config set sync.relay.url '"https://relay.example.com"'
 unic config set sync.relay.max_bytes '"100MB"'
 ```
 
-也可以通过环境变量 `UNIC_RELAY_URL`、`UNIC_RELAY_ACCESS_KEY` 与 `UNIC_CLOUD_URL` 提供默认值（配置文件中的显式值优先），见[环境变量](../reference/environment)。
+也可以通过服务宿主环境变量 `UNIC_RELAY_URL`、`UNIC_RELAY_ACCESS_KEY` 以及仅用于 `unic cloud` 的 `UNIC_CLOUD_URL` 提供默认值（`--cloud-url` 可覆盖 `UNIC_CLOUD_URL`；`config.toml` **没有** `cloud_url` 配置项，且宿主 `UNIC_RELAY_ACCESS_KEY` 作为独立后备不因切换配置地址而失效）。`unic config set` 与 `unic config apply` 均经带修订号的 `PUT /v1/config` 服务接口保存：`unic config set` 与桌面端从脱敏快照构造请求（不含旧 `access_key`），换址时会自动清除先前保存的 `sync.relay.access_key`；而 `unic config apply <file>` 若省略 `access_key` 会在换址时清除旧密钥，**若文件内仍带有旧 `access_key = "..."` 行则会将其作为显式输入保存**。只有**直接编辑磁盘 `config.toml` 文件**才走 `Reload()` 原文解析——手工编辑换址时请在同次保存中清空（`access_key = ""` 或删去该行）或替换 `access_key`。官方托管设备凭证（`uc_dc_...`）仅保存在 `cloud-session.json` 并严格绑定到其授权源地址，绝不写入 `config.toml`。见[环境变量](../reference/environment)。
 
 <Callout type="warn">
-出于防 SSRF 安全限制，客户端只接受合法的公网 HTTPS 中转地址，绝不会自动连接对端自报的未知域名或内网 IP。使用自部署实例时，请确保需要互通的设备填写**相同的中转地址**，并在配置完成后至少完成一次 P2P 连接以交换投递路由。
+地址校验按来源严格区分：**Cloud 官方下发地址**强制要求 `https://`（拒绝明文 HTTP）；**用户显式配置的自建 `sync.relay.url` / `UNIC_RELAY_URL`** 解析器允许规范的 `https://` 或 `http://`，且可用于私网/内网部署（本地测试与模拟器回执使用回环 HTTP，公网部署请启用 HTTPS）；**对端在 `relay_profile` 中自报的地址**要求来自已信任设备且与本机当前规范化中转目标完全一致，未知或不一致的源地址一律拒绝。使用自部署实例时，请确保需要互通的设备填写**相同的中转地址**，并在配置完成后至少完成一次 P2P 连接以交换投递路由。
 </Callout>
 
 ## 自部署准备：配置对象存储
@@ -271,7 +280,7 @@ curl --fail https://relay.example.com/healthz
 
 - **服务端**：在 `.env`（Docker）或 `wrangler secret put RELAY_ACCESS_KEY`（Cloudflare）设置高熵随机密钥（例如 `openssl rand -base64 32`）。
 - **验证方式**：服务端对所有控制面请求（含 Owner Auth 与发送方 `Bearer` 请求）使用常量时间校验 HTTP Header `X-Unic-Relay-Key`，未携带或错误直接返回 `401`。
-- **客户端**：在桌面端/移动端「自部署接入密钥」输入，或在 `config.toml` 设置 `sync.relay.access_key`，或通过环境变量 `UNIC_RELAY_ACCESS_KEY` 传入。
+- **客户端**：在桌面端/移动端填入自建**服务地址**后在只写的**接入密钥**处输入，或在 `config.toml` 设置 `sync.relay.access_key`，或通过服务宿主环境变量 `UNIC_RELAY_ACCESS_KEY` 传入。（官方 Cloud 用户直接登录账号，无需填写密钥。）
 - **秘密保护**：客户端向预签名对象存储 URL 直传/直下时会自动**剥离** `X-Unic-Relay-Key` 与所有 `X-Unic-*` 请求头，绝不向对象存储或日志泄露密钥。
 
 ### 2. 设备公钥白名单（`RELAY_ALLOWED_PUBKEYS`）

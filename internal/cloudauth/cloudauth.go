@@ -1,7 +1,6 @@
 // Package cloudauth implements RFC 8252 loopback OAuth 2.0 + PKCE account login
-// against UniClipboard Cloud (https://cloud.uniclipboard.app), local session
-// persistence, token refresh/revocation, and Cloud feature provisioning (such
-// as Hyper Relay API keys).
+// against UniClipboard Cloud (https://cloud.uniclipboard.app), cross-process
+// session persistence, and managed scoped device relay credentials.
 package cloudauth
 
 import (
@@ -26,13 +25,22 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/uniclipboard/unic/internal/relaycrypto"
 )
 
 const (
 	// DefaultCloudURL is the official UniClipboard Cloud origin.
 	DefaultCloudURL = "https://cloud.uniclipboard.app"
 
+	// SessionStateActive indicates the Cloud session holds active tokens.
+	SessionStateActive = "active"
+	// SessionStateReauthRequired indicates Cloud authoritatively revoked the
+	// session; secrets are cleared and user re-authentication is required.
+	SessionStateReauthRequired = "reauth_required"
+
 	sessionFilename    = "cloud-session.json"
+	sessionLockName    = "cloud-session.lock"
 	defaultHTTPTimeout = 20 * time.Second
 	maxJSONRespBytes   = 64 << 10
 	accessRefreshSkew  = 60 * time.Second
@@ -72,29 +80,180 @@ func (u User) DisplayLabel() string {
 	return "UniClipboard Cloud"
 }
 
-// Session represents a signed-in UniClipboard Cloud account session for one profile.
-// AccessToken and RefreshToken are secrets and must never be logged or echoed.
-type Session struct {
-	CloudURL          string `json:"cloud_url"`
-	AccessToken       string `json:"access_token,omitempty"`
-	AccessExpiresAtMs int64  `json:"access_expires_at_ms,omitempty"`
-	RefreshToken      string `json:"refresh_token"`
-	DeviceName        string `json:"device_name,omitempty"`
-	User              User   `json:"user"`
-	SignedInAtMs      int64  `json:"signed_in_at_ms"`
-	RelayKeyID        string `json:"relay_key_id,omitempty"`
-	RelayKeyPrefix    string `json:"relay_key_prefix,omitempty"`
+// DeviceCredential holds the Cloud-issued short/medium-lived scoped relay
+// credential managed automatically for this device session. Credential is a
+// secret and must never be logged or echoed in errors, events, or status DTOs.
+type DeviceCredential struct {
+	ID               string   `json:"id"`
+	KeyPrefix        string   `json:"key_prefix"`
+	Credential       string   `json:"credential,omitempty"`
+	Scopes           []string `json:"scopes,omitempty"`
+	RelayURL         string   `json:"relay_url"`
+	MaxTransferBytes int64    `json:"max_transfer_bytes"`
+	ExpiresAtMs      int64    `json:"expires_at_ms"`
+	RotateAfterMs    int64    `json:"rotate_after_ms"`
 }
 
-// RelayCredential is a Cloud-provisioned Hyper Relay API key and metadata.
-// APIKey is a secret and must never be logged or echoed in error messages.
-type RelayCredential struct {
-	KeyID            string `json:"id"`
-	Name             string `json:"name"`
-	KeyPrefix        string `json:"key_prefix"`
-	APIKey           string `json:"api_key"`
-	RelayURL         string `json:"relay_url"`
-	MaxTransferBytes int64  `json:"max_transfer_bytes"`
+func (c *DeviceCredential) clone() *DeviceCredential {
+	if c == nil {
+		return nil
+	}
+	cp := *c
+	if len(c.Scopes) > 0 {
+		cp.Scopes = append([]string(nil), c.Scopes...)
+	}
+	return &cp
+}
+
+// Session represents a UniClipboard Cloud account session for one profile.
+// AccessToken, RefreshToken, and DeviceCredential.Credential are secrets and
+// must never be logged or echoed.
+type Session struct {
+	State             string            `json:"state,omitempty"`
+	CloudURL          string            `json:"cloud_url"`
+	AccessToken       string            `json:"access_token,omitempty"`
+	AccessExpiresAtMs int64             `json:"access_expires_at_ms,omitempty"`
+	RefreshToken      string            `json:"refresh_token,omitempty"`
+	DeviceName        string            `json:"device_name,omitempty"`
+	User              User              `json:"user"`
+	SignedInAtMs      int64             `json:"signed_in_at_ms"`
+	DeviceCredential  *DeviceCredential `json:"device_credential,omitempty"`
+}
+
+// EffectiveState returns SessionStateReauthRequired, SessionStateActive, or ""
+// when the session holds neither state.
+func (s Session) EffectiveState() string {
+	if strings.TrimSpace(s.State) == SessionStateReauthRequired {
+		return SessionStateReauthRequired
+	}
+	if strings.TrimSpace(s.RefreshToken) != "" {
+		return SessionStateActive
+	}
+	return ""
+}
+
+// Clone returns a copy of s with any nested DeviceCredential copied.
+func (s Session) Clone() Session {
+	cp := s
+	cp.DeviceCredential = s.DeviceCredential.clone()
+	return cp
+}
+
+// HasActiveCredential reports whether s holds an active session with an
+// unexpired managed relay credential bound to a valid HTTPS origin at now.
+func (s Session) HasActiveCredential(now time.Time) bool {
+	if s.EffectiveState() != SessionStateActive || s.DeviceCredential == nil {
+		return false
+	}
+	if strings.TrimSpace(s.DeviceCredential.Credential) == "" {
+		return false
+	}
+	if _, err := NormalizeAdvertisedRelayURL(s.DeviceCredential.RelayURL); err != nil {
+		return false
+	}
+	if s.DeviceCredential.ExpiresAtMs > 0 && now.UnixMilli() >= s.DeviceCredential.ExpiresAtMs {
+		return false
+	}
+	return true
+}
+
+// NeedsRotation reports whether s has no usable managed credential or has
+// reached Cloud's rotate_after_ms window at now.
+func (s Session) NeedsRotation(now time.Time) bool {
+	if !s.HasActiveCredential(now) {
+		return true
+	}
+	if s.DeviceCredential.RotateAfterMs > 0 && now.UnixMilli() >= s.DeviceCredential.RotateAfterMs {
+		return true
+	}
+	return false
+}
+
+// StatusSnapshot is the secret-free public view of the current Cloud session.
+type StatusSnapshot struct {
+	SignedIn                bool   `json:"signed_in"`
+	ReauthRequired          bool   `json:"reauth_required,omitempty"`
+	State                   string `json:"state"`
+	CloudURL                string `json:"cloud_url,omitempty"`
+	Account                 string `json:"account,omitempty"`
+	Email                   string `json:"email,omitempty"`
+	DeviceName              string `json:"device_name,omitempty"`
+	SignedInAtMs            int64  `json:"signed_in_at_ms,omitempty"`
+	RelayURL                string `json:"relay_url,omitempty"`
+	CredentialPrefix        string `json:"credential_prefix,omitempty"`
+	CredentialExpiresAtMs   int64  `json:"credential_expires_at_ms,omitempty"`
+	CredentialRotateAfterMs int64  `json:"credential_rotate_after_ms,omitempty"`
+}
+
+// Status returns a redacted StatusSnapshot for s.
+func (s Session) Status(hasSession bool) StatusSnapshot {
+	if !hasSession || s.EffectiveState() == "" {
+		return StatusSnapshot{State: "signed_out"}
+	}
+	out := StatusSnapshot{
+		State:        s.EffectiveState(),
+		CloudURL:     s.CloudURL,
+		Account:      s.User.DisplayLabel(),
+		Email:        strings.TrimSpace(s.User.Email),
+		DeviceName:   strings.TrimSpace(s.DeviceName),
+		SignedInAtMs: s.SignedInAtMs,
+	}
+	if out.State == SessionStateReauthRequired {
+		out.ReauthRequired = true
+		return out
+	}
+	out.SignedIn = true
+	if s.DeviceCredential != nil {
+		out.RelayURL = strings.TrimSpace(s.DeviceCredential.RelayURL)
+		out.CredentialPrefix = strings.TrimSpace(s.DeviceCredential.KeyPrefix)
+		out.CredentialExpiresAtMs = s.DeviceCredential.ExpiresAtMs
+		out.CredentialRotateAfterMs = s.DeviceCredential.RotateAfterMs
+	}
+	return out
+}
+
+// APIError represents an HTTP error returned by UniClipboard Cloud without
+// exposing raw response bodies or secret material.
+type APIError struct {
+	Status int
+	Code   string
+	Op     string
+}
+
+func (e *APIError) Error() string {
+	if e.Code != "" {
+		return fmt.Sprintf("%s failed (http %d: %s)", e.Op, e.Status, e.Code)
+	}
+	return fmt.Sprintf("%s failed (http %d)", e.Op, e.Status)
+}
+
+// IsAuthoritativeRevocation reports whether Cloud definitively declared the
+// sign-in session revoked or invalid, requiring interactive re-authentication.
+func (e *APIError) IsAuthoritativeRevocation() bool {
+	if e == nil || e.Status != http.StatusUnauthorized {
+		return false
+	}
+	return e.Code == "invalid_grant" || e.Code == "session_revoked"
+}
+
+// NormalizeAdvertisedRelayURL validates an optional Cloud-advertised official
+// relay URL. Empty values indicate the fixed default official origin; any
+// non-empty value must be a canonical https URL without userinfo, query, or
+// fragment. Plain HTTP is never accepted in production or tests.
+func NormalizeAdvertisedRelayURL(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", nil
+	}
+	norm, err := relaycrypto.NormalizeRelayOrigin(trimmed)
+	if err != nil {
+		return "", errors.New("cloud returned invalid relay URL")
+	}
+	u, err := url.Parse(norm)
+	if err != nil || !strings.EqualFold(u.Scheme, "https") || u.Host == "" {
+		return "", errors.New("cloud advertised relay URL must use https")
+	}
+	return norm, nil
 }
 
 // ResolveCloudURL validates and normalizes the target UniClipboard Cloud origin.
@@ -144,8 +303,13 @@ func SessionPath(profileDir string) string {
 	return filepath.Join(profileDir, sessionFilename)
 }
 
+// SessionLockPath returns the advisory cross-process lock file path under profileDir.
+func SessionLockPath(profileDir string) string {
+	return filepath.Join(profileDir, sessionLockName)
+}
+
 // LoadSession reads a persisted UniClipboard Cloud session from profileDir.
-// Returns (Session{}, false, nil) when no session exists.
+// Returns (Session{}, false, nil) when no valid session exists.
 func LoadSession(profileDir string) (Session, bool, error) {
 	if strings.TrimSpace(profileDir) == "" {
 		return Session{}, false, nil
@@ -161,10 +325,35 @@ func LoadSession(profileDir string) (Session, bool, error) {
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return Session{}, false, err
 	}
-	if strings.TrimSpace(s.CloudURL) == "" || strings.TrimSpace(s.RefreshToken) == "" {
+	if strings.TrimSpace(s.CloudURL) == "" {
 		return Session{}, false, nil
 	}
-	return s, true, nil
+	cloudURL, err := ResolveCloudURL(s.CloudURL)
+	if err != nil {
+		return Session{}, false, nil
+	}
+	s.CloudURL = cloudURL
+	switch s.EffectiveState() {
+	case SessionStateReauthRequired:
+		s.State = SessionStateReauthRequired
+		s.AccessToken = ""
+		s.AccessExpiresAtMs = 0
+		s.RefreshToken = ""
+		s.DeviceCredential = nil
+		return s, true, nil
+	case SessionStateActive:
+		s.State = SessionStateActive
+		if s.DeviceCredential != nil {
+			if norm, nerr := NormalizeAdvertisedRelayURL(s.DeviceCredential.RelayURL); nerr != nil {
+				s.DeviceCredential = nil
+			} else {
+				s.DeviceCredential.RelayURL = norm
+			}
+		}
+		return s, true, nil
+	default:
+		return Session{}, false, nil
+	}
 }
 
 // SaveSession atomically writes sess to profileDir with owner-only (0600) permissions.
@@ -175,7 +364,32 @@ func SaveSession(profileDir string, sess Session) error {
 	if err := os.MkdirAll(profileDir, 0o700); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(sess, "", "  ")
+	cp := sess.Clone()
+	if strings.TrimSpace(cp.CloudURL) != "" {
+		cloudURL, err := ResolveCloudURL(cp.CloudURL)
+		if err != nil {
+			return err
+		}
+		cp.CloudURL = cloudURL
+	}
+	switch cp.EffectiveState() {
+	case SessionStateReauthRequired:
+		cp.State = SessionStateReauthRequired
+		cp.AccessToken = ""
+		cp.AccessExpiresAtMs = 0
+		cp.RefreshToken = ""
+		cp.DeviceCredential = nil
+	case SessionStateActive:
+		cp.State = SessionStateActive
+		if cp.DeviceCredential != nil {
+			if norm, nerr := NormalizeAdvertisedRelayURL(cp.DeviceCredential.RelayURL); nerr != nil {
+				cp.DeviceCredential = nil
+			} else {
+				cp.DeviceCredential.RelayURL = norm
+			}
+		}
+	}
+	raw, err := json.MarshalIndent(cp, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -263,7 +477,7 @@ func Login(ctx context.Context, opts LoginOptions) (Session, error) {
 		q := r.URL.Query()
 		if errParam := strings.TrimSpace(q.Get("error")); errParam != "" {
 			writeCallbackHTML(w, http.StatusBadRequest, "Authorization failed", "UniClipboard Cloud denied or canceled the request.")
-			deliver(callbackResult{err: fmt.Errorf("cloud authorization failed: %s", sanitizeToken(errParam))})
+			deliver(callbackResult{err: fmt.Errorf("cloud authorization failed: %s", classifyCloudErrorCode(errParam))})
 			return
 		}
 		gotState := q.Get("state")
@@ -338,9 +552,9 @@ func Refresh(ctx context.Context, cli *http.Client, sess Session) (Session, erro
 		return Session{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := clientOrDefault(cli).Do(req)
+	resp, err := doCloudRequest(cli, cloudURL, req)
 	if err != nil {
-		return Session{}, fmt.Errorf("cloud token refresh failed: %w", err)
+		return Session{}, errors.New("cloud token refresh request failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxJSONRespBytes))
@@ -348,7 +562,11 @@ func Refresh(ctx context.Context, cli *http.Client, sess Session) (Session, erro
 		return Session{}, errors.New("failed to read cloud refresh response")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return Session{}, fmt.Errorf("cloud token refresh failed (http %d)", resp.StatusCode)
+		return Session{}, &APIError{
+			Status: resp.StatusCode,
+			Code:   parseCloudErrorCode(body),
+			Op:     "cloud token refresh",
+		}
 	}
 	var out struct {
 		AccessToken  string `json:"access_token"`
@@ -358,7 +576,8 @@ func Refresh(ctx context.Context, cli *http.Client, sess Session) (Session, erro
 	if err := json.Unmarshal(body, &out); err != nil || strings.TrimSpace(out.AccessToken) == "" {
 		return Session{}, errors.New("cloud token refresh returned invalid response")
 	}
-	updated := sess
+	updated := sess.Clone()
+	updated.State = SessionStateActive
 	updated.CloudURL = cloudURL
 	updated.AccessToken = strings.TrimSpace(out.AccessToken)
 	if strings.TrimSpace(out.RefreshToken) != "" {
@@ -387,62 +606,69 @@ func Logout(ctx context.Context, cli *http.Client, sess Session) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := clientOrDefault(cli).Do(req)
+	resp, err := doCloudRequest(cli, cloudURL, req)
 	if err != nil {
-		return fmt.Errorf("cloud session revoke failed: %w", err)
+		return errors.New("cloud session revoke request failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if resp.StatusCode >= 500 {
-		return fmt.Errorf("cloud session revoke failed (http %d)", resp.StatusCode)
+		return &APIError{
+			Status: resp.StatusCode,
+			Code:   parseCloudErrorCode(body),
+			Op:     "cloud session revoke",
+		}
 	}
 	return nil
 }
 
-// CreateRelayAPIKey mints a user-scoped Hyper Relay API key using an existing
-// UniClipboard Cloud Session, refreshing the access token first if needed.
-func CreateRelayAPIKey(ctx context.Context, cli *http.Client, sess Session, deviceName string) (RelayCredential, Session, error) {
+// IssueDeviceCredential mints or rotates a session-bound scoped relay device
+// credential using sess's active access token. Callers coordinating concurrent
+// processes should prefer Manager so rotated refresh tokens are saved before
+// credential issuance.
+func IssueDeviceCredential(ctx context.Context, cli *http.Client, sess Session, deviceName string) (DeviceCredential, Session, error) {
 	httpCli := clientOrDefault(cli)
-	cur := sess
+	cur := sess.Clone()
 	needsRefresh := strings.TrimSpace(cur.AccessToken) == "" ||
 		(cur.AccessExpiresAtMs > 0 && time.Now().Add(accessRefreshSkew).UnixMilli() >= cur.AccessExpiresAtMs)
 	if needsRefresh {
 		refreshed, err := Refresh(ctx, httpCli, cur)
 		if err != nil {
-			return RelayCredential{}, cur, err
+			return DeviceCredential{}, cur, err
 		}
 		cur = refreshed
+	}
+	cloudURL, err := ResolveCloudURL(cur.CloudURL)
+	if err != nil {
+		return DeviceCredential{}, cur, err
 	}
 	label := resolveDeviceName(firstNonEmpty(deviceName, cur.DeviceName))
-	cred, status, err := postRelayAPIKey(ctx, httpCli, cur.CloudURL, cur.AccessToken, label)
-	if err != nil && status == http.StatusUnauthorized && strings.TrimSpace(cur.RefreshToken) != "" {
+	cred, apiErr, err := postDeviceCredential(ctx, httpCli, cloudURL, cur.AccessToken, label)
+	if err != nil && apiErr != nil && apiErr.Status == http.StatusUnauthorized && !apiErr.IsAuthoritativeRevocation() && strings.TrimSpace(cur.RefreshToken) != "" {
 		refreshed, rerr := Refresh(ctx, httpCli, cur)
 		if rerr != nil {
-			return RelayCredential{}, cur, err
+			return DeviceCredential{}, cur, rerr
 		}
 		cur = refreshed
-		cred, _, err = postRelayAPIKey(ctx, httpCli, cur.CloudURL, cur.AccessToken, label)
+		cred, _, err = postDeviceCredential(ctx, httpCli, cloudURL, cur.AccessToken, label)
 	}
 	if err != nil {
-		return RelayCredential{}, cur, err
+		return DeviceCredential{}, cur, err
 	}
-	cur.RelayKeyID = cred.KeyID
-	cur.RelayKeyPrefix = cred.KeyPrefix
+	cur.State = SessionStateActive
+	cur.DeviceCredential = &cred
 	return cred, cur, nil
 }
 
-// RevokeRelayAPIKey revokes a previously minted Relay API key using sess.
-func RevokeRelayAPIKey(ctx context.Context, cli *http.Client, sess Session, keyID string) error {
-	keyID = strings.TrimSpace(keyID)
-	if keyID == "" {
-		return nil
-	}
+// RevokeDeviceCredentials revokes all managed device credentials bound to
+// sess's sign-in session family via DELETE /api/v1/device-credentials/relay.
+func RevokeDeviceCredentials(ctx context.Context, cli *http.Client, sess Session) error {
 	cloudURL, err := ResolveCloudURL(sess.CloudURL)
 	if err != nil {
 		return err
 	}
 	httpCli := clientOrDefault(cli)
-	cur := sess
+	cur := sess.Clone()
 	if strings.TrimSpace(cur.AccessToken) == "" ||
 		(cur.AccessExpiresAtMs > 0 && time.Now().Add(accessRefreshSkew).UnixMilli() >= cur.AccessExpiresAtMs) {
 		if refreshed, rerr := Refresh(ctx, httpCli, cur); rerr == nil {
@@ -452,21 +678,48 @@ func RevokeRelayAPIKey(ctx context.Context, cli *http.Client, sess Session, keyI
 	if strings.TrimSpace(cur.AccessToken) == "" {
 		return errors.New("cloud session has no access token")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, cloudURL+"/api/relay/v2/api-keys/"+url.PathEscape(keyID), nil)
+	_, err = deleteDeviceCredential(ctx, httpCli, cloudURL, cur.AccessToken)
+	return err
+}
+
+func deleteDeviceCredential(ctx context.Context, cli *http.Client, cloudURL, accessToken string) (*APIError, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, cloudURL+"/api/v1/device-credentials/relay", nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+cur.AccessToken)
-	resp, err := httpCli.Do(req)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	resp, err := doCloudRequest(cli, cloudURL, req)
 	if err != nil {
-		return err
+		return nil, errors.New("cloud device credential revoke request failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxJSONRespBytes))
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusOK {
-		return nil
+		return nil, nil
 	}
-	return fmt.Errorf("cloud relay key revoke failed (http %d)", resp.StatusCode)
+	apiErr := &APIError{
+		Status: resp.StatusCode,
+		Code:   parseCloudErrorCode(body),
+		Op:     "cloud device credential revoke",
+	}
+	return apiErr, apiErr
+}
+
+// ExchangeCode exchanges an OAuth 2.0 + PKCE authorization code for a Cloud
+// session against cloudURL (or DefaultCloudURL / UNIC_CLOUD_URL when empty)
+// after validating the target origin and response origin.
+func ExchangeCode(ctx context.Context, cli *http.Client, cloudURL, code, verifier, redirectURI, deviceName string) (Session, error) {
+	normCloudURL, err := ResolveCloudURL(cloudURL)
+	if err != nil {
+		return Session{}, err
+	}
+	code = strings.TrimSpace(code)
+	verifier = strings.TrimSpace(verifier)
+	redirectURI = strings.TrimSpace(redirectURI)
+	if code == "" || verifier == "" || redirectURI == "" {
+		return Session{}, errors.New("missing cloud authorization code or PKCE parameters")
+	}
+	return exchangeCode(ctx, clientOrDefault(cli), normCloudURL, code, verifier, redirectURI, resolveDeviceName(deviceName))
 }
 
 func exchangeCode(ctx context.Context, cli *http.Client, cloudURL, code, verifier, redirectURI, deviceName string) (Session, error) {
@@ -484,9 +737,9 @@ func exchangeCode(ctx context.Context, cli *http.Client, cloudURL, code, verifie
 		return Session{}, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := cli.Do(req)
+	resp, err := doCloudRequest(cli, cloudURL, req)
 	if err != nil {
-		return Session{}, fmt.Errorf("cloud token exchange failed: %w", err)
+		return Session{}, errors.New("cloud token exchange request failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxJSONRespBytes))
@@ -494,7 +747,11 @@ func exchangeCode(ctx context.Context, cli *http.Client, cloudURL, code, verifie
 		return Session{}, errors.New("failed to read cloud token response")
 	}
 	if resp.StatusCode != http.StatusOK {
-		return Session{}, fmt.Errorf("cloud token exchange failed (http %d)", resp.StatusCode)
+		return Session{}, &APIError{
+			Status: resp.StatusCode,
+			Code:   parseCloudErrorCode(body),
+			Op:     "cloud token exchange",
+		}
 	}
 	var out struct {
 		AccessToken  string `json:"access_token"`
@@ -507,6 +764,7 @@ func exchangeCode(ctx context.Context, cli *http.Client, cloudURL, code, verifie
 	}
 	now := time.Now()
 	sess := Session{
+		State:        SessionStateActive,
 		CloudURL:     cloudURL,
 		AccessToken:  strings.TrimSpace(out.AccessToken),
 		RefreshToken: strings.TrimSpace(out.RefreshToken),
@@ -522,41 +780,89 @@ func exchangeCode(ctx context.Context, cli *http.Client, cloudURL, code, verifie
 	return sess, nil
 }
 
-func postRelayAPIKey(ctx context.Context, cli *http.Client, cloudURL, accessToken, deviceName string) (RelayCredential, int, error) {
+func postDeviceCredential(ctx context.Context, cli *http.Client, cloudURL, accessToken, deviceName string) (DeviceCredential, *APIError, error) {
 	payload, err := json.Marshal(map[string]string{
-		"name": deviceName,
+		"device_name": deviceName,
 	})
 	if err != nil {
-		return RelayCredential{}, 0, err
+		return DeviceCredential{}, nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cloudURL+"/api/relay/v2/api-keys", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cloudURL+"/api/v1/device-credentials/relay", bytes.NewReader(payload))
 	if err != nil {
-		return RelayCredential{}, 0, err
+		return DeviceCredential{}, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+accessToken)
-	resp, err := cli.Do(req)
+	resp, err := doCloudRequest(cli, cloudURL, req)
 	if err != nil {
-		return RelayCredential{}, 0, fmt.Errorf("cloud relay api key request failed: %w", err)
+		return DeviceCredential{}, nil, errors.New("cloud device credential request failed")
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxJSONRespBytes))
 	if err != nil {
-		return RelayCredential{}, resp.StatusCode, errors.New("failed to read cloud relay api key response")
+		return DeviceCredential{}, &APIError{Status: resp.StatusCode, Op: "cloud device credential issue"}, errors.New("failed to read cloud device credential response")
 	}
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusTooManyRequests {
-			return RelayCredential{}, resp.StatusCode, errors.New("cloud relay api key limit reached; revoke an unused key in UniClipboard Cloud")
+		apiErr := &APIError{
+			Status: resp.StatusCode,
+			Code:   parseCloudErrorCode(body),
+			Op:     "cloud device credential issue",
 		}
-		return RelayCredential{}, resp.StatusCode, fmt.Errorf("cloud relay api key creation failed (http %d)", resp.StatusCode)
+		return DeviceCredential{}, apiErr, apiErr
 	}
-	var cred RelayCredential
-	if err := json.Unmarshal(body, &cred); err != nil || strings.TrimSpace(cred.APIKey) == "" {
-		return RelayCredential{}, resp.StatusCode, errors.New("cloud returned invalid relay api key")
+	var cred DeviceCredential
+	if err := json.Unmarshal(body, &cred); err != nil || strings.TrimSpace(cred.Credential) == "" {
+		return DeviceCredential{}, &APIError{Status: resp.StatusCode, Op: "cloud device credential issue"}, errors.New("cloud returned invalid device credential")
 	}
-	cred.APIKey = strings.TrimSpace(cred.APIKey)
-	cred.RelayURL = strings.TrimSpace(cred.RelayURL)
-	return cred, resp.StatusCode, nil
+	normRelayURL, nerr := NormalizeAdvertisedRelayURL(cred.RelayURL)
+	if nerr != nil {
+		return DeviceCredential{}, &APIError{Status: resp.StatusCode, Op: "cloud device credential issue"}, nerr
+	}
+	cred.ID = strings.TrimSpace(cred.ID)
+	cred.KeyPrefix = strings.TrimSpace(cred.KeyPrefix)
+	cred.Credential = strings.TrimSpace(cred.Credential)
+	cred.RelayURL = normRelayURL
+	return cred, nil, nil
+}
+
+var allowedCloudErrorCodes = map[string]bool{
+	"invalid_grant":           true,
+	"session_revoked":         true,
+	"invalid_request":         true,
+	"invalid_client":          true,
+	"invalid_token":           true,
+	"expired_token":           true,
+	"access_denied":           true,
+	"unauthorized":            true,
+	"forbidden":               true,
+	"invalid_scope":           true,
+	"insufficient_scope":      true,
+	"rate_limited":            true,
+	"too_many_requests":       true,
+	"temporarily_unavailable": true,
+	"server_error":            true,
+	"service_unavailable":     true,
+}
+
+func classifyCloudErrorCode(raw string) string {
+	code := strings.ToLower(strings.TrimSpace(raw))
+	if code == "" {
+		return ""
+	}
+	if allowedCloudErrorCodes[code] {
+		return code
+	}
+	return "unknown_error"
+}
+
+func parseCloudErrorCode(body []byte) string {
+	var e struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(body, &e); err != nil {
+		return ""
+	}
+	return classifyCloudErrorCode(e.Error)
 }
 
 func clientOrDefault(cli *http.Client) *http.Client {
@@ -564,6 +870,78 @@ func clientOrDefault(cli *http.Client) *http.Client {
 		return cli
 	}
 	return &http.Client{Timeout: defaultHTTPTimeout}
+}
+
+func sameCloudOrigin(expectedCloudURL string, actual *url.URL) bool {
+	if actual == nil || actual.Host == "" || actual.User != nil {
+		return false
+	}
+	base, err := url.Parse(expectedCloudURL)
+	if err != nil || base.Host == "" {
+		return false
+	}
+	if canonicalCloudOrigin(actual) != canonicalCloudOrigin(base) {
+		return false
+	}
+	basePath := strings.TrimRight(base.EscapedPath(), "/")
+	if basePath == "" {
+		return true
+	}
+	actualPath := actual.EscapedPath()
+	return actualPath == basePath || strings.HasPrefix(actualPath, basePath+"/")
+}
+
+func canonicalCloudOrigin(u *url.URL) string {
+	scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+	host := strings.ToLower(strings.TrimSpace(u.Hostname()))
+	port := u.Port()
+	if (scheme == "https" && port == "443") || (scheme == "http" && port == "80") {
+		port = ""
+	}
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	if port != "" {
+		return scheme + "://" + host + ":" + port
+	}
+	return scheme + "://" + host
+}
+
+// doCloudRequest sends req only to the validated expectedCloudURL origin, rejects
+// HTTP redirects while stripping credentials, and verifies the final response
+// originated from expectedCloudURL before any caller reads or acts on it.
+func doCloudRequest(cli *http.Client, expectedCloudURL string, req *http.Request) (*http.Response, error) {
+	normCloudURL, err := ResolveCloudURL(expectedCloudURL)
+	if err != nil {
+		return nil, errors.New("invalid cloud URL")
+	}
+	if req == nil || req.URL == nil || !sameCloudOrigin(normCloudURL, req.URL) {
+		return nil, errors.New("cloud request origin mismatch")
+	}
+	var c http.Client
+	if cli != nil {
+		c = *cli
+	} else {
+		c.Timeout = defaultHTTPTimeout
+	}
+	c.CheckRedirect = func(nextReq *http.Request, _ []*http.Request) error {
+		nextReq.Header.Del("Authorization")
+		nextReq.Header.Del("Cookie")
+		return errors.New("cloud API redirect disallowed")
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, errors.New("cloud API transport failed")
+	}
+	if resp == nil || resp.Request == nil || resp.Request.URL == nil ||
+		(resp.StatusCode >= 300 && resp.StatusCode < 400) ||
+		!sameCloudOrigin(normCloudURL, resp.Request.URL) {
+		if resp != nil && resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		return nil, errors.New("cloud response origin mismatch")
+	}
+	return resp, nil
 }
 
 func resolveDeviceName(raw string) string {
@@ -597,22 +975,6 @@ func randomBase64URL(nBytes int) (string, error) {
 		return "", err
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
-}
-
-func sanitizeToken(raw string) string {
-	var b strings.Builder
-	for _, r := range raw {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
-			b.WriteRune(r)
-		}
-		if b.Len() >= 64 {
-			break
-		}
-	}
-	if b.Len() == 0 {
-		return "unknown"
-	}
-	return b.String()
 }
 
 func writeCallbackHTML(w http.ResponseWriter, status int, title, body string) {

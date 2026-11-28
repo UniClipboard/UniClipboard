@@ -8,7 +8,7 @@ import { useEngineStore } from "@/engine/store";
 import type { EngineSettings } from "@/engine/types";
 import { useTheme } from "@/hooks/useTheme";
 import { useAppLanguage } from "@/i18n/useAppLanguage";
-import { cloudUserLabel } from "@/lib/cloudAuth";
+import { cloudStatusLabel } from "@/lib/cloudAuth";
 import type { SettingsSubSection } from "@/navigation/AppNavigator.types";
 import type { ShellGroup, ShellRow } from "@/shell/settings";
 import { useCloudStore } from "@/stores/cloudStore";
@@ -42,7 +42,7 @@ export function useLiveSettingGroups(
   const { themeMode, setThemeMode } = useTheme();
   const { preference, setLanguage } = useAppLanguage();
   const cloud = useCloudStore(useShallow((s) => ({
-    session: s.session,
+    status: s.status,
     busy: s.busy,
     hydrate: s.hydrate,
     signIn: s.signIn,
@@ -97,11 +97,11 @@ export function useLiveSettingGroups(
     {
       title: t("settings:live.cloudSection"),
       footer: t("settings:live.cloudFooter"),
-      rows: cloud.session
+      rows: cloud.status?.signed_in
         ? [
             {
               id: "cloud-account",
-              title: cloudUserLabel(cloud.session.user),
+              title: cloudStatusLabel(cloud.status),
               value: t("settings:live.cloudSignedIn"),
             },
             {
@@ -110,26 +110,57 @@ export function useLiveSettingGroups(
               onPress: () => run(cloud.signOut()),
             },
           ]
-        : [
-            {
-              id: "cloud-sign-in",
-              title: cloud.busy ? t("settings:live.cloudSigningIn") : t("settings:live.cloudSignIn"),
-              description: t("settings:live.cloudSignInDesc"),
-              onPress: () => {
-                if (cloud.busy) return;
-                void cloud
-                  .signIn()
-                  .then(() => Alert.alert(
-                    t("settings:live.cloudSignInSuccessTitle"),
-                    t("settings:live.cloudSignInSuccessBody"),
-                  ))
-                  .catch((error) => Alert.alert(
-                    t("settings:live.cloudSignInFailed"),
-                    error instanceof Error ? error.message : undefined,
-                  ));
+        : cloud.status?.reauth_required
+          ? [
+              {
+                id: "cloud-account",
+                title: cloudStatusLabel(cloud.status),
+                value: t("settings:live.cloudReauthRequired"),
               },
-            },
-          ],
+              {
+                id: "cloud-sign-in",
+                title: cloud.busy ? t("settings:live.cloudSigningIn") : t("settings:live.cloudReauthAction"),
+                description: t("settings:live.cloudReauthRequiredDesc"),
+                onPress: () => {
+                  if (cloud.busy) return;
+                  void cloud
+                    .signIn()
+                    .then(() => Alert.alert(
+                      t("settings:live.cloudSignInSuccessTitle"),
+                      t("settings:live.cloudSignInSuccessBody"),
+                    ))
+                    .catch((error) => Alert.alert(
+                      t("settings:live.cloudSignInFailed"),
+                      error instanceof Error ? error.message : undefined,
+                    ));
+                },
+              },
+              {
+                id: "cloud-sign-out",
+                title: t("settings:live.cloudSignOut"),
+                onPress: () => run(cloud.signOut()),
+              },
+            ]
+          : [
+              {
+                id: "cloud-sign-in",
+                title: cloud.busy ? t("settings:live.cloudSigningIn") : t("settings:live.cloudSignIn"),
+                description: t("settings:live.cloudSignInDesc"),
+                onPress: () => {
+                  if (cloud.busy) return;
+                  void cloud
+                    .signIn()
+                    .then(() => Alert.alert(
+                      t("settings:live.cloudSignInSuccessTitle"),
+                      t("settings:live.cloudSignInSuccessBody"),
+                    ))
+                    .catch((error) => Alert.alert(
+                      t("settings:live.cloudSignInFailed"),
+                      error instanceof Error ? error.message : undefined,
+                    ));
+                },
+              },
+            ],
     },
     { rows: [
       nav("sync"),

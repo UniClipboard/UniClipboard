@@ -374,6 +374,23 @@ export interface RelaySyncSettings {
   max_bytes?: number;
 }
 
+export type CloudAuthState = "signed_out" | "active" | "reauth_required";
+
+export interface CloudStatusSnapshot {
+  signed_in: boolean;
+  reauth_required?: boolean;
+  state: CloudAuthState;
+  cloud_url?: string;
+  account?: string;
+  email?: string;
+  device_name?: string;
+  signed_in_at_ms?: number;
+  relay_url?: string;
+  credential_prefix?: string;
+  credential_expires_at_ms?: number;
+  credential_rotate_after_ms?: number;
+}
+
 export interface SyncSettings {
   directories: DirectorySyncSettings;
   relay?: RelaySyncSettings;

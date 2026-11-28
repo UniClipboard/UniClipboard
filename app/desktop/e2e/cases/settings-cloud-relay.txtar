@@ -1,0 +1,8 @@
+# Case: Settings Cloud Account, Hybrid Relay TLS origin binding, and host fallback projection through real unicd
+# Mode: view
+# Purpose: Verify official mode hides relay access keys and keeps sync.relay.url empty for Cloud-advertised HTTPS origins, rejects non-HTTPS advertised URLs, blocks static fallback credentials from reaching expired advertised origins, treats omitted env_access_key_set as false, and rejects forged TOML env_access_key_set.
+# Steps: Start private unicd processes (none, host-only UNIC_RELAY_ACCESS_KEY, desktop-only env mismatch, and TLS expiry/503/recovery across none/env/toml), mock TLS HTTP Cloud and TLS loopback Relay A/B fixtures with test-only SSL_CERT_FILE trust; test official toggle, reauth_required, logout, selfhost isolation, restore default, reopen, non-HTTPS rejection, legacy omitted env_access_key_set, forged TOML 400 rejection, and <120ms vs >=120ms Cloud busy states.
+# Expected: Official mode keeps sync.relay.url empty and binds each managed credential to its HTTPS origin; static fallback never hits expired advertised origin A on control-plane or SSE across none/env/toml groups and recovery hits B with new managed credential; omitted env_access_key_set defaults false and forged TOML fails 400; screenshots and receipts contain zero secrets.
+# Forbidden: Native OS window, real Clerk credentials, real cloud tokens, plain-HTTP production exceptions, leaked uc_dc_ strings, or inferring host env from Desktop process.
+
+acceptance desktopui settings-cloud-relay

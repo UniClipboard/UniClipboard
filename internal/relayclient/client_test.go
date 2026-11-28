@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -331,3 +332,274 @@ func TestRelayClientPresignedURLSSRFProtectionAndRedaction(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestControlAndSSESendBoundaryAdmissionAndInFlightSemantics(t *testing.T) {
+	owner, _ := identity.FromSeed(bytes.Repeat([]byte{0x55}, 32))
+	mb, err := relaycrypto.DeriveMailboxID("https://relay.example.com", owner.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var mu sync.Mutex
+	curKey := "k1"
+	curAllow := true
+	getState := func() (string, bool) {
+		mu.Lock()
+		defer mu.Unlock()
+		return curKey, curAllow
+	}
+	setState := func(k string, allow bool) {
+		mu.Lock()
+		curKey = k
+		curAllow = allow
+		mu.Unlock()
+	}
+
+	// 1. Control-plane & SSE 401 same-origin recovery, refusal, and pre-send revocation.
+	type scenario int
+	const (
+		scRecover scenario = iota
+		scAuthRefuseAllow
+		scAuthRefuseDeny
+		scRevokeBeforeRetrySend
+		scUnchangedKeyBeforeRetrySend
+		scRedirectOffOrigin
+		scInFlightSurvivesRevoke
+		scInFlight401RetryRevoked
+	)
+
+	var activeScenario scenario
+	var hits atomic.Int32
+	var secondaryHits atomic.Int32
+	var presentedKeys []string
+	var inFlightEntered chan struct{}
+	var inFlightRelease chan struct{}
+
+	rt := roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if req.URL != nil && req.URL.Host == "other.example.com" {
+			secondaryHits.Add(1)
+		}
+		hits.Add(1)
+		mu.Lock()
+		presentedKeys = append(presentedKeys, req.Header.Get("X-Unic-Relay-Key"))
+		mu.Unlock()
+
+		isSSE := strings.HasSuffix(req.URL.Path, "/events")
+		rec := httptest.NewRecorder()
+		switch activeScenario {
+		case scRecover:
+			if req.Header.Get("X-Unic-Relay-Key") == "k1" {
+				rec.WriteHeader(http.StatusUnauthorized)
+				return rec.Result(), nil
+			}
+			if isSSE {
+				rec.Header().Set("Content-Type", "text/event-stream")
+				rec.WriteHeader(http.StatusOK)
+				_, _ = rec.WriteString("id: 1\nevent: transfer\ndata: {\"id\":\"1\",\"event\":\"transfer\"}\n\n")
+				return rec.Result(), nil
+			}
+			rec.Header().Set("Content-Type", "application/json")
+			_, _ = rec.WriteString(`{"transfers":[]}`)
+			return rec.Result(), nil
+		case scAuthRefuseAllow, scAuthRefuseDeny, scRevokeBeforeRetrySend, scUnchangedKeyBeforeRetrySend:
+			rec.WriteHeader(http.StatusUnauthorized)
+			return rec.Result(), nil
+		case scRedirectOffOrigin:
+			rec.Header().Set("Location", "https://other.example.com/v1/relay/stolen")
+			rec.WriteHeader(http.StatusFound)
+			return rec.Result(), nil
+		case scInFlightSurvivesRevoke, scInFlight401RetryRevoked:
+			mu.Lock()
+			entered := inFlightEntered
+			inFlightEntered = nil
+			release := inFlightRelease
+			mu.Unlock()
+			if entered != nil {
+				close(entered)
+			}
+			if release != nil {
+				<-release
+			}
+			if activeScenario == scInFlight401RetryRevoked {
+				rec.WriteHeader(http.StatusUnauthorized)
+				return rec.Result(), nil
+			}
+			rec.Header().Set("Content-Type", "application/json")
+			_, _ = rec.WriteString(`{"transfers":[]}`)
+			return rec.Result(), nil
+		}
+		return rec.Result(), nil
+	})
+
+	var onAuthFailure func(context.Context, string) bool
+	httpCli := &http.Client{Transport: rt}
+	sseCli := &http.Client{Transport: rt}
+	cli, err := relayclient.New(relayclient.Config{
+		BaseURL:           "https://relay.example.com",
+		HTTPClient:        httpCli,
+		SSEClient:         sseCli,
+		AccessKeyProvider: getState,
+		OnAuthFailure: func(ctx context.Context, rejected string) bool {
+			return onAuthFailure(ctx, rejected)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reset := func(sc scenario) {
+		mu.Lock()
+		presentedKeys = nil
+		mu.Unlock()
+		hits.Store(0)
+		secondaryHits.Store(0)
+		activeScenario = sc
+		setState("k1", true)
+	}
+
+	// (a) Control-plane and SSE recover cleanly when 401 rotates k1 -> k2 and admission allows.
+	reset(scRecover)
+	onAuthFailure = func(_ context.Context, rejected string) bool {
+		if rejected != "k1" {
+			t.Errorf("expected rejected=k1, got %q", rejected)
+		}
+		setState("k2", true)
+		return true
+	}
+	if _, err := cli.ListTransfers(context.Background(), owner, mb); err != nil {
+		t.Fatalf("ListTransfers recover: %v", err)
+	}
+	if hits.Load() != 2 || len(presentedKeys) != 2 || presentedKeys[0] != "k1" || presentedKeys[1] != "k2" {
+		t.Fatalf("unexpected control recover hits=%d keys=%v", hits.Load(), presentedKeys)
+	}
+
+	reset(scRecover)
+	errStop := errors.New("stop sse")
+	gotEvent := false
+	err = cli.SubscribeEvents(context.Background(), owner, mb, "", func(ev relayclient.SSEEvent) error {
+		if ev.ID == "1" {
+			gotEvent = true
+		}
+		return errStop
+	})
+	if !errors.Is(err, errStop) || !gotEvent {
+		t.Fatalf("SubscribeEvents recover: err=%v gotEvent=%v", err, gotEvent)
+	}
+	if hits.Load() != 2 || len(presentedKeys) != 2 || presentedKeys[0] != "k1" || presentedKeys[1] != "k2" {
+		t.Fatalf("unexpected SSE recover hits=%d keys=%v", hits.Load(), presentedKeys)
+	}
+
+	// (b) OnAuthFailure false preserves permission_denied when allowed, unavailable when denied, zero retries.
+	for _, sc := range []scenario{scAuthRefuseAllow, scAuthRefuseDeny} {
+		reset(sc)
+		onAuthFailure = func(_ context.Context, _ string) bool {
+			if sc == scAuthRefuseDeny {
+				setState("", false)
+			}
+			return false
+		}
+		wantCode := "permission_denied"
+		if sc == scAuthRefuseDeny {
+			wantCode = "unavailable"
+		}
+		_, err := cli.ListTransfers(context.Background(), owner, mb)
+		var re *relayclient.Error
+		if !errors.As(err, &re) || re.Code != wantCode || hits.Load() != 1 {
+			t.Fatalf("control refuse sc=%d: err=%v hits=%d want=%s", sc, err, hits.Load(), wantCode)
+		}
+		reset(sc)
+		err = cli.SubscribeEvents(context.Background(), owner, mb, "", func(relayclient.SSEEvent) error { return nil })
+		if !errors.As(err, &re) || re.Code != wantCode || hits.Load() != 1 {
+			t.Fatalf("SSE refuse sc=%d: err=%v hits=%d want=%s", sc, err, hits.Load(), wantCode)
+		}
+	}
+
+	// (c) OnAuthFailure returns true, but admission is revoked BEFORE retry hits transport -> 0 retries, unavailable.
+	reset(scRevokeBeforeRetrySend)
+	onAuthFailure = func(_ context.Context, _ string) bool {
+		setState("", false)
+		return true
+	}
+	_, err = cli.ListTransfers(context.Background(), owner, mb)
+	var re *relayclient.Error
+	if !errors.As(err, &re) || re.Code != "unavailable" || hits.Load() != 1 {
+		t.Fatalf("control revoke before retry: err=%v hits=%d", err, hits.Load())
+	}
+	reset(scRevokeBeforeRetrySend)
+	err = cli.SubscribeEvents(context.Background(), owner, mb, "", func(relayclient.SSEEvent) error { return nil })
+	if !errors.As(err, &re) || re.Code != "unavailable" || hits.Load() != 1 {
+		t.Fatalf("SSE revoke before retry: err=%v hits=%d", err, hits.Load())
+	}
+
+	// (d) OnAuthFailure returns true, but provider yields unchanged/empty key -> 0 retries, permission_denied.
+	for _, bogusKey := range []string{"k1", ""} {
+		reset(scUnchangedKeyBeforeRetrySend)
+		onAuthFailure = func(_ context.Context, _ string) bool {
+			setState(bogusKey, true)
+			return true
+		}
+		_, err = cli.ListTransfers(context.Background(), owner, mb)
+		if !errors.As(err, &re) || re.Code != "permission_denied" || hits.Load() != 1 {
+			t.Fatalf("control unchanged key %q: err=%v hits=%d", bogusKey, err, hits.Load())
+		}
+		reset(scUnchangedKeyBeforeRetrySend)
+		err = cli.SubscribeEvents(context.Background(), owner, mb, "", func(relayclient.SSEEvent) error { return nil })
+		if !errors.As(err, &re) || re.Code != "permission_denied" || hits.Load() != 1 {
+			t.Fatalf("SSE unchanged key %q: err=%v hits=%d", bogusKey, err, hits.Load())
+		}
+	}
+
+	// (e) Off-origin redirect blocked without hitting secondary host.
+	reset(scRedirectOffOrigin)
+	if _, err = cli.ListTransfers(context.Background(), owner, mb); !errors.As(err, &re) || re.Code != "origin_mismatch" || secondaryHits.Load() != 0 {
+		t.Fatalf("expected origin_mismatch with 0 secondary hits, got err=%v secondary=%d", err, secondaryHits.Load())
+	}
+
+	// (f) Legitimate in-flight request completes after mid-flight revocation; if it returns 401, retry is blocked.
+	reset(scInFlightSurvivesRevoke)
+	entered1 := make(chan struct{})
+	release1 := make(chan struct{})
+	mu.Lock()
+	inFlightEntered = entered1
+	inFlightRelease = release1
+	mu.Unlock()
+	doneCh := make(chan error, 1)
+	go func() {
+		_, callErr := cli.ListTransfers(context.Background(), owner, mb)
+		doneCh <- callErr
+	}()
+	<-entered1
+	setState("", false)
+	close(release1)
+	if callErr := <-doneCh; callErr != nil || hits.Load() != 1 {
+		t.Fatalf("expected legitimate in-flight 200 to complete once, err=%v hits=%d", callErr, hits.Load())
+	}
+	// Any subsequent request after revocation makes 0 transport hits and returns unavailable.
+	hitsBefore := hits.Load()
+	if _, callErr := cli.ListTransfers(context.Background(), owner, mb); !errors.As(callErr, &re) || re.Code != "unavailable" || hits.Load() != hitsBefore {
+		t.Fatalf("expected post-revocation request blocked before transport, err=%v hits=%d/%d", callErr, hits.Load(), hitsBefore)
+	}
+	if sseErr := cli.SubscribeEvents(context.Background(), owner, mb, "", func(relayclient.SSEEvent) error { return nil }); !errors.As(sseErr, &re) || re.Code != "unavailable" || hits.Load() != hitsBefore {
+		t.Fatalf("expected post-revocation SSE blocked before transport, err=%v hits=%d/%d", sseErr, hits.Load(), hitsBefore)
+	}
+
+	// In-flight request returning 401 while revoked blocks its retry at send boundary.
+	reset(scInFlight401RetryRevoked)
+	onAuthFailure = func(_ context.Context, _ string) bool { return true }
+	entered2 := make(chan struct{})
+	release2 := make(chan struct{})
+	mu.Lock()
+	inFlightEntered = entered2
+	inFlightRelease = release2
+	mu.Unlock()
+	go func() {
+		_, callErr := cli.ListTransfers(context.Background(), owner, mb)
+		doneCh <- callErr
+	}()
+	<-entered2
+	setState("", false)
+	close(release2)
+	if callErr := <-doneCh; !errors.As(callErr, &re) || re.Code != "unavailable" || hits.Load() != 1 {
+		t.Fatalf("expected revoked 401 retry blocked with 0 retry hits, err=%v hits=%d", callErr, hits.Load())
+	}
+}

@@ -101,6 +101,9 @@ func (n *Node) watchHostWake(ctx context.Context) {
 	eventbus.SubscribeFunc(ec, func(delta netmon.ChangeDelta) {
 		if delta.TimeJumped() || delta.RebindLikelyRequired {
 			n.ScheduleNetworkChanged()
+			if n.cloudRelay != nil {
+				n.cloudRelay.notify()
+			}
 		}
 	})
 	mon.Start()

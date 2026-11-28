@@ -1,104 +1,124 @@
+import { AppState } from 'react-native';
 import { create } from 'zustand';
 
+import { isNativeEngineAvailable, unicEngineNative } from '@/engine/nativeModule';
 import { useEngineStore } from '@/engine/store';
-import {
-  type CloudSession,
-  loadCloudSession,
-  provisionCloudRelayKey,
-  signInToCloud,
-  signOutFromCloud,
-} from '@/lib/cloudAuth';
+import type { CloudStatusSnapshot, EngineEvent } from '@/engine/types';
+import { authorizeCloudLogin, clearLegacyCloudSession } from '@/lib/cloudAuth';
+
+const SIGNED_OUT_STATUS: CloudStatusSnapshot = {
+  signed_in: false,
+  state: 'signed_out',
+};
 
 interface CloudStoreState {
   loaded: boolean;
   busy: boolean;
-  session: CloudSession | null;
+  status: CloudStatusSnapshot | null;
   hydrate: () => Promise<void>;
-  signIn: (options?: { autoEnableRelay?: boolean }) => Promise<CloudSession>;
-  provisionRelay: () => Promise<void>;
+  refreshStatus: () => Promise<CloudStatusSnapshot>;
+  signIn: (options?: { autoEnableRelay?: boolean }) => Promise<CloudStatusSnapshot>;
+  ensureRelay: () => Promise<CloudStatusSnapshot>;
   signOut: () => Promise<void>;
 }
+
+let listenersAttached = false;
 
 export const useCloudStore = create<CloudStoreState>((set, get) => ({
   loaded: false,
   busy: false,
-  session: null,
+  status: null,
 
   hydrate: async () => {
-    if (get().loaded) return;
-    const session = await loadCloudSession();
-    set({ session, loaded: true });
+    await clearLegacyCloudSession();
+    if (!listenersAttached && isNativeEngineAvailable()) {
+      listenersAttached = true;
+      unicEngineNative.addEventListener((eventJSON) => {
+        try {
+          const ev = JSON.parse(eventJSON) as EngineEvent;
+          if (ev.kind === 'settings') {
+            void get().refreshStatus();
+          }
+        } catch {
+          // ignore malformed event payload
+        }
+      });
+      unicEngineNative.addResyncListener(() => {
+        void get().refreshStatus();
+      });
+      AppState.addEventListener('change', (nextState) => {
+        if (nextState === 'active') {
+          void get().refreshStatus();
+        }
+      });
+    }
+    await get().refreshStatus();
+  },
+
+  refreshStatus: async () => {
+    if (!isNativeEngineAvailable()) {
+      set({ status: SIGNED_OUT_STATUS, loaded: true });
+      return SIGNED_OUT_STATUS;
+    }
+    try {
+      const status = await unicEngineNative.getCloudStatus();
+      set({ status, loaded: true });
+      return status;
+    } catch {
+      const current = get().status ?? SIGNED_OUT_STATUS;
+      set({ status: current, loaded: true });
+      return current;
+    }
   },
 
   signIn: async (options) => {
+    if (!isNativeEngineAvailable()) {
+      throw new Error('UniClipboard Engine is unavailable.');
+    }
     if (get().busy) {
-      const existing = get().session;
-      if (existing) return existing;
       throw new Error('Cloud sign-in is already in progress.');
     }
     set({ busy: true });
     try {
       const engineState = useEngineStore.getState();
       const deviceName = engineState.snapshot?.settings.value.device_name || undefined;
-      let session = await signInToCloud({ deviceName });
-      set({ session, loaded: true });
-
-      const autoEnableRelay = options?.autoEnableRelay !== false;
+      const grant = await authorizeCloudLogin({ deviceName });
       const relayUrl = engineState.snapshot?.settings.value.sync.relay?.url?.trim() ?? '';
-      if (autoEnableRelay && !relayUrl) {
-        const res = await provisionCloudRelayKey(session, deviceName);
-        session = res.session;
-        set({ session });
-        await engineState.updateSettings(
-          (old) => ({
-            ...old,
-            sync: {
-              ...old.sync,
-              relay: {
-                ...(old.sync.relay ?? { enabled: false }),
-                enabled: true,
-                url:
-                  res.credential.relayUrl === 'https://relay.uniclipboard.app'
-                    ? ''
-                    : res.credential.relayUrl,
-              },
-            },
-          }),
-          { relayAccessKey: res.credential.apiKey }
-        );
-      }
-      return session;
+      const autoEnableRelay = options?.autoEnableRelay !== false && !relayUrl;
+
+      const status = await unicEngineNative.finishCloudLogin({
+        cloud_url: grant.cloudUrl,
+        code: grant.code,
+        code_verifier: grant.codeVerifier,
+        redirect_uri: grant.redirectUri,
+        device_name: grant.deviceName,
+        auto_enable_relay: autoEnableRelay,
+      });
+      set({ status, loaded: true });
+      await useEngineStore.getState().refreshSnapshot();
+      return status;
     } finally {
       set({ busy: false });
     }
   },
 
-  provisionRelay: async () => {
-    const cur = get().session;
-    if (!cur || get().busy) return;
+  ensureRelay: async () => {
+    if (!isNativeEngineAvailable()) {
+      throw new Error('UniClipboard Engine is unavailable.');
+    }
+    if (get().busy) {
+      return get().status ?? SIGNED_OUT_STATUS;
+    }
     set({ busy: true });
     try {
-      const engineState = useEngineStore.getState();
-      const deviceName = engineState.snapshot?.settings.value.device_name || undefined;
-      const res = await provisionCloudRelayKey(cur, deviceName);
-      set({ session: res.session });
-      await engineState.updateSettings(
-        (old) => ({
-          ...old,
-          sync: {
-            ...old.sync,
-            relay: {
-              ...(old.sync.relay ?? { enabled: false }),
-              enabled: true,
-              url:
-                res.credential.relayUrl === 'https://relay.uniclipboard.app'
-                  ? ''
-                  : res.credential.relayUrl,
-            },
-          },
-        }),
-        { relayAccessKey: res.credential.apiKey }
-      );
+      const status = await unicEngineNative.ensureCloudRelay();
+      set({ status, loaded: true });
+      await useEngineStore.getState().refreshSnapshot();
+      return status;
+    } catch (err) {
+      await get().refreshStatus();
+      await useEngineStore.getState().refreshSnapshot();
+      throw err;
     } finally {
       set({ busy: false });
     }
@@ -108,23 +128,14 @@ export const useCloudStore = create<CloudStoreState>((set, get) => ({
     if (get().busy) return;
     set({ busy: true });
     try {
-      const cur = get().session;
-      await signOutFromCloud(cur);
-      set({ session: null, loaded: true });
-      const engineState = useEngineStore.getState();
-      const relay = engineState.snapshot?.settings.value.sync.relay;
-      if (relay && !relay.url?.trim() && (relay.enabled || relay.has_access_key)) {
-        await engineState.updateSettings(
-          (old) => ({
-            ...old,
-            sync: {
-              ...old.sync,
-              relay: { ...(old.sync.relay ?? { enabled: false }), enabled: false },
-            },
-          }),
-          { relayAccessKey: '' }
-        );
+      await clearLegacyCloudSession();
+      if (!isNativeEngineAvailable()) {
+        set({ status: SIGNED_OUT_STATUS, loaded: true });
+        return;
       }
+      const status = await unicEngineNative.logoutCloud();
+      set({ status, loaded: true });
+      await useEngineStore.getState().refreshSnapshot();
     } finally {
       set({ busy: false });
     }

@@ -159,13 +159,16 @@ type DirectorySync struct {
 
 // RelaySync configures the optional zero-knowledge E2EE HTTP relay fallback
 // (separate from Tailcat P2P DERP relays). AccessKey is secret and omitted
-// from JSON API responses; AccessKeySet is a non-secret output-only indicator.
+// from JSON API responses; AccessKeySet (persisted TOML key) and
+// EnvAccessKeySet (service-process UNIC_RELAY_ACCESS_KEY) are non-secret
+// output-only indicators.
 type RelaySync struct {
-	Enabled      bool   `toml:"enabled" json:"enabled"`
-	URL          string `toml:"url" json:"url,omitempty"`
-	AccessKey    string `toml:"access_key,omitempty" json:"-"`
-	AccessKeySet bool   `toml:"-" json:"access_key_set,omitempty"`
-	MaxBytes     Size   `toml:"max_bytes" json:"max_bytes,omitempty"`
+	Enabled         bool   `toml:"enabled" json:"enabled"`
+	URL             string `toml:"url" json:"url,omitempty"`
+	AccessKey       string `toml:"access_key,omitempty" json:"-"`
+	AccessKeySet    bool   `toml:"-" json:"access_key_set,omitempty"`
+	EnvAccessKeySet bool   `toml:"-" json:"env_access_key_set,omitempty"`
+	MaxBytes        Size   `toml:"max_bytes" json:"max_bytes,omitempty"`
 }
 
 type Sync struct {
@@ -684,7 +687,7 @@ const Template = `# unic configuration. Saving this file applies it at once.
 # [sync.relay]
 # enabled = false
 # url = "https://relay.uniclipboard.app"  # or $UNIC_RELAY_URL / self-hosted HTTPS URL
-# access_key = ""                         # Cloud API key or self-host X-Unic-Relay-Key ($UNIC_RELAY_ACCESS_KEY)
+# access_key = ""                         # Manual Cloud API key (uc_ak_...) or self-host X-Unic-Relay-Key ($UNIC_RELAY_ACCESS_KEY)
 # max_bytes = "25MB"                      # per-transfer relay cap (default 25 MiB, max 4 GiB)
 
 # What the built-in device-to-device sync (builtin.tailcat) sends and accepts.

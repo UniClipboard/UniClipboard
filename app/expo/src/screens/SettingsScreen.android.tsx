@@ -28,7 +28,7 @@ import {
   SUPPORTED_LANGUAGES,
   type LanguagePreference,
 } from '@/i18n/languages';
-import { cloudUserLabel } from '@/lib/cloudAuth';
+import { cloudStatusLabel } from '@/lib/cloudAuth';
 import type { RootStackParamList, SettingsSubSection } from '@/navigation/AppNavigator.types';
 import { pushSettingsSub } from '@/navigation/settingsSubNavigation';
 import { useCloudStore } from '@/stores/cloudStore';
@@ -108,7 +108,7 @@ export function SettingsScreen() {
   const [backgroundStatus, setBackgroundStatus] = useState<BackgroundSyncStatus | null>(null);
   const cloud = useCloudStore(
     useShallow((s) => ({
-      session: s.session,
+      status: s.status,
       busy: s.busy,
       hydrate: s.hydrate,
       signIn: s.signIn,
@@ -233,15 +233,69 @@ export function SettingsScreen() {
             title={t('settings:live.cloudSection')}
             footer={t('settings:live.cloudFooter')}
           >
-            {cloud.session ? (
+            {cloud.status?.signed_in ? (
               <>
                 <SettingsListRow
                   key="cloud-account"
                   testID="cloud-account"
                   icon={ICONS.account}
-                  title={cloudUserLabel(cloud.session.user)}
+                  title={cloudStatusLabel(cloud.status)}
                   description={t('settings:live.cloudSignedIn')}
                   trailing="none"
+                />
+                <SettingsListRow
+                  key="cloud-sign-out"
+                  testID="cloud-sign-out"
+                  title={t('settings:live.cloudSignOut')}
+                  destructive
+                  disabled={cloud.busy}
+                  trailing="none"
+                  onPress={() => run(cloud.signOut())}
+                />
+              </>
+            ) : cloud.status?.reauth_required ? (
+              <>
+                <SettingsListRow
+                  key="cloud-account"
+                  testID="cloud-account"
+                  icon={ICONS.account}
+                  iconTone="muted"
+                  title={cloudStatusLabel(cloud.status)}
+                  description={t('settings:live.cloudReauthRequiredDesc')}
+                  trailing={{
+                    text: t('settings:live.cloudReauthRequired'),
+                    color: theme.colors.warning as string,
+                  }}
+                />
+                <SettingsListRow
+                  key="cloud-sign-in"
+                  testID="cloud-sign-in"
+                  icon={ICONS.account}
+                  title={
+                    cloud.busy
+                      ? t('settings:live.cloudSigningIn')
+                      : t('settings:live.cloudReauthAction')
+                  }
+                  description={t('settings:live.cloudReauthRequiredDesc')}
+                  trailing={cloud.busy ? 'none' : 'chevron'}
+                  disabled={cloud.busy}
+                  onPress={() => {
+                    if (cloud.busy) return;
+                    void cloud
+                      .signIn()
+                      .then(() =>
+                        Alert.alert(
+                          t('settings:live.cloudSignInSuccessTitle'),
+                          t('settings:live.cloudSignInSuccessBody')
+                        )
+                      )
+                      .catch((error) =>
+                        Alert.alert(
+                          t('settings:live.cloudSignInFailed'),
+                          error instanceof Error ? error.message : undefined
+                        )
+                      );
+                  }}
                 />
                 <SettingsListRow
                   key="cloud-sign-out"

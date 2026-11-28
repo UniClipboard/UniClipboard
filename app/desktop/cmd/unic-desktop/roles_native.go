@@ -80,6 +80,8 @@ func runTray(settings *config.Manager) error {
 	}
 	defer func() { _ = owner.Close() }()
 	defer r.close()
+	reporter := startRoleResourceReporter(ctx, "tray", r.socket, settings, "background")
+	defer reporter.Close()
 	configureNativeRole(r.dir, settings.Current().Desktop.ColorMode)
 	program, err := os.Executable()
 	if err != nil {
@@ -301,6 +303,7 @@ func runTray(settings *config.Manager) error {
 		}
 		settings.OnChange = func(previous, current config.Config, err error) {
 			if err == nil {
+				reporter.SetEnabled(current.Telemetry.Enabled && current.Telemetry.Metrics.Enabled)
 				mygo.RunOnMain(func() {
 					mygo.Theme.SetSource(mygo.ThemeSource(current.Desktop.ColorMode))
 					trayCtrl.updateConfig(current.Desktop)
@@ -474,6 +477,8 @@ func runPanel(settings *config.Manager) error {
 		return err
 	}
 	defer func() { _ = owner.Close() }()
+	reporter := startRoleResourceReporter(ctx, "quick_panel", socket, settings, "background")
+	defer reporter.Close()
 	configureNativeRole(dir, settings.Current().Desktop.ColorMode)
 	c, err := client()
 	if err != nil {
@@ -503,9 +508,17 @@ func runPanel(settings *config.Manager) error {
 			})
 		})
 		panel.SetProfileDir(dir)
+		panel.SetVisibilityCallback(func(visible bool) {
+			if visible {
+				reporter.SetAppState("foreground")
+			} else {
+				reporter.SetAppState("background")
+			}
+		})
 		close(ready)
 		settings.OnChange = func(_, current config.Config, err error) {
 			if err == nil {
+				reporter.SetEnabled(current.Telemetry.Enabled && current.Telemetry.Metrics.Enabled)
 				mygo.Theme.SetSource(mygo.ThemeSource(current.Desktop.ColorMode))
 			}
 		}

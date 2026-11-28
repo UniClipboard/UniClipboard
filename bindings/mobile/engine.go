@@ -24,6 +24,7 @@ import (
 	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
+	"github.com/uniclipboard/unic/internal/procmetrics"
 	"github.com/uniclipboard/unic/internal/relaycrypto"
 )
 
@@ -35,12 +36,12 @@ type EventSink interface {
 
 // Engine wraps *engine.Engine behind a gomobile-safe, JSON-typed boundary.
 type Engine struct {
-	e               *engine.Engine
-	dataDir         string
-	settingsPath    string
-	relaySecretPath string
-	cacheDir        string
-	extensionMode   bool
+	e                    *engine.Engine
+	dataDir              string
+	settingsPath         string
+	relaySecretPath      string
+	cacheDir             string
+	extensionMode        bool
 	settingsMu           sync.Mutex
 	storedSettings       engine.Settings
 	relayURL             string
@@ -48,8 +49,13 @@ type Engine struct {
 	relayAccessKeyTarget string
 	relayAccessKeyBound  bool
 	cloudRelay           *mobileCloudRelay
-	previewMu       sync.Mutex
-	diagnostics     *mobileDiagnostics
+	previewMu            sync.Mutex
+	diagnostics          *mobileDiagnostics
+	resourceMu           sync.RWMutex
+	resourceProvider     HostResourceProvider
+	fallbackSamplerMu    sync.Mutex
+	fallbackSampler      *procmetrics.Sampler
+	fallbackEpoch        uint64
 
 	subMu     sync.Mutex
 	sub       *engine.Subscription
@@ -433,6 +439,7 @@ func newEngineWithOptions(configJSON string, peer *tailcat.Plugin, cloudHTTP *ht
 		relayAccessKey:       manualKey,
 		relayAccessKeyTarget: manualKeyTarget,
 		relayAccessKeyBound:  manualKeyBound,
+		fallbackSampler:      procmetrics.NewSampler(),
 	}
 	m.cloudRelay = newMobileCloudRelay(m, dataDir, cloudHTTP, nowFn)
 	_, _, _ = m.cloudRelay.mgr.Reload()
@@ -470,6 +477,7 @@ func newEngineWithOptions(configJSON string, peer *tailcat.Plugin, cloudHTTP *ht
 	diagnostics.controller.SetSyncCollector(peer.Collect)
 	m.e = eng
 	m.diagnostics = diagnostics
+	diagnostics.controller.SetResourceCollector(m.collectResources)
 	return m, nil
 }
 

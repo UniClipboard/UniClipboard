@@ -37,6 +37,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [quick-panel-contract](#quick-panel-contract) | process | Target session, clipboard application, cancellation and paste-request ordering with OS fixtures. |
 | [quick-panel-screenshots](#quick-panel-screenshots) | view | Quick-panel history, action menu and image-grid compositions in both themes. |
 | [quick-panel](#quick-panel) | view | Quick-panel keyboard, search, actions, previews, scrolling and simulated effects. |
+| [resource-telemetry](#resource-telemetry) | process | Verify unicd and Desktop tray, gui and quick_panel processes emit bounded resource metrics to the single unicd OTLP exporter and stop IPC when disabled. |
 | [search-badge-delete](#search-badge-delete) | view | Whole-condition deletion from composite search badges. |
 | [search-contract](#search-contract) | process | Literal matching, paging, counts, candidates, repair, cancellation, viewport detail prefetch and persistent favorites. |
 | [search-disclosure-reduced-motion](#search-disclosure-reduced-motion) | view | Toolbar search disclosure with Reduce Motion enabled. |
@@ -890,6 +891,20 @@ Forbidden: Skipped subcases, lost assertions, or software-view images labeled as
 
 ```text
 acceptance desktopui quick-panel
+```
+
+## resource-telemetry
+
+Desktop role resource telemetry and disable barrier
+
+Steps: Start a local TLS OTLP metrics receiver, an isolated unicd, and Desktop tray, gui and quick_panel role processes; wait for all four process roles in OTLP metrics; disable telemetry.metrics.enabled and verify zero subsequent sample or OTLP requests; re-enable telemetry.metrics.enabled and confirm all four roles resume reporting with fresh baselines.
+
+Expected: All four process roles (service, tray, gui, quick_panel) appear in decoded OTLP metrics with valid CPU, window, memory and Go heap data, disabling metrics halts desktop resource-sample IPC and OTLP exports, and re-enabling resumes reporting across all roles.
+
+Forbidden: Direct OTLP export from unic-desktop, leaked paths or secrets, negative deltas, or resource IPC after telemetry.metrics.enabled=false.
+
+```text
+acceptance startup resource-telemetry
 ```
 
 ## search-badge-delete

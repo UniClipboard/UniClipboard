@@ -168,7 +168,7 @@ the returned `user-attachments` URLs, and replaces only the
 `<!-- archify-pr-pack:start/end -->` block, so a hand-written description and
 a re-run both survive. `--target comment` keeps one sticky comment instead.
 Use `--no-html` when only the SVGs are needed, `--platform gitlab|generic`
-for a single-theme `![…](…)` image, and `--animate-flow` only when the user
+for a single-theme Markdown image, and `--animate-flow` only when the user
 asks for a finite flow animation on `sequence`/`dataflow`; the default SVG is
 static and nothing moves the canvas.
 

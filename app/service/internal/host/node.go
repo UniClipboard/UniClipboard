@@ -258,6 +258,9 @@ func Open(ctx context.Context, o Options) (*Node, error) {
 		return nil, err
 	}
 	diagnostics.SetSyncCollector(peer.Collect)
+	if serviceInfo().Mode != servicelifecycle.ModeCLITemporary {
+		diagnostics.SetResourceCollector(newServiceResourceCollector(obsOpts.MetricsInterval))
+	}
 	n.e = e
 	if err := recoverDirectoryStages(o.Dir); err != nil {
 		_ = e.Close(context.Background())

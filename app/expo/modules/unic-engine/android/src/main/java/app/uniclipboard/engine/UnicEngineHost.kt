@@ -108,13 +108,16 @@ internal object UnicEngineHost {
   @Volatile private var serviceRetained: Boolean = false
   @Volatile var isForeground: Boolean = false
     private set
+  @Volatile internal var isEngineSuspended: Boolean = false
+    private set
   @Volatile private var hasActivityWindowFocus: Boolean = false
 
   @Volatile var engine: Engine? = null
     private set
 
-  private var overlayController: OverlayClipboardController? = null
-  private var shizukuController: ShizukuClipboardController? = null
+  @Volatile private var overlayController: OverlayClipboardController? = null
+  @Volatile private var shizukuController: ShizukuClipboardController? = null
+  @Volatile private var resourceCollector: AndroidResourcePowerCollector? = null
 
   private var networkCallback: ConnectivityManager.NetworkCallback? = null
   private var connectivityManager: ConnectivityManager? = null
@@ -136,10 +139,21 @@ internal object UnicEngineHost {
     if (appContext == null) {
       appContext = app
     }
+    if (resourceCollector == null) {
+      val collector = AndroidResourcePowerCollector(app)
+      resourceCollector = collector
+      Mobile.registerHostResourceProvider(collector)
+    }
     if (overlayController == null) {
-      overlayController = OverlayClipboardController(app) { snapshot ->
-        handleBackgroundClipCaptured(app, snapshot)
-      }
+      overlayController = OverlayClipboardController(
+        appContext = app,
+        onBackgroundClipCaptured = { snapshot ->
+          handleBackgroundClipCaptured(app, snapshot)
+        },
+        onMonitorStateChanged = {
+          onBackgroundMonitorStateChanged(app)
+        },
+      )
     }
     if (shizukuController == null) {
       shizukuController = ShizukuClipboardController(
@@ -148,6 +162,7 @@ internal object UnicEngineHost {
           handleBackgroundClipCaptured(app, snapshot)
         },
         onStateChanged = { state ->
+          resourceCollector?.recordStateSnapshot()
           engineScope.launch {
             reconcileBackgroundMonitors(app)
             refreshHostCapabilities(app)
@@ -180,6 +195,7 @@ internal object UnicEngineHost {
     val app = appContext ?: return
     overlayController?.setForegroundState(false)
     shizukuController?.setForegroundState(false)
+    resourceCollector?.recordStateSnapshot()
     engineScope.launch {
       if (!serviceRetained && !BackgroundSyncService.running && !shouldKeepAliveWithoutService(app)) {
         shutdownEngineInternal()
@@ -216,38 +232,53 @@ internal object UnicEngineHost {
   }
 
   fun onServiceRunningChanged(context: Context, running: Boolean) {
-    val app = ensureInitialized(context)
+    resourceCollector?.recordStateSnapshot()
+    val rawApp = appContext ?: context.applicationContext
+    if (appContext == null) {
+      appContext = rawApp
+    }
     engineScope.launch {
+      val app = ensureInitialized(rawApp)
+      resourceCollector?.onStateTransition(engine)
       reconcileRuntimeState(app)
       reconcileBackgroundMonitors(app)
       refreshHostCapabilities(app)
     }
-    notifyBackgroundSyncStateChanged(app, if (running) "service_started" else "service_stopped")
+    notifyBackgroundSyncStateChanged(rawApp, if (running) "service_started" else "service_stopped")
   }
 
   fun notifyBackgroundSyncStateChanged(context: Context, reason: String) {
-    ensureInitialized(context)
+    if (appContext == null) {
+      appContext = context.applicationContext
+    }
     uiListener?.onBackgroundSyncStateChanged(reason)
   }
 
   fun onActivityEntersForeground(context: Context, hasFocusProvider: () -> Boolean) {
-    val app = ensureInitialized(context)
     isForeground = true
     overlayController?.setForegroundState(true)
     shizukuController?.setForegroundState(true)
+    resourceCollector?.recordStateSnapshot()
+    val rawApp = appContext ?: context.applicationContext
+    if (appContext == null) {
+      appContext = rawApp
+    }
 
-    if (BackgroundSyncPrefs.isEffectivelyEnabled(app) && BackgroundSyncPrefs.foregroundNotification(app)) {
-      runCatching { BackgroundSyncService.start(app) }
+    if (BackgroundSyncPrefs.isEffectivelyEnabled(rawApp) && BackgroundSyncPrefs.foregroundNotification(rawApp)) {
+      runCatching { BackgroundSyncService.start(rawApp) }
     }
 
     engineScope.launch {
+      val app = ensureInitialized(rawApp)
       val eng = engine ?: return@launch
+      resourceCollector?.onStateTransition(eng)
       reconcileRuntimeState(app)
       reconcileBackgroundMonitors(app)
     }
 
     mainHandler.postDelayed({
       engineScope.launch {
+        val app = ensureInitialized(rawApp)
         val eng = engine ?: return@launch
         if (!isForeground) return@launch
         syncForegroundClipboard(app, eng, isResume = true, hasFocusProvider = hasFocusProvider)
@@ -256,13 +287,19 @@ internal object UnicEngineHost {
   }
 
   fun onActivityEntersBackground(context: Context) {
-    val app = ensureInitialized(context)
     isForeground = false
     hasActivityWindowFocus = false
     overlayController?.setForegroundState(false)
     shizukuController?.setForegroundState(false)
+    resourceCollector?.recordStateSnapshot()
+    val rawApp = appContext ?: context.applicationContext
+    if (appContext == null) {
+      appContext = rawApp
+    }
     engineScope.launch {
+      val app = ensureInitialized(rawApp)
       val eng = engine ?: return@launch
+      resourceCollector?.onStateTransition(eng)
       if (!canObserveInBackground(app)) {
         observationEpoch = ""
         observationSequence = 0L
@@ -396,6 +433,8 @@ internal object UnicEngineHost {
       )
     Mobile.registerAndroidNetworkInterfaces(androidNetworkInterfaces)
     val eng = Mobile.newEngine(cfg.toString())
+    resourceCollector?.onEngineStarted()
+    resourceCollector?.let { eng.setHostResourceProvider(it) }
     val sink = object : EventSink {
       override fun onEvent(eventJSON: String?) {
         if (eventJSON == null) return
@@ -431,13 +470,19 @@ internal object UnicEngineHost {
     stopNetworkMonitor()
     observationEpoch = ""
     observationSequence = 0L
+    isEngineSuspended = false
     engine?.let {
+      try {
+        it.flushResourceSample()
+      } catch (_: Exception) {
+      }
       try {
         it.close(null)
       } catch (_: Exception) {
       }
       engine = null
     }
+    resourceCollector?.resetOnSuspension()
   }
 
   // ---------------------------------------------------------------------------
@@ -655,10 +700,13 @@ internal object UnicEngineHost {
     if (desired == "active") {
       bgDrainJob?.cancel()
       bgDrainJob = null
+      isEngineSuspended = false
       try {
         eng.setRuntimeState("active")
       } catch (_: Exception) {
       }
+      resourceCollector?.recordStateSnapshot()
+      resourceCollector?.onStateTransition(eng)
       return
     }
     if (runCatching { eng.hasActiveSends() }.getOrDefault(false)) {
@@ -674,20 +722,26 @@ internal object UnicEngineHost {
           kotlinx.coroutines.delay(350L)
         }
         if (!isForeground && !isBackgroundSyncPermittedNow(app)) {
+          isEngineSuspended = true
           try {
             engine?.setRuntimeState("suspended")
           } catch (_: Exception) {
           }
+          resourceCollector?.recordStateSnapshot()
+          resourceCollector?.onStateTransition(engine)
         }
       }
       return
     }
     bgDrainJob?.cancel()
     bgDrainJob = null
+    isEngineSuspended = true
     try {
       eng.setRuntimeState("suspended")
     } catch (_: Exception) {
     }
+    resourceCollector?.recordStateSnapshot()
+    resourceCollector?.onStateTransition(eng)
   }
 
   private fun isMethodReadyForRead(app: Context, method: ClipboardAccessMethod): Boolean {
@@ -778,6 +832,8 @@ internal object UnicEngineHost {
     if (!shouldMonitor) {
       overlay.stopAll()
       shizuku.stopMonitoring()
+      resourceCollector?.recordStateSnapshot()
+      resourceCollector?.onStateTransition(engine)
       return
     }
 
@@ -797,6 +853,29 @@ internal object UnicEngineHost {
         shizuku.startMonitoring()
       }
     }
+    resourceCollector?.recordStateSnapshot()
+    resourceCollector?.onStateTransition(engine)
+  }
+
+  internal fun onBackgroundMonitorStateChanged(context: Context) {
+    resourceCollector?.recordStateSnapshot()
+    val rawApp = appContext ?: context.applicationContext
+    if (appContext == null) {
+      appContext = rawApp
+    }
+    engineScope.launch {
+      ensureInitialized(rawApp)
+      resourceCollector?.onStateTransition(engine)
+    }
+  }
+
+  internal fun activeBackgroundMode(): String? {
+    if (isForeground || isEngineSuspended) return null
+    if (overlayController?.isPollingActive() == true) return "overlay_polling"
+    if (overlayController?.isEventMonitorActive() == true) return "overlay_event"
+    if (shizukuController?.isMonitoringActive() == true) return "shizuku"
+    if (BackgroundSyncService.running) return "fgs_idle"
+    return null
   }
 
   // ---------------------------------------------------------------------------
@@ -1278,7 +1357,11 @@ internal object UnicEngineHost {
     if (screenReceiver != null) return
     val receiver = object : BroadcastReceiver() {
       override fun onReceive(context: Context, intent: Intent) {
-        updateScreenInteractiveState(app)
+        when (intent.action) {
+          Intent.ACTION_SCREEN_OFF -> applyScreenInteractiveState(interactive = false)
+          Intent.ACTION_USER_PRESENT -> applyScreenInteractiveState(interactive = true)
+          else -> engineScope.launch { updateScreenInteractiveState(app) }
+        }
       }
     }
     val filter = IntentFilter().apply {
@@ -1307,12 +1390,20 @@ internal object UnicEngineHost {
     }
   }
 
+  private fun applyScreenInteractiveState(interactive: Boolean) {
+    overlayController?.setScreenInteractive(interactive)
+    shizukuController?.setScreenInteractive(interactive)
+    resourceCollector?.recordStateSnapshot(screenState = if (interactive) "on" else "off")
+    engineScope.launch {
+      resourceCollector?.onStateTransition(engine)
+    }
+  }
+
   private fun updateScreenInteractiveState(app: Context) {
     val pm = app.getSystemService(Context.POWER_SERVICE) as? PowerManager
     val km = app.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
     val interactive = (pm?.isInteractive ?: true) && (km?.isKeyguardLocked != true)
-    overlayController?.setScreenInteractive(interactive)
-    shizukuController?.setScreenInteractive(interactive)
+    applyScreenInteractiveState(interactive)
   }
 
   // ---------------------------------------------------------------------------

@@ -155,6 +155,10 @@ Reply in the user's language, as briefly as the result allows; the diagram carri
 
 Do not recap commands, repair rounds, hashes, quality profiles, or check lists; they stay in the receipts. If asked whether the diagram was verified, answer in one line, such as “Automated checks passed; not visually reviewed.” Give receipt links and details only for reproducibility or troubleshooting. Disclose requested visual review that could not run, and claim visual inspection only when performed. Keep the required update notice under Update awareness.
 
-Example: `Created [Checkout request timing](/abs/path/checkout-timing.html). Durations are illustrative, not measured.`
+Example:
 
-For an explainer, the reply must read well without opening the page: the conclusion in one to three lines with the key cause, numbers or recommendation, then, as the very last line, a Markdown link with a descriptive title in the user's language, such as `[查看测试报告](/abs/path/test-report.html)` or `[Open the test report](...)`. Use the absolute path, wrapped in `<...>` when it contains spaces, not `file://`; put any update notice before it. Never offer a directory, terminal log or auto-open (`--open`) instead of the link. When `finalize explainer` fails or the renderer is unavailable, answer in text, say in one line that the page was not produced, and give no page link. Mention gates only when one failed or writing warnings remain; do not paste the draft.
+```md
+Created [Checkout request timing](/abs/path/checkout-timing.html). Durations are illustrative, not measured.
+```
+
+For an explainer, the reply must read well without opening the page: the conclusion in one to three lines with the key cause, numbers or recommendation, then, as the very last line, a Markdown link with a descriptive title in the user's language (for example `"查看测试报告"` or `"Open the test report"` pointing to the absolute HTML path, wrapped in `<...>` when it contains spaces, not `file://`); put any update notice before it. Never offer a directory, terminal log or auto-open (`--open`) instead of the link. When `finalize explainer` fails or the renderer is unavailable, answer in text, say in one line that the page was not produced, and give no page link. Mention gates only when one failed or writing warnings remain; do not paste the draft.

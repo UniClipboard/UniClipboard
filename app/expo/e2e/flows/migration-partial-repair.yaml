@@ -7,12 +7,32 @@ name: Legacy mobile partial migration repair and enter history
     timeout: 45000
 - tapOn:
     id: setup-retry-partial
+    retryTapIfNoChange: true
+- runFlow:
+    when:
+      visible:
+        id: setup-retry-partial
+        enabled: true
+    commands:
+      - tapOn:
+          id: setup-retry-partial
+          retryTapIfNoChange: true
 - extendedWaitUntil:
     visible:
       id: setup-enter-history
     timeout: 45000
 - tapOn:
     id: setup-enter-history
+    retryTapIfNoChange: true
+- runFlow:
+    when:
+      visible:
+        id: setup-enter-history
+        enabled: true
+    commands:
+      - tapOn:
+          id: setup-enter-history
+          retryTapIfNoChange: true
 - runFlow:
     when:
       platform: iOS

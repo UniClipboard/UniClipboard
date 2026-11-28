@@ -8,7 +8,7 @@
 
 ## 官方引擎直接对照：83 个场景
 
-[`ts-official-cases.mjs`](../test/ts-official-cases.mjs) 给出每个场景的唯一 ID、完整输入和投影策略。测试直接启动同版本 `tsserver`，或调用其 Compiler API / Language Service，再与真实 Archify 提取结果比较。
+`test/ts-official-cases.mjs`（上游 Archify 仓库测试脚本，未随本 skill 打包）给出每个场景的唯一 ID、完整输入和投影策略。测试直接启动同版本 `tsserver`，或调用其 Compiler API / Language Service，再与真实 Archify 提取结果比较。
 
 | 层次 | 数量 | 逐项检查 |
 | --- | ---: | --- |
@@ -28,7 +28,7 @@ CI 在 Linux 的完整模块测试和 macOS、Windows 的安装包任务中执�
 
 ## 上游源码批量语法投影：915 个案例
 
-[`ts-upstream-syntax-probe.mjs`](../test/ts-upstream-syntax-probe.mjs) 扫描 compiler/conformance 的 **12,445 个输入文件**，重建含可捕获 JS/CJS/MJS/JSX 的 **915 个案例、1,216 份源码**。自带 SDK 5.9.3 上全部匹配，无失败；每个上游路径和结果写入 JSON。
+`test/ts-upstream-syntax-probe.mjs`（上游 Archify 仓库测试脚本，未随本 skill 打包）扫描 compiler/conformance 的 **12,445 个输入文件**，重建含可捕获 JS/CJS/MJS/JSX 的 **915 个案例、1,216 份源码**。自带 SDK 5.9.3 上全部匹配，无失败；每个上游路径和结果写入 JSON。
 
 ```sh
 node test/ts-upstream-syntax-probe.mjs /path/to/TypeScript-v6.0.3 /tmp/upstream-syntax.json
@@ -43,7 +43,7 @@ node test/ts-upstream-inventory.mjs /path/to/TypeScript-v6.0.3 /tmp/upstream-inv
 
 ## 人工迁移的上游观察点：6 项
 
-独立台账是 [`ts-upstream-cases.json`](../test/ts-upstream-cases.json)，对应 [`ts-upstream-alignment.test.mjs`](../test/ts-upstream-alignment.test.mjs)。
+独立台账为 `test/ts-upstream-cases.json`，对应 `test/ts-upstream-alignment.test.mjs`（上游 Archify 仓库测试文件，未随本 skill 打包）。
 
 | ID | 固定上游来源 | 当前结果 |
 | --- | --- | --- |

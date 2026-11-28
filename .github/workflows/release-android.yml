@@ -89,16 +89,22 @@ jobs:
           UNIC_POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_KEY }}
           UNIC_ANDROID_ABI_TARGETS: ${{ inputs.build_aab && 'android/arm64,android/amd64' || 'android/arm64' }}
         run: ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.1.12297006" ./bindings/scripts/build-mobile.sh
-      - name: Build Android release APK (and optional AAB)
+      - name: Prepare Android project
         working-directory: app/expo
-        env:
-          BUILD_AAB: ${{ inputs.build_aab }}
         run: |
           npm ci --no-audit --no-fund
           npx expo prebuild --platform android --no-install
-          (cd android && ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a -PunicAbiFilters=arm64-v8a)
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: Build Android release APK (and optional AAB)
+        working-directory: app/expo/android
+        env:
+          BUILD_AAB: ${{ inputs.build_aab }}
+        run: |
+          ./gradlew --build-cache :app:assembleRelease -PreactNativeArchitectures=arm64-v8a -PunicAbiFilters=arm64-v8a
           if [[ "$BUILD_AAB" == true ]]; then
-            (cd android && ./gradlew :app:bundleRelease -PreactNativeArchitectures=arm64-v8a,x86_64)
+            ./gradlew --build-cache :app:bundleRelease -PreactNativeArchitectures=arm64-v8a,x86_64
           fi
       - name: Sign and verify candidate
         env:

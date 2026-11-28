@@ -42,6 +42,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Verify Xcode toolchain and ASC build slot
+        id: xcode-toolchain
         env:
           PUBLISH: ${{ inputs.publish }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -49,7 +50,10 @@ jobs:
           ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
         shell: bash
         run: |
-          xcodebuild -version
+          xcode_version=$(xcodebuild -version)
+          printf '%s\n' "$xcode_version"
+          xcode_build=$(awk '/^Build version / {print $3}' <<< "$xcode_version")
+          printf 'build=%s\n' "$xcode_build" >> "$GITHUB_OUTPUT"
           if [[ "$PUBLISH" == true ]]; then
             : "${ASC_KEY_ID:?}" "${ASC_ISSUER_ID:?}" "${ASC_PRIVATE_KEY:?}"
             umask 077
@@ -69,6 +73,13 @@ jobs:
           npm ci --no-audit --no-fund
           npx expo prebuild --platform ios --no-install
           (cd ios && pod install)
+      - name: Restore Xcode compilation cache
+        if: github.ref == 'refs/heads/main' && steps.xcode-toolchain.outputs.build != ''
+        uses: actions/cache@v4
+        continue-on-error: true
+        with:
+          path: ${{ runner.temp }}/unic-xcode-compile-cache
+          key: ios-release-compile-v1-${{ runner.arch }}-${{ steps.xcode-toolchain.outputs.build }}-${{ hashFiles('app/expo/package-lock.json') }}
       - name: Archive and export signed IPA
         env:
           IOS_DISTRIBUTION_P12: ${{ secrets.IOS_DISTRIBUTION_P12 }}
@@ -137,9 +148,13 @@ jobs:
           }, ARGV[1])
           RUBY
           archive="$RUNNER_TEMP/UniClipboard.xcarchive"
-          export UNIC_PYTHON="$(command -v python3)"
+          UNIC_PYTHON=$(command -v python3)
+          export UNIC_PYTHON
           xcodebuild -workspace app/expo/ios/UniClipboard.xcworkspace -scheme UniClipboard \
-            -configuration Release -destination 'generic/platform=iOS' -archivePath "$archive" archive
+            -configuration Release -destination 'generic/platform=iOS' -archivePath "$archive" \
+            COMPILATION_CACHE_ENABLE_CACHING=YES COMPILATION_CACHE_ENABLE_DIAGNOSTIC_REMARKS=YES \
+            COMPILATION_CACHE_KEEP_CAS_DIRECTORY=YES "COMPILATION_CACHE_CAS_PATH=$RUNNER_TEMP/unic-xcode-compile-cache" \
+            COMPILATION_CACHE_LIMIT_SIZE=1073741824 COMPILER_INDEX_STORE_ENABLE=NO archive
           # PATH prefix avoids Homebrew rsync shadowing system rsync during IPA export.
           env PATH="/usr/bin:/bin:/usr/sbin:/sbin:$PATH" xcodebuild -exportArchive \
             -archivePath "$archive" -exportOptionsPlist "$signing/export.plist" -exportPath "$signing/export"

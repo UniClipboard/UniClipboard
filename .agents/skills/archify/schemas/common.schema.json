@@ -1,0 +1,250 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tt-a1i/archify/schemas/common.schema.json",
+  "title": "Archify Shared Definitions",
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$"
+    },
+    "locale": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$",
+      "maxLength": 35
+    },
+    "translations": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-zA-Z0-9]*(\\.[a-z][a-zA-Z0-9]*)*$" },
+      "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 400 },
+      "maxProperties": 600
+    },
+    "animation": {
+      "enum": ["trace", "none"]
+    },
+    "visualPreset": {
+      "enum": ["classic", "signal-flow", "blueprint", "editorial"]
+    },
+    "qualityProfile": {
+      "enum": ["standard", "showcase"]
+    },
+    "portableOutputPath": {
+      "description": "A portable POSIX-relative HTML output path. It must be safe to interpret identically on every supported host filesystem.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/]+(?:/[^/]+)*$",
+      "allOf": [
+        { "pattern": "(?:^|/)[^/]+[.][Hh][Tt][Mm][Ll]$" },
+        { "not": { "pattern": "[\\\\<>:\"|?*\\u0000-\\u001F\\u007F-\\u009F]" } },
+        { "not": { "pattern": "[\\uD800-\\uDFFF]" } },
+        { "not": { "pattern": "(^|/)[.]{1,2}(/|$)" } },
+        { "not": { "pattern": "[. ](/|$)" } },
+        { "not": { "pattern": "(^|/)[^/]{256}" } },
+        {
+          "not": {
+            "pattern": "(^|/)(?:[Cc][Oo][Nn]|[Pp][Rr][Nn]|[Aa][Uu][Xx]|[Nn][Uu][Ll]|[Cc][Oo][Nn][Ii][Nn][$]|[Cc][Oo][Nn][Oo][Uu][Tt][$]|[Cc][Oo][Mm][1-9¹²³]|[Ll][Pp][Tt][1-9¹²³])(?:[.]|/|$)"
+          }
+        },
+        {
+          "not": {
+            "pattern": "(^|/)[^/]*~[1-9][0-9]*(?:[.]|/|$)"
+          }
+        }
+      ]
+    },
+    "side": {
+      "enum": ["left", "right", "top", "bottom"]
+    },
+    "relationshipWidth": {
+      "type": "number",
+      "minimum": 0.5
+    },
+    "point": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "componentType": {
+      "enum": ["frontend", "backend", "database", "cloud", "security", "messagebus", "external"]
+    },
+    "nodeIcon": {
+      "description": "Decorative corner icon. Omit the icon field for the type default; none hides it. Does not change type, color, or legend grouping.",
+      "enum": ["calendar", "clock", "person", "briefcase", "flag", "moon", "frontend", "backend", "database", "cloud", "security", "messagebus", "external", "start", "active", "waiting", "decision", "success", "failure", "stop", "neutral", "none"]
+    },
+    "brandMark": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048,
+          "anyOf": [
+            { "maxLength": 80, "pattern": "^[^\\r\\n]+$" },
+            { "pattern": "^https?://" }
+          ]
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "sha256"],
+          "properties": {
+            "url": { "type": "string", "minLength": 8, "maxLength": 2048, "pattern": "^https?://" },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          }
+        }
+      ]
+    },
+    "variant": {
+      "enum": ["default", "emphasis", "security", "dashed"]
+    },
+    "changeStatus": {
+      "description": "Review-time change state for an element in a merged before/after superset. Omit for ordinary diagrams; removed elements stay at their authored position as ghosts.",
+      "enum": ["added", "modified", "removed", "unchanged"]
+    },
+    "emphasis": {
+      "description": "Heavier stroke and label weight so the element reads first without relying on color.",
+      "type": "boolean"
+    },
+    "payloadValue": {
+      "description": "A bounded JSON document carried by a message or flow: object, array, or string.",
+      "anyOf": [
+        { "type": "object", "maxProperties": 200 },
+        { "type": "array", "maxItems": 200 },
+        { "type": "string", "maxLength": 4000 }
+      ]
+    },
+    "payload": {
+      "description": "Reader-only payload shape for a message or flow. The Viewer shows it in the Semantic Passport and diffs before/after; it never enters the SVG.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "summary": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "contentType": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "before": { "$ref": "#/$defs/payloadValue" },
+        "after": { "$ref": "#/$defs/payloadValue" },
+        "sample": { "$ref": "#/$defs/payloadValue" }
+      }
+    },
+    "legendMode": {
+      "enum": ["auto", "all", "hidden"]
+    },
+    "legendEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "visible": { "type": "boolean" }
+      }
+    },
+    "guidedViews": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "focus"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "label": { "type": "string", "minLength": 1, "maxLength": 48 },
+          "focus": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/id" }
+          },
+          "note": { "type": "string", "maxLength": 140 }
+        }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "revision"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": { "enum": ["github", "gitee", "gitlab"] },
+        "link_mode": { "enum": ["web", "local-only"] },
+        "revision": { "type": "string", "pattern": "^[a-fA-F0-9]{40}$" },
+        "base_revision": {
+          "description": "Merge-base commit that nodes marked change: removed are verified and linked against.",
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{40}$"
+        }
+      }
+    },
+    "sourceReferences": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1, "maxLength": 240 },
+          "line": { "type": "integer", "minimum": 1 },
+          "end_line": { "type": "integer", "minimum": 1 },
+          "label": { "type": "string", "minLength": 1, "maxLength": 48 }
+        }
+      }
+    },
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dot", "title", "items"],
+        "properties": {
+          "dot": { "enum": ["cyan", "emerald", "violet", "amber", "rose", "orange", "slate"] },
+          "title": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "relativeHtmlHref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Same-directory HTML file only (no scheme, no '/'). Optional ?query or #fragment such as #focus=id.",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.html(?:\\?[A-Za-z0-9._~/=&%+!?$-]*)?(?:#[A-Za-z0-9._~/=&%+!?$-]*)?$"
+    },
+    "nodeHrefSugar": {
+      "$ref": "#/$defs/relativeHtmlHref",
+      "description": "Shorthand for a one-entry drilldowns list. Label defaults to the node label. If drilldowns is also present, drilldowns wins."
+    },
+    "diagramTypeName": {
+      "enum": ["architecture", "workflow", "sequence", "dataflow", "lifecycle"]
+    },
+    "drilldownTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["href", "label"],
+      "properties": {
+        "href": { "$ref": "#/$defs/relativeHtmlHref" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "diagram_type": { "$ref": "#/$defs/diagramTypeName" }
+      }
+    },
+    "drilldowns": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "description": "Ordered child diagrams. Passport lists all; Ctrl+click / double-click opens the first entry.",
+      "items": { "$ref": "#/$defs/drilldownTarget" }
+    },
+    "parentHref": {
+      "$ref": "#/$defs/relativeHtmlHref",
+      "description": "Authored parent diagram for the Back control. Runtime may also use ?from=."
+    }
+  }
+}

@@ -45,5 +45,6 @@ verified: <commit> # 对照代码核实时的提交；用 docscheck -bump 更新
 - [observability](observability.md): bounded local logs, dynamic levels, optional OTLP logs/metrics, and nonvisual acceptance limits.
 
 - [Headless service and desktop integration](headless.md): independent distributions, CLI command requirements and temporary service leases, temporary transfer, process ownership and adapter sessions.
+- [Desktop resource benchmark](desktop-benchmark.md): Win/Mac dual-track (`production` vs `interactive`) resource measurement, OS-native memory/attribution semantics, Parallels VM orchestration and regression checks.
 - [Real-machine CLI testing](real-machine-testing.md): node inventories, native workers, multi-host synchronization, timing and evidence.
 - [Product builds and CLI releases](releases.md): product identities, immutable npm packages, alpha/stable channels and exact-build promotion.

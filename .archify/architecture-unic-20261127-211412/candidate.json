@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "unic 当前运行架构",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-unic-20261127-211412/unic.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/UniClipboard/UniClipboard.git",
+      "revision": "73a6baf1d8a2ddf9848d2fde520e25af9cab6953"
+    }
+  },
+  "layout": { "mode": "auto" },
+  "components": [
+    {
+      "id": "desktop",
+      "type": "frontend",
+      "label": "unic-desktop",
+      "sublabel": "主窗口 / 托盘 / 快捷面板",
+      "explanation": "桌面端用 mygo 和原生 BoardUI 提供界面。托盘可启动或复用本机服务，并在会话支持时启用系统剪贴板适配器。独立快捷面板连接已运行的服务。",
+      "sources": [
+        { "path": "docs/architecture/overview.md", "line": 31, "end_line": 35 },
+        { "path": "app/desktop/cmd/unic-desktop/roles.go", "line": 207, "end_line": 228 },
+        { "path": "app/desktop/cmd/unic-desktop/main.go", "line": 227, "end_line": 249 }
+      ]
+    },
+    {
+      "id": "cli",
+      "type": "frontend",
+      "label": "unic",
+      "sublabel": "无界面命令行",
+      "explanation": "需要服务的命令获得本机服务会话后发送 API 请求。部分命令可在本地独立执行。服务会话可按需启动临时 unicd。",
+      "sources": [
+        { "path": "app/service/cmd/unic/session.go", "line": 55, "end_line": 102 },
+        { "path": "docs/architecture/headless.md", "line": 97, "end_line": 104 }
+      ]
+    },
+    {
+      "id": "daemon",
+      "type": "backend",
+      "label": "unicd",
+      "sublabel": "本机服务 / 剪贴板适配器",
+      "explanation": "为当前配置档案启动 Engine，并经用户专用 Unix 套接字或 Windows 命名管道提供本机 HTTP API。桌面集成启用后，可由本机服务运行系统剪贴板适配器。",
+      "sources": [
+        { "path": "app/service/cmd/unicd/daemon.go", "line": 61, "end_line": 107 },
+        { "path": "app/service/cmd/unicd/clipboard_desktop.go", "line": 19, "end_line": 58 },
+        { "path": "app/service/internal/host/node.go", "line": 241, "end_line": 256 }
+      ]
+    },
+    {
+      "id": "mobile",
+      "type": "frontend",
+      "label": "Expo 移动端",
+      "sublabel": "iOS / Android 原生模块",
+      "explanation": "Swift 和 Kotlin 原生宿主通过 gomobile 在当前进程内创建并启动 Go Engine。原生宿主负责系统剪贴板权限、应用生命周期和事件桥接。",
+      "sources": [
+        { "path": "app/expo/modules/unic-engine/ios/UnicEngineModule.swift", "line": 685, "end_line": 730 },
+        { "path": "app/expo/modules/unic-engine/android/src/main/java/app/uniclipboard/engine/UnicEngineHost.kt", "line": 395, "end_line": 422 },
+        { "path": "bindings/mobile/engine.go", "line": 316, "end_line": 355 }
+      ]
+    },
+    {
+      "id": "engine",
+      "type": "backend",
+      "label": "Go Engine",
+      "sublabel": "历史 / 设备信任 / 同步策略",
+      "explanation": "桌面服务与移动端各自创建本地实例。Engine 负责剪贴板处理、历史提交、设备信任、接收准入和逐目标同步调度。没有可用的同步目标时，符合条件的内容仍可提交本机历史。",
+      "sources": [
+        { "path": "engine/submission.go", "line": 360, "end_line": 387 },
+        { "path": "engine/engine.go", "line": 182, "end_line": 220 },
+        { "path": "engine/peersend.go", "line": 146, "end_line": 176 }
+      ]
+    },
+    {
+      "id": "store",
+      "type": "database",
+      "label": "SQLite",
+      "sublabel": "unic.db / 每个配置档案",
+      "explanation": "Engine 打开本机数据库，保存剪贴板历史、设备信任与关联等状态。每个设备独立维护自己的历史。",
+      "sources": [
+        { "path": "engine/engine.go", "line": 182, "end_line": 200 },
+        { "path": "internal/store/history.go", "line": 292, "end_line": 315 },
+        { "path": "internal/store/devices.go", "line": 88, "end_line": 124 }
+      ]
+    },
+    {
+      "id": "plugins",
+      "type": "backend",
+      "label": "插件运行时",
+      "sublabel": "内置 Go / 外部 Go / Lua",
+      "explanation": "内置插件提供分类、文本动作和智能预览等能力。unicd 按配置装配外部 Go 进程及 Lua 沙箱插件。移动端由绑定显式装配内置插件。Engine 管理插件生命周期和能力调用。",
+      "sources": [
+        { "path": "app/service/internal/host/node.go", "line": 176, "end_line": 253 },
+        { "path": "engine/options.go", "line": 70, "end_line": 79 },
+        { "path": "bindings/mobile/engine.go", "line": 320, "end_line": 349 }
+      ]
+    },
+    {
+      "id": "tailcat",
+      "type": "backend",
+      "label": "builtin.tailcat",
+      "sublabel": "认证会话 / WireGuard",
+      "explanation": "宿主显式装配内置同步后端。Tailcat 优先直连对端，直连失败时可经独立 DERP 节点维持 WireGuard 隧道。Engine 通过后端契约派发同步任务。",
+      "sources": [
+        { "path": "app/service/internal/host/node.go", "line": 94, "end_line": 101 },
+        { "path": "internal/plugins/tailcat/tailcat.go", "line": 181, "end_line": 186 },
+        { "path": "internal/tcnet/tcnet.go", "line": 1, "end_line": 3 }
+      ]
+    },
+    {
+      "id": "peer",
+      "type": "external",
+      "label": "已授权对端",
+      "sublabel": "独立 Engine / 本机历史",
+      "explanation": "接收端可经 Tailcat 会话接收内容，也可在 HTTP 中转路径上从对象存储直连下载。接收端负责分块校验、解密、接收准入和本机历史提交。",
+      "sources": [
+        { "path": "docs/contracts/hybrid-relay-contract.md", "line": 321, "end_line": 324 },
+        { "path": "internal/relayclient/client.go", "line": 651, "end_line": 695 }
+      ]
+    },
+    {
+      "id": "relay-client",
+      "type": "backend",
+      "label": "混合中转客户端",
+      "sublabel": "端到端加密分块",
+      "explanation": "目标缺少有效会话时，Engine 检查中转状态、设备信任、同步策略、投递资料和大小上限。条件满足时立即开始 HTTP 中转并尝试重连。双方支持接力时，大载荷可切换到 P2P 并保留已收分块。",
+      "sources": [
+        { "path": "engine/relay.go", "line": 1341, "end_line": 1405 },
+        { "path": "engine/relay.go", "line": 1565, "end_line": 1596 },
+        { "path": "docs/contracts/hybrid-relay-contract.md", "line": 252, "end_line": 268 }
+      ]
+    },
+    {
+      "id": "relay-api",
+      "type": "cloud",
+      "label": "HTTP 中转控制面",
+      "sublabel": "授权 / 预签名 / 通知",
+      "explanation": "Hyper Relay 管理投递、签发短时有效的对象存储 URL，并用 SSE 发送通知。接收确认、取消或到期后，控制面清理密文对象。它与 DERP 独立部署。",
+      "sources": [
+        { "path": "docs/contracts/hybrid-relay-contract.md", "line": 13, "end_line": 21 },
+        { "path": "internal/relayclient/client.go", "line": 651, "end_line": 675 }
+      ]
+    },
+    {
+      "id": "objects",
+      "type": "cloud",
+      "label": "S3 兼容对象存储",
+      "sublabel": "短期保存密文分块",
+      "explanation": "发送端使用预签名 PUT 直传密文分块。接收端使用预签名 GET 直接下载。对象存储承担分块数据传输，HTTP 中转控制面处理授权和通知。",
+      "sources": [
+        { "path": "internal/relayclient/client.go", "line": 547, "end_line": 575 },
+        { "path": "internal/relayclient/client.go", "line": 672, "end_line": 695 }
+      ]
+    }
+  ],
+  "connections": [
+    { "id": "desktop-daemon", "from": "desktop", "to": "daemon", "label": "本机 HTTP" },
+    { "id": "cli-daemon", "from": "cli", "to": "daemon", "label": "按需请求" },
+    { "id": "daemon-engine", "from": "daemon", "to": "engine", "label": "进程内 SDK" },
+    { "id": "mobile-engine", "from": "mobile", "to": "engine", "label": "进程内绑定" },
+    { "id": "engine-store", "from": "engine", "to": "store", "label": "读写本机状态" },
+    { "id": "engine-plugins", "from": "engine", "to": "plugins", "label": "按能力调用" },
+    { "id": "engine-tailcat", "from": "engine", "to": "tailcat", "label": "优先有效会话", "variant": "emphasis" },
+    { "id": "tailcat-peer", "from": "tailcat", "to": "peer", "label": "直连或 DERP", "variant": "emphasis" },
+    { "id": "engine-relay", "from": "engine", "to": "relay-client", "label": "满足条件时回退" },
+    { "id": "relay-control", "from": "relay-client", "to": "relay-api", "label": "登记 / 获取授权" },
+    { "id": "relay-upload", "from": "relay-client", "to": "objects", "label": "预签名 PUT" },
+    { "id": "peer-download", "from": "peer", "to": "objects", "label": "预签名 GET" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "同一套核心，两种宿主",
+      "items": ["桌面和命令行使用本机 unicd。iOS 和 Android 把 Engine 嵌入原生宿主进程。", "宿主管理系统剪贴板与配置。Engine 决定内容处理、提交和同步。"]
+    },
+    {
+      "dot": "emerald",
+      "title": "同步按目标选路",
+      "items": ["有有效会话时使用 Tailcat。DERP 转发的是 Tailcat 隧道流量。", "无有效会话且符合中转条件时，发送端直传密文分块。接收端从控制面取得下载授权，再向对象存储拉取。"]
+    }
+  ]
+}

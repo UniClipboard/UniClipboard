@@ -1,5 +1,7 @@
 # Independent quick-panel memory replay
 
+> **Archived research harness notice**: Superseded for ongoing baseline regression and cross-platform measurement by the formal benchmark suite in [`tools/bench/`](../../bench/cmd/unic-bench/main.go) (`unic-bench` and `make bench-mac` / `make bench-win-vm`). See [Desktop resource benchmark architecture](../../../docs/architecture/desktop-benchmark.md) and keep this directory only for historical replay traceability.
+
 Read [FAILURES.md](FAILURES.md) before edits. This opt-in measurement reuses the
 canonical Desktop E2E build, its directory clipboard, existing Windows-native
 protocol helper, existing synthetic corpus and research memory counters. It does

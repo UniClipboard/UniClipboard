@@ -15,6 +15,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [builtin-plugin-policy](#builtin-plugin-policy) | native | Save Tailcat content policies and automatic thresholds from the real Plugins page. |
 | [builtin-plugin-processors](#builtin-plugin-processors) | native | Manage classification and text tools from Plugins and verify actual behavior after Desktop restart. |
 | [data-binding](#data-binding) | process | History, tags, restore, pairing and reconnect through real services. |
+| [desktop-diagnostic-export](#desktop-diagnostic-export) | process | Verify the production Desktop export action with retained logs and a pending CLI migration. |
 | [desktop-lightweight-close](#desktop-lightweight-close) | process | Verify the updated lightweight user intent through real role and service processes. |
 | [desktop-lightweight-invalid-config-close](#desktop-lightweight-invalid-config-close) | process | Verify that a bad TOML edit cannot strand tray or panel after a lightweight GUI closes. |
 | [desktop-native-processes](#desktop-native-processes) | native | Verify independent GUI, quick-panel, tray and service processes through native windows with an isolated directory clipboard. |
@@ -408,6 +409,20 @@ Forbidden: A skipped suite, a missing receipt, or labeling fixtures as native OS
 
 ```text
 acceptance desktopui data-binding
+```
+
+## desktop-diagnostic-export
+
+Desktop diagnostic export without a CLI
+
+Steps: Run the Desktop export action against an isolated profile with no sibling CLI or service. Inspect the private ZIP archive and verify the log checksum.
+
+Expected: The archive identifies Desktop as the exporter, includes the selected log, and reports an offline service snapshot.
+
+Forbidden: A required CLI executable, a changed migration receipt, an unexpected archive member, a checksum mismatch, or a claim of native dialog acceptance.
+
+```text
+acceptance gui desktop-diagnostic-export
 ```
 
 ## desktop-lightweight-close

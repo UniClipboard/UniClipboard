@@ -1,0 +1,12 @@
+# Case: Desktop diagnostic export without a CLI
+# Mode: process
+# Purpose: Verify the production Desktop export action with retained logs and a pending CLI migration.
+# Steps:
+#   Run the Desktop export action against an isolated profile with no sibling CLI or service.
+#   Inspect the private ZIP archive and verify the log checksum.
+# Expected:
+#   The archive identifies Desktop as the exporter, includes the selected log, and reports an offline service snapshot.
+# Forbidden:
+#   A required CLI executable, a changed migration receipt, an unexpected archive member, a checksum mismatch, or a claim of native dialog acceptance.
+
+acceptance gui desktop-diagnostic-export

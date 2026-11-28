@@ -187,7 +187,7 @@ func requiresInitialization(leafName string) bool {
 	case "init", "migrate", "doctor", "completion",
 		"profile", "profile list", "profile path",
 		"daemon status", "daemon stop", "daemon logs",
-		"config path":
+		"config path", "dev logs export":
 		return false
 	}
 	return true

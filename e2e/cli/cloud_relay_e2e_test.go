@@ -220,8 +220,8 @@ func TestCloudRelayCredentialLifecycle(t *testing.T) {
 	var transientFailCount int
 	var revokeMode bool
 	var revokedCredCount, revokedSessCount, credIssueCalls int
-	var rotateDelay time.Duration = 10 * time.Minute
-	var credTTL time.Duration = time.Hour
+	rotateDelay := 10 * time.Minute
+	credTTL := time.Hour
 	var savedChallenge, savedRedirect string
 	var curDeviceCred string
 	var slowRotateEntered chan struct{}
@@ -1047,7 +1047,7 @@ func TestCloudRelayCredentialLifecycle(t *testing.T) {
 				t.Fatalf("token exchange error leaked underlying transport detail %q in %q", leaked, lastLine)
 			}
 		}
-		transcript = append(transcript, fmt.Sprintf("$ unic cloud login --cloud-url <broken> --no-browser --json -> safe_diagnostic=cloud token exchange request failed"))
+		transcript = append(transcript, "$ unic cloud login --cloud-url <broken> --no-browser --json -> safe_diagnostic=cloud token exchange request failed")
 	}
 
 	// ---- Step 9b: Real unic CLI rejects Cloud API cross-origin redirect without forwarding secrets ----

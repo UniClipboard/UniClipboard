@@ -826,22 +826,22 @@ func postDeviceCredential(ctx context.Context, cli *http.Client, cloudURL, acces
 }
 
 var allowedCloudErrorCodes = map[string]bool{
-	"invalid_grant":         true,
-	"session_revoked":       true,
-	"invalid_request":       true,
-	"invalid_client":        true,
-	"invalid_token":         true,
-	"expired_token":         true,
-	"access_denied":         true,
-	"unauthorized":          true,
-	"forbidden":             true,
-	"invalid_scope":         true,
-	"insufficient_scope":    true,
-	"rate_limited":          true,
-	"too_many_requests":     true,
+	"invalid_grant":           true,
+	"session_revoked":         true,
+	"invalid_request":         true,
+	"invalid_client":          true,
+	"invalid_token":           true,
+	"expired_token":           true,
+	"access_denied":           true,
+	"unauthorized":            true,
+	"forbidden":               true,
+	"invalid_scope":           true,
+	"insufficient_scope":      true,
+	"rate_limited":            true,
+	"too_many_requests":       true,
 	"temporarily_unavailable": true,
-	"server_error":          true,
-	"service_unavailable":   true,
+	"server_error":            true,
+	"service_unavailable":     true,
 }
 
 func classifyCloudErrorCode(raw string) string {

@@ -614,7 +614,7 @@ func scenarioSettingsCloudRelay(t *testing.T) {
 	checks = append(checks, "PUT /v1/config rejects forged sync.relay.env_access_key_set in TOML cleanly without altering revision")
 
 	var loginCalls atomic.Int32
-	desktop, tt, pump, clickSwitch, clickEnabledButton, capture := newBoundDesktop(client, &loginCalls)
+	desktop, tt, pump, clickSwitch, _, capture := newBoundDesktop(client, &loginCalls)
 	defer func() {
 		if desktop != nil {
 			desktop.Close()
@@ -731,7 +731,7 @@ func scenarioSettingsCloudRelay(t *testing.T) {
 
 	// 3. Reopening Desktop preserves Official mode and signed-in state without self-hosted controls.
 	desktop.Close()
-	desktop, tt, pump, clickSwitch, clickEnabledButton, capture = newBoundDesktop(client, &loginCalls)
+	desktop, tt, pump, clickSwitch, clickEnabledButton, capture := newBoundDesktop(client, &loginCalls)
 	d = desktop.d
 	t3Reopen := capture("02b-official-reopened")
 	assertPresentTexts(t, t3Reopen, "已登录 alice@example.com", "已登录", "退出登录")

@@ -20,7 +20,7 @@ paths:
   - e2e/cli
   - tools/bench
   - tools/docscheck
-verified: 6c50e2d0ae1c4b5024d0c0ae765926558730c538
+verified: e001eca47e364d66529a543a532133b68014021b
 ---
 # 仓库布局与依赖边界
 

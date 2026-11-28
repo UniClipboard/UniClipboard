@@ -1,4 +1,4 @@
 {
-  "en": "<!-- Replace with concise English release notes for Android/Mobile users. -->",
-  "zh": "<!-- 替换为面向移动端用户的简洁中文更新说明。 -->"
+  "en": "This alpha adds a guided first-run setup, clearer pairing approvals, and more reliable history migration. iOS keyboard live sync, encrypted relay fallback, Cloud and relay setup, mobile diagnostics export, and a theme-aware Android launch screen are also included. All paired devices must use v2/v3.",
+  "zh": "本次 alpha 版本带来全新的首次使用引导、更清晰的配对审批流程，以及更可靠的历史记录迁移。现已支持 iOS 键盘实时同步、加密中继备用链路、Cloud 与中继配置、移动端诊断信息导出，并优化了 Android 启动画面。所有配对设备需使用 v2/v3。"
 }

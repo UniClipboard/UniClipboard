@@ -1,4 +1,4 @@
 {
-  "en": "<!-- Replace with concise English release notes for Android/Mobile users. -->",
-  "zh": "<!-- 替换为面向移动端用户的简洁中文更新说明。 -->"
+  "en": "Fixed Cloud sign-in on iOS when the callback arrives while the app is in the background; sign-in now completes after you return to the app. All paired devices must use v2/v3.",
+  "zh": "修复 iOS 在应用后台收到登录回调时 Cloud 登录无法完成的问题；返回应用后即可继续完成登录。所有配对设备需使用 v2/v3。"
 }

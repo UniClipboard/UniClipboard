@@ -206,6 +206,12 @@ try {
         join(output, stageName),
       ],
       stageName,
+      options.platform === "ios"
+        ? {
+            MAESTRO_DRIVER_STARTUP_TIMEOUT:
+              process.env.MAESTRO_DRIVER_STARTUP_TIMEOUT ?? "240000",
+          }
+        : {},
     );
   }
 

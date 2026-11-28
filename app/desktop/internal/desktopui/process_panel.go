@@ -22,15 +22,16 @@ type PanelClipboard interface {
 // ProcessPanel belongs exclusively to the quick-panel process. Its persistent
 // native platform never registers shortcuts and never acquires an adapter.
 type ProcessPanel struct {
-	ctx       context.Context
-	client    *api.Client
-	clipboard PanelClipboard
-	native    *capturedPlatform
-	settings  func() config.Config
-	root      func(string)
-	state     *quickPanelState
-	window    *mygo.Window
-	resume    panelResume
+	ctx          context.Context
+	client       *api.Client
+	clipboard    PanelClipboard
+	native       *capturedPlatform
+	settings     func() config.Config
+	root         func(string)
+	onVisibility func(bool)
+	state        *quickPanelState
+	window       *mygo.Window
+	resume       panelResume
 }
 
 type panelResume struct {
@@ -70,6 +71,9 @@ func (p *ProcessPanel) SetProfileDir(dir string) {
 	if cfg, ok := p.native.Platform.(interface{ SetProfileDir(string) }); ok {
 		cfg.SetProfileDir(dir)
 	}
+}
+func (p *ProcessPanel) SetVisibilityCallback(fn func(bool)) {
+	p.onVisibility = fn
 }
 func (p *ProcessPanel) Visible() bool {
 	return p.state != nil && p.state.visible && p.window != nil && p.window.IsVisible()
@@ -123,6 +127,9 @@ func (p *ProcessPanel) Open(target quickpanel.Target, captureError string, favor
 			return
 		}
 		q.visible = visible
+		if p.onVisibility != nil {
+			p.onVisibility(visible)
+		}
 		q.blurDue = time.Time{}
 		if visible && p.window != nil {
 			p.window.Show()
@@ -221,6 +228,9 @@ func (p *ProcessPanel) Close() {
 func (p *ProcessPanel) release(q *quickPanelState, destroy bool) {
 	if p.state != q {
 		return
+	}
+	if p.onVisibility != nil {
+		p.onVisibility(false)
 	}
 	p.resume = panelResume{query: q.query, kind: q.kind, favoriteOnly: q.favoriteOnly, chips: slices.Clone(q.chips), windowZoom: q.windowZoom, textZoom: q.textZoom}
 	if !q.visible && q.live != nil && q.live.system != nil {

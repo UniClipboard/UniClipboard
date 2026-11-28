@@ -218,6 +218,20 @@ func (b *Backend) SendRelayHandoffOffer(ctx context.Context, peerID string, offe
 	ch, cleanup := s.registerHandoffWaiter(offer.TransferID)
 	defer cleanup()
 
+	// Pre-install an ack slot on the exact session sending the offer before
+	// any wire bytes leave so an early clip_ack arriving before
+	// RegisterRelayClipAckWaiter is retained rather than dropped.
+	var preCleanup func()
+	if s.clipAckCap {
+		preCleanup = s.ensureAckWaiter(offer.TransferID)
+	}
+	keepAck := false
+	defer func() {
+		if !keepAck && preCleanup != nil {
+			preCleanup()
+		}
+	}()
+
 	writeCtx, writeCancel := context.WithTimeout(ctx, eventTimeout)
 	defer writeCancel()
 	if !s.acquireWrite(writeCtx) {
@@ -246,6 +260,7 @@ func (b *Backend) SendRelayHandoffOffer(ctx context.Context, peerID string, offe
 	defer timer.Stop()
 	select {
 	case ack := <-ch:
+		keepAck = ack.Accept
 		return ack, nil
 	case <-s.done:
 		return plugin.RelayHandoffAck{}, rpc.NewError(rpc.CodeUnavailable)
@@ -906,6 +921,8 @@ type session struct {
 	clipAckCap      bool
 	ackMu           sync.Mutex
 	ackWaiters      map[string]chan string
+	ackPending      map[string]chan string
+	earlyAcks       map[string]earlyAckEntry
 	ackQueue        chan wire.ClipAck
 	relayProfileCap bool
 	relayWake       chan struct{}
@@ -1146,9 +1163,65 @@ func (b *Backend) ackBudget() time.Duration {
 	return defaultAckTimeout
 }
 
-func (s *session) registerAckWaiter(id string) (chan string, func()) {
-	ch := make(chan string, 1)
+type earlyAckEntry struct {
+	status string
+	owner  chan string
+}
+
+func (s *session) ensureAckWaiter(id string) func() {
 	s.ackMu.Lock()
+	if s.ackWaiters[id] != nil {
+		s.ackMu.Unlock()
+		return func() {}
+	}
+	if s.ackWaiters == nil {
+		s.ackWaiters = map[string]chan string{}
+	}
+	if s.ackPending == nil {
+		s.ackPending = map[string]chan string{}
+	}
+	delete(s.earlyAcks, id)
+	ch := make(chan string, 1)
+	s.ackWaiters[id] = ch
+	s.ackPending[id] = ch
+	s.ackMu.Unlock()
+	return func() {
+		s.ackMu.Lock()
+		if s.ackPending[id] == ch {
+			delete(s.ackPending, id)
+		}
+		if s.ackWaiters[id] == ch {
+			delete(s.ackWaiters, id)
+		}
+		if e, ok := s.earlyAcks[id]; ok && e.owner == ch {
+			delete(s.earlyAcks, id)
+		}
+		s.ackMu.Unlock()
+	}
+}
+
+func (s *session) registerAckWaiter(id string) (chan string, func()) {
+	s.ackMu.Lock()
+	if ch := s.ackPending[id]; ch != nil {
+		// Promote the pre-installed offer waiter to caller ownership.
+		delete(s.ackPending, id)
+		s.ackMu.Unlock()
+		return ch, func() {
+			s.ackMu.Lock()
+			if s.ackWaiters[id] == ch {
+				delete(s.ackWaiters, id)
+			}
+			s.ackMu.Unlock()
+		}
+	}
+	if e, ok := s.earlyAcks[id]; ok {
+		delete(s.earlyAcks, id)
+		s.ackMu.Unlock()
+		ch := make(chan string, 1)
+		ch <- e.status
+		return ch, func() {}
+	}
+	ch := make(chan string, 1)
 	if s.ackWaiters == nil {
 		s.ackWaiters = map[string]chan string{}
 	}
@@ -1177,6 +1250,13 @@ func (s *session) handleClipAck(raw []byte) {
 	ch := s.ackWaiters[msg.ID]
 	if ch != nil {
 		delete(s.ackWaiters, msg.ID)
+		if s.ackPending != nil && s.ackPending[msg.ID] == ch {
+			delete(s.ackPending, msg.ID)
+			if s.earlyAcks == nil {
+				s.earlyAcks = map[string]earlyAckEntry{}
+			}
+			s.earlyAcks[msg.ID] = earlyAckEntry{status: msg.Status, owner: ch}
+		}
 	}
 	s.ackMu.Unlock()
 	if ch != nil {

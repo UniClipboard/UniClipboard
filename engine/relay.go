@@ -36,6 +36,8 @@ const (
 	handoffMinRemainingBytes  = 2 << 20 // 2 MiB (contract §5.1)
 	handoffMinRemainingChunks = 2
 	maxHandoffSwitches        = 3
+	maxHandoffOfferRetries    = 2
+	handoffOfferReplaceGrace  = 100 * time.Millisecond
 	handoffClipAckTimeout     = 30 * time.Second
 	maxCompletedAssemblies    = 256
 )
@@ -1661,6 +1663,8 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 		return relaySendResult{}, err
 	}
 
+	offerRetries := 0
+	disableHandoffWatch := false
 	for {
 		if err := ctx.Err(); err != nil {
 			deleteOnAbort()
@@ -1675,8 +1679,41 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 			return relaySendResult{state: TargetSent, receiptStage: ReceiptStageRelayStored, route: routeOf()}, nil
 		}
 
+		waitForPeerReplacement := func() (aborted bool, res relaySendResult, rerr error) {
+			if canHandoff(len(remIdx), remBytes) {
+				return false, relaySendResult{}, nil
+			}
+			graceTimer := time.NewTimer(handoffOfferReplaceGrace)
+			for waiting := true; waiting; {
+				if canHandoff(len(remIdx), remBytes) {
+					break
+				}
+				select {
+				case <-wakeCh:
+					if canHandoff(len(remIdx), remBytes) {
+						waiting = false
+					}
+				case <-ctx.Done():
+					graceTimer.Stop()
+					deleteOnAbort()
+					return true, relaySendResult{}, ctxErr(ctx.Err())
+				case <-graceTimer.C:
+					waiting = false
+				}
+			}
+			graceTimer.Stop()
+			return false, relaySendResult{}, nil
+		}
+
 		// Branch A: Attempt Level 3 P2P handoff settlement if peer is connected with CapRelayHandoff.
+		transientOfferReject := false
 		if canHandoff(len(remIdx), remBytes) {
+			// Drain any stale peer-up token so wakeCh only reflects transitions
+			// arriving during or after this handoff offer attempt.
+			select {
+			case <-wakeCh:
+			default:
+			}
 			ackCh, sessDone, cleanupAck, hasAck := hb.RegisterRelayClipAckWaiter(plan.peerID, plan.clip.ID)
 			offerAck, oerr := hb.SendRelayHandoffOffer(ctx, plan.peerID, plugin.RelayHandoffOffer{
 				TransferID:          plan.clip.ID,
@@ -1689,7 +1726,18 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 					deleteOnAbort()
 					return relaySendResult{}, ctxErr(ctx.Err())
 				}
-				// P2P flapped during offer; fall through to HTTP batch below.
+				// P2P flapped during offer (e.g. simultaneous-dial session replacement).
+				// Give an incoming replacement session a brief event-driven window
+				// before restarting another HTTP batch.
+				if offerRetries < maxHandoffOfferRetries {
+					offerRetries++
+					if aborted, res, rerr := waitForPeerReplacement(); aborted {
+						return res, rerr
+					}
+					if canHandoff(len(remIdx), remBytes) {
+						continue
+					}
+				}
 			} else if !offerAck.Accept {
 				cleanupAck()
 				switch offerAck.Reason {
@@ -1698,143 +1746,217 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 					return relaySendResult{state: TargetDiscarded, receiptStage: ReceiptStageRemoteDiscarded, route: RouteHybrid}, nil
 				}
 				// Transient receiver rejection (e.g. unavailable/resource_exhausted): fall through to HTTP.
+				transientOfferReject = true
 			} else {
-				switches++
-				usedHybrid = true
-				h.ReportRoute(plan.key, RouteHybrid)
-
-				if offerAck.HaveBitmap != "" {
-					if haveBM, derr := relaycrypto.DecodeBitmap(offerAck.HaveBitmap, totalChunks); derr == nil {
-						stateMu.Lock()
-						for i := 0; i < totalChunks; i++ {
-							if relaycrypto.HasBit(haveBM, i) {
-								relaycrypto.SetBit(remoteHave, i)
-							}
-						}
-						stateMu.Unlock()
-					}
-				}
-				p2pSent, _ := relaycrypto.NewBitmap(totalChunks)
-				reportProgress(p2pSent)
-
-				var wantList []int
-				if offerAck.WantP2PBitmap != "" {
-					if wantBM, derr := relaycrypto.DecodeBitmap(offerAck.WantP2PBitmap, totalChunks); derr == nil {
-						for i := 0; i < totalChunks; i++ {
-							if relaycrypto.HasBit(wantBM, i) {
-								wantList = append(wantList, i)
-							}
-						}
-					}
-				}
-
-				checkEarlyAck := func() (done bool, res relaySendResult, rerr error) {
-					if !hasAck {
-						return false, relaySendResult{}, nil
-					}
+				// If the session used for RegisterRelayClipAckWaiter was replaced before
+				// SendRelayHandoffOffer ran, re-bind the waiter to the live session.
+				if hasAck {
 					select {
-					case status := <-ackCh:
-						switch status {
-						case wire.ClipAckReceived:
-							return true, relaySendResult{state: TargetSent, receiptStage: ReceiptStageRemoteReceived, route: RouteHybrid}, nil
-						case wire.ClipAckDiscarded:
-							deleteOnAbort()
-							return true, relaySendResult{state: TargetDiscarded, receiptStage: ReceiptStageRemoteDiscarded, route: RouteHybrid}, nil
+					case <-sessDone:
+						select {
+						case status := <-ackCh:
+							cleanupAck()
+							switch status {
+							case wire.ClipAckReceived:
+								return relaySendResult{state: TargetSent, receiptStage: ReceiptStageRemoteReceived, route: RouteHybrid}, nil
+							case wire.ClipAckDiscarded:
+								deleteOnAbort()
+								return relaySendResult{state: TargetDiscarded, receiptStage: ReceiptStageRemoteDiscarded, route: RouteHybrid}, nil
+							default:
+								deleteOnAbort()
+								return relaySendResult{}, newErr(CodeUnavailable, "peer failed to receive handoff transfer")
+							}
 						default:
-							deleteOnAbort()
-							return true, relaySendResult{}, newErr(CodeUnavailable, "peer failed to receive handoff transfer")
+							cleanupAck()
+							ackCh, sessDone, cleanupAck, hasAck = hb.RegisterRelayClipAckWaiter(plan.peerID, plan.clip.ID)
 						}
 					default:
-						return false, relaySendResult{}, nil
+					}
+				} else {
+					// Initial RegisterRelayClipAckWaiter hit a brief session-replacement
+					// gap (sessions[peerID] == nil/done) while the offer succeeded on the
+					// newly established session; bind the clip_ack waiter now.
+					ackCh, sessDone, cleanupAck, hasAck = hb.RegisterRelayClipAckWaiter(plan.peerID, plan.clip.ID)
+				}
+				proceedHandoff := true
+				if !hasAck {
+					conn, _, ackCap := hb.PeerHandoffCaps(plan.peerID)
+					if !conn || ackCap {
+						cleanupAck()
+						if offerRetries < maxHandoffOfferRetries {
+							offerRetries++
+							if !conn {
+								if aborted, res, rerr := waitForPeerReplacement(); aborted {
+									return res, rerr
+								}
+							}
+							continue
+						}
+						// Waiter remained unavailable across bounded retries; fall back to HTTP
+						// rather than spinning or downgrading a clip_ack-capable peer.
+						transientOfferReject = true
+						disableHandoffWatch = true
+						proceedHandoff = false
 					}
 				}
+				if proceedHandoff {
+					switches++
+					usedHybrid = true
+					h.ReportRoute(plan.key, RouteHybrid)
 
-				p2pBroken := false
-				for _, idx := range wantList {
-					if done, res, rerr := checkEarlyAck(); done {
-						cleanupAck()
-						return res, rerr
+					if offerAck.HaveBitmap != "" {
+						if haveBM, derr := relaycrypto.DecodeBitmap(offerAck.HaveBitmap, totalChunks); derr == nil {
+							stateMu.Lock()
+							for i := 0; i < totalChunks; i++ {
+								if relaycrypto.HasBit(haveBM, i) {
+									relaycrypto.SetBit(remoteHave, i)
+								}
+							}
+							stateMu.Unlock()
+						}
 					}
-					if cerr := hb.SendRelayChunk(ctx, plan.peerID, plan.clip.ID, idx, cts[idx]); cerr != nil {
+					p2pSent, _ := relaycrypto.NewBitmap(totalChunks)
+					reportProgress(p2pSent)
+
+					var wantList []int
+					if offerAck.WantP2PBitmap != "" {
+						if wantBM, derr := relaycrypto.DecodeBitmap(offerAck.WantP2PBitmap, totalChunks); derr == nil {
+							for i := 0; i < totalChunks; i++ {
+								if relaycrypto.HasBit(wantBM, i) {
+									wantList = append(wantList, i)
+								}
+							}
+						}
+					}
+
+					checkEarlyAck := func() (done bool, res relaySendResult, rerr error) {
+						if !hasAck {
+							return false, relaySendResult{}, nil
+						}
+						select {
+						case status := <-ackCh:
+							switch status {
+							case wire.ClipAckReceived:
+								return true, relaySendResult{state: TargetSent, receiptStage: ReceiptStageRemoteReceived, route: RouteHybrid}, nil
+							case wire.ClipAckDiscarded:
+								deleteOnAbort()
+								return true, relaySendResult{state: TargetDiscarded, receiptStage: ReceiptStageRemoteDiscarded, route: RouteHybrid}, nil
+							default:
+								deleteOnAbort()
+								return true, relaySendResult{}, newErr(CodeUnavailable, "peer failed to receive handoff transfer")
+							}
+						default:
+							return false, relaySendResult{}, nil
+						}
+					}
+
+					p2pBroken := false
+					for _, idx := range wantList {
+						if done, res, rerr := checkEarlyAck(); done {
+							cleanupAck()
+							return res, rerr
+						}
+						if cerr := hb.SendRelayChunk(ctx, plan.peerID, plan.clip.ID, idx, cts[idx]); cerr != nil {
+							if done, res, rerr := checkEarlyAck(); done {
+								cleanupAck()
+								return res, rerr
+							}
+							cleanupAck()
+							if ctx.Err() != nil {
+								deleteOnAbort()
+								return relaySendResult{}, ctxErr(ctx.Err())
+							}
+							// Reverse fallback: P2P dropped mid-handoff; resume HTTP for all chunks not in (httpUploaded ∪ remoteHave).
+							p2pBroken = true
+							break
+						}
+						relaycrypto.SetBit(p2pSent, idx)
+						reportProgress(p2pSent)
+					}
+					if p2pBroken {
+						continue
+					}
+
+					// Defensive check: upload any chunk not covered by httpUploaded ∪ remoteHave ∪ p2pSent.
+					var uncovered []int
+					stateMu.Lock()
+					for i := 0; i < totalChunks; i++ {
+						if !relaycrypto.HasBit(httpUploaded, i) && !relaycrypto.HasBit(remoteHave, i) && !relaycrypto.HasBit(p2pSent, i) {
+							uncovered = append(uncovered, i)
+						}
+					}
+					stateMu.Unlock()
+					for _, idx := range uncovered {
+						if uerr := cli.UploadChunk(ctx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID, idx, cts[idx], grantFor(idx)); uerr != nil {
+							cleanupAck()
+							deleteOnAbort()
+							return relaySendResult{}, uerr
+						}
+						stateMu.Lock()
+						relaycrypto.SetBit(httpUploaded, idx)
+						stateMu.Unlock()
+						reportProgress(p2pSent)
+					}
+
+					if !hasAck {
+						cleanupAck()
+						return relaySendResult{state: TargetSent, receiptStage: ReceiptStageLocalWritten, route: RouteHybrid}, nil
+					}
+
+					h.ReportProgress(plan.key, ReceiptStageLocalWritten, TransferProgress{
+						BytesSent:  plan.view.set.total,
+						TotalBytes: plan.view.set.total,
+						PartCount:  len(plan.view.set.parts),
+					})
+					ackTimer := time.NewTimer(handoffClipAckTimeout)
+					select {
+					case status := <-ackCh:
+						ackTimer.Stop()
+						cleanupAck()
+						switch status {
+						case wire.ClipAckReceived:
+							return relaySendResult{state: TargetSent, receiptStage: ReceiptStageRemoteReceived, route: RouteHybrid}, nil
+						case wire.ClipAckDiscarded:
+							deleteOnAbort()
+							return relaySendResult{state: TargetDiscarded, receiptStage: ReceiptStageRemoteDiscarded, route: RouteHybrid}, nil
+						default:
+							deleteOnAbort()
+							return relaySendResult{}, newErr(CodeUnavailable, "peer failed to commit handoff transfer")
+						}
+					case <-sessDone:
+						// P2P dropped before clip_ack arrived; drain any already-buffered ack
+						// before falling back to HTTP for unconfirmed chunks.
+						ackTimer.Stop()
 						if done, res, rerr := checkEarlyAck(); done {
 							cleanupAck()
 							return res, rerr
 						}
 						cleanupAck()
-						if ctx.Err() != nil {
-							deleteOnAbort()
-							return relaySendResult{}, ctxErr(ctx.Err())
-						}
-						// Reverse fallback: P2P dropped mid-handoff; resume HTTP for all chunks not in (httpUploaded ∪ remoteHave).
-						p2pBroken = true
-						break
-					}
-					relaycrypto.SetBit(p2pSent, idx)
-					reportProgress(p2pSent)
-				}
-				if p2pBroken {
-					continue
-				}
-
-				// Defensive check: upload any chunk not covered by httpUploaded ∪ remoteHave ∪ p2pSent.
-				var uncovered []int
-				stateMu.Lock()
-				for i := 0; i < totalChunks; i++ {
-					if !relaycrypto.HasBit(httpUploaded, i) && !relaycrypto.HasBit(remoteHave, i) && !relaycrypto.HasBit(p2pSent, i) {
-						uncovered = append(uncovered, i)
-					}
-				}
-				stateMu.Unlock()
-				for _, idx := range uncovered {
-					if uerr := cli.UploadChunk(ctx, plan.route.MailboxID, plan.route.DeliveryToken, plan.clip.ID, idx, cts[idx], grantFor(idx)); uerr != nil {
+						continue
+					case <-ctx.Done():
+						ackTimer.Stop()
 						cleanupAck()
 						deleteOnAbort()
-						return relaySendResult{}, uerr
+						return relaySendResult{}, ctxErr(ctx.Err())
+					case <-ackTimer.C:
+						cleanupAck()
+						return relaySendResult{}, newErr(CodeTimeout, "timed out waiting for peer handoff confirmation")
 					}
-					stateMu.Lock()
-					relaycrypto.SetBit(httpUploaded, idx)
-					stateMu.Unlock()
-					reportProgress(p2pSent)
 				}
+			}
+		}
 
-				if !hasAck {
-					cleanupAck()
-					return relaySendResult{state: TargetSent, receiptStage: ReceiptStageLocalWritten, route: RouteHybrid}, nil
-				}
-
-				h.ReportProgress(plan.key, ReceiptStageLocalWritten, TransferProgress{
-					BytesSent:  plan.view.set.total,
-					TotalBytes: plan.view.set.total,
-					PartCount:  len(plan.view.set.parts),
-				})
-				ackTimer := time.NewTimer(handoffClipAckTimeout)
-				select {
-				case status := <-ackCh:
-					ackTimer.Stop()
-					cleanupAck()
-					switch status {
-					case wire.ClipAckReceived:
-						return relaySendResult{state: TargetSent, receiptStage: ReceiptStageRemoteReceived, route: RouteHybrid}, nil
-					case wire.ClipAckDiscarded:
-						deleteOnAbort()
-						return relaySendResult{state: TargetDiscarded, receiptStage: ReceiptStageRemoteDiscarded, route: RouteHybrid}, nil
-					default:
-						deleteOnAbort()
-						return relaySendResult{}, newErr(CodeUnavailable, "peer failed to commit handoff transfer")
-					}
-				case <-sessDone:
-					// P2P dropped before clip_ack arrived; fall back to HTTP for unconfirmed chunks so zero bytes are lost.
-					ackTimer.Stop()
-					cleanupAck()
+		// Before launching HTTP workers, check if a fresh peer-up arrived or P2P
+		// became ready during state transition so workers don't race ahead of monWG.
+		if !transientOfferReject && !disableHandoffWatch && hb != nil && switches < maxHandoffSwitches && offerRetries < maxHandoffOfferRetries {
+			select {
+			case <-wakeCh:
+				if canHandoff(len(remIdx), remBytes) {
 					continue
-				case <-ctx.Done():
-					ackTimer.Stop()
-					cleanupAck()
-					deleteOnAbort()
-					return relaySendResult{}, ctxErr(ctx.Err())
-				case <-ackTimer.C:
-					cleanupAck()
-					return relaySendResult{}, newErr(CodeTimeout, "timed out waiting for peer handoff confirmation")
+				}
+			default:
+				if canHandoff(len(remIdx), remBytes) {
+					continue
 				}
 			}
 		}
@@ -1843,7 +1965,7 @@ func (b *peerProcBackend) sendViaRelay(ctx context.Context, plan relayPlan, h ba
 		httpCtx, httpCancel := context.WithCancel(ctx)
 		var handoffRequested atomic.Bool
 		var monWG sync.WaitGroup
-		if hb != nil && switches < maxHandoffSwitches {
+		if hb != nil && switches < maxHandoffSwitches && !disableHandoffWatch {
 			monWG.Add(1)
 			go func() {
 				defer monWG.Done()

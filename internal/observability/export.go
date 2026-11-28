@@ -38,6 +38,9 @@ type metricRecord struct {
 	remoteApplication bool
 	pipeline          *engine.DiagnosticRecord
 	sync              *syncdiag.Record
+	resource          *ResourceSample
+	power             *PowerSample
+	metrickit         *MetricKitReport
 }
 
 func (g *generation) record(r metricRecord) {
@@ -49,6 +52,15 @@ func (g *generation) record(r metricRecord) {
 	}
 	if r.sync != nil {
 		g.recordSync(*r.sync)
+	}
+	if r.resource != nil {
+		g.recordResource(*r.resource)
+	}
+	if r.power != nil {
+		g.recordPower(*r.power)
+	}
+	if r.metrickit != nil {
+		g.recordMetricKit(*r.metrickit)
 	}
 }
 
@@ -78,6 +90,8 @@ type generation struct {
 	inst           instruments
 	credential     bool
 	transport      *http.Transport
+	resMu          sync.Mutex
+	resPrimedSeq   uint64
 }
 
 func (c *Controller) newGeneration(i int) (*generation, error) {
@@ -283,6 +297,7 @@ func (g *generation) run() {
 			g.c.exported(1, err, g.ctx, int(g.wire.status.Load()))
 		} else {
 			g.collectHealth()
+			g.collectResources()
 			var data metricdata.ResourceMetrics
 			err := g.reader.Collect(ctx, &data)
 			if err == nil {
@@ -306,6 +321,9 @@ func (g *generation) run() {
 				return
 			}
 		}
+	}
+	if g.index == 2 {
+		g.primeResources()
 	}
 	for {
 		select {

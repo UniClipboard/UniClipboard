@@ -192,7 +192,12 @@ class BackgroundSyncService : Service() {
   }
 
   private fun acquireMulticastLock() {
-    if (multicastLock?.isHeld == true) return
+    val prev = isMulticastLockHeld
+    if (multicastLock?.isHeld == true) {
+      isMulticastLockHeld = true
+      if (!prev) UnicEngineHost.onBackgroundMonitorStateChanged(applicationContext)
+      return
+    }
     multicastLock = runCatching {
       val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
       wifi.createMulticastLock("uniclipboard-mdns").apply {
@@ -202,11 +207,21 @@ class BackgroundSyncService : Service() {
     }.onFailure {
       Log.w(TAG, "Multicast lock unavailable: ${it.javaClass.simpleName}")
     }.getOrNull()
+    val next = multicastLock?.isHeld == true
+    isMulticastLockHeld = next
+    if (prev != next) {
+      UnicEngineHost.onBackgroundMonitorStateChanged(applicationContext)
+    }
   }
 
   private fun releaseMulticastLock() {
+    val prev = isMulticastLockHeld
     runCatching { multicastLock?.takeIf { it.isHeld }?.release() }
     multicastLock = null
+    isMulticastLockHeld = false
+    if (prev) {
+      UnicEngineHost.onBackgroundMonitorStateChanged(applicationContext)
+    }
   }
 
   private fun createNotificationChannels() {
@@ -293,6 +308,10 @@ class BackgroundSyncService : Service() {
 
     @Volatile
     var running: Boolean = false
+      private set
+
+    @Volatile
+    var isMulticastLockHeld: Boolean = false
       private set
 
     @Volatile

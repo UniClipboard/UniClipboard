@@ -21,6 +21,7 @@ paths:
   - engine/receive.go
   - engine/clipboard.go
   - internal/observability
+  - internal/procmetrics
   - internal/syncdiag
   - internal/session
   - internal/tcnet
@@ -29,8 +30,13 @@ paths:
   - internal/localconfig
   - app/service/internal/host/submissions.go
   - app/service/internal/host/node.go
+  - app/service/internal/host/resource.go
   - internal/localapi/diagnostics.go
   - app/service/internal/server/diagnostics.go
+  - app/desktop/internal/resourcereport
+  - app/desktop/cmd/unic-desktop/roles.go
+  - app/desktop/cmd/unic-desktop/roles_native.go
+  - app/desktop/cmd/unic-desktop/gui.go
   - app/service/cmd/unic/cli.go
   - app/service/cmd/unic/main.go
   - app/service/cmd/unic/logs_export.go
@@ -43,17 +49,23 @@ paths:
   - e2e/cli/traces_e2e_test.go
   - e2e/tracecloud
   - e2e/cli/observability_e2e_test.go
+  - e2e/cli/resource_observability_e2e_test.go
   - e2e/cli/sync_observability_e2e_test.go
   - e2e/syncpath
   - bindings/mobile/diagnostics.go
   - bindings/mobile/engine.go
+  - bindings/mobile/resource.go
   - bindings/e2e/mobile-diagnostics
   - bindings/scripts/build-mobile.sh
+  - app/expo/modules/unic-engine/ios/ResourcePowerCollector.swift
+  - app/expo/modules/unic-engine/ios/MetricKitSubscriber.swift
+  - app/expo/targets/keyboard/KeyboardResourceCollector.swift
+  - app/expo/modules/unic-engine/android/src/main/java/app/uniclipboard/engine/AndroidResourcePowerCollector.kt
   - app/expo/src/screens/settings/DiagnosticsSettings.tsx
   - app/expo/src/screens/settings/useDiagnosticCapture.ts
   - app/expo/src/screens/settings/ios/DiagnosticsPage.tsx
   - app/expo/src/screens/settings/android/DiagnosticsSection.tsx
-verified: 610f19b73f90f0860100d873ccba35fade99b436
+verified: d159f5632b95acb523948cc0a5ed22817e319d53
 ---
 # Client logs, metrics, traces and product analytics
 
@@ -213,6 +225,18 @@ The exact settings and public hook are defined in the [observability contract](.
 | `app/service/cmd/unic/logs_export.go` | Offline rooted archive and SHA-256 manifest |
 | `app/service/cmd/unicd/*_e2e.go` | Build-tagged nonvisual test entry, fixed fixtures, local TCP transport seam |
 | `e2e/cli/observability_e2e_test.go` | Real-process HTTP/protobuf, privacy, lifecycle, fault and resource acceptance |
+| `e2e/cli/resource_observability_e2e_test.go` | Resource and power telemetry OTLP export, validation, disable barrier and cli-temporary exclusion |
+| `internal/procmetrics` | CGO-free cross-platform CPU, OS memory footprint, Go heap, sleep-jump and macOS wakeups / Linux context switches probes |
+| `internal/observability/resource.go` | Resource, mobile power, MetricKit validation and OTLP instruments (§14) |
+| `app/desktop/internal/resourcereport` | Desktop `tray`, `gui` and `quick_panel` 60s and exit sample reporters over `/v1/diagnostics/resource-sample` |
+| `bindings/mobile/resource.go` | Mobile `HostResourceProvider` bridge, MetricKit ingestion and pure-Go fallback collector |
+
+## Host resource and mobile power telemetry
+
+- `unicd` (excluding `--cli-temporary`) samples itself once per 60-second metrics export cycle via `internal/procmetrics` (`CGO_ENABLED=0`) and remains the sole desktop OTLP exporter (`service.name=unicd`).
+- Desktop `tray`, `gui` and `quick_panel` processes run `app/desktop/internal/resourcereport`, submitting bounded (<= 1 KiB) samples to `POST /v1/diagnostics/resource-sample` while `telemetry.enabled && telemetry.metrics.enabled` is true. UI visibility callbacks capture monotonic transition timestamps non-blockingly without running probe I/O or waiting on probe/IPC locks; single-transition spill within threshold attributes cleanly to the prior state, whereas multi-switch, queue-overflow, or delayed cumulative counter windows are silently discarded and re-anchored (Decision C1), and disabling cancels in-flight IPC and resets baselines immediately.
+- Mobile (`unic-mobile`) collects native OS CPU, memory (`phys_footprint` on iOS, `Debug.MemoryInfo.totalPss` on Android), Android aggregate UID `TrafficStats` bytes, Android piecewise timestamped background mode/screen/multicast-lock/suspended residency (`power_samples` with standby `background_screen_off` deep-sleep tolerance and `logcatProcess`-gated `overlay_event`), system thermal residency, Android-only strict >=10-minute unplugged system battery drain segments (per-value broadcast monitoring with 60s tick retry when transiently unregistered; iOS marks `system_battery.drain_rate` `unsupported` while keeping `power_source` and CPU/Memory/Thermal per Decision A1), and iOS main-app `MXMetricManager` 24-hour payloads (`unic.power.ios_metrickit.*`) with entry-bound consent generation, SHA-256 content-identity deduplication, and atomic persist-before-commit / seen-before-prune delivery up to Go ingestion admission (Decision B1).
+- Hardware interrupt wakeups (`unic.power.wakeups`, macOS `proc_pid_rusage`) and voluntary context switches (`unic.power.context_switches`, Linux/Android `/proc/self/status`) are kept strictly separate. Missing or unsupported probes increment `unic.resource.probe_status` instead of zero-filling.
 
 ## Tailcat sync observations
 

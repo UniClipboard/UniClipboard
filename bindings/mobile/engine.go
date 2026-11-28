@@ -22,6 +22,7 @@ import (
 	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
+	"github.com/uniclipboard/unic/internal/procmetrics"
 )
 
 // EventSink receives asynchronous Engine state change notifications.
@@ -32,17 +33,22 @@ type EventSink interface {
 
 // Engine wraps *engine.Engine behind a gomobile-safe, JSON-typed boundary.
 type Engine struct {
-	e               *engine.Engine
-	dataDir         string
-	settingsPath    string
-	relaySecretPath string
-	cacheDir        string
-	extensionMode   bool
-	settingsMu      sync.Mutex
-	relayURL        string
-	relayAccessKey  string
-	previewMu       sync.Mutex
-	diagnostics     *mobileDiagnostics
+	e                 *engine.Engine
+	dataDir           string
+	settingsPath      string
+	relaySecretPath   string
+	cacheDir          string
+	extensionMode     bool
+	settingsMu        sync.Mutex
+	relayURL          string
+	relayAccessKey    string
+	previewMu         sync.Mutex
+	diagnostics       *mobileDiagnostics
+	resourceMu        sync.RWMutex
+	resourceProvider  HostResourceProvider
+	fallbackSamplerMu sync.Mutex
+	fallbackSampler   *procmetrics.Sampler
+	fallbackEpoch     uint64
 
 	subMu     sync.Mutex
 	sub       *engine.Subscription
@@ -354,7 +360,7 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		return nil, wrapErr(err)
 	}
 	diagnostics.controller.SetSyncCollector(peer.Collect)
-	return &Engine{
+	m := &Engine{
 		e:               eng,
 		dataDir:         dataDir,
 		settingsPath:    settingsPath,
@@ -364,7 +370,10 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		relayURL:        settings.Sync.Relay.URL,
 		relayAccessKey:  settings.Sync.Relay.AccessKey,
 		diagnostics:     diagnostics,
-	}, nil
+		fallbackSampler: procmetrics.NewSampler(),
+	}
+	diagnostics.controller.SetResourceCollector(m.collectResources)
+	return m, nil
 }
 
 // Start brings up local services and networking (if runtime state is active).

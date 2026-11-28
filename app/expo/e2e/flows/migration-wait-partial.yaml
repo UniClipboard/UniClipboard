@@ -7,6 +7,16 @@ name: Wait for partial legacy mobile migration state
     timeout: 45000
 - tapOn:
     id: setup-start-migration
+    retryTapIfNoChange: true
+- runFlow:
+    when:
+      visible:
+        id: setup-start-migration
+        enabled: true
+    commands:
+      - tapOn:
+          id: setup-start-migration
+          retryTapIfNoChange: true
 - extendedWaitUntil:
     visible:
       id: setup-retry-partial

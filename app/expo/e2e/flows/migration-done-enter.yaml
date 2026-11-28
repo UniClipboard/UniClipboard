@@ -7,12 +7,32 @@ name: Legacy mobile auto-migration complete and enter history
     timeout: 45000
 - tapOn:
     id: setup-start-migration
+    retryTapIfNoChange: true
+- runFlow:
+    when:
+      visible:
+        id: setup-start-migration
+        enabled: true
+    commands:
+      - tapOn:
+          id: setup-start-migration
+          retryTapIfNoChange: true
 - extendedWaitUntil:
     visible:
       id: setup-enter-history
     timeout: 45000
 - tapOn:
     id: setup-enter-history
+    retryTapIfNoChange: true
+- runFlow:
+    when:
+      visible:
+        id: setup-enter-history
+        enabled: true
+    commands:
+      - tapOn:
+          id: setup-enter-history
+          retryTapIfNoChange: true
 - runFlow:
     when:
       platform: iOS

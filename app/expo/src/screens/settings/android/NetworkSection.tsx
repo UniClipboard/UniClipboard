@@ -23,7 +23,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { useEngineStore } from '@/engine/store';
 import { useTheme } from '@/hooks/useTheme';
-import { cloudUserLabel } from '@/lib/cloudAuth';
+import { cloudStatusLabel } from '@/lib/cloudAuth';
 import { useCloudStore } from '@/stores/cloudStore';
 import { SettingsSectionItem } from '../SettingsSectionItem';
 import type { AndroidSettingFieldEdit } from './SettingsFieldDialog';
@@ -52,11 +52,11 @@ export const NetworkSection = memo(function NetworkSection({
   const colors = useMaterialColors();
   const cloud = useCloudStore(
     useShallow((s) => ({
-      session: s.session,
+      status: s.status,
       busy: s.busy,
       hydrate: s.hydrate,
       signIn: s.signIn,
-      provisionRelay: s.provisionRelay,
+      ensureRelay: s.ensureRelay,
     }))
   );
   const state = useEngineStore(
@@ -83,9 +83,11 @@ export const NetworkSection = memo(function NetworkSection({
     );
   };
 
-  const handleCloudAction = () => {
+  const handleCloudAction = (autoEnableRelay = true) => {
     if (cloud.busy) return;
-    const action = cloud.session ? cloud.provisionRelay() : cloud.signIn();
+    const action = cloud.status?.signed_in
+      ? cloud.ensureRelay()
+      : cloud.signIn({ autoEnableRelay });
     void action
       .then(() =>
         Alert.alert(
@@ -113,6 +115,7 @@ export const NetworkSection = memo(function NetworkSection({
   const connectedText = t('settings:live.connected', { connected, total: bindings.length });
   const relayReadyText = t('settings:live.relayReadyCount', { ready: relayReady, total: bindings.length });
   const relay = settings?.sync.relay ?? { enabled: false };
+  const isOfficialRelay = !relay.url?.trim();
   const relayMaxMB = relay.max_bytes && relay.max_bytes > 0
     ? Math.max(1, Math.round(relay.max_bytes / (1024 * 1024)))
     : DEFAULT_RELAY_MAX_MB;
@@ -123,6 +126,38 @@ export const NetworkSection = memo(function NetworkSection({
     value: String(mb),
     label: mb === DEFAULT_RELAY_MAX_MB ? `${mb} MB (${t('settings:live.default')})` : `${mb} MB`,
   }));
+
+  const handleRelayToggle = (enabled: boolean) => {
+    if (!enabled) {
+      run(
+        state.updateSettings((old) => ({
+          ...old,
+          sync: {
+            ...old.sync,
+            relay: { ...(old.sync.relay ?? { enabled: false }), enabled: false },
+          },
+        }))
+      );
+      return;
+    }
+    if (!isOfficialRelay || relay.has_access_key) {
+      run(
+        state.updateSettings((old) => ({
+          ...old,
+          sync: {
+            ...old.sync,
+            relay: { ...(old.sync.relay ?? { enabled: false }), enabled: true },
+          },
+        }))
+      );
+      return;
+    }
+    if (cloud.status?.signed_in) {
+      run(cloud.ensureRelay());
+      return;
+    }
+    handleCloudAction(true);
+  };
 
   return (
     <Column modifiers={[fillMaxWidth()]}>
@@ -220,17 +255,7 @@ export const NetworkSection = memo(function NetworkSection({
               title={t('settings:live.relayEnabled')}
               description={t('settings:live.relayEnabledDesc')}
               value={Boolean(relay.enabled)}
-              onValueChange={(enabled) =>
-                run(
-                  state.updateSettings((old) => ({
-                    ...old,
-                    sync: {
-                      ...old.sync,
-                      relay: { ...(old.sync.relay ?? { enabled: false }), enabled },
-                    },
-                  }))
-                )
-              }
+              onValueChange={handleRelayToggle}
             />
             <SettingsListRow
               key="relay-url"
@@ -302,69 +327,97 @@ export const NetworkSection = memo(function NetworkSection({
                 );
               }}
             />
-            {!relay.url ? (
-              <SettingsListRow
-                key="relay-cloud-login"
-                testID="relay-cloud-login"
-                title={
-                  cloud.busy
-                    ? t('settings:live.cloudSigningIn')
-                    : cloud.session
-                      ? relay.has_access_key
-                        ? t('settings:live.relayRefreshFromCloud')
-                        : t('settings:live.relayEnableFromCloud')
-                      : t('settings:live.cloudSignIn')
-                }
-                description={
-                  cloud.session
-                    ? cloudUserLabel(cloud.session.user)
-                    : t('settings:live.cloudSignInDesc')
-                }
-                disabled={cloud.busy}
-                trailing={cloud.busy ? 'none' : 'chevron'}
-                onPress={handleCloudAction}
-              />
-            ) : null}
-            <SettingsListRow
-              key="relay-access-key"
-              testID="relay-access-key"
-              title={t('settings:live.relayAccessKey')}
-              trailing={{
-                text: relay.has_access_key
-                  ? t('settings:live.relayKeyConfigured')
-                  : t('settings:live.relayKeyNotSet'),
-                color: relay.has_access_key ? (theme.colors.success as string) : undefined,
-                chevron: true,
-              }}
-              onPress={() =>
-                onEdit({
-                  id: 'relay-access-key',
-                  title: t('settings:live.relayAccessKey'),
-                  value: '',
-                  placeholder: t('settings:live.relayAccessKeyPlaceholder'),
-                  secure: true,
-                  save: async (next) => {
-                    const trimmed = next.trim();
-                    if (!trimmed) {
-                      throw new Error(t('settings:live.relayAccessKeyEmpty'));
+            {isOfficialRelay ? (
+              cloud.status?.signed_in ? (
+                <SettingsListRow
+                  key="relay-cloud-login"
+                  testID="relay-cloud-login"
+                  title={cloudStatusLabel(cloud.status)}
+                  description={t('settings:live.cloudSignedIn')}
+                  trailing={{
+                    text: t('settings:live.cloudSignedIn'),
+                    color: theme.colors.success as string,
+                  }}
+                />
+              ) : cloud.status?.reauth_required ? (
+                <SettingsListRow
+                  key="relay-cloud-login"
+                  testID="relay-cloud-login"
+                  title={
+                    cloud.busy
+                      ? t('settings:live.cloudSigningIn')
+                      : t('settings:live.cloudReauthAction')
+                  }
+                  description={t('settings:live.cloudReauthRequiredDesc')}
+                  disabled={cloud.busy}
+                  trailing={{
+                    text: t('settings:live.cloudReauthRequired'),
+                    color: theme.colors.warning as string,
+                    chevron: !cloud.busy,
+                  }}
+                  onPress={() => handleCloudAction(true)}
+                />
+              ) : (
+                <SettingsListRow
+                  key="relay-cloud-login"
+                  testID="relay-cloud-login"
+                  title={
+                    cloud.busy ? t('settings:live.cloudSigningIn') : t('settings:live.cloudSignIn')
+                  }
+                  description={
+                    relay.has_access_key
+                      ? t('settings:live.relayManualFallbackDesc')
+                      : t('settings:live.cloudSignInDesc')
+                  }
+                  disabled={cloud.busy}
+                  trailing={cloud.busy ? 'none' : 'chevron'}
+                  onPress={() => handleCloudAction(true)}
+                />
+              )
+            ) : (
+              <>
+                <SettingsListRow
+                  key="relay-access-key"
+                  testID="relay-access-key"
+                  title={t('settings:live.relayAccessKey')}
+                  trailing={{
+                    text: relay.has_access_key
+                      ? t('settings:live.relayKeyConfigured')
+                      : t('settings:live.relayKeyNotSet'),
+                    color: relay.has_access_key ? (theme.colors.success as string) : undefined,
+                    chevron: true,
+                  }}
+                  onPress={() =>
+                    onEdit({
+                      id: 'relay-access-key',
+                      title: t('settings:live.relayAccessKey'),
+                      value: '',
+                      placeholder: t('settings:live.relayAccessKeyPlaceholder'),
+                      secure: true,
+                      save: async (next) => {
+                        const trimmed = next.trim();
+                        if (!trimmed) {
+                          throw new Error(t('settings:live.relayAccessKeyEmpty'));
+                        }
+                        await state.updateSettings((old) => old, { relayAccessKey: trimmed });
+                      },
+                    })
+                  }
+                />
+                {relay.has_access_key ? (
+                  <SettingsListRow
+                    key="relay-access-key-clear"
+                    testID="relay-access-key-clear"
+                    title={t('settings:live.relayClearAccessKey')}
+                    destructive
+                    trailing={{ action: t('common:action.clear', { defaultValue: t('settings:live.relayClearAccessKey') }) }}
+                    onPress={() =>
+                      run(state.updateSettings((old) => old, { relayAccessKey: '' }))
                     }
-                    await state.updateSettings((old) => old, { relayAccessKey: trimmed });
-                  },
-                })
-              }
-            />
-            {relay.has_access_key ? (
-              <SettingsListRow
-                key="relay-access-key-clear"
-                testID="relay-access-key-clear"
-                title={t('settings:live.relayClearAccessKey')}
-                destructive
-                trailing={{ action: t('common:action.clear', { defaultValue: t('settings:live.relayClearAccessKey') }) }}
-                onPress={() =>
-                  run(state.updateSettings((old) => old, { relayAccessKey: '' }))
-                }
-              />
-            ) : null}
+                  />
+                ) : null}
+              </>
+            )}
           </SettingsSectionItem>
         </>
       ) : null}

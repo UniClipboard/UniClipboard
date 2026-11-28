@@ -1321,6 +1321,26 @@ public final class UnicEngineModule: Module {
       return try callGoString { eng.updateSettings(reqJSON, error: $0) }
     }.runOnQueue(engineQueue)
 
+    AsyncFunction("getCloudStatus") { () -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.getCloudStatus($0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("finishCloudLogin") { (reqJSON: String) -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.finishCloudLogin(reqJSON, error: $0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("ensureCloudRelay") { () -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.ensureCloudRelay($0) }
+    }.runOnQueue(engineQueue)
+
+    AsyncFunction("logoutCloud") { () -> String in
+      let eng = try self.requireEngine()
+      return try callGoString { eng.logoutCloud($0) }
+    }.runOnQueue(engineQueue)
+
     // ---- History & Content ----
 
     AsyncFunction("getFileCacheState") { () -> String in

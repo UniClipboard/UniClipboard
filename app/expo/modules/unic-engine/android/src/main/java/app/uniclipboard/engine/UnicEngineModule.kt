@@ -1036,6 +1036,46 @@ class UnicEngineModule : Module() {
       }
     }.runOnQueue(engineScope)
 
+    AsyncFunction("getCloudStatus") { ->
+      try {
+        requireEngine().getCloudStatus()
+      } catch (ce: CodedException) {
+        throw ce
+      } catch (t: Throwable) {
+        throw moduleException(t)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("finishCloudLogin") { reqJSON: String ->
+      try {
+        requireEngine().finishCloudLogin(reqJSON)
+      } catch (ce: CodedException) {
+        throw ce
+      } catch (t: Throwable) {
+        throw moduleException(t)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("ensureCloudRelay") { ->
+      try {
+        requireEngine().ensureCloudRelay()
+      } catch (ce: CodedException) {
+        throw ce
+      } catch (t: Throwable) {
+        throw moduleException(t)
+      }
+    }.runOnQueue(engineScope)
+
+    AsyncFunction("logoutCloud") { ->
+      try {
+        requireEngine().logoutCloud()
+      } catch (ce: CodedException) {
+        throw ce
+      } catch (t: Throwable) {
+        throw moduleException(t)
+      }
+    }.runOnQueue(engineScope)
+
     AsyncFunction("getFileCacheState") { ->
       try { requireEngine().fileCacheState } catch (error: Exception) { throw moduleException(error) }
     }.runOnQueue(engineScope)

@@ -9,13 +9,14 @@ import { IosSheetForm, IosSheetPage } from '@/components/ui';
 import { useEngineStore } from '@/engine/store';
 import { useTheme } from '@/hooks/useTheme';
 import { useAppLanguage } from '@/i18n/useAppLanguage';
-import { cloudUserLabel } from '@/lib/cloudAuth';
+import { cloudStatusLabel } from '@/lib/cloudAuth';
 import { useCloudStore } from '@/stores/cloudStore';
 import {
   IconToggleRow,
   SettingsNavRow,
   SettingsPickerRow,
   settingsTileColors,
+  statusOrange,
 } from './common';
 import type { IosSettingsPage } from './types';
 
@@ -30,7 +31,7 @@ export function SettingsRootPage({ onNavigate }: { onNavigate: (page: IosSetting
   const { preference, setLanguage } = useAppLanguage();
   const cloud = useCloudStore(
     useShallow((s) => ({
-      session: s.session,
+      status: s.status,
       busy: s.busy,
       hydrate: s.hydrate,
       signIn: s.signIn,
@@ -109,15 +110,42 @@ export function SettingsRootPage({ onNavigate }: { onNavigate: (page: IosSetting
           header={<SwiftUIText>{t('settings:live.cloudSection')}</SwiftUIText>}
           footer={<SwiftUIText>{t('settings:live.cloudFooter')}</SwiftUIText>}
         >
-          {cloud.session ? (
+          {cloud.status?.signed_in ? (
             <>
               <SettingsNavRow
                 testID="cloud-account"
                 icon="icloud"
                 iconColor={settingsTileColors.blue}
-                title={cloudUserLabel(cloud.session.user)}
+                title={cloudStatusLabel(cloud.status)}
                 value={t('settings:live.cloudSignedIn')}
                 readOnly
+              />
+              <SettingsNavRow
+                testID="cloud-sign-out"
+                title={t('settings:live.cloudSignOut')}
+                destructive
+                showsChevron={false}
+                disabled={cloud.busy}
+                onPress={handleCloudSignOut}
+              />
+            </>
+          ) : cloud.status?.reauth_required ? (
+            <>
+              <SettingsNavRow
+                testID="cloud-account"
+                icon="icloud"
+                iconColor={settingsTileColors.orange}
+                title={cloudStatusLabel(cloud.status)}
+                value={t('settings:live.cloudReauthRequired')}
+                valueColor={statusOrange}
+                readOnly
+              />
+              <SettingsNavRow
+                testID="cloud-sign-in"
+                title={cloud.busy ? t('settings:live.cloudSigningIn') : t('settings:live.cloudReauthAction')}
+                showsChevron={!cloud.busy}
+                disabled={cloud.busy}
+                onPress={handleCloudSignIn}
               />
               <SettingsNavRow
                 testID="cloud-sign-out"

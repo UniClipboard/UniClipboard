@@ -7,12 +7,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/skip2/go-qrcode"
@@ -22,6 +24,7 @@ import (
 	"github.com/uniclipboard/unic/internal/plugins/builtinpreview"
 	"github.com/uniclipboard/unic/internal/plugins/builtintext"
 	"github.com/uniclipboard/unic/internal/plugins/tailcat"
+	"github.com/uniclipboard/unic/internal/relaycrypto"
 )
 
 // EventSink receives asynchronous Engine state change notifications.
@@ -38,9 +41,13 @@ type Engine struct {
 	relaySecretPath string
 	cacheDir        string
 	extensionMode   bool
-	settingsMu      sync.Mutex
-	relayURL        string
-	relayAccessKey  string
+	settingsMu           sync.Mutex
+	storedSettings       engine.Settings
+	relayURL             string
+	relayAccessKey       string
+	relayAccessKeyTarget string
+	relayAccessKeyBound  bool
+	cloudRelay           *mobileCloudRelay
 	previewMu       sync.Mutex
 	diagnostics     *mobileDiagnostics
 
@@ -154,7 +161,11 @@ func applyRelayConfigDefaults(s *engine.Settings, cfg engineConfigDTO) {
 	}
 	if s.Sync.Relay.AccessKey == "" {
 		if k := strings.TrimSpace(cfg.RelayAccessKey); k != "" {
-			s.Sync.Relay.AccessKey = k
+			sTarget, sOK := canonicalRelayTarget(s.Sync.Relay.URL)
+			cfgTarget, cfgOK := canonicalRelayTarget(cfg.RelayURL)
+			if sOK && cfgOK && sTarget == cfgTarget {
+				s.Sync.Relay.AccessKey = k
+			}
 		}
 	}
 	if s.Sync.Relay.MaxBytes == 0 && cfg.RelayMaxBytes > 0 {
@@ -165,21 +176,71 @@ func applyRelayConfigDefaults(s *engine.Settings, cfg engineConfigDTO) {
 	}
 }
 
-func loadRelaySecret(path string) string {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(raw))
+type mobileRelaySecretRecord struct {
+	Target    *string `json:"target"`
+	AccessKey string  `json:"access_key"`
 }
 
-func saveRelaySecretAtomic(path, key string) error {
+func canonicalRelayTarget(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", true
+	}
+	norm, err := relaycrypto.NormalizeRelayOrigin(trimmed)
+	if err != nil {
+		return "", false
+	}
+	return norm, true
+}
+
+func loadRelaySecretForTarget(path, expectedURL string) (string, bool, bool) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", false, false
+		}
+		return "", false, true
+	}
+	wantTarget, ok := canonicalRelayTarget(expectedURL)
+	if !ok {
+		return "", false, true
+	}
+	var rec mobileRelaySecretRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		return "", false, true
+	}
+	if rec.Target == nil {
+		return "", false, true
+	}
+	recTarget, ok := canonicalRelayTarget(*rec.Target)
+	if !ok || recTarget != wantTarget {
+		return "", false, true
+	}
+	key := strings.TrimSpace(rec.AccessKey)
+	if key == "" {
+		return "", false, true
+	}
+	return key, true, true
+}
+
+func saveRelaySecretAtomic(path, targetURL, key string) error {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 		return nil
+	}
+	normTarget, ok := canonicalRelayTarget(targetURL)
+	if !ok {
+		return errors.New("invalid relay secret target")
+	}
+	raw, err := json.Marshal(mobileRelaySecretRecord{
+		Target:    &normTarget,
+		AccessKey: key,
+	})
+	if err != nil {
+		return err
 	}
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -195,7 +256,7 @@ func saveRelaySecretAtomic(path, key string) error {
 		_ = tmp.Close()
 		return err
 	}
-	if _, err := tmp.WriteString(key); err != nil {
+	if _, err := tmp.Write(append(raw, '\n')); err != nil {
 		_ = tmp.Close()
 		return err
 	}
@@ -271,6 +332,10 @@ func NewEngine(configJSON string) (*Engine, error) {
 }
 
 func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, error) {
+	return newEngineWithOptions(configJSON, peer, nil, nil)
+}
+
+func newEngineWithOptions(configJSON string, peer *tailcat.Plugin, cloudHTTP *http.Client, nowFn func() time.Time) (*Engine, error) {
 	var cfg engineConfigDTO
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return nil, wrapErr(errors.New("invalid engine config json"))
@@ -297,13 +362,36 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 
 	settingsPath := filepath.Join(dataDir, mobileSettingsFilename)
 	relaySecretPath := filepath.Join(dataDir, "mobile-relay-secret")
-	settings, err := loadSettingsOrDefault(settingsPath, cfg)
+	storedSettings, err := loadSettingsOrDefault(settingsPath, cfg)
 	if err != nil {
 		return nil, wrapErr(err)
 	}
-	if persistedKey := loadRelaySecret(relaySecretPath); persistedKey != "" {
-		settings.Sync.Relay.AccessKey = persistedKey
+	wasHasAccessKey := storedSettings.Sync.Relay.HasAccessKey
+	inlineKey := strings.TrimSpace(storedSettings.Sync.Relay.AccessKey)
+	storedSettings.Sync.Relay.AccessKey = ""
+
+	var manualKey string
+	var manualKeyTarget string
+	var manualKeyBound bool
+	persistedKey, proven, secretFilePresent := loadRelaySecretForTarget(relaySecretPath, storedSettings.Sync.Relay.URL)
+	if proven {
+		manualKey = persistedKey
+		manualKeyTarget, manualKeyBound = canonicalRelayTarget(storedSettings.Sync.Relay.URL)
+	} else {
+		if secretFilePresent {
+			// Unattributed legacy or interrupted-write mismatched secret cannot be proven
+			// to belong to the loaded target; reject and remove it before starting Engine.
+			_ = saveRelaySecretAtomic(relaySecretPath, "", "")
+		}
+		if inlineKey != "" {
+			if normTarget, ok := canonicalRelayTarget(storedSettings.Sync.Relay.URL); ok {
+				manualKey = inlineKey
+				manualKeyTarget = normTarget
+				manualKeyBound = true
+			}
+		}
 	}
+	storedSettings.Sync.Relay.HasAccessKey = manualKey != "" && manualKeyBound
 
 	caps := engine.HostCapabilities{
 		Observe: engine.AbilityUnavailable,
@@ -334,18 +422,44 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		plugins = append(plugins, engine.PluginInstance{Plugin: previewer, Builtin: true})
 	}
 
+	m := &Engine{
+		dataDir:              dataDir,
+		settingsPath:         settingsPath,
+		relaySecretPath:      relaySecretPath,
+		cacheDir:             cacheDir,
+		extensionMode:        cfg.ExtensionMode,
+		storedSettings:       storedSettings,
+		relayURL:             storedSettings.Sync.Relay.URL,
+		relayAccessKey:       manualKey,
+		relayAccessKeyTarget: manualKeyTarget,
+		relayAccessKeyBound:  manualKeyBound,
+	}
+	m.cloudRelay = newMobileCloudRelay(m, dataDir, cloudHTTP, nowFn)
+	_, _, _ = m.cloudRelay.mgr.Reload()
+	needStartupSave := wasHasAccessKey != (manualKey != "" && manualKeyBound)
+	if m.cloudRelay.shouldDisableOfficialRelay(m.storedSettings, m.relayAccessKey) {
+		m.storedSettings.Sync.Relay.Enabled = false
+		needStartupSave = true
+	}
+	if needStartupSave {
+		_ = saveSettingsAtomic(settingsPath, m.redactedStoredSettingsLocked())
+	}
+	m.cloudRelay.setStoredConfig(m.storedSettings, m.relayAccessKey, m.relayAccessKeyTarget, m.relayAccessKeyBound)
+	guardedSettings := m.cloudRelay.applyRelayGuard(m.storedSettings, m.relayAccessKey)
+
 	diagnostics := newMobileDiagnostics(dataDir)
 	peer.Observe(diagnostics.controller)
 	opts := engine.Options{
 		DataDir:          dataDir,
 		CacheDir:         cacheDir,
-		Settings:         settings,
+		Settings:         guardedSettings,
 		HostCapabilities: caps,
 		Logger:           diagnostics.controller.Logger(),
 		Diagnostics:      diagnostics.controller.Record,
 		ProductEvents:    diagnostics.controller.ProductEvent,
 		Tracer:           diagnostics.controller,
 		Plugins:          plugins,
+		RelayAuth:        m.cloudRelay,
 	}
 
 	eng, err := engine.New(context.Background(), opts)
@@ -354,17 +468,9 @@ func newEngineWithBackend(configJSON string, peer *tailcat.Plugin) (*Engine, err
 		return nil, wrapErr(err)
 	}
 	diagnostics.controller.SetSyncCollector(peer.Collect)
-	return &Engine{
-		e:               eng,
-		dataDir:         dataDir,
-		settingsPath:    settingsPath,
-		relaySecretPath: relaySecretPath,
-		cacheDir:        cacheDir,
-		extensionMode:   cfg.ExtensionMode,
-		relayURL:        settings.Sync.Relay.URL,
-		relayAccessKey:  settings.Sync.Relay.AccessKey,
-		diagnostics:     diagnostics,
-	}, nil
+	m.e = eng
+	m.diagnostics = diagnostics
+	return m, nil
 }
 
 // Start brings up local services and networking (if runtime state is active).
@@ -373,6 +479,9 @@ func (m *Engine) Start(token *CancelToken) error {
 	defer cancel()
 	if err := m.e.Start(ctx); err != nil {
 		return wrapErr(err)
+	}
+	if m.cloudRelay != nil {
+		m.cloudRelay.start()
 	}
 	if m.extensionMode {
 		m.diagnostics.controller.EnableProduct("mobile")
@@ -384,6 +493,9 @@ func (m *Engine) Start(token *CancelToken) error {
 
 // Stop shuts down networking and waits for active sessions to exit.
 func (m *Engine) Stop(token *CancelToken) error {
+	if m.cloudRelay != nil {
+		m.cloudRelay.stop()
+	}
 	ctx, cancel := withToken(token)
 	defer cancel()
 	return wrapErr(m.e.Stop(ctx))
@@ -408,6 +520,9 @@ func (m *Engine) stopSubscription() {
 // Close stops event subscriptions, shuts down Engine, and releases all storage locks.
 func (m *Engine) Close(token *CancelToken) error {
 	m.stopSubscription()
+	if m.cloudRelay != nil {
+		m.cloudRelay.stop()
+	}
 	ctx, cancel := withToken(token)
 	defer cancel()
 	err := m.e.Close(ctx)
@@ -422,6 +537,9 @@ func (m *Engine) SetRuntimeState(state string) error {
 
 // NotifyNetworkChanged asks the network backend to re-evaluate interfaces and reset backoff.
 func (m *Engine) NotifyNetworkChanged() error {
+	if m.cloudRelay != nil {
+		m.cloudRelay.notify()
+	}
 	return wrapErr(m.e.NotifyNetworkChanged(context.Background()))
 }
 
@@ -434,13 +552,49 @@ func (m *Engine) UpdateHostCapabilities(capsJSON string) error {
 	return wrapErr(m.e.UpdateHostCapabilities(context.Background(), caps))
 }
 
+func (m *Engine) effectiveManualKeyForLocked(relayURL string) (string, bool) {
+	k := strings.TrimSpace(m.relayAccessKey)
+	if k == "" || !m.relayAccessKeyBound {
+		return "", false
+	}
+	target, ok := canonicalRelayTarget(relayURL)
+	if !ok || target != m.relayAccessKeyTarget {
+		return "", false
+	}
+	return k, true
+}
+
+func (m *Engine) redactedStoredSettingsLocked() engine.Settings {
+	out := m.storedSettings
+	out.Sync.Relay.AccessKey = ""
+	_, hasKey := m.effectiveManualKeyForLocked(out.Sync.Relay.URL)
+	out.Sync.Relay.HasAccessKey = hasKey
+	return out
+}
+
+func (m *Engine) projectSettingsState(st engine.SettingsState) engine.SettingsState {
+	m.settingsMu.Lock()
+	relay := m.storedSettings.Sync.Relay
+	relay.AccessKey = ""
+	_, hasKey := m.effectiveManualKeyForLocked(relay.URL)
+	relay.HasAccessKey = hasKey
+	m.settingsMu.Unlock()
+	st.Value.Sync.Relay = relay
+	return st
+}
+
+func (m *Engine) projectState(st engine.State) engine.State {
+	st.Settings = m.projectSettingsState(st.Settings)
+	return st
+}
+
 // GetState returns the current secret-free State snapshot as JSON.
 func (m *Engine) GetState() (string, error) {
 	st, err := m.e.GetState(context.Background())
 	if err != nil {
 		return "", wrapErr(err)
 	}
-	return marshalJSON(st)
+	return marshalJSON(m.projectState(st))
 }
 
 // GetCapabilities returns the declared, core, and effective capabilities as JSON.
@@ -459,10 +613,33 @@ type updateSettingsDTO struct {
 	RelayAccessKey *string `json:"relay_access_key,omitempty"`
 }
 
+func normalizedRelayTarget(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	if norm, err := relaycrypto.NormalizeRelayOrigin(trimmed); err == nil {
+		return norm
+	}
+	return trimmed
+}
+
+func (m *Engine) rollbackSettingsLocked(currentRev uint64, prevStored engine.Settings, prevManualKey, prevManualTarget string, prevManualBound bool) {
+	prevGuarded := prevStored
+	if m.cloudRelay != nil {
+		m.cloudRelay.setStoredConfig(prevStored, prevManualKey, prevManualTarget, prevManualBound)
+		prevGuarded = m.cloudRelay.applyRelayGuard(prevStored, prevManualKey)
+	} else {
+		prevGuarded.Sync.Relay.AccessKey = prevManualKey
+	}
+	_, _ = m.e.UpdateSettings(context.Background(), engine.UpdateSettingsRequest{
+		ExpectedRevision: currentRev,
+		Value:            prevGuarded,
+	})
+}
+
 // UpdateSettings validates, updates, and persists Engine settings.
 func (m *Engine) UpdateSettings(reqJSON string) (string, error) {
-	m.settingsMu.Lock()
-	defer m.settingsMu.Unlock()
 	var req updateSettingsDTO
 	if err := json.Unmarshal([]byte(reqJSON), &req); err != nil {
 		return "", wrapErr(errors.New("invalid update settings json"))
@@ -471,29 +648,102 @@ func (m *Engine) UpdateSettings(reqJSON string) (string, error) {
 	if err != nil {
 		return "", wrapErr(errors.New("invalid expected_revision"))
 	}
-	if req.RelayAccessKey != nil {
-		req.Value.Sync.Relay.AccessKey = strings.TrimSpace(*req.RelayAccessKey)
-	} else if req.Value.Sync.Relay.AccessKey == "" {
-		req.Value.Sync.Relay.AccessKey = m.relayAccessKey
+
+	m.settingsMu.Lock()
+	prevStored := m.storedSettings
+	prevManualTarget := m.relayAccessKeyTarget
+	prevManualKey, prevManualBound := m.effectiveManualKeyForLocked(prevStored.Sync.Relay.URL)
+	prevTarget := normalizedRelayTarget(prevStored.Sync.Relay.URL)
+	nextTarget := normalizedRelayTarget(req.Value.Sync.Relay.URL)
+	urlChanged := prevTarget != nextTarget
+
+	var nextManualKey string
+	switch {
+	case req.RelayAccessKey != nil:
+		nextManualKey = strings.TrimSpace(*req.RelayAccessKey)
+	case strings.TrimSpace(req.Value.Sync.Relay.AccessKey) != "":
+		nextManualKey = strings.TrimSpace(req.Value.Sync.Relay.AccessKey)
+	case urlChanged:
+		// Clear old manual credential before the new relay URL can issue requests.
+		nextManualKey = ""
+	default:
+		nextManualKey = prevManualKey
 	}
+	nextManualTarget, nextValidTarget := canonicalRelayTarget(req.Value.Sync.Relay.URL)
+	nextManualBound := nextManualKey != "" && nextValidTarget
+
+	nextStored := req.Value
+	nextStored.Sync.Relay.URL = strings.TrimSpace(nextStored.Sync.Relay.URL)
+	nextStored.Sync.Relay.AccessKey = ""
+	nextStored.Sync.Relay.HasAccessKey = nextManualBound
+
+	if m.cloudRelay != nil && m.cloudRelay.shouldDisableOfficialRelay(nextStored, nextManualKey) {
+		nextStored.Sync.Relay.Enabled = false
+	}
+
+	guarded := nextStored
+	if m.cloudRelay != nil {
+		guarded = m.cloudRelay.applyRelayGuard(nextStored, nextManualKey)
+		// Publish updated target/key decision to RelayAuth before Engine reconciles
+		// control-plane and SSE loops inside m.e.UpdateSettings.
+		m.cloudRelay.setStoredConfig(nextStored, nextManualKey, nextManualTarget, nextManualBound)
+	} else {
+		guarded.Sync.Relay.AccessKey = nextManualKey
+	}
+
 	st, err := m.e.UpdateSettings(context.Background(), engine.UpdateSettingsRequest{
 		ExpectedRevision: rev,
-		Value:            req.Value,
+		Value:            guarded,
 	})
 	if err != nil {
+		if m.cloudRelay != nil {
+			m.cloudRelay.setStoredConfig(prevStored, prevManualKey, prevManualTarget, prevManualBound)
+			_ = m.cloudRelay.applyRelayGuard(prevStored, prevManualKey)
+		}
+		m.settingsMu.Unlock()
 		return "", wrapErr(err)
 	}
-	m.relayURL = req.Value.Sync.Relay.URL
-	m.relayAccessKey = req.Value.Sync.Relay.AccessKey
-	if req.RelayAccessKey != nil {
-		if kerr := saveRelaySecretAtomic(m.relaySecretPath, m.relayAccessKey); kerr != nil {
+
+	storedSnapshot := st.Value
+	storedSnapshot.Sync.Relay = nextStored.Sync.Relay
+	storedSnapshot.Sync.Relay.AccessKey = ""
+	storedSnapshot.Sync.Relay.HasAccessKey = nextManualBound
+
+	needSecretSave := req.RelayAccessKey != nil || nextManualKey != prevManualKey || (nextManualBound && prevManualTarget != nextManualTarget)
+	if needSecretSave {
+		if kerr := saveRelaySecretAtomic(m.relaySecretPath, nextStored.Sync.Relay.URL, nextManualKey); kerr != nil {
+			m.rollbackSettingsLocked(st.Revision, prevStored, prevManualKey, prevManualTarget, prevManualBound)
+			m.settingsMu.Unlock()
 			return "", wrapErr(kerr)
 		}
 	}
-	if serr := saveSettingsAtomic(m.settingsPath, st.Value); serr != nil {
+	if serr := saveSettingsAtomic(m.settingsPath, storedSnapshot); serr != nil {
+		if needSecretSave {
+			_ = saveRelaySecretAtomic(m.relaySecretPath, prevStored.Sync.Relay.URL, prevManualKey)
+		}
+		m.rollbackSettingsLocked(st.Revision, prevStored, prevManualKey, prevManualTarget, prevManualBound)
+		m.settingsMu.Unlock()
 		return "", wrapErr(serr)
 	}
-	return marshalJSON(st)
+
+	m.storedSettings = storedSnapshot
+	m.relayURL = storedSnapshot.Sync.Relay.URL
+	m.relayAccessKey = nextManualKey
+	m.relayAccessKeyTarget = nextManualTarget
+	m.relayAccessKeyBound = nextManualBound
+	if m.cloudRelay != nil {
+		m.cloudRelay.setStoredConfig(m.storedSettings, m.relayAccessKey, m.relayAccessKeyTarget, m.relayAccessKeyBound)
+	}
+
+	projected := st
+	projected.Value = m.redactedStoredSettingsLocked()
+	m.settingsMu.Unlock()
+
+	if m.cloudRelay != nil {
+		m.cloudRelay.notify()
+	}
+	m.e.NotifyRelayAuthChanged()
+	return marshalJSON(projected)
 }
 
 // ActiveSendCount returns the number of in-flight send operations so native
@@ -522,7 +772,7 @@ func (m *Engine) Subscribe(sink EventSink) (string, error) {
 	if err != nil {
 		return "", wrapErr(err)
 	}
-	snap := sub.Snapshot()
+	snap := m.projectState(sub.Snapshot())
 	snapJSON, jerr := marshalJSON(snap)
 	if jerr != nil {
 		_ = sub.Close()

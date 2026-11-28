@@ -2,45 +2,34 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Application from 'expo-application';
 import { Linking } from 'react-native';
 
+import type { CloudStatusSnapshot } from '@/engine/types';
+
 export const DEFAULT_CLOUD_URL = 'https://cloud.uniclipboard.app';
-const CLOUD_SESSION_STORAGE_KEY = '@unic/cloud-session-v1';
+const LEGACY_CLOUD_SESSION_STORAGE_KEY = '@unic/cloud-session-v1';
 const AUTH_TIMEOUT_MS = 5 * 60 * 1000;
-const ACCESS_REFRESH_SKEW_MS = 60 * 1000;
 
-export interface CloudUser {
-  clerkUserId?: string;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  imageUrl?: string;
+export interface CloudAuthorizationGrant {
+  cloudUrl?: string;
+  code: string;
+  codeVerifier: string;
+  redirectUri: string;
+  deviceName: string;
 }
 
-export interface CloudSession {
-  cloudUrl: string;
-  accessToken?: string;
-  accessExpiresAtMs?: number;
-  refreshToken: string;
-  deviceName?: string;
-  user: CloudUser;
-  signedInAtMs: number;
-  relayKeyId?: string;
-  relayKeyPrefix?: string;
-}
-
-export interface CloudRelayCredential {
-  id: string;
-  name: string;
-  keyPrefix: string;
-  apiKey: string;
-  relayUrl: string;
-  maxTransferBytes: number;
-}
-
-export function cloudUserLabel(user?: CloudUser | null): string {
-  const email = user?.email?.trim();
+export function cloudStatusLabel(status?: CloudStatusSnapshot | null): string {
+  const account = status?.account?.trim();
+  if (account) return account;
+  const email = status?.email?.trim();
   if (email) return email;
-  const full = `${user?.firstName?.trim() ?? ''} ${user?.lastName?.trim() ?? ''}`.trim();
-  return full || 'UniClipboard Cloud';
+  return 'UniClipboard Cloud';
+}
+
+export async function clearLegacyCloudSession(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(LEGACY_CLOUD_SESSION_STORAGE_KEY);
+  } catch {
+    // Ignore storage cleanup failures; legacy JS tokens are never read again.
+  }
 }
 
 function getRedirectUri(): string {
@@ -193,45 +182,21 @@ function parseCallbackParams(rawUrl: string): { code?: string; state?: string; e
   };
 }
 
-export async function loadCloudSession(): Promise<CloudSession | null> {
-  try {
-    const raw = await AsyncStorage.getItem(CLOUD_SESSION_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<CloudSession>;
-    if (!parsed.cloudUrl || !parsed.refreshToken) return null;
-    return {
-      cloudUrl: parsed.cloudUrl,
-      accessToken: parsed.accessToken,
-      accessExpiresAtMs: parsed.accessExpiresAtMs,
-      refreshToken: parsed.refreshToken,
-      deviceName: parsed.deviceName,
-      user: parsed.user ?? {},
-      signedInAtMs: parsed.signedInAtMs ?? Date.now(),
-      relayKeyId: parsed.relayKeyId,
-      relayKeyPrefix: parsed.relayKeyPrefix,
-    };
-  } catch {
-    return null;
-  }
-}
-
-export async function saveCloudSession(session: CloudSession): Promise<void> {
-  await AsyncStorage.setItem(CLOUD_SESSION_STORAGE_KEY, JSON.stringify(session));
-}
-
-export async function clearCloudSession(): Promise<void> {
-  await AsyncStorage.removeItem(CLOUD_SESSION_STORAGE_KEY);
-}
-
-export async function signInToCloud(options?: {
+/**
+ * Opens UniClipboard Cloud's browser PKCE authorization flow and returns the
+ * temporary authorization grant so the Go Engine host completes token exchange,
+ * session storage, and credential provisioning without exposing secrets to JS.
+ */
+export async function authorizeCloudLogin(options?: {
   cloudUrl?: string;
   deviceName?: string;
-}): Promise<CloudSession> {
-  const baseUrl = (options?.cloudUrl?.trim() || DEFAULT_CLOUD_URL).replace(/\/+$/, '');
+}): Promise<CloudAuthorizationGrant> {
+  const explicitUrl = options?.cloudUrl?.trim().replace(/\/+$/, '');
+  const baseUrl = explicitUrl || DEFAULT_CLOUD_URL;
   const deviceName = (options?.deviceName?.trim() || 'UniClipboard Mobile').slice(0, 120);
   const redirectUri = getRedirectUri();
-  const verifier = randomBase64Url(32);
-  const challenge = bytesToBase64Url(sha256Ascii(verifier));
+  const codeVerifier = randomBase64Url(32);
+  const challenge = bytesToBase64Url(sha256Ascii(codeVerifier));
   const state = randomBase64Url(24);
 
   const authUrl =
@@ -281,167 +246,11 @@ export async function signInToCloud(options?: {
     });
   });
 
-  const tokenResp = await fetch(`${baseUrl}/api/auth/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      code,
-      code_verifier: verifier,
-      redirect_uri: redirectUri,
-      device_name: deviceName,
-    }),
-  });
-  if (!tokenResp.ok) {
-    throw new Error(`Cloud token exchange failed (HTTP ${tokenResp.status}).`);
-  }
-  const tokenData = (await tokenResp.json()) as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-    user?: CloudUser | null;
-  };
-  const accessToken = tokenData.access_token?.trim();
-  const refreshToken = tokenData.refresh_token?.trim();
-  if (!accessToken || !refreshToken) {
-    throw new Error('Cloud sign-in returned incomplete session tokens.');
-  }
-
-  const now = Date.now();
-  const session: CloudSession = {
-    cloudUrl: baseUrl,
-    accessToken,
-    accessExpiresAtMs: tokenData.expires_in ? now + tokenData.expires_in * 1000 : undefined,
-    refreshToken,
+  return {
+    cloudUrl: explicitUrl || undefined,
+    code,
+    codeVerifier,
+    redirectUri,
     deviceName,
-    user: tokenData.user ?? {},
-    signedInAtMs: now,
   };
-  await saveCloudSession(session);
-  return session;
-}
-
-export async function refreshCloudSession(session: CloudSession): Promise<CloudSession> {
-  const resp = await fetch(`${session.cloudUrl}/api/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: session.refreshToken }),
-  });
-  if (!resp.ok) {
-    throw new Error(`Cloud session refresh failed (HTTP ${resp.status}).`);
-  }
-  const data = (await resp.json()) as {
-    access_token?: string;
-    refresh_token?: string;
-    expires_in?: number;
-  };
-  const accessToken = data.access_token?.trim();
-  if (!accessToken) {
-    throw new Error('Cloud session refresh returned empty access token.');
-  }
-  const updated: CloudSession = {
-    ...session,
-    accessToken,
-    refreshToken: data.refresh_token?.trim() || session.refreshToken,
-    accessExpiresAtMs: data.expires_in ? Date.now() + data.expires_in * 1000 : session.accessExpiresAtMs,
-  };
-  await saveCloudSession(updated);
-  return updated;
-}
-
-async function ensureValidAccessToken(session: CloudSession): Promise<CloudSession> {
-  const expired =
-    !session.accessToken ||
-    (session.accessExpiresAtMs !== undefined &&
-      Date.now() + ACCESS_REFRESH_SKEW_MS >= session.accessExpiresAtMs);
-  return expired ? refreshCloudSession(session) : session;
-}
-
-export async function provisionCloudRelayKey(
-  session: CloudSession,
-  deviceName?: string
-): Promise<{ credential: CloudRelayCredential; session: CloudSession }> {
-  let cur = await ensureValidAccessToken(session);
-  const label = (deviceName?.trim() || cur.deviceName || 'UniClipboard Mobile').slice(0, 120);
-
-  let keyResp = await fetch(`${cur.cloudUrl}/api/relay/v2/api-keys`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${cur.accessToken ?? ''}`,
-    },
-    body: JSON.stringify({ name: label }),
-  });
-  if (keyResp.status === 401) {
-    cur = await refreshCloudSession(cur);
-    keyResp = await fetch(`${cur.cloudUrl}/api/relay/v2/api-keys`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${cur.accessToken ?? ''}`,
-      },
-      body: JSON.stringify({ name: label }),
-    });
-  }
-  if (keyResp.status === 429) {
-    throw new Error('Relay API key limit reached. Revoke an unused key in UniClipboard Cloud.');
-  }
-  if (!keyResp.ok) {
-    throw new Error(`Failed to provision Cloud Relay API key (HTTP ${keyResp.status}).`);
-  }
-  const keyData = (await keyResp.json()) as {
-    id?: string;
-    name?: string;
-    key_prefix?: string;
-    api_key?: string;
-    relay_url?: string;
-    max_transfer_bytes?: number;
-  };
-  const apiKey = keyData.api_key?.trim();
-  if (!apiKey) {
-    throw new Error('Cloud returned an empty Relay API key.');
-  }
-
-  const credential: CloudRelayCredential = {
-    id: keyData.id ?? '',
-    name: keyData.name ?? label,
-    keyPrefix: keyData.key_prefix ?? '',
-    apiKey,
-    relayUrl: keyData.relay_url?.trim() || 'https://relay.uniclipboard.app',
-    maxTransferBytes: keyData.max_transfer_bytes ?? 25 * 1024 * 1024,
-  };
-  const updated: CloudSession = {
-    ...cur,
-    relayKeyId: credential.id || cur.relayKeyId,
-    relayKeyPrefix: credential.keyPrefix || cur.relayKeyPrefix,
-  };
-  await saveCloudSession(updated);
-  return { credential, session: updated };
-}
-
-export async function signOutFromCloud(session: CloudSession | null): Promise<void> {
-  if (session) {
-    try {
-      if (session.relayKeyId) {
-        const cur = await ensureValidAccessToken(session).catch(() => session);
-        if (cur.accessToken) {
-          await fetch(
-            `${cur.cloudUrl}/api/relay/v2/api-keys/${encodeURIComponent(session.relayKeyId)}`,
-            {
-              method: 'DELETE',
-              headers: { Authorization: `Bearer ${cur.accessToken}` },
-            }
-          ).catch(() => undefined);
-        }
-      }
-      await fetch(`${session.cloudUrl}/api/auth/revoke`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: session.refreshToken }),
-      }).catch(() => undefined);
-    } finally {
-      await clearCloudSession();
-    }
-    return;
-  }
-  await clearCloudSession();
 }

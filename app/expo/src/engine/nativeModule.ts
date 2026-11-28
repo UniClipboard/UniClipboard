@@ -6,6 +6,7 @@ import {
   type BackgroundSyncStatus,
   type Capabilities,
   type ClipboardChangedEvent,
+  type CloudStatusSnapshot,
   type CustomSourceSelectionResult,
   type DeviceBinding,
   EngineError,
@@ -98,6 +99,10 @@ declare class NativeUnicEngineModule extends NativeModule<NativeEvents> {
   exportDiagnosticArchive(action: string): Promise<string>;
   getCapabilities(): Promise<string>;
   updateSettings(reqJSON: string): Promise<string>;
+  getCloudStatus(): Promise<string>;
+  finishCloudLogin(reqJSON: string): Promise<string>;
+  ensureCloudRelay(): Promise<string>;
+  logoutCloud(): Promise<string>;
   getFileCacheState(): Promise<string>;
   setAutomaticCapture(enabled: boolean): Promise<void>;
   setAutoApplyReceived?(enabled: boolean): Promise<void>;
@@ -420,6 +425,17 @@ export const unicEngineNative = {
   getCapabilities: () => callJSON<Capabilities>(() => requireMod().getCapabilities()),
   updateSettings: (req: { expected_revision: string; value: EngineSettings; relay_access_key?: string }) =>
     callJSON<SettingsState>(() => requireMod().updateSettings(JSON.stringify(req))),
+  getCloudStatus: () => callJSON<CloudStatusSnapshot>(() => requireMod().getCloudStatus()),
+  finishCloudLogin: (req: {
+    cloud_url?: string;
+    code: string;
+    code_verifier: string;
+    redirect_uri: string;
+    device_name?: string;
+    auto_enable_relay?: boolean;
+  }) => callJSON<CloudStatusSnapshot>(() => requireMod().finishCloudLogin(JSON.stringify(req))),
+  ensureCloudRelay: () => callJSON<CloudStatusSnapshot>(() => requireMod().ensureCloudRelay()),
+  logoutCloud: () => callJSON<CloudStatusSnapshot>(() => requireMod().logoutCloud()),
 
   getFileCacheState: () => callJSON<FileCacheState>(() => requireMod().getFileCacheState()),
   setAutomaticCapture: (enabled: boolean) => callVoid(() => requireMod().setAutomaticCapture(enabled)),

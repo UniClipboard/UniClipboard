@@ -1,4 +1,4 @@
 {
-  "en": "UniClipboard Mobile v3 alpha (build 206). Adds in-app update checking, alpha/stable channel switching, and verified APK download/install on Android, and signs direct-download APKs with APK Signature Scheme v3 key rotation so Android 2.4 users can upgrade in place while preserving local data for automatic offline migration. All paired devices must use v2/v3 and establish new pairings.",
-  "zh": "UniClipboard 移动端 v3 Alpha（build 206）。新增 Android 应用内检查更新、测试/正式渠道切换与校验后下载覆盖安装，并对直装 APK 启用 APK Signature Scheme v3 密钥轮换，支持 Android 2.4 用户直接覆盖升级并保留本地数据自动离线迁移。所有配对设备需使用 v2/v3 并重新建立配对。"
+  "en": "<!-- Replace with concise English release notes for Android/Mobile users. -->",
+  "zh": "<!-- 替换为面向移动端用户的简洁中文更新说明。 -->"
 }

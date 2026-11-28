@@ -20,7 +20,7 @@ paths:
   - e2e/cli
   - tools/bench
   - tools/docscheck
-verified: 77a5c9124adac5d57571a484c91c7231ecc4203f
+verified: 6c50e2d0ae1c4b5024d0c0ae765926558730c538
 ---
 # 仓库布局与依赖边界
 
@@ -251,6 +251,11 @@ HTTPS-only advertised `relay_url` binding, non-blocking admission via
 runtime shared with headless background services and the iOS Keyboard Extension.
 Mobile browser sign-in uses Expo Crypto's native random generator for the PKCE
 verifier and OAuth state, and its native SHA-256 digest for the S256 challenge.
+On iOS a callback received in the background waits up to ten seconds for the
+host to resume the Engine in the foreground. The host keeps the grant in
+memory, exchanges it once after resumption, and discards it on timeout,
+shutdown, or resumption failure. The normal background release frees the
+shared profile for the Keyboard Extension.
 The JS login flow hands only temporary authorization parameters to the
 Go binding and receives secret-free status snapshots without retaining tokens or
 relay keys in JS storage, while official relay settings hide manual key

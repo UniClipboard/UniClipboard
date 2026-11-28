@@ -47,6 +47,7 @@ Generated from `cases/*.txtar`. Run `make desktop-e2e`; select with `CASE=<id>`.
 | [settings-backup](#settings-backup) | process | Verify portable allowlisting, strict preflight, preview confirmation, revision conflicts and restart persistence. |
 | [settings-cloud-relay](#settings-cloud-relay) | view | Verify official mode hides relay access keys and keeps sync.relay.url empty for Cloud-advertised HTTPS origins, rejects non-HTTPS advertised URLs, blocks static fallback credentials from reaching expired advertised origins, treats omitted env_access_key_set as false, and rejects forged TOML env_access_key_set. |
 | [settings-diagnostics](#settings-diagnostics) | process | Verify persistent logging, bounded overrides, telemetry controls and safe diagnostic export through production processes. |
+| [settings-notification-refresh](#settings-notification-refresh) | view | Verify the production notification settings layout while permission reads and host actions are pending and after they complete. |
 | [settings-shortcuts](#settings-shortcuts) | process | Exercise the production Desktop binding against a private service with controlled permission-host callbacks. |
 | [settings-storage](#settings-storage) | process | Read the real service cache ledger through the production settings model without scanning or deleting user files. |
 | [settings-visual-evidence](#settings-visual-evidence) | native | Capture the actual settings composition for diagnostics, storage, appearance, permission guidance and portable backup. |
@@ -1031,6 +1032,20 @@ Forbidden: A skipped scenario, stale status labeled current, silent conflict ove
 
 ```text
 acceptance desktopui settings-diagnostics
+```
+
+## settings-notification-refresh
+
+Stable notification permission refresh
+
+Steps: Open Notifications at wide and narrow widths. Hold the initial read, a passive background read, a manual read, and slow system-settings/test-notification calls at the host boundary. Repeat activation, return unchanged and changed permissions, inject a read error, and then return an unsupported status.
+
+Expected: Initial fast reads do not flash unknown status. Passive background reads leave the rendered frame unchanged. Manual reads and explicit host actions show delayed feedback in place after 120 ms without moving action bounds or flickering unrelated controls. Open System Settings uses primary emphasis only while permission is denied. Failed reads retain the last result and allow retry.
+
+Forbidden: Native window launch, OS permission or notification calls, system clipboard access and personal configuration.
+
+```text
+acceptance desktopui settings-notification-refresh
 ```
 
 ## settings-shortcuts

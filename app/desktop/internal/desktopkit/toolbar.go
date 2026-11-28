@@ -218,7 +218,7 @@ func (k Kit) dressQuietButton(c *ui.Context, e ui.Element, text string, p quietB
 	e.TextColor(ink)
 	e.Children(func() {
 		if p.Busy {
-			ui.Spinner(c.Key("busy")).Size(14, 14).TextColor(ink).AccessHidden(true)
+			ui.Spinner(c.Key("busy")).Size(15, 15).Shrink(0).TextColor(ink).AccessHidden(true)
 		} else if p.Icon != "" {
 			k.Icon(c.Key("ic"), p.Icon, 15).TextColor(ink).AccessHidden(true)
 		}

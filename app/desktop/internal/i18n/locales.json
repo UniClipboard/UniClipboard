@@ -10234,5 +10234,29 @@
     "ja": "セルフホストのリレーサーバー認証に使用します（書き込み専用）。",
     "pt-BR": "Autentica em um servidor de relay próprio (somente gravação).",
     "ru": "Для аутентификации на своём сервере ретрансляции (только запись)."
+  },
+  "系统通知设置": {
+    "en": "System Notification Settings",
+    "ja": "システム通知設定",
+    "pt-BR": "Configurações de notificação do sistema",
+    "ru": "Системные настройки уведомлений"
+  },
+  "前往系统设置管理本应用的通知权限与提醒方式。": {
+    "en": "Manage this app's notification permission and alert style in System Settings.",
+    "ja": "システム設定でこのアプリの通知許可と通知スタイルを管理します。",
+    "pt-BR": "Gerencie a permissão e o estilo de alertas deste aplicativo nas Configurações do Sistema.",
+    "ru": "Управляйте разрешениями и стилем уведомлений этого приложения в системных настройках."
+  },
+  "测试通知": {
+    "en": "Test Notification",
+    "ja": "テスト通知",
+    "pt-BR": "Notificação de teste",
+    "ru": "Тестовое уведомление"
+  },
+  "发送一条测试通知，验证通知送达或触发首次系统授权。": {
+    "en": "Send a test notification to verify delivery or trigger the initial system permission prompt.",
+    "ja": "テスト通知を送信して配信を確認するか、初回のシステム許可ダイアログを表示します。",
+    "pt-BR": "Envie uma notificação de teste para verificar a entrega ou acionar a permissão inicial do sistema.",
+    "ru": "Отправьте тестовое уведомление, чтобы проверить доставку или вызвать системный запрос разрешения."
   }
 }

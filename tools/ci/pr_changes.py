@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 import subprocess
 import sys
+
+ROOT = Path(__file__).resolve().parents[2]
 
 ALL_TRUE = {
     "lint": True,
@@ -21,6 +23,10 @@ GLOBAL_ALL_FILES = {
     "go.sum",
     "Makefile",
     ".github/workflows/pr-checks.yml",
+}
+
+DESKTOP_E2E_WORKFLOW_FILES = {
+    ".github/workflows/desktop-e2e-nightly.yml",
 }
 
 LINT_ONLY_FILES = {
@@ -82,8 +88,35 @@ DESKTOP_E2E_DIRS = (
 
 DESKTOP_E2E_EXCLUDED_INTERNAL = (
     "internal/mobilemigration/",
+    "internal/relayclient/",
+    "internal/relaycrypto/",
+    "internal/relayserver/",
+    "internal/rendezvous/",
+    "internal/tcnet/",
     "internal/testboard/",
+    "internal/webtransfer/",
+    "internal/wire/",
 )
+
+
+def extra_desktop_e2e_cases(paths: list[str], repo_root: Path = ROOT) -> list[str]:
+    """Return sorted isolated Desktop E2E case IDs whose .txtar files changed."""
+    prefix = "app/desktop/e2e/cases/"
+    found: set[str] = set()
+    for raw in paths:
+        path = raw
+        while path.startswith("./"):
+            path = path[2:]
+        if not path.startswith(prefix) or not path.endswith(".txtar"):
+            continue
+        case_file = repo_root / path
+        if not case_file.is_file():
+            continue
+        text = case_file.read_text(encoding="utf-8")
+        if "# Environment: disposable-guest\n" in text or "# Environment: owned-window-guest\n" in text:
+            continue
+        found.add(case_file.stem)
+    return sorted(found)
 
 
 def is_ignored_doc(path: str) -> bool:
@@ -129,6 +162,10 @@ def classify_paths(paths: list[str]) -> dict[str, bool]:
             result["lint"] = True
             continue
 
+        if path in DESKTOP_E2E_WORKFLOW_FILES:
+            result["desktop_e2e"] = True
+            continue
+
         if path.startswith("tools/ci/"):
             # CI helper scripts are verified directly in the changes job; no Go/E2E build needed.
             continue
@@ -167,10 +204,12 @@ def main() -> int:
     parser.add_argument("paths", nargs="*", help="Explicit changed file paths")
     args = parser.parse_args()
 
+    extra_cases: list[str] = []
     if args.all:
         flags = dict(ALL_TRUE)
     elif args.paths:
         flags = classify_paths(args.paths)
+        extra_cases = extra_desktop_e2e_cases(args.paths)
     elif args.base:
         try:
             changed = git_changed_files(args.base, args.head)
@@ -185,10 +224,12 @@ def main() -> int:
             for item in changed:
                 print(f"  - {item}")
             flags = classify_paths(changed)
+            extra_cases = extra_desktop_e2e_cases(changed)
     else:
         parser.error("provide --all, --base, or explicit paths")
 
     lines = [f"{key}={'true' if value else 'false'}" for key, value in flags.items()]
+    lines.append(f"desktop_e2e_extra_cases={','.join(extra_cases)}")
     for line in lines:
         print(line)
     if args.github_output:

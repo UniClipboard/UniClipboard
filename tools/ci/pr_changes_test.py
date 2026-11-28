@@ -192,6 +192,70 @@ class PrChangesClassifierTests(unittest.TestCase):
             {"lint": True, "test": True, "headless": False, "desktop_e2e": False},
         )
 
+    def test_transport_and_relay_internal_skip_desktop_e2e_smoke(self):
+        for path in (
+            "internal/relayserver/server.go",
+            "internal/relayclient/client.go",
+            "internal/relaycrypto/crypto.go",
+            "internal/rendezvous/client.go",
+            "internal/tcnet/net.go",
+            "internal/webtransfer/transfer.go",
+            "internal/wire/wire.go",
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(
+                    pr_changes.classify_paths([path]),
+                    {"lint": True, "test": True, "headless": True, "desktop_e2e": False},
+                )
+
+    def test_desktop_nightly_workflow_runs_only_desktop_e2e_smoke(self):
+        self.assertEqual(
+            pr_changes.classify_paths([".github/workflows/desktop-e2e-nightly.yml"]),
+            {"lint": False, "test": False, "headless": False, "desktop_e2e": True},
+        )
+
+    def test_extra_desktop_e2e_cases_includes_only_existing_isolated_cases(self):
+        self.assertEqual(
+            pr_changes.extra_desktop_e2e_cases(
+                [
+                    "app/desktop/e2e/cases/sheet-motion.txtar",
+                    "app/desktop/e2e/cases/system-clipboard.txtar",
+                    "app/desktop/e2e/cases/window-chrome-native-input.txtar",
+                    "app/desktop/e2e/cases/nonexistent-deleted.txtar",
+                    "app/desktop/internal/desktopui/live.go",
+                ]
+            ),
+            ["sheet-motion"],
+        )
+
+    def test_desktop_e2e_smoke_suite_selection_and_sharding(self):
+        e2e_dir = str(ROOT / "app/desktop/e2e")
+        if e2e_dir not in sys.path:
+            sys.path.insert(0, e2e_dir)
+        import run as desktop_e2e_run  # noqa: E402
+
+        specs = desktop_e2e_run.cases()
+        smoke = desktop_e2e_run.filter_eligible(specs, suite="smoke")
+        self.assertEqual({s["id"] for s in smoke}, set(desktop_e2e_run.SMOKE_CASES))
+        s1 = desktop_e2e_run.select_shard(smoke, 1, 2)
+        s2 = desktop_e2e_run.select_shard(smoke, 2, 2)
+        self.assertFalse(set(s1) & set(s2))
+        self.assertEqual(set(s1) | set(s2), set(desktop_e2e_run.SMOKE_CASES))
+
+        with_extra = desktop_e2e_run.filter_eligible(
+            specs, suite="smoke", include_cases=("sheet-motion",)
+        )
+        self.assertIn("sheet-motion", {s["id"] for s in with_extra})
+
+        with self.assertRaises(ValueError):
+            desktop_e2e_run.filter_eligible(specs, suite="all", include_cases=("sheet-motion",))
+        with self.assertRaises(ValueError):
+            desktop_e2e_run.filter_eligible(specs, suite="smoke", include_guests=True)
+        with self.assertRaises(ValueError):
+            desktop_e2e_run.filter_eligible(
+                specs, suite="smoke", include_cases=("system-clipboard",)
+            )
+
     def test_go_mod_runs_all_jobs(self):
         self.assertEqual(
             pr_changes.classify_paths(["go.mod"]),

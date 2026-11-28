@@ -367,7 +367,7 @@ Every PR-triggered workflow declares explicit path filters so unrelated changes 
 
 | Workflow | File | Trigger scope |
 |---|---|---|
-| PR checks | `.github/workflows/pr-checks.yml` | Root Go module code, Desktop E2E harness/cases, Go lint/build config and `tools/ci/**`. Its `changes` job (`tools/ci/pr_changes.py`) gates `lint`, `test`, `headless` and `desktop-e2e` independently; `merge_group` and `workflow_dispatch` run all jobs. |
+| PR checks | `.github/workflows/pr-checks.yml` | Root Go module code, Desktop E2E harness/cases, Go lint/build config, `desktop-e2e-nightly.yml` and `tools/ci/**`. Its `changes` job (`tools/ci/pr_changes.py`) gates `lint`, `test`, `headless` and two-shard Desktop E2E smoke (`SUITE=smoke` plus any modified isolated `cases/*.txtar`) independently; `merge_group` and `workflow_dispatch` run all jobs. Full six-shard Desktop E2E and six-target native acceptance run nightly (and on demand) in `.github/workflows/desktop-e2e-nightly.yml`. |
 | Build CLI | `.github/workflows/build-cli.yml` | Headless CLI/service/core Go code, `e2e/headless/**` and CLI release/packaging scripts. `workflow_dispatch` and `workflow_call` stay unfiltered. |
 | Package process acceptance | `.github/workflows/package-acceptance.yml` | Desktop packaging, installers, updaters, app icons/license assets, Desktop release-note template and Desktop packaging/release workflows (excluding `release/**` and mobile/prepare-release scripts). |
 | Mobile build and acceptance | `.github/workflows/check-expo.yml` | `app/expo/**`, `bindings/**` and core Go packages transitively imported by `bindings/` (excluding desktop/service-only `internal/*` packages and `release/products.toml`). |

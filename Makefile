@@ -102,11 +102,11 @@ transfer-e2e:
 # Canonical Desktop acceptance: catalogue, real processes, native window evidence.
 .PHONY: desktop-e2e desktop-e2e-list desktop-e2e-doctor
 desktop-e2e:
-	python3 app/desktop/e2e/run.py run $(if $(CASE),--case "$(CASE)") $(if $(SHARD),--shard "$(SHARD)") $(if $(GUEST),--guest "$(GUEST)") $(if $(CONTROL),--control-dir "$(CONTROL)")
+	python3 app/desktop/e2e/run.py run $(if $(SUITE),--suite "$(SUITE)") $(if $(INCLUDE_CASES),--include-cases "$(INCLUDE_CASES)") $(if $(CASE),--case "$(CASE)") $(if $(SHARD),--shard "$(SHARD)") $(if $(GUEST),--guest "$(GUEST)") $(if $(CONTROL),--control-dir "$(CONTROL)")
 desktop-e2e-list:
-	python3 app/desktop/e2e/run.py list
+	python3 app/desktop/e2e/run.py list $(if $(SUITE),--suite "$(SUITE)") $(if $(INCLUDE_CASES),--include-cases "$(INCLUDE_CASES)") $(if $(SHARD),--shard "$(SHARD)")
 desktop-e2e-doctor:
-	python3 app/desktop/e2e/run.py doctor --case "$(CASE)"
+	python3 app/desktop/e2e/run.py doctor $(if $(SUITE),--suite "$(SUITE)") $(if $(CASE),--case "$(CASE)")
 
 # Production trace processes, private local TLS receiver, no GUI or clipboard.
 .PHONY: traces-e2e

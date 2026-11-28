@@ -21,6 +21,21 @@ from urllib.parse import quote
 ROOT = Path(__file__).resolve().parents[3]
 HERE = ROOT / 'app/desktop/e2e'
 FIELDS = ('Case', 'Mode', 'Purpose', 'Steps', 'Expected', 'Forbidden')
+SUITES = ('all', 'smoke')
+# Curated PR smoke suite covering process boundaries/lifecycle, native windows,
+# external sync workflow, i18n, and BoardUI production composition.
+SMOKE_CASES = (
+    'boardui-production-migration',
+    'desktop-native-processes',
+    'desktop-processes',
+    'external-sync-workflow',
+    'history-search-copy',
+    'i18n',
+    'production-boundary',
+    'setup-onboarding',
+    'standalone-quick-panel-lifecycle',
+    'startup-lifecycle',
+)
 
 
 def digest(path):
@@ -73,7 +88,49 @@ def cases(base=HERE):
         declared.extend(commands)
     if len(set(declared)) != len(declared) or set(declared) != registered:
         raise ValueError('acceptance registry and declarative catalogue do not match')
+    by_id = {spec['id']: spec for spec in result}
+    if len(set(SMOKE_CASES)) != len(SMOKE_CASES):
+        raise ValueError('SMOKE_CASES contains duplicate case IDs')
+    for case_id in SMOKE_CASES:
+        spec = by_id.get(case_id)
+        if spec is None:
+            raise ValueError(f'SMOKE_CASES references unknown case: {case_id}')
+        if spec['environment'] != 'isolated':
+            raise ValueError(f'SMOKE_CASES must only contain isolated cases: {case_id}')
     return result
+
+
+def parse_case_list(raw):
+    if not raw:
+        return ()
+    seen, items = set(), []
+    for part in raw.split(','):
+        item = part.strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        items.append(item)
+    return tuple(items)
+
+
+def filter_eligible(specs, suite='all', include_cases=(), include_guests=False):
+    if suite not in SUITES:
+        raise ValueError(f'unknown Desktop E2E suite: {suite}')
+    by_id = {s['id']: s for s in specs}
+    if suite == 'all':
+        if include_cases:
+            raise ValueError('--include-cases requires --suite smoke')
+        return [s for s in specs if include_guests or s['environment'] == 'isolated']
+    if include_guests:
+        raise ValueError('--guest cannot be combined with --suite smoke')
+    unknown = [cid for cid in include_cases if cid not in by_id]
+    if unknown:
+        raise ValueError('unknown Desktop case in --include-cases: ' + ', '.join(unknown))
+    non_isolated = [cid for cid in include_cases if by_id[cid]['environment'] != 'isolated']
+    if non_isolated:
+        raise ValueError('--include-cases only accepts isolated cases: ' + ', '.join(non_isolated))
+    allowed = set(SMOKE_CASES) | set(include_cases)
+    return [s for s in specs if s['id'] in allowed]
 
 
 def catalogue(specs):
@@ -201,16 +258,18 @@ def report(out, manifest, specs):
     (out / 'index.html').write_text('\n'.join(body), encoding="utf-8")
 
 
-def run(specs, selected, output, guest=None, control=None, shard=None):
+def run(specs, selected, output, guest=None, control=None, shard=None, suite='all', include_cases=()):
     started = time.monotonic()
     run_id = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8]
     out = Path(output).resolve() if output else ROOT / '.build/desktop-e2e' / run_id
     if out.exists():
         raise ValueError('output directory must be new')
     out.mkdir(parents=True, mode=0o700)
-    manifest = dict(version=1, run_id=run_id, status='RUNNING', cases={},
+    manifest = dict(version=1, run_id=run_id, status='RUNNING', suite=suite, cases={},
                     native_os_focus='NOT_RUN', system_clipboard='NOT_RUN', cross_application_paste='NOT_RUN',
                     runner_sha256=digest(Path(__file__)))
+    if include_cases:
+        manifest['included_cases'] = list(include_cases)
     if shard:
         index, count, include_guests = shard
         manifest['shard'] = f'{index}/{count}'
@@ -246,7 +305,7 @@ def run(specs, selected, output, guest=None, control=None, shard=None):
         if len(wanted) != len(selected):
             raise RuntimeError('case selection changed while taking the snapshot')
         if shard:
-            eligible = [s for s in specs if include_guests or s['environment'] == 'isolated']
+            eligible = filter_eligible(specs, suite=suite, include_cases=include_cases, include_guests=include_guests)
             if selected != select_shard(eligible, index, count, snapshot / 'app/desktop/e2e'):
                 raise RuntimeError('shard assignment changed while taking the snapshot')
         manifest['go'] = subprocess.check_output(['go', 'version'], text=True).strip()
@@ -370,6 +429,8 @@ def main():
     selection = parser.add_mutually_exclusive_group()
     selection.add_argument('--case', default='')
     selection.add_argument('--shard', help='one-based index/count over the eligible catalogue, balanced by duration')
+    parser.add_argument('--suite', choices=SUITES, default='all', help='select all eligible cases or the PR smoke subset')
+    parser.add_argument('--include-cases', default='', help='comma-separated isolated case IDs added alongside --suite smoke')
     parser.add_argument('--out')
     parser.add_argument('--guest', help='explicitly authorize selected guest acceptance in this VM UUID')
     parser.add_argument('--control-dir', type=Path, help='owned guest directory for physical-input requests')
@@ -377,8 +438,16 @@ def main():
     parser.add_argument('--update', action='store_true')
     args = parser.parse_args()
     specs = cases()
-    eligible = [s for s in specs if args.guest or s['environment'] == 'isolated']
-    selected = [args.case] if args.case else [s['id'] for s in (specs if args.action in ('list', 'catalog') else eligible)]
+    include_cases = parse_case_list(args.include_cases)
+    if args.case and (args.suite != 'all' or include_cases):
+        raise ValueError('--case cannot be combined with --suite or --include-cases')
+    eligible = filter_eligible(specs, suite=args.suite, include_cases=include_cases, include_guests=bool(args.guest))
+    if args.case:
+        selected = [args.case]
+    elif args.action == 'catalog' or (args.action == 'list' and args.suite == 'all' and not args.shard):
+        selected = [s['id'] for s in specs]
+    else:
+        selected = [s['id'] for s in eligible]
     shard = None
     if args.shard:
         match = re.fullmatch(r'([1-9][0-9]*)/([1-9][0-9]*)', args.shard)
@@ -439,7 +508,7 @@ def main():
         doctor(any(s['mode'] == 'native' and s['id'] in selected for s in specs))
         print('READY: basic prerequisites found; native startup is verified by the case')
         return 0
-    return run(specs, selected, args.out, guest, args.control_dir, shard)
+    return run(specs, selected, args.out, guest, args.control_dir, shard, suite=args.suite, include_cases=include_cases)
 
 
 if __name__ == '__main__':

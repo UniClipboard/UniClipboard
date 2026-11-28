@@ -1,4 +1,4 @@
 {
-  "en": "<!-- Replace with concise English release notes for Desktop users. -->",
-  "zh": "<!-- 替换为面向桌面端用户的简洁中文更新说明。 -->"
+  "en": "Desktop now supports Cloud sign-in and official hybrid relay for encrypted delivery when paired devices are offline. It also adds Sensitive Content Guard, clearer delivery progress, safer first-run v1 migration choices, and several Quick Panel and diagnostics improvements. All paired devices must use v2.",
+  "zh": "桌面端现支持登录 Cloud，并通过官方混合中转在配对设备离线时加密传送内容；同时新增敏感内容防护、更加清晰的传送进度、更安全的首次 v1 迁移选择，以及 Quick Panel 和诊断导出的改进。所有配对设备必须使用 v2。"
 }
